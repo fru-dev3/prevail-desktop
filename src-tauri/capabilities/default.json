@@ -1,0 +1,30 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main window — vault scanning, CLI spawning, benchmark file IO",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "dialog:default",
+    "fs:default",
+    "fs:allow-read-text-file",
+    "fs:allow-read-dir",
+    "shell:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        { "name": "which", "cmd": "which", "args": true }
+      ]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        { "name": "claude", "cmd": "claude", "args": true },
+        { "name": "codex", "cmd": "codex", "args": true },
+        { "name": "agy", "cmd": "agy", "args": true },
+        { "name": "ollama", "cmd": "ollama", "args": true }
+      ]
+    }
+  ]
+}
