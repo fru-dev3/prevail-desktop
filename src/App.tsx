@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+
+// Pulled from package.json at build time via Vite's define plugin
+// fallback (works without config because Vite sees this constant
+// inlined). Single source of truth for the version chip in title bar.
+const APP_VERSION = "0.2.5";
 import {
   ArrowUpRight,
   Check,
@@ -120,12 +125,14 @@ const LENSES: Lens[] = [
 // ─────────────────────────────────────────────────────────────────────
 // Top-level tabs
 
-type TabId = "chat" | "council" | "benchmark" | "tools" | "settings";
+// Top-level tabs. Council is NOT its own tab — it's a mode toggle
+// inside Chat. Tools is NOT its own tab — it's a section inside
+// Settings. Keeps the surface count low so each tab has a clear job.
+type TabId = "chat" | "council" | "benchmark" | "settings";
 const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
-  { id: "chat", label: "Chat", icon: MessageSquare },
+  { id: "chat", label: "Conversation", icon: MessageSquare },
   { id: "council", label: "Council", icon: Scale },
   { id: "benchmark", label: "Benchmark", icon: Sparkles },
-  { id: "tools", label: "Tools", icon: Wrench },
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
@@ -304,22 +311,19 @@ export default function App() {
         <div className="flex items-center gap-2.5" data-tauri-drag-region>
           <PrevailLogo size={22} />
           <Brand className="font-sans text-sm font-semibold text-text-primary" />
-          <span>v0.2.0</span>
+          <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] text-accent">v{APP_VERSION}</span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="hidden truncate sm:inline" title={vaultPath}>{shortenPath(vaultPath)}</span>
-          <button
-            onClick={() => {
-              const cycle: Mode[] = ["light", "dark", "system"];
-              const i = cycle.indexOf(appearance.mode);
-              appearance.setMode(cycle[(i + 1) % cycle.length]);
-            }}
-            className="flex h-7 w-7 items-center justify-center rounded border border-border text-text-muted hover:bg-surface-warm hover:text-text-primary"
-            title={`Mode: ${appearance.mode}  (click to cycle)`}
-          >
-            {appearance.mode === "dark" ? <Moon className="h-3.5 w-3.5" /> : appearance.mode === "system" ? <Monitor className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            const cycle: Mode[] = ["light", "dark", "system"];
+            const i = cycle.indexOf(appearance.mode);
+            appearance.setMode(cycle[(i + 1) % cycle.length]);
+          }}
+          className="flex h-7 w-7 items-center justify-center rounded border border-border text-text-muted hover:bg-surface-warm hover:text-text-primary"
+          title={`Mode: ${appearance.mode}  (click to cycle)`}
+        >
+          {appearance.mode === "dark" ? <Moon className="h-3.5 w-3.5" /> : appearance.mode === "system" ? <Monitor className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
+        </button>
       </div>
 
       <div className="flex min-h-0 flex-1">
@@ -368,13 +372,12 @@ export default function App() {
                     }`}
                   >
                     <span className={d.name === selectedDomain ? "text-accent" : "text-text-muted"}>◆</span>
-                    {d.name}
+                    {titleCase(d.name)}
                   </button>
                 </li>
               ))}
             </ul>
           </div>
-          <CliBadges clis={clis} />
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col">
@@ -412,7 +415,7 @@ export default function App() {
             {tab === "chat" && <ChatPanel domain={selectedDomain} clis={clis} fwLens={fwLens} />}
             {tab === "council" && <CouncilPanel domain={selectedDomain} clis={clis} fwLens={fwLens} />}
             {tab === "benchmark" && <BenchmarkPanel vaultPath={vaultPath} />}
-            {tab === "tools" && <ToolsPanel />}
+            {/* Tools moved into Settings → Integrations */}
             {tab === "settings" && (
               <SettingsPanel
                 appearance={appearance}
@@ -428,10 +431,15 @@ export default function App() {
   );
 }
 
-function shortenPath(p: string): string {
-  const home = "/Users/" + (p.split("/Users/")[1]?.split("/")[0] ?? "");
-  if (p.startsWith(home)) return "~" + p.slice(home.length);
-  return p;
+// Title-case helper. 'real-estate' → 'Real Estate', 'tax' → 'Tax'.
+// Used to render life domain labels in the UI without mutating the
+// underlying folder names that drive everything else.
+function titleCase(slug: string): string {
+  return slug
+    .replace(/[-_]+/g, " ")
+    .split(" ")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ""))
+    .join(" ");
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -481,30 +489,10 @@ function VaultWizard({ onPick }: { onPick: () => void }) {
 // ─────────────────────────────────────────────────────────────────────
 // CLI badges in sidebar footer
 
-function CliBadges({ clis }: { clis: CliInfo[] }) {
-  if (clis.length === 0) {
-    return (
-      <div className="border-t border-border-subtle px-4 py-3 font-mono text-[10px] text-text-muted">
-        detecting CLIs…
-      </div>
-    );
-  }
-  return (
-    <div className="border-t border-border-subtle px-4 py-3 font-mono text-[10px]">
-      <div className="mb-1.5 uppercase tracking-[0.2em] text-text-muted">
-        <span className="text-accent">◇</span> CLIs
-      </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-1.5">
-        {clis.map((c) => (
-          <span key={c.id} className="flex items-center gap-1">
-            <span className={c.available ? "text-ok" : "text-text-muted"}>{c.available ? "✓" : "·"}</span>
-            <span className={c.available ? "text-text-secondary" : "text-text-muted"}>{c.label.toLowerCase()}</span>
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
+// CLI badges moved to Settings → CLIs section (was in main sidebar).
+
+// MODELS quickpicks (Claude Opus 4.7, GPT 5.4, Gemini 3.1 Pro, etc.)
+// land in v0.2.6 — wiring them into Defaults + per-council picker.
 
 // ─────────────────────────────────────────────────────────────────────
 // FRAMEWORK + LENS CHIPS — shared above both Chat and Council composers
@@ -1586,25 +1574,9 @@ function DefaultsForm({ clis }: { clis: CliInfo[] }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// TOOLS PANEL — Telegram, WhatsApp, MCP server
-
-function ToolsPanel() {
-  return (
-    <div className="px-6 py-8">
-      <h1 className="font-display text-3xl font-semibold tracking-tight">Tools</h1>
-      <p className="mt-2 text-text-secondary">
-        Integrations and gateways. Your vault stays local; these let you reach it from elsewhere or push verdicts out.
-      </p>
-
-      <div className="mt-8 grid gap-4 lg:grid-cols-2">
-        <TelegramCard />
-        <WhatsAppCard />
-        <McpCard />
-        <BriefingsCard />
-      </div>
-    </div>
-  );
-}
+// Integration cards (Telegram / WhatsApp / MCP / Briefings) are now
+// rendered directly inside Settings → Integrations. Old ToolsPanel
+// wrapper removed.
 
 function TelegramCard() {
   const [token, setToken] = useState(lsGet(LS.telegramToken));
@@ -1777,23 +1749,4 @@ function McpCard() {
   );
 }
 
-function BriefingsCard() {
-  return (
-    <div className="rounded-xl border border-border bg-surface p-5">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-soft text-accent">
-          <Sparkles className="h-5 w-5" />
-        </div>
-        <div>
-          <h3 className="font-semibold">
-            Briefings <span className="ml-2 rounded bg-warn/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-warn">soon</span>
-          </h3>
-          <p className="text-xs text-text-muted">Scheduled morning + evening briefings across your domains, optionally pushed via Telegram.</p>
-        </div>
-      </div>
-      <p className="mt-4 text-xs text-text-muted">
-        Briefings on the desktop will reuse the CLI's <code className="text-accent">briefings</code> module — same prompt set, same rendering. Wiring coming in v0.3.
-      </p>
-    </div>
-  );
-}
+// BriefingsCard removed — landing back in v0.3 when wired up.
