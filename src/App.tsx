@@ -5,9 +5,11 @@ import { open } from "@tauri-apps/plugin-dialog";
 import {
   ArrowUpRight,
   Check,
+  ChevronDown,
   Folder,
   Github,
   MessageSquare,
+  Monitor,
   Moon,
   Network,
   Scale,
@@ -15,7 +17,6 @@ import {
   Settings as SettingsIcon,
   Sparkles,
   Sun,
-  Terminal,
   Wrench,
 } from "lucide-react";
 
@@ -134,6 +135,7 @@ const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
 const LS = {
   vault: "prevail.desktop.vaultPath",
   theme: "prevail.desktop.theme",
+  palette: "prevail.desktop.palette",
   framework: "prevail.desktop.framework",
   lens: "prevail.desktop.lens",
   defaultChatCli: "prevail.desktop.defaultChatCli",
@@ -177,20 +179,53 @@ function Brand({ className = "" }: { className?: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Theme — light default, dark on toggle. Persists to localStorage.
+// Theme = Mode (light / dark / system) + Palette (vault / midnight / ember / mono / cyberpunk / slate)
+// Mode controls brightness; palette controls accent + surface styling.
 
-type Theme = "light" | "dark";
+type Mode = "light" | "dark" | "system";
+type Palette = "vault" | "midnight" | "ember" | "mono" | "cyberpunk" | "slate";
 
-function useTheme(): [Theme, (t: Theme) => void] {
-  const [theme, setThemeState] = useState<Theme>(() => {
+const PALETTES: { id: Palette; name: string; blurb: string; swatch: { bg: string; surface: string; accent: string; ai: string } }[] = [
+  { id: "vault",     name: "Vault",     blurb: "Cream + gold — focused, warm",                       swatch: { bg: "#faf8f1", surface: "#ffffff", accent: "#a8862d", ai: "#1976d2" } },
+  { id: "midnight",  name: "Midnight",  blurb: "Deep blue-violet with cool accents",                  swatch: { bg: "#0a0d1f", surface: "#131730", accent: "#818cf8", ai: "#22d3ee" } },
+  { id: "ember",     name: "Ember",     blurb: "Warm crimson and bronze — forge vibes",               swatch: { bg: "#1a0a06", surface: "#2a130c", accent: "#ef6c4a", ai: "#fbbf24" } },
+  { id: "mono",      name: "Mono",      blurb: "Clean grayscale — minimal and focused",               swatch: { bg: "#f7f7f8", surface: "#ffffff", accent: "#18181b", ai: "#3b82f6" } },
+  { id: "cyberpunk", name: "Cyberpunk", blurb: "Neon green on black — matrix terminal",               swatch: { bg: "#030a06", surface: "#08130c", accent: "#22ff77", ai: "#ff45a1" } },
+  { id: "slate",     name: "Slate",     blurb: "Cool slate blue — focused developer theme",           swatch: { bg: "#0c1220", surface: "#131b2e", accent: "#38bdf8", ai: "#a5b4fc" } },
+];
+
+function useAppearance() {
+  const [mode, setMode] = useState<Mode>(() => {
     const saved = lsGet(LS.theme);
-    return saved === "dark" ? "dark" : "light";
+    if (saved === "light" || saved === "dark" || saved === "system") return saved;
+    return "light";
   });
+  const [palette, setPalette] = useState<Palette>(() => {
+    const saved = lsGet(LS.palette) as Palette;
+    return PALETTES.some((p) => p.id === saved) ? saved : "vault";
+  });
+  // Track system preference for "system" mode
+  const [systemDark, setSystemDark] = useState<boolean>(() =>
+    typeof window !== "undefined" && window.matchMedia
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+      : false,
+  );
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    lsSet(LS.theme, theme);
-  }, [theme]);
-  return [theme, setThemeState];
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  // Apply to <html>
+  useEffect(() => {
+    const effectiveDark = mode === "dark" || (mode === "system" && systemDark);
+    document.documentElement.setAttribute("data-theme", effectiveDark ? "dark" : "light");
+    document.documentElement.setAttribute("data-palette", palette);
+    lsSet(LS.theme, mode);
+    lsSet(LS.palette, palette);
+  }, [mode, palette, systemDark]);
+  return { mode, setMode, palette, setPalette };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -219,7 +254,7 @@ function useFrameworkLens() {
 // App root — vault picker, sidebar, tabs
 
 export default function App() {
-  const [theme, setTheme] = useTheme();
+  const appearance = useAppearance();
   const [vaultPath, setVaultPath] = useState<string | null>(() =>
     localStorage.getItem(LS.vault),
   );
@@ -274,44 +309,66 @@ export default function App() {
         <div className="flex items-center gap-3">
           <span className="hidden truncate sm:inline" title={vaultPath}>{shortenPath(vaultPath)}</span>
           <button
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            onClick={() => {
+              const cycle: Mode[] = ["light", "dark", "system"];
+              const i = cycle.indexOf(appearance.mode);
+              appearance.setMode(cycle[(i + 1) % cycle.length]);
+            }}
             className="flex h-7 w-7 items-center justify-center rounded border border-border text-text-muted hover:bg-surface-warm hover:text-text-primary"
-            title="Toggle theme"
+            title={`Mode: ${appearance.mode}  (click to cycle)`}
           >
-            {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            {appearance.mode === "dark" ? <Moon className="h-3.5 w-3.5" /> : appearance.mode === "system" ? <Monitor className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
           </button>
         </div>
       </div>
 
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-60 shrink-0 flex-col border-r border-border-subtle bg-surface">
-          <div className="border-b border-border-subtle px-4 py-3 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">
-            <span className="text-accent">◆</span> domains · {domains.length}
-          </div>
-          <div className="flex-1 overflow-y-auto">
+          {/* Vault selector — Multica-style */}
+          <button
+            onClick={pickVault}
+            className="group flex items-center gap-2.5 border-b border-border-subtle px-3 py-3 text-left hover:bg-surface-warm"
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
+              <Folder className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold text-text-primary">
+                {vaultPath.split("/").pop() || "vault"}
+              </div>
+              <div className="text-xs text-text-muted">
+                {domains.length} {domains.length === 1 ? "domain" : "domains"}
+              </div>
+            </div>
+            <ChevronDown className="h-4 w-4 shrink-0 text-text-muted group-hover:text-text-primary" />
+          </button>
+
+          {/* Domain list — rounded selection like Multica */}
+          <div className="flex-1 overflow-y-auto px-2 py-2">
+            <div className="mb-1 px-2 text-[10px] font-medium uppercase tracking-[0.18em] text-text-muted">
+              Domains
+            </div>
             {vaultError && (
-              <div className="m-3 rounded border border-warn/40 bg-warn/10 p-3 text-xs text-warn">{vaultError}</div>
+              <div className="mx-2 my-2 rounded border border-warn/40 bg-warn/10 p-2 text-xs text-warn">{vaultError}</div>
             )}
             {domains.length === 0 && !vaultError && (
-              <div className="p-4 text-xs text-text-muted">
+              <div className="px-2 py-3 text-xs text-text-muted">
                 no domains found. drop a <code className="text-accent">state.md</code> into any folder under this vault.
               </div>
             )}
-            <ul>
+            <ul className="space-y-0.5">
               {domains.map((d) => (
                 <li key={d.name}>
                   <button
                     onClick={() => setSelectedDomain(d.name)}
-                    className={`flex w-full items-center justify-between px-4 py-2 text-left font-mono text-sm transition-colors ${
+                    className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
                       d.name === selectedDomain
-                        ? "bg-accent-soft text-accent"
-                        : "text-text-secondary hover:bg-surface-warm"
+                        ? "bg-surface-strong text-text-primary font-medium"
+                        : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
                     }`}
                   >
-                    <span>
-                      <span className="mr-2 text-text-muted">{d.name === selectedDomain ? "▸" : "·"}</span>
-                      {d.name}
-                    </span>
+                    <span className={d.name === selectedDomain ? "text-accent" : "text-text-muted"}>◆</span>
+                    {d.name}
                   </button>
                 </li>
               ))}
@@ -358,8 +415,7 @@ export default function App() {
             {tab === "tools" && <ToolsPanel />}
             {tab === "settings" && (
               <SettingsPanel
-                theme={theme}
-                onThemeChange={setTheme}
+                appearance={appearance}
                 vaultPath={vaultPath}
                 onChangeVault={pickVault}
                 clis={clis}
@@ -649,20 +705,34 @@ function ChatPanel({
         </div>
       </div>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 && (
-          <div className="mx-auto mt-16 max-w-md text-center text-text-muted">
-            <Terminal className="mx-auto h-8 w-8 text-text-muted opacity-50" />
-            <p className="mt-4 text-sm">
-              Ask <Brand /> anything for {domain ? <code className="text-accent">{domain}</code> : "the selected domain"}.
-              The reply streams from <code className="text-accent">{selectedCli ?? "the selected CLI"}</code>.
+          <div className="flex h-full flex-col items-center justify-center px-6 py-12 text-center">
+            <img src="/logo.png" alt="" className="h-20 w-20 opacity-90" />
+            <h2 className="mt-8 font-display text-5xl font-semibold tracking-tight">
+              <Brand />
+            </h2>
+            <p className="mt-4 max-w-md text-base text-text-secondary">
+              Ask anything for{" "}
+              <code className="rounded bg-surface-warm px-1.5 py-0.5 text-accent">
+                {domain ?? "the selected domain"}
+              </code>
+              . The reply streams from{" "}
+              <code className="rounded bg-surface-warm px-1.5 py-0.5 text-accent">
+                {selectedCli ?? "the selected CLI"}
+              </code>
+              .
             </p>
-            <p className="mt-3 text-xs">
+            <p className="mt-3 text-sm text-text-muted">
               Pick a <span className="text-accent">◆ Framework</span> + <span className="text-accent">◇ Lens</span> below to shape every reply.
             </p>
           </div>
         )}
-        {messages.map((m, i) => <ChatBubble key={i} msg={m} />)}
+        {messages.length > 0 && (
+          <div className="px-6 py-6">
+            {messages.map((m, i) => <ChatBubble key={i} msg={m} />)}
+          </div>
+        )}
       </div>
 
       <div className="shrink-0 border-t border-border-subtle bg-surface px-6 py-4">
@@ -875,11 +945,17 @@ function CouncilPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
         {phase === "idle" && (
-          <div className="mx-auto max-w-2xl text-center text-text-muted">
-            <Scale className="mx-auto h-8 w-8 opacity-50" />
-            <p className="mt-4">
-              Type a question below and convene the council. Every available CLI will answer in parallel, then{" "}
-              <code className="text-accent">{chairCli ?? "the chair"}</code> synthesizes the verdict.
+          <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+            <img src="/logo.png" alt="" className="h-20 w-20 opacity-90" />
+            <h2 className="mt-8 font-display text-5xl font-semibold tracking-tight">
+              <Brand /> Council
+            </h2>
+            <p className="mt-4 max-w-md text-base text-text-secondary">
+              Type a question below and convene the council. Every available CLI answers in parallel, then{" "}
+              <code className="rounded bg-surface-warm px-1.5 py-0.5 text-accent">
+                {chairCli ?? "the chair"}
+              </code>{" "}
+              synthesizes one verdict.
             </p>
           </div>
         )}
@@ -1152,94 +1228,287 @@ function BenchmarkPanel({ vaultPath }: { vaultPath: string }) {
 // SETTINGS PANEL — vault, theme, defaults, about
 
 function SettingsPanel({
-  theme,
-  onThemeChange,
+  appearance,
   vaultPath,
   onChangeVault,
   clis,
 }: {
-  theme: Theme;
-  onThemeChange: (t: Theme) => void;
+  appearance: ReturnType<typeof useAppearance>;
   vaultPath: string;
   onChangeVault: () => void;
   clis: CliInfo[];
 }) {
+  type Section = "vault" | "appearance" | "defaults" | "tools" | "about";
+  const [section, setSection] = useState<Section>("vault");
+
+  const items: Array<{ id: Section; label: string; icon: typeof Folder }> = [
+    { id: "vault", label: "Vault", icon: Folder },
+    { id: "appearance", label: "Appearance", icon: Sparkles },
+    { id: "defaults", label: "Defaults", icon: SettingsIcon },
+    { id: "tools", label: "Integrations", icon: Wrench },
+    { id: "about", label: "About", icon: Github },
+  ];
+
   return (
-    <div className="px-6 py-8">
-      <h1 className="font-display text-3xl font-semibold tracking-tight">Settings</h1>
-      <p className="mt-2 text-text-secondary">
-        Configure <Brand />. Everything is stored locally in this app's preferences — your vault stays untouched.
-      </p>
-
-      <SettingsSection title="Vault" subtitle="Where Prevail reads + writes your domain folders.">
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-4">
-          <div className="min-w-0">
-            <div className="text-xs uppercase tracking-wider text-text-muted">current path</div>
-            <div className="mt-1 truncate font-mono text-sm text-text-primary" title={vaultPath}>
-              {vaultPath}
-            </div>
-          </div>
-          <button
-            onClick={onChangeVault}
-            className="inline-flex shrink-0 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-surface-warm"
-          >
-            <Folder className="h-3.5 w-3.5" />
-            Change
-          </button>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection title="Appearance" subtitle="Light is the default. Toggle dark if you prefer.">
-        <div className="flex gap-2">
-          {(["light", "dark"] as const).map((t) => (
+    <div className="flex h-full">
+      {/* Sidebar nav — Hermes-style */}
+      <aside className="flex w-52 shrink-0 flex-col border-r border-border-subtle bg-surface px-2 py-4">
+        {items.map((it) => {
+          const Icon = it.icon;
+          const active = section === it.id;
+          return (
             <button
-              key={t}
-              onClick={() => onThemeChange(t)}
-              className={`flex items-center gap-2 rounded-md border px-4 py-2 text-sm transition-colors ${
-                theme === t ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-surface text-text-secondary hover:bg-surface-warm"
+              key={it.id}
+              onClick={() => setSection(it.id)}
+              className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                active
+                  ? "bg-accent-soft text-accent"
+                  : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
               }`}
             >
-              {t === "light" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              {t.charAt(0).toUpperCase() + t.slice(1)}
+              <Icon className="h-4 w-4" />
+              {it.label}
             </button>
-          ))}
-        </div>
-      </SettingsSection>
+          );
+        })}
+      </aside>
 
-      <SettingsSection title="Defaults" subtitle="Pre-select the model + reasoning shape Prevail uses across new chats and councils.">
-        <DefaultsForm clis={clis} />
-      </SettingsSection>
-
-      <SettingsSection title="About">
-        <div className="space-y-1 rounded-lg border border-border bg-surface p-4 font-mono text-xs text-text-secondary">
-          <div><span className="text-text-muted">version</span> · 0.2.0</div>
-          <div><span className="text-text-muted">build</span>  · Tauri 2 · React 19 · Tailwind 4</div>
-          <div className="flex gap-3 pt-2">
-            <a href="https://github.com/fru-dev3/prevail-desktop" target="_blank" rel="noreferrer" className="text-accent hover:underline">desktop repo</a>
-            <a href="https://github.com/fru-dev3/prevail" target="_blank" rel="noreferrer" className="text-accent hover:underline">cli repo</a>
-            <a href="https://prevail.sh" target="_blank" rel="noreferrer" className="text-accent hover:underline">prevail.sh</a>
-          </div>
+      {/* Main pane */}
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-3xl px-8 py-10">
+          {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} />}
+          {section === "appearance" && <AppearanceSection appearance={appearance} />}
+          {section === "defaults" && (
+            <>
+              <SettingsHeader title="Defaults" subtitle="Pre-select the model + reasoning shape Prevail uses across new chats and councils." />
+              <DefaultsForm clis={clis} />
+            </>
+          )}
+          {section === "tools" && (
+            <>
+              <SettingsHeader title="Integrations" subtitle="Bridges and gateways. Your vault stays local; these surfaces let you reach it from elsewhere." />
+              <div className="mt-6 grid gap-4">
+                <TelegramCard />
+                <WhatsAppCard />
+                <McpCard />
+              </div>
+            </>
+          )}
+          {section === "about" && <AboutSection />}
         </div>
-      </SettingsSection>
+      </div>
     </div>
   );
 }
 
-function SettingsSection({
-  title,
-  subtitle,
+function SettingsHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="mb-6">
+      <h2 className="font-display text-2xl font-semibold tracking-tight">{title}</h2>
+      {subtitle && <p className="mt-1 max-w-2xl text-sm text-text-secondary">{subtitle}</p>}
+    </div>
+  );
+}
+
+function VaultSettings({ vaultPath, onChange }: { vaultPath: string; onChange: () => void }) {
+  return (
+    <>
+      <SettingsHeader title="Vault" subtitle="Where Prevail reads + writes your domain folders. Each child folder with a state.md becomes a life domain." />
+      <SettingRow label="Vault folder" desc="Currently selected workspace.">
+        <button
+          onClick={onChange}
+          className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm"
+        >
+          <Folder className="h-3.5 w-3.5" />
+          Change
+        </button>
+      </SettingRow>
+      <div className="mt-1 rounded-lg border border-border bg-surface p-4 font-mono text-xs text-text-primary">
+        {vaultPath}
+      </div>
+    </>
+  );
+}
+
+function AboutSection() {
+  return (
+    <>
+      <SettingsHeader title="About" />
+      <div className="rounded-xl border border-border bg-surface p-6">
+        <div className="flex items-center gap-4">
+          <img src="/logo.png" alt="Prevail" className="h-14 w-14" />
+          <div>
+            <div className="font-display text-xl font-semibold"><Brand /></div>
+            <div className="mt-0.5 font-mono text-xs text-text-muted">v0.2.4 · Tauri 2 · React 19 · Tailwind 4</div>
+          </div>
+        </div>
+        <div className="mt-6 grid gap-2 text-sm">
+          <a href="https://github.com/fru-dev3/prevail-desktop" target="_blank" rel="noreferrer" className="text-accent hover:underline">
+            github.com/fru-dev3/prevail-desktop
+          </a>
+          <a href="https://github.com/fru-dev3/prevail" target="_blank" rel="noreferrer" className="text-accent hover:underline">
+            github.com/fru-dev3/prevail  (CLI)
+          </a>
+          <a href="https://prevail.sh" target="_blank" rel="noreferrer" className="text-accent hover:underline">
+            prevail.sh
+          </a>
+        </div>
+        <p className="mt-6 text-xs text-text-muted">
+          MIT licensed. Local-first. Your vault stays on this Mac.
+        </p>
+      </div>
+    </>
+  );
+}
+
+// Reusable row: label on left, control on right. Hermes pattern.
+function SettingRow({
+  label,
+  desc,
   children,
 }: {
-  title: string;
-  subtitle?: string;
+  label: string;
+  desc?: string;
   children: React.ReactNode;
 }) {
   return (
+    <div className="flex items-start justify-between gap-6 border-b border-border-subtle py-4">
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-text-primary">{label}</div>
+        {desc && <div className="mt-0.5 text-xs text-text-secondary">{desc}</div>}
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// APPEARANCE SECTION — Color Mode toggle + 6 theme palette cards
+// Modeled after the Hermes desktop Appearance pane.
+
+function AppearanceSection({ appearance }: { appearance: ReturnType<typeof useAppearance> }) {
+  return (
     <section className="mt-10">
-      <h2 className="font-display text-xl font-semibold tracking-tight">{title}</h2>
-      {subtitle && <p className="mt-1 text-sm text-text-secondary">{subtitle}</p>}
-      <div className="mt-4">{children}</div>
+      <div className="flex items-start justify-between gap-6">
+        <div>
+          <h2 className="font-display text-xl font-semibold tracking-tight">Appearance</h2>
+          <p className="mt-1 max-w-2xl text-sm text-text-secondary">
+            Mode controls brightness; theme controls the accent palette and surface styling.
+          </p>
+        </div>
+      </div>
+
+      {/* Color Mode segmented control */}
+      <div className="mt-6 rounded-xl border border-border bg-surface p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="font-medium">Color Mode</div>
+            <div className="mt-1 text-sm text-text-secondary">
+              Pick a fixed mode or let Prevail follow your system setting.
+            </div>
+          </div>
+          <div className="inline-flex shrink-0 items-center rounded-md border border-border bg-background p-1 text-xs">
+            {[
+              { id: "light", label: "Light", icon: Sun },
+              { id: "dark", label: "Dark", icon: Moon },
+              { id: "system", label: "System", icon: Monitor },
+            ].map((m) => {
+              const Icon = m.icon;
+              const active = appearance.mode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => appearance.setMode(m.id as Mode)}
+                  className={`inline-flex items-center gap-1.5 rounded px-3 py-1.5 transition-colors ${
+                    active
+                      ? "bg-accent text-background shadow-sm"
+                      : "text-text-secondary hover:bg-surface-warm"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Theme palette cards */}
+      <div className="mt-6">
+        <div className="mb-1 font-medium">Theme</div>
+        <p className="mb-4 text-sm text-text-secondary">
+          Desktop palettes. The selected mode is applied on top.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {PALETTES.map((p) => (
+            <PaletteCard
+              key={p.id}
+              palette={p}
+              active={appearance.palette === p.id}
+              onSelect={() => appearance.setPalette(p.id)}
+            />
+          ))}
+        </div>
+      </div>
     </section>
+  );
+}
+
+function PaletteCard({
+  palette,
+  active,
+  onSelect,
+}: {
+  palette: (typeof PALETTES)[number];
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`group overflow-hidden rounded-xl border-2 text-left transition-all ${
+        active
+          ? "border-accent shadow-md"
+          : "border-border-subtle hover:border-border"
+      }`}
+    >
+      {/* Preview card — solid swatch of the palette */}
+      <div
+        className="relative h-24 px-4 py-3"
+        style={{ backgroundColor: palette.swatch.bg }}
+      >
+        {/* mock message bubble */}
+        <div
+          className="absolute left-4 right-12 top-3 h-2 rounded-full opacity-90"
+          style={{ backgroundColor: palette.swatch.accent }}
+        />
+        <div
+          className="absolute left-4 right-20 top-7 h-2 rounded-full opacity-50"
+          style={{ backgroundColor: palette.swatch.accent }}
+        />
+        {/* mock pill */}
+        <div
+          className="absolute bottom-3 right-4 h-5 w-12 rounded-full"
+          style={{ backgroundColor: palette.swatch.surface, opacity: 0.7 }}
+        />
+        {/* AI dot */}
+        <div
+          className="absolute bottom-4 left-4 h-3 w-3 rounded-full"
+          style={{ backgroundColor: palette.swatch.ai }}
+        />
+        {active && (
+          <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-background">
+            <Check className="h-3 w-3" />
+          </div>
+        )}
+      </div>
+      {/* Label */}
+      <div className="border-t border-border-subtle bg-surface px-4 py-3">
+        <div className="font-medium">{palette.name}</div>
+        <div className="mt-0.5 text-xs text-text-secondary">{palette.blurb}</div>
+      </div>
+    </button>
   );
 }
 

@@ -5,9 +5,9 @@
   --font-display: "Instrument Serif", Georgia, serif;
   --font-mono: "Geist Mono", "JetBrains Mono", "SF Mono", "Menlo", monospace;
 
-  /* Default = LIGHT theme. Dark theme overrides below when
-     data-theme="dark" is set on <html>. Matches the official Prevail
-     brand: warm cream surfaces, gold accent, cyan AI accent. */
+  /* Default tokens — overridden by data-theme + data-palette below.
+     The defaults below are the VAULT palette in LIGHT mode (the
+     out-of-the-box look). */
   --color-background: #faf8f1;
   --color-surface: #ffffff;
   --color-surface-warm: #f5f2e8;
@@ -31,8 +31,217 @@
   --color-logo-cyan: #4ab9cc;
 }
 
-/* Dark theme — activated by data-theme="dark" on <html>. */
-:root[data-theme="dark"] {
+/* ═════════════════════════════════════════════════════════════════════
+   THEME PALETTES — applied via [data-palette="<name>"] on <html>
+   Each palette has two variants for [data-theme="light"] (default,
+   selector omitted) and [data-theme="dark"]. Mode controls brightness;
+   palette controls accent + surface styling.
+   ═════════════════════════════════════════════════════════════════════ */
+
+/* ── VAULT (default) — cream + gold ────────────────────────────────── */
+:root[data-palette="vault"][data-theme="dark"] {
+  --color-background: #0d0d0e;
+  --color-surface: #16161a;
+  --color-surface-warm: #1c1c22;
+  --color-surface-strong: #232329;
+  --color-border: #2a2a32;
+  --color-border-subtle: #1e1e24;
+  --color-text-primary: #f3eee0;
+  --color-text-secondary: #b6ad99;
+  --color-text-muted: #6a6357;
+  --color-accent: #c4a35a;
+  --color-accent-hover: #d4b675;
+  --color-accent-soft: rgba(196, 163, 90, 0.08);
+  --color-accent-border: rgba(196, 163, 90, 0.22);
+  --color-ai: #5fbfff;
+  --color-ai-soft: rgba(95, 191, 255, 0.08);
+  --color-ok: #52c41a;
+  --color-warn: #faad14;
+  --color-err: #ff4d4f;
+}
+
+/* ── MIDNIGHT — deep blue-violet with cool accents ─────────────────── */
+:root[data-palette="midnight"] {
+  --color-background: #eef0fa;
+  --color-surface: #ffffff;
+  --color-surface-warm: #e6e9f5;
+  --color-surface-strong: #dadeec;
+  --color-border: #c7cce0;
+  --color-border-subtle: #dde0ee;
+  --color-text-primary: #14152a;
+  --color-text-secondary: #4a4f6b;
+  --color-text-muted: #7d829a;
+  --color-accent: #4f46e5;
+  --color-accent-hover: #6366f1;
+  --color-accent-soft: rgba(79, 70, 229, 0.08);
+  --color-accent-border: rgba(79, 70, 229, 0.28);
+  --color-ai: #06b6d4;
+  --color-ai-soft: rgba(6, 182, 212, 0.08);
+}
+:root[data-palette="midnight"][data-theme="dark"] {
+  --color-background: #0a0d1f;
+  --color-surface: #131730;
+  --color-surface-warm: #1a1f3d;
+  --color-surface-strong: #232950;
+  --color-border: #2d3460;
+  --color-border-subtle: #1c2240;
+  --color-text-primary: #e8ebff;
+  --color-text-secondary: #a6acd0;
+  --color-text-muted: #6e74a0;
+  --color-accent: #818cf8;
+  --color-accent-hover: #a5b0ff;
+  --color-accent-soft: rgba(129, 140, 248, 0.10);
+  --color-accent-border: rgba(129, 140, 248, 0.28);
+  --color-ai: #22d3ee;
+  --color-ai-soft: rgba(34, 211, 238, 0.10);
+}
+
+/* ── EMBER — warm crimson and bronze, forge vibes ──────────────────── */
+:root[data-palette="ember"] {
+  --color-background: #fff7f1;
+  --color-surface: #ffffff;
+  --color-surface-warm: #fbeee0;
+  --color-surface-strong: #f4dfc7;
+  --color-border: #e2c6a3;
+  --color-border-subtle: #f0dcc1;
+  --color-text-primary: #2a1610;
+  --color-text-secondary: #6b4a3a;
+  --color-text-muted: #957860;
+  --color-accent: #c0392b;
+  --color-accent-hover: #e74c3c;
+  --color-accent-soft: rgba(192, 57, 43, 0.08);
+  --color-accent-border: rgba(192, 57, 43, 0.28);
+  --color-ai: #d97706;
+  --color-ai-soft: rgba(217, 119, 6, 0.10);
+}
+:root[data-palette="ember"][data-theme="dark"] {
+  --color-background: #1a0a06;
+  --color-surface: #2a130c;
+  --color-surface-warm: #361b13;
+  --color-surface-strong: #44241a;
+  --color-border: #5a3320;
+  --color-border-subtle: #2e1812;
+  --color-text-primary: #fbe9d8;
+  --color-text-secondary: #d4a886;
+  --color-text-muted: #876654;
+  --color-accent: #ef6c4a;
+  --color-accent-hover: #ff8762;
+  --color-accent-soft: rgba(239, 108, 74, 0.12);
+  --color-accent-border: rgba(239, 108, 74, 0.3);
+  --color-ai: #fbbf24;
+  --color-ai-soft: rgba(251, 191, 36, 0.10);
+}
+
+/* ── MONO — clean grayscale, minimal and focused ───────────────────── */
+:root[data-palette="mono"] {
+  --color-background: #f7f7f8;
+  --color-surface: #ffffff;
+  --color-surface-warm: #efeff1;
+  --color-surface-strong: #e3e3e6;
+  --color-border: #d1d1d6;
+  --color-border-subtle: #e8e8eb;
+  --color-text-primary: #18181b;
+  --color-text-secondary: #52525b;
+  --color-text-muted: #71717a;
+  --color-accent: #18181b;
+  --color-accent-hover: #27272a;
+  --color-accent-soft: rgba(24, 24, 27, 0.06);
+  --color-accent-border: rgba(24, 24, 27, 0.2);
+  --color-ai: #3b82f6;
+  --color-ai-soft: rgba(59, 130, 246, 0.06);
+}
+:root[data-palette="mono"][data-theme="dark"] {
+  --color-background: #0a0a0a;
+  --color-surface: #18181b;
+  --color-surface-warm: #1f1f23;
+  --color-surface-strong: #27272a;
+  --color-border: #3f3f46;
+  --color-border-subtle: #27272a;
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+  --color-accent: #fafafa;
+  --color-accent-hover: #ffffff;
+  --color-accent-soft: rgba(250, 250, 250, 0.06);
+  --color-accent-border: rgba(250, 250, 250, 0.2);
+  --color-ai: #60a5fa;
+  --color-ai-soft: rgba(96, 165, 250, 0.10);
+}
+
+/* ── CYBERPUNK — neon green on black, matrix terminal ──────────────── */
+:root[data-palette="cyberpunk"] {
+  --color-background: #f1fbf3;
+  --color-surface: #ffffff;
+  --color-surface-warm: #e3f6e7;
+  --color-surface-strong: #d0eed8;
+  --color-border: #a8d4b3;
+  --color-border-subtle: #c5e5cc;
+  --color-text-primary: #052e0d;
+  --color-text-secondary: #2e6238;
+  --color-text-muted: #5a8666;
+  --color-accent: #16a34a;
+  --color-accent-hover: #22c55e;
+  --color-accent-soft: rgba(22, 163, 74, 0.08);
+  --color-accent-border: rgba(22, 163, 74, 0.28);
+  --color-ai: #ec4899;
+  --color-ai-soft: rgba(236, 72, 153, 0.08);
+}
+:root[data-palette="cyberpunk"][data-theme="dark"] {
+  --color-background: #030a06;
+  --color-surface: #08130c;
+  --color-surface-warm: #0d1f12;
+  --color-surface-strong: #14301c;
+  --color-border: #1c4527;
+  --color-border-subtle: #0f2014;
+  --color-text-primary: #b8f5c8;
+  --color-text-secondary: #6fcf86;
+  --color-text-muted: #4a8859;
+  --color-accent: #22ff77;
+  --color-accent-hover: #3aff8c;
+  --color-accent-soft: rgba(34, 255, 119, 0.10);
+  --color-accent-border: rgba(34, 255, 119, 0.32);
+  --color-ai: #ff45a1;
+  --color-ai-soft: rgba(255, 69, 161, 0.10);
+}
+
+/* ── SLATE — cool slate blue, focused developer theme ─────────────── */
+:root[data-palette="slate"] {
+  --color-background: #f1f5f9;
+  --color-surface: #ffffff;
+  --color-surface-warm: #e2e8f0;
+  --color-surface-strong: #cbd5e1;
+  --color-border: #94a3b8;
+  --color-border-subtle: #cbd5e1;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+  --color-accent: #0369a1;
+  --color-accent-hover: #0284c7;
+  --color-accent-soft: rgba(3, 105, 161, 0.08);
+  --color-accent-border: rgba(3, 105, 161, 0.28);
+  --color-ai: #6366f1;
+  --color-ai-soft: rgba(99, 102, 241, 0.08);
+}
+:root[data-palette="slate"][data-theme="dark"] {
+  --color-background: #0c1220;
+  --color-surface: #131b2e;
+  --color-surface-warm: #1a253d;
+  --color-surface-strong: #243150;
+  --color-border: #334163;
+  --color-border-subtle: #1c2640;
+  --color-text-primary: #e2e8f0;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+  --color-accent: #38bdf8;
+  --color-accent-hover: #7dd3fc;
+  --color-accent-soft: rgba(56, 189, 248, 0.10);
+  --color-accent-border: rgba(56, 189, 248, 0.30);
+  --color-ai: #a5b4fc;
+  --color-ai-soft: rgba(165, 180, 252, 0.10);
+}
+
+/* Backward-compat: data-theme=dark with no palette = vault dark */
+:root[data-theme="dark"]:not([data-palette]) {
   --color-background: #0d0d0e;
   --color-surface: #16161a;
   --color-surface-warm: #1c1c22;
@@ -61,37 +270,23 @@
     @apply bg-background text-text-primary antialiased;
     font-feature-settings: "ss01" 1, "cv11" 1;
     margin: 0;
+    transition: background-color 0.15s ease;
   }
-  /* macOS title bar overlay padding */
   .titlebar-pad { padding-left: 80px; }
 }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(168, 134, 45, 0.28);
+  background: var(--color-accent-border);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(168, 134, 45, 0.5);
-}
-:root[data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: rgba(196, 163, 90, 0.24);
-}
-:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(196, 163, 90, 0.42);
-}
+::-webkit-scrollbar-thumb:hover { background: var(--color-accent); }
 
-@keyframes cursor-blink {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
-}
+@keyframes cursor-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
 .cursor-blink { animation: cursor-blink 1s steps(1) infinite; }
 
-@keyframes pulse-soft {
-  0%, 100% { opacity: 0.45; }
-  50% { opacity: 1; }
-}
+@keyframes pulse-soft { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
 .pulse-soft { animation: pulse-soft 1.6s ease-in-out infinite; }
