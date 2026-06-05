@@ -157,18 +157,14 @@ function lsSet(key: string, value: string): void {
 
 function PrevailLogo({ size = 28 }: { size?: number }) {
   return (
-    <svg
+    <img
+      src="/logo.png"
+      alt="Prevail"
       width={size}
       height={size}
-      viewBox="0 0 1024 1024"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <rect width="1024" height="1024" rx="224" ry="224" fill="#2a362a" />
-      <path d="M 485 694 A 210 210 0 1 0 485 330" stroke="#f7c551" strokeWidth="124" fill="none" strokeLinecap="round" />
-      <path d="M 539 694 A 210 210 0 1 1 539 330" stroke="#60c5d8" strokeWidth="124" fill="none" strokeLinecap="round" />
-      <circle cx="560" cy="400" r="44" fill="#f7c551" />
-      <circle cx="464" cy="624" r="44" fill="#60c5d8" />
-    </svg>
+      style={{ width: size, height: size }}
+      draggable={false}
+    />
   );
 }
 
