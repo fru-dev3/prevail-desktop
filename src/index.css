@@ -2,9 +2,37 @@
 
 @theme {
   --font-sans: "Inter", "Segoe UI", -apple-system, sans-serif;
-  --font-display: "Fraunces", Georgia, serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+  --font-display: "Instrument Serif", Georgia, serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", "SF Mono", "Menlo", monospace;
 
+  /* Default = LIGHT theme. Dark theme overrides below when
+     data-theme="dark" is set on <html>. Matches the official Prevail
+     brand: warm cream surfaces, gold accent, cyan AI accent. */
+  --color-background: #faf8f1;
+  --color-surface: #ffffff;
+  --color-surface-warm: #f5f2e8;
+  --color-surface-strong: #eee9d8;
+  --color-border: #d8d1bd;
+  --color-border-subtle: #e8e3d1;
+  --color-text-primary: #1a1814;
+  --color-text-secondary: #5a544a;
+  --color-text-muted: #8a8270;
+  --color-accent: #a8862d;
+  --color-accent-hover: #c4a35a;
+  --color-accent-soft: rgba(168, 134, 45, 0.08);
+  --color-accent-border: rgba(168, 134, 45, 0.28);
+  --color-ai: #1976d2;
+  --color-ai-soft: rgba(25, 118, 210, 0.07);
+  --color-ok: #2e7d32;
+  --color-warn: #b87f10;
+  --color-err: #c62828;
+  --color-logo-bg: #1f2a1f;
+  --color-logo-gold: #e8b945;
+  --color-logo-cyan: #4ab9cc;
+}
+
+/* Dark theme — activated by data-theme="dark" on <html>. */
+:root[data-theme="dark"] {
   --color-background: #0d0d0e;
   --color-surface: #16161a;
   --color-surface-warm: #1c1c22;
@@ -31,7 +59,7 @@
   }
   body {
     @apply bg-background text-text-primary antialiased;
-    font-feature-settings: "ss01" 1, "cv03" 1, "cv11" 1;
+    font-feature-settings: "ss01" 1, "cv11" 1;
     margin: 0;
   }
   /* macOS title bar overlay padding */
@@ -41,12 +69,18 @@
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(196, 163, 90, 0.24);
+  background: rgba(168, 134, 45, 0.28);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
+  background: rgba(168, 134, 45, 0.5);
+}
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(196, 163, 90, 0.24);
+}
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   background: rgba(196, 163, 90, 0.42);
 }
 
