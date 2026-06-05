@@ -12,11 +12,57 @@
 // signing complexity for the first release.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use tauri::Emitter;
-use tauri_plugin_shell::process::CommandEvent;
+#[allow(unused_imports)]
 use tauri_plugin_shell::ShellExt;
+
+// Registry of running spawned children keyed by session id (or session
+// prefix for council slots/score). Used so the React side can abort a
+// long-running run.
+fn child_registry() -> &'static Mutex<HashMap<String, u32>> {
+    static REG: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
+    REG.get_or_init(|| Mutex::new(HashMap::new()))
+}
+fn register_child(session: &str, pid: u32) {
+    if let Ok(mut g) = child_registry().lock() {
+        g.insert(session.to_string(), pid);
+    }
+}
+fn unregister_child(session: &str) {
+    if let Ok(mut g) = child_registry().lock() {
+        g.remove(session);
+    }
+}
+
+// Kill every running child whose registry key starts with `prefix`.
+// Returns the number of processes signalled.
+#[tauri::command]
+fn abort_sessions(prefix: String) -> Result<usize, String> {
+    let pids: Vec<(String, u32)> = match child_registry().lock() {
+        Ok(g) => g.iter()
+            .filter(|(k, _)| k.starts_with(&prefix))
+            .map(|(k, v)| (k.clone(), *v))
+            .collect(),
+        Err(_) => return Err("registry poisoned".into()),
+    };
+    let mut killed = 0;
+    for (key, pid) in &pids {
+        // Use libc::kill on Unix; on Windows we'd use TerminateProcess.
+        #[cfg(unix)]
+        unsafe {
+            // SIGTERM first; tokio's wait will pick up the exit and emit
+            // benchmark:done / chat:done.
+            libc::kill(*pid as i32, libc::SIGTERM);
+        }
+        unregister_child(key);
+        killed += 1;
+    }
+    Ok(killed)
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // Vault scanning
@@ -39,13 +85,36 @@ const NON_DOMAIN_DIRS: &[&str] = &[
     "_scratch",
 ];
 
+// Retry I/O on EINTR (os error 4). macOS sandboxing + Tauri's runtime
+// can interrupt syscalls; the fix is the standard retry-on-EINTR loop.
+fn read_dir_retry(p: &Path) -> std::io::Result<fs::ReadDir> {
+    for _ in 0..5 {
+        match fs::read_dir(p) {
+            Ok(it) => return Ok(it),
+            Err(e) if e.raw_os_error() == Some(4) => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    fs::read_dir(p)
+}
+fn read_to_string_retry(p: &Path) -> std::io::Result<String> {
+    for _ in 0..5 {
+        match fs::read_to_string(p) {
+            Ok(s) => return Ok(s),
+            Err(e) if e.raw_os_error() == Some(4) => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    fs::read_to_string(p)
+}
+
 #[tauri::command]
 fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
     let root = PathBuf::from(&path);
     if !root.exists() {
         return Err(format!("vault path does not exist: {}", path));
     }
-    let entries = fs::read_dir(&root).map_err(|e| e.to_string())?;
+    let entries = read_dir_retry(&root).map_err(|e| e.to_string())?;
     let mut domains: Vec<Domain> = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
@@ -62,7 +131,7 @@ fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
         if !has_state {
             continue;
         }
-        let state_preview = fs::read_to_string(&state_path)
+        let state_preview = read_to_string_retry(&state_path)
             .ok()
             .map(|s| s.lines().take(3).collect::<Vec<&str>>().join("\n"));
         domains.push(Domain {
@@ -94,15 +163,41 @@ const CLIS: &[(&str, &str, &str)] = &[
     ("ollama", "Ollama", "ollama"),
 ];
 
+fn find_in_known_paths(bin: &str) -> bool {
+    // Mac apps launched from Finder inherit a minimal PATH from
+    // launchctl (/usr/bin:/bin:/usr/sbin:/sbin), which excludes the
+    // usual CLI install locations. Probe them explicitly.
+    let home = std::env::var("HOME").unwrap_or_default();
+    let candidates = [
+        format!("{home}/.local/bin/{bin}"),
+        format!("{home}/.bun/bin/{bin}"),
+        format!("/opt/homebrew/bin/{bin}"),
+        format!("/usr/local/bin/{bin}"),
+        format!("/usr/bin/{bin}"),
+    ];
+    candidates.iter().any(|p| Path::new(p).exists())
+}
+
 #[tauri::command]
-async fn detect_clis(app: tauri::AppHandle) -> Result<Vec<CliInfo>, String> {
+async fn detect_clis(_app: tauri::AppHandle) -> Result<Vec<CliInfo>, String> {
     let mut out = Vec::new();
     for (id, label, bin) in CLIS {
-        // Use `which` via shell plugin to test for binary presence.
-        let result = app.shell().command("which").args(&[*bin]).output().await;
-        let available = match result {
-            Ok(o) => o.status.success(),
-            Err(_) => false,
+        // Special-case ollama: it runs as a daemon, the `ollama` binary
+        // is optional. Treat the daemon port as the source of truth.
+        let available = if *id == "ollama" {
+            // Probe the local API. Tiny HEAD-ish check via TCP — we
+            // don't pull in reqwest just for this; a TcpStream connect
+            // is enough to know the daemon is up.
+            use std::net::TcpStream;
+            use std::time::Duration;
+            TcpStream::connect_timeout(
+                &"127.0.0.1:11434".parse().unwrap(),
+                Duration::from_millis(250),
+            )
+            .is_ok()
+                || find_in_known_paths(bin)
+        } else {
+            find_in_known_paths(bin)
         };
         out.push(CliInfo {
             id: id.to_string(),
@@ -122,38 +217,75 @@ pub struct ChatArgs {
     pub cli: String,        // "claude" | "codex" | "antigravity" | "ollama"
     pub prompt: String,
     pub session_id: String, // unique id so the UI knows which session each chunk belongs to
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
-fn cli_args(cli: &str, prompt: &str) -> (String, Vec<String>) {
+fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String>) {
     // Match the prevail CLI's dispatch table. -p / --prompt for one-shot
-    // non-interactive mode.
+    // non-interactive mode. When `model` is supplied, inject the right
+    // flag for each vendor (ollama uses a positional arg, the rest use
+    // --model <id>).
     match cli {
-        "claude" => (
-            "claude".to_string(),
-            vec![
-                "--dangerously-skip-permissions".to_string(),
-                "-p".to_string(),
-                prompt.to_string(),
-            ],
-        ),
-        "codex" => (
-            "codex".to_string(),
-            vec!["exec".to_string(), "--skip-git-repo-check".to_string(), prompt.to_string()],
-        ),
-        "antigravity" => (
-            "agy".to_string(),
-            vec![
-                "--dangerously-skip-permissions".to_string(),
-                "-p".to_string(),
-                prompt.to_string(),
-            ],
-        ),
-        "ollama" => (
-            "ollama".to_string(),
-            vec!["run".to_string(), "llama3.2".to_string(), prompt.to_string()],
-        ),
+        "claude" => {
+            let mut v = vec!["--dangerously-skip-permissions".to_string()];
+            if let Some(m) = model {
+                v.push("--model".to_string());
+                v.push(m.to_string());
+            }
+            v.push("-p".to_string());
+            v.push(prompt.to_string());
+            ("claude".to_string(), v)
+        }
+        "codex" => {
+            let mut v = vec!["exec".to_string(), "--skip-git-repo-check".to_string()];
+            if let Some(m) = model {
+                v.push("--model".to_string());
+                v.push(m.to_string());
+            }
+            v.push(prompt.to_string());
+            ("codex".to_string(), v)
+        }
+        "antigravity" => {
+            let mut v = vec!["--dangerously-skip-permissions".to_string()];
+            if let Some(m) = model {
+                v.push("--model".to_string());
+                v.push(m.to_string());
+            }
+            v.push("-p".to_string());
+            v.push(prompt.to_string());
+            ("agy".to_string(), v)
+        }
+        "ollama" => {
+            // ollama uses positional model arg. Fall back to llama3.2.
+            let m = model.unwrap_or("llama3.2");
+            (
+                "ollama".to_string(),
+                vec!["run".to_string(), m.to_string(), prompt.to_string()],
+            )
+        }
         _ => ("echo".to_string(), vec![format!("unknown cli: {}", cli)]),
     }
+}
+
+fn resolve_bin_abs(bin: &str) -> String {
+    // Mirror the detection logic — find the binary's absolute path so
+    // we can spawn it even when the Finder-launched app has minimal
+    // PATH. Falls back to the bare name (tokio will use PATH).
+    let home = std::env::var("HOME").unwrap_or_default();
+    let candidates = [
+        format!("{home}/.local/bin/{bin}"),
+        format!("{home}/.bun/bin/{bin}"),
+        format!("/opt/homebrew/bin/{bin}"),
+        format!("/usr/local/bin/{bin}"),
+        format!("/usr/bin/{bin}"),
+    ];
+    for c in &candidates {
+        if Path::new(c).exists() {
+            return c.clone();
+        }
+    }
+    bin.to_string()
 }
 
 #[tauri::command]
@@ -161,52 +293,97 @@ async fn chat_send(
     app: tauri::AppHandle,
     args: ChatArgs,
 ) -> Result<(), String> {
-    let (bin, cli_args) = cli_args(&args.cli, &args.prompt);
-    let cmd = app.shell().command(&bin).args(cli_args);
-    let (mut rx, _child) = cmd.spawn().map_err(|e| format!("spawn failed: {e}"))?;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::process::Command as TokioCommand;
+
+    let (bin_name, cli_args) = cli_args(&args.cli, &args.prompt, args.model.as_deref());
+    let bin_abs = resolve_bin_abs(&bin_name);
+
+    let home = std::env::var("HOME").unwrap_or_default();
+    let extra_path = format!("{home}/.local/bin:{home}/.bun/bin:/opt/homebrew/bin:/usr/local/bin");
+    let cur_path = std::env::var("PATH").unwrap_or_default();
+    let combined_path = if cur_path.is_empty() {
+        extra_path
+    } else {
+        format!("{extra_path}:{cur_path}")
+    };
+
+    let mut child = TokioCommand::new(&bin_abs)
+        .args(&cli_args)
+        .env("PATH", combined_path)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn {bin_abs} failed: {e}"))?;
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
     let session = args.session_id.clone();
     let cli = args.cli.clone();
-    tauri::async_runtime::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stdout(chunk) => {
-                    let s = String::from_utf8_lossy(&chunk).to_string();
-                    let _ = app.emit(
-                        "chat:chunk",
-                        serde_json::json!({
-                            "session": session,
-                            "cli": cli,
-                            "stream": "stdout",
-                            "data": s,
-                        }),
-                    );
+    let session_done = session.clone();
+    let cli_done = cli.clone();
+    if let Some(pid) = child.id() {
+        register_child(&session, pid);
+    }
+
+    if let Some(s) = stdout {
+        let app2 = app.clone();
+        let session2 = session.clone();
+        let cli2 = cli.clone();
+        tauri::async_runtime::spawn(async move {
+            let mut reader = BufReader::new(s);
+            let mut buf = [0u8; 4096];
+            use tokio::io::AsyncReadExt;
+            loop {
+                match reader.read(&mut buf).await {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                        let _ = app2.emit(
+                            "chat:chunk",
+                            serde_json::json!({
+                                "session": session2,
+                                "cli": cli2,
+                                "stream": "stdout",
+                                "data": text,
+                            }),
+                        );
+                    }
+                    Err(_) => break,
                 }
-                CommandEvent::Stderr(chunk) => {
-                    let s = String::from_utf8_lossy(&chunk).to_string();
-                    let _ = app.emit(
-                        "chat:chunk",
-                        serde_json::json!({
-                            "session": session,
-                            "cli": cli,
-                            "stream": "stderr",
-                            "data": s,
-                        }),
-                    );
-                }
-                CommandEvent::Terminated(payload) => {
-                    let _ = app.emit(
-                        "chat:done",
-                        serde_json::json!({
-                            "session": session,
-                            "cli": cli,
-                            "code": payload.code,
-                        }),
-                    );
-                    break;
-                }
-                _ => {}
             }
-        }
+        });
+    }
+    if let Some(s) = stderr {
+        let app2 = app.clone();
+        let session2 = session.clone();
+        let cli2 = cli.clone();
+        tauri::async_runtime::spawn(async move {
+            let mut lines = BufReader::new(s).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = app2.emit(
+                    "chat:chunk",
+                    serde_json::json!({
+                        "session": session2,
+                        "cli": cli2,
+                        "stream": "stderr",
+                        "data": format!("{line}\n"),
+                    }),
+                );
+            }
+        });
+    }
+    tauri::async_runtime::spawn(async move {
+        let code = child.wait().await.ok().and_then(|s| s.code());
+        unregister_child(&session_done);
+        let _ = app.emit(
+            "chat:done",
+            serde_json::json!({
+                "session": session_done,
+                "cli": cli_done,
+                "code": code,
+            }),
+        );
     });
     Ok(())
 }
@@ -296,6 +473,56 @@ fn read_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| format!("read {}: {}", path, e))
 }
 
+// Create a new domain folder under the vault root. Writes a minimal
+// state.md skeleton so scan_vault picks it up immediately.
+#[tauri::command]
+fn create_domain(vault: String, name: String) -> Result<Domain, String> {
+    let slug: String = name
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if slug.is_empty() {
+        return Err("name cannot be empty".into());
+    }
+    let root = PathBuf::from(&vault);
+    if !root.exists() {
+        return Err(format!("vault not found: {vault}"));
+    }
+    let domain_dir = root.join(&slug);
+    if domain_dir.exists() {
+        return Err(format!("domain '{slug}' already exists"));
+    }
+    fs::create_dir_all(&domain_dir).map_err(|e| format!("mkdir failed: {e}"))?;
+    let title = slug
+        .split('-')
+        .map(|p| {
+            let mut c = p.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let stub = format!(
+        "# {title}\n\n_State for the {title} domain. Edit freely._\n\n## Current focus\n\n- (none yet)\n\n## Open decisions\n\n- (none yet)\n"
+    );
+    let state_path = domain_dir.join("state.md");
+    fs::write(&state_path, &stub).map_err(|e| format!("write state.md failed: {e}"))?;
+    Ok(Domain {
+        name: slug,
+        path: domain_dir.to_string_lossy().to_string(),
+        has_state: true,
+        state_preview: Some(stub.chars().take(120).collect()),
+    })
+}
+
 // Open a path in the OS default file manager (Finder on macOS).
 #[tauri::command]
 async fn open_in_finder(app: tauri::AppHandle, path: String) -> Result<(), String> {
@@ -317,6 +544,312 @@ pub struct SkillEntry {
     pub name: String,
     pub path: String,
     pub description: Option<String>,
+}
+
+// Pre-flight verification — spawn the CLI with a tiny "respond: ok"
+// prompt and the specified model. Returns Ok(reply) on success or
+// Err(message) on failure. Short timeout (10s) so verification doesn't
+// block the UI.
+#[derive(Deserialize)]
+pub struct VerifyArgs {
+    pub cli: String,
+    pub model: Option<String>,
+}
+#[tauri::command]
+async fn verify_cli_model(args: VerifyArgs) -> Result<String, String> {
+    use tokio::io::AsyncReadExt;
+    use tokio::process::Command as TokioCommand;
+    use tokio::time::{timeout, Duration};
+
+    let (bin_name, cli_args) = cli_args(&args.cli, "respond with just: OK", args.model.as_deref());
+    let bin_abs = resolve_bin_abs(&bin_name);
+    let home = std::env::var("HOME").unwrap_or_default();
+    let extra_path = format!("{home}/.local/bin:{home}/.bun/bin:/opt/homebrew/bin:/usr/local/bin");
+    let cur_path = std::env::var("PATH").unwrap_or_default();
+    let combined_path = if cur_path.is_empty() { extra_path } else { format!("{extra_path}:{cur_path}") };
+
+    let mut child = TokioCommand::new(&bin_abs)
+        .args(&cli_args)
+        .env("PATH", combined_path)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn {bin_abs} failed: {e}"))?;
+    let mut stdout = child.stdout.take().ok_or("no stdout")?;
+    let mut stderr = child.stderr.take().ok_or("no stderr")?;
+
+    let fut = async move {
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let _ = stdout.read_to_end(&mut out).await;
+        let _ = stderr.read_to_end(&mut err).await;
+        let code = child.wait().await.ok().and_then(|s| s.code()).unwrap_or(-1);
+        (code, String::from_utf8_lossy(&out).into_owned(), String::from_utf8_lossy(&err).into_owned())
+    };
+
+    match timeout(Duration::from_secs(30), fut).await {
+        Ok((code, out, err)) => {
+            if code == 0 && !out.trim().is_empty() {
+                Ok(out.trim().chars().take(200).collect())
+            } else {
+                let msg = if !err.trim().is_empty() { err } else { out };
+                Err(format!("exit {code}: {}", msg.lines().next().unwrap_or("(no output)")))
+            }
+        }
+        Err(_) => Err("verification timed out after 30s".into()),
+    }
+}
+
+// User-level context — a single `<vault>/user.md` that captures who
+// the user is, persistent preferences, recurring details. Mirrors the
+// OpenClaw / Hermes user-profile pattern. Read/write via these calls.
+#[tauri::command]
+fn read_user_md(vault: String) -> Result<String, String> {
+    let p = PathBuf::from(&vault).join("user.md");
+    if !p.exists() { return Ok(String::new()); }
+    read_to_string_retry(&p).map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn write_user_md(vault: String, body: String) -> Result<(), String> {
+    let p = PathBuf::from(&vault).join("user.md");
+    fs::write(&p, body).map_err(|e| format!("write user.md: {e}"))
+}
+
+// Save a chat session as a markdown transcript under <domain>/_log/.
+// Filename format: YYYY-MM-DD_HH-MM-SS_session.md so directory listings
+// sort newest-last and the user can scan when each happened. Nothing is
+// thrown away — every prompt + reply is appended.
+#[derive(Deserialize)]
+pub struct SessionTurn {
+    pub role: String,
+    pub cli: Option<String>,
+    pub model: Option<String>,
+    pub content: String,
+}
+#[tauri::command]
+fn save_session(
+    vault: String,
+    domain: Option<String>,
+    title: Option<String>,
+    turns: Vec<SessionTurn>,
+) -> Result<String, String> {
+    if turns.is_empty() {
+        return Err("session is empty".into());
+    }
+    let log_dir = match domain.clone() {
+        Some(d) => PathBuf::from(&vault).join(&d).join("_log"),
+        None => PathBuf::from(&vault).join("_log"),
+    };
+    fs::create_dir_all(&log_dir).map_err(|e| format!("mkdir _log: {e}"))?;
+    // Use chrono-free timestamp by formatting from std time.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // YYYY-MM-DD_HH-MM-SS via a tiny formatter.
+    let secs = now as i64;
+    let (year, month, day, hh, mm, ss) = secs_to_ymdhms(secs);
+    let stem = format!("{year:04}-{month:02}-{day:02}_{hh:02}-{mm:02}-{ss:02}");
+    let file = log_dir.join(format!("{stem}_session.md"));
+    let mut body = String::new();
+    body.push_str("---\n");
+    if let Some(t) = &title { body.push_str(&format!("title: {t}\n")); }
+    if let Some(d) = &domain { body.push_str(&format!("domain: {d}\n")); }
+    body.push_str(&format!("turns: {}\n", turns.len()));
+    body.push_str("---\n\n");
+    for t in &turns {
+        let speaker = if t.role == "user" {
+            "You".to_string()
+        } else {
+            let cli = t.cli.as_deref().unwrap_or("assistant");
+            let model = t.model.as_deref().map(|m| format!(" · {m}")).unwrap_or_default();
+            format!("{cli}{model}")
+        };
+        body.push_str(&format!("## {speaker}\n\n{}\n\n", t.content.trim()));
+    }
+    fs::write(&file, &body).map_err(|e| format!("write session: {e}"))?;
+
+    // Append a one-line summary to _journal.md so the user has a
+    // running record of every session without having to open _log/.
+    if let Some(d) = &domain {
+        let journal_path = PathBuf::from(&vault).join(d).join("_journal.md");
+        let first_user = turns.iter()
+            .find(|t| t.role == "user")
+            .map(|t| t.content.lines().next().unwrap_or("").trim().to_string())
+            .unwrap_or_else(|| title.clone().unwrap_or_else(|| "session".into()));
+        let truncated: String = first_user.chars().take(140).collect();
+        let entry = format!(
+            "- {year:04}-{month:02}-{day:02} {hh:02}:{mm:02} · [{file}](_log/{file}) · {turns} turns · {snippet}\n",
+            year = year, month = month, day = day, hh = hh, mm = mm,
+            file = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+            turns = turns.len(),
+            snippet = truncated,
+        );
+        let existing = read_to_string_retry(&journal_path).unwrap_or_else(|_| "# Journal\n\n".into());
+        let merged = if existing.contains("# Journal") {
+            format!("{existing}{entry}")
+        } else {
+            format!("# Journal\n\n{entry}")
+        };
+        let _ = fs::write(&journal_path, merged);
+    }
+    Ok(file.to_string_lossy().to_string())
+}
+
+// Days-since-epoch → date. Good enough for log filenames, no chrono.
+fn secs_to_ymdhms(secs: i64) -> (i32, u32, u32, u32, u32, u32) {
+    let day_secs = 86_400i64;
+    let mut days = secs.div_euclid(day_secs);
+    let mut rem = secs.rem_euclid(day_secs);
+    let hh = (rem / 3600) as u32; rem %= 3600;
+    let mm = (rem / 60) as u32;
+    let ss = (rem % 60) as u32;
+    // Convert days from 1970-01-01 to ymd (Gregorian).
+    let mut year = 1970i32;
+    loop {
+        let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+        let ydays = if leap { 366 } else { 365 };
+        if days < ydays as i64 { break; }
+        days -= ydays as i64;
+        year += 1;
+    }
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let month_lens = if leap {
+        [31u32,29,31,30,31,30,31,31,30,31,30,31]
+    } else {
+        [31u32,28,31,30,31,30,31,31,30,31,30,31]
+    };
+    let mut month = 0u32;
+    for (i, &ml) in month_lens.iter().enumerate() {
+        if days < ml as i64 { month = i as u32 + 1; break; }
+        days -= ml as i64;
+    }
+    let day = days as u32 + 1;
+    (year, month, day, hh, mm, ss)
+}
+
+// Domain context bundle — everything the user (and the AI) might want
+// to load when entering a domain: state.md, decisions.md, _journal.md
+// (or _journal/), recent _log/ entries, and skills.
+#[derive(Serialize, Clone)]
+pub struct DomainLogEntry {
+    pub name: String,
+    pub path: String,
+    pub mtime_secs: u64,
+    pub preview: String,
+}
+#[derive(Serialize, Clone)]
+pub struct DomainContext {
+    pub state: Option<String>,
+    pub decisions: Option<String>,
+    pub journal: Option<String>,
+    pub recent_logs: Vec<DomainLogEntry>,
+    pub skills: Vec<SkillEntry>,
+}
+
+#[tauri::command]
+fn domain_context(vault: String, domain: String) -> Result<DomainContext, String> {
+    let root = PathBuf::from(&vault).join(&domain);
+    if !root.exists() {
+        return Err(format!("domain not found: {}", root.display()));
+    }
+    let read = |p: PathBuf| -> Option<String> {
+        if !p.exists() { return None; }
+        read_to_string_retry(&p).ok()
+    };
+    let state = read(root.join("state.md"));
+    let decisions = read(root.join("decisions.md"));
+    // Journal can live as a single _journal.md or a _journal/ folder
+    // of dated entries — concat the latter into newest-first order.
+    let journal = read(root.join("_journal.md")).or_else(|| {
+        let dir = root.join("_journal");
+        if !dir.is_dir() { return None; }
+        let mut entries: Vec<(String, PathBuf)> = match read_dir_retry(&dir) {
+            Ok(it) => it
+                .flatten()
+                .map(|e| (e.file_name().to_string_lossy().to_string(), e.path()))
+                .filter(|(n, _)| n.ends_with(".md"))
+                .collect(),
+            Err(_) => return None,
+        };
+        entries.sort_by(|a, b| b.0.cmp(&a.0));
+        let bodies: Vec<String> = entries
+            .into_iter()
+            .filter_map(|(_, p)| read_to_string_retry(&p).ok())
+            .collect();
+        if bodies.is_empty() { None } else { Some(bodies.join("\n\n---\n\n")) }
+    });
+
+    // Recent logs — newest 10 .md files from _log/ (sorted by mtime).
+    let log_dir = root.join("_log");
+    let mut recent_logs: Vec<DomainLogEntry> = Vec::new();
+    if log_dir.is_dir() {
+        if let Ok(it) = read_dir_retry(&log_dir) {
+            let mut all: Vec<(PathBuf, u64)> = it
+                .flatten()
+                .filter_map(|e| {
+                    let p = e.path();
+                    if p.extension().and_then(|s| s.to_str()) != Some("md") { return None; }
+                    let mtime = e.metadata().ok()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    Some((p, mtime))
+                })
+                .collect();
+            all.sort_by(|a, b| b.1.cmp(&a.1));
+            for (p, mtime) in all.into_iter().take(10) {
+                let preview = read_to_string_retry(&p)
+                    .ok()
+                    .map(|s| s.lines().take(2).collect::<Vec<_>>().join(" · "))
+                    .unwrap_or_default()
+                    .chars().take(120).collect();
+                recent_logs.push(DomainLogEntry {
+                    name: p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+                    path: p.to_string_lossy().to_string(),
+                    mtime_secs: mtime,
+                    preview,
+                });
+            }
+        }
+    }
+
+    // Skills — re-scan only this domain's skills/.
+    let mut skills: Vec<SkillEntry> = Vec::new();
+    let skills_dir = root.join("skills");
+    if skills_dir.is_dir() {
+        if let Ok(it) = read_dir_retry(&skills_dir) {
+            for entry in it.flatten() {
+                let p = entry.path();
+                if !p.is_dir() { continue; }
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') { continue; }
+                let mut description: Option<String> = None;
+                for candidate in &["SKILL.md", "README.md", "skill.md"] {
+                    let f = p.join(candidate);
+                    if let Ok(s) = read_to_string_retry(&f) {
+                        let first = s.lines()
+                            .find(|l| !l.trim().is_empty() && !l.starts_with('#'))
+                            .unwrap_or("").trim().to_string();
+                        if !first.is_empty() {
+                            description = Some(first.chars().take(140).collect());
+                            break;
+                        }
+                    }
+                }
+                skills.push(SkillEntry {
+                    domain: domain.clone(),
+                    name,
+                    path: p.to_string_lossy().to_string(),
+                    description,
+                });
+            }
+            skills.sort_by(|a, b| a.name.cmp(&b.name));
+        }
+    }
+
+    Ok(DomainContext { state, decisions, journal, recent_logs, skills })
 }
 
 #[tauri::command]
@@ -441,6 +974,179 @@ async fn telegram_send(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Native benchmark runner — spawns the `prevail` CLI binary against the
+// active vault, streams stdout/stderr back as Tauri events, and emits
+// a final "benchmark:done" with the exit code so the React side can
+// refresh the leaderboard.
+
+#[derive(Deserialize)]
+pub struct BenchmarkRunArgs {
+    pub session_id: String,
+    pub vault: String,
+    pub cli: String,         // claude | codex | antigravity | ollama
+    pub model: Option<String>,
+    pub domain: Option<String>,
+    pub council: Option<bool>,
+}
+
+fn resolve_prevail_bin() -> String {
+    // Prefer ~/.local/bin/prevail (the install script's target),
+    // fall back to whatever's first on PATH.
+    if let Ok(home) = std::env::var("HOME") {
+        let local = format!("{home}/.local/bin/prevail");
+        if Path::new(&local).exists() {
+            return local;
+        }
+    }
+    "prevail".to_string()
+}
+
+async fn spawn_prevail_streaming(
+    app: tauri::AppHandle,
+    session: String,
+    args: Vec<String>,
+    phase: &'static str,
+) -> Result<(), String> {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::process::Command as TokioCommand;
+
+    let bin = resolve_prevail_bin();
+    // Augment PATH so child sub-processes (claude/codex/agy/ollama)
+    // resolve correctly when the Mac app is launched from Finder.
+    let home = std::env::var("HOME").unwrap_or_default();
+    let extra_path = format!("{home}/.local/bin:/opt/homebrew/bin:/usr/local/bin");
+    let cur_path = std::env::var("PATH").unwrap_or_default();
+    let combined_path = if cur_path.is_empty() {
+        extra_path
+    } else {
+        format!("{extra_path}:{cur_path}")
+    };
+
+    let mut child = TokioCommand::new(&bin)
+        .args(&args)
+        .env("PATH", combined_path)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn {bin} failed: {e}"))?;
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let session_done = session.clone();
+
+    if let Some(s) = stdout {
+        let app2 = app.clone();
+        let session2 = session.clone();
+        tauri::async_runtime::spawn(async move {
+            let mut lines = BufReader::new(s).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = app2.emit(
+                    "benchmark:chunk",
+                    serde_json::json!({
+                        "session": session2,
+                        "stream": "stdout",
+                        "data": format!("{line}\n"),
+                    }),
+                );
+            }
+        });
+    }
+    if let Some(s) = stderr {
+        let app2 = app.clone();
+        let session2 = session.clone();
+        tauri::async_runtime::spawn(async move {
+            let mut lines = BufReader::new(s).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = app2.emit(
+                    "benchmark:chunk",
+                    serde_json::json!({
+                        "session": session2,
+                        "stream": "stderr",
+                        "data": format!("{line}\n"),
+                    }),
+                );
+            }
+        });
+    }
+    tauri::async_runtime::spawn(async move {
+        let code = child.wait().await.ok().and_then(|s| s.code());
+        let _ = app.emit(
+            "benchmark:done",
+            serde_json::json!({
+                "session": session_done,
+                "code": code,
+                "phase": phase,
+            }),
+        );
+    });
+    Ok(())
+}
+
+#[tauri::command]
+async fn benchmark_start(
+    app: tauri::AppHandle,
+    args: BenchmarkRunArgs,
+) -> Result<(), String> {
+    let mut cli_args: Vec<String> = vec![
+        "--vault".into(), args.vault.clone(),
+        "bench".into(), "run".into(), "--canonical".into(),
+    ];
+    if args.council.unwrap_or(false) {
+        cli_args.push("--council".into());
+    } else {
+        cli_args.push("--cli".into());
+        cli_args.push(args.cli.clone());
+        if let Some(m) = &args.model {
+            cli_args.push("--model".into());
+            cli_args.push(m.clone());
+        }
+    }
+    if let Some(d) = &args.domain {
+        cli_args.push("--domain".into());
+        cli_args.push(d.clone());
+    }
+    spawn_prevail_streaming(app, args.session_id, cli_args, "run").await
+}
+
+#[derive(Deserialize)]
+pub struct BenchmarkScoreArgs {
+    pub session_id: String,
+    pub vault: String,
+    pub run: Option<String>,
+    pub judge_cli: Option<String>,
+    pub judge_model: Option<String>,
+    pub no_judge: Option<bool>,
+}
+
+#[tauri::command]
+async fn benchmark_score(
+    app: tauri::AppHandle,
+    args: BenchmarkScoreArgs,
+) -> Result<(), String> {
+    let mut cli_args: Vec<String> = vec![
+        "--vault".into(), args.vault.clone(),
+        "bench".into(), "score".into(),
+    ];
+    if let Some(r) = &args.run {
+        cli_args.push("--run".into());
+        cli_args.push(r.clone());
+    }
+    if args.no_judge.unwrap_or(false) {
+        cli_args.push("--no-judge".into());
+    } else {
+        if let Some(c) = &args.judge_cli {
+            cli_args.push("--judge-cli".into());
+            cli_args.push(c.clone());
+        }
+        if let Some(m) = &args.judge_model {
+            cli_args.push("--judge-model".into());
+            cli_args.push(m.clone());
+        }
+    }
+    spawn_prevail_streaming(app, args.session_id, cli_args, "score").await
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Entry point
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -459,7 +1165,16 @@ pub fn run() {
             read_file,
             telegram_send,
             open_in_finder,
+            create_domain,
+            domain_context,
             scan_skills,
+            abort_sessions,
+            read_user_md,
+            write_user_md,
+            save_session,
+            verify_cli_model,
+            benchmark_start,
+            benchmark_score,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
