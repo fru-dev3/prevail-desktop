@@ -296,6 +296,93 @@ fn read_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| format!("read {}: {}", path, e))
 }
 
+// Open a path in the OS default file manager (Finder on macOS).
+#[tauri::command]
+async fn open_in_finder(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let bin = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    app.shell()
+        .command(bin)
+        .args([&path])
+        .output()
+        .await
+        .map_err(|e| format!("open failed: {e}"))?;
+    Ok(())
+}
+
+// List skill folders detected for a given vault. Returns a flat list
+// where each entry has its parent domain inferred from the path.
+#[derive(Serialize, Clone)]
+pub struct SkillEntry {
+    pub domain: String,
+    pub name: String,
+    pub path: String,
+    pub description: Option<String>,
+}
+
+#[tauri::command]
+fn scan_skills(vault: String) -> Result<Vec<SkillEntry>, String> {
+    let root = PathBuf::from(&vault);
+    if !root.exists() {
+        return Ok(vec![]);
+    }
+    let mut out: Vec<SkillEntry> = Vec::new();
+    let entries = match fs::read_dir(&root) {
+        Ok(e) => e,
+        Err(_) => return Ok(vec![]),
+    };
+    for entry in entries.flatten() {
+        let domain_path = entry.path();
+        if !domain_path.is_dir() {
+            continue;
+        }
+        let domain_name = entry.file_name().to_string_lossy().to_string();
+        if NON_DOMAIN_DIRS.contains(&domain_name.as_str()) || domain_name.starts_with('.') {
+            continue;
+        }
+        let skills_dir = domain_path.join("skills");
+        if !skills_dir.exists() || !skills_dir.is_dir() {
+            continue;
+        }
+        if let Ok(skills) = fs::read_dir(&skills_dir) {
+            for skill in skills.flatten() {
+                let p = skill.path();
+                if !p.is_dir() {
+                    continue;
+                }
+                let name = skill.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') {
+                    continue;
+                }
+                // Try to read a SKILL.md or README.md for a one-line description.
+                let mut description: Option<String> = None;
+                for candidate in &["SKILL.md", "README.md", "skill.md"] {
+                    let f = p.join(candidate);
+                    if let Ok(s) = fs::read_to_string(&f) {
+                        let first = s
+                            .lines()
+                            .find(|l| !l.trim().is_empty() && !l.starts_with('#'))
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        if !first.is_empty() {
+                            description = Some(first.chars().take(140).collect());
+                            break;
+                        }
+                    }
+                }
+                out.push(SkillEntry {
+                    domain: domain_name.clone(),
+                    name,
+                    path: p.to_string_lossy().to_string(),
+                    description,
+                });
+            }
+        }
+    }
+    out.sort_by(|a, b| a.domain.cmp(&b.domain).then(a.name.cmp(&b.name)));
+    Ok(out)
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Telegram bot integration — POST to /sendMessage on the Bot API.
 // The token + chat ID are passed from the frontend (stored in
@@ -371,6 +458,8 @@ pub fn run() {
             benchmark_run_detail,
             read_file,
             telegram_send,
+            open_in_finder,
+            scan_skills,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
