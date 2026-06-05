@@ -297,6 +297,63 @@ fn read_file(path: String) -> Result<String, String> {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Telegram bot integration — POST to /sendMessage on the Bot API.
+// The token + chat ID are passed from the frontend (stored in
+// localStorage). v0.2 uses `curl` via the shell plugin so we don't
+// need to add a new HTTP dependency; v0.3 will move to reqwest.
+
+#[derive(Serialize)]
+pub struct TelegramResult {
+    pub ok: bool,
+    pub description: Option<String>,
+}
+
+#[tauri::command]
+async fn telegram_send(
+    app: tauri::AppHandle,
+    token: String,
+    chat_id: String,
+    text: String,
+) -> Result<TelegramResult, String> {
+    let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
+    let body = format!(
+        "{{\"chat_id\":\"{}\",\"text\":{},\"parse_mode\":\"Markdown\"}}",
+        chat_id,
+        serde_json::to_string(&text).map_err(|e| e.to_string())?,
+    );
+    let out = app
+        .shell()
+        .command("curl")
+        .args([
+            "-fsS",
+            "-X",
+            "POST",
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            &body,
+            &url,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("curl spawn failed: {e}"))?;
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+        return Ok(TelegramResult {
+            ok: false,
+            description: Some(if stderr.is_empty() { "send failed".into() } else { stderr }),
+        });
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    let v: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|e| format!("parse response: {e}"))?;
+    let ok = v.get("ok").and_then(|x| x.as_bool()).unwrap_or(false);
+    let desc = v.get("description").and_then(|x| x.as_str()).map(String::from);
+    Ok(TelegramResult { ok, description: desc })
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Entry point
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -313,6 +370,7 @@ pub fn run() {
             benchmark_runs,
             benchmark_run_detail,
             read_file,
+            telegram_send,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
