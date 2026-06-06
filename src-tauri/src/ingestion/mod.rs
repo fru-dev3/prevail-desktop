@@ -74,6 +74,9 @@ pub struct BrowserRunRequest {
     /// CSS selector or URL substring confirming login complete.
     pub success_selector: Option<String>,
     pub success_url_contains: Option<String>,
+    /// Post-login automation steps executed by the Playwright sidecar.
+    #[serde(default)]
+    pub actions: Vec<PostLoginAction>,
 }
 
 fn default_mfa_timeout() -> u64 { 90 }
@@ -240,6 +243,10 @@ pub fn ingestion_mcp_reload(
 
 /// Portal recipes for Tier C — a starter library so users don't have
 /// to type URLs from scratch. Loaded from the bundled resources.
+///
+/// `actions` is the post-login automation sequence executed by the
+/// Playwright runner once the success check passes. Empty / absent
+/// means "stop after login, let the user click around manually."
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct PortalRecipe {
     pub id: String,
@@ -248,6 +255,30 @@ pub struct PortalRecipe {
     pub start_url: String,
     pub success_url_contains: Option<String>,
     pub notes: Option<String>,
+    #[serde(default)]
+    pub actions: Vec<PostLoginAction>,
+}
+
+/// One step the Playwright runner executes after login completes.
+/// Kept intentionally narrow — extend with new variants only when a
+/// real portal needs them. Each variant maps to a Playwright primitive.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PostLoginAction {
+    /// page.goto(url) — change to a known statements page directly.
+    Goto { url: String, #[serde(default)] wait_until: Option<String> },
+    /// page.click(selector) — fire the click as if the user did it.
+    Click { selector: String, #[serde(default)] timeout_sec: Option<u64> },
+    /// page.waitForSelector(selector) — pause until an element appears.
+    WaitFor { selector: String, #[serde(default)] timeout_sec: Option<u64> },
+    /// page.selectOption(selector, value) — pick from a <select>.
+    SelectOption { selector: String, value: String },
+    /// Click every link matching the selector. Each click triggers a
+    /// download event, which the runner already routes through the
+    /// storage sandbox. Useful for "download all statements".
+    DownloadAllLinks { selector: String, #[serde(default)] max: Option<usize> },
+    /// Pause N seconds — sometimes portals lazy-load after navigation.
+    Sleep { seconds: u64 },
 }
 
 /// A single artifact entry as surfaced to the UI.

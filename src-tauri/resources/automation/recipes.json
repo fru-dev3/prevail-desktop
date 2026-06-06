@@ -5,7 +5,13 @@
     "domain_hint": "wealth",
     "start_url": "https://digital.fidelity.com/prgw/digital/login/full-page",
     "success_url_contains": "/ftgw/digital/portfolio",
-    "notes": "Click Statements after MFA. Each PDF download is captured automatically."
+    "notes": "After login, navigates to Statements and captures listed PDFs. Selectors are best-effort; portals change without notice.",
+    "actions": [
+      { "type": "sleep", "seconds": 2 },
+      { "type": "goto", "url": "https://oltx.fidelity.com/ftgw/fbc/oftop/documents", "wait_until": "domcontentloaded" },
+      { "type": "wait_for", "selector": "a[href*='.pdf']", "timeout_sec": 30 },
+      { "type": "download_all_links", "selector": "a[href*='.pdf']", "max": 24 }
+    ]
   },
   {
     "id": "schwab",

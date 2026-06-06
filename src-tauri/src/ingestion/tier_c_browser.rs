@@ -103,6 +103,7 @@ impl BrowserRunner {
             "successUrlContains": req.success_url_contains,
             "profileDir": profile.to_string_lossy(),
             "downloadsDir": imports.to_string_lossy(),
+            "actions": req.actions,
         });
         if let Some(mut s) = child.stdin.take() {
             let line = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
