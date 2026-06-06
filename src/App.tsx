@@ -22,7 +22,7 @@ function Markdown({ source, compact = false }: { source: string; compact?: boole
 }
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.75";
+const APP_VERSION = "0.2.76";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -2155,132 +2155,311 @@ function DomainHome({
 // Compact agent picker for the no-domain landing. Each available CLI
 // is a brand glyph that animates its label out on hover; the active
 // agent stays expanded. Clicking sets the chat panel's primary CLI.
-// Small popover anchored to the gear button in the chat header.
-// Shows every per-domain override currently saved + a reset for each.
-function DomainPrefsPopover({
+// Full-canvas preferences panel for the currently-selected domain.
+// Replaces the popover. Every control writes to localStorage on
+// click; no save button — picks are immediate. Pickers use brand
+// icons for CLIs, prose labels for everything else.
+function DomainPrefsPanel({
   domain,
-  onClose,
+  clis,
+  skills,
+  preferredSkills,
+  onTogglePreferredSkill,
   onChanged,
 }: {
   domain: string;
-  onClose: () => void;
+  clis: CliInfo[];
+  skills: SkillEntry[];
+  preferredSkills: string[];
+  onTogglePreferredSkill: (name: string) => void;
   onChanged: () => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    window.addEventListener("mousedown", onClick);
-    return () => window.removeEventListener("mousedown", onClick);
-  }, [onClose]);
+  // Read overrides directly so save buttons are unnecessary —
+  // bump tick on every write so this component re-renders.
+  const [tick, setTick] = useState(0);
+  const force = () => { setTick((t) => t + 1); onChanged(); };
+  void tick;
 
-  const cli = lsGet(`prevail.domain.${domain}.cli`);
-  const model = lsGet(`prevail.domain.${domain}.model`);
-  const fw = lsGet(`prevail.domain.${domain}.framework`);
-  const lens = lsGet(`prevail.domain.${domain}.lens`);
-  let skills: string[] = [];
-  try {
-    const raw = lsGet(`prevail.domain.${domain}.skills`);
-    if (raw) skills = JSON.parse(raw);
-  } catch { /* ignore */ }
+  const cliKey = `prevail.domain.${domain}.cli`;
+  const modelKey = `prevail.domain.${domain}.model`;
+  const fwKey = `prevail.domain.${domain}.framework`;
+  const lensKey = `prevail.domain.${domain}.lens`;
+  const autoStateKey = `prevail.domain.${domain}.autoState`;
 
-  const modelLabel = cli && model
-    ? (MODELS[cli]?.find((m) => m.id === model)?.label ?? model)
-    : "";
-  const cliLabel = cli ? (cli.charAt(0).toUpperCase() + cli.slice(1)) : "";
-  const fwLabel = fw ? (FRAMEWORKS.find((f) => f.id === fw)?.label ?? fw) : "";
-  const lensLabel = lens ? (LENSES.find((l) => l.id === lens)?.label ?? lens) : "";
+  const pickedCli = lsGet(cliKey);
+  const pickedModel = lsGet(modelKey);
+  const pickedFw = lsGet(fwKey);
+  const pickedLens = lsGet(lensKey);
+  const autoState = lsGet(autoStateKey) !== "0";
 
-  function clearKey(suffix: string) {
-    lsSet(`prevail.domain.${domain}.${suffix}`, "");
-    onChanged();
+  function setOverride(key: string, value: string) {
+    lsSet(key, value);
+    force();
   }
-  function clearAll() {
-    for (const s of ["cli", "model", "framework", "lens", "skills", "autoState"]) {
-      lsSet(`prevail.domain.${domain}.${s}`, "");
-    }
-    onChanged();
-  }
-  const autoState = lsGet(`prevail.domain.${domain}.autoState`) !== "0"; // default ON
-  function setAutoState(v: boolean) {
-    lsSet(`prevail.domain.${domain}.autoState`, v ? "1" : "0");
-    onChanged();
-  }
-  const Switch = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
-    <button
-      onClick={onToggle}
-      className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${on ? "bg-accent" : "bg-surface-strong"}`}
-      role="switch"
-      aria-checked={on}
-    >
-      <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-background transition-transform ${on ? "translate-x-[14px]" : "translate-x-0.5"}`} />
-    </button>
-  );
 
-  const Row = ({ label, value, onReset }: { label: string; value: string; onReset: () => void }) => (
-    <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2 last:border-0">
-      <span className="w-20 shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">{label}</span>
-      <span className="min-w-0 flex-1 truncate text-sm">
-        {value || <span className="text-text-muted/60">— global default —</span>}
-      </span>
-      {value && (
-        <button
-          onClick={onReset}
-          className="shrink-0 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
-        >
-          reset
-        </button>
-      )}
-    </div>
-  );
+  const cliModels = pickedCli ? (MODELS[pickedCli] ?? []) : [];
 
   return (
-    <div
-      ref={ref}
-      className="absolute left-0 top-full z-40 mt-2 w-[360px] overflow-hidden rounded-lg border border-border bg-surface shadow-xl"
-    >
-      <div className="flex items-center justify-between gap-2 border-b border-border-subtle bg-surface-warm px-3 py-2">
-        <div className="flex items-center gap-2">
-          <span className="text-accent">◆</span>
-          <span className="font-display text-sm font-semibold">{titleCase(domain)}</span>
-          <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">preferences</span>
+    <div className="mx-auto w-full max-w-4xl px-2 py-2">
+      {/* Header */}
+      <div className="mb-6 flex items-end justify-between gap-3">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+            ◆ {titleCase(domain)}
+          </div>
+          <h2 className="mt-1 font-display text-2xl font-semibold tracking-tight">Preferences</h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            Domain-only overrides. Pickers apply on the next reload of this domain; global defaults still apply when these are unset.
+          </p>
         </div>
         <button
-          onClick={onClose}
-          className="flex h-5 w-5 items-center justify-center rounded text-text-muted hover:bg-background hover:text-text-primary"
-        >
-          ×
-        </button>
-      </div>
-      <Row label="CLI" value={cliLabel} onReset={() => clearKey("cli")} />
-      <Row label="Model" value={modelLabel} onReset={() => clearKey("model")} />
-      <Row label="Framework" value={fwLabel} onReset={() => clearKey("framework")} />
-      <Row label="Lens" value={lensLabel} onReset={() => clearKey("lens")} />
-      <Row
-        label="Skills"
-        value={skills.length > 0 ? skills.map((n) => `/${n}`).join(" ") : ""}
-        onReset={() => clearKey("skills")}
-      />
-      <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2 last:border-0">
-        <span className="w-20 shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">Auto state</span>
-        <span className="min-w-0 flex-1 text-sm">
-          {autoState
-            ? <>Auto-attach <code className="text-accent">state.md</code></>
-            : <span className="text-text-muted">manual — drag or use Context drawer</span>}
-        </span>
-        <Switch on={autoState} onToggle={() => setAutoState(!autoState)} />
-      </div>
-      <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-3 py-2">
-        <span className="font-mono text-[10px] text-text-muted">
-          Applies on the next reload of this domain.
-        </span>
-        <button
-          onClick={clearAll}
-          className="rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn"
+          onClick={() => {
+            for (const k of [cliKey, modelKey, fwKey, lensKey, autoStateKey, `prevail.domain.${domain}.skills`]) {
+              lsSet(k, "");
+            }
+            force();
+          }}
+          className="shrink-0 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn"
         >
           reset all
         </button>
+      </div>
+
+      {/* CLI picker — brand-icon cards */}
+      <section className="mb-6 rounded-xl border border-border bg-surface p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">CLI</div>
+            <p className="mt-0.5 text-sm text-text-secondary">Which agent runs every prompt in {titleCase(domain)}.</p>
+          </div>
+          {pickedCli && (
+            <button
+              onClick={() => setOverride(cliKey, "")}
+              className="rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+            >
+              use global
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {clis.map((c) => {
+            const picked = pickedCli === c.id;
+            const disabled = !c.available;
+            return (
+              <button
+                key={c.id}
+                disabled={disabled}
+                onClick={() => setOverride(cliKey, c.id)}
+                title={disabled ? `${c.label} not installed` : c.label}
+                className={`group flex flex-col items-center gap-1.5 rounded-lg border px-2 py-3 transition-all ${
+                  picked
+                    ? "border-accent-border bg-accent-soft shadow-sm"
+                    : disabled
+                    ? "border-border-subtle bg-background opacity-40"
+                    : "border-border bg-background hover:-translate-y-px hover:border-accent-border hover:shadow-sm"
+                }`}
+              >
+                <ProviderMark vendor={c.id} size={32} />
+                <span className={`font-display text-sm font-semibold tracking-tight ${picked ? "text-accent" : "text-text-primary"}`}>
+                  {c.label}
+                </span>
+                {disabled && (
+                  <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">not installed</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Model picker — depends on CLI */}
+      {pickedCli && cliModels.length > 0 && (
+        <section className="mb-6 rounded-xl border border-border bg-surface p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Model</div>
+              <p className="mt-0.5 text-sm text-text-secondary">Locked to the CLI you picked above.</p>
+            </div>
+            {pickedModel && (
+              <button
+                onClick={() => setOverride(modelKey, "")}
+                className="rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+              >
+                use cli default
+              </button>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {cliModels.map((m) => {
+              const picked = pickedModel === m.id;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setOverride(modelKey, m.id)}
+                  className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
+                    picked
+                      ? "border-accent-border bg-accent-soft"
+                      : "border-border-subtle bg-background hover:border-accent-border"
+                  }`}
+                >
+                  <div>
+                    <div className={`font-mono text-sm ${picked ? "text-accent" : "text-text-primary"}`}>{m.label}</div>
+                    {m.blurb && <div className="mt-0.5 text-[11px] text-text-muted">{m.blurb}</div>}
+                  </div>
+                  {picked && <Check className="h-4 w-4 text-accent" />}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Framework + Lens — two columns side-by-side */}
+      <section className="mb-6 grid gap-4 sm:grid-cols-2">
+        <PrefPickerColumn
+          glyph="◆"
+          title="Framework"
+          options={FRAMEWORKS as readonly { id: string; label: string; blurb: string }[]}
+          selected={pickedFw}
+          onSelect={(id) => setOverride(fwKey, id)}
+          onClear={() => setOverride(fwKey, "")}
+        />
+        <PrefPickerColumn
+          glyph="◇"
+          title="Lens"
+          options={LENSES as readonly { id: string; label: string; blurb: string }[]}
+          selected={pickedLens}
+          onSelect={(id) => setOverride(lensKey, id)}
+          onClear={() => setOverride(lensKey, "")}
+        />
+      </section>
+
+      {/* Skills — star-toggle list with avatars */}
+      <section className="mb-6 rounded-xl border border-border bg-surface p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Skills</div>
+            <p className="mt-0.5 text-sm text-text-secondary">
+              Pinned skills auto-attach to every new chat in {titleCase(domain)}.
+              <span className="ml-2 font-mono text-[10px] text-text-muted">★ pinned · ☆ tap to pin</span>
+            </p>
+          </div>
+        </div>
+        {skills.length === 0 ? (
+          <div className="rounded border border-dashed border-border bg-background p-4 text-sm text-text-muted">
+            No skills under <code className="text-accent">{titleCase(domain)}/skills/</code> yet.
+          </div>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {skills.map((s) => {
+              const on = preferredSkills.includes(s.name);
+              const color = pickSkillColor(s.name);
+              return (
+                <li key={s.path} className="flex items-center gap-3 rounded-md border border-border-subtle bg-background px-3 py-2">
+                  <span
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md font-display text-sm font-bold ring-1 ring-black/5"
+                    style={{ background: color.bg, color: color.fg }}
+                  >
+                    {(s.name || "·").charAt(0).toUpperCase()}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-mono text-sm text-accent">/{s.name}</div>
+                    {s.description && <div className="line-clamp-1 text-[11px] text-text-muted">{s.description}</div>}
+                  </div>
+                  <button
+                    onClick={() => onTogglePreferredSkill(s.name)}
+                    className={`shrink-0 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${
+                      on
+                        ? "border-accent-border bg-accent-soft text-accent"
+                        : "border-border bg-background text-text-muted hover:border-accent-border hover:text-accent"
+                    }`}
+                  >
+                    {on ? "★ pinned" : "☆ pin"}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {/* Behavior toggles */}
+      <section className="mb-6 rounded-xl border border-border bg-surface p-4">
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Behavior</div>
+        <div className="flex items-center justify-between gap-3 py-2">
+          <div>
+            <div className="text-sm font-semibold text-text-primary">Auto-attach state.md</div>
+            <div className="mt-0.5 text-xs text-text-secondary">
+              {autoState
+                ? "Each new chat starts with state.md as a context chip you can remove."
+                : "Manual — drag the domain in or use the Context drawer to attach state.md."}
+            </div>
+          </div>
+          <button
+            onClick={() => { lsSet(autoStateKey, autoState ? "0" : "1"); force(); }}
+            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${autoState ? "bg-accent" : "bg-surface-strong"}`}
+            role="switch"
+            aria-checked={autoState}
+          >
+            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-background transition-transform ${autoState ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PrefPickerColumn({
+  glyph,
+  title,
+  options,
+  selected,
+  onSelect,
+  onClear,
+}: {
+  glyph: string;
+  title: string;
+  options: readonly { id: string; label: string; blurb: string }[];
+  selected: string;
+  onSelect: (id: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+          <span className="text-accent">{glyph}</span> {title}
+        </div>
+        {selected && (
+          <button
+            onClick={onClear}
+            className="rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+          >
+            use global
+          </button>
+        )}
+      </div>
+      <div className="flex max-h-72 flex-col gap-1 overflow-y-auto">
+        {options.map((o) => {
+          const picked = selected === o.id;
+          return (
+            <button
+              key={o.id}
+              onClick={() => onSelect(o.id)}
+              className={`flex items-start gap-2 rounded-md border px-3 py-2 text-left transition-colors ${
+                picked
+                  ? "border-accent-border bg-accent-soft"
+                  : "border-border-subtle bg-background hover:border-accent-border"
+              }`}
+            >
+              <div className="min-w-0 flex-1">
+                <div className={`font-mono text-sm ${picked ? "text-accent" : "text-text-primary"}`}>{o.label}</div>
+                <div className="mt-0.5 line-clamp-2 text-[11px] text-text-muted">{o.blurb}</div>
+              </div>
+              {picked && <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -2863,7 +3042,6 @@ function ChatPanel({
   // Per-domain preferences popover — explicit view of overrides saved
   // for this domain with reset controls. Implicit auto-save still
   // happens in pickers; this only surfaces + clears the result.
-  const [domainPrefsOpen, setDomainPrefsOpen] = useState(false);
   const [prefsTick, setPrefsTick] = useState(0);
   const hasAnyDomainOverride = useMemo(() => {
     if (!domain) return false;
@@ -2884,7 +3062,7 @@ function ChatPanel({
   // Persistent domain tab. "chat" shows the transcript; the other
   // tabs replace the transcript with the domain's reference content.
   // Composer stays at the bottom regardless of tab.
-  type DomainTab = "chat" | "state" | "decisions" | "journal" | "logs" | "skills";
+  type DomainTab = "chat" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs";
   const [domainTab, setDomainTab] = useState<DomainTab>("chat");
   const [domainCtx, setDomainCtx] = useState<DomainContextBundle | null>(null);
   useEffect(() => {
@@ -3116,22 +3294,25 @@ function ChatPanel({
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(async () => {
       if (savePendingRef.current) return; // serialize saves
-      // Hard guard: if a slug=null save was already dispatched and
-      // hasn't returned yet (so activeThreadRef hasn't been adopted),
-      // skip rather than launching a second one that would create a
-      // duplicate file.
-      if (initialSaveDispatchedRef.current && !activeThreadRef.current) {
-        console.log("[prevail/save_thread] skip — initial save still in flight");
+      const wantSlugNull = !activeThreadRef.current;
+      // At most ONE save with slug=null is allowed per ChatPanel
+      // instance. We claim the right BEFORE any await so any other
+      // timer that fires next sees the claim and bails. Released
+      // only on the catch branch below so a transient failure can
+      // be retried, but a successful slug=null save never happens
+      // twice.
+      if (wantSlugNull && initialSaveDispatchedRef.current) {
+        console.log("[prevail/save_thread] BLOCK slug=null — already claimed");
         return;
       }
+      if (wantSlugNull) initialSaveDispatchedRef.current = true;
       savePendingRef.current = true;
       try {
         const first = messages.find((m) => m.role === "user");
         const title = first ? first.content.slice(0, 60).replace(/\n/g, " ") : "untitled";
         const current = activeThreadRef.current;
         const slug = current ? current.split("/").pop()?.replace(/\.md$/, "") ?? null : null;
-        if (!slug) initialSaveDispatchedRef.current = true;
-        console.log("[prevail/save_thread]", { slug, current, msgCount: messages.length, domain });
+        console.log("[prevail/save_thread]", { slug, current, msgCount: messages.length, domain, t: Date.now() });
         const path = await invoke<string>("save_thread", {
           vault: vaultPath,
           domain: domain ?? null,
@@ -3153,6 +3334,10 @@ function ChatPanel({
         onThreadsChanged();
       } catch (e) {
         console.error("save_thread", e);
+        // If we never got a path back, release the claim so a retry
+        // can succeed. Otherwise the user would be stuck with no
+        // saved thread until they restart.
+        if (!activeThreadRef.current) initialSaveDispatchedRef.current = false;
       } finally {
         savePendingRef.current = false;
       }
@@ -3371,26 +3556,17 @@ function ChatPanel({
                 <Folder className="h-3.5 w-3.5" />
               </button>
             )}
-            <div className="relative">
-              <button
-                onClick={() => setDomainPrefsOpen((v) => !v)}
-                title={hasAnyDomainOverride ? "Domain preferences (overrides active)" : "Domain preferences"}
-                className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
-                  hasAnyDomainOverride
-                    ? "text-accent hover:bg-accent-soft"
-                    : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                }`}
-              >
-                <SettingsIcon className="h-3.5 w-3.5" />
-              </button>
-              {domainPrefsOpen && (
-                <DomainPrefsPopover
-                  domain={domain}
-                  onClose={() => setDomainPrefsOpen(false)}
-                  onChanged={() => setPrefsTick((t) => t + 1)}
-                />
-              )}
-            </div>
+            <button
+              onClick={() => setDomainTab("prefs")}
+              title={hasAnyDomainOverride ? "Domain preferences (overrides active)" : "Domain preferences"}
+              className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
+                hasAnyDomainOverride
+                  ? "text-accent hover:bg-accent-soft"
+                  : "text-text-muted hover:bg-surface-warm hover:text-accent"
+              }`}
+            >
+              <SettingsIcon className="h-3.5 w-3.5" />
+            </button>
             {/* Tab strip — persistent. State auto-loaded so the tab
                 count badges reflect real content (1 if state exists,
                 etc.). Click a non-Chat tab to view that doc; Chat
@@ -3403,6 +3579,7 @@ function ChatPanel({
                 { id: "journal", label: "Journal", count: domainCtx?.journal ? 1 : 0 },
                 { id: "logs", label: "Sessions", count: domainCtx?.recent_logs?.length ?? 0 },
                 { id: "skills", label: "Skills", count: domainCtx?.skills?.length ?? 0 },
+                { id: "prefs", label: "Prefs", count: undefined },
               ] as { id: DomainTab; label: string; count?: number }[]).map((t) => {
                 const active = domainTab === t.id;
                 return (
@@ -3538,7 +3715,7 @@ function ChatPanel({
         )}
         {domain && domainTab !== "chat" && (
           <div className="mx-auto w-full max-w-3xl px-6 py-6">
-            {!domainCtx && <div className="text-sm text-text-muted">loading…</div>}
+            {!domainCtx && domainTab !== "prefs" && <div className="text-sm text-text-muted">loading…</div>}
             {domainCtx && domainTab === "state" && (domainCtx.state ? <Markdown source={domainCtx.state} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">state.md</code> in this domain.</div>)}
             {domainCtx && domainTab === "decisions" && (domainCtx.decisions ? <Markdown source={domainCtx.decisions} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">decisions.md</code> yet.</div>)}
             {domainCtx && domainTab === "journal" && (domainCtx.journal ? <Markdown source={domainCtx.journal} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no journal entries yet.</div>)}
@@ -3573,6 +3750,16 @@ function ChatPanel({
                 onInsert={(name) => { insertSkillSlash(name); setDomainTab("chat"); }}
                 preferredSet={preferredSkillsSet}
                 onTogglePreferred={togglePreferredSkill}
+              />
+            )}
+            {domainTab === "prefs" && domain && (
+              <DomainPrefsPanel
+                domain={domain}
+                clis={clis}
+                skills={domainCtx?.skills ?? []}
+                preferredSkills={preferredSkills}
+                onTogglePreferredSkill={togglePreferredSkill}
+                onChanged={() => setPrefsTick((t) => t + 1)}
               />
             )}
           </div>
