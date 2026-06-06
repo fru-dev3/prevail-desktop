@@ -8,6 +8,46 @@ import remarkGfm from "remark-gfm";
 // Renders LLM output as proper markdown — headings, lists, bold,
 // inline code, fenced blocks, tables. Wraps each block element in
 // `prose`-like Tailwind so the spacing reads.
+// Code-fence renderer for ReactMarkdown — multi-line blocks get a
+// card with a language label + copy button at the top-right;
+// inline `code` stays as a plain <code>. Stable component identity
+// (declared at module scope) so React doesn't reuse stale closures.
+function MarkdownCode(props: React.HTMLAttributes<HTMLElement> & { className?: string; children?: React.ReactNode }) {
+  const { className, children, ...rest } = props;
+  // ReactMarkdown gives us a className like "language-ts" for fenced
+  // blocks and no className for inline code. We use the presence of
+  // a newline in the body as a backup signal because some prompts
+  // emit triple-backtick blocks with no language.
+  const text = typeof children === "string"
+    ? children
+    : Array.isArray(children)
+      ? children.map((c) => (typeof c === "string" ? c : "")).join("")
+      : "";
+  const lang = (className ?? "").replace(/^language-/, "") || "code";
+  const isBlock = (className && className.startsWith("language-")) || text.includes("\n");
+  if (!isBlock) {
+    return <code className={className} {...rest}>{children}</code>;
+  }
+  return (
+    <div className="my-3 overflow-hidden rounded-lg border border-border-subtle bg-background">
+      <div className="flex items-center justify-between gap-2 border-b border-border-subtle bg-surface-warm px-3 py-1.5">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{lang}</span>
+        <button
+          onClick={() => { void navigator.clipboard.writeText(text); }}
+          className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted transition-colors hover:border-accent-border hover:text-accent"
+        >
+          copy
+        </button>
+      </div>
+      <pre className="overflow-x-auto px-3 py-2 font-mono text-[12px] leading-relaxed text-text-primary">
+        <code className={className}>{children}</code>
+      </pre>
+    </div>
+  );
+}
+
+const MARKDOWN_COMPONENTS = { code: MarkdownCode } as const;
+
 const Markdown = React.memo(function Markdown({ source, compact = false }: { source: string; compact?: boolean }) {
   // Two flavors: default (chat reply) and compact (state/decisions/
   // journal). Compact mode is denser, sans-serif headings, smaller
@@ -22,13 +62,13 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
     <div
       className={`prose-prevail max-w-none ${compact ? "prose-prevail--compact" : ""}`}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{source}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>{source}</ReactMarkdown>
     </div>
   );
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.87";
+const APP_VERSION = "0.2.88";
 
 // VS Code-style quick switcher modal. Centered overlay, single
 // search input at the top, combined list of domains + recent
@@ -1321,12 +1361,19 @@ function Sidebar({
       return next;
     });
   };
+  const [railFilter, setRailFilter] = useState("");
   const sortedDomains = useMemo(() => {
+    const q = railFilter.trim().toLowerCase();
     const isPinned = (d: Domain) => pinned.has(d.name);
-    const pin = domains.filter(isPinned);
-    const rest = domains.filter((d) => !isPinned(d));
+    const matches = (d: Domain) =>
+      !q ||
+      d.name.toLowerCase().includes(q) ||
+      titleCase(d.name).toLowerCase().includes(q);
+    const filtered = domains.filter(matches);
+    const pin = filtered.filter(isPinned);
+    const rest = filtered.filter((d) => !isPinned(d));
     return [...pin, ...rest];
-  }, [domains, pinned]);
+  }, [domains, pinned, railFilter]);
   const [addError, setAddError] = useState<string | null>(null);
 
   async function createDomain() {
@@ -1407,6 +1454,26 @@ function Sidebar({
             {!collapsed && "New chat"}
           </button>
         </div>
+        {!collapsed && domains.length >= 4 && (
+          <div className="px-2 pt-2">
+            <div className="relative">
+              <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-text-muted">⌕</span>
+              <input
+                value={railFilter}
+                onChange={(e) => setRailFilter(e.target.value)}
+                placeholder="filter domains…"
+                className="w-full rounded-md border border-border-subtle bg-background py-1 pl-6 pr-6 font-mono text-[11px] text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+              />
+              {railFilter && (
+                <button
+                  onClick={() => setRailFilter("")}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 text-[12px] text-text-muted hover:text-warn"
+                  title="Clear filter"
+                >×</button>
+              )}
+            </div>
+          </div>
+        )}
         {!collapsed && (
           <div className="mb-1 px-3 pt-3 text-[10px] font-medium uppercase tracking-[0.18em] text-text-muted">
             Domains
