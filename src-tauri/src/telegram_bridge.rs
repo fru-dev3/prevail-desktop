@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use tauri::async_runtime::JoinHandle;
 use tokio::process::Command as TokioCommand;
-use tokio::sync::watch;
+use tokio::sync::{watch, Mutex as AsyncMutex};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BridgeConfig {
@@ -50,7 +50,7 @@ pub struct BridgeState {
 struct Inner {
     handle: Option<JoinHandle<()>>,
     stop_tx: Option<watch::Sender<bool>>,
-    status: Arc<Mutex<BridgeStatus>>,
+    status: Arc<AsyncMutex<BridgeStatus>>,
 }
 
 impl BridgeState {
@@ -59,39 +59,45 @@ impl BridgeState {
             inner: Mutex::new(Inner {
                 handle: None,
                 stop_tx: None,
-                status: Arc::new(Mutex::new(BridgeStatus::default())),
+                status: Arc::new(AsyncMutex::new(BridgeStatus::default())),
             }),
         }
     }
 
-    pub fn status(&self) -> BridgeStatus {
-        let inner = self.inner.lock().unwrap();
-        let s = inner.status.lock().unwrap();
+    pub async fn status(&self) -> BridgeStatus {
+        let status_arc = {
+            let inner = self.inner.lock().unwrap();
+            inner.status.clone()
+        };
+        let s = status_arc.lock().await;
         s.clone()
     }
 
-    pub fn stop(&self) {
-        let mut inner = self.inner.lock().unwrap();
-        if let Some(tx) = inner.stop_tx.take() {
+    pub async fn stop(&self) {
+        let (stop_tx_opt, handle_opt, status_arc) = {
+            let mut inner = self.inner.lock().unwrap();
+            (inner.stop_tx.take(), inner.handle.take(), inner.status.clone())
+        };
+        if let Some(tx) = stop_tx_opt {
             let _ = tx.send(true);
         }
-        if let Some(h) = inner.handle.take() {
+        if let Some(h) = handle_opt {
             h.abort();
         }
-        let mut s = inner.status.lock().unwrap();
+        let mut s = status_arc.lock().await;
         s.running = false;
     }
 
-    pub fn start(&self, app: tauri::AppHandle, cfg: BridgeConfig) {
+    pub async fn start(&self, app: tauri::AppHandle, cfg: BridgeConfig) {
         // Replace any running loop with a fresh one.
-        self.stop();
+        self.stop().await;
         let (stop_tx, mut stop_rx) = watch::channel(false);
         let status_arc = {
             let inner = self.inner.lock().unwrap();
             inner.status.clone()
         };
         {
-            let mut s = status_arc.lock().unwrap();
+            let mut s = status_arc.lock().await;
             *s = BridgeStatus::default();
             s.running = true;
         }
@@ -111,7 +117,7 @@ impl BridgeState {
                                 for upd in updates {
                                     last_update_id = upd.update_id;
                                     {
-                                        let mut s = status_for_task.lock().unwrap();
+                                        let mut s = status_for_task.lock().await;
                                         s.last_update_id = last_update_id;
                                     }
                                     let msg = match upd.message {
@@ -129,7 +135,7 @@ impl BridgeState {
                                         continue;
                                     }
                                     {
-                                        let mut s = status_for_task.lock().unwrap();
+                                        let mut s = status_for_task.lock().await;
                                         s.inbound_count += 1;
                                         s.last_inbound_ts = Some(now_secs());
                                         s.last_error = None;
@@ -154,12 +160,12 @@ impl BridgeState {
                                             for chunk in chunk_text(&reply, 4000) {
                                                 match send_message(&cfg.token, &cfg.chat_id, &chunk).await {
                                                     Ok(_) => {
-                                                        let mut s = status_for_task.lock().unwrap();
+                                                        let mut s = status_for_task.lock().await;
                                                         s.outbound_count += 1;
                                                         s.last_outbound_ts = Some(now_secs());
                                                     }
                                                     Err(e) => {
-                                                        let mut s = status_for_task.lock().unwrap();
+                                                        let mut s = status_for_task.lock().await;
                                                         s.last_error = Some(e);
                                                     }
                                                 }
@@ -170,14 +176,14 @@ impl BridgeState {
                                             );
                                         }
                                         Err(e) => {
-                                            let mut s = status_for_task.lock().unwrap();
+                                            let mut s = status_for_task.lock().await;
                                             s.last_error = Some(e);
                                         }
                                     }
                                 }
                             }
                             Err(e) => {
-                                let mut s = status_for_task.lock().unwrap();
+                                let mut s = status_for_task.lock().await;
                                 s.last_error = Some(e);
                                 // Back off a bit before retrying so we don't
                                 // hammer a flapping endpoint.
@@ -187,7 +193,7 @@ impl BridgeState {
                     }
                 }
             }
-            let mut s = status_for_task.lock().unwrap();
+            let mut s = status_for_task.lock().await;
             s.running = false;
         });
 
@@ -382,24 +388,26 @@ fn chunk_text(text: &str, max: usize) -> Vec<String> {
 // Tauri commands.
 
 #[tauri::command]
-pub fn telegram_bridge_start(
+pub async fn telegram_bridge_start(
     app: tauri::AppHandle,
     state: tauri::State<'_, BridgeState>,
     cfg: BridgeConfig,
 ) -> Result<(), String> {
-    state.start(app, cfg);
+    state.start(app, cfg).await;
     Ok(())
 }
 
 #[tauri::command]
-pub fn telegram_bridge_stop(state: tauri::State<'_, BridgeState>) -> Result<(), String> {
-    state.stop();
+pub async fn telegram_bridge_stop(
+    state: tauri::State<'_, BridgeState>,
+) -> Result<(), String> {
+    state.stop().await;
     Ok(())
 }
 
 #[tauri::command]
-pub fn telegram_bridge_status(
+pub async fn telegram_bridge_status(
     state: tauri::State<'_, BridgeState>,
 ) -> Result<BridgeStatus, String> {
-    Ok(state.status())
+    Ok(state.status().await)
 }
