@@ -22,7 +22,7 @@ function Markdown({ source, compact = false }: { source: string; compact?: boole
 }
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.81";
+const APP_VERSION = "0.2.84";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -35,8 +35,9 @@ interface ModelPick {
 const MODELS: Record<string, ModelPick[]> = {
   claude: [
     { id: "opus",              label: "Opus (latest)",  blurb: "alias · auto-upgrades" },
-    { id: "claude-opus-4-7",   label: "Opus 4.7",       blurb: "current flagship" },
-    { id: "claude-opus-4-6",   label: "Opus 4.6",       blurb: "previous flagship" },
+    { id: "claude-opus-4-8",   label: "Opus 4.8",       blurb: "current flagship" },
+    { id: "claude-opus-4-7",   label: "Opus 4.7",       blurb: "previous flagship" },
+    { id: "claude-opus-4-6",   label: "Opus 4.6",       blurb: "legacy flagship" },
     { id: "sonnet",            label: "Sonnet (latest)", blurb: "alias · balanced" },
     { id: "claude-sonnet-4-6", label: "Sonnet 4.6",     blurb: "balanced workhorse" },
     { id: "haiku",             label: "Haiku (latest)", blurb: "alias · fast + cheap" },
@@ -946,7 +947,27 @@ export default function App() {
               selectedDomain={selectedDomain}
               vaultPath={vaultPath}
               onPick={(p) => setActiveThreadPath(p)}
-              onNew={() => setActiveThreadPath(null)}
+              onNew={async () => {
+                // Create the thread file immediately so the user gets
+                // a renameable entry in the rail BEFORE typing the
+                // first prompt. Backend accepts empty turns.
+                try {
+                  const path = await invoke<string>("save_thread", {
+                    vault: vaultPath,
+                    domain: selectedDomain || null,
+                    slug: null,
+                    title: "Untitled",
+                    turns: [],
+                  });
+                  setActiveThreadPath(path);
+                  await refreshThreads();
+                } catch (e) {
+                  console.error("create thread stub", e);
+                  // Fall back to the old behavior on failure so + at
+                  // least clears the chat for a fresh start.
+                  setActiveThreadPath(null);
+                }
+              }}
               onRefresh={() => void refreshThreads()}
               runningThreadPaths={runningThreadPaths}
               railWidth={threadsRailWidth}
@@ -2325,18 +2346,28 @@ function DomainPrefsPanel({
                 disabled={disabled}
                 onClick={() => setOverride(cliKey, c.id)}
                 title={disabled ? `${c.label} not installed` : c.label}
-                className={`group flex flex-col items-center gap-1.5 rounded-lg border px-2 py-3 transition-all ${
+                className={`group relative flex flex-col items-center gap-1.5 rounded-lg border-2 px-2 py-3 transition-all ${
                   picked
-                    ? "border-accent-border bg-accent-soft shadow-sm"
+                    ? "border-accent bg-accent-soft shadow-md ring-2 ring-accent/30"
                     : disabled
                     ? "border-border-subtle bg-background opacity-40"
                     : "border-border bg-background hover:-translate-y-px hover:border-accent-border hover:shadow-sm"
                 }`}
               >
+                {picked && (
+                  <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-background shadow-sm">
+                    <Check className="h-3 w-3" strokeWidth={3} />
+                  </span>
+                )}
                 <ProviderMark vendor={c.id} size={32} />
                 <span className={`font-display text-sm font-semibold tracking-tight ${picked ? "text-accent" : "text-text-primary"}`}>
                   {c.label}
                 </span>
+                {picked && (
+                  <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[8px] uppercase tracking-wider text-background">
+                    selected
+                  </span>
+                )}
                 {disabled && (
                   <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">not installed</span>
                 )}
@@ -2370,17 +2401,28 @@ function DomainPrefsPanel({
                 <button
                   key={m.id}
                   onClick={() => setOverride(modelKey, m.id)}
-                  className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
+                  className={`flex items-center justify-between gap-3 rounded-md border-2 px-3 py-2 text-left transition-colors ${
                     picked
-                      ? "border-accent-border bg-accent-soft"
+                      ? "border-accent bg-accent-soft ring-2 ring-accent/20"
                       : "border-border-subtle bg-background hover:border-accent-border"
                   }`}
                 >
                   <div>
-                    <div className={`font-mono text-sm ${picked ? "text-accent" : "text-text-primary"}`}>{m.label}</div>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-mono text-sm ${picked ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
+                      {picked && (
+                        <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[8px] uppercase tracking-wider text-background">
+                          selected
+                        </span>
+                      )}
+                    </div>
                     {m.blurb && <div className="mt-0.5 text-[11px] text-text-muted">{m.blurb}</div>}
                   </div>
-                  {picked && <Check className="h-4 w-4 text-accent" />}
+                  {picked && (
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-background">
+                      <Check className="h-3 w-3" strokeWidth={3} />
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -2520,17 +2562,28 @@ function PrefPickerColumn({
             <button
               key={o.id}
               onClick={() => onSelect(o.id)}
-              className={`flex items-start gap-2 rounded-md border px-3 py-2 text-left transition-colors ${
+              className={`flex items-start gap-2 rounded-md border-2 px-3 py-2 text-left transition-colors ${
                 picked
-                  ? "border-accent-border bg-accent-soft"
+                  ? "border-accent bg-accent-soft ring-2 ring-accent/20"
                   : "border-border-subtle bg-background hover:border-accent-border"
               }`}
             >
               <div className="min-w-0 flex-1">
-                <div className={`font-mono text-sm ${picked ? "text-accent" : "text-text-primary"}`}>{o.label}</div>
+                <div className="flex items-center gap-2">
+                  <span className={`font-mono text-sm ${picked ? "font-semibold text-accent" : "text-text-primary"}`}>{o.label}</span>
+                  {picked && (
+                    <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[8px] uppercase tracking-wider text-background">
+                      selected
+                    </span>
+                  )}
+                </div>
                 <div className="mt-0.5 line-clamp-2 text-[11px] text-text-muted">{o.blurb}</div>
               </div>
-              {picked && <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />}
+              {picked && (
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-background">
+                  <Check className="h-3 w-3" strokeWidth={3} />
+                </span>
+              )}
             </button>
           );
         })}
@@ -7994,18 +8047,28 @@ function CliPickerCard({
               disabled={disabled}
               onClick={() => onChange(c.id)}
               title={disabled ? `${c.label} not installed` : c.label}
-              className={`group flex flex-col items-center gap-1.5 rounded-lg border px-2 py-2.5 transition-all ${
+              className={`group relative flex flex-col items-center gap-1.5 rounded-lg border-2 px-2 py-2.5 transition-all ${
                 picked
-                  ? "border-accent-border bg-accent-soft shadow-sm"
+                  ? "border-accent bg-accent-soft shadow-md ring-2 ring-accent/30"
                   : disabled
                   ? "border-border-subtle bg-background opacity-40"
                   : "border-border bg-background hover:-translate-y-px hover:border-accent-border hover:shadow-sm"
               }`}
             >
+              {picked && (
+                <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-background shadow-sm">
+                  <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                </span>
+              )}
               <ProviderMark vendor={c.id} size={28} />
               <span className={`font-display text-xs font-semibold tracking-tight ${picked ? "text-accent" : "text-text-primary"}`}>
                 {c.label}
               </span>
+              {picked && (
+                <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[8px] uppercase tracking-wider text-background">
+                  selected
+                </span>
+              )}
               {disabled && (
                 <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">not installed</span>
               )}
@@ -8043,21 +8106,32 @@ function ModelPickerCard({ cli }: { cli: CliInfo }) {
             <button
               key={m.id}
               onClick={() => setPicked(m.id)}
-              className={`group flex items-center justify-between rounded-md border px-3 py-2 text-left transition-colors ${
+              className={`group flex items-center justify-between rounded-md border-2 px-3 py-2 text-left transition-colors ${
                 on
-                  ? "border-accent-border bg-accent-soft"
+                  ? "border-accent bg-accent-soft ring-2 ring-accent/20"
                   : "border-border bg-background hover:bg-surface-warm"
               }`}
             >
               <div className="min-w-0">
-                <div className={`font-mono text-sm ${on ? "text-accent" : "text-text-primary"}`}>
-                  {m.label}
+                <div className="flex items-center gap-2">
+                  <span className={`font-mono text-sm ${on ? "font-semibold text-accent" : "text-text-primary"}`}>
+                    {m.label}
+                  </span>
+                  {on && (
+                    <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[8px] uppercase tracking-wider text-background">
+                      selected
+                    </span>
+                  )}
                 </div>
                 {m.blurb && (
                   <div className="text-[11px] text-text-muted">{m.blurb}</div>
                 )}
               </div>
-              {on && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
+              {on && (
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-background">
+                  <Check className="h-3 w-3" strokeWidth={3} />
+                </span>
+              )}
             </button>
           );
         })}
