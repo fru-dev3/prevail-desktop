@@ -181,21 +181,16 @@ fn resolve_bin_path(bin: &str) -> Option<String> {
 fn probe_cli_version(bin: &str) -> Option<String> {
     let path = resolve_bin_path(bin)?;
     use std::process::Command;
-    // Pass the same enriched PATH chat_send uses — otherwise a CLI
-    // with `#!/usr/bin/env node` shebang can fail with
-    // "env: node: No such file or directory" because Finder-launched
-    // apps inherit a minimal PATH from launchctl.
-    let home = std::env::var("HOME").unwrap_or_default();
-    let extra_path = format!(
-        "{home}/.local/bin:{home}/.bun/bin:/opt/homebrew/bin:/usr/local/bin"
-    );
-    let cur_path = std::env::var("PATH").unwrap_or_default();
-    let combined = if cur_path.is_empty() {
-        extra_path
-    } else {
-        format!("{extra_path}:{cur_path}")
-    };
-    let out = Command::new(&path).arg("--version").env("PATH", combined).output().ok()?;
+    // Pass the same enriched env chat_send uses — PATH so env-node
+    // shebangs resolve, USER/LOGNAME so claude finds its keychain.
+    let (combined, user, logname) = build_cli_env();
+    let out = Command::new(&path)
+        .arg("--version")
+        .env("PATH", combined)
+        .env("USER", user)
+        .env("LOGNAME", logname)
+        .output()
+        .ok()?;
     let text = if !out.stdout.is_empty() {
         String::from_utf8_lossy(&out.stdout).to_string()
     } else if !out.stderr.is_empty() {
@@ -322,6 +317,41 @@ fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String
     }
 }
 
+/// Build the env vars every spawned CLI inherits.
+///
+/// Returns (combined_path, user, logname).
+///
+/// PATH is enriched with the well-known CLI install dirs so a
+/// `#!/usr/bin/env node` shebang resolves even when Finder-launched
+/// apps get a launchctl-minimal PATH.
+///
+/// USER + LOGNAME are derived from $HOME's basename when not present
+/// in the environment, because claude in particular uses them to
+/// scope its macOS Keychain lookup — without them set, claude
+/// silently treats the user as logged out and returns nothing.
+fn build_cli_env() -> (String, String, String) {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let extra_path = format!(
+        "{home}/.local/bin:{home}/.bun/bin:/opt/homebrew/bin:/usr/local/bin"
+    );
+    let cur_path = std::env::var("PATH").unwrap_or_default();
+    let combined = if cur_path.is_empty() {
+        extra_path
+    } else {
+        format!("{extra_path}:{cur_path}")
+    };
+    let user_from_env = std::env::var("USER").ok();
+    let logname_from_env = std::env::var("LOGNAME").ok();
+    let fallback = std::path::Path::new(&home)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    let user = user_from_env.filter(|s| !s.is_empty()).unwrap_or_else(|| fallback.clone());
+    let logname = logname_from_env.filter(|s| !s.is_empty()).unwrap_or_else(|| fallback);
+    (combined, user, logname)
+}
+
 fn resolve_bin_abs(bin: &str) -> String {
     // Mirror the detection logic — find the binary's absolute path so
     // we can spawn it even when the Finder-launched app has minimal
@@ -353,18 +383,18 @@ async fn chat_send(
     let (bin_name, cli_args) = cli_args(&args.cli, &args.prompt, args.model.as_deref());
     let bin_abs = resolve_bin_abs(&bin_name);
 
-    let home = std::env::var("HOME").unwrap_or_default();
-    let extra_path = format!("{home}/.local/bin:{home}/.bun/bin:/opt/homebrew/bin:/usr/local/bin");
-    let cur_path = std::env::var("PATH").unwrap_or_default();
-    let combined_path = if cur_path.is_empty() {
-        extra_path
-    } else {
-        format!("{extra_path}:{cur_path}")
-    };
+    let (combined_path, user, logname) = build_cli_env();
 
     let mut child = TokioCommand::new(&bin_abs)
         .args(&cli_args)
         .env("PATH", combined_path)
+        // USER + LOGNAME — claude reads these to scope its macOS
+        // Keychain lookup. Finder-launched GUI apps inherit from
+        // launchctl which may leave them blank, which makes claude
+        // think no user is logged in and reply "(empty)". Pinning
+        // them to the real user fixes the silent-reply bug.
+        .env("USER", &user)
+        .env("LOGNAME", &logname)
         // Closing stdin so claude/codex/etc don't sit waiting for it.
         // claude in particular prints "no stdin data received in 3s,
         // proceeding without it." to stderr and stalls before emitting
@@ -702,14 +732,13 @@ async fn verify_cli_model(args: VerifyArgs) -> Result<String, String> {
 
     let (bin_name, cli_args) = cli_args(&args.cli, "respond with just: OK", args.model.as_deref());
     let bin_abs = resolve_bin_abs(&bin_name);
-    let home = std::env::var("HOME").unwrap_or_default();
-    let extra_path = format!("{home}/.local/bin:{home}/.bun/bin:/opt/homebrew/bin:/usr/local/bin");
-    let cur_path = std::env::var("PATH").unwrap_or_default();
-    let combined_path = if cur_path.is_empty() { extra_path } else { format!("{extra_path}:{cur_path}") };
+    let (combined_path, user, logname) = build_cli_env();
 
     let mut child = TokioCommand::new(&bin_abs)
         .args(&cli_args)
         .env("PATH", combined_path)
+        .env("USER", &user)
+        .env("LOGNAME", &logname)
         // Closing stdin so claude/codex/etc don't sit waiting for it.
         // claude in particular prints "no stdin data received in 3s,
         // proceeding without it." to stderr and stalls before emitting
@@ -1704,20 +1733,13 @@ async fn spawn_prevail_streaming(
     use tokio::process::Command as TokioCommand;
 
     let bin = resolve_prevail_bin();
-    // Augment PATH so child sub-processes (claude/codex/agy/ollama)
-    // resolve correctly when the Mac app is launched from Finder.
-    let home = std::env::var("HOME").unwrap_or_default();
-    let extra_path = format!("{home}/.local/bin:/opt/homebrew/bin:/usr/local/bin");
-    let cur_path = std::env::var("PATH").unwrap_or_default();
-    let combined_path = if cur_path.is_empty() {
-        extra_path
-    } else {
-        format!("{extra_path}:{cur_path}")
-    };
+    let (combined_path, user, logname) = build_cli_env();
 
     let mut child = TokioCommand::new(&bin)
         .args(&args)
         .env("PATH", combined_path)
+        .env("USER", user)
+        .env("LOGNAME", logname)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
