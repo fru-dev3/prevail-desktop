@@ -1297,9 +1297,10 @@ fn save_thread(
     title: String,
     turns: Vec<ThreadTurn>,
 ) -> Result<String, String> {
-    if turns.is_empty() {
-        return Err("thread is empty".into());
-    }
+    // Allow empty turns so the UI can pre-create a thread file when
+    // the user clicks "+ New thread" — they want the entry to appear
+    // in the rail immediately and be renameable BEFORE typing the
+    // first prompt. Subsequent auto-saves overwrite with real turns.
     let threads_dir = match &domain {
         Some(d) => PathBuf::from(&vault).join(d).join("_threads"),
         None => PathBuf::from(&vault).join("_threads"),
@@ -1351,8 +1352,13 @@ fn save_thread(
 
     // If the on-disk file has a title and it's different from what
     // the caller derived, treat the on-disk one as canonical so
-    // renames stick across auto-saves.
-    let final_title = if !preserved_title.is_empty() && preserved_title != title {
+    // renames stick across auto-saves. Exception: the placeholder
+    // "Untitled" written by the "+ new thread" handler — we WANT
+    // the incoming title (first user message) to replace it.
+    let final_title = if !preserved_title.is_empty()
+        && preserved_title != title
+        && preserved_title != "Untitled"
+    {
         preserved_title
     } else {
         title
