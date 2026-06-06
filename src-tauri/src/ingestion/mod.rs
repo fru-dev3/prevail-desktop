@@ -202,3 +202,69 @@ pub fn ingestion_keychain_del(
 ) -> Result<(), String> {
     keychain::del(&service, &account).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn ingestion_mcp_config_path() -> Result<String, String> {
+    Ok(storage::app_support_root()?
+        .join("mcp_config.json")
+        .to_string_lossy()
+        .to_string())
+}
+
+/// Create a blank `mcp_config.json` with the right schema if it
+/// doesn't already exist. Returns the path either way.
+#[tauri::command]
+pub fn ingestion_mcp_config_init() -> Result<String, String> {
+    let root = storage::app_support_root()?;
+    std::fs::create_dir_all(&root).map_err(|e| format!("mkdir app support: {e}"))?;
+    let p = root.join("mcp_config.json");
+    if !p.exists() {
+        let blank = serde_json::json!({
+            "mcpServers": {}
+        });
+        let text = serde_json::to_string_pretty(&blank)
+            .map_err(|e| format!("serialize blank: {e}"))?;
+        std::fs::write(&p, text).map_err(|e| format!("write blank config: {e}"))?;
+    }
+    Ok(p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn ingestion_mcp_reload(
+    state: tauri::State<'_, OrchestratorState>,
+) -> Result<(), String> {
+    let mut reg = state.tier_a.lock().map_err(|e| e.to_string())?;
+    reg.reload();
+    Ok(())
+}
+
+/// Portal recipes for Tier C — a starter library so users don't have
+/// to type URLs from scratch. Loaded from the bundled resources.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct PortalRecipe {
+    pub id: String,
+    pub label: String,
+    pub domain_hint: String,
+    pub start_url: String,
+    pub success_url_contains: Option<String>,
+    pub notes: Option<String>,
+}
+
+#[tauri::command]
+pub fn ingestion_browser_recipes(app: tauri::AppHandle) -> Result<Vec<PortalRecipe>, String> {
+    use tauri::Manager;
+    let resource = app
+        .path()
+        .resolve(
+            "resources/automation/recipes.json",
+            tauri::path::BaseDirectory::Resource,
+        )
+        .map_err(|e| format!("resolve recipes.json: {e}"))?;
+    if !resource.exists() {
+        return Ok(vec![]);
+    }
+    let raw = std::fs::read_to_string(&resource).map_err(|e| format!("read recipes.json: {e}"))?;
+    let parsed: Vec<PortalRecipe> = serde_json::from_str(&raw)
+        .map_err(|e| format!("parse recipes.json: {e}"))?;
+    Ok(parsed)
+}

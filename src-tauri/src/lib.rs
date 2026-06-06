@@ -1781,6 +1781,10 @@ pub fn run() {
             ingestion::ingestion_keychain_set,
             ingestion::ingestion_keychain_get,
             ingestion::ingestion_keychain_del,
+            ingestion::ingestion_mcp_config_path,
+            ingestion::ingestion_mcp_config_init,
+            ingestion::ingestion_mcp_reload,
+            ingestion::ingestion_browser_recipes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
