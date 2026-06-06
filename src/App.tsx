@@ -28,7 +28,7 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.85";
+const APP_VERSION = "0.2.86";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -3858,15 +3858,34 @@ function ChatPanel({
               onSelect={(id) => setSelectedCli(id)}
             />
 
-            {domains.length > 0 && (
+            {domains.length > 0 && (() => {
+              // Show pinned first, then ones with the most imports,
+              // capped at 4. The full domain list still lives in the
+              // sidebar — this landing surface is a quick-pick only.
+              const pinnedSet = (() => {
+                try { return new Set<string>(JSON.parse(lsGet("prevail.pinnedDomains") || "[]")); }
+                catch { return new Set<string>(); }
+              })();
+              const ranked = [...domains].sort((a, b) => {
+                const pa = pinnedSet.has(a.name) ? 1 : 0;
+                const pb = pinnedSet.has(b.name) ? 1 : 0;
+                if (pa !== pb) return pb - pa;
+                const sa = domainStats[a.name] ?? 0;
+                const sb = domainStats[b.name] ?? 0;
+                if (sa !== sb) return sb - sa;
+                return a.name.localeCompare(b.name);
+              });
+              const featured = ranked.slice(0, 4);
+              return (
               <div className="mt-8 w-full max-w-4xl">
                 <div className="mb-3 flex items-center justify-between">
                   <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
-                    Your domains · {domains.length}
+                    Jump to · {featured.length} of {domains.length}
                   </div>
+                  <span className="font-mono text-[10px] text-text-muted">more in sidebar</span>
                 </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {domains.map((d) => {
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {featured.map((d) => {
                     const Icon = DOMAIN_ICONS[d.name];
                     const importCount = domainStats[d.name] ?? 0;
                     const running = runningDomains.has(d.name);
@@ -3907,7 +3926,8 @@ function ChatPanel({
                   })}
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {domains.length === 0 && (
               <div className="mt-8 w-full max-w-2xl rounded-xl border border-dashed border-border bg-surface p-8 text-center">
