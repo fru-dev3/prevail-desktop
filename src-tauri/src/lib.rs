@@ -154,6 +154,7 @@ pub struct CliInfo {
     pub label: String,
     pub bin: String,
     pub available: bool,
+    pub version: Option<String>,
 }
 
 const CLIS: &[(&str, &str, &str)] = &[
@@ -162,6 +163,36 @@ const CLIS: &[(&str, &str, &str)] = &[
     ("antigravity", "Antigravity", "agy"),
     ("ollama", "Ollama", "ollama"),
 ];
+
+fn resolve_bin_path(bin: &str) -> Option<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let candidates = [
+        format!("{home}/.local/bin/{bin}"),
+        format!("{home}/.bun/bin/{bin}"),
+        format!("/opt/homebrew/bin/{bin}"),
+        format!("/usr/local/bin/{bin}"),
+        format!("/usr/bin/{bin}"),
+    ];
+    candidates.into_iter().find(|p| Path::new(p).exists())
+}
+
+fn probe_cli_version(bin: &str) -> Option<String> {
+    let path = resolve_bin_path(bin)?;
+    use std::process::Command;
+    let out = Command::new(&path).arg("--version").output().ok()?;
+    let text = if !out.stdout.is_empty() {
+        String::from_utf8_lossy(&out.stdout).to_string()
+    } else if !out.stderr.is_empty() {
+        String::from_utf8_lossy(&out.stderr).to_string()
+    } else {
+        return None;
+    };
+    let first = text.lines().next()?.trim();
+    if first.is_empty() {
+        return None;
+    }
+    Some(first.to_string())
+}
 
 fn find_in_known_paths(bin: &str) -> bool {
     // Mac apps launched from Finder inherit a minimal PATH from
@@ -199,11 +230,13 @@ async fn detect_clis(_app: tauri::AppHandle) -> Result<Vec<CliInfo>, String> {
         } else {
             find_in_known_paths(bin)
         };
+        let version = if available { probe_cli_version(bin) } else { None };
         out.push(CliInfo {
             id: id.to_string(),
             label: label.to_string(),
             bin: bin.to_string(),
             available,
+            version,
         });
     }
     Ok(out)
@@ -219,6 +252,11 @@ pub struct ChatArgs {
     pub session_id: String, // unique id so the UI knows which session each chunk belongs to
     #[serde(default)]
     pub model: Option<String>,
+    // Hard cap on how long the child is allowed to run. After this
+    // expires the child is killed and chat:done emits with a synthetic
+    // code so the UI can show a "timed out" reply rather than a hang.
+    #[serde(default)]
+    pub timeout_sec: Option<u64>,
 }
 
 fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String>) {
@@ -311,6 +349,12 @@ async fn chat_send(
     let mut child = TokioCommand::new(&bin_abs)
         .args(&cli_args)
         .env("PATH", combined_path)
+        // Closing stdin so claude/codex/etc don't sit waiting for it.
+        // claude in particular prints "no stdin data received in 3s,
+        // proceeding without it." to stderr and stalls before emitting
+        // the actual reply when inherited stdin is invalid (Finder GUI
+        // apps have no controlling terminal).
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -373,15 +417,41 @@ async fn chat_send(
             }
         });
     }
+    let timeout_sec = args.timeout_sec;
     tauri::async_runtime::spawn(async move {
-        let code = child.wait().await.ok().and_then(|s| s.code());
+        use tokio::time::{timeout, Duration};
+        let result = match timeout_sec {
+            Some(secs) if secs > 0 => timeout(Duration::from_secs(secs), child.wait()).await,
+            _ => Ok(child.wait().await),
+        };
+        let (code, timed_out) = match result {
+            Ok(Ok(status)) => (status.code(), false),
+            Ok(Err(_)) => (None, false),
+            Err(_) => {
+                // Hard cap hit — kill the child so it doesn't linger.
+                let _ = child.kill().await;
+                (Some(124), true) // 124 mirrors GNU coreutils' `timeout` exit code
+            }
+        };
         unregister_child(&session_done);
+        if timed_out {
+            let _ = app.emit(
+                "chat:chunk",
+                serde_json::json!({
+                    "session": session_done,
+                    "cli": cli_done,
+                    "stream": "stderr",
+                    "data": format!("[prevail] killed: exceeded timeout ({}s)\n", timeout_sec.unwrap_or(0)),
+                }),
+            );
+        }
         let _ = app.emit(
             "chat:done",
             serde_json::json!({
                 "session": session_done,
                 "cli": cli_done,
                 "code": code,
+                "timed_out": timed_out,
             }),
         );
     });
@@ -546,6 +616,59 @@ pub struct SkillEntry {
     pub description: Option<String>,
 }
 
+// Skip leading YAML frontmatter + heading lines, then return the first
+// meaningful prose line as the skill description. Frontmatter is a
+// block bounded by `---` lines at the very start of the file.
+fn extract_skill_description(body: &str) -> Option<String> {
+    let mut lines = body.lines().peekable();
+    // Detect and consume frontmatter only if it starts on line 1.
+    if let Some(first) = lines.peek() {
+        if first.trim() == "---" {
+            lines.next();
+            while let Some(l) = lines.next() {
+                if l.trim() == "---" { break; }
+                // Also pull "description: …" out of YAML if present.
+                let lt = l.trim();
+                if let Some(rest) = lt.strip_prefix("description:") {
+                    let val = rest.trim().trim_matches('"').trim();
+                    if !val.is_empty() {
+                        return Some(val.chars().take(140).collect());
+                    }
+                }
+            }
+        }
+    }
+    for l in lines {
+        let t = l.trim();
+        if t.is_empty() { continue; }
+        if t.starts_with('#') { continue; }
+        if t.starts_with("```") { continue; }
+        // Strip any leading markdown markers (`-`, `*`, `>`, etc.)
+        // so the description reads like prose.
+        let cleaned = t
+            .trim_start_matches(|c: char| c == '-' || c == '*' || c == '>' || c == ' ')
+            .trim();
+        if cleaned.len() < 3 { continue; }
+        return Some(cleaned.chars().take(140).collect());
+    }
+    None
+}
+
+// Read the full content of a single skill (SKILL.md, README.md, or
+// skill.md — whichever is present). Used by the Skills tab to expand
+// a skill inline so the user can read its contents.
+#[tauri::command]
+fn read_skill(path: String) -> Result<String, String> {
+    let dir = PathBuf::from(&path);
+    for candidate in &["SKILL.md", "README.md", "skill.md"] {
+        let f = dir.join(candidate);
+        if f.exists() {
+            return read_to_string_retry(&f).map_err(|e| e.to_string());
+        }
+    }
+    Err(format!("no SKILL.md/README.md/skill.md in {}", dir.display()))
+}
+
 // Pre-flight verification — spawn the CLI with a tiny "respond: ok"
 // prompt and the specified model. Returns Ok(reply) on success or
 // Err(message) on failure. Short timeout (10s) so verification doesn't
@@ -571,6 +694,12 @@ async fn verify_cli_model(args: VerifyArgs) -> Result<String, String> {
     let mut child = TokioCommand::new(&bin_abs)
         .args(&cli_args)
         .env("PATH", combined_path)
+        // Closing stdin so claude/codex/etc don't sit waiting for it.
+        // claude in particular prints "no stdin data received in 3s,
+        // proceeding without it." to stderr and stalls before emitting
+        // the actual reply when inherited stdin is invalid (Finder GUI
+        // apps have no controlling terminal).
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -613,6 +742,21 @@ fn read_user_md(vault: String) -> Result<String, String> {
 fn write_user_md(vault: String, body: String) -> Result<(), String> {
     let p = PathBuf::from(&vault).join("user.md");
     fs::write(&p, body).map_err(|e| format!("write user.md: {e}"))
+}
+
+#[tauri::command]
+fn write_paste_attachment(vault: String, body: String) -> Result<String, String> {
+    let dir = PathBuf::from(&vault).join("_paste");
+    fs::create_dir_all(&dir).map_err(|e| format!("mkdir _paste: {e}"))?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, m, d, hh, mm, ss) = secs_to_ymdhms(now as i64);
+    let name = format!("{y:04}-{m:02}-{d:02}_{hh:02}-{mm:02}-{ss:02}.txt");
+    let p = dir.join(&name);
+    fs::write(&p, body).map_err(|e| format!("write paste: {e}"))?;
+    Ok(p.to_string_lossy().to_string())
 }
 
 // Save a chat session as a markdown transcript under <domain>/_log/.
@@ -728,6 +872,450 @@ fn secs_to_ymdhms(secs: i64) -> (i32, u32, u32, u32, u32, u32) {
     (year, month, day, hh, mm, ss)
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Threads — markdown-on-disk chat threads stored under
+// <vault>/<domain>/_threads/<slug>.md (or <vault>/_threads/<slug>.md
+// when no domain is set). Each file is markdown with a YAML frontmatter
+// block holding title/domain/created/updated/turns; bodies are `## You`
+// and `## <cli> [· model]` sections, one per turn.
+
+#[derive(Serialize, Clone)]
+pub struct ThreadMeta {
+    pub path: String,
+    pub slug: String,
+    pub title: String,
+    pub domain: Option<String>,
+    pub created: u64,
+    pub updated: u64,
+    pub turn_count: usize,
+    pub preview: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ThreadTurn {
+    pub role: String,
+    pub cli: Option<String>,
+    pub model: Option<String>,
+    pub content: String,
+}
+
+#[derive(Serialize, Clone)]
+pub struct ThreadFull {
+    pub meta: ThreadMeta,
+    pub turns: Vec<ThreadTurn>,
+}
+
+// Parse an ISO-8601 timestamp like 2026-06-05T18:30:00Z into unix secs.
+// We only handle the canonical Z-suffixed form we write ourselves; if
+// the value doesn't parse we return 0 so callers can fall back to mtime.
+fn parse_iso8601_z(s: &str) -> u64 {
+    let s = s.trim();
+    if s.len() < 20 || !s.ends_with('Z') {
+        return 0;
+    }
+    let bytes = s.as_bytes();
+    let to_num = |start: usize, end: usize| -> Option<i64> {
+        std::str::from_utf8(&bytes[start..end]).ok()?.parse::<i64>().ok()
+    };
+    let year = match to_num(0, 4) { Some(v) => v as i32, None => return 0 };
+    let month = match to_num(5, 7) { Some(v) => v as u32, None => return 0 };
+    let day = match to_num(8, 10) { Some(v) => v as u32, None => return 0 };
+    let hh = match to_num(11, 13) { Some(v) => v as u32, None => return 0 };
+    let mm = match to_num(14, 16) { Some(v) => v as u32, None => return 0 };
+    let ss = match to_num(17, 19) { Some(v) => v as u32, None => return 0 };
+    // Days from 1970-01-01 to year-01-01 (Gregorian).
+    let mut days: i64 = 0;
+    for y in 1970..year {
+        let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+        days += if leap { 366 } else { 365 };
+    }
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let month_lens: [u32; 12] = if leap {
+        [31,29,31,30,31,30,31,31,30,31,30,31]
+    } else {
+        [31,28,31,30,31,30,31,31,30,31,30,31]
+    };
+    if month < 1 || month > 12 || day < 1 { return 0; }
+    for i in 0..(month as usize - 1) {
+        days += month_lens[i] as i64;
+    }
+    days += (day - 1) as i64;
+    let secs = days * 86_400 + (hh as i64) * 3600 + (mm as i64) * 60 + ss as i64;
+    if secs < 0 { 0 } else { secs as u64 }
+}
+
+fn iso8601_z(secs: u64) -> String {
+    let (y, mo, d, hh, mm, ss) = secs_to_ymdhms(secs as i64);
+    format!("{y:04}-{mo:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
+}
+
+// Minimal frontmatter scanner — splits the leading `---\n…\n---\n`
+// block from the body and returns (key → value) pairs plus body text.
+fn split_frontmatter(raw: &str) -> (HashMap<String, String>, String) {
+    let mut meta: HashMap<String, String> = HashMap::new();
+    let mut lines = raw.lines();
+    let first = match lines.next() {
+        Some(l) => l,
+        None => return (meta, String::new()),
+    };
+    if first.trim() != "---" {
+        return (meta, raw.to_string());
+    }
+    let mut consumed = first.len() + 1;
+    for line in lines.by_ref() {
+        consumed += line.len() + 1;
+        if line.trim() == "---" {
+            break;
+        }
+        if let Some(idx) = line.find(':') {
+            let key = line[..idx].trim().to_string();
+            let val = line[idx + 1..].trim().to_string();
+            if !key.is_empty() {
+                meta.insert(key, val);
+            }
+        }
+    }
+    let body = if consumed >= raw.len() {
+        String::new()
+    } else {
+        raw[consumed..].to_string()
+    };
+    (meta, body)
+}
+
+// Parse the body of a thread into ThreadTurns by splitting on `## `
+// headers at the start of lines. The header tells us the role.
+fn parse_thread_body(body: &str) -> Vec<ThreadTurn> {
+    let mut turns: Vec<ThreadTurn> = Vec::new();
+    // Normalize: split on lines that start with "## ". We walk the
+    // string by lines to keep things allocation-light.
+    let mut current_header: Option<String> = None;
+    let mut current_content: String = String::new();
+    let flush = |hdr: &Option<String>, content: &str, turns: &mut Vec<ThreadTurn>| {
+        let header = match hdr {
+            Some(h) => h.trim().to_string(),
+            None => return,
+        };
+        let content = content.trim_matches('\n').to_string();
+        if header.is_empty() && content.is_empty() {
+            return;
+        }
+        if header.eq_ignore_ascii_case("You") {
+            turns.push(ThreadTurn {
+                role: "user".into(),
+                cli: None,
+                model: None,
+                content,
+            });
+        } else {
+            // Assistant header may be "<cli>" or "<cli> · <model>".
+            let (cli, model) = match header.split_once(" · ") {
+                Some((c, m)) => (c.trim().to_string(), Some(m.trim().to_string())),
+                None => (header.clone(), None),
+            };
+            turns.push(ThreadTurn {
+                role: "assistant".into(),
+                cli: if cli.is_empty() { None } else { Some(cli) },
+                model,
+                content,
+            });
+        }
+    };
+    for line in body.lines() {
+        if let Some(rest) = line.strip_prefix("## ") {
+            flush(&current_header, &current_content, &mut turns);
+            current_header = Some(rest.to_string());
+            current_content = String::new();
+        } else {
+            if !current_content.is_empty() {
+                current_content.push('\n');
+            }
+            current_content.push_str(line);
+        }
+    }
+    flush(&current_header, &current_content, &mut turns);
+    turns
+}
+
+// Build a ThreadMeta from a path + parsed frontmatter + body. Falls
+// back to file mtime / slug when fields are missing.
+fn thread_meta_from(
+    path: &Path,
+    meta: &HashMap<String, String>,
+    body: &str,
+    turns: &[ThreadTurn],
+) -> ThreadMeta {
+    let slug = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let title = meta
+        .get("title")
+        .cloned()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| slug.clone());
+    let domain = meta
+        .get("domain")
+        .cloned()
+        .filter(|s| !s.is_empty());
+    let mtime_secs = fs::metadata(path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let created = meta
+        .get("created")
+        .map(|s| parse_iso8601_z(s))
+        .unwrap_or(0);
+    let created = if created == 0 { mtime_secs } else { created };
+    let updated = meta
+        .get("updated")
+        .map(|s| parse_iso8601_z(s))
+        .unwrap_or(0);
+    let updated = if updated == 0 { mtime_secs } else { updated };
+    let turn_count = meta
+        .get("turns")
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(turns.len());
+    // Preview = first 120 chars of the first user turn's content. If
+    // there's no user turn (shouldn't happen, but be defensive), fall
+    // back to the first non-empty body line.
+    let preview = turns
+        .iter()
+        .find(|t| t.role == "user")
+        .map(|t| t.content.clone())
+        .unwrap_or_else(|| {
+            body.lines()
+                .find(|l| !l.trim().is_empty() && !l.starts_with("## "))
+                .unwrap_or("")
+                .to_string()
+        });
+    let preview: String = preview.chars().take(120).collect();
+    ThreadMeta {
+        path: path.to_string_lossy().to_string(),
+        slug,
+        title,
+        domain,
+        created,
+        updated,
+        turn_count,
+        preview,
+    }
+}
+
+#[tauri::command]
+fn list_threads(vault: String, domain: Option<String>) -> Result<Vec<ThreadMeta>, String> {
+    let threads_dir = match &domain {
+        Some(d) => PathBuf::from(&vault).join(d).join("_threads"),
+        None => PathBuf::from(&vault).join("_threads"),
+    };
+    if !threads_dir.exists() {
+        return Ok(vec![]);
+    }
+    let entries = read_dir_retry(&threads_dir).map_err(|e| e.to_string())?;
+    let mut out: Vec<ThreadMeta> = Vec::new();
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.extension().and_then(|s| s.to_str()) != Some("md") {
+            continue;
+        }
+        let raw = match read_to_string_retry(&p) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let (fm, body) = split_frontmatter(&raw);
+        let turns = parse_thread_body(&body);
+        out.push(thread_meta_from(&p, &fm, &body, &turns));
+    }
+    out.sort_by(|a, b| b.updated.cmp(&a.updated));
+    Ok(out)
+}
+
+#[tauri::command]
+fn load_thread(path: String) -> Result<ThreadFull, String> {
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        return Err(format!("thread not found: {path}"));
+    }
+    let raw = read_to_string_retry(&p).map_err(|e| e.to_string())?;
+    let (fm, body) = split_frontmatter(&raw);
+    let turns = parse_thread_body(&body);
+    let meta = thread_meta_from(&p, &fm, &body, &turns);
+    Ok(ThreadFull { meta, turns })
+}
+
+// Slug helper — strip non-alphanumeric chars, collapse to dashes.
+fn slugify_fragment(s: &str) -> String {
+    s.trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+// Tiny stable hash for slug generation — FNV-1a 32-bit. We only need
+// determinism + low collision rate, not cryptographic strength.
+fn fnv1a32(data: &[u8]) -> u32 {
+    let mut h: u32 = 0x811c9dc5;
+    for b in data {
+        h ^= *b as u32;
+        h = h.wrapping_mul(0x01000193);
+    }
+    h
+}
+
+#[tauri::command]
+fn save_thread(
+    vault: String,
+    domain: Option<String>,
+    slug: Option<String>,
+    title: String,
+    turns: Vec<ThreadTurn>,
+) -> Result<String, String> {
+    if turns.is_empty() {
+        return Err("thread is empty".into());
+    }
+    let threads_dir = match &domain {
+        Some(d) => PathBuf::from(&vault).join(d).join("_threads"),
+        None => PathBuf::from(&vault).join("_threads"),
+    };
+    fs::create_dir_all(&threads_dir).map_err(|e| format!("mkdir _threads: {e}"))?;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (year, month, day, hh, mm, ss) = secs_to_ymdhms(now as i64);
+    let stamp = format!("{year:04}-{month:02}-{day:02}_{hh:02}-{mm:02}-{ss:02}");
+
+    let final_slug = match slug.as_ref().map(|s| slugify_fragment(s)).filter(|s| !s.is_empty()) {
+        Some(s) => s,
+        None => {
+            let first_user = turns
+                .iter()
+                .find(|t| t.role == "user")
+                .map(|t| t.content.as_str())
+                .unwrap_or("");
+            let hash = fnv1a32(first_user.as_bytes());
+            format!("{stamp}_{hash:08x}")
+        }
+    };
+
+    let file_path = threads_dir.join(format!("{final_slug}.md"));
+
+    // Preserve existing `created` timestamp if the file is being
+    // overwritten with a known slug; otherwise stamp it now.
+    let created_secs = if file_path.exists() {
+        read_to_string_retry(&file_path)
+            .ok()
+            .map(|raw| split_frontmatter(&raw).0)
+            .and_then(|fm| fm.get("created").map(|s| parse_iso8601_z(s)))
+            .filter(|v| *v != 0)
+            .unwrap_or(now)
+    } else {
+        now
+    };
+
+    let mut body = String::new();
+    body.push_str("---\n");
+    body.push_str(&format!("title: {}\n", title));
+    body.push_str(&format!(
+        "domain: {}\n",
+        domain.as_deref().unwrap_or("")
+    ));
+    body.push_str(&format!("created: {}\n", iso8601_z(created_secs)));
+    body.push_str(&format!("updated: {}\n", iso8601_z(now)));
+    body.push_str(&format!("turns: {}\n", turns.len()));
+    body.push_str("---\n\n");
+    for t in &turns {
+        let speaker = if t.role == "user" {
+            "You".to_string()
+        } else {
+            let cli = t.cli.as_deref().unwrap_or("assistant");
+            let model = t
+                .model
+                .as_deref()
+                .map(|m| format!(" · {m}"))
+                .unwrap_or_default();
+            format!("{cli}{model}")
+        };
+        body.push_str(&format!("## {speaker}\n\n{}\n\n", t.content.trim()));
+    }
+    fs::write(&file_path, &body).map_err(|e| format!("write thread: {e}"))?;
+    Ok(file_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn rename_thread(path: String, new_title: String) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        return Err(format!("thread not found: {path}"));
+    }
+    let raw = read_to_string_retry(&p).map_err(|e| e.to_string())?;
+    // Walk the leading frontmatter block, replacing the `title:` line.
+    // If there's no frontmatter, prepend a minimal one.
+    let mut out = String::with_capacity(raw.len() + 32);
+    let mut lines = raw.lines();
+    let first = lines.next();
+    match first {
+        Some(l) if l.trim() == "---" => {
+            out.push_str("---\n");
+            let mut title_written = false;
+            for line in lines.by_ref() {
+                if line.trim() == "---" {
+                    if !title_written {
+                        out.push_str(&format!("title: {new_title}\n"));
+                    }
+                    out.push_str("---\n");
+                    break;
+                }
+                if line.trim_start().starts_with("title:") && !title_written {
+                    out.push_str(&format!("title: {new_title}\n"));
+                    title_written = true;
+                } else {
+                    out.push_str(line);
+                    out.push('\n');
+                }
+            }
+            // Append the remaining body verbatim.
+            let rest: Vec<&str> = lines.collect();
+            if !rest.is_empty() {
+                out.push_str(&rest.join("\n"));
+                if raw.ends_with('\n') {
+                    out.push('\n');
+                }
+            } else if raw.ends_with('\n') && !out.ends_with('\n') {
+                out.push('\n');
+            }
+        }
+        Some(_) | None => {
+            // No frontmatter — synthesize a minimal one and prepend.
+            out.push_str("---\n");
+            out.push_str(&format!("title: {new_title}\n"));
+            out.push_str("---\n\n");
+            out.push_str(&raw);
+        }
+    }
+    fs::write(&p, out).map_err(|e| format!("write thread: {e}"))
+}
+
+#[tauri::command]
+fn delete_thread(path: String) -> Result<(), String> {
+    if !path.contains("_threads/") {
+        return Err(format!("refusing to delete path outside _threads/: {path}"));
+    }
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        return Err(format!("thread not found: {path}"));
+    }
+    fs::remove_file(&p).map_err(|e| format!("delete thread: {e}"))
+}
+
 // Domain context bundle — everything the user (and the AI) might want
 // to load when entering a domain: state.md, decisions.md, _journal.md
 // (or _journal/), recent _log/ entries, and skills.
@@ -829,11 +1417,8 @@ fn domain_context(vault: String, domain: String) -> Result<DomainContext, String
                 for candidate in &["SKILL.md", "README.md", "skill.md"] {
                     let f = p.join(candidate);
                     if let Ok(s) = read_to_string_retry(&f) {
-                        let first = s.lines()
-                            .find(|l| !l.trim().is_empty() && !l.starts_with('#'))
-                            .unwrap_or("").trim().to_string();
-                        if !first.is_empty() {
-                            description = Some(first.chars().take(140).collect());
+                        if let Some(desc) = extract_skill_description(&s) {
+                            description = Some(desc);
                             break;
                         }
                     }
@@ -1171,10 +1756,17 @@ pub fn run() {
             abort_sessions,
             read_user_md,
             write_user_md,
+            write_paste_attachment,
             save_session,
             verify_cli_model,
+            read_skill,
             benchmark_start,
             benchmark_score,
+            list_threads,
+            load_thread,
+            save_thread,
+            rename_thread,
+            delete_thread,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
