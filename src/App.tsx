@@ -22,7 +22,7 @@ function Markdown({ source, compact = false }: { source: string; compact?: boole
 }
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.80";
+const APP_VERSION = "0.2.81";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -787,6 +787,38 @@ export default function App() {
     if (!selectedDomain) return null;
     return domains.find((d) => d.name === selectedDomain)?.path ?? null;
   }, [domains, selectedDomain]);
+
+  // Keyboard shortcuts — global. Skip when a text input has focus
+  // (so typing ⌘B in the composer doesn't toggle the sidebar).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase() ?? "";
+      const editable = tag === "input" || tag === "textarea" || target?.isContentEditable;
+      // Allow the global shortcuts that are clearly intentional even
+      // when in a field (Cmd+, for settings).
+      if (editable && e.key !== "," && e.key !== "k" && e.key !== "K") return;
+      switch (e.key.toLowerCase()) {
+        case "k": // ⌘K — new chat (no domain)
+          e.preventDefault();
+          setSelectedDomain("");
+          setActiveThreadPath(null);
+          setTab("chat");
+          break;
+        case ",": // ⌘, — open settings
+          e.preventDefault();
+          setTab("settings");
+          break;
+        case "b": // ⌘B — toggle the domain rail
+          e.preventDefault();
+          setSidebarCollapsed((v) => !v);
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   async function openInFinder(path: string | null) {
     if (!path) return;
