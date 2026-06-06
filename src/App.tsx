@@ -22,7 +22,7 @@ function Markdown({ source, compact = false }: { source: string; compact?: boole
 }
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.79";
+const APP_VERSION = "0.2.80";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -7522,6 +7522,54 @@ function IngestionBrowserRunner() {
           className="rounded border border-border bg-background px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
         >
           save as recipe
+        </button>
+        <button
+          onClick={async () => {
+            const recipeJson = {
+              id: (portal.trim() || "untitled").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+              label: portal.trim() || "Untitled",
+              domain_hint: domain.trim() || "wealth",
+              start_url: startUrl.trim(),
+              success_url_contains: successUrl.trim() || null,
+              notes: null,
+              actions: draftActions,
+            };
+            try {
+              await navigator.clipboard.writeText(JSON.stringify(recipeJson, null, 2));
+              setLog((cur) => [...cur, "recipe copied to clipboard"]);
+            } catch (e) { console.error(e); }
+          }}
+          className="rounded border border-border bg-background px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+          title="Copy current draft as JSON"
+        >
+          export json
+        </button>
+        <button
+          onClick={async () => {
+            const pasted = window.prompt("Paste recipe JSON:");
+            if (!pasted) return;
+            try {
+              const r = JSON.parse(pasted);
+              if (typeof r.id !== "string" || typeof r.start_url !== "string") {
+                throw new Error("recipe must have id + start_url");
+              }
+              await invoke("ingestion_recipe_save", { recipe: {
+                id: r.id, label: r.label ?? r.id, domain_hint: r.domain_hint ?? "wealth",
+                start_url: r.start_url, success_url_contains: r.success_url_contains ?? null,
+                notes: r.notes ?? null, actions: Array.isArray(r.actions) ? r.actions : [],
+              }});
+              const all = await invoke<PortalRecipe[]>("ingestion_browser_recipes");
+              setRecipes(all);
+              applyRecipe(r.id);
+              setLog((cur) => [...cur, `imported recipe ${r.id}`]);
+            } catch (e) {
+              setLog((cur) => [...cur, `import failed: ${e}`]);
+            }
+          }}
+          className="rounded border border-border bg-background px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+          title="Paste recipe JSON to import"
+        >
+          import json
         </button>
         <span className="font-mono text-[10px] text-text-muted">
           requires <code className="text-accent">node</code> + <code className="text-accent">playwright-core</code>
