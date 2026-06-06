@@ -68,7 +68,7 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.88";
+const APP_VERSION = "0.2.89";
 
 // VS Code-style quick switcher modal. Centered overlay, single
 // search input at the top, combined list of domains + recent
@@ -6451,7 +6451,7 @@ function SettingsPanel({
   onBack?: () => void;
   onStartChatWith?: (cliId: string, modelId?: string) => void;
 }) {
-  type Section = "general" | "agents" | "user" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "about";
+  type Section = "general" | "agents" | "user" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>("general");
 
   const items: Array<{ id: Section; label: string; icon: typeof Folder }> = [
@@ -6465,6 +6465,7 @@ function SettingsPanel({
     { id: "skills", label: "Skills", icon: Sparkles },
     { id: "tools", label: "Integrations", icon: Wrench },
     { id: "ingestion", label: "Ingestion", icon: Network },
+    { id: "shortcuts", label: "Shortcuts", icon: SettingsIcon },
     { id: "about", label: "About", icon: Github },
   ];
 
@@ -6531,6 +6532,7 @@ function SettingsPanel({
             </>
           )}
           {section === "ingestion" && <IngestionSection />}
+          {section === "shortcuts" && <ShortcutsSection />}
           {section === "about" && <AboutSection />}
         </div>
       </div>
@@ -8086,6 +8088,81 @@ function IngestionBrowserRunner() {
         </pre>
       )}
     </div>
+  );
+}
+
+// Read-only reference of every keyboard shortcut wired into the app.
+// Helps discoverability — most users won't find ⌘P or ⌘B by accident.
+function ShortcutsSection() {
+  type Entry = { keys: string[]; label: string; desc: string };
+  const groups: Array<{ name: string; entries: Entry[] }> = [
+    {
+      name: "Navigation",
+      entries: [
+        { keys: ["⌘", "K"], label: "New chat", desc: "Drops the current domain + thread, lands on the no-domain dashboard." },
+        { keys: ["⌘", "P"], label: "Quick switcher", desc: "Fuzzy finder over every domain and every saved thread." },
+        { keys: ["⌘", "B"], label: "Toggle sidebar", desc: "Collapses or expands the domain rail." },
+        { keys: ["⌘", ","], label: "Open Settings", desc: "Jumps to the settings panel from anywhere." },
+      ],
+    },
+    {
+      name: "Composer",
+      entries: [
+        { keys: ["↵"], label: "Send (Enter mode)", desc: "Default. Switch to ⌘+↵ in Settings → General → Send messages with." },
+        { keys: ["⇧", "↵"], label: "New line", desc: "Insert a hard newline without sending." },
+        { keys: ["↑"], label: "Recall last prompt", desc: "Walk backward through this domain's prompt history." },
+        { keys: ["↓"], label: "Recall next prompt", desc: "Walk forward; ↓ past the newest clears the composer." },
+        { keys: ["/"], label: "Skill autocomplete", desc: "Type / and a few letters to fuzzy-match a skill in this domain." },
+      ],
+    },
+    {
+      name: "Thread rail",
+      entries: [
+        { keys: ["double-click"], label: "Rename", desc: "Edit the thread's title inline. ↵ to confirm." },
+        { keys: ["+"], label: "New thread", desc: "Creates an empty thread file immediately — rename it before typing." },
+      ],
+    },
+  ];
+
+  const Key = ({ children }: { children: React.ReactNode }) => (
+    <kbd className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded border border-border bg-background px-1.5 font-mono text-[11px] font-medium text-text-primary shadow-sm">
+      {children}
+    </kbd>
+  );
+
+  return (
+    <>
+      <SettingsHeader title="Shortcuts" subtitle="Keyboard surface for common actions. Most are global — they work even while you're typing." />
+      <div className="space-y-6">
+        {groups.map((g) => (
+          <section key={g.name} className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+            <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+              {g.name}
+            </div>
+            <ul className="flex flex-col divide-y divide-border-subtle">
+              {g.entries.map((e, i) => (
+                <li key={i} className="flex items-center justify-between gap-4 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-text-primary">{e.label}</div>
+                    <div className="mt-0.5 text-xs text-text-secondary">{e.desc}</div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {e.keys.map((k, j) => (
+                      <Fragment key={j}>
+                        <Key>{k}</Key>
+                        {j < e.keys.length - 1 && e.keys.length > 1 && k.length === 1 && e.keys[j+1].length === 1 && (
+                          <span className="text-[11px] text-text-muted">+</span>
+                        )}
+                      </Fragment>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </>
   );
 }
 
