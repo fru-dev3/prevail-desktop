@@ -8,16 +8,21 @@ import remarkGfm from "remark-gfm";
 // Renders LLM output as proper markdown — headings, lists, bold,
 // inline code, fenced blocks, tables. Wraps each block element in
 // `prose`-like Tailwind so the spacing reads.
-function Markdown({ source }: { source: string }) {
+function Markdown({ source, compact = false }: { source: string; compact?: boolean }) {
+  // Two flavors: default (chat reply) and compact (state/decisions/
+  // journal). Compact mode is denser, sans-serif headings, smaller
+  // bullets, no emoji bloat — looks like a real doc, not AI slop.
   return (
-    <div className="prose prose-sm max-w-none text-text-primary [&_a]:text-accent [&_blockquote]:border-l-2 [&_blockquote]:border-accent-border [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-text-secondary [&_code]:rounded [&_code]:bg-surface-warm [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[13px] [&_code]:text-accent [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:font-display [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h2]:font-display [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1 [&_h3]:font-semibold [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_p]:leading-relaxed [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-surface-warm [&_pre]:p-3 [&_pre]:text-[12px] [&_pre>code]:bg-transparent [&_pre>code]:p-0 [&_pre>code]:text-text-primary [&_strong]:font-semibold [&_strong]:text-text-primary [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-border-subtle [&_th]:bg-surface-warm [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:border [&_td]:border-border-subtle [&_td]:px-2 [&_td]:py-1 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5">
+    <div
+      className={`prose-prevail max-w-none ${compact ? "prose-prevail--compact" : ""}`}
+    >
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{source}</ReactMarkdown>
     </div>
   );
 }
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.42";
+const APP_VERSION = "0.2.66";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -221,6 +226,24 @@ function ProviderMark({ vendor, size = 28 }: { vendor: string; size?: number }) 
 // ─────────────────────────────────────────────────────────────────────
 // Types matching the Rust commands in src-tauri/src/lib.rs
 
+// Thread types — match Rust ThreadMeta / ThreadTurn / ThreadFull.
+interface ThreadMeta {
+  path: string;
+  slug: string;
+  title: string;
+  domain: string | null;
+  created: number;
+  updated: number;
+  turn_count: number;
+  preview: string;
+}
+interface ThreadTurn {
+  role: "user" | "assistant";
+  cli: string | null;
+  model: string | null;
+  content: string;
+}
+
 interface DomainLogEntry {
   name: string;
   path: string;
@@ -247,6 +270,7 @@ interface CliInfo {
   label: string;
   bin: string;
   available: boolean;
+  version?: string | null;
 }
 
 interface BenchmarkRun {
@@ -382,6 +406,21 @@ function lsSet(key: string, value: string): void {
   else localStorage.removeItem(key);
 }
 
+// Per-domain preferred skills — auto-attach on entering a domain.
+function loadPreferredSkills(domain: string | null): string[] {
+  if (!domain) return [];
+  try {
+    const raw = lsGet(`prevail.domain.${domain}.skills`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : [];
+  } catch { return []; }
+}
+function savePreferredSkills(domain: string | null, skills: string[]): void {
+  if (!domain) return;
+  lsSet(`prevail.domain.${domain}.skills`, JSON.stringify(skills));
+}
+
 // Concatenates a list of chat messages into a single text payload for
 // passing as context to a stateless CLI. Drops the oldest turns until
 // the total stays under `maxChars`. The most-recent placeholder reply
@@ -434,6 +473,44 @@ function renderSkillTokens(text: string): React.ReactNode {
   return <>{parts}</>;
 }
 
+// Vertical drag handle between rails. Calls `onChange(delta)` while
+// the user drags. Owner is responsible for clamping the resulting
+// width. Hover surfaces a subtle accent line so the affordance is
+// visible without dominating the UI.
+function ResizeHandle({ onChange, ariaLabel }: { onChange: (deltaPx: number) => void; ariaLabel?: string }) {
+  const lastX = useRef(0);
+  const onDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    lastX.current = e.clientX;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - lastX.current;
+      lastX.current = ev.clientX;
+      if (dx !== 0) onChange(dx);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+  return (
+    <div
+      onMouseDown={onDown}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={ariaLabel}
+      className="group relative w-1 cursor-col-resize bg-transparent hover:bg-accent-border"
+    >
+      <div className="absolute inset-y-0 -left-1 -right-1 group-hover:bg-accent-border/40" />
+    </div>
+  );
+}
+
 // Strip ANSI escape codes (CSI sequences) that some CLIs emit even in
 // non-TTY mode — ollama is the worst offender with its progress
 // spinner. Without this the chat shows garbage like `[4D[K`.
@@ -468,7 +545,7 @@ function PrevailLogo({ size = 28, rounded = true }: { size?: number; rounded?: b
 
 function Brand({ className = "" }: { className?: string }) {
   return (
-    <span className={`tracking-[0.04em] ${className}`}>
+    <span className={className} style={{ letterSpacing: "inherit" }}>
       PREV<span className="text-ai">AI</span>L
     </span>
   );
@@ -556,6 +633,99 @@ export default function App() {
   );
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
+  // Threads — backed by <vault>/<domain>/_threads/<slug>.md files.
+  // Active thread defines what's loaded into the chat transcript.
+  const [threads, setThreads] = useState<ThreadMeta[]>([]);
+  const [activeThreadPath, setActiveThreadPath] = useState<string | null>(null);
+  // Switching domains starts a fresh chat in the new domain instead of
+  // dragging the previous domain's thread pointer along — which would
+  // cause the next auto-save to try writing into a path that lives
+  // under the wrong domain folder.
+  useEffect(() => { setActiveThreadPath(null); }, [selectedDomain]);
+  // Cross-domain streaming awareness — App-level map of in-flight
+  // streams. Sidebar + ThreadsRail read this to pulse domains/threads
+  // that have work happening in the background.
+  type RunningStream = {
+    sessionId: string;
+    domain: string | null;
+    threadPath: string | null;
+    title: string;
+    startedAt: number;
+  };
+  const [runningStreams, setRunningStreams] = useState<RunningStream[]>([]);
+  const notifyPermissionRef = useRef<NotificationPermission | "unknown">(typeof Notification !== "undefined" ? Notification.permission : "unknown");
+  useEffect(() => {
+    if (typeof Notification === "undefined") return;
+    if (notifyPermissionRef.current === "default") {
+      Notification.requestPermission().then((p) => { notifyPermissionRef.current = p; }).catch(() => {});
+    }
+  }, []);
+  function notifyDone(title: string, body: string) {
+    if (lsGet("prevail.pref.desktopNotif") !== "1") return;
+    if (typeof Notification === "undefined") return;
+    if (notifyPermissionRef.current === "granted") {
+      try { new Notification(title, { body }); } catch {}
+    }
+  }
+  function playDoneChime() {
+    if (lsGet("prevail.pref.soundOnDone") !== "1") return;
+    try {
+      const AC = (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext
+        || (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.frequency.value = 880;
+      o.type = "sine";
+      g.gain.setValueAtTime(0.0001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.32);
+      o.connect(g).connect(ctx.destination);
+      o.start();
+      o.stop(ctx.currentTime + 0.34);
+      o.onended = () => ctx.close();
+    } catch {}
+  }
+  const markStreamStart = useCallback((s: RunningStream) => {
+    setRunningStreams((cur) => [...cur.filter((x) => x.sessionId !== s.sessionId), s]);
+  }, []);
+  const selectedDomainRef = useRef<string | null>(null);
+  useEffect(() => { selectedDomainRef.current = selectedDomain; }, [selectedDomain]);
+  const markStreamEnd = useCallback((sessionId: string) => {
+    setRunningStreams((cur) => {
+      const ended = cur.find((x) => x.sessionId === sessionId);
+      if (ended) {
+        playDoneChime();
+        if (ended.domain !== selectedDomainRef.current) {
+          const where = ended.domain ? titleCase(ended.domain) : "no domain";
+          notifyDone(`Reply ready · ${where}`, ended.title || "Your conversation just finished.");
+        }
+      }
+      return cur.filter((x) => x.sessionId !== sessionId);
+    });
+  }, []);
+  const runningDomains = useMemo(() => new Set(runningStreams.map((s) => s.domain ?? "")), [runningStreams]);
+  const runningThreadPaths = useMemo(() => new Set(runningStreams.map((s) => s.threadPath ?? "").filter(Boolean)), [runningStreams]);
+  // Persisted rail widths. Min/max enforced when dragging.
+  const [domainRailWidth, setDomainRailWidth] = useState<number>(() => {
+    const v = parseInt(lsGet("prevail.domainRailWidth"), 10);
+    return Number.isFinite(v) && v > 0 ? v : 240;
+  });
+  const [threadsRailWidth, setThreadsRailWidth] = useState<number>(() => {
+    const v = parseInt(lsGet("prevail.threadsRailWidth"), 10);
+    return Number.isFinite(v) && v > 0 ? v : 240;
+  });
+  useEffect(() => { lsSet("prevail.domainRailWidth", String(domainRailWidth)); }, [domainRailWidth]);
+  useEffect(() => { lsSet("prevail.threadsRailWidth", String(threadsRailWidth)); }, [threadsRailWidth]);
+  const refreshThreads = useCallback(async () => {
+    if (!vaultPath) return;
+    try {
+      const list = await invoke<ThreadMeta[]>("list_threads", { vault: vaultPath, domain: selectedDomain || null });
+      setThreads(list);
+    } catch (e) { console.error("list_threads", e); }
+  }, [vaultPath, selectedDomain]);
+  useEffect(() => { void refreshThreads(); }, [refreshThreads]);
   const [clis, setClis] = useState<CliInfo[]>([]);
   const [tab, setTab] = useState<TabId>("chat");
   const [vaultError, setVaultError] = useState<string | null>(null);
@@ -638,6 +808,12 @@ export default function App() {
           onChangeVault={pickVault}
           clis={clis}
           onBack={() => setTab("chat")}
+          onStartChatWith={(cliId, modelId) => {
+            lsSet(LS.defaultChatCli, cliId);
+            if (modelId) lsSet(`prevail.model.${cliId}`, modelId);
+            setSelectedDomain("");
+            setTab("chat");
+          }}
         />
         <span className="pointer-events-none absolute bottom-1.5 right-2 select-none font-mono text-[9px] tracking-wider text-text-muted/60">
           v{APP_VERSION}
@@ -665,10 +841,41 @@ export default function App() {
             setSelectedDomain(d.name);
           }}
           appearance={appearance}
+          runningDomains={runningDomains}
+          railWidth={domainRailWidth}
         />
+        {!sidebarCollapsed && (
+          <ResizeHandle
+            ariaLabel="Resize domain rail"
+            onChange={(dx) => setDomainRailWidth((w) => Math.max(180, Math.min(420, w + dx)))}
+          />
+        )}
         {/* legacy single-render below disabled */}
         {false && !sidebarCollapsed && (
         <aside className="flex w-60 shrink-0 flex-col border-r border-border-subtle bg-surface" />
+        )}
+
+        {/* Threads rail — visible on Chat and Council so the domain's
+            conversation history stays one click away regardless of mode.
+            Hidden on Benchmark which is its own evaluation surface. */}
+        {(tab === "chat" || tab === "council") && (
+          <>
+            <ThreadsRail
+              threads={threads}
+              activePath={activeThreadPath}
+              selectedDomain={selectedDomain}
+              vaultPath={vaultPath}
+              onPick={(p) => setActiveThreadPath(p)}
+              onNew={() => setActiveThreadPath(null)}
+              onRefresh={() => void refreshThreads()}
+              runningThreadPaths={runningThreadPaths}
+              railWidth={threadsRailWidth}
+            />
+            <ResizeHandle
+              ariaLabel="Resize threads rail"
+              onChange={(dx) => setThreadsRailWidth((w) => Math.max(180, Math.min(480, w + dx)))}
+            />
+          </>
         )}
 
         <main className="flex min-w-0 flex-1 flex-col">
@@ -712,6 +919,11 @@ export default function App() {
                 fwLens={fwLens}
                 onSwitchToCouncil={() => setTab("council")}
                 onOpenInFinder={() => openInFinder(selectedDomainPath)}
+                activeThreadPath={activeThreadPath}
+                onActiveThreadChange={setActiveThreadPath}
+                onThreadsChanged={() => void refreshThreads()}
+                onStreamStart={markStreamStart}
+                onStreamEnd={markStreamEnd}
               />
             )}
             {tab === "council" && (
@@ -723,6 +935,7 @@ export default function App() {
                 fwLens={fwLens}
                 onOpenInFinder={() => openInFinder(selectedDomainPath)}
                 onSwitchToChat={() => setTab("chat")}
+                onThreadsChanged={() => void refreshThreads()}
               />
             )}
             {tab === "benchmark" && <BenchmarkPanel vaultPath={vaultPath} />}
@@ -764,6 +977,8 @@ function Sidebar({
   setTab,
   onDomainCreated,
   appearance,
+  runningDomains,
+  railWidth,
 }: {
   collapsed: boolean;
   setCollapsed: (v: boolean | ((cur: boolean) => boolean)) => void;
@@ -777,6 +992,8 @@ function Sidebar({
   setTab: (t: TabId) => void;
   onDomainCreated: (d: Domain) => void;
   appearance: ReturnType<typeof useAppearance>;
+  runningDomains: Set<string>;
+  railWidth: number;
 }) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -788,6 +1005,12 @@ function Sidebar({
       return new Set(raw ? raw.split(",").filter(Boolean) : []);
     } catch { return new Set(); }
   });
+  // Group collapse — Pinned vs All. Persisted so collapsing survives
+  // app restarts.
+  const [pinnedOpen, setPinnedOpen] = useState<boolean>(() => lsGet("prevail.sidebar.pinnedOpen") !== "0");
+  const [allOpen, setAllOpen] = useState<boolean>(() => lsGet("prevail.sidebar.allOpen") !== "0");
+  useEffect(() => { lsSet("prevail.sidebar.pinnedOpen", pinnedOpen ? "1" : "0"); }, [pinnedOpen]);
+  useEffect(() => { lsSet("prevail.sidebar.allOpen", allOpen ? "1" : "0"); }, [allOpen]);
   const togglePin = (name: string) => {
     setPinned((cur) => {
       const next = new Set(cur);
@@ -817,11 +1040,10 @@ function Sidebar({
     }
   }
 
-  const width = collapsed ? "w-14" : "w-60";
-
   return (
     <aside
-      className={`flex shrink-0 flex-col border-r border-border-subtle bg-surface transition-[width] duration-150 ${width}`}
+      className="flex shrink-0 flex-col border-r border-border-subtle bg-surface"
+      style={{ width: collapsed ? 56 : railWidth }}
     >
       {/* Top — brand + collapse. The whole row is draggable so the
           user can move the window from here. Collapsed: only logo. */}
@@ -832,20 +1054,16 @@ function Sidebar({
         <div className="flex min-w-0 flex-1 items-center gap-3" data-tauri-drag-region>
           <PrevailLogo size={32} />
           {!collapsed && (
-            <Brand className="font-sans text-2xl font-extrabold tracking-tight text-text-primary" />
+            <Brand className="flex-1 font-sans text-2xl font-extrabold text-text-primary [letter-spacing:0.32em]" />
           )}
         </div>
         {!collapsed && (
           <button
             onClick={() => setCollapsed(true)}
             title="Collapse sidebar"
-            className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
+            className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
           >
-            <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5}>
-              <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
-              <line x1="6" y1="2.5" x2="6" y2="13.5" />
-              <path d="M11 5.5 L9 8 L11 10.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <span className="text-[12px] leading-none">◂</span>
           </button>
         )}
       </div>
@@ -853,13 +1071,9 @@ function Sidebar({
         <button
           onClick={() => setCollapsed(false)}
           title="Expand sidebar"
-          className="mx-auto mt-1 flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
+          className="mx-auto mt-1 flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
         >
-          <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5}>
-            <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
-            <line x1="6" y1="2.5" x2="6" y2="13.5" />
-            <path d="M9 5.5 L11 8 L9 10.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          <span className="text-[12px] leading-none">▸</span>
         </button>
       )}
 
@@ -910,9 +1124,29 @@ function Sidebar({
             const active = d.name === selectedDomain && tab !== "settings";
             const Icon = domainIcon(d.name);
             const isPinned = pinned.has(d.name);
+            const isFirstPinned = !collapsed && isPinned && (i === 0 || !pinned.has(sortedDomains[i - 1].name));
+            const isFirstAll = !collapsed && !isPinned && (i === 0 || pinned.has(sortedDomains[i - 1].name));
+            // Hide entries when their group is collapsed.
+            if (!collapsed && isPinned && !pinnedOpen && !isFirstPinned) return null;
+            if (!collapsed && !isPinned && !allOpen && !isFirstAll) return null;
+            const renderGroupHeader = (label: "Pinned" | "All", open: boolean, set: (v: boolean) => void, count: number) => (
+              <li key={`${label}-header`} className="mt-1 first:mt-0">
+                <button
+                  onClick={() => set(!open)}
+                  title={`${open ? "Collapse" : "Expand"} ${label}`}
+                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted hover:bg-surface-warm hover:text-text-secondary"
+                >
+                  <span className={`inline-flex h-3 w-3 items-center justify-center text-[11px] leading-none transition-transform ${open ? "rotate-90" : ""} text-text-secondary`}>
+                    ▶
+                  </span>
+                  <span>{label}</span>
+                  <span className="ml-auto rounded-full bg-surface-warm px-1.5 py-0 font-mono text-[10px] text-text-muted">{count}</span>
+                </button>
+              </li>
+            );
             // Render a thin "Pinned / All" divider when transitioning.
-            const showDivider =
-              !collapsed && i > 0 && pinned.has(sortedDomains[i - 1].name) && !isPinned;
+            const showDivider = false;
+            void showDivider;
             if (collapsed) {
               return (
                 <li key={d.name}>
@@ -939,25 +1173,68 @@ function Sidebar({
             }
             return (
               <Fragment key={d.name}>
-                {showDivider && (
-                  <li className="my-1 px-2.5 text-[9px] font-medium uppercase tracking-[0.18em] text-text-muted">
-                    All
-                  </li>
-                )}
+                {isFirstPinned && renderGroupHeader("Pinned", pinnedOpen, setPinnedOpen, pinned.size)}
+                {isFirstAll && renderGroupHeader("All", allOpen, setAllOpen, sortedDomains.length - pinned.size)}
+                {((isPinned && pinnedOpen) || (!isPinned && allOpen)) && (
               <li
                 className="group flex items-center gap-1"
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData("application/x-prevail-domain", d.name);
-                  e.dataTransfer.setData("text/plain", titleCase(d.name));
-                  e.dataTransfer.effectAllowed = "copy";
-                }}>
+              >
                 <button
+                  onMouseDown={(e) => {
+                    // Manual drag — WebKit's HTML5 DnD in WKWebView
+                    // doesn't reliably fire dragstart. Track mouse
+                    // movement; on mouseup, hit-test the chat composer
+                    // / messages area and call its global attach hook.
+                    if (e.button !== 0) return;
+                    const startX = e.clientX;
+                    const startY = e.clientY;
+                    let dragging = false;
+                    let pill: HTMLDivElement | null = null;
+                    const onMove = (ev: MouseEvent) => {
+                      const dx = ev.clientX - startX;
+                      const dy = ev.clientY - startY;
+                      if (!dragging && Math.hypot(dx, dy) < 6) return;
+                      if (!dragging) {
+                        dragging = true;
+                        pill = document.createElement("div");
+                        pill.textContent = `◆ ${titleCase(d.name)}`;
+                        pill.style.cssText =
+                          "position:fixed;z-index:9999;pointer-events:none;" +
+                          "padding:6px 10px;border-radius:9999px;" +
+                          "background:var(--color-accent,#a8862d);color:#fff;" +
+                          "font-family:ui-monospace,monospace;font-size:11px;" +
+                          "box-shadow:0 6px 20px rgba(0,0,0,0.2);" +
+                          "transform:translate(-50%,-50%);";
+                        document.body.appendChild(pill);
+                        document.body.style.userSelect = "none";
+                      }
+                      if (pill) {
+                        pill.style.left = ev.clientX + "px";
+                        pill.style.top = ev.clientY + "px";
+                      }
+                    };
+                    const onUp = (ev: MouseEvent) => {
+                      window.removeEventListener("mousemove", onMove);
+                      window.removeEventListener("mouseup", onUp);
+                      document.body.style.userSelect = "";
+                      if (pill) { pill.remove(); pill = null; }
+                      if (!dragging) return; // treat as a click — let onClick fire
+                      // Don't let onClick fire after a drag ended
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      const hook = (window as unknown as { __prevailAttach?: (n: string) => void }).__prevailAttach;
+                      if (hook) hook(d.name);
+                      else console.warn("[prevail/drag] no attach hook registered — drop fell outside chat panel");
+                    };
+                    window.addEventListener("mousemove", onMove);
+                    window.addEventListener("mouseup", onUp);
+                  }}
                   onClick={() => {
                     setSelectedDomain(d.name);
                     if (tab === "settings") setTab("chat");
                   }}
-                  className={`flex flex-1 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
+                  title="Click to enter · drag to add as context to current chat"
+                  className={`flex flex-1 cursor-grab items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors active:cursor-grabbing ${
                     active
                       ? "bg-surface-strong text-text-primary font-medium"
                       : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
@@ -969,6 +1246,9 @@ function Sidebar({
                     <span className={active ? "text-accent" : "text-text-muted"}>◆</span>
                   )}
                   <span className="flex-1 truncate">{titleCase(d.name)}</span>
+                  {runningDomains.has(d.name) && (
+                    <span className="pulse-soft inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn" title="A reply is streaming in this domain" />
+                  )}
                 </button>
                 <button
                   onClick={() => togglePin(d.name)}
@@ -989,6 +1269,7 @@ function Sidebar({
                   <Folder className="h-3.5 w-3.5" />
                 </button>
               </li>
+                )}
               </Fragment>
             );
           })}
@@ -1104,6 +1385,198 @@ function Sidebar({
         >
           {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
         </button>
+      </div>
+    </aside>
+  );
+}
+
+function ThreadsRail({
+  threads,
+  activePath,
+  selectedDomain,
+  vaultPath,
+  onPick,
+  onNew,
+  onRefresh,
+  runningThreadPaths,
+  railWidth,
+}: {
+  threads: ThreadMeta[];
+  activePath: string | null;
+  selectedDomain: string | null;
+  vaultPath: string;
+  onPick: (path: string) => void;
+  onNew: () => void;
+  onRefresh: () => void;
+  runningThreadPaths: Set<string>;
+  railWidth: number;
+}) {
+  void vaultPath;
+  // Collapse state persisted across launches.
+  const [collapsed, setCollapsed] = useState<boolean>(() => lsGet("prevail.threadsRail.collapsed") === "1");
+  useEffect(() => { lsSet("prevail.threadsRail.collapsed", collapsed ? "1" : "0"); }, [collapsed]);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameInput, setRenameInput] = useState("");
+  if (collapsed) {
+    return (
+      <aside className="flex w-7 shrink-0 flex-col items-center gap-1 border-r border-border-subtle bg-surface py-2">
+        <button
+          onClick={() => setCollapsed(false)}
+          title="Expand threads rail"
+          className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
+        >
+          <span className="text-[12px] leading-none">▸</span>
+        </button>
+        <button
+          onClick={onNew}
+          title="New thread"
+          className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+        <div className="mt-1 flex flex-col gap-1">
+          {threads.slice(0, 12).map((t) => (
+            <button
+              key={t.path}
+              onClick={() => onPick(t.path)}
+              title={t.title}
+              className={`flex h-5 w-5 items-center justify-center rounded text-[9px] font-mono ${
+                t.path === activePath
+                  ? "bg-accent-soft text-accent"
+                  : "text-text-muted hover:bg-surface-warm hover:text-text-primary"
+              }`}
+            >
+              {(t.title || "·").charAt(0).toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </aside>
+    );
+  }
+  async function applyRename(path: string) {
+    if (!renameInput.trim()) { setRenaming(null); return; }
+    try {
+      await invoke("rename_thread", { path, newTitle: renameInput.trim() });
+      onRefresh();
+    } catch (e) { console.error("rename_thread", e); }
+    setRenaming(null);
+  }
+  async function deleteThread(path: string) {
+    try {
+      await invoke("delete_thread", { path });
+      onRefresh();
+    } catch (e) { console.error("delete_thread", e); }
+  }
+  function fmtRelative(secs: number): string {
+    const delta = Date.now() / 1000 - secs;
+    if (delta < 60) return "just now";
+    if (delta < 3600) return `${Math.floor(delta / 60)}m ago`;
+    if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
+    if (delta < 86400 * 7) return `${Math.floor(delta / 86400)}d ago`;
+    return new Date(secs * 1000).toLocaleDateString();
+  }
+  return (
+    <aside className="flex shrink-0 flex-col border-r border-border-subtle bg-surface" style={{ width: railWidth }}>
+      <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-3 py-2.5">
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+          Threads{selectedDomain ? ` · ${titleCase(selectedDomain)}` : ""}
+        </span>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={onNew}
+            title="New thread"
+            className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => setCollapsed(true)}
+            title="Collapse threads rail"
+            className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
+          >
+            <span className="text-[12px] leading-none">◂</span>
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto px-1.5 py-1.5">
+        {threads.length === 0 && (
+          <div className="px-2 py-3 text-xs text-text-muted">
+            no threads yet. Click + to start one.
+          </div>
+        )}
+        <ul className="space-y-0.5">
+          {threads.map((t) => {
+            const active = t.path === activePath;
+            const isRenaming = renaming === t.path;
+            return (
+              <li key={t.path} className="group">
+                <div
+                  className={`relative rounded-md px-2 py-1.5 transition-colors ${
+                    active ? "bg-surface-strong" : "hover:bg-surface-warm"
+                  }`}
+                >
+                  {isRenaming ? (
+                    <input
+                      autoFocus
+                      value={renameInput}
+                      onChange={(e) => setRenameInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") applyRename(t.path);
+                        if (e.key === "Escape") setRenaming(null);
+                      }}
+                      onBlur={() => applyRename(t.path)}
+                      className="w-full rounded border border-accent-border bg-background px-1 py-0.5 text-sm focus:outline-none"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => onPick(t.path)}
+                      onDoubleClick={() => { setRenameInput(t.title); setRenaming(t.path); }}
+                      className="block w-full text-left"
+                      title="double-click to rename"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className={`truncate text-sm ${active ? "font-medium text-text-primary" : "text-text-secondary"}`}>
+                          {t.title}
+                        </span>
+                        {runningThreadPaths.has(t.path) && (
+                          <span className="pulse-soft inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn" title="streaming" />
+                        )}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-text-muted">
+                        <span>{t.turn_count} turns</span>
+                        <span>·</span>
+                        <span>{fmtRelative(t.updated)}</span>
+                      </div>
+                      {t.preview && (
+                        <div className="mt-0.5 line-clamp-1 text-[11px] text-text-muted">
+                          {t.preview}
+                        </div>
+                      )}
+                    </button>
+                  )}
+                  {!isRenaming && (
+                    <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 group-hover:opacity-100">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setRenameInput(t.title); setRenaming(t.path); }}
+                        title="Rename"
+                        className="flex h-5 w-5 items-center justify-center rounded bg-background/80 text-text-muted hover:text-accent"
+                      >
+                        <PenLine className="h-3 w-3" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${t.title}"?`)) deleteThread(t.path); }}
+                        title="Delete"
+                        className="flex h-5 w-5 items-center justify-center rounded bg-background/80 text-text-muted hover:text-err"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       </div>
     </aside>
   );
@@ -1456,12 +1929,16 @@ function DomainHome({
   onInjectContext,
   onPickPrompt,
   onInsertSkill,
+  preferredSet,
+  onTogglePreferred,
 }: {
   domain: string;
   vaultPath: string;
   onInjectContext: (body: string, label: string) => void;
   onPickPrompt: (text: string) => void;
   onInsertSkill: (name: string) => void;
+  preferredSet: Set<string>;
+  onTogglePreferred: (name: string) => void;
 }) {
   type Tab = "chat" | "state" | "decisions" | "journal" | "logs" | "skills";
   // Chat is the default — state is already auto-loaded as context, so
@@ -1486,14 +1963,6 @@ function DomainHome({
     logs: ctx?.recent_logs.length ?? 0,
     skills: ctx?.skills.length ?? 0,
   };
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "chat", label: "Chat" },
-    { id: "state", label: "State" },
-    { id: "decisions", label: "Decisions" },
-    { id: "journal", label: "Journal" },
-    { id: "logs", label: "Sessions" },
-    { id: "skills", label: "Skills" },
-  ];
   const Icon = domainIcon(domain);
 
   // Suppress unused warning — kept for future read-only views.
@@ -1502,53 +1971,33 @@ function DomainHome({
   // Domain title lives in the ChatPanel header above; here we go
   // straight to the tab strip. Avoids the duplicate "Estate · Estate"
   // problem the user flagged.
+  // ChatPanel owns the persistent tab strip now; DomainHome just
+  // renders the body for whichever tab the user has selected.
+  void tab; void setTab; void counts;
   return (
     <div className="flex h-full w-full flex-col px-6 py-6">
-      <div className="mb-5 flex flex-wrap items-center gap-1 border-b border-border-subtle">
-        {tabs.map((t) => {
-          const active = tab === t.id;
-          const c = t.id === "chat" ? undefined : counts[t.id as Exclude<Tab, "chat">];
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`relative -mb-px flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                active ? "text-accent" : "text-text-muted hover:text-text-secondary"
-              }`}
-            >
-              {t.label}
-              {c !== undefined && (
-                <span className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] ${active ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
-                  {c}
-                </span>
-              )}
-              {active && <span className="absolute bottom-0 left-0 right-0 h-px bg-accent" />}
-            </button>
-          );
-        })}
-      </div>
-
       <div className="flex-1 overflow-y-auto">
         {loading && <div className="text-sm text-text-muted">loading domain context…</div>}
         {!loading && ctx && (
           <div>
             {tab === "chat" && (
-              <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <ul className="mx-auto flex max-w-2xl flex-col gap-2">
                 {buildQuickActions(domain).map((q) => (
-                  <button
-                    key={q.label}
-                    onClick={() => onPickPrompt(q.prompt)}
-                    className="rounded-lg border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-accent-border hover:bg-surface-warm"
-                  >
-                    <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-accent">
-                      <span>{q.glyph}</span> {q.label}
-                    </div>
-                    <div className="mt-1 line-clamp-3 text-sm text-text-secondary">
-                      {q.prompt}
-                    </div>
-                  </button>
+                  <li key={q.label}>
+                    <button
+                      onClick={() => onPickPrompt(q.prompt)}
+                      className="block w-full rounded-xl border border-border bg-surface px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-px hover:border-accent-border hover:shadow-md"
+                    >
+                      <div className="font-mono text-[11px] uppercase tracking-wider text-accent">
+                        <span className="mr-1">{q.glyph}</span>{q.label}
+                      </div>
+                      <div className="mt-1 text-sm leading-relaxed text-text-secondary">
+                        {q.prompt}
+                      </div>
+                    </button>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
             {tab === "state" && (
               ctx.state ? (
@@ -1610,22 +2059,12 @@ function DomainHome({
                   no skills in <code className="text-accent">{titleCase(domain)}/skills/</code>.
                 </div>
               ) : (
-                <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {ctx.skills.map((s) => (
-                    <li key={s.path}>
-                      <button
-                        onClick={() => { onInsertSkill(s.name); setTab("chat"); }}
-                        className="block w-full rounded-lg border border-border bg-surface p-3 text-left hover:border-accent-border hover:bg-surface-warm"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="h-3.5 w-3.5 text-accent" />
-                          <span className="font-mono text-sm text-accent">/{s.name}</span>
-                        </div>
-                        {s.description && <div className="mt-1 line-clamp-2 text-xs text-text-muted">{s.description}</div>}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                <SkillsList
+                  skills={ctx.skills}
+                  onInsert={(name) => { onInsertSkill(name); setTab("chat"); }}
+                  preferredSet={preferredSet}
+                  onTogglePreferred={onTogglePreferred}
+                />
               )
             )}
           </div>
@@ -1657,6 +2096,288 @@ function DomainHome({
   );
 }
 
+// Skills list — stacked floating cards centered in column. Click a
+// row to expand and read the SKILL.md inline; secondary actions
+// insert the /skillname or open the folder in Finder.
+// Compact agent picker for the no-domain landing. Each available CLI
+// is a brand glyph that animates its label out on hover; the active
+// agent stays expanded. Clicking sets the chat panel's primary CLI.
+// Small popover anchored to the gear button in the chat header.
+// Shows every per-domain override currently saved + a reset for each.
+function DomainPrefsPopover({
+  domain,
+  onClose,
+  onChanged,
+}: {
+  domain: string;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    window.addEventListener("mousedown", onClick);
+    return () => window.removeEventListener("mousedown", onClick);
+  }, [onClose]);
+
+  const cli = lsGet(`prevail.domain.${domain}.cli`);
+  const model = lsGet(`prevail.domain.${domain}.model`);
+  const fw = lsGet(`prevail.domain.${domain}.framework`);
+  const lens = lsGet(`prevail.domain.${domain}.lens`);
+  let skills: string[] = [];
+  try {
+    const raw = lsGet(`prevail.domain.${domain}.skills`);
+    if (raw) skills = JSON.parse(raw);
+  } catch { /* ignore */ }
+
+  const modelLabel = cli && model
+    ? (MODELS[cli]?.find((m) => m.id === model)?.label ?? model)
+    : "";
+  const cliLabel = cli ? (cli.charAt(0).toUpperCase() + cli.slice(1)) : "";
+  const fwLabel = fw ? (FRAMEWORKS.find((f) => f.id === fw)?.label ?? fw) : "";
+  const lensLabel = lens ? (LENSES.find((l) => l.id === lens)?.label ?? lens) : "";
+
+  function clearKey(suffix: string) {
+    lsSet(`prevail.domain.${domain}.${suffix}`, "");
+    onChanged();
+  }
+  function clearAll() {
+    for (const s of ["cli", "model", "framework", "lens", "skills", "autoState"]) {
+      lsSet(`prevail.domain.${domain}.${s}`, "");
+    }
+    onChanged();
+  }
+  const autoState = lsGet(`prevail.domain.${domain}.autoState`) !== "0"; // default ON
+  function setAutoState(v: boolean) {
+    lsSet(`prevail.domain.${domain}.autoState`, v ? "1" : "0");
+    onChanged();
+  }
+  const Switch = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
+    <button
+      onClick={onToggle}
+      className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${on ? "bg-accent" : "bg-surface-strong"}`}
+      role="switch"
+      aria-checked={on}
+    >
+      <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-background transition-transform ${on ? "translate-x-[14px]" : "translate-x-0.5"}`} />
+    </button>
+  );
+
+  const Row = ({ label, value, onReset }: { label: string; value: string; onReset: () => void }) => (
+    <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2 last:border-0">
+      <span className="w-20 shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-sm">
+        {value || <span className="text-text-muted/60">— global default —</span>}
+      </span>
+      {value && (
+        <button
+          onClick={onReset}
+          className="shrink-0 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+        >
+          reset
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div
+      ref={ref}
+      className="absolute left-0 top-full z-40 mt-2 w-[360px] overflow-hidden rounded-lg border border-border bg-surface shadow-xl"
+    >
+      <div className="flex items-center justify-between gap-2 border-b border-border-subtle bg-surface-warm px-3 py-2">
+        <div className="flex items-center gap-2">
+          <span className="text-accent">◆</span>
+          <span className="font-display text-sm font-semibold">{titleCase(domain)}</span>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">preferences</span>
+        </div>
+        <button
+          onClick={onClose}
+          className="flex h-5 w-5 items-center justify-center rounded text-text-muted hover:bg-background hover:text-text-primary"
+        >
+          ×
+        </button>
+      </div>
+      <Row label="CLI" value={cliLabel} onReset={() => clearKey("cli")} />
+      <Row label="Model" value={modelLabel} onReset={() => clearKey("model")} />
+      <Row label="Framework" value={fwLabel} onReset={() => clearKey("framework")} />
+      <Row label="Lens" value={lensLabel} onReset={() => clearKey("lens")} />
+      <Row
+        label="Skills"
+        value={skills.length > 0 ? skills.map((n) => `/${n}`).join(" ") : ""}
+        onReset={() => clearKey("skills")}
+      />
+      <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2 last:border-0">
+        <span className="w-20 shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">Auto state</span>
+        <span className="min-w-0 flex-1 text-sm">
+          {autoState
+            ? <>Auto-attach <code className="text-accent">state.md</code></>
+            : <span className="text-text-muted">manual — drag or use Context drawer</span>}
+        </span>
+        <Switch on={autoState} onToggle={() => setAutoState(!autoState)} />
+      </div>
+      <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-3 py-2">
+        <span className="font-mono text-[10px] text-text-muted">
+          Applies on the next reload of this domain.
+        </span>
+        <button
+          onClick={clearAll}
+          className="rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn"
+        >
+          reset all
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AgentPickerRail({
+  clis,
+  selected,
+  onSelect,
+}: {
+  clis: CliInfo[];
+  selected: string | null;
+  onSelect: (cliId: string) => void;
+}) {
+  if (clis.length === 0) return null;
+  return (
+    <div className="mt-6 flex items-center gap-1 rounded-full border border-border bg-surface px-1.5 py-1 shadow-sm">
+      {clis.map((c) => {
+        const active = c.id === selected;
+        return (
+          <button
+            key={c.id}
+            onClick={() => onSelect(c.id)}
+            title={c.label}
+            className={`group flex items-center gap-2 rounded-full px-2 py-1 transition-all ${
+              active ? "bg-surface-warm" : "hover:bg-surface-warm"
+            }`}
+          >
+            <ProviderMark vendor={c.id} size={24} />
+            <span
+              className={`overflow-hidden whitespace-nowrap font-display text-sm font-semibold tracking-tight transition-all duration-200 ease-out ${
+                active
+                  ? "max-w-[160px] pr-1 opacity-100"
+                  : "max-w-0 pr-0 opacity-0 group-hover:max-w-[160px] group-hover:pr-1 group-hover:opacity-100"
+              }`}
+            >
+              {c.label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SkillsList({
+  skills,
+  onInsert,
+  preferredSet,
+  onTogglePreferred,
+}: {
+  skills: SkillEntry[];
+  onInsert: (name: string) => void;
+  preferredSet?: Set<string>;
+  onTogglePreferred?: (name: string) => void;
+}) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [content, setContent] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState<string | null>(null);
+  async function toggle(path: string) {
+    if (expanded === path) { setExpanded(null); return; }
+    setExpanded(path);
+    if (!content[path]) {
+      setLoading(path);
+      try {
+        const body = await invoke<string>("read_skill", { path });
+        setContent((c) => ({ ...c, [path]: body }));
+      } catch (e) {
+        setContent((c) => ({ ...c, [path]: `(error reading: ${e})` }));
+      } finally {
+        setLoading(null);
+      }
+    }
+  }
+  async function openFolder(path: string) {
+    try { await invoke("open_in_finder", { path }); } catch {}
+  }
+  return (
+    <ul className="mx-auto flex max-w-2xl flex-col gap-2">
+      {skills.map((s) => {
+        const open = expanded === s.path;
+        return (
+          <li key={s.path}>
+            <div className={`rounded-xl border bg-surface shadow-sm transition-all ${open ? "border-accent-border" : "border-border"}`}>
+              <div className="flex w-full items-start gap-2 rounded-t-xl">
+                <button
+                  onClick={() => toggle(s.path)}
+                  className="flex min-w-0 flex-1 items-start gap-3 px-4 py-3 text-left hover:bg-surface-warm rounded-tl-xl"
+                >
+                  <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-mono text-sm font-semibold text-accent">/{s.name}</div>
+                    {(() => {
+                      const cleaned = (s.description ?? "").replace(/^[>*\-\s]+/, "").trim();
+                      if (cleaned.length < 3) return null;
+                      return (
+                        <div className="mt-0.5 text-sm leading-snug text-text-secondary">{cleaned}</div>
+                      );
+                    })()}
+                  </div>
+                  <span className="ml-2 mt-1 text-xs text-text-muted">{open ? "▾" : "▸"}</span>
+                </button>
+                {onTogglePreferred && (
+                  <button
+                    onClick={() => onTogglePreferred(s.name)}
+                    title={preferredSet?.has(s.name) ? "Unpin — won't auto-attach to new chats" : "Pin — auto-attach to new chats in this domain"}
+                    className={`mr-2 mt-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                      preferredSet?.has(s.name)
+                        ? "border-accent-border bg-accent-soft text-accent"
+                        : "border-border bg-background text-text-muted hover:border-accent-border hover:text-accent"
+                    }`}
+                  >
+                    {preferredSet?.has(s.name) ? "★" : "☆"}
+                  </button>
+                )}
+              </div>
+              {open && (
+                <div className="border-t border-border-subtle px-4 py-3">
+                  {loading === s.path ? (
+                    <div className="text-xs text-text-muted">loading…</div>
+                  ) : content[s.path] ? (
+                    <div className="max-h-80 overflow-y-auto rounded-md border border-border-subtle bg-background px-3 py-2">
+                      <Markdown source={content[s.path]} compact />
+                    </div>
+                  ) : null}
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      onClick={() => onInsert(s.name)}
+                      className="rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+                    >
+                      insert /{s.name}
+                    </button>
+                    <button
+                      onClick={() => openFolder(s.path)}
+                      className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                    >
+                      <Folder className="h-3 w-3" />
+                      open folder
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 // Side drawer that shows the current domain's state.md, decisions,
 // journal, recent session logs, and skills. Loaded on-demand via the
 // `domain_context` Rust command. Items can be "used in chat" to
@@ -1668,6 +2389,8 @@ function DomainContextDrawer({
   onClose,
   onInjectContext,
   onInsertSkill,
+  preferredSet,
+  onTogglePreferred,
 }: {
   domain: string;
   vaultPath: string;
@@ -1675,13 +2398,20 @@ function DomainContextDrawer({
   onClose: () => void;
   onInjectContext: (text: string, label: string) => void;
   onInsertSkill: (skillName: string) => void;
+  preferredSet?: Set<string>;
+  onTogglePreferred?: (name: string) => void;
 }) {
   const [ctx, setCtx] = useState<DomainContextBundle | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({
-    state: true, decisions: false, journal: false, logs: false, skills: false,
+    state: false, decisions: false, journal: false, logs: false, skills: false,
   });
+  const [drawerWidth, setDrawerWidth] = useState<number>(() => {
+    const v = parseInt(lsGet("prevail.contextDrawer.width"), 10);
+    return Number.isFinite(v) && v > 0 ? v : 320;
+  });
+  useEffect(() => { lsSet("prevail.contextDrawer.width", String(drawerWidth)); }, [drawerWidth]);
   useEffect(() => {
     let mounted = true;
     setLoading(true);
@@ -1711,7 +2441,12 @@ function DomainContextDrawer({
   );
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-l border-border-subtle bg-surface">
+    <div className="flex shrink-0">
+      <ResizeHandle
+        ariaLabel="Resize context drawer"
+        onChange={(dx) => setDrawerWidth((w) => Math.max(260, Math.min(640, w - dx)))}
+      />
+      <aside className="flex shrink-0 flex-col border-l border-border-subtle bg-surface" style={{ width: drawerWidth }}>
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-4 py-3">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Context</div>
@@ -1807,14 +2542,27 @@ function DomainContextDrawer({
               ) : (
                 <ul className="space-y-1">
                   {ctx.skills.map((s) => (
-                    <li key={s.path}>
+                    <li key={s.path} className="flex items-stretch gap-1">
                       <button
                         onClick={() => onInsertSkill(s.name)}
-                        className="w-full rounded border border-border-subtle bg-background px-2 py-1.5 text-left hover:border-accent-border hover:bg-surface-warm"
+                        className="flex-1 rounded border border-border-subtle bg-background px-2 py-1.5 text-left hover:border-accent-border hover:bg-surface-warm"
                       >
                         <div className="font-mono text-[11px] text-accent">/{s.name}</div>
                         {s.description && <div className="mt-0.5 line-clamp-2 text-[10px] text-text-muted">{s.description}</div>}
                       </button>
+                      {onTogglePreferred && (
+                        <button
+                          onClick={() => onTogglePreferred(s.name)}
+                          title={preferredSet?.has(s.name) ? "Unpin" : "Pin — auto-attach"}
+                          className={`shrink-0 rounded border px-2 text-[12px] transition-colors ${
+                            preferredSet?.has(s.name)
+                              ? "border-accent-border bg-accent-soft text-accent"
+                              : "border-border-subtle bg-background text-text-muted hover:border-accent-border hover:text-accent"
+                          }`}
+                        >
+                          {preferredSet?.has(s.name) ? "★" : "☆"}
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -1826,7 +2574,8 @@ function DomainContextDrawer({
       <div className="border-t border-border-subtle px-4 py-2 font-mono text-[10px] text-text-muted" title={domainPath}>
         {domainPath.split("/").slice(-3).join("/")}
       </div>
-    </aside>
+      </aside>
+    </div>
   );
 }
 
@@ -1838,6 +2587,11 @@ function ChatPanel({
   fwLens,
   onSwitchToCouncil,
   onOpenInFinder,
+  activeThreadPath,
+  onActiveThreadChange,
+  onThreadsChanged,
+  onStreamStart,
+  onStreamEnd,
 }: {
   domain: string | null;
   domainPath: string | null;
@@ -1846,6 +2600,11 @@ function ChatPanel({
   fwLens: ReturnType<typeof useFrameworkLens>;
   onSwitchToCouncil: () => void;
   onOpenInFinder: () => void;
+  activeThreadPath: string | null;
+  onActiveThreadChange: (p: string | null) => void;
+  onThreadsChanged: () => void;
+  onStreamStart: (s: { sessionId: string; domain: string | null; threadPath: string | null; title: string; startedAt: number }) => void;
+  onStreamEnd: (sessionId: string) => void;
 }) {
   const available = useMemo(() => clis.filter((c) => c.available), [clis]);
   // Per-domain model preference. Keys: prevail.domain.<name>.cli and
@@ -1869,11 +2628,17 @@ function ChatPanel({
     return out;
   });
   // When the active domain changes, swap to that domain's preferred
-  // (cli, model) if one is set. Falls back to the global default.
+  // (cli, model, framework, lens) if one is set. Falls back to the
+  // global default.
   useEffect(() => {
     if (!domain) {
       const globalCli = lsGet(LS.defaultChatCli);
       if (globalCli) setSelectedCli(globalCli);
+      // Restore global framework/lens when leaving a domain.
+      const globalFw = lsGet(LS.framework, "none");
+      const globalLn = lsGet(LS.lens, "none");
+      if (globalFw && globalFw !== fwLens.framework) fwLens.setFramework(globalFw);
+      if (globalLn && globalLn !== fwLens.lens) fwLens.setLens(globalLn);
       return;
     }
     const domCli = lsGet(`prevail.domain.${domain}.cli`);
@@ -1884,7 +2649,23 @@ function ChatPanel({
         setModelByCli((cur) => ({ ...cur, [domCli]: domModel }));
       }
     }
+    const domFw = lsGet(`prevail.domain.${domain}.framework`);
+    const domLn = lsGet(`prevail.domain.${domain}.lens`);
+    if (domFw) fwLens.setFramework(domFw);
+    if (domLn) fwLens.setLens(domLn);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [domain]);
+  // Mirror framework/lens changes into the domain key when in a domain.
+  // useFrameworkLens's own effect already writes the global key, so we
+  // just extend with a per-domain pin here.
+  useEffect(() => {
+    if (!domain) return;
+    lsSet(`prevail.domain.${domain}.framework`, fwLens.framework);
+  }, [domain, fwLens.framework]);
+  useEffect(() => {
+    if (!domain) return;
+    lsSet(`prevail.domain.${domain}.lens`, fwLens.lens);
+  }, [domain, fwLens.lens]);
   const selectedModel = selectedCli ? (modelByCli[selectedCli] ?? "") : "";
   const setSelectedModel = (cli: string, m: string) => {
     setModelByCli((cur) => ({ ...cur, [cli]: m }));
@@ -1897,8 +2678,7 @@ function ChatPanel({
     }
   };
   // Reset the domain's per-(cli,model) override so global default
-  // applies again. Exposed for next-turn wiring.
-  // @ts-expect-error queued for v0.2.42 UI button
+  // applies again.
   function clearDomainModelOverride() {
     if (!domain) return;
     lsSet(domainCliKey, "");
@@ -1937,14 +2717,73 @@ function ChatPanel({
       return [...cur, { label, body }];
     });
   }
+  // Per-domain preferences popover — explicit view of overrides saved
+  // for this domain with reset controls. Implicit auto-save still
+  // happens in pickers; this only surfaces + clears the result.
+  const [domainPrefsOpen, setDomainPrefsOpen] = useState(false);
+  const [prefsTick, setPrefsTick] = useState(0);
+  const hasAnyDomainOverride = useMemo(() => {
+    if (!domain) return false;
+    return Boolean(
+      lsGet(`prevail.domain.${domain}.cli`) ||
+      lsGet(`prevail.domain.${domain}.model`) ||
+      lsGet(`prevail.domain.${domain}.framework`) ||
+      lsGet(`prevail.domain.${domain}.lens`) ||
+      lsGet(`prevail.domain.${domain}.skills`)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domain, prefsTick]);
+  // Skills attached to the next send. Decoupled from the textarea so
+  // editing the prompt text doesn't affect them, and the user removes
+  // them from the pills below — not by editing prompt text.
+  const [attachedSkills, setAttachedSkills] = useState<string[]>(() => loadPreferredSkills(domain));
+  const [preferredSkills, setPreferredSkills] = useState<string[]>(() => loadPreferredSkills(domain));
+  // Persistent domain tab. "chat" shows the transcript; the other
+  // tabs replace the transcript with the domain's reference content.
+  // Composer stays at the bottom regardless of tab.
+  type DomainTab = "chat" | "state" | "decisions" | "journal" | "logs" | "skills";
+  const [domainTab, setDomainTab] = useState<DomainTab>("chat");
+  const [domainCtx, setDomainCtx] = useState<DomainContextBundle | null>(null);
+  useEffect(() => {
+    setDomainTab("chat");
+    const pref = loadPreferredSkills(domain);
+    setPreferredSkills(pref);
+    setAttachedSkills(pref);
+    if (!domain || !vaultPath) { setDomainCtx(null); return; }
+    let mounted = true;
+    invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain })
+      .then((c) => { if (mounted) setDomainCtx(c); })
+      .catch(() => { if (mounted) setDomainCtx(null); });
+    return () => { mounted = false; };
+  }, [domain, vaultPath]);
+  const togglePreferredSkill = useCallback((name: string) => {
+    setPreferredSkills((cur) => {
+      const next = cur.includes(name) ? cur.filter((n) => n !== name) : [...cur, name];
+      savePreferredSkills(domain, next);
+      return next;
+    });
+    // Mirror into currently attached set so the change is visible
+    // immediately in the composer pills.
+    setAttachedSkills((cur) => (cur.includes(name) ? cur.filter((n) => n !== name) : [...cur, name]));
+  }, [domain]);
+  const preferredSkillsSet = useMemo(() => new Set(preferredSkills), [preferredSkills]);
   function insertSkillSlash(name: string) {
-    setInput((cur) => `${cur}${cur && !cur.endsWith(" ") ? " " : ""}/${name} `);
+    setAttachedSkills((cur) => (cur.includes(name) ? cur : [...cur, name]));
+  }
+  function removeAttachedSkill(name: string) {
+    setAttachedSkills((cur) => cur.filter((n) => n !== name));
   }
   // Auto-prime the domain's state.md so the AI has context without
   // the user having to click "use in chat" in the drawer. Labels start
   // with "auto:" so they get cleared when the domain switches.
   useEffect(() => {
     if (!domain || !vaultPath) {
+      setPrimedContext((cur) => cur.filter((x) => !x.label.startsWith("auto:")));
+      return;
+    }
+    // Per-domain opt-out — when prevail.domain.<name>.autoState === "0"
+    // we skip auto-attaching state.md. Default is on.
+    if (lsGet(`prevail.domain.${domain}.autoState`) === "0") {
       setPrimedContext((cur) => cur.filter((x) => !x.label.startsWith("auto:")));
       return;
     }
@@ -1961,7 +2800,10 @@ function ChatPanel({
       })
       .catch(() => {/* ignore */});
     return () => { mounted = false; };
-  }, [domain, vaultPath]);
+    // prefsTick bumps when popover toggles the autoState pref, so the
+    // effect re-runs without needing the user to re-enter the domain.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domain, vaultPath, prefsTick]);
   const [attachments, setAttachments] = useState<string[]>([]);
   // Local recall history — arrow-up cycles backward, arrow-down forward.
   const HISTORY_KEY = `prevail.chat.history.${domain ?? "_root"}`;
@@ -2035,16 +2877,18 @@ function ChatPanel({
   useEffect(() => { setSlashIdx(0); }, [slashMatch?.token]);
   function applySlashCompletion(name: string) {
     if (!slashMatch) return;
-    const head = input.slice(0, slashMatch.start);
+    // Remove the /partial from the textarea and add the skill to the
+    // attached-skills pill row instead. Keeps the prompt clean.
+    const head = input.slice(0, slashMatch.start).replace(/\s$/, "");
     const tail = input.slice(slashMatch.end);
-    const next = `${head}/${name} ${tail}`;
+    const next = `${head}${head && tail && !tail.startsWith(" ") ? " " : ""}${tail}`;
     setInput(next);
+    insertSkillSlash(name);
     requestAnimationFrame(() => {
       const ta = taRef.current;
       if (!ta) return;
-      const caret = head.length + name.length + 2;
       ta.focus();
-      ta.setSelectionRange(caret, caret);
+      ta.setSelectionRange(head.length, head.length);
     });
   }
   function attachDomainState() {
@@ -2061,6 +2905,99 @@ function ChatPanel({
     setHistIdx(-1);
   }
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Use a ref for the active thread path so async saves don't capture
+  // a stale closure value. Without this, every streaming chunk after
+  // the first save still saw activeThreadPath=null and created a new
+  // file — hence the duplicates the user reported.
+  const activeThreadRef = useRef<string | null>(activeThreadPath);
+  useEffect(() => { activeThreadRef.current = activeThreadPath; }, [activeThreadPath]);
+  // When the auto-save effect adopts a new path mid-stream we stamp
+  // the path here. The load-on-change effect below uses this to skip
+  // reloading from disk — the in-memory messages are already ahead of
+  // what was saved (more chunks have arrived). Reloading would
+  // overwrite them and the assistant placeholder loses streaming:true,
+  // which is the original cause of the "(empty reply)" symptom.
+  const selfSetPathRef = useRef<string | null>(null);
+  // Load the thread when activeThreadPath changes.
+  useEffect(() => {
+    if (!activeThreadPath) { setMessages([]); return; }
+    if (selfSetPathRef.current === activeThreadPath) {
+      selfSetPathRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    invoke<{ meta: ThreadMeta; turns: ThreadTurn[] }>("load_thread", { path: activeThreadPath })
+      .then((t) => {
+        if (cancelled) return;
+        setMessages(t.turns.map((tn) => ({
+          role: tn.role,
+          cli: tn.cli ?? undefined,
+          content: tn.content,
+          ts: Date.now(),
+        })));
+      })
+      .catch((e) => console.error("load_thread", e));
+    return () => { cancelled = true; };
+  }, [activeThreadPath]);
+  // Auto-save the thread on every message change (debounced). Reads
+  // the ref so each save reuses the existing slug once one exists.
+  const saveTimer = useRef<number | null>(null);
+  const savePendingRef = useRef<boolean>(false);
+  // Extra guard: once a save with slug=null has been DISPATCHED, block
+  // any further slug=null dispatches until activeThreadRef is set.
+  // savePendingRef alone wasn't enough in practice — duplicates kept
+  // appearing, suggesting a race where a second timer fires between
+  // the first save dispatching and activeThreadRef being adopted.
+  const initialSaveDispatchedRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (messages.length === 0) return;
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(async () => {
+      if (savePendingRef.current) return; // serialize saves
+      // Hard guard: if a slug=null save was already dispatched and
+      // hasn't returned yet (so activeThreadRef hasn't been adopted),
+      // skip rather than launching a second one that would create a
+      // duplicate file.
+      if (initialSaveDispatchedRef.current && !activeThreadRef.current) {
+        console.log("[prevail/save_thread] skip — initial save still in flight");
+        return;
+      }
+      savePendingRef.current = true;
+      try {
+        const first = messages.find((m) => m.role === "user");
+        const title = first ? first.content.slice(0, 60).replace(/\n/g, " ") : "untitled";
+        const current = activeThreadRef.current;
+        const slug = current ? current.split("/").pop()?.replace(/\.md$/, "") ?? null : null;
+        if (!slug) initialSaveDispatchedRef.current = true;
+        console.log("[prevail/save_thread]", { slug, current, msgCount: messages.length, domain });
+        const path = await invoke<string>("save_thread", {
+          vault: vaultPath,
+          domain: domain ?? null,
+          slug,
+          title,
+          turns: messages.map((m) => ({
+            role: m.role,
+            cli: m.cli ?? null,
+            model: null,
+            content: m.content,
+          })),
+        });
+        // Adopt the returned path so the NEXT save reuses the same slug.
+        if (!activeThreadRef.current) {
+          activeThreadRef.current = path;
+          selfSetPathRef.current = path;
+          onActiveThreadChange(path);
+        }
+        onThreadsChanged();
+      } catch (e) {
+        console.error("save_thread", e);
+      } finally {
+        savePendingRef.current = false;
+      }
+    }, 600);
+    return () => { if (saveTimer.current) window.clearTimeout(saveTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
   const sessionRef = useRef(`s-${Date.now()}`);
   const unlistenRefs = useRef<UnlistenFn[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -2082,10 +3019,15 @@ function ChatPanel({
           if (e.payload.session !== sessionRef.current) return;
           if (e.payload.stream !== "stdout") return;
           if (!mounted) return;
+          // Process only the new chunk (not the growing accumulator)
+          // to keep stream rendering O(n) instead of O(n²) for long
+          // replies. Sycophancy patterns are short so re-scanning the
+          // chunk is still cheap.
+          const clean = maybeStripSycophancy(stripAnsi(e.payload.data));
           setMessages((m) => {
             const last = m[m.length - 1];
             if (last && last.streaming) {
-              return [...m.slice(0, -1), { ...last, content: maybeStripSycophancy(last.content + stripAnsi(e.payload.data)) }];
+              return [...m.slice(0, -1), { ...last, content: last.content + clean }];
             }
             return m;
           });
@@ -2094,8 +3036,12 @@ function ChatPanel({
       const u2 = await listen<{ session: string; cli: string; code: number }>(
         "chat:done",
         (e) => {
-          if (e.payload.session !== sessionRef.current) return;
           if (!mounted) return;
+          // Always notify the App-level tracker so background streams
+          // started in this panel get reconciled even after the user
+          // navigates away. The App layer ignores unknown sessions.
+          onStreamEnd(e.payload.session);
+          if (e.payload.session !== sessionRef.current) return;
           setMessages((m) => {
             const last = m[m.length - 1];
             if (last && last.streaming) return [...m.slice(0, -1), { ...last, streaming: false }];
@@ -2134,6 +3080,9 @@ function ChatPanel({
     const userPreamble = userMd.trim()
       ? `--- About the user (vault/user.md) ---\n${userMd.trim()}\n\n`
       : "";
+    const skillsPreamble = attachedSkills.length > 0
+      ? `Use the following skills as part of your reply: ${attachedSkills.map((n) => `/${n}`).join(", ")}\n\n`
+      : "";
     // Build multi-turn context from prior messages. We pass it as a
     // single text payload because the CLIs spawn fresh each turn and
     // have no shared session. Cap at ~40K characters (~10K tokens) and
@@ -2141,13 +3090,23 @@ function ChatPanel({
     const history = buildChatContext(messages, 40000);
     const promptText = fwLens.buildPrompt(
       history
-        ? `${userPreamble}${attachPreamble}${primedPreamble}You are mid-conversation. Below is the prior turn history; use it as context but do NOT repeat it back to the user.\n\n--- PRIOR TURNS ---\n${history}\n--- END PRIOR TURNS ---\n\nUser's next message: ${visible}`
-        : `${userPreamble}${attachPreamble}${primedPreamble}${visible}`
+        ? `${userPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}You are mid-conversation. Below is the prior turn history; use it as context but do NOT repeat it back to the user.\n\n--- PRIOR TURNS ---\n${history}\n--- END PRIOR TURNS ---\n\nUser's next message: ${visible}`
+        : `${userPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}${visible}`
     );
     pushHistory(visible);
     setAttachments([]);
+    setAttachedSkills([]);
     setInput("");
     sessionRef.current = `s-${Date.now()}`;
+    // Announce the stream so the sidebar can pulse the originating
+    // domain even if the user navigates away while it runs.
+    onStreamStart({
+      sessionId: sessionRef.current,
+      domain: domain ?? null,
+      threadPath: activeThreadRef.current,
+      title: visible.slice(0, 60).replace(/\n/g, " "),
+      startedAt: Date.now(),
+    });
     try {
       await invoke("chat_send", {
         args: {
@@ -2155,10 +3114,12 @@ function ChatPanel({
           model: lsGet(`prevail.model.${selectedCli}`) || null,
           prompt: promptText,
           session_id: sessionRef.current,
+          timeout_sec: (() => { const n = parseInt(getPref(PREF.llmPromptTimeoutSec, "300"), 10); return Number.isFinite(n) && n > 0 ? n : null; })(),
         },
       });
     } catch (e) {
       setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `(error spawning ${selectedCli}: ${e})`, ts: Date.now() }]);
+      onStreamEnd(sessionRef.current);
     }
   }
 
@@ -2172,11 +3133,39 @@ function ChatPanel({
     : "";
 
   const [dragOver, setDragOver] = useState(false);
+  // Resolve a drop payload to a domain name. Custom MIME first, then
+  // text/plain "prevail-domain:<name>" sentinel, then any types we know.
+  const resolveDroppedDomain = useCallback((dt: DataTransfer): string | null => {
+    const direct = dt.getData("application/x-prevail-domain");
+    if (direct) return direct;
+    const txt = dt.getData("text/plain");
+    if (txt && txt.startsWith("prevail-domain:")) return txt.slice("prevail-domain:".length);
+    return null;
+  }, []);
+  const attachDomainAsContext = useCallback(async (name: string) => {
+    if (!name || !vaultPath) return;
+    try {
+      const c = await invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain: name });
+      if (c.state) injectContext(c.state, `extra: ${titleCase(name)}/state.md`);
+      else injectContext(`(no state.md in ${name})`, `extra: ${titleCase(name)}/state.md`);
+    } catch (err) { console.error("attach domain", err); }
+  }, [vaultPath, injectContext]);
+  // Test hook — expose on window so we can verify the inject flow
+  // without dispatching synthetic DragEvents through WebKit. Call
+  // window.__prevailAttach('tax') in DevTools to confirm the chip
+  // appears in the composer.
+  useEffect(() => {
+    (window as unknown as { __prevailAttach?: (n: string) => void }).__prevailAttach = (n) => void attachDomainAsContext(n);
+    return () => { try { delete (window as unknown as { __prevailAttach?: unknown }).__prevailAttach; } catch {} };
+  }, [attachDomainAsContext]);
   return (
     <div
       className="flex h-full"
       onDragOver={(e) => {
-        if (e.dataTransfer.types.includes("application/x-prevail-domain")) {
+        const types = Array.from(e.dataTransfer.types);
+        const hasCustom = types.includes("application/x-prevail-domain");
+        const hasText = types.includes("text/plain");
+        if (hasCustom || hasText) {
           e.preventDefault();
           e.dataTransfer.dropEffect = "copy";
           if (!dragOver) setDragOver(true);
@@ -2188,13 +3177,10 @@ function ChatPanel({
       }}
       onDrop={async (e) => {
         setDragOver(false);
-        const name = e.dataTransfer.getData("application/x-prevail-domain");
-        if (!name || !vaultPath) return;
+        const name = resolveDroppedDomain(e.dataTransfer);
+        if (!name) return;
         e.preventDefault();
-        try {
-          const c = await invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain: name });
-          if (c.state) injectContext(c.state, `extra: ${titleCase(name)}/state.md`);
-        } catch (err) { console.error("drop domain", err); }
+        void attachDomainAsContext(name);
       }}
     >
       <div className="relative flex min-w-0 flex-1 flex-col">
@@ -2205,8 +3191,11 @@ function ChatPanel({
           </div>
         </div>
       )}
-      {/* Minimal header — domain + finder + (optional) convene shortcut */}
-      <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-6 py-3">
+      {/* Header — domain title + persistent tab strip + actions. The
+          tabs stay visible whether you're on the chat transcript or
+          a domain content view, so you can flip between them mid
+          conversation. */}
+      <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-6 py-2.5">
         {domain ? (
           <>
             <span className="text-accent">◆</span>
@@ -2214,13 +3203,65 @@ function ChatPanel({
             {domainPath && (
               <button
                 onClick={onOpenInFinder}
-                title="Open in Finder"
-                className="inline-flex items-center gap-1 rounded-md border border-border-subtle bg-surface px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:bg-surface-warm hover:text-accent"
+                title="Open domain folder in Finder"
+                className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent"
               >
-                <Folder className="h-3 w-3" />
-                Finder
+                <Folder className="h-3.5 w-3.5" />
               </button>
             )}
+            <div className="relative">
+              <button
+                onClick={() => setDomainPrefsOpen((v) => !v)}
+                title={hasAnyDomainOverride ? "Domain preferences (overrides active)" : "Domain preferences"}
+                className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
+                  hasAnyDomainOverride
+                    ? "text-accent hover:bg-accent-soft"
+                    : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                }`}
+              >
+                <SettingsIcon className="h-3.5 w-3.5" />
+              </button>
+              {domainPrefsOpen && (
+                <DomainPrefsPopover
+                  domain={domain}
+                  onClose={() => setDomainPrefsOpen(false)}
+                  onChanged={() => setPrefsTick((t) => t + 1)}
+                />
+              )}
+            </div>
+            {/* Tab strip — persistent. State auto-loaded so the tab
+                count badges reflect real content (1 if state exists,
+                etc.). Click a non-Chat tab to view that doc; Chat
+                returns you to the transcript. */}
+            <nav className="ml-3 flex items-center gap-0.5 text-[11px] font-medium uppercase tracking-wider">
+              {([
+                { id: "chat", label: "Chat", count: undefined },
+                { id: "state", label: "State", count: domainCtx?.state ? 1 : 0 },
+                { id: "decisions", label: "Decisions", count: domainCtx?.decisions ? 1 : 0 },
+                { id: "journal", label: "Journal", count: domainCtx?.journal ? 1 : 0 },
+                { id: "logs", label: "Sessions", count: domainCtx?.recent_logs?.length ?? 0 },
+                { id: "skills", label: "Skills", count: domainCtx?.skills?.length ?? 0 },
+              ] as { id: DomainTab; label: string; count?: number }[]).map((t) => {
+                const active = domainTab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setDomainTab(t.id)}
+                    className={`relative -mb-2.5 flex items-center gap-1 px-2 pb-3 pt-2 transition-colors ${
+                      active ? "text-accent" : "text-text-muted hover:text-text-secondary"
+                    }`}
+                  >
+                    {t.label}
+                    {t.count !== undefined && (
+                      <span className={`rounded-full px-1.5 py-0 font-mono text-[10px] ${active ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
+                        {t.count}
+                      </span>
+                    )}
+                    {active && <span className="absolute -bottom-px left-0 right-0 h-0.5 bg-accent" />}
+                  </button>
+                );
+              })}
+            </nav>
           </>
         ) : (
           <span className="font-mono text-xs uppercase tracking-[0.2em] text-text-muted">
@@ -2274,7 +3315,12 @@ function ChatPanel({
             }`}
           >
             <BookOpen className="h-3 w-3" />
-            Context{primedContext.length > 0 ? ` · ${primedContext.length}` : ""}
+            Context{(() => {
+              // Count only items the user actively added — auto-loaded
+              // state.md is implicit and shouldn't pad this badge.
+              const added = primedContext.filter((c) => !c.label.startsWith("auto:")).length;
+              return added > 0 ? ` · ${added}` : "";
+            })()}
           </button>
         )}
       </div>
@@ -2289,7 +3335,12 @@ function ChatPanel({
             <p className="mt-3 max-w-md text-center text-sm text-text-muted">
               Start chatting · pick a domain from the sidebar to ground the conversation in its state and history.
             </p>
-            <div className="mt-8 grid w-full max-w-2xl grid-cols-1 gap-2 md:grid-cols-2">
+            <AgentPickerRail
+              clis={available}
+              selected={selectedCli}
+              onSelect={(id) => setSelectedCli(id)}
+            />
+            <div className="mt-8 flex w-full max-w-2xl flex-col gap-2">
               {quickActions.map((q) => (
                 <button
                   key={q.label}
@@ -2307,16 +3358,64 @@ function ChatPanel({
             </div>
           </div>
         )}
-        {messages.length === 0 && domain && (
+        {domain && domainTab === "chat" && messages.length === 0 && (
           <DomainHome
             domain={domain}
             vaultPath={vaultPath}
             onInjectContext={(body, label) => injectContext(body, label)}
             onPickPrompt={(text) => setInput(text)}
             onInsertSkill={(name) => insertSkillSlash(name)}
+            preferredSet={preferredSkillsSet}
+            onTogglePreferred={togglePreferredSkill}
           />
         )}
-        {messages.length > 0 && (
+        {domain && domainTab === "chat" && messages.length > 0 && (
+          <div className="mx-auto w-full max-w-3xl px-6 py-8">
+            {messages.map((m, i) => <ChatBubble key={i} msg={m} />)}
+          </div>
+        )}
+        {domain && domainTab !== "chat" && (
+          <div className="mx-auto w-full max-w-3xl px-6 py-6">
+            {!domainCtx && <div className="text-sm text-text-muted">loading…</div>}
+            {domainCtx && domainTab === "state" && (domainCtx.state ? <Markdown source={domainCtx.state} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">state.md</code> in this domain.</div>)}
+            {domainCtx && domainTab === "decisions" && (domainCtx.decisions ? <Markdown source={domainCtx.decisions} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">decisions.md</code> yet.</div>)}
+            {domainCtx && domainTab === "journal" && (domainCtx.journal ? <Markdown source={domainCtx.journal} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no journal entries yet.</div>)}
+            {domainCtx && domainTab === "logs" && (
+              domainCtx.recent_logs.length === 0
+                ? <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no past sessions.</div>
+                : (
+                  <ul className="flex flex-col gap-2">
+                    {domainCtx.recent_logs.map((l) => (
+                      <li key={l.path}>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const body = await invoke<string>("read_file", { path: l.path });
+                              injectContext(body, l.name);
+                              setDomainTab("chat");
+                            } catch (e) { console.error(e); }
+                          }}
+                          className="block w-full rounded-xl border border-border bg-surface px-4 py-3 text-left shadow-sm hover:-translate-y-px hover:border-accent-border hover:shadow-md"
+                        >
+                          <div className="font-mono text-sm text-text-primary">{l.name}</div>
+                          {l.preview && <div className="mt-1 line-clamp-2 text-xs text-text-muted">{l.preview}</div>}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )
+            )}
+            {domainCtx && domainTab === "skills" && (
+              <SkillsList
+                skills={domainCtx.skills}
+                onInsert={(name) => { insertSkillSlash(name); setDomainTab("chat"); }}
+                preferredSet={preferredSkillsSet}
+                onTogglePreferred={togglePreferredSkill}
+              />
+            )}
+          </div>
+        )}
+        {!domain && messages.length > 0 && (
           <div className="mx-auto w-full max-w-3xl px-6 py-8">
             {messages.map((m, i) => <ChatBubble key={i} msg={m} />)}
           </div>
@@ -2377,6 +3476,41 @@ function ChatPanel({
             ref={taRef}
             value={input}
             onChange={(e) => { setInput(e.target.value); setHistIdx(-1); }}
+            onDragOver={(e) => {
+              const types = Array.from(e.dataTransfer.types);
+              if (types.includes("application/x-prevail-domain") || types.includes("text/plain")) {
+                // Suppress native text-insertion so the parent drop
+                // handler runs and the dropped domain becomes a context
+                // chip instead of inline text in the prompt.
+                const t = e.dataTransfer.getData("text/plain");
+                if (t && !t.startsWith("prevail-domain:") && !types.includes("application/x-prevail-domain")) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "copy";
+              }
+            }}
+            onDrop={(e) => {
+              let name = e.dataTransfer.getData("application/x-prevail-domain");
+              if (!name) {
+                const t = e.dataTransfer.getData("text/plain");
+                if (t && t.startsWith("prevail-domain:")) name = t.slice("prevail-domain:".length);
+              }
+              if (!name) return;
+              // Stop the native text drop AND prevent bubbling so the
+              // parent attaches it once (avoid double-attach).
+              e.preventDefault();
+              e.stopPropagation();
+              void attachDomainAsContext(name);
+            }}
+            onPaste={async (e) => {
+              if (lsGet("prevail.pref.autoConvertLongPaste") !== "1") return;
+              const txt = e.clipboardData.getData("text/plain");
+              if (txt.length < 5000) return;
+              e.preventDefault();
+              try {
+                const path = await invoke<string>("write_paste_attachment", { vault: vaultPath, body: txt });
+                setAttachments((cur) => (cur.includes(path) ? cur : [...cur, path]));
+              } catch (err) { console.error("write_paste_attachment", err); }
+            }}
             onKeyDown={(e) => {
               // If slash popover open, route arrow keys + enter/tab to it.
               if (slashMatch && slashCandidates.length > 0) {
@@ -2436,33 +3570,61 @@ function ChatPanel({
             rows={2}
             className="w-full resize-none bg-transparent px-2 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
           />
-          {/* Detected /skill tokens — show as pills so the user can
-              tell which words will be treated as skill refs. */}
+          {/* Attached skills — separate from textarea text. Removing
+              text in the input doesn't affect these; remove a skill
+              by hovering its pill and clicking ×. */}
+          {attachedSkills.length > 0 && (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 px-2">
+              {attachedSkills.map((name) => (
+                <span
+                  key={name}
+                  className="inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-soft py-0.5 pl-1.5 pr-1 font-mono text-[11px] text-accent"
+                  title="Attached skill — included as `/name` reference in the prompt"
+                >
+                  <Sparkles className="h-3 w-3" />
+                  /{name}
+                  <button
+                    onClick={() => removeAttachedSkill(name)}
+                    className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-text-muted hover:bg-surface-warm hover:text-err"
+                    title={`Remove /${name}`}
+                  >×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          {/* Suggested skills — match the prompt's words against skill
+              names and the first non-empty line of each SKILL.md. Only
+              fires when the prompt is at least 8 chars to avoid noise. */}
           {(() => {
-            const detected = Array.from(input.matchAll(/(?:^|\s)(\/[a-zA-Z][a-zA-Z0-9_-]*)/g))
-              .map((m) => m[1])
-              .filter((tok, i, arr) => arr.indexOf(tok) === i);
-            if (detected.length === 0) return null;
-            const known = new Set(skillsCache.map((s) => s.name));
+            if (input.trim().length < 8) return null;
+            const lower = input.toLowerCase();
+            const tokens = new Set(lower.split(/[^a-z0-9]+/).filter((t) => t.length >= 3));
+            const attached = new Set(attachedSkills);
+            const matches = skillsCache.filter((s) => {
+              if (attached.has(s.name)) return false;
+              const name = s.name.toLowerCase();
+              if (tokens.has(name)) return true;
+              const desc = (s.description ?? "").toLowerCase();
+              for (const t of tokens) {
+                if (t.length >= 4 && (name.includes(t) || desc.includes(t))) return true;
+              }
+              return false;
+            }).slice(0, 3);
+            if (matches.length === 0) return null;
             return (
               <div className="mt-1 flex flex-wrap items-center gap-1.5 px-2">
-                {detected.map((tok) => {
-                  const isKnown = known.has(tok.slice(1));
-                  return (
-                    <span
-                      key={tok}
-                      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[11px] ${
-                        isKnown
-                          ? "border-accent-border bg-accent-soft text-accent"
-                          : "border-warn/40 bg-warn/10 text-warn"
-                      }`}
-                      title={isKnown ? "Known skill — will be linked in the reply" : "Unknown skill — typo?"}
-                    >
-                      <Sparkles className="h-3 w-3" />
-                      {tok}
-                    </span>
-                  );
-                })}
+                <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">suggested</span>
+                {matches.map((s) => (
+                  <button
+                    key={s.name}
+                    onClick={() => insertSkillSlash(s.name)}
+                    title={s.description ?? `Attach /${s.name}`}
+                    className="inline-flex items-center gap-1 rounded-md border border-dashed border-border bg-background py-0.5 pl-1.5 pr-2 font-mono text-[11px] text-text-secondary hover:border-accent-border hover:text-accent"
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    /{s.name}
+                  </button>
+                ))}
               </div>
             );
           })()}
@@ -2613,6 +3775,29 @@ function ChatPanel({
                       );
                     })}
                   </div>
+                  {/* Domain default management — only shown when in a
+                      domain. Setting a model already auto-saves; this
+                      lets the user clear the override. */}
+                  {domain && (
+                    <div className="flex items-center justify-between gap-2 border-t border-border-subtle bg-surface-warm/60 px-3 py-2 font-mono text-[10px] text-text-muted">
+                      <span>
+                        {lsGet(domainCliKey)
+                          ? <>default for <span className="text-accent">{titleCase(domain)}</span>: {selectedCli} · {selectedModel || "—"}</>
+                          : <>using global default · pick a model to set one for <span className="text-accent">{titleCase(domain)}</span></>}
+                      </span>
+                      {lsGet(domainCliKey) && (
+                        <button
+                          onClick={() => {
+                            clearDomainModelOverride();
+                            setModelMenuOpen(false);
+                          }}
+                          className="rounded border border-border bg-background px-1.5 py-0.5 hover:border-accent-border hover:text-accent"
+                        >
+                          reset
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2626,15 +3811,48 @@ function ChatPanel({
               Council
             </button>
 
-            <button
-              onClick={send}
-              disabled={!input.trim() || !selectedCli}
-              title="Send (enter)"
-              className="inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-background shadow-sm transition-all hover:bg-accent-hover disabled:bg-surface-strong disabled:text-text-muted"
-            >
-              Send
-              <ArrowUpRight className="h-3.5 w-3.5" />
-            </button>
+            {(() => {
+              const last = messages[messages.length - 1];
+              const streaming = !!(last && last.streaming);
+              if (streaming) {
+                return (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await invoke("abort_sessions", { prefix: sessionRef.current });
+                      } catch (e) { console.error("abort chat", e); }
+                      // Force-finish the streaming bubble so the UI unwinds.
+                      setMessages((m) => {
+                        const lst = m[m.length - 1];
+                        if (lst && lst.streaming) {
+                          return [...m.slice(0, -1), {
+                            ...lst,
+                            streaming: false,
+                            content: lst.content ? lst.content + "\n\n(aborted)" : "(aborted by user)",
+                          }];
+                        }
+                        return m;
+                      });
+                    }}
+                    title="Stop the reply"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-err bg-err/10 px-4 py-1.5 text-sm font-semibold text-err hover:bg-err hover:text-background"
+                  >
+                    ■ Stop
+                  </button>
+                );
+              }
+              return (
+                <button
+                  onClick={send}
+                  disabled={!input.trim() || !selectedCli}
+                  title="Send (enter)"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-background shadow-sm transition-all hover:bg-accent-hover disabled:bg-surface-strong disabled:text-text-muted"
+                >
+                  Send
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </button>
+              );
+            })()}
           </div>
         </div>
       </div>
@@ -2647,6 +3865,8 @@ function ChatPanel({
           onClose={() => setContextOpen(false)}
           onInjectContext={(body, label) => injectContext(body, label)}
           onInsertSkill={(name) => insertSkillSlash(name)}
+          preferredSet={preferredSkillsSet}
+          onTogglePreferred={togglePreferredSkill}
         />
       )}
     </div>
@@ -2747,6 +3967,7 @@ function CouncilPanel({
   fwLens,
   onOpenInFinder,
   onSwitchToChat,
+  onThreadsChanged,
 }: {
   domain: string | null;
   domainPath: string | null;
@@ -2755,6 +3976,7 @@ function CouncilPanel({
   fwLens: ReturnType<typeof useFrameworkLens>;
   onOpenInFinder: () => void;
   onSwitchToChat: () => void;
+  onThreadsChanged?: () => void;
 }) {
   // All possible (cli, model) panelist slots across ALL providers —
   // even ones not installed are listed (greyed out) so the user knows
@@ -2796,7 +4018,6 @@ function CouncilPanel({
       return out;
     } catch { return {}; }
   });
-  // @ts-expect-error queued for v0.2.42 verify-error UI
   const [verifyError, setVerifyError] = useState<Record<string, string>>({});
   function persistVerify(next: Record<string, VerifyStatus>) {
     const trimmed: Record<string, "ok"> = {};
@@ -2858,6 +4079,20 @@ function CouncilPanel({
     () => allSlots.filter((s) => selectedSlots.has(s.key)),
     [allSlots, selectedSlots],
   );
+  // Auto-verify any panelist slot that hasn't been verified yet (or
+  // failed last time). Triggers when slots are selected/changed.
+  // Persisted "ok" results in localStorage skip the re-check.
+  useEffect(() => {
+    for (const s of panelistSlots) {
+      const cur = verifyStatus[s.key] ?? "unknown";
+      if (cur === "unknown") {
+        // Stagger so we don't hammer all CLIs simultaneously.
+        const delay = Math.random() * 500;
+        setTimeout(() => { verifySlot(s); }, delay);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelistSlots]);
 
   // Chair is a single (cli, model) pair — defaults to first selected
   // panelist's CLI with its first model, or whatever's saved.
@@ -2886,6 +4121,61 @@ function CouncilPanel({
     [allSlots, chairSlot],
   );
 
+  // Context drawer + primed extras (state.md, decisions, dragged-in
+  // domains). Same machinery as Chat — gets prepended to the convened
+  // prompt so panelists and the chair both see it.
+  const [contextOpen, setContextOpen] = useState(false);
+  const [primedContext, setPrimedContext] = useState<{ label: string; body: string }[]>([]);
+  function injectContext(body: string, label: string) {
+    setPrimedContext((cur) => {
+      if (cur.some((c) => c.label === label)) return cur;
+      return [...cur, { label, body }];
+    });
+  }
+  // Skills attached to the next convene — same model as Chat.
+  const [attachedSkills, setAttachedSkills] = useState<string[]>(() => loadPreferredSkills(domain));
+  const [preferredSkills, setPreferredSkills] = useState<string[]>(() => loadPreferredSkills(domain));
+  useEffect(() => {
+    const pref = loadPreferredSkills(domain);
+    setPreferredSkills(pref);
+    setAttachedSkills(pref);
+  }, [domain]);
+  const togglePreferredSkill = useCallback((name: string) => {
+    setPreferredSkills((cur) => {
+      const next = cur.includes(name) ? cur.filter((n) => n !== name) : [...cur, name];
+      savePreferredSkills(domain, next);
+      return next;
+    });
+    setAttachedSkills((cur) => (cur.includes(name) ? cur.filter((n) => n !== name) : [...cur, name]));
+  }, [domain]);
+  const preferredSkillsSet = useMemo(() => new Set(preferredSkills), [preferredSkills]);
+  function insertSkillSlash(name: string) {
+    setAttachedSkills((cur) => (cur.includes(name) ? cur : [...cur, name]));
+    setContextOpen(false);
+  }
+  function removeAttachedSkill(name: string) {
+    setAttachedSkills((cur) => cur.filter((n) => n !== name));
+  }
+  // Auto-prime the domain's state.md whenever the domain changes.
+  useEffect(() => {
+    if (!domain || !_vaultPath) {
+      setPrimedContext((cur) => cur.filter((x) => !x.label.startsWith("auto:")));
+      return;
+    }
+    let mounted = true;
+    invoke<DomainContextBundle>("domain_context", { vault: _vaultPath, domain })
+      .then((c) => {
+        if (!mounted) return;
+        const label = `auto: ${titleCase(domain)}/state.md`;
+        setPrimedContext((cur) => {
+          const cleared = cur.filter((x) => !x.label.startsWith("auto:"));
+          if (!c.state) return cleared;
+          return [...cleared, { label, body: c.state }];
+        });
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, [domain, _vaultPath]);
   const [prompt, setPrompt] = useState("");
   // Snapshot of the prompt at the moment the council was convened.
   // Composer `prompt` clears after submit so the textarea is empty for
@@ -2914,9 +4204,10 @@ function CouncilPanel({
           const slotMatch = e.payload.session.match(/:slot:(.+)$/);
           if (!slotMatch) return;
           const slotKey = slotMatch[1];
+          const clean = maybeStripSycophancy(stripAnsi(e.payload.data));
           setReplies((r) => {
             const existing = r[slotKey] ?? { cli: e.payload.cli, content: "", streaming: true, startedAt: Date.now() };
-            return { ...r, [slotKey]: { ...existing, content: maybeStripSycophancy(existing.content + stripAnsi(e.payload.data)) } };
+            return { ...r, [slotKey]: { ...existing, content: existing.content + clean } };
           });
         },
       );
@@ -2976,6 +4267,49 @@ function CouncilPanel({
     if (phase === "panelists" && allPanelistsDone) triggerChair();
   }, [phase, allPanelistsDone, triggerChair]);
 
+  // Persist the council session as a thread once the verdict lands.
+  // Mirrors ChatPanel's auto-save but fires only on phase === "done"
+  // so the file represents the complete deliberation rather than
+  // intermediate in-flight state.
+  const councilSavedRef = useRef(false);
+  useEffect(() => {
+    if (phase !== "done") { councilSavedRef.current = false; return; }
+    if (councilSavedRef.current) return;
+    if (!_vaultPath || !submittedPrompt) return;
+    councilSavedRef.current = true;
+    const turns: { role: string; cli: string | null; model: string | null; content: string }[] = [
+      { role: "user", cli: null, model: null, content: submittedPrompt },
+    ];
+    for (const s of panelistSlots) {
+      const r = replies[s.key];
+      if (!r || !r.content.trim()) continue;
+      turns.push({
+        role: "assistant",
+        cli: s.cli,
+        model: s.model || null,
+        content: `### ${s.cliLabel} · ${s.modelLabel}\n\n${r.content.trim()}`,
+      });
+    }
+    if (verdict.trim()) {
+      turns.push({
+        role: "assistant",
+        cli: chairSlotObj?.cli ?? null,
+        model: chairSlotObj?.model || null,
+        content: `### Council verdict\n\n${verdict.trim()}`,
+      });
+    }
+    const title = `Council · ${submittedPrompt.slice(0, 50).replace(/\n/g, " ")}`;
+    invoke<string>("save_thread", {
+      vault: _vaultPath,
+      domain: domain ?? null,
+      slug: null,
+      title,
+      turns,
+    })
+      .then(() => onThreadsChanged?.())
+      .catch((e) => console.error("save_thread (council)", e));
+  }, [phase, submittedPrompt, replies, verdict, panelistSlots, chairSlotObj, _vaultPath, domain, onThreadsChanged]);
+
   async function convene() {
     if (!prompt.trim() || panelistSlots.length === 0) return;
     sessionRef.current = `council-${Date.now()}`;
@@ -2984,8 +4318,22 @@ function CouncilPanel({
     setPhase("panelists");
     const trimmed = prompt.trim();
     setSubmittedPrompt(trimmed);
-    const enrichedPrompt = fwLens.buildPrompt(trimmed);
+    // user.md preamble — load fresh per convene so edits propagate
+    // without app restart.
+    let userMd = "";
+    try { userMd = await invoke<string>("read_user_md", { vault: _vaultPath }); } catch {}
+    const userPreamble = userMd.trim()
+      ? `--- About the user (vault/user.md) ---\n${userMd.trim()}\n\n`
+      : "";
+    const primedPreamble = primedContext.length > 0
+      ? primedContext.map((c) => `--- ${c.label} ---\n${c.body.trim()}\n`).join("\n") + "\n"
+      : "";
+    const skillsPreamble = attachedSkills.length > 0
+      ? `Use the following skills as part of your reply: ${attachedSkills.map((n) => `/${n}`).join(", ")}\n\n`
+      : "";
+    const enrichedPrompt = fwLens.buildPrompt(`${userPreamble}${primedPreamble}${skillsPreamble}${trimmed}`);
     setPrompt("");
+    setAttachedSkills([]);
     for (const s of panelistSlots) {
       try {
         await invoke("chat_send", {
@@ -3025,8 +4373,42 @@ function CouncilPanel({
     return () => window.removeEventListener("mousedown", onClick);
   }, [addMenuOpen, chairMenuOpen]);
 
+  const [dragOver, setDragOver] = useState(false);
   return (
-    <div className="flex h-full flex-col">
+    <div
+      className="flex h-full"
+      onDragOver={(e) => {
+        const types = Array.from(e.dataTransfer.types);
+        if (types.includes("application/x-prevail-domain") || types.includes("text/plain")) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          if (!dragOver) setDragOver(true);
+        }
+      }}
+      onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
+      onDrop={async (e) => {
+        setDragOver(false);
+        let name = e.dataTransfer.getData("application/x-prevail-domain");
+        if (!name) {
+          const t = e.dataTransfer.getData("text/plain");
+          if (t.startsWith("prevail-domain:")) name = t.slice("prevail-domain:".length);
+        }
+        if (!name || !_vaultPath) return;
+        e.preventDefault();
+        try {
+          const c = await invoke<DomainContextBundle>("domain_context", { vault: _vaultPath, domain: name });
+          if (c.state) injectContext(c.state, `extra: ${titleCase(name)}/state.md`);
+        } catch (err) { console.error("drop domain", err); }
+      }}
+    >
+      <div className="relative flex min-w-0 flex-1 flex-col">
+      {dragOver && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-accent-soft/80 backdrop-blur-sm">
+          <div className="rounded-2xl border-2 border-dashed border-accent bg-surface px-8 py-6 font-mono text-sm uppercase tracking-wider text-accent shadow-xl">
+            ⊕ drop to add as context
+          </div>
+        </div>
+      )}
       {/* Minimal header — same shape as Chat. Domain + Finder on left. */}
       <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-6 py-3">
         {domain ? (
@@ -3048,6 +4430,25 @@ function CouncilPanel({
           <span className="font-mono text-xs uppercase tracking-[0.2em] text-text-muted">Council</span>
         )}
         <div className="flex-1" />
+        {domain && (
+          <button
+            onClick={() => setContextOpen((v) => !v)}
+            title="Show domain state, decisions, journal, logs, skills"
+            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider ${
+              contextOpen
+                ? "border-accent-border bg-accent-soft text-accent"
+                : "border-border bg-surface text-text-muted hover:border-accent-border hover:bg-accent-soft hover:text-accent"
+            }`}
+          >
+            <BookOpen className="h-3 w-3" />
+            Context{(() => {
+              // Count only items the user actively added — auto-loaded
+              // state.md is implicit and shouldn't pad this badge.
+              const added = primedContext.filter((c) => !c.label.startsWith("auto:")).length;
+              return added > 0 ? ` · ${added}` : "";
+            })()}
+          </button>
+        )}
         <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
           {panelistSlots.length} on panel
         </span>
@@ -3078,23 +4479,24 @@ function CouncilPanel({
               Council is best for <span className="text-accent">why</span>, <span className="text-accent">should I</span>, and decision-level questions where you want multiple model perspectives + a chair-synthesized verdict — not quick lookups.
             </p>
 
-            <div className="mt-6 grid w-full max-w-3xl grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <ul className="mt-6 flex w-full max-w-2xl flex-col gap-2">
               {buildCouncilQuickActions(domain).map((q) => (
-                <button
-                  key={q.label}
-                  onClick={() => setPrompt(q.prompt)}
-                  className="rounded-lg border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-accent-border hover:bg-surface-warm"
-                >
-                  <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-accent">
-                    <span>{q.glyph}</span> {q.label}
-                  </div>
-                  <div className="mt-1 text-sm text-text-primary">{q.blurb}</div>
-                  <div className="mt-1 line-clamp-2 text-xs text-text-muted">
-                    {q.prompt}
-                  </div>
-                </button>
+                <li key={q.label}>
+                  <button
+                    onClick={() => setPrompt(q.prompt)}
+                    className="block w-full rounded-xl border border-border bg-surface px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-px hover:border-accent-border hover:shadow-md"
+                  >
+                    <div className="flex items-baseline gap-2 font-mono text-[11px] uppercase tracking-wider text-accent">
+                      <span>{q.glyph}</span> {q.label}
+                      <span className="ml-1 text-text-secondary normal-case">— {q.blurb}</span>
+                    </div>
+                    <div className="mt-1 text-sm leading-relaxed text-text-secondary">
+                      {q.prompt}
+                    </div>
+                  </button>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         )}
 
@@ -3161,6 +4563,45 @@ function CouncilPanel({
       {/* Codex-style composer — textarea + panelist pills + chair pill */}
       <div className="shrink-0 px-6 pb-6 pt-2">
         <div className="rounded-2xl border border-border bg-surface p-3 shadow-sm">
+          {/* Context pills — auto-primed + dragged-in domains */}
+          {primedContext.length > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2">
+              {primedContext.map((c, i) => (
+                <span
+                  key={c.label}
+                  className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft py-0.5 pl-2 pr-1 font-mono text-[11px] text-accent"
+                  title={c.body.slice(0, 200)}
+                >
+                  <BookOpen className="h-3 w-3" />
+                  {c.label}
+                  <button
+                    onClick={() => setPrimedContext((cur) => cur.filter((_, j) => j !== i))}
+                    className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-text-muted hover:bg-surface-warm hover:text-err"
+                    title="Remove from context"
+                  >×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          {/* Attached skills */}
+          {attachedSkills.length > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2">
+              {attachedSkills.map((name) => (
+                <span
+                  key={name}
+                  className="inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-soft py-0.5 pl-1.5 pr-1 font-mono text-[11px] text-accent"
+                >
+                  <Sparkles className="h-3 w-3" />
+                  /{name}
+                  <button
+                    onClick={() => removeAttachedSkill(name)}
+                    className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-text-muted hover:bg-surface-warm hover:text-err"
+                    title={`Remove /${name}`}
+                  >×</button>
+                </span>
+              ))}
+            </div>
+          )}
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -3179,25 +4620,52 @@ function CouncilPanel({
             className="w-full resize-none bg-transparent px-2 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-50"
           />
 
-          {/* Panelist pills row */}
+          {/* Panelist pills row — each with a verification badge */}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {panelistSlots.map((s) => (
-              <span
-                key={s.key}
-                title={s.blurb}
-                className="inline-flex items-center gap-1 rounded-full border border-border bg-background py-0.5 pl-0.5 pr-1.5"
-              >
-                <ProviderMark vendor={s.cli} size={16} />
-                <span className="font-mono text-[11px] text-text-primary">{s.modelLabel}</span>
-                <button
-                  onClick={() => toggleSlot(s.key)}
-                  className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-text-muted hover:bg-surface-warm hover:text-err"
-                  title="Remove from panel"
+            {panelistSlots.map((s) => {
+              const st = verifyStatus[s.key] ?? "unknown";
+              const tip = verifyError[s.key]
+                ? `Failed: ${verifyError[s.key]}\n\nClick the dot to re-verify.`
+                : st === "ok"
+                ? "Verified — model is ready"
+                : st === "verifying"
+                ? "Verifying…"
+                : "Click the dot to verify this model";
+              return (
+                <span
+                  key={s.key}
+                  title={s.blurb}
+                  className={`inline-flex items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-1.5 ${
+                    st === "failed" ? "border-err bg-err/10" : "border-border bg-background"
+                  }`}
                 >
-                  ×
-                </button>
-              </span>
-            ))}
+                  <ProviderMark vendor={s.cli} size={16} />
+                  <span className="font-mono text-[11px] text-text-primary">{s.modelLabel}</span>
+                  <button
+                    onClick={() => verifySlot(s)}
+                    title={tip}
+                    className={`ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[10px] ${
+                      st === "ok"
+                        ? "bg-ok text-background"
+                        : st === "failed"
+                        ? "bg-err text-background"
+                        : st === "verifying"
+                        ? "bg-warn text-background"
+                        : "border border-border-strong text-text-muted hover:border-accent-border hover:text-accent"
+                    }`}
+                  >
+                    {st === "ok" ? "✓" : st === "failed" ? "✗" : st === "verifying" ? "…" : "?"}
+                  </button>
+                  <button
+                    onClick={() => toggleSlot(s.key)}
+                    className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-text-muted hover:bg-surface-warm hover:text-err"
+                    title="Remove from panel"
+                  >
+                    ×
+                  </button>
+                </span>
+              );
+            })}
 
             {/* + add panelist */}
             <div className="relative" ref={addMenuRef}>
@@ -3394,6 +4862,19 @@ function CouncilPanel({
           </div>
         </div>
       </div>
+      </div>
+      {contextOpen && domain && _vaultPath && (
+        <DomainContextDrawer
+          domain={domain}
+          vaultPath={_vaultPath}
+          domainPath={domainPath ?? ""}
+          onClose={() => setContextOpen(false)}
+          onInjectContext={(body, label) => injectContext(body, label)}
+          onInsertSkill={(name) => insertSkillSlash(name)}
+          preferredSet={preferredSkillsSet}
+          onTogglePreferred={togglePreferredSkill}
+        />
+      )}
     </div>
   );
 }
@@ -3974,18 +5455,21 @@ function SettingsPanel({
   onChangeVault,
   clis,
   onBack,
+  onStartChatWith,
 }: {
   appearance: ReturnType<typeof useAppearance>;
   vaultPath: string;
   onChangeVault: () => void;
   clis: CliInfo[];
   onBack?: () => void;
+  onStartChatWith?: (cliId: string, modelId?: string) => void;
 }) {
-  type Section = "general" | "user" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "about";
+  type Section = "general" | "agents" | "user" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "about";
   const [section, setSection] = useState<Section>("general");
 
   const items: Array<{ id: Section; label: string; icon: typeof Folder }> = [
     { id: "general", label: "General", icon: SettingsIcon },
+    { id: "agents", label: "Agents", icon: Sparkles },
     { id: "user", label: "About me", icon: Users },
     { id: "vault", label: "Vault", icon: Folder },
     { id: "appearance", label: "Appearance", icon: Sparkles },
@@ -4034,8 +5518,9 @@ function SettingsPanel({
 
       {/* Main pane */}
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-8 py-10">
+        <div className={`mx-auto ${section === "frameworks" ? "max-w-6xl" : "max-w-3xl"} px-8 py-10`}>
           {section === "general" && <GeneralSection />}
+          {section === "agents" && <AgentsSection clis={clis} onStartChatWith={onStartChatWith} />}
           {section === "user" && <UserProfileSection vaultPath={vaultPath} />}
           {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} />}
           {section === "appearance" && <AppearanceSection appearance={appearance} />}
@@ -4064,6 +5549,242 @@ function SettingsPanel({
   );
 }
 
+function AgentsSection({
+  clis,
+  onStartChatWith,
+}: {
+  clis: CliInfo[];
+  onStartChatWith?: (cliId: string, modelId?: string) => void;
+}) {
+  const detected = clis.filter((c) => c.available);
+  const missing = clis.filter((c) => !c.available);
+  return (
+    <>
+      <SettingsHeader
+        title="Agents"
+        subtitle="CLIs Prevail can route prompts to. Each agent is detected from your machine — Prevail doesn't install or update them."
+      />
+      {detected.length > 0 && (
+        <section className="mb-8">
+          <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+            Detected · {detected.length}
+          </div>
+          <div className="flex flex-col gap-3">
+            {detected.map((c) => (
+              <AgentCard key={c.id} cli={c} onStartChat={onStartChatWith} />
+            ))}
+          </div>
+        </section>
+      )}
+      {missing.length > 0 && (
+        <section>
+          <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+            Not installed · {missing.length}
+          </div>
+          <div className="flex flex-col gap-3">
+            {missing.map((c) => (
+              <AgentCard key={c.id} cli={c} onStartChat={onStartChatWith} />
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
+
+type ModelVerifyStatus = "unknown" | "verifying" | "ok" | "failed";
+
+// Council uses the same localStorage key/shape — share the dict so
+// verification results carry across the Agents page and Council UI.
+const AGENT_VERIFY_KEY = "prevail.council.verifySlots";
+function loadVerifyMap(): Record<string, "ok"> {
+  try {
+    const raw = lsGet(AGENT_VERIFY_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw) as Record<string, "ok">;
+    return obj && typeof obj === "object" ? obj : {};
+  } catch { return {}; }
+}
+function saveVerifyMap(m: Record<string, "ok">) {
+  try { lsSet(AGENT_VERIFY_KEY, JSON.stringify(m)); } catch {}
+}
+
+function AgentCard({
+  cli,
+  onStartChat,
+}: {
+  cli: CliInfo;
+  onStartChat?: (cliId: string, modelId?: string) => void;
+}) {
+  const brand = VENDOR_BRAND[cli.id] ?? VENDOR_BRAND.other;
+  const models = MODELS[cli.id] ?? [];
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState<Record<string, ModelVerifyStatus>>(() => {
+    const map = loadVerifyMap();
+    const out: Record<string, ModelVerifyStatus> = {};
+    for (const m of models) {
+      const key = `${cli.id}:${m.id}`;
+      if (map[key] === "ok") out[m.id] = "ok";
+    }
+    return out;
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  async function verifyModel(modelId: string) {
+    setStatus((s) => ({ ...s, [modelId]: "verifying" }));
+    try {
+      await invoke<string>("verify_cli_model", {
+        args: { cli: cli.id, model: modelId || null },
+      });
+      setStatus((s) => {
+        const next = { ...s, [modelId]: "ok" as ModelVerifyStatus };
+        const map = loadVerifyMap();
+        map[`${cli.id}:${modelId}`] = "ok";
+        saveVerifyMap(map);
+        return next;
+      });
+      setErrors((e) => { const { [modelId]: _, ...rest } = e; return rest; });
+    } catch (e) {
+      setStatus((s) => ({ ...s, [modelId]: "failed" }));
+      setErrors((er) => ({ ...er, [modelId]: String(e).slice(0, 200) }));
+    }
+  }
+
+  function verifyAll() {
+    for (const m of models) {
+      if (status[m.id] === "ok" || status[m.id] === "verifying") continue;
+      void verifyModel(m.id);
+    }
+  }
+
+  // Auto-run verification when the card is opened the first time
+  // and there are unverified models in the list.
+  useEffect(() => {
+    if (!open) return;
+    const unverified = models.some((m) => status[m.id] !== "ok");
+    if (unverified) verifyAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  function StatusGlyph({ s }: { s: ModelVerifyStatus | undefined }) {
+    if (s === "ok") return <span className="text-accent" title="Verified">✓</span>;
+    if (s === "verifying") return <span className="text-text-muted animate-pulse" title="Verifying…">◐</span>;
+    if (s === "failed") return <span className="text-warn" title="Failed verification">✗</span>;
+    return <span className="text-text-muted/60" title="Not yet verified">○</span>;
+  }
+
+  return (
+    <div className={`rounded-xl border bg-surface shadow-sm transition-colors ${open ? "border-accent-border" : "border-border"}`}>
+      <div className="flex items-center gap-4 p-4">
+        <ProviderMark vendor={cli.id} size={44} />
+        <button
+          onClick={() => cli.available && setOpen((v) => !v)}
+          disabled={!cli.available || models.length === 0}
+          className="flex min-w-0 flex-1 items-start gap-2 text-left disabled:cursor-default"
+        >
+          {cli.available && models.length > 0 && (
+            <span className="mt-1.5 text-[11px] text-text-muted">{open ? "▾" : "▸"}</span>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <div className="font-display text-lg font-semibold tracking-tight">{cli.label}</div>
+              <span className={`rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ${
+                cli.available
+                  ? "border border-accent-border bg-accent-soft text-accent"
+                  : "border border-border bg-background text-text-muted"
+              }`}>
+                {cli.available ? "Detected" : "Not installed"}
+              </span>
+              {cli.available && models.length > 0 && (
+                <span className="font-mono text-[10px] text-text-muted">
+                  · {models.filter((m) => status[m.id] === "ok").length}/{models.length} verified
+                </span>
+              )}
+            </div>
+            <div className="mt-0.5 truncate text-xs text-text-muted">
+              {cli.available
+                ? (cli.version ?? `\`${cli.bin}\` in PATH`)
+                : `Install \`${cli.bin}\` to enable`}
+              <span className="ml-2 text-text-muted/60">· {brand.name}</span>
+            </div>
+          </div>
+        </button>
+        <button
+          onClick={() => cli.available && onStartChat?.(cli.id)}
+          disabled={!cli.available}
+          className={`shrink-0 rounded-md border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition-colors ${
+            cli.available
+              ? "border-accent-border bg-accent-soft text-accent hover:bg-accent hover:text-background"
+              : "cursor-not-allowed border-border bg-background text-text-muted/60"
+          }`}
+        >
+          Start chat
+        </button>
+      </div>
+
+      {open && cli.available && models.length > 0 && (
+        <div className="border-t border-border-subtle px-4 py-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+              Models · {models.length}
+            </div>
+            <button
+              onClick={verifyAll}
+              className="rounded-md border border-border bg-background px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+            >
+              re-verify all
+            </button>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {models.map((m) => {
+              const s = status[m.id];
+              const err = errors[m.id];
+              return (
+                <div key={m.id} className="flex items-start gap-3 rounded-md border border-border-subtle bg-background px-3 py-2">
+                  <div className="mt-0.5 w-3 shrink-0 text-center text-[12px] leading-none">
+                    <StatusGlyph s={s} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-mono text-sm text-text-primary">{m.label}</span>
+                      {m.blurb && <span className="text-[11px] text-text-muted">{m.blurb}</span>}
+                    </div>
+                    <div className="mt-0.5 font-mono text-[10px] text-text-muted/80">
+                      <code className="text-accent">{m.id}</code>
+                      {s === "failed" && err && (
+                        <span className="ml-2 text-warn">· {err}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      onClick={() => verifyModel(m.id)}
+                      disabled={s === "verifying"}
+                      className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40"
+                    >
+                      {s === "verifying" ? "testing…" : s === "ok" ? "re-test" : "test"}
+                    </button>
+                    <button
+                      onClick={() => onStartChat?.(cli.id, m.id)}
+                      className={`rounded-md border px-2 py-1 font-mono text-[9px] uppercase tracking-wider ${
+                        s === "ok"
+                          ? "border-accent-border bg-accent-soft text-accent hover:bg-accent hover:text-background"
+                          : "border-border bg-background text-text-secondary hover:bg-surface-warm"
+                      }`}
+                    >
+                      chat
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="mb-6">
@@ -4085,6 +5806,10 @@ const PREF = {
   stripSycophancy: "prevail.pref.stripSycophancy",  // "1" | "0"
   alwaysShowContextUsage: "prevail.pref.alwaysShowContextUsage", // "1" | "0"
   dontCollapseToolCalls: "prevail.pref.dontCollapseToolCalls",   // "1" | "0"
+  // System — hard caps on CLI runs so a stuck process doesn't hang
+  // the UI forever. Read by send() and passed to the Rust spawner.
+  llmPromptTimeoutSec: "prevail.pref.llmPromptTimeoutSec",   // integer seconds
+  streamStallTimeoutSec: "prevail.pref.streamStallTimeoutSec", // integer seconds — no chunks for this long → kill
 };
 function getPref(key: string, fallback: string): string {
   const v = lsGet(key);
@@ -4098,8 +5823,7 @@ function GeneralSection() {
   const [soundDone, setSoundDone] = useState(() => getPref(PREF.soundOnDone, "0") === "1");
   const [autoConvert, setAutoConvert] = useState(() => getPref(PREF.autoConvertLongPaste, "1") === "1");
   const [stripSyc, setStripSyc] = useState(() => getPref(PREF.stripSycophancy, "0") === "1");
-  const [showCtx, setShowCtx] = useState(() => getPref(PREF.alwaysShowContextUsage, "0") === "1");
-  const [dontCollapse, setDontCollapse] = useState(() => getPref(PREF.dontCollapseToolCalls, "0") === "1");
+  const [promptTimeout, setPromptTimeout] = useState<string>(() => getPref(PREF.llmPromptTimeoutSec, "300"));
 
   const Row = ({
     title, desc, control,
@@ -4168,14 +5892,21 @@ function GeneralSection() {
           control={<Switch on={stripSyc} onChange={(v) => { setStripSyc(v); setPref(PREF.stripSycophancy, v ? "1" : "0"); }} />}
         />
         <Row
-          title="Always show context usage"
-          desc="Show how much of the conversation context you've used in every turn. By default it's only shown above 70%."
-          control={<Switch on={showCtx} onChange={(v) => { setShowCtx(v); setPref(PREF.alwaysShowContextUsage, v ? "1" : "0"); }} />}
-        />
-        <Row
-          title="Don't collapse tool calls"
-          desc="Show every tool invocation expanded by default instead of behind a click."
-          control={<Switch on={dontCollapse} onChange={(v) => { setDontCollapse(v); setPref(PREF.dontCollapseToolCalls, v ? "1" : "0"); }} />}
+          title="LLM prompt timeout"
+          desc="Hard cap on a single CLI call. The child process gets killed and the reply is finalized if it runs longer."
+          control={
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min={10}
+                max={3600}
+                value={promptTimeout}
+                onChange={(e) => { setPromptTimeout(e.target.value); setPref(PREF.llmPromptTimeoutSec, e.target.value); }}
+                className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none"
+              />
+              <span className="font-mono text-xs text-text-muted">s</span>
+            </div>
+          }
         />
       </div>
     </>
@@ -4257,133 +5988,36 @@ function VaultSettings({ vaultPath, onChange }: { vaultPath: string; onChange: (
 
 function FrameworksSection() {
   const fwLens = useFrameworkLens();
+  const activeFramework = FRAMEWORKS.find((f) => f.id === fwLens.framework);
+  const activeLens = LENSES.find((l) => l.id === fwLens.lens);
   return (
     <>
       <SettingsHeader
         title="Frameworks & Lenses"
-        subtitle="The bracketed preamble Prevail prepends to every prompt. Framework shapes structure; lens shapes perspective. Pick a default below; per-domain overrides live next to the composer."
+        subtitle="The bracketed preamble Prevail prepends to every prompt. Framework shapes structure; lens shapes perspective."
       />
 
-      {/* Active selection */}
-      <div className="mb-6 grid gap-4 md:grid-cols-2">
-        <div className="rounded-lg border border-accent-border bg-accent-soft p-4">
-          <div className="font-mono text-xs uppercase tracking-wider text-accent">Active framework</div>
-          <div className="mt-1 font-display text-2xl font-semibold">
-            {FRAMEWORKS.find((f) => f.id === fwLens.framework)?.label ?? "—"}
-          </div>
-          <p className="mt-2 text-sm text-text-secondary">
-            {FRAMEWORKS.find((f) => f.id === fwLens.framework)?.blurb}
-          </p>
-        </div>
-        <div className="rounded-lg border border-accent-border bg-accent-soft p-4">
-          <div className="font-mono text-xs uppercase tracking-wider text-accent">Active lens</div>
-          <div className="mt-1 font-display text-2xl font-semibold">
-            {LENSES.find((l) => l.id === fwLens.lens)?.label ?? "—"}
-          </div>
-          <p className="mt-2 text-sm text-text-secondary">
-            {LENSES.find((l) => l.id === fwLens.lens)?.blurb}
-          </p>
-        </div>
-      </div>
-
-      {/* All frameworks */}
-      <div className="mb-8">
-        <div className="mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-text-muted">
-          <span className="text-accent">◆</span> Frameworks
-          <span className="text-text-muted">· {FRAMEWORKS.length}</span>
-        </div>
-        <div className="space-y-2">
-          {FRAMEWORKS.map((f) => {
-            const on = fwLens.framework === f.id;
-            return (
-              <div
-                key={f.id}
-                className={`rounded-lg border p-4 transition-colors ${
-                  on ? "border-accent-border bg-accent-soft" : "border-border bg-surface"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className={`font-mono text-sm font-semibold ${on ? "text-accent" : "text-text-primary"}`}>
-                        {f.label}
-                      </span>
-                      <span className="text-xs text-text-muted">{f.blurb}</span>
-                    </div>
-                    {f.instruction ? (
-                      <pre className="mt-2 whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
-                        {f.instruction}
-                      </pre>
-                    ) : (
-                      <p className="mt-2 text-xs italic text-text-muted">no preamble — uses the model's default response shape</p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => fwLens.setFramework(f.id)}
-                    disabled={on}
-                    className={`shrink-0 rounded-md border px-2.5 py-1 font-mono text-xs ${
-                      on
-                        ? "border-accent-border bg-accent text-background"
-                        : "border-border bg-background text-text-secondary hover:bg-surface-warm"
-                    }`}
-                  >
-                    {on ? "active" : "set default"}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* All lenses */}
-      <div>
-        <div className="mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-text-muted">
-          <span className="text-accent">◇</span> Lenses
-          <span className="text-text-muted">· {LENSES.length}</span>
-        </div>
-        <div className="space-y-2">
-          {LENSES.map((l) => {
-            const on = fwLens.lens === l.id;
-            return (
-              <div
-                key={l.id}
-                className={`rounded-lg border p-4 transition-colors ${
-                  on ? "border-accent-border bg-accent-soft" : "border-border bg-surface"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className={`font-mono text-sm font-semibold ${on ? "text-accent" : "text-text-primary"}`}>
-                        {l.label}
-                      </span>
-                      <span className="text-xs text-text-muted">{l.blurb}</span>
-                    </div>
-                    {l.instruction ? (
-                      <pre className="mt-2 whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
-                        {l.instruction}
-                      </pre>
-                    ) : (
-                      <p className="mt-2 text-xs italic text-text-muted">no preamble — neutral lens</p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => fwLens.setLens(l.id)}
-                    disabled={on}
-                    className={`shrink-0 rounded-md border px-2.5 py-1 font-mono text-xs ${
-                      on
-                        ? "border-accent-border bg-accent text-background"
-                        : "border-border bg-background text-text-secondary hover:bg-surface-warm"
-                    }`}
-                  >
-                    {on ? "active" : "set default"}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      {/* Two columns: Frameworks (left) · Lenses (right) — each
+          column is independent and uses the full width of its half. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <PreambleColumn
+          glyph="◆"
+          title="Frameworks"
+          tagline="Structure — how the answer is shaped."
+          options={FRAMEWORKS}
+          active={activeFramework}
+          selectedId={fwLens.framework}
+          onSelect={fwLens.setFramework}
+        />
+        <PreambleColumn
+          glyph="◇"
+          title="Lenses"
+          tagline="Perspective — the angle the answer comes from."
+          options={LENSES}
+          active={activeLens}
+          selectedId={fwLens.lens}
+          onSelect={fwLens.setLens}
+        />
       </div>
 
       <p className="mt-6 rounded border border-border-subtle bg-surface px-3 py-2 text-xs text-text-muted">
@@ -4394,11 +6028,141 @@ function FrameworksSection() {
   );
 }
 
+type PreambleOption = { id: string; label: string; blurb: string; instruction?: string };
+
+function PreambleColumn({
+  glyph,
+  title,
+  options,
+  active,
+  selectedId,
+  onSelect,
+}: {
+  glyph: string;
+  title: string;
+  tagline?: string;
+  options: readonly PreambleOption[];
+  active: PreambleOption | undefined;
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col">
+      {/* Column header */}
+      <div className="mb-3 flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+        <span className="text-accent">{glyph}</span> {title}
+        <span>· {options.length}</span>
+      </div>
+
+      {/* Active summary */}
+      <div className="mb-4 rounded-lg border border-accent-border bg-accent-soft p-4">
+        <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">Active</div>
+        <div className="mt-1 font-display text-2xl font-semibold tracking-tight">{active?.label ?? "—"}</div>
+        <p className="mt-1.5 text-sm text-text-secondary">{active?.blurb}</p>
+      </div>
+
+      {/* Option list */}
+      <div className="flex flex-col gap-2">
+        {options.map((o) => (
+          <PreambleCard
+            key={o.id}
+            option={o}
+            on={selectedId === o.id}
+            onSelect={() => onSelect(o.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PreambleCard({
+  option,
+  on,
+  onSelect,
+}: {
+  option: PreambleOption;
+  on: boolean;
+  onSelect: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className={`rounded-lg border transition-colors ${
+        on ? "border-accent-border bg-accent-soft" : "border-border bg-surface"
+      }`}
+    >
+      <div className="flex items-start gap-3 p-3">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="flex min-w-0 flex-1 items-start gap-2 text-left"
+        >
+          <span className="mt-0.5 text-[11px] text-text-muted">{open ? "▾" : "▸"}</span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <span className={`font-mono text-sm font-semibold ${on ? "text-accent" : "text-text-primary"}`}>
+                {option.label}
+              </span>
+              <span className="text-xs text-text-muted">{option.blurb}</span>
+            </div>
+          </div>
+        </button>
+        <button
+          onClick={onSelect}
+          disabled={on}
+          className={`shrink-0 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider ${
+            on
+              ? "border-accent-border bg-accent text-background"
+              : "border-border bg-background text-text-secondary hover:bg-surface-warm"
+          }`}
+        >
+          {on ? "active" : "set default"}
+        </button>
+      </div>
+      {open && (
+        <div className="border-t border-border-subtle px-3 py-2">
+          {option.instruction ? (
+            <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
+              {option.instruction}
+            </pre>
+          ) : (
+            <p className="text-xs italic text-text-muted">no preamble — uses the model's default response shape</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface SkillEntry {
   domain: string;
   name: string;
   path: string;
   description: string | null;
+}
+
+// Stable color picker for the first-letter skill avatars. Same skill
+// name always lands on the same swatch so the grid feels consistent.
+const SKILL_AVATAR_PALETTE = [
+  { bg: "#ef6c4a", fg: "#ffffff" }, // orange
+  { bg: "#3b82f6", fg: "#ffffff" }, // blue
+  { bg: "#6366f1", fg: "#ffffff" }, // indigo
+  { bg: "#8b5cf6", fg: "#ffffff" }, // violet
+  { bg: "#a855f7", fg: "#ffffff" }, // purple
+  { bg: "#ec4899", fg: "#ffffff" }, // pink
+  { bg: "#10b981", fg: "#ffffff" }, // emerald
+  { bg: "#14b8a6", fg: "#ffffff" }, // teal
+  { bg: "#f59e0b", fg: "#1a1a1a" }, // amber
+  { bg: "#0ea5e9", fg: "#ffffff" }, // sky
+];
+
+function pickSkillColor(name: string): { bg: string; fg: string } {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) {
+    h = ((h << 5) - h) + name.charCodeAt(i);
+    h |= 0;
+  }
+  return SKILL_AVATAR_PALETTE[Math.abs(h) % SKILL_AVATAR_PALETTE.length];
 }
 
 function SkillsSection({ vaultPath }: { vaultPath: string }) {
@@ -4416,23 +6180,25 @@ function SkillsSection({ vaultPath }: { vaultPath: string }) {
     return () => { mounted = false; };
   }, [vaultPath]);
 
-  const byDomain = useMemo(() => {
-    const filtered = filter.trim()
-      ? skills.filter((s) =>
-          s.name.toLowerCase().includes(filter.toLowerCase()) ||
-          s.domain.toLowerCase().includes(filter.toLowerCase()) ||
-          (s.description ?? "").toLowerCase().includes(filter.toLowerCase()))
-      : skills;
-    const groups = new Map<string, SkillEntry[]>();
-    for (const s of filtered) {
-      if (!groups.has(s.domain)) groups.set(s.domain, []);
-      groups.get(s.domain)!.push(s);
-    }
-    return Array.from(groups.entries());
+  const filtered = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return skills;
+    return skills.filter((s) =>
+      s.name.toLowerCase().includes(q) ||
+      s.domain.toLowerCase().includes(q) ||
+      (s.description ?? "").toLowerCase().includes(q));
   }, [skills, filter]);
 
   async function openSkill(p: string) {
     try { await invoke("open_in_finder", { path: p }); } catch {}
+  }
+  async function rescan() {
+    setLoading(true);
+    try {
+      const s = await invoke<SkillEntry[]>("scan_skills", { vault: vaultPath });
+      setSkills(s);
+    } catch { /* ignore */ }
+    setLoading(false);
   }
 
   return (
@@ -4441,89 +6207,231 @@ function SkillsSection({ vaultPath }: { vaultPath: string }) {
         title="Skills"
         subtitle="Drop a folder under any domain's skills/ directory to expose it here. The first non-empty line of SKILL.md or README.md becomes the description."
       />
-      <div className="mb-4 flex items-center gap-3">
-        <input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="filter skills…"
-          className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none"
-        />
-        <span className="font-mono text-xs text-text-muted">
-          {skills.length} skill{skills.length === 1 ? "" : "s"} · {byDomain.length} domain{byDomain.length === 1 ? "" : "s"}
-        </span>
-      </div>
-      {loading && <div className="text-sm text-text-muted">scanning…</div>}
-      {!loading && skills.length === 0 && (
-        <div className="rounded-lg border border-dashed border-border bg-surface p-8 text-center">
-          <Sparkles className="mx-auto h-8 w-8 text-text-muted opacity-50" />
-          <p className="mt-3 text-sm text-text-muted">
-            No skills found. Try creating <code className="text-accent">{"<domain>/skills/<skill-name>/"}</code> with a SKILL.md.
-          </p>
+
+      <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
+        {/* Toolbar: title · count · refresh · search */}
+        <div className="mb-4 flex items-center gap-3">
+          <h3 className="font-display text-xl font-semibold tracking-tight">My Skills</h3>
+          <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-secondary">{skills.length}</span>
+          <button
+            onClick={rescan}
+            title="Re-scan vault"
+            className="ml-1 flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
+          >
+            ↻
+          </button>
+          <div className="flex-1" />
+          <div className="relative w-64">
+            <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted">⌕</span>
+            <input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Search skills…"
+              className="w-full rounded-md border border-border bg-background py-1.5 pl-7 pr-2 text-sm focus:border-accent-border focus:outline-none"
+            />
+          </div>
         </div>
-      )}
-      {!loading && byDomain.length > 0 && (
-        <div className="space-y-6">
-          {byDomain.map(([domain, items]) => (
-            <div key={domain}>
-              <div className="mb-2 flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-text-muted">
-                <span className="text-accent">◆</span> {titleCase(domain)}
-                <span className="text-text-muted">· {items.length}</span>
-              </div>
-              <div className="grid gap-2 md:grid-cols-2">
-                {items.map((s) => (
+
+        {/* Path bar */}
+        <div className="mb-4 flex items-center gap-2 rounded-md bg-background px-3 py-2 font-mono text-[11px] text-text-secondary">
+          <Folder className="h-3.5 w-3.5 text-text-muted" />
+          <span className="truncate" title={vaultPath}>{vaultPath}</span>
+        </div>
+
+        {loading && <div className="py-6 text-center text-sm text-text-muted">scanning…</div>}
+        {!loading && skills.length === 0 && (
+          <div className="rounded-lg border border-dashed border-border bg-background p-10 text-center">
+            <Sparkles className="mx-auto h-8 w-8 text-text-muted opacity-50" />
+            <p className="mt-3 text-sm text-text-muted">
+              No skills found. Try creating <code className="text-accent">{"<domain>/skills/<skill-name>/"}</code> with a SKILL.md.
+            </p>
+          </div>
+        )}
+        {!loading && filtered.length === 0 && skills.length > 0 && (
+          <div className="rounded-lg border border-dashed border-border bg-background p-6 text-center text-sm text-text-muted">
+            No skills match <code className="text-accent">{filter}</code>.
+          </div>
+        )}
+
+        {!loading && filtered.length > 0 && (
+          <ul className="flex flex-col gap-1">
+            {filtered.map((s) => {
+              const cleaned = (s.description ?? "").replace(/^[>*\-\s]+/, "").trim();
+              const color = pickSkillColor(s.name);
+              const initial = (s.name || "·").charAt(0).toUpperCase();
+              return (
+                <li key={s.path}>
                   <button
-                    key={s.path}
                     onClick={() => openSkill(s.path)}
                     title={s.path}
-                    className="group rounded-lg border border-border bg-surface p-3 text-left transition-colors hover:border-accent-border hover:bg-surface-warm"
+                    className="group flex w-full items-start gap-4 rounded-xl px-3 py-3 text-left transition-colors hover:bg-surface-warm"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-sm text-text-primary">{s.name}</span>
-                      <Folder className="h-3.5 w-3.5 shrink-0 text-text-muted opacity-0 group-hover:text-accent group-hover:opacity-100" />
+                    <span
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg font-display text-xl font-bold ring-1 ring-black/5"
+                      style={{ background: color.bg, color: color.fg }}
+                    >
+                      {initial}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-baseline gap-2">
+                        <span className="font-display text-base font-semibold tracking-tight text-text-primary">{s.name}</span>
+                        <span className="rounded-md border border-border-subtle bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                          {titleCase(s.domain)}
+                        </span>
+                      </div>
+                      {cleaned && (
+                        <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-text-secondary">
+                          {cleaned}
+                        </p>
+                      )}
                     </div>
-                    {s.description && (
-                      <p className="mt-1 line-clamp-2 text-xs text-text-muted">{s.description}</p>
-                    )}
+                    <Folder className="mt-1.5 h-4 w-4 shrink-0 text-text-muted opacity-0 transition-opacity group-hover:opacity-100" />
                   </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </>
   );
 }
 
 function AboutSection() {
+  const [checking, setChecking] = useState(false);
+  const [latest, setLatest] = useState<string | null>(null);
+  const [checkErr, setCheckErr] = useState<string | null>(null);
+  const [includePre, setIncludePre] = useState<boolean>(() => lsGet("prevail.about.includePrerelease") === "1");
+  useEffect(() => { lsSet("prevail.about.includePrerelease", includePre ? "1" : "0"); }, [includePre]);
+
+  async function checkForUpdates() {
+    setChecking(true);
+    setCheckErr(null);
+    setLatest(null);
+    try {
+      const r = await fetch("https://api.github.com/repos/fru-dev3/prevail-desktop/releases?per_page=10");
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const releases = await r.json() as Array<{ tag_name: string; prerelease: boolean; html_url: string }>;
+      const eligible = releases.filter((rel) => includePre || !rel.prerelease);
+      const top = eligible[0];
+      if (!top) throw new Error("no releases found");
+      setLatest(top.tag_name);
+      // Open the release page so the user can grab the DMG.
+      try { await invoke("open_in_finder", { path: top.html_url }); } catch {}
+    } catch (e) {
+      setCheckErr(String(e).slice(0, 200));
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  function Row({ label, href }: { label: string; href: string }) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="flex w-full items-center justify-between gap-4 border-b border-border-subtle px-1 py-3 text-left text-sm text-text-primary last:border-0 hover:text-accent"
+      >
+        <span>{label}</span>
+        <span className="text-text-muted">›</span>
+      </a>
+    );
+  }
+
+  const cmp = latest ? compareSemver(latest.replace(/^v/, ""), APP_VERSION) : 0;
+  const upToDate = latest && cmp <= 0;
+  const newer = latest && cmp > 0;
+
   return (
     <>
       <SettingsHeader title="About" />
-      <div className="rounded-xl border border-border bg-surface p-6">
-        <div className="flex items-center gap-4">
-          <img src="/logo.png" alt="Prevail" className="h-14 w-14 rounded-2xl" />
-          <div>
-            <div className="font-display text-xl font-semibold"><Brand /></div>
-            <div className="mt-0.5 font-mono text-xs text-text-muted">v0.2.4 · Tauri 2 · React 19 · Tailwind 4</div>
-          </div>
-        </div>
-        <div className="mt-6 grid gap-2 text-sm">
-          <a href="https://github.com/fru-dev3/prevail-desktop" target="_blank" rel="noreferrer" className="text-accent hover:underline">
-            github.com/fru-dev3/prevail-desktop
-          </a>
-          <a href="https://github.com/fru-dev3/prevail" target="_blank" rel="noreferrer" className="text-accent hover:underline">
-            github.com/fru-dev3/prevail  (CLI)
-          </a>
-          <a href="https://prevail.sh" target="_blank" rel="noreferrer" className="text-accent hover:underline">
-            prevail.sh
-          </a>
-        </div>
-        <p className="mt-6 text-xs text-text-muted">
-          MIT licensed. Local-first. Your vault stays on this Mac.
+      <div className="flex flex-col items-center text-center">
+        <img src="/logo.png" alt="Prevail" className="h-20 w-20 rounded-3xl shadow-md" />
+        <h1 className="mt-5 font-display text-4xl font-extrabold tracking-tight">
+          <Brand className="[letter-spacing:0.12em]" />
+        </h1>
+        <p className="mt-2 max-w-md text-sm text-text-secondary">
+          One desktop. Your AI council, grounded in your domains.
         </p>
+        <div className="mt-4 flex items-center gap-3">
+          <span className="rounded-full bg-surface-warm px-3 py-1 font-mono text-xs text-text-secondary">v{APP_VERSION}</span>
+          <a
+            href="https://github.com/fru-dev3/prevail-desktop"
+            target="_blank"
+            rel="noreferrer"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-warm text-text-secondary hover:text-accent"
+            title="GitHub"
+          >
+            <Github className="h-4 w-4" />
+          </a>
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+        <button
+          onClick={checkForUpdates}
+          disabled={checking}
+          className="w-full rounded-xl bg-text-primary px-4 py-3 font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {checking ? "Checking…" : "Check for updates"}
+        </button>
+        {latest && (
+          <div className={`mt-3 rounded-md border px-3 py-2 text-sm ${
+            upToDate
+              ? "border-accent-border bg-accent-soft text-accent"
+              : "border-warn/40 bg-warn/10 text-warn"
+          }`}>
+            {upToDate
+              ? `You're on the latest release (${latest}).`
+              : newer
+              ? `Newer release available: ${latest}. The release page opened in your browser.`
+              : `Latest: ${latest}`}
+          </div>
+        )}
+        {checkErr && (
+          <div className="mt-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{checkErr}</div>
+        )}
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <div className="text-sm text-text-secondary">Include prerelease / dev builds</div>
+          <button
+            onClick={() => setIncludePre((v) => !v)}
+            className={`relative h-5 w-9 rounded-full transition-colors ${includePre ? "bg-accent" : "bg-surface-strong"}`}
+            role="switch"
+            aria-checked={includePre}
+          >
+            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-background transition-transform ${includePre ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-border bg-surface px-5 py-2 shadow-sm">
+        <Row label="Help & documentation" href="https://github.com/fru-dev3/prevail-desktop#readme" />
+        <Row label="Update log" href="https://github.com/fru-dev3/prevail-desktop/releases" />
+        <Row label="Report an issue" href="https://github.com/fru-dev3/prevail-desktop/issues/new" />
+        <Row label="Prevail CLI" href="https://github.com/fru-dev3/prevail" />
+        <Row label="Official website" href="https://prevail.sh" />
+      </div>
+
+      <div className="mt-6 flex items-center justify-between gap-3 px-1 text-[11px] text-text-muted">
+        <span>MIT licensed · Tauri 2 · React 19 · Tailwind 4</span>
+        <span>Local-first · Vault stays on this Mac</span>
       </div>
     </>
   );
+}
+
+// Tiny semver compare — returns -1 / 0 / +1 for left vs right.
+// "0.2.62" vs "0.2.62" → 0; "0.2.62" vs "0.2.59" → +1.
+function compareSemver(a: string, b: string): number {
+  const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
+  const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const da = pa[i] ?? 0;
+    const db = pb[i] ?? 0;
+    if (da !== db) return da > db ? 1 : -1;
+  }
+  return 0;
 }
 
 // Reusable row: label on left, control on right. Hermes pattern.
@@ -4679,16 +6587,24 @@ function PaletteCard({
 
 function DefaultsForm({ clis }: { clis: CliInfo[] }) {
   const fwLens = useFrameworkLens();
-  const [defaultChatCli, setDefaultChatCli] = useState(lsGet(LS.defaultChatCli));
-  const [defaultChairCli, setDefaultChairCli] = useState(lsGet(LS.defaultChairCli));
+  const firstAvailable = useMemo(() => clis.find((c) => c.available)?.id ?? "", [clis]);
+  const [defaultChatCli, setDefaultChatCli] = useState(() => lsGet(LS.defaultChatCli) || firstAvailable);
+  const [defaultChairCli, setDefaultChairCli] = useState(() => lsGet(LS.defaultChairCli) || firstAvailable);
 
   useEffect(() => { lsSet(LS.defaultChatCli, defaultChatCli); }, [defaultChatCli]);
   useEffect(() => { lsSet(LS.defaultChairCli, defaultChairCli); }, [defaultChairCli]);
+  // Adopt the first available CLI as default once detection finishes
+  // and no explicit pick has been saved yet.
+  useEffect(() => {
+    if (!defaultChatCli && firstAvailable) setDefaultChatCli(firstAvailable);
+    if (!defaultChairCli && firstAvailable) setDefaultChairCli(firstAvailable);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstAvailable]);
 
   return (
     <div className="space-y-6">
       {/* CLI + chair as visual chip pickers */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="flex flex-col gap-4">
         <CliPickerCard
           label="Default chat CLI"
           hint="Opens when you click a domain"
@@ -4710,7 +6626,7 @@ function DefaultsForm({ clis }: { clis: CliInfo[] }) {
         <div className="mb-2 font-mono text-xs uppercase tracking-[0.2em] text-text-muted">
           Model · per CLI
         </div>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="flex flex-col gap-4">
           {clis.filter((c) => MODELS[c.id]).map((c) => (
             <ModelPickerCard key={c.id} cli={c} />
           ))}
@@ -4718,7 +6634,7 @@ function DefaultsForm({ clis }: { clis: CliInfo[] }) {
       </div>
 
       {/* Framework + lens as scrollable chip rows */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="flex flex-col gap-4">
         <FrameworkPickerCard
           title="Default framework"
           options={FRAMEWORKS.map((f) => ({ id: f.id, label: f.label, blurb: f.blurb }))}
@@ -4745,30 +6661,35 @@ function CliPickerCard({
   value: string;
   onChange: (v: string) => void;
 }) {
-  const all = [{ id: "", label: "First available", available: true } as CliInfo, ...clis];
   return (
     <div className="rounded-lg border border-border bg-surface p-4">
       <div className="text-xs uppercase tracking-wider text-text-muted">{label}</div>
       <p className="mt-0.5 text-xs text-text-muted/80">{hint}</p>
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {all.map((c) => {
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {clis.map((c) => {
           const picked = value === c.id;
-          const disabled = c.id !== "" && !c.available;
+          const disabled = !c.available;
           return (
             <button
-              key={c.id || "first"}
+              key={c.id}
               disabled={disabled}
               onClick={() => onChange(c.id)}
-              className={`rounded-md border px-2.5 py-1.5 font-mono text-xs transition-colors ${
+              title={disabled ? `${c.label} not installed` : c.label}
+              className={`group flex flex-col items-center gap-1.5 rounded-lg border px-2 py-2.5 transition-all ${
                 picked
-                  ? "border-accent-border bg-accent-soft text-accent"
+                  ? "border-accent-border bg-accent-soft shadow-sm"
                   : disabled
-                  ? "border-border-subtle bg-surface-strong text-text-muted opacity-50"
-                  : "border-border bg-background text-text-secondary hover:bg-surface-warm"
+                  ? "border-border-subtle bg-background opacity-40"
+                  : "border-border bg-background hover:-translate-y-px hover:border-accent-border hover:shadow-sm"
               }`}
             >
-              {c.label.toLowerCase()}
-              {disabled && <span className="ml-1 opacity-60">·off</span>}
+              <ProviderMark vendor={c.id} size={28} />
+              <span className={`font-display text-xs font-semibold tracking-tight ${picked ? "text-accent" : "text-text-primary"}`}>
+                {c.label}
+              </span>
+              {disabled && (
+                <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">not installed</span>
+              )}
             </button>
           );
         })}
