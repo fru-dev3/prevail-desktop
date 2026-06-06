@@ -28,7 +28,167 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.86";
+const APP_VERSION = "0.2.87";
+
+// VS Code-style quick switcher modal. Centered overlay, single
+// search input at the top, combined list of domains + recent
+// threads (loaded async from each domain's _threads/ dir).
+//
+// Arrow keys navigate, Enter picks, Esc dismisses. Click outside
+// also dismisses. Items are sorted: domains first, then threads
+// newest-first, with fuzzy substring filtering.
+function QuickSwitcher({
+  vaultPath,
+  domains,
+  onClose,
+  onPickDomain,
+  onPickThread,
+}: {
+  vaultPath: string;
+  domains: Domain[];
+  onClose: () => void;
+  onPickDomain: (name: string) => void;
+  onPickThread: (domain: string | null, path: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [allThreads, setAllThreads] = useState<Array<{ domain: string | null; meta: ThreadMeta }>>([]);
+  const [cursor, setCursor] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Load every domain's threads once on mount. Vault-root threads
+  // (no-domain) are loaded with domain=null.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const collected: Array<{ domain: string | null; meta: ThreadMeta }> = [];
+      const tasks: Promise<void>[] = [];
+      const fetchOne = async (name: string | null) => {
+        try {
+          const rows = await invoke<ThreadMeta[]>("list_threads", { vault: vaultPath, domain: name });
+          for (const r of rows) collected.push({ domain: name, meta: r });
+        } catch { /* ignore — empty dir is fine */ }
+      };
+      tasks.push(fetchOne(null));
+      for (const d of domains) tasks.push(fetchOne(d.name));
+      await Promise.all(tasks);
+      if (cancelled) return;
+      collected.sort((a, b) => b.meta.updated - a.meta.updated);
+      setAllThreads(collected);
+    })();
+    return () => { cancelled = true; };
+  }, [vaultPath, domains]);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // Combined filtered list. Domains first, then threads. Each item
+  // gets a stable id so cursor highlight survives filter changes.
+  type Item =
+    | { kind: "domain"; id: string; label: string; sub: string }
+    | { kind: "thread"; id: string; label: string; sub: string; domain: string | null; path: string };
+  const items: Item[] = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const matches = (s: string) => !q || s.toLowerCase().includes(q);
+    const out: Item[] = [];
+    for (const d of domains) {
+      const label = titleCase(d.name);
+      const sub = d.state_preview ? d.state_preview.slice(0, 80).replace(/\n/g, " ") : "domain";
+      if (matches(label) || matches(d.name) || matches(sub)) {
+        out.push({ kind: "domain", id: `d:${d.name}`, label, sub });
+      }
+    }
+    for (const t of allThreads) {
+      const label = t.meta.title || t.meta.slug;
+      const where = t.domain ? titleCase(t.domain) : "no domain";
+      const sub = `${where} · ${t.meta.turn_count} turns`;
+      if (matches(label) || matches(t.meta.preview) || matches(where)) {
+        out.push({ kind: "thread", id: `t:${t.meta.path}`, label, sub, domain: t.domain, path: t.meta.path });
+      }
+    }
+    return out;
+  }, [query, domains, allThreads]);
+
+  useEffect(() => { setCursor(0); }, [query]);
+  useEffect(() => {
+    // Scroll selected into view.
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${cursor}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [cursor]);
+
+  function pick(it: Item) {
+    if (it.kind === "domain") onPickDomain(it.id.slice(2));
+    else onPickThread(it.domain, it.path);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-background/70 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") { e.preventDefault(); onClose(); }
+        else if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.min(items.length - 1, c + 1)); }
+        else if (e.key === "ArrowUp") { e.preventDefault(); setCursor((c) => Math.max(0, c - 1)); }
+        else if (e.key === "Enter") { e.preventDefault(); const it = items[cursor]; if (it) pick(it); }
+      }}
+    >
+      <div className="mt-24 w-[560px] max-w-[90vw] overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+        <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5">
+          <span className="text-text-muted">⌕</span>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Jump to a domain or thread…"
+            className="w-full bg-transparent text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
+          />
+          <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">⌘P</span>
+        </div>
+        <div ref={listRef} className="max-h-[60vh] overflow-y-auto py-1">
+          {items.length === 0 && (
+            <div className="px-4 py-6 text-center text-sm text-text-muted">
+              {allThreads.length === 0 && domains.length === 0 ? "loading…" : "no matches"}
+            </div>
+          )}
+          {items.map((it, i) => {
+            const active = i === cursor;
+            return (
+              <button
+                key={it.id}
+                data-idx={i}
+                onClick={() => pick(it)}
+                onMouseEnter={() => setCursor(i)}
+                className={`flex w-full items-center gap-3 px-4 py-2 text-left transition-colors ${
+                  active ? "bg-accent-soft" : "hover:bg-surface-warm"
+                }`}
+              >
+                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md font-mono text-[11px] ${
+                  it.kind === "domain"
+                    ? "bg-accent-soft text-accent"
+                    : "bg-surface-warm text-text-secondary"
+                }`}>
+                  {it.kind === "domain" ? "◆" : "▶"}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className={`truncate font-display text-sm font-semibold tracking-tight ${active ? "text-accent" : "text-text-primary"}`}>
+                    {it.label}
+                  </div>
+                  <div className="truncate font-mono text-[10px] text-text-muted">{it.sub}</div>
+                </div>
+                <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                  {it.kind}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center justify-between border-t border-border-subtle px-4 py-1.5 font-mono text-[10px] text-text-muted">
+          <span>↑↓ navigate · ↵ open · ⎋ close</span>
+          <span>{items.length} {items.length === 1 ? "result" : "results"}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -795,6 +955,10 @@ export default function App() {
     return domains.find((d) => d.name === selectedDomain)?.path ?? null;
   }, [domains, selectedDomain]);
 
+  // Quick switcher (⌘P) — fuzzy finder over all domains + recent
+  // threads across all domains. Modal owns its own state when open.
+  const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
+
   // Keyboard shortcuts — global. Skip when a text input has focus
   // (so typing ⌘B in the composer doesn't toggle the sidebar).
   useEffect(() => {
@@ -804,9 +968,10 @@ export default function App() {
       const tag = target?.tagName?.toLowerCase() ?? "";
       const editable = tag === "input" || tag === "textarea" || target?.isContentEditable;
       // Allow the global shortcuts that are clearly intentional even
-      // when in a field (Cmd+, for settings).
-      if (editable && e.key !== "," && e.key !== "k" && e.key !== "K") return;
-      switch (e.key.toLowerCase()) {
+      // when in a field (Cmd+,, Cmd+K, Cmd+P).
+      const k = e.key.toLowerCase();
+      if (editable && k !== "," && k !== "k" && k !== "p") return;
+      switch (k) {
         case "k": // ⌘K — new chat (no domain)
           e.preventDefault();
           setSelectedDomain("");
@@ -820,6 +985,10 @@ export default function App() {
         case "b": // ⌘B — toggle the domain rail
           e.preventDefault();
           setSidebarCollapsed((v) => !v);
+          break;
+        case "p": // ⌘P — quick switcher
+          e.preventDefault();
+          setQuickSwitcherOpen(true);
           break;
       }
     };
@@ -1057,6 +1226,25 @@ export default function App() {
       <span className="pointer-events-none absolute bottom-1.5 right-2 select-none font-mono text-[9px] tracking-wider text-text-muted/60">
         v{APP_VERSION}
       </span>
+      {quickSwitcherOpen && (
+        <QuickSwitcher
+          vaultPath={vaultPath}
+          domains={domains}
+          onClose={() => setQuickSwitcherOpen(false)}
+          onPickDomain={(name) => {
+            setSelectedDomain(name);
+            setActiveThreadPath(null);
+            setTab("chat");
+            setQuickSwitcherOpen(false);
+          }}
+          onPickThread={(domain, path) => {
+            setSelectedDomain(domain ?? "");
+            setActiveThreadPath(path);
+            setTab("chat");
+            setQuickSwitcherOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
