@@ -22,7 +22,7 @@ function Markdown({ source, compact = false }: { source: string; compact?: boole
 }
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.78";
+const APP_VERSION = "0.2.79";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -972,6 +972,10 @@ export default function App() {
                 onThreadsChanged={() => void refreshThreads()}
                 onStreamStart={markStreamStart}
                 onStreamEnd={markStreamEnd}
+                domains={domains}
+                domainStats={domainStats}
+                runningDomains={runningDomains}
+                onPickDomain={(name) => setSelectedDomain(name)}
               />
             )}
             {tab === "council" && (
@@ -2952,6 +2956,10 @@ function ChatPanel({
   onThreadsChanged,
   onStreamStart,
   onStreamEnd,
+  domains,
+  domainStats,
+  runningDomains,
+  onPickDomain,
 }: {
   domain: string | null;
   domainPath: string | null;
@@ -2965,6 +2973,10 @@ function ChatPanel({
   onThreadsChanged: () => void;
   onStreamStart: (s: { sessionId: string; domain: string | null; threadPath: string | null; title: string; startedAt: number }) => void;
   onStreamEnd: (sessionId: string) => void;
+  domains: Domain[];
+  domainStats: Record<string, number>;
+  runningDomains: Set<string>;
+  onPickDomain: (name: string) => void;
 }) {
   const available = useMemo(() => clis.filter((c) => c.available), [clis]);
   // Per-domain model preference. Keys: prevail.domain.<name>.cli and
@@ -3508,7 +3520,11 @@ function ChatPanel({
     }
   }
 
-  const quickActions = useMemo(() => buildQuickActions(domain), [domain]);
+  // Quick-action seed prompts — currently surfaced via DomainHome,
+  // not the no-domain landing (which shows the domains dashboard
+  // instead). Keep the array allocation alive so DomainHome's
+  // onPickPrompt continues to receive prompts.
+  void buildQuickActions;
 
   const selectedCliLabel = selectedCli
     ? (clis.find((c) => c.id === selectedCli)?.label ?? selectedCli)
@@ -3704,35 +3720,78 @@ function ChatPanel({
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 && !domain && (
-          <div className="flex h-full flex-col items-center justify-center px-6 py-12">
-            <img src="/logo.png" alt="" className="h-16 w-16 rounded-2xl opacity-90" />
-            <h2 className="mt-6 font-display text-4xl font-semibold tracking-tight">
+          <div className="flex h-full flex-col items-center px-6 py-10">
+            <img src="/logo.png" alt="" className="h-14 w-14 rounded-2xl opacity-90" />
+            <h2 className="mt-5 font-display text-3xl font-semibold tracking-tight">
               What should we work on?
             </h2>
-            <p className="mt-3 max-w-md text-center text-sm text-text-muted">
-              Start chatting · pick a domain from the sidebar to ground the conversation in its state and history.
+            <p className="mt-2 max-w-md text-center text-sm text-text-muted">
+              Start chatting, or pick a domain to ground the conversation in its state and history.
             </p>
             <AgentPickerRail
               clis={available}
               selected={selectedCli}
               onSelect={(id) => setSelectedCli(id)}
             />
-            <div className="mt-8 flex w-full max-w-2xl flex-col gap-2">
-              {quickActions.map((q) => (
-                <button
-                  key={q.label}
-                  onClick={() => setInput(q.prompt)}
-                  className="rounded-lg border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-accent-border hover:bg-surface-warm"
-                >
-                  <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-accent">
-                    <span>{q.glyph}</span> {q.label}
+
+            {domains.length > 0 && (
+              <div className="mt-8 w-full max-w-4xl">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+                    Your domains · {domains.length}
                   </div>
-                  <div className="mt-1 line-clamp-2 text-sm text-text-secondary">
-                    {q.prompt}
-                  </div>
-                </button>
-              ))}
-            </div>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {domains.map((d) => {
+                    const Icon = DOMAIN_ICONS[d.name];
+                    const importCount = domainStats[d.name] ?? 0;
+                    const running = runningDomains.has(d.name);
+                    return (
+                      <button
+                        key={d.name}
+                        onClick={() => onPickDomain(d.name)}
+                        className="group flex items-start gap-3 rounded-xl border border-border bg-surface p-3 text-left transition-all hover:-translate-y-px hover:border-accent-border hover:shadow-md"
+                      >
+                        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
+                          {Icon ? <Icon className="h-4 w-4" /> : <span>◆</span>}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-display text-sm font-semibold tracking-tight text-text-primary">
+                              {titleCase(d.name)}
+                            </span>
+                            {running && (
+                              <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full bg-warn" title="A reply is streaming here" />
+                            )}
+                          </div>
+                          {d.state_preview && (
+                            <div className="mt-0.5 line-clamp-2 text-[11px] text-text-secondary">
+                              {d.state_preview}
+                            </div>
+                          )}
+                          <div className="mt-1.5 flex items-center gap-2 font-mono text-[10px] text-text-muted">
+                            {importCount > 0 && (
+                              <span className="rounded bg-accent-soft px-1.5 py-0 text-accent">
+                                {importCount} import{importCount === 1 ? "" : "s"}
+                              </span>
+                            )}
+                            {d.has_state ? "state.md" : "no state.md yet"}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {domains.length === 0 && (
+              <div className="mt-8 w-full max-w-2xl rounded-xl border border-dashed border-border bg-surface p-8 text-center">
+                <p className="text-sm text-text-muted">
+                  No domains yet. Create one in the sidebar to start grounding conversations in real life areas.
+                </p>
+              </div>
+            )}
           </div>
         )}
         {domain && domainTab === "chat" && messages.length === 0 && (
