@@ -2572,11 +2572,12 @@ dependencies = [
 
 [[package]]
 name = "prevail-desktop"
-version = "0.2.66"
+version = "0.2.67"
 dependencies = [
  "libc",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
