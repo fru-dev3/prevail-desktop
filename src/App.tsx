@@ -22,7 +22,7 @@ function Markdown({ source, compact = false }: { source: string; compact?: boole
 }
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.67";
+const APP_VERSION = "0.2.68";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -6324,10 +6324,22 @@ interface IngestionMcpServer {
   pid: number | null;
 }
 
+interface IngestionArtifact {
+  tier_id: string;
+  domain: string;
+  source: string;
+  path: string;
+  sha256: string;
+  size: number;
+  original: string;
+  ts: number;
+}
+
 function IngestionSection() {
   const [tiers, setTiers] = useState<IngestionTierStatus[]>([]);
   const [mcp, setMcp] = useState<IngestionMcpServer[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [artifacts, setArtifacts] = useState<IngestionArtifact[]>([]);
 
   async function refresh() {
     try {
@@ -6345,9 +6357,29 @@ function IngestionSection() {
   useEffect(() => {
     void refresh();
     const id = window.setInterval(() => void refresh(), 4000);
-    return () => window.clearInterval(id);
+    let unl: UnlistenFn | null = null;
+    (async () => {
+      unl = await listen<IngestionArtifact>(
+        "ingestion:artifact",
+        (e) => setArtifacts((cur) => [e.payload, ...cur].slice(0, 50)),
+      );
+    })();
+    return () => { window.clearInterval(id); if (unl) unl(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function openMcpConfig() {
+    try {
+      const p = await invoke<string>("ingestion_mcp_config_init");
+      await invoke("open_in_finder", { path: p });
+    } catch (e) { console.error(e); }
+  }
+  async function reloadMcp() {
+    try {
+      await invoke("ingestion_mcp_reload");
+      await refresh();
+    } catch (e) { console.error(e); }
+  }
 
   return (
     <>
@@ -6366,6 +6398,8 @@ function IngestionSection() {
             tier={t}
             mcp={t.id === "tier_a_mcp" ? mcp : undefined}
             onRefresh={refresh}
+            onOpenMcpConfig={openMcpConfig}
+            onReloadMcp={reloadMcp}
           />
         ))}
         {tiers.length === 0 && (
@@ -6375,6 +6409,37 @@ function IngestionSection() {
         )}
 
         <IngestionBrowserRunner />
+
+        {artifacts.length > 0 && (
+          <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="font-display text-base font-semibold tracking-tight">Recent artifacts</div>
+              <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-secondary">{artifacts.length}</span>
+            </div>
+            <ul className="flex flex-col gap-1.5">
+              {artifacts.map((a, i) => (
+                <li key={`${a.path}_${i}`} className="flex items-center gap-3 rounded-md border border-border-subtle bg-background px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-mono text-sm text-text-primary">{a.original}</span>
+                      <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] text-accent">{a.domain}</span>
+                      <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] text-text-secondary">{a.source}</span>
+                    </div>
+                    <div className="mt-0.5 truncate font-mono text-[10px] text-text-muted">
+                      {a.path} · {a.sha256.slice(0, 12)}… · {(a.size / 1024).toFixed(1)} KB
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => invoke("open_in_finder", { path: a.path })}
+                    className="shrink-0 rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                  >
+                    reveal
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </>
   );
@@ -6384,10 +6449,14 @@ function IngestionTierCard({
   tier,
   mcp,
   onRefresh,
+  onOpenMcpConfig,
+  onReloadMcp,
 }: {
   tier: IngestionTierStatus;
   mcp?: IngestionMcpServer[];
   onRefresh: () => void;
+  onOpenMcpConfig?: () => void;
+  onReloadMcp?: () => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [composioKey, setComposioKey] = useState<string>("");
@@ -6444,10 +6513,26 @@ function IngestionTierCard({
       {/* Tier A — MCP server list */}
       {tier.id === "tier_a_mcp" && mcp && (
         <div className="mt-4">
+          <div className="mb-3 flex items-center gap-2">
+            <button
+              onClick={onOpenMcpConfig}
+              className="rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent"
+            >
+              edit mcp_config.json
+            </button>
+            <button
+              onClick={onReloadMcp}
+              className="rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+            >
+              reload
+            </button>
+            <span className="font-mono text-[10px] text-text-muted">
+              ~/Library/Application Support/Prevail/
+            </span>
+          </div>
           {mcp.length === 0 ? (
             <p className="text-xs text-text-muted">
-              No <code className="text-accent">mcp_config.json</code> at
-              <code className="ml-1 text-accent">~/Library/Application Support/Prevail/</code>.
+              No servers in config yet. Click "edit mcp_config.json" to create / edit.
             </p>
           ) : (
             <ul className="flex flex-col gap-1.5">
@@ -6533,6 +6618,15 @@ function IngestionTierCard({
   );
 }
 
+interface PortalRecipe {
+  id: string;
+  label: string;
+  domain_hint: string;
+  start_url: string;
+  success_url_contains: string | null;
+  notes: string | null;
+}
+
 function IngestionBrowserRunner() {
   const [domain, setDomain] = useState("");
   const [portal, setPortal] = useState("");
@@ -6541,6 +6635,24 @@ function IngestionBrowserRunner() {
   const [timeoutSec, setTimeoutSec] = useState<string>("90");
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string[]>([]);
+  const [recipes, setRecipes] = useState<PortalRecipe[]>([]);
+  const [pickedRecipe, setPickedRecipe] = useState<string>("");
+
+  useEffect(() => {
+    invoke<PortalRecipe[]>("ingestion_browser_recipes")
+      .then(setRecipes)
+      .catch(() => setRecipes([]));
+  }, []);
+
+  function applyRecipe(id: string) {
+    setPickedRecipe(id);
+    const r = recipes.find((x) => x.id === id);
+    if (!r) return;
+    setPortal(r.id);
+    setDomain(r.domain_hint);
+    setStartUrl(r.start_url);
+    setSuccessUrl(r.success_url_contains ?? "");
+  }
 
   useEffect(() => {
     let unl: UnlistenFn | null = null;
@@ -6583,6 +6695,21 @@ function IngestionBrowserRunner() {
       <p className="mt-0.5 text-xs text-text-muted">
         Opens a headed Chromium for the chosen portal. Complete MFA in the window; downloads land in the domain's <code className="text-accent">imports/</code>.
       </p>
+      {recipes.length > 0 && (
+        <div className="mt-3 flex items-center gap-2">
+          <label className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Recipe</label>
+          <select
+            value={pickedRecipe}
+            onChange={(e) => applyRecipe(e.target.value)}
+            className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm focus:border-accent-border focus:outline-none"
+          >
+            <option value="">— start from blank —</option>
+            {recipes.map((r) => (
+              <option key={r.id} value={r.id}>{r.label} · {r.domain_hint}</option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="mt-4 grid grid-cols-2 gap-3">
         <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="domain (e.g. wealth)" className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none" />
         <input value={portal} onChange={(e) => setPortal(e.target.value)} placeholder="portal slug (e.g. fidelity)" className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none" />

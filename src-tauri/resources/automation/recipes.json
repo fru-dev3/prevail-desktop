@@ -1,0 +1,66 @@
+[
+  {
+    "id": "fidelity",
+    "label": "Fidelity",
+    "domain_hint": "wealth",
+    "start_url": "https://digital.fidelity.com/prgw/digital/login/full-page",
+    "success_url_contains": "/ftgw/digital/portfolio",
+    "notes": "Click Statements after MFA. Each PDF download is captured automatically."
+  },
+  {
+    "id": "schwab",
+    "label": "Charles Schwab",
+    "domain_hint": "wealth",
+    "start_url": "https://client.schwab.com/Login/SignOn/CustomerCenterLogin.aspx",
+    "success_url_contains": "/dashboard",
+    "notes": "Look for the Statements & History menu after login."
+  },
+  {
+    "id": "vanguard",
+    "label": "Vanguard",
+    "domain_hint": "wealth",
+    "start_url": "https://logon.vanguard.com/logon",
+    "success_url_contains": "/balances-and-holdings",
+    "notes": null
+  },
+  {
+    "id": "td-ameritrade",
+    "label": "TD Ameritrade",
+    "domain_hint": "wealth",
+    "start_url": "https://invest.ameritrade.com/grid/p/login",
+    "success_url_contains": "/grid/p/site",
+    "notes": "Statements & Tax Forms under My Account."
+  },
+  {
+    "id": "ally",
+    "label": "Ally Bank",
+    "domain_hint": "wealth",
+    "start_url": "https://secure.ally.com/",
+    "success_url_contains": "/dashboard",
+    "notes": null
+  },
+  {
+    "id": "capital-one",
+    "label": "Capital One",
+    "domain_hint": "wealth",
+    "start_url": "https://verified.capitalone.com/auth/signin",
+    "success_url_contains": "/Card/Home",
+    "notes": null
+  },
+  {
+    "id": "irs",
+    "label": "IRS account",
+    "domain_hint": "tax",
+    "start_url": "https://www.irs.gov/payments/your-online-account",
+    "success_url_contains": "/account/yba/account",
+    "notes": "ID.me MFA required. Download transcripts/notices."
+  },
+  {
+    "id": "healthcare-gov",
+    "label": "Healthcare.gov",
+    "domain_hint": "health",
+    "start_url": "https://www.healthcare.gov/login",
+    "success_url_contains": "/marketplace/account",
+    "notes": null
+  }
+]

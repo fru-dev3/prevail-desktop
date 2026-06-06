@@ -120,6 +120,7 @@ impl BrowserRunner {
         let portal = req.portal.clone();
 
         if let Some(out) = stdout {
+            let domain_for_artifact = req.domain.clone();
             std::thread::spawn(move || {
                 use tauri::Emitter;
                 let reader = BufReader::new(out);
@@ -133,6 +134,58 @@ impl BrowserRunner {
                             "line": line,
                         }),
                     );
+                    // If this line is a "downloaded" event, route the
+                    // file through the storage sandbox so it gets a
+                    // SHA-256 + sidecar meta + canonical filename. The
+                    // runner already moved it into imports/ — we move
+                    // again so the final name carries the timestamp
+                    // prefix and we record provenance.
+                    if let Ok(ev) = serde_json::from_str::<serde_json::Value>(&line) {
+                        if ev.get("type").and_then(|v| v.as_str()) == Some("downloaded") {
+                            let path = ev.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                            let original = ev.get("original").and_then(|v| v.as_str()).unwrap_or("");
+                            let source = ev
+                                .get("source")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("browser");
+                            if !path.is_empty() {
+                                let src = std::path::PathBuf::from(path);
+                                let clean = if !original.is_empty() { original } else { path };
+                                match super::storage::ingest_artifact(
+                                    &src,
+                                    &domain_for_artifact,
+                                    "tier_c_browser",
+                                    source,
+                                    clean,
+                                ) {
+                                    Ok((dest, meta)) => {
+                                        let _ = app2.emit(
+                                            "ingestion:artifact",
+                                            serde_json::json!({
+                                                "tier_id": "tier_c_browser",
+                                                "domain": meta.domain,
+                                                "source": meta.source,
+                                                "path": dest.to_string_lossy(),
+                                                "sha256": meta.sha256,
+                                                "size": meta.size,
+                                                "original": meta.original_name,
+                                                "ts": meta.ts,
+                                            }),
+                                        );
+                                    }
+                                    Err(e) => {
+                                        let _ = app2.emit(
+                                            "ingestion:browser",
+                                            serde_json::json!({
+                                                "stream": "stderr",
+                                                "line": format!("ingest_artifact failed: {e}"),
+                                            }),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             });
         }

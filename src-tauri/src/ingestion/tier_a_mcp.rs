@@ -94,6 +94,12 @@ impl McpRegistry {
         Ok(self.configs.as_ref().unwrap())
     }
 
+    /// Drop the parsed cache so the next list/start re-reads the file.
+    /// Called after the user edits mcp_config.json in-place.
+    pub fn reload(&mut self) {
+        self.configs = None;
+    }
+
     pub fn list(&mut self) -> Result<Vec<McpServerInfo>, String> {
         let cfg = self.load()?.clone();
         let mut out = Vec::with_capacity(cfg.len());
