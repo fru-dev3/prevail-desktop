@@ -12,6 +12,7 @@
 // signing complexity for the first release.
 
 mod ingestion;
+mod telegram_bridge;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -329,7 +330,7 @@ fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String
 /// in the environment, because claude in particular uses them to
 /// scope its macOS Keychain lookup — without them set, claude
 /// silently treats the user as logged out and returns nothing.
-fn build_cli_env() -> (String, String, String) {
+pub(crate) fn build_cli_env() -> (String, String, String) {
     let home = std::env::var("HOME").unwrap_or_default();
     let extra_path = format!(
         "{home}/.local/bin:{home}/.bun/bin:/opt/homebrew/bin:/usr/local/bin"
@@ -352,7 +353,7 @@ fn build_cli_env() -> (String, String, String) {
     (combined, user, logname)
 }
 
-fn resolve_bin_abs(bin: &str) -> String {
+pub(crate) fn resolve_bin_abs(bin: &str) -> String {
     // Mirror the detection logic — find the binary's absolute path so
     // we can spawn it even when the Finder-launched app has minimal
     // PATH. Falls back to the bare name (tokio will use PATH).
@@ -1878,6 +1879,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .manage(ingestion::OrchestratorState::default())
+        .manage(telegram_bridge::BridgeState::new())
         .invoke_handler(tauri::generate_handler![
             scan_vault,
             detect_clis,
@@ -1925,6 +1927,9 @@ pub fn run() {
             ingestion::ingestion_domain_stats,
             ingestion::ingestion_audit_tail,
             ingestion::ingestion_vacuum_imports,
+            telegram_bridge::telegram_bridge_start,
+            telegram_bridge::telegram_bridge_stop,
+            telegram_bridge::telegram_bridge_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
