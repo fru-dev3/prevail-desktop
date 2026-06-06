@@ -22,7 +22,7 @@ function Markdown({ source, compact = false }: { source: string; compact?: boole
 }
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.70";
+const APP_VERSION = "0.2.72";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -543,7 +543,22 @@ function PrevailLogo({ size = 28, rounded = true }: { size?: number; rounded?: b
   );
 }
 
-function Brand({ className = "" }: { className?: string }) {
+function Brand({ className = "", fill = false }: { className?: string; fill?: boolean }) {
+  if (fill) {
+    // Flexbox justify-between spreads the letters edge-to-edge across
+    // whatever width the parent provides. No letter-spacing math.
+    return (
+      <span className={`flex w-full items-baseline justify-between ${className}`}>
+        <span>P</span>
+        <span>R</span>
+        <span>E</span>
+        <span>V</span>
+        <span className="text-ai">A</span>
+        <span className="text-ai">I</span>
+        <span>L</span>
+      </span>
+    );
+  }
   return (
     <span className={className} style={{ letterSpacing: "inherit" }}>
       PREV<span className="text-ai">AI</span>L
@@ -1084,7 +1099,7 @@ function Sidebar({
         <div className="flex min-w-0 flex-1 items-center gap-3" data-tauri-drag-region>
           <PrevailLogo size={32} />
           {!collapsed && (
-            <Brand className="flex-1 font-sans text-2xl font-extrabold text-text-primary [letter-spacing:0.32em]" />
+            <Brand fill className="flex-1 font-sans text-2xl font-extrabold text-text-primary" />
           )}
         </div>
         {!collapsed && (
@@ -2645,6 +2660,19 @@ function DrawerImportsSection({
     return () => { mounted = false; };
   }, [domain]);
 
+  async function vacuum(days: number) {
+    if (!window.confirm(`Delete imports older than ${days} days from ${titleCase(domain)}?`)) return;
+    try {
+      const n = await invoke<number>("ingestion_vacuum_imports", { domain, olderThanDays: days });
+      if (n > 0) {
+        // Reload the list — easier than diffing.
+        const next = await invoke<{ path: string; name: string; size: number; mtime: number }[]>(
+          "ingestion_list_artifacts", { domain },
+        );
+        setItems(next);
+      }
+    } catch (e) { console.error(e); }
+  }
   if (items.length === 0) return null;
   return (
     <div className="border-b border-border-subtle">
@@ -2653,6 +2681,13 @@ function DrawerImportsSection({
           <span className="text-accent">▾</span> Imports
           <span className="text-text-muted">· {items.length}</span>
         </span>
+        <button
+          onClick={() => void vacuum(90)}
+          title="Delete imports older than 90 days"
+          className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn"
+        >
+          vacuum 90d
+        </button>
       </div>
       <div className="px-4 pb-2">
         <ul className="space-y-1">
@@ -6573,6 +6608,8 @@ function IngestionSection() {
 
         <IngestionBrowserRunner />
 
+        <IngestionAuditPanel />
+
         {artifacts.length > 0 && (
           <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
             <div className="mb-3 flex items-center gap-2">
@@ -6813,6 +6850,91 @@ interface PortalRecipe {
   start_url: string;
   success_url_contains: string | null;
   notes: string | null;
+}
+
+// Audit log surface. Reads the appended JSON lines from
+// ~/Library/Application Support/Prevail/ingestion.log via Tauri.
+// Collapsed by default to avoid noise; expand on click. Each ingest
+// row offers a "reveal" button when the path still exists on disk.
+interface IngestionAuditEntry {
+  type: string;
+  tier_id?: string;
+  source?: string;
+  domain?: string;
+  sha256?: string;
+  size?: number;
+  ts?: number;
+  path?: string;
+  older_than_days?: number;
+}
+function IngestionAuditPanel() {
+  const [entries, setEntries] = useState<IngestionAuditEntry[]>([]);
+  const [open, setOpen] = useState(false);
+
+  async function refresh() {
+    try {
+      const r = await invoke<IngestionAuditEntry[]>("ingestion_audit_tail", { limit: 200 });
+      setEntries(r.reverse());
+    } catch { /* empty log is fine */ }
+  }
+  useEffect(() => { void refresh(); }, []);
+
+  return (
+    <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+      <button
+        onClick={() => { setOpen((v) => !v); if (!open) void refresh(); }}
+        className="flex w-full items-center justify-between gap-2 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-text-muted">{open ? "▾" : "▸"}</span>
+          <div className="font-display text-base font-semibold tracking-tight">Audit log</div>
+          <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-secondary">{entries.length}</span>
+        </div>
+        <span className="font-mono text-[10px] text-text-muted">~/Library/Application Support/Prevail/ingestion.log</span>
+      </button>
+      {open && (
+        <ul className="mt-4 max-h-72 overflow-y-auto flex flex-col gap-1">
+          {entries.length === 0 && (
+            <li className="text-xs text-text-muted">No entries yet — captured ingests will appear here.</li>
+          )}
+          {entries.map((e, i) => {
+            const t = e.ts ? new Date(e.ts * 1000).toLocaleString() : "";
+            return (
+              <li key={`${e.path ?? "_"}_${i}`} className="flex items-center gap-3 rounded border border-border-subtle bg-background px-3 py-1.5">
+                <span className={`rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
+                  e.type === "vacuum"
+                    ? "border border-warn/40 bg-warn/10 text-warn"
+                    : "border border-accent-border bg-accent-soft text-accent"
+                }`}>
+                  {e.type}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
+                    {e.domain && <span className="font-mono text-text-primary">{e.domain}</span>}
+                    {e.source && <span className="font-mono text-text-secondary">· {e.source}</span>}
+                    {e.tier_id && <span className="font-mono text-text-muted">· {e.tier_id}</span>}
+                    {e.older_than_days != null && <span className="font-mono text-text-muted">· &gt;{e.older_than_days}d</span>}
+                  </div>
+                  {e.path && (
+                    <div className="truncate font-mono text-[10px] text-text-muted">{e.path}</div>
+                  )}
+                </div>
+                <span className="shrink-0 font-mono text-[10px] text-text-muted">{t}</span>
+                {e.path && (
+                  <button
+                    onClick={() => invoke("open_in_finder", { path: e.path })}
+                    className="shrink-0 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                  >
+                    reveal
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function IngestionBrowserRunner() {
