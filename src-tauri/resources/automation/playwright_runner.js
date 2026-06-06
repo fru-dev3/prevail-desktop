@@ -200,15 +200,83 @@ async function waitForSuccess(page, { successSelector, successUrlContains }, tim
     log({ type: "login_confirmed", url: page.url() });
   }
 
-  // At this point the page is logged in. The caller-specific
-  // post-login flow (download statements, scrape table, etc.) is
-  // expected to be triggered by attaching additional event-driven
-  // logic via page.evaluate / page.click in a follow-up. For v1 we
-  // leave the window open and let the user click "Download" in the
-  // portal — page.on("download") above catches the file regardless.
+  // ── Execute post-login automation steps if the recipe provides
+  // them. Each step is one event in `actions` array. Failures don't
+  // abort the run — we log the error and continue so the user can
+  // recover manually in the headed window if needed.
+  const actions = Array.isArray(req.actions) ? req.actions : [];
+  for (let i = 0; i < actions.length; i++) {
+    const a = actions[i];
+    if (!a || typeof a !== "object" || !a.type) continue;
+    log({ type: "action_start", index: i, step: a });
+    try {
+      switch (a.type) {
+        case "goto": {
+          await page.goto(a.url, {
+            waitUntil: a.wait_until || "domcontentloaded",
+            timeout: 30_000,
+          });
+          break;
+        }
+        case "click": {
+          const t = (a.timeout_sec || 15) * 1000;
+          await page.click(a.selector, { timeout: t });
+          break;
+        }
+        case "wait_for": {
+          const t = (a.timeout_sec || 30) * 1000;
+          await page.waitForSelector(a.selector, { timeout: t });
+          break;
+        }
+        case "select_option": {
+          await page.selectOption(a.selector, a.value);
+          break;
+        }
+        case "sleep": {
+          await page.waitForTimeout((a.seconds || 1) * 1000);
+          break;
+        }
+        case "download_all_links": {
+          // Snapshot the matching elements first since clicking can
+          // re-render the DOM and stale the handles.
+          const handles = await page.$$(a.selector);
+          const cap = typeof a.max === "number" ? a.max : handles.length;
+          for (let j = 0; j < Math.min(handles.length, cap); j++) {
+            try {
+              // Race click against a download — whichever resolves
+              // first determines success.
+              const [download] = await Promise.all([
+                page.waitForEvent("download", { timeout: 30_000 }),
+                handles[j].click({ timeout: 15_000 }),
+              ]);
+              // The download handler attached earlier catches it,
+              // we still log here for action-level visibility.
+              log({
+                type: "downloaded_link",
+                index: j,
+                suggested: download.suggestedFilename(),
+              });
+            } catch (e) {
+              log({ type: "error", action: i, link: j, message: e.message });
+            }
+          }
+          break;
+        }
+        default:
+          log({ type: "error", message: "unknown action type: " + a.type });
+      }
+      log({ type: "action_done", index: i });
+    } catch (e) {
+      log({ type: "error", action: i, message: e && e.message ? e.message : String(e) });
+      // Continue to next action — best-effort, user can recover.
+    }
+  }
+
   log({
     type: "ready",
-    message: "Persistent session active. Trigger downloads in the headed window; they will be captured.",
+    message: actions.length > 0
+      ? `Executed ${actions.length} action(s). Window stays open for additional manual downloads.`
+      : "Persistent session active. Trigger downloads in the headed window; they will be captured.",
   });
 
   // Keep the process alive until the user closes the window.
