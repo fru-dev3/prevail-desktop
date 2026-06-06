@@ -250,6 +250,80 @@ pub struct PortalRecipe {
     pub notes: Option<String>,
 }
 
+/// A single artifact entry as surfaced to the UI.
+#[derive(serde::Serialize, Clone, Debug)]
+pub struct ArtifactEntry {
+    pub path: String,
+    pub name: String,
+    pub size: u64,
+    pub mtime: u64,
+    pub meta: Option<storage::ArtifactMeta>,
+}
+
+/// List artifacts that have landed in a domain's imports/ folder.
+/// Returns newest-first. Reads the sidecar `<file>.meta.json` if it
+/// exists; otherwise returns the entry with `meta = None` (handles
+/// files dropped in by the user directly).
+#[tauri::command]
+pub fn ingestion_list_artifacts(domain: String) -> Result<Vec<ArtifactEntry>, String> {
+    let dir = match storage::imports_dir(&domain) {
+        Ok(d) => d,
+        Err(_) => return Ok(vec![]),
+    };
+    if !dir.exists() {
+        return Ok(vec![]);
+    }
+    let mut entries: Vec<ArtifactEntry> = Vec::new();
+    for entry in std::fs::read_dir(&dir).map_err(|e| format!("read imports: {e}"))?.flatten() {
+        let p = entry.path();
+        let name = match p.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        // Skip the sidecar files themselves; only show artifacts.
+        if name.ends_with(".meta.json") {
+            continue;
+        }
+        let md = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let size = md.len();
+        let mtime = md
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        // Sidecar path: <name>.<ext>.meta.json
+        let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("bin");
+        let meta_path = p.with_extension(format!("{ext}.meta.json"));
+        let meta = std::fs::read_to_string(&meta_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<storage::ArtifactMeta>(&raw).ok());
+
+        entries.push(ArtifactEntry {
+            path: p.to_string_lossy().to_string(),
+            name,
+            size,
+            mtime,
+            meta,
+        });
+    }
+    entries.sort_by(|a, b| b.mtime.cmp(&a.mtime));
+    Ok(entries)
+}
+
+#[tauri::command]
+pub fn ingestion_mcp_stderr(
+    state: tauri::State<'_, OrchestratorState>,
+    name: String,
+) -> Result<String, String> {
+    let mut reg = state.tier_a.lock().map_err(|e| e.to_string())?;
+    reg.drain_stderr(&name)
+}
+
 #[tauri::command]
 pub fn ingestion_browser_recipes(app: tauri::AppHandle) -> Result<Vec<PortalRecipe>, String> {
     use tauri::Manager;

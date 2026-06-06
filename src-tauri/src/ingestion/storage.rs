@@ -12,7 +12,7 @@
 // gives any future indexer a self-describing trail without needing
 // a separate database table.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Read;
@@ -60,7 +60,7 @@ pub fn browser_profile_dir(domain: &str, portal: &str) -> Result<PathBuf, String
 
 /// Records source + lineage next to every artifact. Written as JSON
 /// so an indexer can pull it without parsing magic comments.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArtifactMeta {
     pub tier_id: String,
     pub source: String,

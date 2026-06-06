@@ -22,7 +22,7 @@ function Markdown({ source, compact = false }: { source: string; compact?: boole
 }
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.68";
+const APP_VERSION = "0.2.69";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -2568,6 +2568,10 @@ function DomainContextDrawer({
                 </ul>
               )
             } />
+            <DrawerImportsSection
+              domain={domain}
+              onInject={(body, label) => onInjectContext(body, label)}
+            />
           </>
         )}
       </div>
@@ -2575,6 +2579,72 @@ function DomainContextDrawer({
         {domainPath.split("/").slice(-3).join("/")}
       </div>
       </aside>
+    </div>
+  );
+}
+
+// Drawer section that surfaces a domain's ingested imports without
+// the user having to navigate to Settings → Ingestion. Click a row
+// to load the first chunk into the chat as primed context, or
+// "reveal" to open in Finder. Read-only — toggling for attachment
+// happens via the chips above the composer.
+function DrawerImportsSection({
+  domain,
+  onInject,
+}: {
+  domain: string;
+  onInject: (body: string, label: string) => void;
+}) {
+  const [items, setItems] = useState<{ path: string; name: string; size: number; mtime: number }[]>([]);
+  useEffect(() => {
+    let mounted = true;
+    invoke<{ path: string; name: string; size: number; mtime: number }[]>(
+      "ingestion_list_artifacts",
+      { domain },
+    )
+      .then((rows) => { if (mounted) setItems(rows); })
+      .catch(() => { if (mounted) setItems([]); });
+    return () => { mounted = false; };
+  }, [domain]);
+
+  if (items.length === 0) return null;
+  return (
+    <div className="border-b border-border-subtle">
+      <div className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left">
+        <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary">
+          <span className="text-accent">▾</span> Imports
+          <span className="text-text-muted">· {items.length}</span>
+        </span>
+      </div>
+      <div className="px-4 pb-2">
+        <ul className="space-y-1">
+          {items.slice(0, 12).map((it) => (
+            <li key={it.path} className="flex items-stretch gap-1">
+              <button
+                onClick={async () => {
+                  try {
+                    const body = await invoke<string>("read_file", { path: it.path });
+                    onInject(body.slice(0, 6000), it.name);
+                  } catch (e) { console.error(e); }
+                }}
+                className="flex-1 rounded border border-border-subtle bg-background px-2 py-1.5 text-left hover:border-accent-border hover:bg-surface-warm"
+              >
+                <div className="truncate font-mono text-[11px] text-text-primary">{it.name}</div>
+                <div className="font-mono text-[10px] text-text-muted">
+                  {(it.size / 1024).toFixed(1)} KB
+                </div>
+              </button>
+              <button
+                onClick={() => invoke("open_in_finder", { path: it.path })}
+                title="Reveal in Finder"
+                className="shrink-0 rounded border border-border-subtle bg-background px-2 font-mono text-[10px] text-text-muted hover:border-accent-border hover:text-accent"
+              >
+                ↗
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -2805,6 +2875,25 @@ function ChatPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [domain, vaultPath, prefsTick]);
   const [attachments, setAttachments] = useState<string[]>([]);
+  // Ingested artifacts for this domain. Auto-fetched on entry so the
+  // user can flip a chip to attach them to the next turn without
+  // hunting through Finder.
+  type DomainImport = {
+    path: string;
+    name: string;
+    size: number;
+    mtime: number;
+    meta: { source?: string; tier_id?: string; sha256?: string } | null;
+  };
+  const [domainImports, setDomainImports] = useState<DomainImport[]>([]);
+  useEffect(() => {
+    if (!domain) { setDomainImports([]); return; }
+    let mounted = true;
+    invoke<DomainImport[]>("ingestion_list_artifacts", { domain })
+      .then((rows) => { if (mounted) setDomainImports(rows); })
+      .catch(() => { if (mounted) setDomainImports([]); });
+    return () => { mounted = false; };
+  }, [domain]);
   // Local recall history — arrow-up cycles backward, arrow-down forward.
   const HISTORY_KEY = `prevail.chat.history.${domain ?? "_root"}`;
   const [history, setHistory] = useState<string[]>(() => {
@@ -3570,6 +3659,42 @@ function ChatPanel({
             rows={2}
             className="w-full resize-none bg-transparent px-2 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
           />
+          {/* Domain imports — chips for files in this domain's
+              imports/ folder. Click to toggle attach. Auto-fetched
+              when the domain changes. */}
+          {domainImports.length > 0 && (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 px-2">
+              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                imports
+              </span>
+              {domainImports.slice(0, 8).map((it) => {
+                const on = attachments.includes(it.path);
+                const src = it.meta?.source ?? "manual";
+                return (
+                  <button
+                    key={it.path}
+                    onClick={() => setAttachments((cur) =>
+                      cur.includes(it.path)
+                        ? cur.filter((p) => p !== it.path)
+                        : [...cur, it.path]
+                    )}
+                    title={`${it.path} · ${(it.size / 1024).toFixed(1)} KB · ${src}`}
+                    className={`inline-flex items-center gap-1 rounded-md py-0.5 pl-1.5 pr-2 font-mono text-[11px] transition-colors ${
+                      on
+                        ? "border border-accent-border bg-accent-soft text-accent"
+                        : "border border-dashed border-border bg-background text-text-secondary hover:border-accent-border hover:text-accent"
+                    }`}
+                  >
+                    <FileText className="h-3 w-3" />
+                    {it.name.length > 28 ? it.name.slice(0, 14) + "…" + it.name.slice(-12) : it.name}
+                  </button>
+                );
+              })}
+              {domainImports.length > 8 && (
+                <span className="font-mono text-[10px] text-text-muted">+{domainImports.length - 8} more</span>
+              )}
+            </div>
+          )}
           {/* Attached skills — separate from textarea text. Removing
               text in the input doesn't affect these; remove a skill
               by hovering its pill and clicking ×. */}
@@ -6460,6 +6585,16 @@ function IngestionTierCard({
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [composioKey, setComposioKey] = useState<string>("");
+  const [stderr, setStderr] = useState<Record<string, string>>({});
+
+  async function peekStderr(name: string) {
+    try {
+      const text = await invoke<string>("ingestion_mcp_stderr", { name });
+      setStderr((cur) => ({ ...cur, [name]: text || "(empty)" }));
+    } catch (e) {
+      setStderr((cur) => ({ ...cur, [name]: `error: ${e}` }));
+    }
+  }
 
   async function doMcp(name: string, action: "start" | "stop") {
     setBusy(`${action}:${name}`);
@@ -6549,21 +6684,36 @@ function IngestionTierCard({
                       {s.command} {s.args.join(" ")}
                     </div>
                   </div>
-                  <button
-                    onClick={() => doMcp(s.name, s.running ? "stop" : "start")}
-                    disabled={busy?.endsWith(s.name) === true}
-                    className={`rounded border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
-                      s.running
-                        ? "border-border bg-background text-text-muted hover:border-warn hover:text-warn"
-                        : "border-accent-border bg-accent-soft text-accent hover:bg-accent hover:text-background"
-                    }`}
-                  >
-                    {s.running ? "stop" : "start"}
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {s.running && (
+                      <button
+                        onClick={() => peekStderr(s.name)}
+                        className="rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                      >
+                        stderr
+                      </button>
+                    )}
+                    <button
+                      onClick={() => doMcp(s.name, s.running ? "stop" : "start")}
+                      disabled={busy?.endsWith(s.name) === true}
+                      className={`rounded border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
+                        s.running
+                          ? "border-border bg-background text-text-muted hover:border-warn hover:text-warn"
+                          : "border-accent-border bg-accent-soft text-accent hover:bg-accent hover:text-background"
+                      }`}
+                    >
+                      {s.running ? "stop" : "start"}
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
+          {Object.entries(stderr).map(([name, text]) => (
+            <pre key={name} className="mt-2 max-h-32 overflow-auto rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[10px] leading-relaxed text-text-secondary">
+              {`${name}:\n${text}`}
+            </pre>
+          ))}
         </div>
       )}
 
