@@ -22,7 +22,7 @@ function Markdown({ source, compact = false }: { source: string; compact?: boole
 }
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.69";
+const APP_VERSION = "0.2.70";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -637,6 +637,32 @@ export default function App() {
   // Active thread defines what's loaded into the chat transcript.
   const [threads, setThreads] = useState<ThreadMeta[]>([]);
   const [activeThreadPath, setActiveThreadPath] = useState<string | null>(null);
+  // Per-domain import counts shown as a tiny badge in the sidebar.
+  // Refreshed when ingestion:artifact fires (any tier writes a file)
+  // or when the domain list changes.
+  const [domainStats, setDomainStats] = useState<Record<string, number>>({});
+  const domainsRef = useRef<Domain[]>([]);
+  useEffect(() => { domainsRef.current = domains; }, [domains]);
+  const refreshDomainStats = useCallback(async (names: string[]) => {
+    const results = await Promise.all(
+      names.map(async (n) => {
+        try {
+          const s = await invoke<{ imports: number }>("ingestion_domain_stats", { domain: n });
+          return [n, s.imports] as const;
+        } catch { return [n, 0] as const; }
+      }),
+    );
+    setDomainStats(Object.fromEntries(results));
+  }, []);
+  useEffect(() => {
+    let unl: UnlistenFn | null = null;
+    (async () => {
+      unl = await listen("ingestion:artifact", () => {
+        void refreshDomainStats(domainsRef.current.map((d) => d.name));
+      });
+    })();
+    return () => { if (unl) unl(); };
+  }, [refreshDomainStats]);
   // Switching domains starts a fresh chat in the new domain instead of
   // dragging the previous domain's thread pointer along — which would
   // cause the next auto-save to try writing into a path that lives
@@ -762,6 +788,7 @@ export default function App() {
           if (cancelled) return;
           setDomains(d);
           setVaultError(null);
+          void refreshDomainStats(d.map((x) => x.name));
           // Land on no-domain chat by default. User picks a domain
           // from the sidebar to enter its context.
           return;
@@ -842,6 +869,7 @@ export default function App() {
           }}
           appearance={appearance}
           runningDomains={runningDomains}
+          domainStats={domainStats}
           railWidth={domainRailWidth}
         />
         {!sidebarCollapsed && (
@@ -978,6 +1006,7 @@ function Sidebar({
   onDomainCreated,
   appearance,
   runningDomains,
+  domainStats,
   railWidth,
 }: {
   collapsed: boolean;
@@ -993,6 +1022,7 @@ function Sidebar({
   onDomainCreated: (d: Domain) => void;
   appearance: ReturnType<typeof useAppearance>;
   runningDomains: Set<string>;
+  domainStats: Record<string, number>;
   railWidth: number;
 }) {
   const [adding, setAdding] = useState(false);
@@ -1246,6 +1276,14 @@ function Sidebar({
                     <span className={active ? "text-accent" : "text-text-muted"}>◆</span>
                   )}
                   <span className="flex-1 truncate">{titleCase(d.name)}</span>
+                  {(domainStats[d.name] ?? 0) > 0 && (
+                    <span
+                      className="shrink-0 rounded-full bg-surface-warm px-1.5 py-0 font-mono text-[9px] text-text-muted"
+                      title={`${domainStats[d.name]} imports`}
+                    >
+                      {domainStats[d.name]}
+                    </span>
+                  )}
                   {runningDomains.has(d.name) && (
                     <span className="pulse-soft inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn" title="A reply is streaming in this domain" />
                   )}
@@ -6878,8 +6916,31 @@ function IngestionBrowserRunner() {
         >
           {busy ? "launching…" : "Run automation"}
         </button>
+        <button
+          onClick={async () => {
+            if (!portal.trim() || !startUrl.trim()) return;
+            try {
+              await invoke("ingestion_recipe_save", {
+                recipe: {
+                  id: portal.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+                  label: portal.trim(),
+                  domain_hint: domain.trim() || "wealth",
+                  start_url: startUrl.trim(),
+                  success_url_contains: successUrl.trim() || null,
+                  notes: null,
+                },
+              });
+              const r = await invoke<PortalRecipe[]>("ingestion_browser_recipes");
+              setRecipes(r);
+            } catch (e) { console.error(e); }
+          }}
+          disabled={!portal.trim() || !startUrl.trim()}
+          className="rounded border border-border bg-background px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
+        >
+          save as recipe
+        </button>
         <span className="font-mono text-[10px] text-text-muted">
-          requires <code className="text-accent">node</code> + <code className="text-accent">playwright-core</code> in your PATH
+          requires <code className="text-accent">node</code> + <code className="text-accent">playwright-core</code>
         </span>
       </div>
       {log.length > 0 && (
