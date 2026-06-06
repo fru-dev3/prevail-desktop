@@ -68,7 +68,7 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.93";
+const APP_VERSION = "0.2.94";
 
 // Canonical on/off toggle. Track 36×20px, thumb 16×16px, slides
 // 18px. Every switch in the app routes through this so we never
@@ -6507,6 +6507,25 @@ function SettingsPanel({
     { id: "about", label: "About", icon: Github },
   ];
 
+  // Live-bridge counter — used to light up the Integrations row in
+  // the nav when one or more routers (currently just Telegram) is
+  // running. Polled here so the indicator follows you across pages,
+  // even when you're not on Integrations.
+  const [liveBridges, setLiveBridges] = useState(0);
+  useEffect(() => {
+    async function poll() {
+      let n = 0;
+      try {
+        const tg = await invoke<{ running: boolean }>("telegram_bridge_status");
+        if (tg.running) n++;
+      } catch { /* ignore */ }
+      setLiveBridges(n);
+    }
+    void poll();
+    const id = window.setInterval(() => void poll(), 4000);
+    return () => window.clearInterval(id);
+  }, []);
+
   return (
     <div className="flex h-full">
       {/* Sidebar nav — Codex-style with Back to app at top */}
@@ -6526,6 +6545,7 @@ function SettingsPanel({
         {items.map((it) => {
           const Icon = it.icon;
           const active = section === it.id;
+          const showLive = it.id === "tools" && liveBridges > 0;
           return (
             <button
               key={it.id}
@@ -6537,7 +6557,16 @@ function SettingsPanel({
               }`}
             >
               <Icon className="h-4 w-4" />
-              {it.label}
+              <span className="flex-1">{it.label}</span>
+              {showLive && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent"
+                  title={`${liveBridges} bridge${liveBridges === 1 ? "" : "s"} live`}
+                >
+                  <span className="pulse-soft inline-block h-1 w-1 rounded-full bg-accent" />
+                  live{liveBridges > 1 ? ` ${liveBridges}` : ""}
+                </span>
+              )}
             </button>
           );
         })}
