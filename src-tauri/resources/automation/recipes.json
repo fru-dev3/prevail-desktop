@@ -46,6 +46,75 @@
     "notes": null
   },
   {
+    "id": "chase",
+    "label": "Chase",
+    "domain_hint": "wealth",
+    "start_url": "https://secure.chase.com/web/auth/dashboard",
+    "success_url_contains": "/web/auth/dashboard",
+    "notes": "Statements & Documents under each account. Selectors change on Chase redesigns.",
+    "actions": [
+      { "type": "sleep", "seconds": 3 },
+      { "type": "wait_for", "selector": "a[href*='statements']", "timeout_sec": 45 },
+      { "type": "click", "selector": "a[href*='statements']", "timeout_sec": 15 },
+      { "type": "wait_for", "selector": "a[href*='.pdf']", "timeout_sec": 30 },
+      { "type": "download_all_links", "selector": "a[href*='.pdf']", "max": 24 }
+    ]
+  },
+  {
+    "id": "bank-of-america",
+    "label": "Bank of America",
+    "domain_hint": "wealth",
+    "start_url": "https://secure.bankofamerica.com/login/sign-in/signOnV2Screen.go",
+    "success_url_contains": "/myaccounts/details/deposit",
+    "notes": "Click Statements & Documents from the account overview."
+  },
+  {
+    "id": "wells-fargo",
+    "label": "Wells Fargo",
+    "domain_hint": "wealth",
+    "start_url": "https://connect.secure.wellsfargo.com/auth/login/present",
+    "success_url_contains": "/das/cgw-acctsel/acctsel/balance",
+    "notes": null
+  },
+  {
+    "id": "amex",
+    "label": "American Express",
+    "domain_hint": "wealth",
+    "start_url": "https://www.americanexpress.com/en-us/account/login",
+    "success_url_contains": "/account/dashboard",
+    "notes": "Statements & Activity → past 7 years available.",
+    "actions": [
+      { "type": "sleep", "seconds": 2 },
+      { "type": "goto", "url": "https://global.americanexpress.com/activity/statements", "wait_until": "domcontentloaded" },
+      { "type": "wait_for", "selector": "a[href*='statementdownload']", "timeout_sec": 30 },
+      { "type": "download_all_links", "selector": "a[href*='statementdownload']", "max": 24 }
+    ]
+  },
+  {
+    "id": "robinhood",
+    "label": "Robinhood",
+    "domain_hint": "wealth",
+    "start_url": "https://robinhood.com/login",
+    "success_url_contains": "/account",
+    "notes": "Tax forms + monthly statements under Account → History → Documents."
+  },
+  {
+    "id": "discover",
+    "label": "Discover",
+    "domain_hint": "wealth",
+    "start_url": "https://portal.discover.com/customersvcs/universalLogin/ac_main",
+    "success_url_contains": "/cardmembersvcs/achome/homepage",
+    "notes": null
+  },
+  {
+    "id": "venmo-paypal",
+    "label": "PayPal",
+    "domain_hint": "wealth",
+    "start_url": "https://www.paypal.com/signin",
+    "success_url_contains": "/myaccount/summary",
+    "notes": "Activity → Download statement (CSV) for the period."
+  },
+  {
     "id": "capital-one",
     "label": "Capital One",
     "domain_hint": "wealth",
