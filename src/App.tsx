@@ -22,7 +22,7 @@ function Markdown({ source, compact = false }: { source: string; compact?: boole
 }
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.76";
+const APP_VERSION = "0.2.77";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -4260,26 +4260,19 @@ function ChatPanel({
 
 function ChatBubble({ msg }: { msg: ChatMessage }) {
   if (msg.role === "user") {
-    // Claude/ChatGPT-style: user message sits in the same centered
-    // column as the assistant, with a subtle surface tint instead of a
-    // loud bubble. Author label above, content below.
+    // Right-aligned card with a soft accent tint and a faint border.
+    // No avatar — the alignment carries the "from you" signal.
     return (
-      <div className="mb-8">
-        <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-text-muted">
-          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-strong text-[10px] font-semibold text-text-secondary">
-            Y
-          </span>
-          You
-        </div>
-        <div className="rounded-2xl border border-border-subtle bg-surface-warm px-4 py-3 text-[15px] leading-relaxed text-text-primary">
+      <div className="mb-6 flex justify-end">
+        <div className="max-w-[78%] rounded-2xl rounded-br-md border border-accent-border/50 bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-text-primary shadow-sm">
           <div className="whitespace-pre-wrap">{renderSkillTokens(msg.content)}</div>
         </div>
       </div>
     );
   }
-  // Assistant: no bubble — just the body. Mark + name above, content
-  // below in proper markdown. Mirrors how Claude.ai / ChatGPT render
-  // their replies.
+  // Assistant: left-aligned row with provider mark + name + status,
+  // body in a soft surface card. Clearer back-and-forth pattern with
+  // distinct visual weights for user vs assistant.
   const vendor = msg.cli ?? "claude";
   const vendorName =
     vendor === "claude" ? "Claude"
@@ -4288,21 +4281,28 @@ function ChatBubble({ msg }: { msg: ChatMessage }) {
     : vendor === "ollama" ? "Ollama"
     : vendor;
   return (
-    <div className="mb-10">
-      <div className="mb-2 flex items-center gap-2 text-xs font-medium text-text-muted">
-        <ProviderMark vendor={vendor} size={18} />
-        <span>{vendorName}</span>
-        {msg.streaming && <span className="pulse-soft">· streaming</span>}
-      </div>
-      <div className="text-[15px] leading-relaxed">
-        {msg.content ? (
-          <Markdown source={msg.content} />
-        ) : (
-          <div className="text-text-muted">
-            {msg.streaming ? <ThinkingDots /> : "(empty reply)"}
-          </div>
-        )}
-        {msg.streaming && msg.content && <span className="cursor-blink text-accent">▌</span>}
+    <div className="mb-8 flex items-start gap-3">
+      <ProviderMark vendor={vendor} size={32} />
+      <div className="min-w-0 flex-1">
+        <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-text-secondary">
+          <span className="font-display font-semibold tracking-tight">{vendorName}</span>
+          {msg.streaming && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent">
+              <span className="pulse-soft inline-block h-1 w-1 rounded-full bg-accent" />
+              streaming
+            </span>
+          )}
+        </div>
+        <div className="rounded-2xl rounded-tl-md border border-border-subtle bg-surface px-4 py-3 text-[15px] leading-relaxed shadow-sm">
+          {msg.content ? (
+            <Markdown source={msg.content} />
+          ) : (
+            <div className="text-text-muted">
+              {msg.streaming ? <ThinkingDots /> : "(empty reply)"}
+            </div>
+          )}
+          {msg.streaming && msg.content && <span className="cursor-blink text-accent">▌</span>}
+        </div>
       </div>
     </div>
   );
