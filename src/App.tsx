@@ -68,7 +68,7 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.92";
+const APP_VERSION = "0.2.93";
 
 // Canonical on/off toggle. Track 36×20px, thumb 16×16px, slides
 // 18px. Every switch in the app routes through this so we never
@@ -8664,13 +8664,80 @@ function ModelPickerCard({ cli }: { cli: CliInfo }) {
 // rendered directly inside Settings → Integrations. Old ToolsPanel
 // wrapper removed.
 
+interface TgBridgeStatus {
+  running: boolean;
+  last_update_id: number;
+  last_inbound_ts: number | null;
+  last_outbound_ts: number | null;
+  last_error: string | null;
+  inbound_count: number;
+  outbound_count: number;
+}
+
 function TelegramCard() {
   const [token, setToken] = useState(lsGet(LS.telegramToken));
   const [chatId, setChatId] = useState(lsGet(LS.telegramChatId));
+  const [bridgeCli, setBridgeCli] = useState(lsGet("prevail.telegram.cli") || "claude");
+  const [bridgeModel, setBridgeModel] = useState(lsGet("prevail.telegram.model"));
   const [status, setStatus] = useState<{ kind: "idle" | "ok" | "err"; msg: string }>({ kind: "idle", msg: "" });
+  const [bridge, setBridge] = useState<TgBridgeStatus | null>(null);
+  const [feed, setFeed] = useState<Array<{ dir: "in" | "out"; text: string; ts: number }>>([]);
 
   useEffect(() => { lsSet(LS.telegramToken, token); }, [token]);
   useEffect(() => { lsSet(LS.telegramChatId, chatId); }, [chatId]);
+  useEffect(() => { lsSet("prevail.telegram.cli", bridgeCli); }, [bridgeCli]);
+  useEffect(() => { lsSet("prevail.telegram.model", bridgeModel); }, [bridgeModel]);
+
+  async function refreshStatus() {
+    try {
+      const s = await invoke<TgBridgeStatus>("telegram_bridge_status");
+      setBridge(s);
+    } catch { /* ignore */ }
+  }
+  useEffect(() => {
+    void refreshStatus();
+    const id = window.setInterval(() => void refreshStatus(), 3000);
+    let u1: UnlistenFn | null = null;
+    let u2: UnlistenFn | null = null;
+    (async () => {
+      u1 = await listen<{ text: string }>("tg:message_in", (e) => {
+        setFeed((cur) => [...cur.slice(-19), { dir: "in", text: e.payload.text, ts: Date.now() }]);
+      });
+      u2 = await listen<{ text: string }>("tg:message_out", (e) => {
+        setFeed((cur) => [...cur.slice(-19), { dir: "out", text: e.payload.text, ts: Date.now() }]);
+      });
+    })();
+    return () => { window.clearInterval(id); if (u1) u1(); if (u2) u2(); };
+  }, []);
+
+  async function startBridge() {
+    if (!token.trim() || !chatId.trim()) {
+      setStatus({ kind: "err", msg: "fill in token + chat ID first" });
+      return;
+    }
+    try {
+      await invoke("telegram_bridge_start", {
+        cfg: {
+          token: token.trim(),
+          chat_id: chatId.trim(),
+          cli: bridgeCli,
+          model: bridgeModel || null,
+          domain: null,
+        },
+      });
+      await refreshStatus();
+    } catch (e) {
+      setStatus({ kind: "err", msg: String(e) });
+    }
+  }
+  async function stopBridge() {
+    try {
+      await invoke("telegram_bridge_stop");
+      await refreshStatus();
+    } catch (e) {
+      setStatus({ kind: "err", msg: String(e) });
+    }
+  }
 
   async function testSend() {
     if (!token || !chatId) {
@@ -8701,7 +8768,7 @@ function TelegramCard() {
         <div>
           <h3 className="font-semibold">Telegram bridge</h3>
           <p className="text-xs text-text-muted">
-            One-way push to a Telegram chat via a bot. Test button delivers; auto-pushes for verdicts + briefings aren't wired yet, and inbound (Telegram → app) needs polling that's not implemented either.
+            Two-way chat. Inbound messages from the configured chat are routed to your chosen CLI and the reply pushed back. Test button still works for one-shot pushes.
           </p>
         </div>
       </div>
@@ -8744,6 +8811,92 @@ function TelegramCard() {
             <span className="text-xs text-warn">{status.msg}</span>
           )}
         </div>
+
+        <div className="rounded-lg border border-border bg-background p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+              Bidirectional bridge
+            </div>
+            <span className={`rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
+              bridge?.running
+                ? "border border-accent-border bg-accent-soft text-accent"
+                : "border border-border bg-surface text-text-muted"
+            }`}>
+              {bridge?.running ? "running" : "stopped"}
+            </span>
+          </div>
+          <p className="mb-3 text-[11px] text-text-muted">
+            Messages you send to the bot from Telegram get routed to the CLI below and the reply is pushed back to the same chat.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <div className="text-[10px] uppercase tracking-wider text-text-muted">Route to CLI</div>
+              <select
+                value={bridgeCli}
+                onChange={(e) => setBridgeCli(e.target.value)}
+                className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none"
+              >
+                <option value="claude">Claude</option>
+                <option value="codex">Codex</option>
+                <option value="antigravity">Antigravity</option>
+                <option value="ollama">Ollama</option>
+              </select>
+            </label>
+            <label className="block">
+              <div className="text-[10px] uppercase tracking-wider text-text-muted">Model (optional)</div>
+              <input
+                value={bridgeModel}
+                onChange={(e) => setBridgeModel(e.target.value)}
+                placeholder={MODELS[bridgeCli]?.[0]?.id ?? "default"}
+                className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-xs focus:border-accent-border focus:outline-none"
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            {!bridge?.running ? (
+              <button
+                onClick={startBridge}
+                disabled={!token.trim() || !chatId.trim()}
+                className="rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
+              >
+                start bridge
+              </button>
+            ) : (
+              <button
+                onClick={stopBridge}
+                className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn"
+              >
+                stop bridge
+              </button>
+            )}
+            {bridge && (
+              <span className="font-mono text-[10px] text-text-muted">
+                in: {bridge.inbound_count} · out: {bridge.outbound_count}
+                {bridge.last_inbound_ts ? ` · last in ${Math.round((Date.now() / 1000 - bridge.last_inbound_ts))}s ago` : ""}
+              </span>
+            )}
+          </div>
+          {bridge?.last_error && (
+            <div className="mt-2 rounded border border-warn/40 bg-warn/10 px-2 py-1 text-xs text-warn">
+              {bridge.last_error}
+            </div>
+          )}
+          {feed.length > 0 && (
+            <ul className="mt-3 max-h-40 overflow-y-auto rounded border border-border-subtle bg-surface px-2 py-1.5">
+              {feed.map((f, i) => (
+                <li key={i} className="font-mono text-[10px] leading-relaxed">
+                  <span className={f.dir === "in" ? "text-accent" : "text-text-muted"}>
+                    {f.dir === "in" ? "▶" : "◀"}
+                  </span>{" "}
+                  <span className={f.dir === "in" ? "text-text-primary" : "text-text-secondary"}>
+                    {f.text.slice(0, 200)}{f.text.length > 200 ? "…" : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         <p className="text-xs text-text-muted">
           New to Telegram bots?{" "}
           <a href="https://core.telegram.org/bots/features#botfather" target="_blank" rel="noreferrer" className="text-accent hover:underline">
