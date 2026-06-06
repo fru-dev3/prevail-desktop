@@ -68,7 +68,7 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.89";
+const APP_VERSION = "0.2.90";
 
 // VS Code-style quick switcher modal. Centered overlay, single
 // search input at the top, combined list of domains + recent
@@ -250,9 +250,15 @@ const MODELS: Record<string, ModelPick[]> = {
     { id: "claude-haiku-4-5",  label: "Haiku 4.5",      blurb: "fastest, cheapest" },
   ],
   codex: [
-    { id: "gpt-5",       label: "GPT-5",        blurb: "flagship" },
-    { id: "gpt-5-high",  label: "GPT-5 (high)", blurb: "extra reasoning" },
-    { id: "gpt-5-mini",  label: "GPT-5 mini",   blurb: "fast + cheap" },
+    // ChatGPT-account users: gpt-5.5 is the only model that works
+    // — every gpt-5 / gpt-4o / o-series variant returns
+    // "model not supported when using Codex with a ChatGPT account".
+    // gpt-5 family kept for users with API-key or Pro access.
+    { id: "gpt-5.5",     label: "GPT-5.5",       blurb: "current flagship · works on ChatGPT login" },
+    { id: "gpt-5-codex", label: "GPT-5 Codex",   blurb: "API / Pro only" },
+    { id: "gpt-5",       label: "GPT-5",         blurb: "API / Pro only" },
+    { id: "gpt-5-high",  label: "GPT-5 (high)",  blurb: "API / Pro · extra reasoning" },
+    { id: "gpt-5-mini",  label: "GPT-5 mini",    blurb: "API / Pro · fast + cheap" },
   ],
   antigravity: [
     { id: "Gemini 3.1 Pro (High)",        label: "Gemini 3.1 Pro (High)",        blurb: "extra reasoning" },
