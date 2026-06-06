@@ -68,7 +68,42 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.90";
+const APP_VERSION = "0.2.92";
+
+// Canonical on/off toggle. Track 36×20px, thumb 16×16px, slides
+// 18px. Every switch in the app routes through this so we never
+// drift back into bespoke implementations that misalign the thumb.
+function Toggle({
+  on,
+  onChange,
+  label,
+  disabled = false,
+}: {
+  on: boolean;
+  onChange: (v: boolean) => void;
+  label?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!on)}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
+        on ? "bg-accent" : "bg-surface-strong"
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 h-4 w-4 rounded-full bg-background shadow-sm transition-transform ${
+          on ? "translate-x-[18px]" : "translate-x-0.5"
+        }`}
+      />
+    </button>
+  );
+}
 
 // VS Code-style quick switcher modal. Centered overlay, single
 // search input at the top, combined list of domains + recent
@@ -2784,14 +2819,11 @@ function DomainPrefsPanel({
                 : "Manual — drag the domain in or use the Context drawer to attach state.md."}
             </div>
           </div>
-          <button
-            onClick={() => { lsSet(autoStateKey, autoState ? "0" : "1"); force(); }}
-            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${autoState ? "bg-accent" : "bg-surface-strong"}`}
-            role="switch"
-            aria-checked={autoState}
-          >
-            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-background transition-transform ${autoState ? "translate-x-[18px]" : "translate-x-0.5"}`} />
-          </button>
+          <Toggle
+            on={autoState}
+            onChange={(v) => { lsSet(autoStateKey, v ? "1" : "0"); force(); }}
+            label="Auto-attach state.md"
+          />
         </div>
       </section>
     </div>
@@ -6835,16 +6867,7 @@ function GeneralSection() {
   );
 
   const Switch = ({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) => (
-    <button
-      onClick={() => onChange(!on)}
-      className={`relative h-5 w-9 rounded-full transition-colors ${on ? "bg-accent" : "bg-surface-strong"}`}
-      role="switch"
-      aria-checked={on}
-    >
-      <span
-        className={`absolute top-0.5 h-4 w-4 rounded-full bg-background transition-transform ${on ? "translate-x-[18px]" : "translate-x-0.5"}`}
-      />
-    </button>
+    <Toggle on={on} onChange={onChange} />
   );
 
   return (
@@ -8269,14 +8292,7 @@ function AboutSection() {
         )}
         <div className="mt-4 flex items-center justify-between gap-3">
           <div className="text-sm text-text-secondary">Include prerelease / dev builds</div>
-          <button
-            onClick={() => setIncludePre((v) => !v)}
-            className={`relative h-5 w-9 rounded-full transition-colors ${includePre ? "bg-accent" : "bg-surface-strong"}`}
-            role="switch"
-            aria-checked={includePre}
-          >
-            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-background transition-transform ${includePre ? "translate-x-[18px]" : "translate-x-0.5"}`} />
-          </button>
+          <Toggle on={includePre} onChange={setIncludePre} label="Include prerelease builds" />
         </div>
       </div>
 
@@ -8461,7 +8477,8 @@ function PaletteCard({
 }
 
 function DefaultsForm({ clis }: { clis: CliInfo[] }) {
-  const fwLens = useFrameworkLens();
+  // Framework + Lens live in the dedicated Settings → Frameworks tab.
+  // Removed from Defaults to stop the duplication confusion.
   const firstAvailable = useMemo(() => clis.find((c) => c.available)?.id ?? "", [clis]);
   const [defaultChatCli, setDefaultChatCli] = useState(() => lsGet(LS.defaultChatCli) || firstAvailable);
   const [defaultChairCli, setDefaultChairCli] = useState(() => lsGet(LS.defaultChairCli) || firstAvailable);
@@ -8508,21 +8525,10 @@ function DefaultsForm({ clis }: { clis: CliInfo[] }) {
         </div>
       </div>
 
-      {/* Framework + lens as scrollable chip rows */}
-      <div className="flex flex-col gap-4">
-        <FrameworkPickerCard
-          title="Default framework"
-          options={FRAMEWORKS.map((f) => ({ id: f.id, label: f.label, blurb: f.blurb }))}
-          value={fwLens.framework}
-          onChange={fwLens.setFramework}
-        />
-        <FrameworkPickerCard
-          title="Default lens"
-          options={LENSES.map((l) => ({ id: l.id, label: l.label, blurb: l.blurb }))}
-          value={fwLens.lens}
-          onChange={fwLens.setLens}
-        />
-      </div>
+      {/* Framework + Lens used to live here as small chip rows, but
+          they're already set in Settings → Frameworks (the dedicated
+          full-width two-column layout with descriptions). Removed
+          here to stop the duplication confusion. */}
     </div>
   );
 }
@@ -8648,42 +8654,10 @@ function ModelPickerCard({ cli }: { cli: CliInfo }) {
   );
 }
 
-function FrameworkPickerCard({
-  title, options, value, onChange,
-}: {
-  title: string;
-  options: { id: string; label: string; blurb: string }[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const cur = options.find((o) => o.id === value);
-  return (
-    <div className="rounded-lg border border-border bg-surface p-4">
-      <div className="text-xs uppercase tracking-wider text-text-muted">{title}</div>
-      <div className="mt-3 flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
-        {options.map((o) => {
-          const on = value === o.id;
-          return (
-            <button
-              key={o.id}
-              onClick={() => onChange(o.id)}
-              className={`rounded-md border px-2.5 py-1 font-mono text-xs transition-colors ${
-                on
-                  ? "border-accent-border bg-accent-soft text-accent"
-                  : "border-border bg-background text-text-secondary hover:bg-surface-warm"
-              }`}
-            >
-              {o.label}
-            </button>
-          );
-        })}
-      </div>
-      <p className="mt-3 min-h-[2.5em] text-xs leading-relaxed text-text-muted">
-        {cur?.blurb}
-      </p>
-    </div>
-  );
-}
+// FrameworkPickerCard was deleted with v0.2.92 — the chip-row UI
+// it provided lived only in Settings → Defaults as a duplicate of
+// the dedicated Settings → Frameworks page. The full two-column
+// FrameworksSection is now the single source of truth.
 
 // ─────────────────────────────────────────────────────────────────────
 // Integration cards (Telegram / WhatsApp / MCP / Briefings) are now
@@ -8841,18 +8815,7 @@ function McpCard() {
             {enabled ? "Listening on localhost:7842" : "Off"}
           </div>
         </div>
-        <button
-          onClick={() => setEnabled((e) => !e)}
-          className={`relative h-6 w-11 rounded-full transition-colors ${
-            enabled ? "bg-accent" : "bg-surface-strong"
-          }`}
-        >
-          <span
-            className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-              enabled ? "translate-x-5" : "translate-x-0.5"
-            }`}
-          />
-        </button>
+        <Toggle on={enabled} onChange={setEnabled} label="Enable MCP server" />
       </div>
       <p className="mt-3 text-xs text-text-muted">
         For full MCP coverage right now, run the <Brand /> CLI's <code className="text-accent">mcp-server</code> command — it ships read-only by default and is parent-process verified.
