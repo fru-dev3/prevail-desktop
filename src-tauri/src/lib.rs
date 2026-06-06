@@ -11,6 +11,8 @@
 // whatever AI CLIs the user already has, and avoids the bundled-sidecar
 // signing complexity for the first release.
 
+mod ingestion;
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -1741,6 +1743,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .manage(ingestion::OrchestratorState::default())
         .invoke_handler(tauri::generate_handler![
             scan_vault,
             detect_clis,
@@ -1767,6 +1770,17 @@ pub fn run() {
             save_thread,
             rename_thread,
             delete_thread,
+            ingestion::ingestion_status,
+            ingestion::ingestion_mcp_list,
+            ingestion::ingestion_mcp_start,
+            ingestion::ingestion_mcp_stop,
+            ingestion::ingestion_composio_set_key,
+            ingestion::ingestion_composio_start,
+            ingestion::ingestion_composio_stop,
+            ingestion::ingestion_browser_run,
+            ingestion::ingestion_keychain_set,
+            ingestion::ingestion_keychain_get,
+            ingestion::ingestion_keychain_del,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

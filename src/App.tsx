@@ -22,7 +22,7 @@ function Markdown({ source, compact = false }: { source: string; compact?: boole
 }
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.66";
+const APP_VERSION = "0.2.67";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -5464,7 +5464,7 @@ function SettingsPanel({
   onBack?: () => void;
   onStartChatWith?: (cliId: string, modelId?: string) => void;
 }) {
-  type Section = "general" | "agents" | "user" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "about";
+  type Section = "general" | "agents" | "user" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "about";
   const [section, setSection] = useState<Section>("general");
 
   const items: Array<{ id: Section; label: string; icon: typeof Folder }> = [
@@ -5477,6 +5477,7 @@ function SettingsPanel({
     { id: "frameworks", label: "Frameworks", icon: Scale },
     { id: "skills", label: "Skills", icon: Sparkles },
     { id: "tools", label: "Integrations", icon: Wrench },
+    { id: "ingestion", label: "Ingestion", icon: Network },
     { id: "about", label: "About", icon: Github },
   ];
 
@@ -5542,6 +5543,7 @@ function SettingsPanel({
               </div>
             </>
           )}
+          {section === "ingestion" && <IngestionSection />}
           {section === "about" && <AboutSection />}
         </div>
       </div>
@@ -6294,6 +6296,321 @@ function SkillsSection({ vaultPath }: { vaultPath: string }) {
         )}
       </div>
     </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// INGESTION SECTION — UI surface for the triple-tier engine
+//   Tier A: MCP subprocess registry (start/stop/status)
+//   Tier B: Composio managed gateway (API key + start)
+//   Tier C: Playwright headed browser automation (per-portal run)
+//
+// All three speak to commands defined in src-tauri/src/ingestion/.
+// Status is polled every 4s while the section is mounted.
+
+interface IngestionTierStatus {
+  id: string;
+  label: string;
+  state: string;
+  active: boolean;
+  running: number;
+  last_error: string | null;
+}
+interface IngestionMcpServer {
+  name: string;
+  command: string;
+  args: string[];
+  running: boolean;
+  pid: number | null;
+}
+
+function IngestionSection() {
+  const [tiers, setTiers] = useState<IngestionTierStatus[]>([]);
+  const [mcp, setMcp] = useState<IngestionMcpServer[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function refresh() {
+    try {
+      const [t, m] = await Promise.all([
+        invoke<IngestionTierStatus[]>("ingestion_status"),
+        invoke<IngestionMcpServer[]>("ingestion_mcp_list"),
+      ]);
+      setTiers(t);
+      setMcp(m);
+      setErr(null);
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+  useEffect(() => {
+    void refresh();
+    const id = window.setInterval(() => void refresh(), 4000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <>
+      <SettingsHeader
+        title="Ingestion"
+        subtitle="Triple-tier data engine. Pull artifacts from MCP servers, the Composio gateway, or a headed browser into the right domain folder — without leaving the app."
+      />
+      {err && (
+        <div className="mb-4 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{err}</div>
+      )}
+
+      <div className="space-y-6">
+        {tiers.map((t) => (
+          <IngestionTierCard
+            key={t.id}
+            tier={t}
+            mcp={t.id === "tier_a_mcp" ? mcp : undefined}
+            onRefresh={refresh}
+          />
+        ))}
+        {tiers.length === 0 && (
+          <div className="rounded border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+            Loading tier status…
+          </div>
+        )}
+
+        <IngestionBrowserRunner />
+      </div>
+    </>
+  );
+}
+
+function IngestionTierCard({
+  tier,
+  mcp,
+  onRefresh,
+}: {
+  tier: IngestionTierStatus;
+  mcp?: IngestionMcpServer[];
+  onRefresh: () => void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [composioKey, setComposioKey] = useState<string>("");
+
+  async function doMcp(name: string, action: "start" | "stop") {
+    setBusy(`${action}:${name}`);
+    try {
+      await invoke(action === "start" ? "ingestion_mcp_start" : "ingestion_mcp_stop", { name });
+      await onRefresh();
+    } catch (e) { console.error(e); }
+    setBusy(null);
+  }
+  async function setComposio() {
+    setBusy("composio:set");
+    try {
+      await invoke("ingestion_composio_set_key", { key: composioKey });
+      setComposioKey("");
+      await onRefresh();
+    } catch (e) { console.error(e); }
+    setBusy(null);
+  }
+  async function composioRun(action: "start" | "stop") {
+    setBusy(`composio:${action}`);
+    try {
+      await invoke(action === "start" ? "ingestion_composio_start" : "ingestion_composio_stop");
+      await onRefresh();
+    } catch (e) { console.error(e); }
+    setBusy(null);
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="font-display text-base font-semibold tracking-tight">{tier.label}</div>
+          <div className="mt-0.5 font-mono text-[11px] text-text-muted">{tier.state}</div>
+        </div>
+        <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
+          tier.active
+            ? tier.running > 0
+              ? "border border-accent-border bg-accent-soft text-accent"
+              : "border border-border bg-background text-text-secondary"
+            : "border border-border bg-background text-text-muted"
+        }`}>
+          {tier.running > 0 ? `running · ${tier.running}` : tier.active ? "ready" : "inactive"}
+        </span>
+      </div>
+      {tier.last_error && (
+        <div className="mt-3 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
+          {tier.last_error}
+        </div>
+      )}
+
+      {/* Tier A — MCP server list */}
+      {tier.id === "tier_a_mcp" && mcp && (
+        <div className="mt-4">
+          {mcp.length === 0 ? (
+            <p className="text-xs text-text-muted">
+              No <code className="text-accent">mcp_config.json</code> at
+              <code className="ml-1 text-accent">~/Library/Application Support/Prevail/</code>.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {mcp.map((s) => (
+                <li key={s.name} className="flex items-center gap-3 rounded-md border border-border-subtle bg-background px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm text-text-primary">{s.name}</span>
+                      {s.running && s.pid != null && (
+                        <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] text-accent">pid {s.pid}</span>
+                      )}
+                    </div>
+                    <div className="font-mono text-[10px] text-text-muted">
+                      {s.command} {s.args.join(" ")}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => doMcp(s.name, s.running ? "stop" : "start")}
+                    disabled={busy?.endsWith(s.name) === true}
+                    className={`rounded border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
+                      s.running
+                        ? "border-border bg-background text-text-muted hover:border-warn hover:text-warn"
+                        : "border-accent-border bg-accent-soft text-accent hover:bg-accent hover:text-background"
+                    }`}
+                  >
+                    {s.running ? "stop" : "start"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Tier B — Composio key input + start */}
+      {tier.id === "tier_b_composio" && (
+        <div className="mt-4 flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              value={composioKey}
+              onChange={(e) => setComposioKey(e.target.value)}
+              placeholder="COMPOSIO_API_KEY (stored in macOS keychain)"
+              className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-xs focus:border-accent-border focus:outline-none"
+            />
+            <button
+              onClick={setComposio}
+              disabled={!composioKey.trim() || busy === "composio:set"}
+              className="rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
+            >
+              save key
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => composioRun("start")}
+              disabled={!tier.active || tier.running > 0 || busy === "composio:start"}
+              className="rounded border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
+            >
+              start gateway
+            </button>
+            <button
+              onClick={() => composioRun("stop")}
+              disabled={tier.running === 0 || busy === "composio:stop"}
+              className="rounded border border-border bg-background px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn disabled:opacity-50"
+            >
+              stop
+            </button>
+            <span className="font-mono text-[10px] text-text-muted">
+              spawns <code className="text-accent">npx @composio/mcp</code>
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Tier C — described inline; run UI is in IngestionBrowserRunner below */}
+      {tier.id === "tier_c_browser" && (
+        <p className="mt-3 text-xs text-text-muted">
+          Run a portal automation below. Browser opens in headed mode with a persistent profile per (domain, portal). Downloads are intercepted into the domain's <code className="text-accent">imports/</code> folder.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function IngestionBrowserRunner() {
+  const [domain, setDomain] = useState("");
+  const [portal, setPortal] = useState("");
+  const [startUrl, setStartUrl] = useState("");
+  const [successUrl, setSuccessUrl] = useState("");
+  const [timeoutSec, setTimeoutSec] = useState<string>("90");
+  const [busy, setBusy] = useState(false);
+  const [log, setLog] = useState<string[]>([]);
+
+  useEffect(() => {
+    let unl: UnlistenFn | null = null;
+    (async () => {
+      unl = await listen<{ line: string; stream?: string }>(
+        "ingestion:browser",
+        (e) => {
+          const line = e.payload.line ?? "";
+          setLog((cur) => [...cur.slice(-300), line]);
+        },
+      );
+    })();
+    return () => { if (unl) unl(); };
+  }, []);
+
+  async function run() {
+    if (!domain.trim() || !portal.trim() || !startUrl.trim()) return;
+    setBusy(true);
+    setLog([]);
+    try {
+      await invoke("ingestion_browser_run", {
+        req: {
+          domain: domain.trim(),
+          portal: portal.trim(),
+          start_url: startUrl.trim(),
+          mfa_timeout_sec: parseInt(timeoutSec, 10) || 90,
+          success_url_contains: successUrl.trim() || null,
+          success_selector: null,
+        },
+      });
+    } catch (e) {
+      setLog((cur) => [...cur, `error: ${e}`]);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+      <div className="font-display text-base font-semibold tracking-tight">Run portal automation</div>
+      <p className="mt-0.5 text-xs text-text-muted">
+        Opens a headed Chromium for the chosen portal. Complete MFA in the window; downloads land in the domain's <code className="text-accent">imports/</code>.
+      </p>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="domain (e.g. wealth)" className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none" />
+        <input value={portal} onChange={(e) => setPortal(e.target.value)} placeholder="portal slug (e.g. fidelity)" className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none" />
+        <input value={startUrl} onChange={(e) => setStartUrl(e.target.value)} placeholder="https://login.example.com" className="col-span-2 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-xs focus:border-accent-border focus:outline-none" />
+        <input value={successUrl} onChange={(e) => setSuccessUrl(e.target.value)} placeholder="login success URL fragment (optional)" className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-xs focus:border-accent-border focus:outline-none" />
+        <div className="flex items-center gap-2">
+          <input type="number" min={10} max={600} value={timeoutSec} onChange={(e) => setTimeoutSec(e.target.value)} className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
+          <span className="font-mono text-xs text-text-muted">s MFA timeout</span>
+        </div>
+      </div>
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          onClick={run}
+          disabled={busy || !domain.trim() || !portal.trim() || !startUrl.trim()}
+          className="rounded-md bg-accent px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-background hover:bg-accent-hover disabled:opacity-50"
+        >
+          {busy ? "launching…" : "Run automation"}
+        </button>
+        <span className="font-mono text-[10px] text-text-muted">
+          requires <code className="text-accent">node</code> + <code className="text-accent">playwright-core</code> in your PATH
+        </span>
+      </div>
+      {log.length > 0 && (
+        <pre className="mt-4 max-h-64 overflow-auto rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[10px] leading-relaxed text-text-secondary">
+          {log.join("\n")}
+        </pre>
+      )}
+    </div>
   );
 }
 
