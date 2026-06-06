@@ -437,6 +437,57 @@ fn append_audit_log(record: &serde_json::Value) -> Result<(), String> {
     Ok(())
 }
 
+/// Delete artifacts (and their .meta.json sidecars) older than the
+/// cutoff. Skips files modified within the window. Returns the count
+/// removed. Every deletion is appended to the audit log.
+#[tauri::command]
+pub fn ingestion_vacuum_imports(domain: String, older_than_days: u64) -> Result<usize, String> {
+    let dir = storage::imports_dir(&domain)?;
+    if !dir.exists() {
+        return Ok(0);
+    }
+    let now = std::time::SystemTime::now();
+    let cutoff = now
+        .checked_sub(std::time::Duration::from_secs(older_than_days * 24 * 60 * 60))
+        .ok_or_else(|| "invalid cutoff".to_string())?;
+    let mut removed = 0usize;
+    for entry in std::fs::read_dir(&dir).map_err(|e| format!("read dir: {e}"))?.flatten() {
+        let p = entry.path();
+        // Skip sidecars on this pass; they get deleted alongside their
+        // owning artifact below.
+        let name = match p.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if name.ends_with(".meta.json") {
+            continue;
+        }
+        let mtime = match entry.metadata().and_then(|m| m.modified()) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        if mtime > cutoff {
+            continue;
+        }
+        let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("bin");
+        let sidecar = p.with_extension(format!("{ext}.meta.json"));
+        let _ = std::fs::remove_file(&p);
+        let _ = std::fs::remove_file(&sidecar);
+        removed += 1;
+        let _ = append_audit_log(&serde_json::json!({
+            "type": "vacuum",
+            "domain": domain,
+            "path": p.to_string_lossy(),
+            "older_than_days": older_than_days,
+            "ts": now
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
+        }));
+    }
+    Ok(removed)
+}
+
 #[tauri::command]
 pub fn ingestion_audit_tail(limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
     let path = storage::app_support_root()?.join("ingestion.log");
