@@ -181,7 +181,21 @@ fn resolve_bin_path(bin: &str) -> Option<String> {
 fn probe_cli_version(bin: &str) -> Option<String> {
     let path = resolve_bin_path(bin)?;
     use std::process::Command;
-    let out = Command::new(&path).arg("--version").output().ok()?;
+    // Pass the same enriched PATH chat_send uses — otherwise a CLI
+    // with `#!/usr/bin/env node` shebang can fail with
+    // "env: node: No such file or directory" because Finder-launched
+    // apps inherit a minimal PATH from launchctl.
+    let home = std::env::var("HOME").unwrap_or_default();
+    let extra_path = format!(
+        "{home}/.local/bin:{home}/.bun/bin:/opt/homebrew/bin:/usr/local/bin"
+    );
+    let cur_path = std::env::var("PATH").unwrap_or_default();
+    let combined = if cur_path.is_empty() {
+        extra_path
+    } else {
+        format!("{extra_path}:{cur_path}")
+    };
+    let out = Command::new(&path).arg("--version").env("PATH", combined).output().ok()?;
     let text = if !out.stdout.is_empty() {
         String::from_utf8_lossy(&out.stdout).to_string()
     } else if !out.stderr.is_empty() {
@@ -723,12 +737,87 @@ async fn verify_cli_model(args: VerifyArgs) -> Result<String, String> {
             if code == 0 && !out.trim().is_empty() {
                 Ok(out.trim().chars().take(200).collect())
             } else {
-                let msg = if !err.trim().is_empty() { err } else { out };
-                Err(format!("exit {code}: {}", msg.lines().next().unwrap_or("(no output)")))
+                let msg = best_error_line(&err, &out);
+                Err(format!("exit {code}: {msg}"))
             }
         }
         Err(_) => Err("verification timed out after 30s".into()),
     }
+}
+
+/// Pick the most useful error line out of a CLI's combined output.
+///
+/// Lots of CLIs (claude, codex) print a startup banner + harmless
+/// notices on stderr before the real error. Naively grabbing the
+/// FIRST line surfaces noise like "Reading additional input from
+/// stdin..." or "OpenAI Codex v0.136.0". We instead scan from the
+/// END looking for a line that carries an error keyword. Falling
+/// back to the first stderr line, then the first stdout line, then
+/// a generic "(no output)".
+fn best_error_line(stderr: &str, stdout: &str) -> String {
+    fn looks_like_error(s: &str) -> bool {
+        let lower = s.to_ascii_lowercase();
+        // Anything containing one of these is more useful than a banner.
+        let needles = [
+            "error", "invalid", "unsupported", "denied", "forbidden",
+            "401", "402", "403", "404", "429", "5", "quota", "rate",
+            "limit", "not supported", "not found", "missing", "fail",
+            "auth", "unauthor", "no such", "cannot", "expired",
+        ];
+        // Banners + transient notices we want to skip.
+        let banner_prefixes = [
+            "reading additional input from stdin",
+            "warning: no stdin data received",
+            "openai codex v",
+            "claude ",
+        ];
+        if banner_prefixes.iter().any(|p| lower.starts_with(p)) {
+            return false;
+        }
+        needles.iter().any(|n| lower.contains(n))
+    }
+
+    let stderr_trim = stderr.trim();
+    let stdout_trim = stdout.trim();
+
+    // Walk stderr lines in reverse — the deepest line is usually the
+    // root cause; earlier lines are scaffolding.
+    for line in stderr_trim.lines().rev() {
+        let l = line.trim();
+        if l.is_empty() { continue; }
+        if looks_like_error(l) {
+            return clamp(l);
+        }
+    }
+    for line in stdout_trim.lines().rev() {
+        let l = line.trim();
+        if l.is_empty() { continue; }
+        if looks_like_error(l) {
+            return clamp(l);
+        }
+    }
+
+    // Nothing matched our heuristic — fall back to the first
+    // non-banner stderr line. Strip the noisy stdin-wait notice
+    // that several CLIs emit.
+    for line in stderr_trim.lines() {
+        let l = line.trim();
+        if l.is_empty() { continue; }
+        let lower = l.to_ascii_lowercase();
+        if lower.starts_with("reading additional input from stdin") { continue; }
+        if lower.starts_with("warning: no stdin data received") { continue; }
+        return clamp(l);
+    }
+    for line in stdout_trim.lines() {
+        let l = line.trim();
+        if !l.is_empty() { return clamp(l); }
+    }
+    "(no output)".to_string()
+}
+
+fn clamp(s: &str) -> String {
+    // Keep error pills readable but useful — JSON errors can be long.
+    s.chars().take(240).collect()
 }
 
 // User-level context — a single `<vault>/user.md` that captures who
@@ -1210,22 +1299,39 @@ fn save_thread(
 
     let file_path = threads_dir.join(format!("{final_slug}.md"));
 
-    // Preserve existing `created` timestamp if the file is being
-    // overwritten with a known slug; otherwise stamp it now.
-    let created_secs = if file_path.exists() {
-        read_to_string_retry(&file_path)
+    // Preserve existing `created` timestamp + title if the file is
+    // being overwritten with a known slug; otherwise stamp it now.
+    // The title preservation is what stops auto-save from clobbering
+    // a user's manual rename — the frontend always sends a freshly
+    // derived title from the first user message, but if the file
+    // already exists with a different title, the user's choice wins.
+    let (created_secs, preserved_title) = if file_path.exists() {
+        let fm = read_to_string_retry(&file_path)
             .ok()
-            .map(|raw| split_frontmatter(&raw).0)
-            .and_then(|fm| fm.get("created").map(|s| parse_iso8601_z(s)))
+            .map(|raw| split_frontmatter(&raw).0);
+        let created = fm
+            .as_ref()
+            .and_then(|m| m.get("created").map(|s| parse_iso8601_z(s)))
             .filter(|v| *v != 0)
-            .unwrap_or(now)
+            .unwrap_or(now);
+        let existing_title = fm.and_then(|m| m.get("title").cloned()).unwrap_or_default();
+        (created, existing_title)
     } else {
-        now
+        (now, String::new())
+    };
+
+    // If the on-disk file has a title and it's different from what
+    // the caller derived, treat the on-disk one as canonical so
+    // renames stick across auto-saves.
+    let final_title = if !preserved_title.is_empty() && preserved_title != title {
+        preserved_title
+    } else {
+        title
     };
 
     let mut body = String::new();
     body.push_str("---\n");
-    body.push_str(&format!("title: {}\n", title));
+    body.push_str(&format!("title: {}\n", final_title));
     body.push_str(&format!(
         "domain: {}\n",
         domain.as_deref().unwrap_or("")
