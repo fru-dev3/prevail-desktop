@@ -8700,7 +8700,9 @@ function TelegramCard() {
         </div>
         <div>
           <h3 className="font-semibold">Telegram bridge</h3>
-          <p className="text-xs text-text-muted">Push verdicts + briefings to a Telegram chat via a bot.</p>
+          <p className="text-xs text-text-muted">
+            One-way push to a Telegram chat via a bot. Test button delivers; auto-pushes for verdicts + briefings aren't wired yet, and inbound (Telegram → app) needs polling that's not implemented either.
+          </p>
         </div>
       </div>
 
