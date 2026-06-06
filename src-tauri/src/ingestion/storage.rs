@@ -136,6 +136,16 @@ pub fn ingest_artifact(
     let meta_json = serde_json::to_string_pretty(&meta).map_err(|e| format!("meta: {e}"))?;
     fs::write(&meta_path, meta_json).map_err(|e| format!("write meta: {e}"))?;
 
+    // Audit — best-effort, never blocks the ingest.
+    let _ = super::audit_ingest_event(
+        &meta.tier_id,
+        &meta.source,
+        &meta.domain,
+        &meta.sha256,
+        meta.size,
+        &dest.to_string_lossy(),
+    );
+
     Ok((dest, meta))
 }
 
