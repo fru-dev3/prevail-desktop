@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -8,10 +8,16 @@ import remarkGfm from "remark-gfm";
 // Renders LLM output as proper markdown — headings, lists, bold,
 // inline code, fenced blocks, tables. Wraps each block element in
 // `prose`-like Tailwind so the spacing reads.
-function Markdown({ source, compact = false }: { source: string; compact?: boolean }) {
+const Markdown = React.memo(function Markdown({ source, compact = false }: { source: string; compact?: boolean }) {
   // Two flavors: default (chat reply) and compact (state/decisions/
   // journal). Compact mode is denser, sans-serif headings, smaller
   // bullets, no emoji bloat — looks like a real doc, not AI slop.
+  //
+  // Memoized so that re-rendering a parent doesn't force ReactMarkdown
+  // to reparse the source string. During streaming, each new chunk
+  // creates a new source string anyway — that's intentional. But
+  // sibling re-renders (hover state, neighbor message updates) no
+  // longer redo the parse.
   return (
     <div
       className={`prose-prevail max-w-none ${compact ? "prose-prevail--compact" : ""}`}
@@ -19,10 +25,10 @@ function Markdown({ source, compact = false }: { source: string; compact?: boole
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{source}</ReactMarkdown>
     </div>
   );
-}
+});
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.84";
+const APP_VERSION = "0.2.85";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -1686,14 +1692,20 @@ function ThreadsRail({
                         <span className={`truncate text-sm ${active ? "font-medium text-text-primary" : "text-text-secondary"}`}>
                           {t.title}
                         </span>
-                        {runningThreadPaths.has(t.path) && (
-                          <span className="pulse-soft inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn" title="streaming" />
-                        )}
                       </div>
                       <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-text-muted">
-                        <span>{t.turn_count} turns</span>
-                        <span>·</span>
-                        <span>{fmtRelative(t.updated)}</span>
+                        {runningThreadPaths.has(t.path) ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent">
+                            <span className="pulse-soft inline-block h-1 w-1 rounded-full bg-accent" />
+                            writing
+                          </span>
+                        ) : (
+                          <>
+                            <span>{t.turn_count} turns</span>
+                            <span>·</span>
+                            <span>{fmtRelative(t.updated)}</span>
+                          </>
+                        )}
                       </div>
                       {t.preview && (
                         <div className="mt-0.5 line-clamp-1 text-[11px] text-text-muted">
@@ -3544,6 +3556,33 @@ function ChatPanel({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
 
+  // Bubble action handlers — shared across both renderers (in-domain
+  // and no-domain). Copy uses the Clipboard API; Retry rewinds the
+  // transcript to before the last user turn and resends; Edit pops
+  // the user message back into the composer for revision.
+  const copyToClipboard = useCallback(async (text: string) => {
+    try { await navigator.clipboard.writeText(text); } catch (e) { console.error(e); }
+  }, []);
+  const retryFromHere = useCallback((index: number) => {
+    // Find the user message that produced this assistant slot.
+    let userIdx = index;
+    while (userIdx >= 0 && messages[userIdx]?.role !== "user") userIdx--;
+    if (userIdx < 0) return;
+    const userMsg = messages[userIdx];
+    // Drop everything from the user turn onward, then resend it.
+    setMessages((m) => m.slice(0, userIdx));
+    setInput(userMsg.content);
+    // Defer send so React commits the slice + input update first.
+    window.setTimeout(() => { void send(); }, 0);
+  }, [messages]);
+  const editFromHere = useCallback((text: string, index: number) => {
+    // Rewind to just before this user message, repopulate the composer.
+    setMessages((m) => m.slice(0, index));
+    setInput(text);
+    // Focus the textarea so the user can edit immediately.
+    setTimeout(() => taRef.current?.focus(), 0);
+  }, []);
+
   async function send() {
     if (!input.trim() || !selectedCli) return;
     const visible = input.trim();
@@ -3892,7 +3931,15 @@ function ChatPanel({
         )}
         {domain && domainTab === "chat" && messages.length > 0 && (
           <div className="mx-auto w-full max-w-3xl px-6 py-8">
-            {messages.map((m, i) => <ChatBubble key={i} msg={m} />)}
+            {messages.map((m, i) => (
+              <ChatBubble
+                key={i}
+                msg={m}
+                onCopy={copyToClipboard}
+                onRetry={m.role === "assistant" ? () => retryFromHere(i) : undefined}
+                onEdit={m.role === "user" ? (text) => editFromHere(text, i) : undefined}
+              />
+            ))}
           </div>
         )}
         {domain && domainTab !== "chat" && (
@@ -3948,7 +3995,15 @@ function ChatPanel({
         )}
         {!domain && messages.length > 0 && (
           <div className="mx-auto w-full max-w-3xl px-6 py-8">
-            {messages.map((m, i) => <ChatBubble key={i} msg={m} />)}
+            {messages.map((m, i) => (
+              <ChatBubble
+                key={i}
+                msg={m}
+                onCopy={copyToClipboard}
+                onRetry={m.role === "assistant" ? () => retryFromHere(i) : undefined}
+                onEdit={m.role === "user" ? (text) => editFromHere(text, i) : undefined}
+              />
+            ))}
           </div>
         )}
       </div>
@@ -4440,21 +4495,68 @@ function ChatPanel({
   );
 }
 
-function ChatBubble({ msg }: { msg: ChatMessage }) {
+function ChatBubble({
+  msg,
+  onCopy,
+  onRetry,
+  onEdit,
+}: {
+  msg: ChatMessage;
+  onCopy?: (text: string) => void;
+  onRetry?: () => void;
+  onEdit?: (text: string) => void;
+}) {
+  // Small inline action button used on bubble hover. Stays muted by
+  // default so the chat stays calm; lights up on hover.
+  const ActionButton = ({
+    label,
+    title,
+    onClick,
+    icon,
+  }: {
+    label?: string;
+    title: string;
+    onClick: () => void;
+    icon: React.ReactNode;
+  }) => (
+    <button
+      onClick={onClick}
+      title={title}
+      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+    >
+      {icon}
+      {label && <span>{label}</span>}
+    </button>
+  );
+
   if (msg.role === "user") {
-    // Right-aligned card with a soft accent tint and a faint border.
-    // No avatar — the alignment carries the "from you" signal.
+    // Right-aligned card with accent tint + tail. Hover reveals
+    // Copy + Edit actions in a thin tray below the bubble.
     return (
-      <div className="mb-6 flex justify-end">
+      <div className="group mb-6 flex flex-col items-end">
         <div className="max-w-[78%] rounded-2xl rounded-br-md border border-accent-border/50 bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-text-primary shadow-sm">
           <div className="whitespace-pre-wrap">{renderSkillTokens(msg.content)}</div>
+        </div>
+        <div className="mt-1 flex h-5 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <ActionButton
+            title="Copy message"
+            label="Copy"
+            onClick={() => onCopy?.(msg.content)}
+            icon={<svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.5}><rect x="4" y="4" width="9" height="10" rx="1.5" /><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10" /></svg>}
+          />
+          {onEdit && (
+            <ActionButton
+              title="Edit and resend"
+              label="Edit"
+              onClick={() => onEdit(msg.content)}
+              icon={<svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M11.5 2.5l2 2-7 7-2.5.5.5-2.5 7-7z" /></svg>}
+            />
+          )}
         </div>
       </div>
     );
   }
-  // Assistant: left-aligned row with provider mark + name + status,
-  // body in a soft surface card. Clearer back-and-forth pattern with
-  // distinct visual weights for user vs assistant.
+  // Assistant: left-aligned avatar + body. Hover reveals Copy + Retry.
   const vendor = msg.cli ?? "claude";
   const vendorName =
     vendor === "claude" ? "Claude"
@@ -4462,29 +4564,72 @@ function ChatBubble({ msg }: { msg: ChatMessage }) {
     : vendor === "antigravity" ? "Antigravity"
     : vendor === "ollama" ? "Ollama"
     : vendor;
+  const empty = !msg.content && !msg.streaming;
   return (
-    <div className="mb-8 flex items-start gap-3">
+    <div className="group mb-8 flex items-start gap-3">
       <ProviderMark vendor={vendor} size={32} />
       <div className="min-w-0 flex-1">
         <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-text-secondary">
           <span className="font-display font-semibold tracking-tight">{vendorName}</span>
           {msg.streaming && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent">
-              <span className="pulse-soft inline-block h-1 w-1 rounded-full bg-accent" />
-              streaming
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
+              <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full bg-accent" />
+              {msg.content ? "writing" : "thinking"}
             </span>
           )}
         </div>
-        <div className="rounded-2xl rounded-tl-md border border-border-subtle bg-surface px-4 py-3 text-[15px] leading-relaxed shadow-sm">
+        <div className={`rounded-2xl rounded-tl-md border px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
+          empty
+            ? "border-warn/40 bg-warn/5"
+            : "border-border-subtle bg-surface"
+        }`}>
           {msg.content ? (
             <Markdown source={msg.content} />
+          ) : msg.streaming ? (
+            <ThinkingDots />
           ) : (
-            <div className="text-text-muted">
-              {msg.streaming ? <ThinkingDots /> : "(empty reply)"}
+            // Empty-reply fallback — explain + offer Retry instead of
+            // dead "(empty reply)" text.
+            <div className="flex items-start gap-3">
+              <div className="flex-1">
+                <div className="font-mono text-[11px] uppercase tracking-wider text-warn">
+                  No output
+                </div>
+                <p className="mt-1 text-sm text-text-secondary">
+                  {vendorName} finished without producing any text. This usually means
+                  the model rejected the prompt, hit a quota, or returned an error.
+                </p>
+                {onRetry && (
+                  <button
+                    onClick={onRetry}
+                    className="mt-2 inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+                  >
+                    Retry
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {msg.streaming && msg.content && <span className="cursor-blink text-accent">▌</span>}
         </div>
+        {msg.content && (
+          <div className="mt-1 flex h-5 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <ActionButton
+              title="Copy reply"
+              label="Copy"
+              onClick={() => onCopy?.(msg.content)}
+              icon={<svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.5}><rect x="4" y="4" width="9" height="10" rx="1.5" /><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10" /></svg>}
+            />
+            {onRetry && (
+              <ActionButton
+                title="Regenerate from the previous prompt"
+                label="Retry"
+                onClick={onRetry}
+                icon={<svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M14 8a6 6 0 1 1-1.76-4.24" /><path d="M14 2v4h-4" /></svg>}
+              />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
