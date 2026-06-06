@@ -22,7 +22,7 @@ function Markdown({ source, compact = false }: { source: string; compact?: boole
 }
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.74";
+const APP_VERSION = "0.2.75";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -6843,6 +6843,16 @@ function IngestionTierCard({
   );
 }
 
+// Post-login automation step the Tier C engine executes. The shape
+// mirrors the Rust PostLoginAction enum (serde tag = "type").
+type IngestionAction =
+  | { type: "goto"; url: string; wait_until?: string }
+  | { type: "click"; selector: string; timeout_sec?: number }
+  | { type: "wait_for"; selector: string; timeout_sec?: number }
+  | { type: "select_option"; selector: string; value: string }
+  | { type: "download_all_links"; selector: string; max?: number }
+  | { type: "sleep"; seconds: number };
+
 interface PortalRecipe {
   id: string;
   label: string;
@@ -6850,6 +6860,7 @@ interface PortalRecipe {
   start_url: string;
   success_url_contains: string | null;
   notes: string | null;
+  actions?: IngestionAction[];
 }
 
 // Audit log surface. Reads the appended JSON lines from
@@ -6983,6 +6994,11 @@ function IngestionBrowserRunner() {
     setBusy(true);
     setLog([]);
     try {
+      // Pull actions from the picked recipe so the engine drives the
+      // post-login flow end-to-end (download statements, etc.). If
+      // the user filled out the form from scratch (no recipe), no
+      // actions are sent and the runner stops after login.
+      const pickedActions = recipes.find((r) => r.id === pickedRecipe)?.actions ?? [];
       await invoke("ingestion_browser_run", {
         req: {
           domain: domain.trim(),
@@ -6991,6 +7007,7 @@ function IngestionBrowserRunner() {
           mfa_timeout_sec: parseInt(timeoutSec, 10) || 90,
           success_url_contains: successUrl.trim() || null,
           success_selector: null,
+          actions: pickedActions,
         },
       });
     } catch (e) {
@@ -7006,19 +7023,50 @@ function IngestionBrowserRunner() {
         Opens a headed Chromium for the chosen portal. Complete MFA in the window; downloads land in the domain's <code className="text-accent">imports/</code>.
       </p>
       {recipes.length > 0 && (
-        <div className="mt-3 flex items-center gap-2">
-          <label className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Recipe</label>
-          <select
-            value={pickedRecipe}
-            onChange={(e) => applyRecipe(e.target.value)}
-            className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm focus:border-accent-border focus:outline-none"
-          >
-            <option value="">— start from blank —</option>
-            {recipes.map((r) => (
-              <option key={r.id} value={r.id}>{r.label} · {r.domain_hint}</option>
-            ))}
-          </select>
-        </div>
+        <>
+          <div className="mt-3 flex items-center gap-2">
+            <label className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Recipe</label>
+            <select
+              value={pickedRecipe}
+              onChange={(e) => applyRecipe(e.target.value)}
+              className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm focus:border-accent-border focus:outline-none"
+            >
+              <option value="">— start from blank —</option>
+              {recipes.map((r) => (
+                <option key={r.id} value={r.id}>{r.label} · {r.domain_hint}</option>
+              ))}
+            </select>
+          </div>
+          {(() => {
+            const r = recipes.find((x) => x.id === pickedRecipe);
+            if (!r) return null;
+            const steps = r.actions ?? [];
+            return (
+              <div className="mt-2 rounded-md border border-border-subtle bg-background px-3 py-2">
+                <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+                  Post-login steps
+                  <span className="rounded-full bg-surface-warm px-1.5 py-0 text-[9px] text-text-secondary">{steps.length}</span>
+                </div>
+                {steps.length === 0 ? (
+                  <p className="mt-1 text-xs text-text-muted">No automation — runner stops after login.</p>
+                ) : (
+                  <ol className="mt-1 list-decimal pl-4 text-[11px] text-text-secondary">
+                    {steps.map((s, i) => (
+                      <li key={i} className="font-mono">
+                        {s.type}
+                        {"url" in s && s.url ? `  →  ${s.url}` : ""}
+                        {"selector" in s && s.selector ? `  ${s.selector}` : ""}
+                        {"seconds" in s ? `  ${s.seconds}s` : ""}
+                        {"max" in s && s.max != null ? `  (max ${s.max})` : ""}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {r.notes && <p className="mt-1.5 text-[11px] italic text-text-muted">{r.notes}</p>}
+              </div>
+            );
+          })()}
+        </>
       )}
       <div className="mt-4 grid grid-cols-2 gap-3">
         <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="domain (e.g. wealth)" className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none" />
