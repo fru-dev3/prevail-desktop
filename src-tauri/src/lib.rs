@@ -1787,6 +1787,9 @@ pub fn run() {
             ingestion::ingestion_browser_recipes,
             ingestion::ingestion_list_artifacts,
             ingestion::ingestion_mcp_stderr,
+            ingestion::ingestion_recipe_save,
+            ingestion::ingestion_domain_stats,
+            ingestion::ingestion_audit_tail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

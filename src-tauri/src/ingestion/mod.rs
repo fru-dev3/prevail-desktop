@@ -324,6 +324,12 @@ pub fn ingestion_mcp_stderr(
     reg.drain_stderr(&name)
 }
 
+/// User-recipe overlay path. Persistent across upgrades since the
+/// app bundle never touches Application Support.
+fn user_recipes_path() -> Result<std::path::PathBuf, String> {
+    Ok(storage::app_support_root()?.join("recipes_user.json"))
+}
+
 #[tauri::command]
 pub fn ingestion_browser_recipes(app: tauri::AppHandle) -> Result<Vec<PortalRecipe>, String> {
     use tauri::Manager;
@@ -334,11 +340,143 @@ pub fn ingestion_browser_recipes(app: tauri::AppHandle) -> Result<Vec<PortalReci
             tauri::path::BaseDirectory::Resource,
         )
         .map_err(|e| format!("resolve recipes.json: {e}"))?;
-    if !resource.exists() {
+    let mut bundled: Vec<PortalRecipe> = if resource.exists() {
+        let raw = std::fs::read_to_string(&resource).map_err(|e| format!("read recipes.json: {e}"))?;
+        serde_json::from_str(&raw).map_err(|e| format!("parse recipes.json: {e}"))?
+    } else {
+        Vec::new()
+    };
+    // Merge user overlay — user entries win on `id` collision so
+    // someone overriding "fidelity" with a custom URL gets their
+    // version, not the bundled one.
+    let user_path = user_recipes_path()?;
+    if user_path.exists() {
+        if let Ok(raw) = std::fs::read_to_string(&user_path) {
+            if let Ok(user_recipes) = serde_json::from_str::<Vec<PortalRecipe>>(&raw) {
+                let user_ids: std::collections::HashSet<_> =
+                    user_recipes.iter().map(|r| r.id.clone()).collect();
+                bundled.retain(|r| !user_ids.contains(&r.id));
+                bundled.extend(user_recipes);
+            }
+        }
+    }
+    bundled.sort_by(|a, b| a.label.cmp(&b.label));
+    Ok(bundled)
+}
+
+/// Upsert a user recipe into recipes_user.json. Overwrites by id.
+#[tauri::command]
+pub fn ingestion_recipe_save(recipe: PortalRecipe) -> Result<(), String> {
+    let path = user_recipes_path()?;
+    let mut existing: Vec<PortalRecipe> = if path.exists() {
+        let raw = std::fs::read_to_string(&path).map_err(|e| format!("read user recipes: {e}"))?;
+        serde_json::from_str(&raw).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    existing.retain(|r| r.id != recipe.id);
+    existing.push(recipe);
+    existing.sort_by(|a, b| a.label.cmp(&b.label));
+    let text = serde_json::to_string_pretty(&existing).map_err(|e| format!("serialize: {e}"))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
+    }
+    std::fs::write(&path, text).map_err(|e| format!("write user recipes: {e}"))?;
+    Ok(())
+}
+
+/// Per-domain quick stats — number of imports, total size. Used by
+/// the sidebar to show a tiny "3 imports" badge per domain.
+#[derive(serde::Serialize, Clone, Debug)]
+pub struct DomainStats {
+    pub domain: String,
+    pub imports: usize,
+    pub bytes: u64,
+}
+
+#[tauri::command]
+pub fn ingestion_domain_stats(domain: String) -> Result<DomainStats, String> {
+    let dir = match storage::imports_dir(&domain) {
+        Ok(d) => d,
+        Err(_) => return Ok(DomainStats { domain, imports: 0, bytes: 0 }),
+    };
+    let mut imports = 0usize;
+    let mut bytes = 0u64;
+    if dir.exists() {
+        for entry in std::fs::read_dir(&dir).map_err(|e| format!("read imports: {e}"))?.flatten() {
+            let name = match entry.file_name().to_str() {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+            if name.ends_with(".meta.json") { continue; }
+            imports += 1;
+            if let Ok(md) = entry.metadata() {
+                bytes += md.len();
+            }
+        }
+    }
+    Ok(DomainStats { domain, imports, bytes })
+}
+
+/// Append a single JSON-line audit record describing an ingest event.
+/// Independent of `ingest_artifact` so callers can audit non-file
+/// events (e.g. a tier failing to start).
+fn append_audit_log(record: &serde_json::Value) -> Result<(), String> {
+    use std::io::Write;
+    let path = storage::app_support_root()?.join("ingestion.log");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
+    }
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("open audit log: {e}"))?;
+    let line = serde_json::to_string(record).map_err(|e| format!("serialize: {e}"))?;
+    writeln!(f, "{line}").map_err(|e| format!("write audit: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn ingestion_audit_tail(limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
+    let path = storage::app_support_root()?.join("ingestion.log");
+    if !path.exists() {
         return Ok(vec![]);
     }
-    let raw = std::fs::read_to_string(&resource).map_err(|e| format!("read recipes.json: {e}"))?;
-    let parsed: Vec<PortalRecipe> = serde_json::from_str(&raw)
-        .map_err(|e| format!("parse recipes.json: {e}"))?;
-    Ok(parsed)
+    let raw = std::fs::read_to_string(&path).map_err(|e| format!("read audit: {e}"))?;
+    let cap = limit.unwrap_or(200);
+    let lines: Vec<&str> = raw.lines().collect();
+    let start = lines.len().saturating_sub(cap);
+    let out = lines[start..]
+        .iter()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .collect();
+    Ok(out)
+}
+
+/// Used by storage::ingest_artifact via re-export so storage doesn't
+/// need to know about the audit log structure. Keeps the inversion:
+/// storage owns the path, the engine owns the audit shape.
+pub(crate) fn audit_ingest_event(
+    tier_id: &str,
+    source: &str,
+    domain: &str,
+    sha256: &str,
+    size: u64,
+    path: &str,
+) -> Result<(), String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    append_audit_log(&serde_json::json!({
+        "type": "ingest",
+        "tier_id": tier_id,
+        "source": source,
+        "domain": domain,
+        "sha256": sha256,
+        "size": size,
+        "path": path,
+        "ts": now,
+    }))
 }
