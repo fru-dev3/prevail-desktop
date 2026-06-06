@@ -22,7 +22,7 @@ function Markdown({ source, compact = false }: { source: string; compact?: boole
 }
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.77";
+const APP_VERSION = "0.2.78";
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -48,9 +48,14 @@ const MODELS: Record<string, ModelPick[]> = {
     { id: "gpt-5-mini",  label: "GPT-5 mini",   blurb: "fast + cheap" },
   ],
   antigravity: [
-    { id: "gemini-3-pro-high", label: "Gemini 3 Pro (high)", blurb: "extra reasoning" },
-    { id: "gemini-3-pro",      label: "Gemini 3 Pro",        blurb: "flagship" },
-    { id: "gemini-3-flash",    label: "Gemini 3 Flash",      blurb: "fast" },
+    { id: "Gemini 3.1 Pro (High)",        label: "Gemini 3.1 Pro (High)",        blurb: "extra reasoning" },
+    { id: "Gemini 3.1 Pro (Low)",         label: "Gemini 3.1 Pro (Low)",         blurb: "flagship · less reasoning" },
+    { id: "Gemini 3.5 Flash (High)",      label: "Gemini 3.5 Flash (High)",      blurb: "fast + reasoning" },
+    { id: "Gemini 3.5 Flash (Medium)",    label: "Gemini 3.5 Flash (Medium)",    blurb: "balanced" },
+    { id: "Gemini 3.5 Flash (Low)",       label: "Gemini 3.5 Flash (Low)",       blurb: "fastest" },
+    { id: "Claude Sonnet 4.6 (Thinking)", label: "Claude Sonnet 4.6 (Thinking)", blurb: "via Antigravity" },
+    { id: "Claude Opus 4.6 (Thinking)",   label: "Claude Opus 4.6 (Thinking)",   blurb: "via Antigravity" },
+    { id: "GPT-OSS 120B (Medium)",        label: "GPT-OSS 120B (Medium)",        blurb: "open model" },
   ],
   ollama: [
     { id: "llama3.2", label: "Llama 3.2",  blurb: "local · meta" },
@@ -1469,6 +1474,14 @@ function ThreadsRail({
   const [collapsed, setCollapsed] = useState<boolean>(() => lsGet("prevail.threadsRail.collapsed") === "1");
   useEffect(() => { lsSet("prevail.threadsRail.collapsed", collapsed ? "1" : "0"); }, [collapsed]);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [threadFilter, setThreadFilter] = useState("");
+  const filteredThreads = useMemo(() => {
+    const q = threadFilter.trim().toLowerCase();
+    if (!q) return threads;
+    return threads.filter((t) =>
+      t.title.toLowerCase().includes(q) ||
+      t.preview.toLowerCase().includes(q));
+  }, [threads, threadFilter]);
   const [renameInput, setRenameInput] = useState("");
   if (collapsed) {
     return (
@@ -1551,14 +1564,39 @@ function ThreadsRail({
           </button>
         </div>
       </div>
+      {threads.length > 0 && (
+        <div className="border-b border-border-subtle px-2 py-1.5">
+          <div className="relative">
+            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-text-muted">⌕</span>
+            <input
+              value={threadFilter}
+              onChange={(e) => setThreadFilter(e.target.value)}
+              placeholder="filter threads…"
+              className="w-full rounded-md border border-border-subtle bg-background py-1 pl-6 pr-2 font-mono text-[11px] text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+            />
+            {threadFilter && (
+              <button
+                onClick={() => setThreadFilter("")}
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-[12px] text-text-muted hover:text-warn"
+                title="Clear filter"
+              >×</button>
+            )}
+          </div>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto px-1.5 py-1.5">
         {threads.length === 0 && (
           <div className="px-2 py-3 text-xs text-text-muted">
             no threads yet. Click + to start one.
           </div>
         )}
+        {threads.length > 0 && filteredThreads.length === 0 && (
+          <div className="px-2 py-3 text-xs text-text-muted">
+            no matches for <code className="text-accent">{threadFilter}</code>
+          </div>
+        )}
         <ul className="space-y-0.5">
-          {threads.map((t) => {
+          {filteredThreads.map((t) => {
             const active = t.path === activePath;
             const isRenaming = renaming === t.path;
             return (
@@ -7135,6 +7173,151 @@ function IngestionAuditPanel() {
   );
 }
 
+// Editable list of post-login automation steps for Tier C. Lets the
+// user add / remove / reorder / tweak actions inline without
+// touching JSON. Each step renders the fields its action type
+// needs and nothing else. Reorder via ↑↓ buttons; delete via ×.
+function RecipeActionEditor({
+  actions,
+  onChange,
+}: {
+  actions: IngestionAction[];
+  onChange: (next: IngestionAction[]) => void;
+}) {
+  type ActionType = IngestionAction["type"];
+
+  function update(i: number, patch: Partial<IngestionAction>) {
+    const next = actions.slice();
+    next[i] = { ...next[i], ...patch } as IngestionAction;
+    onChange(next);
+  }
+  function remove(i: number) {
+    onChange(actions.filter((_, idx) => idx !== i));
+  }
+  function move(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= actions.length) return;
+    const next = actions.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+  }
+  function add(type: ActionType) {
+    let a: IngestionAction;
+    switch (type) {
+      case "goto":               a = { type: "goto", url: "" }; break;
+      case "click":              a = { type: "click", selector: "" }; break;
+      case "wait_for":           a = { type: "wait_for", selector: "" }; break;
+      case "select_option":      a = { type: "select_option", selector: "", value: "" }; break;
+      case "download_all_links": a = { type: "download_all_links", selector: "" }; break;
+      case "sleep":              a = { type: "sleep", seconds: 2 }; break;
+    }
+    onChange([...actions, a]);
+  }
+
+  return (
+    <div className="mt-2 rounded-md border border-border-subtle bg-background px-3 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+          Post-login steps
+          <span className="rounded-full bg-surface-warm px-1.5 py-0 text-[9px] text-text-secondary">{actions.length}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <select
+            value=""
+            onChange={(e) => { if (e.target.value) { add(e.target.value as ActionType); e.target.value = ""; } }}
+            className="rounded border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary focus:border-accent-border focus:outline-none"
+          >
+            <option value="">+ add step</option>
+            <option value="goto">goto url</option>
+            <option value="click">click selector</option>
+            <option value="wait_for">wait for selector</option>
+            <option value="select_option">select option</option>
+            <option value="download_all_links">download all links</option>
+            <option value="sleep">sleep</option>
+          </select>
+        </div>
+      </div>
+
+      {actions.length === 0 ? (
+        <p className="mt-1 text-xs text-text-muted">
+          No automation. Runner stops after login; trigger downloads manually in the headed window.
+        </p>
+      ) : (
+        <ol className="mt-2 flex flex-col gap-1.5">
+          {actions.map((a, i) => (
+            <li key={i} className="flex items-start gap-2 rounded border border-border-subtle bg-surface px-2 py-1.5">
+              <div className="mt-0.5 flex shrink-0 flex-col items-center gap-0.5">
+                <button onClick={() => move(i, -1)} disabled={i === 0} className="text-[10px] text-text-muted hover:text-accent disabled:opacity-30">▲</button>
+                <button onClick={() => move(i, 1)} disabled={i === actions.length - 1} className="text-[10px] text-text-muted hover:text-accent disabled:opacity-30">▼</button>
+              </div>
+              <span className="mt-0.5 rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent">
+                {a.type.replace(/_/g, " ")}
+              </span>
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                {a.type === "goto" && (
+                  <input
+                    value={a.url}
+                    onChange={(e) => update(i, { url: e.target.value } as Partial<IngestionAction>)}
+                    placeholder="https://..."
+                    className="rounded border border-border-subtle bg-background px-2 py-0.5 font-mono text-[11px] focus:border-accent-border focus:outline-none"
+                  />
+                )}
+                {(a.type === "click" || a.type === "wait_for" || a.type === "select_option" || a.type === "download_all_links") && (
+                  <input
+                    value={(a as { selector: string }).selector}
+                    onChange={(e) => update(i, { selector: e.target.value } as Partial<IngestionAction>)}
+                    placeholder="CSS selector, e.g. a[href*='.pdf']"
+                    className="rounded border border-border-subtle bg-background px-2 py-0.5 font-mono text-[11px] focus:border-accent-border focus:outline-none"
+                  />
+                )}
+                {a.type === "select_option" && (
+                  <input
+                    value={a.value}
+                    onChange={(e) => update(i, { value: e.target.value } as Partial<IngestionAction>)}
+                    placeholder="option value"
+                    className="rounded border border-border-subtle bg-background px-2 py-0.5 font-mono text-[11px] focus:border-accent-border focus:outline-none"
+                  />
+                )}
+                {a.type === "download_all_links" && (
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={a.max ?? ""}
+                    onChange={(e) => update(i, { max: e.target.value ? parseInt(e.target.value, 10) : undefined } as Partial<IngestionAction>)}
+                    placeholder="max downloads (optional)"
+                    className="rounded border border-border-subtle bg-background px-2 py-0.5 font-mono text-[11px] focus:border-accent-border focus:outline-none"
+                  />
+                )}
+                {a.type === "sleep" && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={a.seconds}
+                      onChange={(e) => update(i, { seconds: parseInt(e.target.value, 10) || 1 } as Partial<IngestionAction>)}
+                      className="w-20 rounded border border-border-subtle bg-background px-2 py-0.5 font-mono text-[11px] focus:border-accent-border focus:outline-none"
+                    />
+                    <span className="font-mono text-[10px] text-text-muted">seconds</span>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => remove(i)}
+                title="Remove step"
+                className="shrink-0 rounded border border-border bg-background px-1.5 py-0 font-mono text-[12px] text-text-muted hover:border-warn hover:text-warn"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
 function IngestionBrowserRunner() {
   const [domain, setDomain] = useState("");
   const [portal, setPortal] = useState("");
@@ -7145,6 +7328,11 @@ function IngestionBrowserRunner() {
   const [log, setLog] = useState<string[]>([]);
   const [recipes, setRecipes] = useState<PortalRecipe[]>([]);
   const [pickedRecipe, setPickedRecipe] = useState<string>("");
+  // Editable working copy of the actions list. Initialized from the
+  // picked recipe; mutations stay local until "save as recipe" is
+  // clicked. Lets the user tweak a bundled recipe without diverging
+  // its source file.
+  const [draftActions, setDraftActions] = useState<IngestionAction[]>([]);
 
   useEffect(() => {
     invoke<PortalRecipe[]>("ingestion_browser_recipes")
@@ -7155,11 +7343,15 @@ function IngestionBrowserRunner() {
   function applyRecipe(id: string) {
     setPickedRecipe(id);
     const r = recipes.find((x) => x.id === id);
-    if (!r) return;
+    if (!r) {
+      setDraftActions([]);
+      return;
+    }
     setPortal(r.id);
     setDomain(r.domain_hint);
     setStartUrl(r.start_url);
     setSuccessUrl(r.success_url_contains ?? "");
+    setDraftActions(r.actions ?? []);
   }
 
   useEffect(() => {
@@ -7181,11 +7373,8 @@ function IngestionBrowserRunner() {
     setBusy(true);
     setLog([]);
     try {
-      // Pull actions from the picked recipe so the engine drives the
-      // post-login flow end-to-end (download statements, etc.). If
-      // the user filled out the form from scratch (no recipe), no
-      // actions are sent and the runner stops after login.
-      const pickedActions = recipes.find((r) => r.id === pickedRecipe)?.actions ?? [];
+      // The draft list reflects the user's current edits, NOT the
+      // bundled recipe — so tweaks they made stick for this run.
       await invoke("ingestion_browser_run", {
         req: {
           domain: domain.trim(),
@@ -7194,7 +7383,7 @@ function IngestionBrowserRunner() {
           mfa_timeout_sec: parseInt(timeoutSec, 10) || 90,
           success_url_contains: successUrl.trim() || null,
           success_selector: null,
-          actions: pickedActions,
+          actions: draftActions,
         },
       });
     } catch (e) {
@@ -7224,34 +7413,12 @@ function IngestionBrowserRunner() {
               ))}
             </select>
           </div>
-          {(() => {
+          <RecipeActionEditor actions={draftActions} onChange={setDraftActions} />
+          {pickedRecipe && (() => {
             const r = recipes.find((x) => x.id === pickedRecipe);
-            if (!r) return null;
-            const steps = r.actions ?? [];
-            return (
-              <div className="mt-2 rounded-md border border-border-subtle bg-background px-3 py-2">
-                <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-                  Post-login steps
-                  <span className="rounded-full bg-surface-warm px-1.5 py-0 text-[9px] text-text-secondary">{steps.length}</span>
-                </div>
-                {steps.length === 0 ? (
-                  <p className="mt-1 text-xs text-text-muted">No automation — runner stops after login.</p>
-                ) : (
-                  <ol className="mt-1 list-decimal pl-4 text-[11px] text-text-secondary">
-                    {steps.map((s, i) => (
-                      <li key={i} className="font-mono">
-                        {s.type}
-                        {"url" in s && s.url ? `  →  ${s.url}` : ""}
-                        {"selector" in s && s.selector ? `  ${s.selector}` : ""}
-                        {"seconds" in s ? `  ${s.seconds}s` : ""}
-                        {"max" in s && s.max != null ? `  (max ${s.max})` : ""}
-                      </li>
-                    ))}
-                  </ol>
-                )}
-                {r.notes && <p className="mt-1.5 text-[11px] italic text-text-muted">{r.notes}</p>}
-              </div>
-            );
+            return r?.notes
+              ? <p className="mt-1 text-[11px] italic text-text-muted">{r.notes}</p>
+              : null;
           })()}
         </>
       )}
@@ -7285,6 +7452,7 @@ function IngestionBrowserRunner() {
                   start_url: startUrl.trim(),
                   success_url_contains: successUrl.trim() || null,
                   notes: null,
+                  actions: draftActions,
                 },
               });
               const r = await invoke<PortalRecipe[]>("ingestion_browser_recipes");
