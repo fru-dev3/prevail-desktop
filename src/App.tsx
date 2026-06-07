@@ -419,6 +419,9 @@ import {
   Coins,
   Cpu,
   Layers,
+  Landmark,
+  Plug,
+  Cloud,
   type LucideIcon,
 } from "lucide-react";
 
@@ -9209,7 +9212,7 @@ function SettingsPanel({
   onBack?: () => void;
   onStartChatWith?: (cliId: string, modelId?: string) => void;
 }) {
-  type Section = "general" | "agents" | "providers" | "user" | "memory" | "safety" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "shortcuts" | "about";
+  type Section = "general" | "agents" | "providers" | "connectors" | "user" | "memory" | "safety" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>("general");
 
   const items: Array<{ id: Section; label: string; icon: typeof Folder }> = [
@@ -9219,6 +9222,7 @@ function SettingsPanel({
     { id: "user", label: "About me", icon: Users },
     { id: "memory", label: "Memory & Context", icon: Brain },
     { id: "safety", label: "Safety", icon: Shield },
+    { id: "connectors", label: "Connectors", icon: Plug },
     { id: "gateway", label: "Gateway", icon: MessagesSquare },
     { id: "mcp", label: "MCP", icon: Wrench },
     { id: "remote", label: "Remote (WebUI)", icon: Monitor },
@@ -9306,6 +9310,7 @@ function SettingsPanel({
           {section === "user" && <UserProfileSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
           {section === "providers" && <ProvidersSection />}
+          {section === "connectors" && <ConnectorsSection />}
           {section === "safety" && <SafetySection />}
           {section === "gateway" && <GatewaySection />}
           {section === "mcp" && <McpSection vaultPath={vaultPath} />}
@@ -10038,6 +10043,54 @@ function ProvidersSection() {
             </div>
           ))}
         </div>
+      </div>
+    </>
+  );
+}
+
+// Connectors — data sources that auto-build per-domain context. Routed through
+// a connector hub (Composio: a Zapier-style service you authenticate once to
+// unlock many integrations). Placeholders for now; live wiring comes next.
+const CONNECTORS: { name: string; domain: string; icon: LucideIcon }[] = [
+  { name: "Plaid (bank & cards)", domain: "wealth", icon: Landmark },
+  { name: "Gmail", domain: "general", icon: Mail },
+  { name: "Outlook / IMAP email", domain: "general", icon: Mail },
+  { name: "Google Calendar", domain: "calendar", icon: CalendarIcon },
+  { name: "Google Drive", domain: "general", icon: Cloud },
+  { name: "Dropbox", domain: "general", icon: Cloud },
+  { name: "Notion", domain: "general", icon: FileText },
+  { name: "Slack", domain: "general", icon: MessageSquare },
+  { name: "GitHub", domain: "career", icon: Github },
+  { name: "QuickBooks", domain: "business", icon: Coins },
+  { name: "Stripe", domain: "business", icon: Coins },
+  { name: "Apple Health", domain: "health", icon: Heart },
+];
+function ConnectorsSection() {
+  return (
+    <>
+      <SettingsHeader
+        title="Connectors"
+        subtitle="Connect your data sources so Prevail auto-syncs and builds full context per domain — bank statements into Wealth, email into the right place, and more. Connections route through a connector hub (one auth unlocks many integrations)."
+      />
+      <div className="mb-4 rounded-lg border border-border-subtle bg-surface p-4">
+        <div className="flex items-center gap-2">
+          <Plug className="h-4 w-4 text-text-muted" />
+          <span className="text-sm font-semibold text-text-primary">Connector hub</span>
+          <span className="ml-auto rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
+        </div>
+        <div className="mt-1 text-xs text-text-secondary">Authenticate once to a hub (Composio) and enable any connector below. Pulled data lands in the matching domain's vault and feeds the intent ledger + memory.</div>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {CONNECTORS.map((c) => (
+          <div key={c.name} className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-4 py-3 opacity-80">
+            <c.icon className="h-4 w-4 shrink-0 text-text-muted" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm text-text-primary">{c.name}</div>
+              <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">→ {titleCase(c.domain)}</div>
+            </div>
+            <span className="shrink-0 rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
+          </div>
+        ))}
       </div>
     </>
   );
