@@ -3492,7 +3492,46 @@ function buildQuickActions(domain: string | null): { glyph: string; label: strin
 // Proactive surfacing for a domain — questions worth asking + suggested next
 // actions, generated from the vault (cached). Click one to seed the composer.
 interface SurfaceResult { questions: string[]; actions: string[]; generated_at: number; stale: boolean }
-function SurfacePanel({ vaultPath, domain, onPick }: { vaultPath: string; domain: string; onPick: (t: string) => void }) {
+interface DomainTask { text: string; done: boolean }
+function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: string; nonce: number }) {
+  const [tasks, setTasks] = useState<DomainTask[]>([]);
+  const [adding, setAdding] = useState("");
+  useEffect(() => {
+    invoke<DomainTask[]>("tasks_read", { vault: vaultPath, domain }).then(setTasks).catch(() => {});
+  }, [vaultPath, domain, nonce]);
+  async function persist(next: DomainTask[]) {
+    setTasks(next);
+    try { await invoke("tasks_set", { vault: vaultPath, domain, tasks: next }); } catch (e) { console.error("tasks_set", e); }
+  }
+  if (tasks.length === 0 && !adding) {
+    return (
+      <div className="mb-4">
+        <button onClick={() => setAdding(" ")} className="font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-accent">+ add a goal / task for {titleCase(domain)}</button>
+      </div>
+    );
+  }
+  return (
+    <div className="mb-4 rounded-xl border border-border-subtle bg-surface px-4 py-3">
+      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Tasks · {titleCase(domain)}</div>
+      <div className="flex flex-col gap-1">
+        {tasks.map((t, i) => (
+          <label key={i} className="flex cursor-pointer items-center gap-2 text-sm">
+            <input type="checkbox" checked={t.done} onChange={() => persist(tasks.map((x, j) => j === i ? { ...x, done: !x.done } : x))} />
+            <span className={t.done ? "text-text-muted line-through" : "text-text-primary"}>{t.text}</span>
+            <button onClick={() => persist(tasks.filter((_, j) => j !== i))} className="ml-auto text-text-muted/50 hover:text-warn">✕</button>
+          </label>
+        ))}
+      </div>
+      <div className="mt-2 flex gap-2">
+        <input value={adding} placeholder="add a task…" onChange={(e) => setAdding(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && adding.trim()) { persist([...tasks, { text: adding.trim(), done: false }]); setAdding(""); } }}
+          className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm focus:border-accent-border focus:outline-none" />
+      </div>
+    </div>
+  );
+}
+
+function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: string; domain: string; onPick: (t: string) => void; onAddTask: (t: string) => void }) {
   const [data, setData] = useState<SurfaceResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string>("");
@@ -3545,7 +3584,10 @@ function SurfacePanel({ vaultPath, domain, onPick }: { vaultPath: string; domain
               <div className="mb-1 text-[11px] font-semibold text-text-secondary">Suggested next steps</div>
               <div className="flex flex-col gap-1">
                 {data!.actions.map((a, i) => (
-                  <button key={i} onClick={() => onPick(a)} className="text-left text-sm text-text-primary hover:text-accent">→ {a}</button>
+                  <div key={i} className="group flex items-center gap-2">
+                    <button onClick={() => onPick(a)} className="flex-1 text-left text-sm text-text-primary hover:text-accent">→ {a}</button>
+                    <button onClick={() => onAddTask(a)} title="Add as task" className="font-mono text-[10px] uppercase tracking-wider text-text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-accent">+ task</button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -3579,6 +3621,7 @@ function DomainHome({
   const [tab, setTab] = useState<Tab>("chat");
   const [ctx, setCtx] = useState<DomainContextBundle | null>(null);
   const [loading, setLoading] = useState(true);
+  const [taskNonce, setTaskNonce] = useState(0); // bump to reload the tasks panel
   useEffect(() => {
     let mounted = true;
     setLoading(true);
@@ -3615,7 +3658,9 @@ function DomainHome({
           <div>
             {tab === "chat" && (
               <div className="mx-auto max-w-2xl">
-                <SurfacePanel vaultPath={vaultPath} domain={domain} onPick={onPickPrompt} />
+                <SurfacePanel vaultPath={vaultPath} domain={domain} onPick={onPickPrompt}
+                  onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }} />
+                <TasksPanel vaultPath={vaultPath} domain={domain} nonce={taskNonce} />
                 <ul className="flex flex-col gap-2">
                 {buildQuickActions(domain).map((q) => (
                   <li key={q.label}>

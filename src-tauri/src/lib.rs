@@ -15,6 +15,7 @@ mod distill;
 mod engine;
 mod ingestion;
 mod surface;
+mod tasks;
 mod telegram_bridge;
 mod webui;
 
@@ -2886,6 +2887,9 @@ pub fn run() {
             distill::distill_status,
             distill::distill_run_once,
             surface::domain_surface,
+            tasks::tasks_read,
+            tasks::tasks_set,
+            tasks::tasks_add,
             benchmark_questions,
             benchmark_save_question,
             benchmark_delete_question,
