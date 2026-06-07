@@ -4,6 +4,15 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Usage capture** — every completed chat turn (engine and native paths) appends a record to `<vault>/usage/usage.ndjson` with timestamp, domain, thread, CLI, model, token counts, and cost
+- **Usage dashboard** — the no-domain landing now shows totals (turns / tokens / cost), a per-day activity strip, and breakdowns by agent, model, and domain, read back via the `usage_summary` command
+
+---
+
 ## [0.1.0] — 2026-06-05 · First release
 
 Initial desktop MVP. Native React UI mirroring the Prevail CLI's highest-value flows. Tauri 2 + React 19 + Tailwind 4. Apple Silicon only, unsigned DMG.

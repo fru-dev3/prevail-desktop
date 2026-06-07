@@ -666,6 +666,144 @@ fn benchmark_run_detail(run_dir: String) -> Result<serde_json::Value, String> {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Usage — capture real chat usage to <vault>/usage/usage.ndjson, one
+// JSON line per completed turn. Mirrors the benchmark convention of
+// persisting under the vault so the data survives restarts and the CLI
+// / other frontends can read it interchangeably. The frontend appends a
+// record when a turn closes (engine-chat:done) and the dashboard reads
+// the aggregated summary back.
+//
+// `day` is a pre-formatted local YYYY-MM-DD supplied by the frontend so
+// the backend needs no timezone/date math (no chrono dependency).
+
+#[derive(Serialize, Deserialize)]
+pub struct UsageRecord {
+    ts: i64,            // epoch ms when the turn closed
+    day: String,        // local YYYY-MM-DD (frontend-formatted)
+    #[serde(default)]
+    domain: Option<String>,
+    #[serde(default)]
+    thread: Option<String>,
+    cli: String,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    input_tokens: Option<u64>,
+    #[serde(default)]
+    output_tokens: Option<u64>,
+    #[serde(default)]
+    cost_usd: Option<f64>,
+    ok: bool,
+}
+
+#[tauri::command]
+fn usage_append(vault: String, record: UsageRecord) -> Result<(), String> {
+    use std::io::Write;
+    let dir = Path::new(&vault).join("usage");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let file = dir.join("usage.ndjson");
+    let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
+    let mut f = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&file)
+        .map_err(|e| e.to_string())?;
+    writeln!(f, "{line}").map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[derive(Serialize, Default, Clone)]
+struct UsageBucket {
+    key: String,
+    turns: u64,
+    input_tokens: u64,
+    output_tokens: u64,
+    cost_usd: f64,
+}
+
+#[derive(Serialize, Default)]
+struct UsageSummary {
+    total_turns: u64,
+    total_input_tokens: u64,
+    total_output_tokens: u64,
+    total_cost_usd: f64,
+    by_cli: Vec<UsageBucket>,
+    by_model: Vec<UsageBucket>,
+    by_domain: Vec<UsageBucket>,
+    by_day: Vec<UsageBucket>,
+}
+
+// Fold one record into the bucket keyed by `key`, creating it on first sight.
+fn bump(map: &mut HashMap<String, UsageBucket>, key: String, r: &UsageRecord) {
+    let b = map.entry(key.clone()).or_insert_with(|| UsageBucket {
+        key,
+        ..Default::default()
+    });
+    b.turns += 1;
+    b.input_tokens += r.input_tokens.unwrap_or(0);
+    b.output_tokens += r.output_tokens.unwrap_or(0);
+    b.cost_usd += r.cost_usd.unwrap_or(0.0);
+}
+
+// Sort buckets by cost desc, then turns desc — most-expensive first.
+fn ranked(map: HashMap<String, UsageBucket>) -> Vec<UsageBucket> {
+    let mut v: Vec<UsageBucket> = map.into_values().collect();
+    v.sort_by(|a, b| {
+        b.cost_usd
+            .partial_cmp(&a.cost_usd)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(b.turns.cmp(&a.turns))
+    });
+    v
+}
+
+#[tauri::command]
+fn usage_summary(vault: String) -> Result<UsageSummary, String> {
+    let file = Path::new(&vault).join("usage").join("usage.ndjson");
+    let mut summary = UsageSummary::default();
+    let raw = match fs::read_to_string(&file) {
+        Ok(s) => s,
+        // No file yet → empty summary, not an error.
+        Err(_) => return Ok(summary),
+    };
+    let mut by_cli: HashMap<String, UsageBucket> = HashMap::new();
+    let mut by_model: HashMap<String, UsageBucket> = HashMap::new();
+    let mut by_domain: HashMap<String, UsageBucket> = HashMap::new();
+    let mut by_day: HashMap<String, UsageBucket> = HashMap::new();
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // Tolerate corrupt/partial lines — skip rather than fail the page.
+        let r: UsageRecord = match serde_json::from_str(line) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        summary.total_turns += 1;
+        summary.total_input_tokens += r.input_tokens.unwrap_or(0);
+        summary.total_output_tokens += r.output_tokens.unwrap_or(0);
+        summary.total_cost_usd += r.cost_usd.unwrap_or(0.0);
+        bump(&mut by_cli, r.cli.clone(), &r);
+        bump(&mut by_model, r.model.clone().unwrap_or_else(|| "—".into()), &r);
+        bump(
+            &mut by_domain,
+            r.domain.clone().unwrap_or_else(|| "General".into()),
+            &r,
+        );
+        bump(&mut by_day, r.day.clone(), &r);
+    }
+    summary.by_cli = ranked(by_cli);
+    summary.by_model = ranked(by_model);
+    summary.by_domain = ranked(by_domain);
+    // Days read best chronologically (oldest → newest), not by cost.
+    let mut days = by_day.into_values().collect::<Vec<_>>();
+    days.sort_by(|a, b| a.key.cmp(&b.key));
+    summary.by_day = days;
+    Ok(summary)
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Benchmark questions — CRUD over <vault>/benchmark/questions/*.md. The
 // markdown format (frontmatter + ## Prompt/## Context/## Notes) mirrors the
 // CLI's canonical-bench.ts readQuestion/writeDraftQuestion exactly, so the
@@ -2422,6 +2560,8 @@ pub fn run() {
             chat_send,
             benchmark_runs,
             benchmark_run_detail,
+            usage_append,
+            usage_summary,
             benchmark_questions,
             benchmark_save_question,
             benchmark_delete_question,
