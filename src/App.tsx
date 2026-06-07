@@ -1503,6 +1503,18 @@ export default function App() {
       console.error("refreshDomains", e);
     }
   }, [vaultPath, refreshDomainStats]);
+  // Self-learning: start/stop the background distillation daemon based on the
+  // Memory & Context prefs once a vault is known (mirrors how the Telegram
+  // bridge starts on demand). Re-runs when the vault changes.
+  useEffect(() => {
+    if (!vaultPath) return;
+    const on = getPref(PREF.persistentMemory, "1") === "1" && getPref(PREF.autoCompression, "1") === "1";
+    if (on) {
+      invoke("distill_start", { cfg: distillCfgFromPrefs(vaultPath) }).catch((e) => console.error("distill_start", e));
+    } else {
+      invoke("distill_stop").catch(() => {});
+    }
+  }, [vaultPath]);
   useEffect(() => {
     let unl: UnlistenFn | null = null;
     (async () => {
@@ -4984,6 +4996,15 @@ function ChatPanel({
       .then(setUserMd)
       .catch(() => setUserMd(""));
   }, [vaultPath]);
+  // Distilled long-term memory for this domain — prepended to prompts like
+  // user.md so the assistant remembers across sessions (self-learning loop).
+  const [memoryMd, setMemoryMd] = useState<string>("");
+  useEffect(() => {
+    if (!vaultPath) { setMemoryMd(""); return; }
+    invoke<string>("read_memory_md", { vault: vaultPath, domain: domain ?? null })
+      .then(setMemoryMd)
+      .catch(() => setMemoryMd(""));
+  }, [vaultPath, domain, chatViewNonce]);
   // Domain context column — a persistent right column showing state.md,
   // decisions, journal, recent logs, skills. Collapsible; state persisted.
   // Items can be "used in chat" to inject as prompt context.
@@ -5683,8 +5704,12 @@ function ChatPanel({
     const primedPreamble = primedContext.length > 0
       ? primedContext.map((c) => `--- ${c.label} ---\n${c.body.trim()}\n`).join("\n") + "\n"
       : "";
-    const userPreamble = userMd.trim()
-      ? `--- About the user (vault/user.md) ---\n${userMd.trim()}\n\n`
+    const userPreamble = (getPref(PREF.userProfile, "1") === "1" && userMd.trim())
+      ? `--- About the user (vault/user.md) ---\n${userMd.trim().slice(0, Number(getPref(PREF.profileBudgetChars, "2000")))}\n\n`
+      : "";
+    // Self-learning: prepend the distilled long-term memory for this domain.
+    const memoryPreamble = (getPref(PREF.persistentMemory, "1") === "1" && memoryMd.trim())
+      ? `--- Long-term memory (${domain ?? "General"}) ---\n${memoryMd.trim().slice(0, Number(getPref(PREF.memoryBudgetChars, "4000")))}\n\n`
       : "";
     const skillsPreamble = attachedSkills.length > 0
       ? `Use the following skills as part of your reply: ${attachedSkills.map((n) => `/${n}`).join(", ")}\n\n`
@@ -5696,8 +5721,8 @@ function ChatPanel({
     const history = buildChatContext(messages, 40000);
     const promptText = fwLens.buildPrompt(
       history
-        ? `${userPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}You are mid-conversation. Below is the prior turn history; use it as context but do NOT repeat it back to the user.\n\n--- PRIOR TURNS ---\n${history}\n--- END PRIOR TURNS ---\n\nUser's next message: ${visible}`
-        : `${userPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}${visible}`
+        ? `${userPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}You are mid-conversation. Below is the prior turn history; use it as context but do NOT repeat it back to the user.\n\n--- PRIOR TURNS ---\n${history}\n--- END PRIOR TURNS ---\n\nUser's next message: ${visible}`
+        : `${userPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}${visible}`
     );
     pushHistory(visible);
     setAttachments([]);
@@ -7376,8 +7401,14 @@ function CouncilPanel({
     // without app restart.
     let userMd = "";
     try { userMd = await invoke<string>("read_user_md", { vault: _vaultPath }); } catch {}
-    const userPreamble = userMd.trim()
-      ? `--- About the user (vault/user.md) ---\n${userMd.trim()}\n\n`
+    const userPreamble = (getPref(PREF.userProfile, "1") === "1" && userMd.trim())
+      ? `--- About the user (vault/user.md) ---\n${userMd.trim().slice(0, Number(getPref(PREF.profileBudgetChars, "2000")))}\n\n`
+      : "";
+    // Self-learning: prepend distilled long-term memory to the council too.
+    let memoryMd = "";
+    try { memoryMd = await invoke<string>("read_memory_md", { vault: _vaultPath, domain: domain ?? null }); } catch {}
+    const memoryPreamble = (getPref(PREF.persistentMemory, "1") === "1" && memoryMd.trim())
+      ? `--- Long-term memory (${domain ?? "General"}) ---\n${memoryMd.trim().slice(0, Number(getPref(PREF.memoryBudgetChars, "4000")))}\n\n`
       : "";
     const primedPreamble = primedContext.length > 0
       ? primedContext.map((c) => `--- ${c.label} ---\n${c.body.trim()}\n`).join("\n") + "\n"
@@ -7402,7 +7433,7 @@ function CouncilPanel({
           .slice(0, 6000) +
         "\n\n--- New question (continue the conversation) ---\n"
       : "";
-    const enrichedPrompt = fwLens.buildPrompt(`${userPreamble}${primedPreamble}${historyPreamble}${skillsPreamble}${trimmed}`);
+    const enrichedPrompt = fwLens.buildPrompt(`${userPreamble}${memoryPreamble}${primedPreamble}${historyPreamble}${skillsPreamble}${trimmed}`);
     setPrompt("");
     setAttachedSkills([]);
     for (const s of panelistSlots) {
@@ -9086,13 +9117,14 @@ function SettingsPanel({
   onBack?: () => void;
   onStartChatWith?: (cliId: string, modelId?: string) => void;
 }) {
-  type Section = "general" | "agents" | "user" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "shortcuts" | "about";
+  type Section = "general" | "agents" | "user" | "memory" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>("general");
 
   const items: Array<{ id: Section; label: string; icon: typeof Folder }> = [
     { id: "general", label: "General", icon: SettingsIcon },
     { id: "agents", label: "Agents", icon: Sparkles },
     { id: "user", label: "About me", icon: Users },
+    { id: "memory", label: "Memory & Context", icon: Brain },
     { id: "vault", label: "Vault", icon: Folder },
     { id: "appearance", label: "Appearance", icon: Sparkles },
     { id: "defaults", label: "Defaults", icon: SettingsIcon },
@@ -9175,6 +9207,7 @@ function SettingsPanel({
           {section === "general" && <GeneralSection />}
           {section === "agents" && <AgentsSection clis={clis} onStartChatWith={onStartChatWith} />}
           {section === "user" && <UserProfileSection vaultPath={vaultPath} />}
+          {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
           {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} />}
           {section === "appearance" && <AppearanceSection appearance={appearance} />}
           {section === "defaults" && (
@@ -9499,6 +9532,20 @@ const PREF = {
   // estimate. Display-only until the engine exposes a budget status command.
   budgetMonthlyCapUsd: "prevail.pref.budgetMonthlyCapUsd", // decimal USD, "" = no cap
   budgetSpentUsd: "prevail.pref.budgetSpentUsd",           // decimal USD estimate
+  // Memory & Context — the self-learning layer. Persistent memory distills the
+  // intent ledger into <vault>/<domain>/_memory.md and prepends it to prompts.
+  persistentMemory: "prevail.pref.persistentMemory",       // "1" | "0" — master switch
+  userProfile: "prevail.pref.userProfile",                 // "1" | "0" — prepend user.md
+  memoryBudgetChars: "prevail.pref.memoryBudgetChars",     // integer chars cap on _memory.md
+  profileBudgetChars: "prevail.pref.profileBudgetChars",   // integer chars cap on user.md preamble
+  memoryProvider: "prevail.pref.memoryProvider",           // cli used to distill (claude/ollama/…)
+  distillModel: "prevail.pref.distillModel",               // cheap model id, e.g. claude-haiku-4-5
+  contextEngine: "prevail.pref.contextEngine",             // "compressor" (only one wired)
+  autoCompression: "prevail.pref.autoCompression",         // "1" | "0" — run the distill daemon
+  compressionThreshold: "prevail.pref.compressionThreshold", // 0..1 of budget before distilling
+  compressionTarget: "prevail.pref.compressionTarget",     // 0..1 of budget to compress toward
+  protectedRecent: "prevail.pref.protectedRecent",         // keep most-recent N ledger records raw
+  distillIntervalSec: "prevail.pref.distillIntervalSec",   // daemon tick cadence
 };
 function getPref(key: string, fallback: string): string {
   const v = lsGet(key);
@@ -9653,6 +9700,148 @@ function GeneralSection() {
           {hasCap
             ? `${pct}% of cap used${pct >= 90 ? " · approaching limit" : ""}`
             : "Set a cap above to track usage against it."}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Build a DistillConfig (snake_case keys for the Rust serde struct) from prefs.
+function distillCfgFromPrefs(vaultPath: string) {
+  return {
+    vault: vaultPath,
+    provider: getPref(PREF.memoryProvider, "claude"),
+    model: getPref(PREF.distillModel, "claude-haiku-4-5"),
+    memory_budget_chars: Number(getPref(PREF.memoryBudgetChars, "4000")) || 4000,
+    threshold: Number(getPref(PREF.compressionThreshold, "0.5")) || 0.5,
+    target: Number(getPref(PREF.compressionTarget, "0.2")) || 0.2,
+    protected_recent: Number(getPref(PREF.protectedRecent, "20")) || 20,
+    interval_sec: Number(getPref(PREF.distillIntervalSec, "900")) || 900,
+  };
+}
+
+function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
+  const [persistent, setPersistent] = useState(() => getPref(PREF.persistentMemory, "1") === "1");
+  const [profile, setProfile] = useState(() => getPref(PREF.userProfile, "1") === "1");
+  const [memBudget, setMemBudget] = useState(() => getPref(PREF.memoryBudgetChars, "4000"));
+  const [profBudget, setProfBudget] = useState(() => getPref(PREF.profileBudgetChars, "2000"));
+  const [provider, setProvider] = useState(() => getPref(PREF.memoryProvider, "claude"));
+  const [model, setModel] = useState(() => getPref(PREF.distillModel, "claude-haiku-4-5"));
+  const [autoComp, setAutoComp] = useState(() => getPref(PREF.autoCompression, "1") === "1");
+  const [threshold, setThreshold] = useState(() => getPref(PREF.compressionThreshold, "0.5"));
+  const [target, setTarget] = useState(() => getPref(PREF.compressionTarget, "0.2"));
+  const [protectedRecent, setProtectedRecent] = useState(() => getPref(PREF.protectedRecent, "20"));
+  const [interval, setIntervalSec] = useState(() => getPref(PREF.distillIntervalSec, "900"));
+  const [status, setStatus] = useState<{ running?: boolean; last_run_ts?: number | null; last_error?: string | null; lines_distilled?: number } | null>(null);
+  const [distilling, setDistilling] = useState(false);
+  const [distillMsg, setDistillMsg] = useState<string>("");
+
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try { const s = await invoke<typeof status>("distill_status"); if (alive) setStatus(s); } catch { /* daemon not started */ }
+    };
+    poll();
+    const id = window.setInterval(poll, 4000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, []);
+
+  async function distillNow() {
+    setDistilling(true); setDistillMsg("");
+    try {
+      const lines = await invoke<number>("distill_run_once", { cfg: distillCfgFromPrefs(vaultPath) });
+      setDistillMsg(lines > 0 ? `Distilled ${lines} ledger entr${lines === 1 ? "y" : "ies"} into memory.` : "Nothing new to distill yet.");
+    } catch (e) {
+      setDistillMsg(`Distill failed: ${e}`);
+    } finally { setDistilling(false); }
+  }
+
+  const Row = ({ title, desc, control }: { title: string; desc: string; control: React.ReactNode }) => (
+    <div className="flex items-start justify-between gap-6 border-b border-border-subtle py-4 last:border-0">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-text-primary">{title}</div>
+        <div className="mt-0.5 text-xs text-text-secondary">{desc}</div>
+      </div>
+      <div className="shrink-0">{control}</div>
+    </div>
+  );
+  const Num = ({ value, set, pref, w = "w-20", step }: { value: string; set: (v: string) => void; pref: string; w?: string; step?: string }) => (
+    <input type="number" step={step} value={value}
+      onChange={(e) => { set(e.target.value); setPref(pref, e.target.value); }}
+      className={`${w} rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none`} />
+  );
+
+  return (
+    <>
+      <SettingsHeader
+        title="Memory & Context"
+        subtitle="Self-learning: every chat is captured as an intent; a background process distills them into a compact long-term memory that's fed back into future chats."
+      />
+      <div className="rounded-lg border border-border bg-surface px-5">
+        <Row title="Persistent memory" desc="Distill the intent ledger into per-domain memory and prepend it to prompts. Master switch."
+          control={<Toggle on={persistent} onChange={(v) => { setPersistent(v); setPref(PREF.persistentMemory, v ? "1" : "0"); }} />} />
+        <Row title="User profile" desc="Prepend your About-me profile (vault/user.md) to every prompt."
+          control={<Toggle on={profile} onChange={(v) => { setProfile(v); setPref(PREF.userProfile, v ? "1" : "0"); }} />} />
+        <Row title="Memory budget" desc="Hard cap (characters) on the distilled memory injected into each prompt."
+          control={<Num value={memBudget} set={setMemBudget} pref={PREF.memoryBudgetChars} w="w-24" />} />
+        <Row title="Profile budget" desc="Hard cap (characters) on the user.md preamble."
+          control={<Num value={profBudget} set={setProfBudget} pref={PREF.profileBudgetChars} w="w-24" />} />
+        <Row title="Memory provider" desc="Which agent distills the ledger into memory (use a cheap, fast one)."
+          control={
+            <select value={provider} onChange={(e) => { setProvider(e.target.value); setPref(PREF.memoryProvider, e.target.value); }}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none">
+              <option value="claude">Claude</option>
+              <option value="codex">Codex</option>
+              <option value="ollama">Ollama (local)</option>
+            </select>
+          } />
+        <Row title="Distill model" desc="Model id used for distillation, e.g. claude-haiku-4-5."
+          control={
+            <input value={model} onChange={(e) => { setModel(e.target.value); setPref(PREF.distillModel, e.target.value); }}
+              className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />
+          } />
+        <Row title="Context engine" desc="Strategy for managing long conversations near the context limit."
+          control={
+            <select value={getPref(PREF.contextEngine, "compressor")} onChange={(e) => setPref(PREF.contextEngine, e.target.value)}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none">
+              <option value="compressor">Compressor</option>
+            </select>
+          } />
+        <Row title="Auto-compression" desc="Run the background distillation daemon on a timer."
+          control={<Toggle on={autoComp} onChange={(v) => { setAutoComp(v); setPref(PREF.autoCompression, v ? "1" : "0"); }} />} />
+        <Row title="Compression threshold" desc="Start distilling once new activity reaches this fraction of the memory budget."
+          control={<Num value={threshold} set={setThreshold} pref={PREF.compressionThreshold} step="0.1" />} />
+        <Row title="Compression target" desc="Compress memory toward this fraction of the budget."
+          control={<Num value={target} set={setTarget} pref={PREF.compressionTarget} step="0.1" />} />
+        <Row title="Protected recent messages" desc="Never distill the most-recent N ledger entries — keep them raw."
+          control={<Num value={protectedRecent} set={setProtectedRecent} pref={PREF.protectedRecent} />} />
+        <Row title="Distill interval" desc="How often the background daemon runs a pass."
+          control={<div className="flex items-center gap-1.5"><Num value={interval} set={setIntervalSec} pref={PREF.distillIntervalSec} /><span className="font-mono text-xs text-text-muted">s</span></div>} />
+      </div>
+
+      {/* Daemon status + manual trigger */}
+      <div className="mt-6 rounded-lg border border-border bg-surface px-5 py-4">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Distillation</div>
+          <div className="flex items-center gap-2">
+            <span className={`inline-block h-1.5 w-1.5 rounded-full ${status?.running ? "bg-ok" : "bg-text-muted/40"}`} />
+            <span className="font-mono text-xs text-text-secondary">{status?.running ? "daemon running" : "idle"}</span>
+          </div>
+        </div>
+        <div className="font-mono text-[11px] text-text-muted">
+          {status?.lines_distilled ? `${status.lines_distilled} entries distilled this session` : "no distillation yet this session"}
+          {status?.last_error ? ` · last error: ${status.last_error}` : ""}
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <button onClick={distillNow} disabled={distilling}
+            className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
+            {distilling ? "distilling…" : "distill now"}
+          </button>
+          <button onClick={() => invoke("open_in_finder", { path: vaultPath }).catch(() => {})}
+            className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+            open vault
+          </button>
+          {distillMsg && <span className="text-xs text-text-secondary">{distillMsg}</span>}
         </div>
       </div>
     </>

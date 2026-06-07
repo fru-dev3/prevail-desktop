@@ -298,7 +298,7 @@ async fn send_message(token: &str, chat_id: &str, text: &str) -> Result<(), Stri
     Ok(())
 }
 
-async fn run_cli(cli: &str, model: Option<&str>, prompt: &str) -> Result<String, String> {
+pub(crate) async fn run_cli(cli: &str, model: Option<&str>, prompt: &str) -> Result<String, String> {
     let (bin, args) = match cli {
         "claude" => {
             let mut v = vec!["--dangerously-skip-permissions".to_string()];
