@@ -3290,6 +3290,10 @@ function CycleChip({
 interface ChatMessage {
   role: "user" | "assistant";
   cli?: string;
+  // Model id that produced an assistant turn (e.g. "claude-opus-4-8").
+  // Persisted with the thread so a conversation records WHICH model
+  // answered — needed to replay/rebuild an intent against a better model.
+  model?: string;
   content: string;
   ts: number;
   streaming?: boolean;
@@ -5325,7 +5329,7 @@ function ChatPanel({
           turns: messages.map((m) => ({
             role: m.role,
             cli: m.cli ?? null,
-            model: null,
+            model: m.model ?? null,
             content: m.content,
           })),
         });
@@ -5624,7 +5628,7 @@ function ChatPanel({
     setDomainTab("chat"); // sending always shows the chat, even from Preferences
     const visible = input.trim();
     const userMsg: ChatMessage = { role: "user", content: visible, ts: Date.now() };
-    const replyMsg: ChatMessage = { role: "assistant", cli: selectedCli, content: "", ts: Date.now(), streaming: true };
+    const replyMsg: ChatMessage = { role: "assistant", cli: selectedCli, model: selectedModel || undefined, content: "", ts: Date.now(), streaming: true };
     setMessages((m) => [...m, userMsg, replyMsg]);
     // Attach file paths to the prompt so the CLI can read them.
     const attachPreamble = attachments.length > 0
@@ -5859,7 +5863,7 @@ function ChatPanel({
                     turns: messages.map((m) => ({
                       role: m.role,
                       cli: m.cli ?? null,
-                      model: null,
+                      model: m.model ?? null,
                       content: m.content,
                     })),
                   });
