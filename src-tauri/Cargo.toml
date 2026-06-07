@@ -1,6 +1,6 @@
 [package]
 name = "prevail-desktop"
-version = "0.3.0"
+version = "0.4.0"
 description = "Prevail desktop — native macOS cockpit for AI council deliberation"
 authors = ["fru.dev"]
 edition = "2021"

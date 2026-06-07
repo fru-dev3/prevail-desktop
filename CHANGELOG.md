@@ -4,12 +4,20 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
-## [Unreleased]
+## [0.4.0] — Features v1: self-learning, providers, WebUI
 
 ### Added
 
-- **Usage capture** — every completed chat turn (engine and native paths) appends a record to `<vault>/usage/usage.ndjson` with timestamp, domain, thread, CLI, model, token counts, and cost
-- **Usage dashboard** — the no-domain landing now shows totals (turns / tokens / cost), a per-day activity strip, and breakdowns by agent, model, and domain, read back via the `usage_summary` command
+- **Usage capture + dashboard** — every turn → `<vault>/usage/usage.ndjson`; no-domain landing shows totals + per-day strip + by agent/model/domain.
+- **Self-learning intent ledger** — every chat saved as an intent the instant you send (never lost): exact prompt + raw reply + model + all preferences → `<vault>/<domain>/_intents.jsonl`, with auto-journaling.
+- **Memory & Context** — background distillation daemon compresses the ledger into per-domain `_memory.md`, fed back into prompts; full settings section.
+- **Config & lifecycle** — start-on-boot, system tray + close-to-tray, export/import config, reset-to-defaults, diagnostics, uninstall tiers, and in-app auto-update.
+- **Safety** — approval mode, command allowlist, redact-secrets (enforced), file checkpoints.
+- **Gateway** — Telegram live + coming-soon platforms; **MCP** — consume servers + expose Prevail as an MCP server.
+- **Providers** — OpenRouter gateway: one key, every model (Claude/GPT/Gemini/Grok/DeepSeek/Qwen…); keys in Keychain.
+- **WebUI** — serve the same app to a browser via an in-app bridge (no duplicate UI); reach it anywhere over Tailscale/Cloudflare.
+
+## [Unreleased]
 
 ---
 
