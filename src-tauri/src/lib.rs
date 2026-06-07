@@ -15,6 +15,7 @@ mod distill;
 mod engine;
 mod ingestion;
 mod telegram_bridge;
+mod webui;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -2800,6 +2801,7 @@ pub fn run() {
         .manage(ingestion::OrchestratorState::default())
         .manage(telegram_bridge::BridgeState::new())
         .manage(distill::DistillState::new())
+        .manage(webui::WebuiState::default())
         .invoke_handler(tauri::generate_handler![
             scan_vault,
             detect_clis,
@@ -2823,6 +2825,11 @@ pub fn run() {
             provider_key_set,
             provider_key_get,
             provider_key_del,
+            webui::webui_start,
+            webui::webui_stop,
+            webui::webui_status,
+            webui::webui_resolve,
+            webui::webui_event,
             distill::distill_start,
             distill::distill_stop,
             distill::distill_status,
