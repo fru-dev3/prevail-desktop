@@ -1523,6 +1523,104 @@ fn write_user_md(vault: String, body: String) -> Result<(), String> {
     fs::write(&p, body).map_err(|e| format!("write user.md: {e}"))
 }
 
+// Generic text file read/write — used by config export/import (the frontend
+// picks a path via the dialog plugin, then calls these). Kept generic so
+// other features can reuse them.
+#[tauri::command]
+fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    fs::write(&path, contents).map_err(|e| format!("write {path}: {e}"))
+}
+#[tauri::command]
+fn read_text_file(path: String) -> Result<String, String> {
+    fs::read_to_string(&path).map_err(|e| format!("read {path}: {e}"))
+}
+
+// Diagnostics for the About → Run Diagnosis / Debug Dump panel. Gathers the
+// app + engine versions, key paths, and OS so support issues are one copy away.
+#[tauri::command]
+fn app_diagnostics() -> serde_json::Value {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let engine_bin = engine::resolve_prevail_bin();
+    let engine_version = std::process::Command::new(&engine_bin)
+        .arg("--version")
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty());
+    serde_json::json!({
+        "desktop_version": env!("CARGO_PKG_VERSION"),
+        "engine_bin": engine_bin,
+        "engine_version": engine_version,
+        "engine_bundled": engine_bin.contains(".app/Contents/MacOS"),
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "app_support": format!("{home}/Library/Application Support/sh.prevail.desktop"),
+        "home": home,
+    })
+}
+
+// Close-to-tray flag — stored as a marker FILE (not localStorage) so the Rust
+// window-close handler can read it without a webview round-trip. The frontend
+// toggle calls set_close_to_tray to create/remove it.
+fn close_to_tray_marker() -> Option<PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    Some(Path::new(&home).join("Library/Application Support/sh.prevail.desktop/close-to-tray"))
+}
+fn close_to_tray_enabled() -> bool {
+    close_to_tray_marker().map(|p| p.exists()).unwrap_or(false)
+}
+#[tauri::command]
+fn set_close_to_tray(enabled: bool) -> Result<(), String> {
+    let p = close_to_tray_marker().ok_or("no HOME")?;
+    if enabled {
+        if let Some(parent) = p.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::write(&p, "1").map_err(|e| e.to_string())
+    } else {
+        if p.exists() {
+            fs::remove_file(&p).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+}
+
+// Uninstall — spawns a detached cleanup script (so it can delete the running
+// app bundle after we quit) and exits. scope "app" removes just the .app;
+// "data" also removes app data, caches, and stored secrets. The user's VAULT
+// is NEVER touched (hard rule: never delete user data).
+#[tauri::command]
+fn app_uninstall(app: tauri::AppHandle, scope: String) -> Result<(), String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut script = String::from("#!/bin/bash\nsleep 2\n");
+    if scope == "data" {
+        for p in [
+            format!("{home}/Library/Application Support/sh.prevail.desktop"),
+            format!("{home}/Library/WebKit/sh.prevail.desktop"),
+            format!("{home}/Library/Caches/sh.prevail.desktop"),
+            format!("{home}/Library/Caches/prevail-desktop"),
+            format!("{home}/Library/WebKit/prevail-desktop"),
+        ] {
+            script.push_str(&format!("rm -rf \"{p}\"\n"));
+        }
+        // Stored secrets (best-effort; one item per call).
+        script.push_str("security delete-generic-password -s prevail.providers >/dev/null 2>&1\n");
+        script.push_str("security delete-generic-password -s prevail.ingestion >/dev/null 2>&1\n");
+    }
+    script.push_str("rm -rf \"/Applications/Prevail.app\"\n");
+    let tmp = std::env::temp_dir().join("prevail-uninstall.sh");
+    fs::write(&tmp, &script).map_err(|e| format!("write uninstaller: {e}"))?;
+    std::process::Command::new("bash")
+        .arg(tmp.to_string_lossy().to_string())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("spawn uninstaller: {e}"))?;
+    app.exit(0);
+    Ok(())
+}
+
 // Distilled long-term memory for a domain (vault root for General), written
 // by the distill daemon. Prepended to prompts like user.md. Empty if none yet.
 #[tauri::command]
@@ -2613,6 +2711,64 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        // Start-on-boot (LaunchAgent). The frontend toggles it via the
+        // autostart plugin's enable/disable in Settings → General.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
+        // System tray + close-to-tray. Clicking the tray shows the window;
+        // closing the window hides it instead of quitting when the
+        // "Close to tray" pref is on (read from the window's localStorage via
+        // a JS-set flag is awkward in Rust, so we always hide-on-close and let
+        // Quit (tray menu / ⌘Q) actually exit).
+        .setup(|app| {
+            use tauri::menu::{MenuBuilder, MenuItemBuilder};
+            use tauri::tray::TrayIconBuilder;
+            let show = MenuItemBuilder::with_id("show", "Show Prevail").build(app)?;
+            let quit = MenuItemBuilder::with_id("quit", "Quit Prevail").build(app)?;
+            let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
+            let _ = TrayIconBuilder::with_id("main")
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| {
+                    use tauri::Manager;
+                    match event.id().as_ref() {
+                        "show" => {
+                            if let Some(w) = app.get_webview_window("main") {
+                                let _ = w.show();
+                                let _ = w.set_focus();
+                            }
+                        }
+                        "quit" => app.exit(0),
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    use tauri::tray::{MouseButton, TrayIconEvent};
+                    use tauri::Manager;
+                    if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
+                        if let Some(w) = tray.app_handle().get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Close-to-tray: hide instead of quitting on window close. The tray
+            // "Quit" item (or ⌘Q) still exits. Gated by a pref flag the frontend
+            // writes to a file the Rust side can read cheaply.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if close_to_tray_enabled() {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .manage(ingestion::OrchestratorState::default())
         .manage(telegram_bridge::BridgeState::new())
         .manage(distill::DistillState::new())
@@ -2631,6 +2787,11 @@ pub fn run() {
             intent_append,
             journal_append,
             read_memory_md,
+            write_text_file,
+            read_text_file,
+            app_diagnostics,
+            app_uninstall,
+            set_close_to_tray,
             distill::distill_start,
             distill::distill_stop,
             distill::distill_status,
