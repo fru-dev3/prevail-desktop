@@ -4602,6 +4602,9 @@ function ChatPanel({
   // Per-domain "local only" privacy pin (mirrors manifest.privacy.localOnly).
   // Persisted by the manifest editor; read here so engine chat can force a
   // local engine for this turn.
+  // Bumped by the domain Preferences panel whenever a picker changes, so the
+  // composer re-reads the domain's CLI/model/framework/lens overrides live.
+  const [prefsTick, setPrefsTick] = useState(0);
   const localOnly = domain ? lsGet(`prevail.domain.${domain}.localOnly`) === "1" : false;
 
   // Per-domain model preference. Keys: prevail.domain.<name>.cli and
@@ -4638,20 +4641,21 @@ function ChatPanel({
       if (globalLn && globalLn !== fwLens.lens) fwLens.setLens(globalLn);
       return;
     }
+    // Domain override when set, else fall back to the global default — so both
+    // picking an override AND clearing it ("Use global") propagate live.
     const domCli = lsGet(`prevail.domain.${domain}.cli`);
+    const effectiveCli = domCli || lsGet(LS.defaultChatCli) || null;
+    if (effectiveCli) setSelectedCli(effectiveCli);
     const domModel = lsGet(`prevail.domain.${domain}.model`);
-    if (domCli) {
-      setSelectedCli(domCli);
-      if (domModel) {
-        setModelByCli((cur) => ({ ...cur, [domCli]: domModel }));
-      }
+    if (domModel && effectiveCli) {
+      setModelByCli((cur) => ({ ...cur, [effectiveCli]: domModel }));
     }
     const domFw = lsGet(`prevail.domain.${domain}.framework`);
     const domLn = lsGet(`prevail.domain.${domain}.lens`);
-    if (domFw) fwLens.setFramework(domFw);
-    if (domLn) fwLens.setLens(domLn);
+    fwLens.setFramework(domFw || lsGet(LS.framework, "none"));
+    fwLens.setLens(domLn || lsGet(LS.lens, "none"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [domain]);
+  }, [domain, prefsTick]);
   // Mirror framework/lens changes into the domain key when in a domain.
   // useFrameworkLens's own effect already writes the global key, so we
   // just extend with a per-domain pin here.
@@ -4718,7 +4722,6 @@ function ChatPanel({
   // Per-domain preferences popover — explicit view of overrides saved
   // for this domain with reset controls. Implicit auto-save still
   // happens in pickers; this only surfaces + clears the result.
-  const [prefsTick, setPrefsTick] = useState(0);
   const hasAnyDomainOverride = useMemo(() => {
     if (!domain) return false;
     return Boolean(
