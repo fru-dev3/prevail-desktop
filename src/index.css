@@ -21,8 +21,8 @@
   --color-accent-hover: #c4a35a;
   --color-accent-soft: rgba(168, 134, 45, 0.08);
   --color-accent-border: rgba(168, 134, 45, 0.28);
-  --color-ai: #1976d2;
-  --color-ai-soft: rgba(25, 118, 210, 0.07);
+  --color-ai: #60a8c0;
+  --color-ai-soft: rgba(96, 168, 192, 0.10);
   --color-ok: #2e7d32;
   --color-warn: #b87f10;
   --color-err: #c62828;
@@ -53,8 +53,8 @@
   --color-accent-hover: #d4b675;
   --color-accent-soft: rgba(196, 163, 90, 0.08);
   --color-accent-border: rgba(196, 163, 90, 0.22);
-  --color-ai: #5fbfff;
-  --color-ai-soft: rgba(95, 191, 255, 0.08);
+  --color-ai: #60a8c0;
+  --color-ai-soft: rgba(96, 168, 192, 0.10);
   --color-ok: #52c41a;
   --color-warn: #faad14;
   --color-err: #ff4d4f;
@@ -75,8 +75,8 @@
   --color-accent-hover: #6366f1;
   --color-accent-soft: rgba(79, 70, 229, 0.08);
   --color-accent-border: rgba(79, 70, 229, 0.28);
-  --color-ai: #06b6d4;
-  --color-ai-soft: rgba(6, 182, 212, 0.08);
+  --color-ai: #60a8c0;
+  --color-ai-soft: rgba(96, 168, 192, 0.10);
 }
 :root[data-palette="midnight"][data-theme="dark"] {
   --color-background: #0a0d1f;
@@ -92,8 +92,8 @@
   --color-accent-hover: #a5b0ff;
   --color-accent-soft: rgba(129, 140, 248, 0.10);
   --color-accent-border: rgba(129, 140, 248, 0.28);
-  --color-ai: #22d3ee;
-  --color-ai-soft: rgba(34, 211, 238, 0.10);
+  --color-ai: #60a8c0;
+  --color-ai-soft: rgba(96, 168, 192, 0.10);
 }
 
 /* ── EMBER — warm crimson and bronze, forge vibes ──────────────────── */
@@ -111,8 +111,8 @@
   --color-accent-hover: #e74c3c;
   --color-accent-soft: rgba(192, 57, 43, 0.08);
   --color-accent-border: rgba(192, 57, 43, 0.28);
-  --color-ai: #d97706;
-  --color-ai-soft: rgba(217, 119, 6, 0.10);
+  --color-ai: #60a8c0;
+  --color-ai-soft: rgba(96, 168, 192, 0.10);
 }
 :root[data-palette="ember"][data-theme="dark"] {
   --color-background: #1a0a06;
@@ -128,8 +128,8 @@
   --color-accent-hover: #ff8762;
   --color-accent-soft: rgba(239, 108, 74, 0.12);
   --color-accent-border: rgba(239, 108, 74, 0.3);
-  --color-ai: #fbbf24;
-  --color-ai-soft: rgba(251, 191, 36, 0.10);
+  --color-ai: #60a8c0;
+  --color-ai-soft: rgba(96, 168, 192, 0.10);
 }
 
 /* ── MONO — clean grayscale, minimal and focused ───────────────────── */
@@ -147,8 +147,8 @@
   --color-accent-hover: #27272a;
   --color-accent-soft: rgba(24, 24, 27, 0.06);
   --color-accent-border: rgba(24, 24, 27, 0.2);
-  --color-ai: #3b82f6;
-  --color-ai-soft: rgba(59, 130, 246, 0.06);
+  --color-ai: #60a8c0;
+  --color-ai-soft: rgba(96, 168, 192, 0.10);
 }
 :root[data-palette="mono"][data-theme="dark"] {
   --color-background: #0a0a0a;
@@ -164,8 +164,8 @@
   --color-accent-hover: #ffffff;
   --color-accent-soft: rgba(250, 250, 250, 0.06);
   --color-accent-border: rgba(250, 250, 250, 0.2);
-  --color-ai: #60a5fa;
-  --color-ai-soft: rgba(96, 165, 250, 0.10);
+  --color-ai: #60a8c0;
+  --color-ai-soft: rgba(96, 168, 192, 0.10);
 }
 
 /* ── CYBERPUNK — neon green on black, matrix terminal ──────────────── */
@@ -183,8 +183,8 @@
   --color-accent-hover: #22c55e;
   --color-accent-soft: rgba(22, 163, 74, 0.08);
   --color-accent-border: rgba(22, 163, 74, 0.28);
-  --color-ai: #ec4899;
-  --color-ai-soft: rgba(236, 72, 153, 0.08);
+  --color-ai: #60a8c0;
+  --color-ai-soft: rgba(96, 168, 192, 0.10);
 }
 :root[data-palette="cyberpunk"][data-theme="dark"] {
   --color-background: #030a06;
@@ -200,8 +200,8 @@
   --color-accent-hover: #3aff8c;
   --color-accent-soft: rgba(34, 255, 119, 0.10);
   --color-accent-border: rgba(34, 255, 119, 0.32);
-  --color-ai: #ff45a1;
-  --color-ai-soft: rgba(255, 69, 161, 0.10);
+  --color-ai: #60a8c0;
+  --color-ai-soft: rgba(96, 168, 192, 0.10);
 }
 
 /* ── SLATE — cool slate blue, focused developer theme ─────────────── */
@@ -219,8 +219,8 @@
   --color-accent-hover: #0284c7;
   --color-accent-soft: rgba(3, 105, 161, 0.08);
   --color-accent-border: rgba(3, 105, 161, 0.28);
-  --color-ai: #6366f1;
-  --color-ai-soft: rgba(99, 102, 241, 0.08);
+  --color-ai: #60a8c0;
+  --color-ai-soft: rgba(96, 168, 192, 0.10);
 }
 :root[data-palette="slate"][data-theme="dark"] {
   --color-background: #0c1220;
@@ -236,8 +236,8 @@
   --color-accent-hover: #7dd3fc;
   --color-accent-soft: rgba(56, 189, 248, 0.10);
   --color-accent-border: rgba(56, 189, 248, 0.30);
-  --color-ai: #a5b4fc;
-  --color-ai-soft: rgba(165, 180, 252, 0.10);
+  --color-ai: #60a8c0;
+  --color-ai-soft: rgba(96, 168, 192, 0.10);
 }
 
 /* Backward-compat: data-theme=dark with no palette = vault dark */
@@ -255,8 +255,8 @@
   --color-accent-hover: #d4b675;
   --color-accent-soft: rgba(196, 163, 90, 0.08);
   --color-accent-border: rgba(196, 163, 90, 0.22);
-  --color-ai: #5fbfff;
-  --color-ai-soft: rgba(95, 191, 255, 0.08);
+  --color-ai: #60a8c0;
+  --color-ai-soft: rgba(96, 168, 192, 0.10);
   --color-ok: #52c41a;
   --color-warn: #faad14;
   --color-err: #ff4d4f;
