@@ -6359,7 +6359,7 @@ function ChatBubble({
           {msg.streaming && (
             <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider" style={{ color: accent, background: tint }}>
               <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
-              {msg.content ? "writing" : "thinking"}
+              {msg.content ? "writing" : <ThinkingWord />}
             </span>
           )}
         </div>
@@ -6437,13 +6437,37 @@ function ChatBubble({
 // Animated three-dot indicator shown while a CLI is spinning up and
 // hasn't streamed its first token yet. Replaces the dead "…" feel
 // with something that obviously "ticks".
+// Whimsical "working" words (Claude-Code style) cycled while a model hasn't
+// streamed its first token yet — beats a static "thinking".
+const THINKING_WORDS = [
+  "Thinking", "Pondering", "Noodling", "Cogitating", "Ruminating", "Mulling",
+  "Percolating", "Marinating", "Conjuring", "Tinkering", "Simmering", "Churning",
+  "Brewing", "Finagling", "Wrangling", "Sleuthing", "Scheming", "Puzzling",
+  "Deliberating", "Contemplating", "Synthesizing", "Reasoning", "Reckoning",
+  "Musing", "Crunching", "Deducing", "Untangling", "Vibing", "Computing", "Spelunking",
+];
+function useThinkingWord() {
+  const [w, setW] = useState(() => THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)]);
+  useEffect(() => {
+    const id = window.setInterval(
+      () => setW(THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)]),
+      2400,
+    );
+    return () => window.clearInterval(id);
+  }, []);
+  return w;
+}
+function ThinkingWord() {
+  return <>{useThinkingWord()}</>;
+}
 function ThinkingDots() {
+  const word = useThinkingWord();
   return (
     <span className="inline-flex items-center gap-1 font-mono">
       <span className="thinking-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "0ms" }} />
       <span className="thinking-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "150ms" }} />
       <span className="thinking-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "300ms" }} />
-      <span className="ml-1.5 text-xs text-text-muted">thinking</span>
+      <span className="ml-1.5 text-xs text-text-muted">{word}…</span>
     </span>
   );
 }
