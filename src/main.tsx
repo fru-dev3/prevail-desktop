@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./bridge";
 import App from "./App";
 import "./index.css";
 
