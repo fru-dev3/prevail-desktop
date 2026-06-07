@@ -39,6 +39,8 @@ const WEBUI_ALLOWED: &[&str] = &[
     "read_user_md", "read_memory_md",
     // self-learning ledger
     "intent_append", "journal_append", "usage_append", "usage_summary",
+    // proactive surface + per-domain tasks/goals (read vault + model + checklist)
+    "domain_surface", "tasks_read", "tasks_set", "tasks_add", "read_memory_md",
     // scores (read)
     "engine_score", "engine_score_all", "engine_score_history", "engine_manifest_get",
     // benchmark (read)
