@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && bash scripts/prepare-sidecar.sh",
     "frontendDist": "../dist"
   },
   "app": {
@@ -30,6 +30,7 @@
   "bundle": {
     "active": true,
     "targets": ["dmg", "app"],
+    "externalBin": ["binaries/prevail"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

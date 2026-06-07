@@ -29,3 +29,6 @@ src-tauri/gen/
 
 # Lock file kept (npm + cargo)
 # but tauri's generated schemas can drift
+
+# Bundled engine sidecar — built by scripts/prepare-sidecar.sh
+src-tauri/binaries/
