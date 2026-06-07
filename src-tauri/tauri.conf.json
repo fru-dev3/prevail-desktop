@@ -27,9 +27,16 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/fru-dev3/prevail-desktop/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVCOEJCNDBFRkVEQzk1QzMKUldURGxkeitEclNMNjR5dWlBbDZsc0djUnB0RzJBaHphVTJuTUpUV3Nhc0JlUTFRM3A2UFhSd24K"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["dmg", "app"],
+    "createUpdaterArtifacts": true,
     "externalBin": ["binaries/prevail"],
     "icon": [
       "icons/32x32.png",
