@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open, save, confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
 import { enable as autostartEnable, disable as autostartDisable, isEnabled as autostartIsEnabled } from "@tauri-apps/plugin-autostart";
+import { check as checkUpdate } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -11230,24 +11232,42 @@ function AboutSection() {
     try { await invoke("app_uninstall", { scope }); } catch (e) { console.error("uninstall", e); }
   }
 
+  const [installing, setInstalling] = useState(false);
   async function checkForUpdates() {
     setChecking(true);
     setCheckErr(null);
     setLatest(null);
     try {
-      const r = await fetch("https://api.github.com/repos/fru-dev3/prevail-desktop/releases?per_page=10");
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const releases = await r.json() as Array<{ tag_name: string; prerelease: boolean; html_url: string }>;
-      const eligible = releases.filter((rel) => includePre || !rel.prerelease);
-      const top = eligible[0];
-      if (!top) throw new Error("no releases found");
-      setLatest(top.tag_name);
-      // Open the release page so the user can grab the DMG.
-      try { await invoke("open_in_finder", { path: top.html_url }); } catch {}
-    } catch (e) {
-      setCheckErr(String(e).slice(0, 200));
+      // Preferred path: the Tauri updater — checks the signed latest.json feed,
+      // downloads + installs in-place, then relaunches. No browser detour.
+      const update = await checkUpdate();
+      if (update) {
+        setLatest(update.version);
+        setInstalling(true);
+        await update.downloadAndInstall();
+        await relaunch();
+        return;
+      }
+      // No update object → already current.
+      setLatest(APP_VERSION);
+    } catch (_pluginErr) {
+      // Updater feed not reachable yet (e.g. first release before latest.json
+      // is published) → fall back to the GitHub releases API + open the page.
+      try {
+        const r = await fetch("https://api.github.com/repos/fru-dev3/prevail-desktop/releases?per_page=10");
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const releases = await r.json() as Array<{ tag_name: string; prerelease: boolean; html_url: string }>;
+        const eligible = releases.filter((rel) => includePre || !rel.prerelease);
+        const top = eligible[0];
+        if (!top) throw new Error("no releases found");
+        setLatest(top.tag_name);
+        try { await invoke("open_in_finder", { path: top.html_url }); } catch {}
+      } catch (e) {
+        setCheckErr(String(e).slice(0, 200));
+      }
     } finally {
       setChecking(false);
+      setInstalling(false);
     }
   }
 
@@ -11300,7 +11320,7 @@ function AboutSection() {
           disabled={checking}
           className="w-full rounded-xl bg-text-primary px-4 py-3 font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          {checking ? "Checking…" : "Check for updates"}
+          {installing ? "Downloading & installing…" : checking ? "Checking…" : "Check for updates"}
         </button>
         {latest && (
           <div className={`mt-3 rounded-md border px-3 py-2 text-sm ${

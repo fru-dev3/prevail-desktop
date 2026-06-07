@@ -40,6 +40,18 @@ export APPLE_TEAM_ID="$(op item get "$OP_ITEM" --fields label=team-id --reveal)"
 [ -n "$APPLE_SIGNING_IDENTITY" ] && [ -n "$APPLE_PASSWORD" ] || die "missing Apple creds in 1Password"
 echo "signing as: $APPLE_SIGNING_IDENTITY"
 
+# Updater signing key (for the in-app auto-updater feed). The build produces
+# Prevail.app.tar.gz + .sig when createUpdaterArtifacts is on; these env vars
+# let `tauri build` sign them. Key lives at ~/.prevail/updater.key.
+UPDATER_KEY="$HOME/.prevail/updater.key"
+if [ -f "$UPDATER_KEY" ]; then
+  export TAURI_SIGNING_PRIVATE_KEY="$(cat "$UPDATER_KEY")"
+  export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+  echo "updater artifacts will be signed"
+else
+  echo "WARN: $UPDATER_KEY missing — auto-update artifacts will be unsigned/skipped"
+fi
+
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
   step "Build (sign + notarize + staple app; bundles self-contained engine sidecar)"
   ( cd "$HERE" && npm run tauri build -- --bundles app dmg )
@@ -82,11 +94,37 @@ TS
   && git push )
 echo "site pushed — Netlify will deploy prevail.sh"
 
+step "Build the auto-update feed (latest.json)"
+MACOS_DIR="$HERE/src-tauri/target/release/bundle/macos"
+TARBALL="$MACOS_DIR/Prevail.app.tar.gz"
+SIGFILE="$TARBALL.sig"
+UPDATE_ASSETS=()
+if [ -f "$TARBALL" ] && [ -f "$SIGFILE" ]; then
+  SIG="$(cat "$SIGFILE")"
+  PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  LATEST_JSON="$WORK/latest.json"
+  python3 - "$VERSION" "$SIG" "$PUB_DATE" "$REPO" "$TAG" > "$LATEST_JSON" <<'PY'
+import json, sys
+version, sig, pub_date, repo, tag = sys.argv[1:6]
+url = f"https://github.com/{repo}/releases/download/{tag}/Prevail.app.tar.gz"
+print(json.dumps({
+    "version": version,
+    "notes": f"Prevail {version}",
+    "pub_date": pub_date,
+    "platforms": {"darwin-aarch64": {"signature": sig, "url": url}},
+}, indent=2))
+PY
+  UPDATE_ASSETS=("$TARBALL" "$SIGFILE" "$LATEST_JSON")
+  echo "latest.json built for darwin-aarch64"
+else
+  echo "WARN: updater artifacts not found ($TARBALL) — auto-update feed skipped this release"
+fi
+
 step "Publish GitHub release $TAG"
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-  gh release upload "$TAG" "$DMG" --repo "$REPO" --clobber
+  gh release upload "$TAG" "$DMG" ${UPDATE_ASSETS[@]+"${UPDATE_ASSETS[@]}"} --repo "$REPO" --clobber
 else
-  gh release create "$TAG" --repo "$REPO" --target main --title "$TAG" --generate-notes "$DMG"
+  gh release create "$TAG" --repo "$REPO" --target main --title "$TAG" --generate-notes "$DMG" ${UPDATE_ASSETS[@]+"${UPDATE_ASSETS[@]}"}
 fi
 
 step "Done — Prevail $VERSION released"
