@@ -804,6 +804,59 @@ fn usage_summary(vault: String) -> Result<UsageSummary, String> {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Intent ledger — the self-learning core. A chat IS an intent, and intents
+// must never be lost. Every turn appends one JSON line to
+// <vault>/<domain>/_intents.jsonl (<vault>/_intents.jsonl for the no-domain
+// General space) the instant it happens: on send (the exact prompt) and on
+// completion (the raw, unprocessed reply). Append-only, never overwritten —
+// this is the rebuild-from-scratch source of truth. Each record carries the
+// domain, model, and every preference in effect, so a future (better) model
+// can be re-run against the original intent and the result rebuilt.
+
+fn domain_dir(vault: &str, domain: &Option<String>) -> PathBuf {
+    match domain {
+        Some(d) if !d.is_empty() => PathBuf::from(vault).join(d),
+        _ => PathBuf::from(vault),
+    }
+}
+
+#[tauri::command]
+fn intent_append(
+    vault: String,
+    domain: Option<String>,
+    record: serde_json::Value,
+) -> Result<(), String> {
+    use std::io::Write;
+    let dir = domain_dir(&vault, &domain);
+    fs::create_dir_all(&dir).map_err(|e| format!("mkdir intents: {e}"))?;
+    let file = dir.join("_intents.jsonl");
+    let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
+    let mut f = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&file)
+        .map_err(|e| format!("open _intents.jsonl: {e}"))?;
+    writeln!(f, "{line}").map_err(|e| format!("write intent: {e}"))?;
+    Ok(())
+}
+
+/// Append a human-readable line to the domain journal so the journal is
+/// built automatically from every conversation — not only when the user
+/// manually clicks "New chat". Newest entries go directly under the header.
+#[tauri::command]
+fn journal_append(vault: String, domain: Option<String>, entry: String) -> Result<(), String> {
+    let dir = domain_dir(&vault, &domain);
+    fs::create_dir_all(&dir).map_err(|e| format!("mkdir journal: {e}"))?;
+    let path = dir.join("_journal.md");
+    const HEADER: &str = "# Journal\n\n";
+    let existing = read_to_string_retry(&path).unwrap_or_default();
+    let body = existing.strip_prefix(HEADER).unwrap_or(&existing).to_string();
+    let merged = format!("{HEADER}{}\n{body}", entry.trim_end());
+    fs::write(&path, merged).map_err(|e| format!("write journal: {e}"))?;
+    Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Benchmark questions — CRUD over <vault>/benchmark/questions/*.md. The
 // markdown format (frontmatter + ## Prompt/## Context/## Notes) mirrors the
 // CLI's canonical-bench.ts readQuestion/writeDraftQuestion exactly, so the
@@ -2562,6 +2615,8 @@ pub fn run() {
             benchmark_run_detail,
             usage_append,
             usage_summary,
+            intent_append,
+            journal_append,
             benchmark_questions,
             benchmark_save_question,
             benchmark_delete_question,
@@ -2707,6 +2762,56 @@ mod usage_tests {
         writeln!(f, "{{not valid json").unwrap();
         let s2 = usage_summary(vault_s.clone()).expect("tolerates corrupt line");
         assert_eq!(s2.total_turns, 3);
+
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn intent_ledger_and_journal_roundtrip() {
+        let vault = std::env::temp_dir().join(format!("prevail-intent-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&vault);
+        let vault_s = vault.to_string_lossy().to_string();
+
+        // An intent + its raw reply, both tied to the same session, in a domain.
+        intent_append(
+            vault_s.clone(),
+            Some("wealth".into()),
+            serde_json::json!({
+                "kind": "intent", "session": "s1", "domain": "wealth",
+                "model": "opus", "message": "net worth?", "prompt": "FULL PROMPT net worth?",
+                "prefs": { "framework": "first-principles", "web": true }
+            }),
+        )
+        .unwrap();
+        intent_append(
+            vault_s.clone(),
+            Some("wealth".into()),
+            serde_json::json!({ "kind": "reply", "session": "s1", "model": "opus", "raw": "\u{1b}[1mRAW\u{1b}[0m reply", "ok": true }),
+        )
+        .unwrap();
+        // No-domain (General) intent goes to the vault root.
+        intent_append(vault_s.clone(), None, serde_json::json!({ "kind": "intent", "session": "s2", "message": "hi" })).unwrap();
+
+        // Domain ledger: two lines, both valid JSON, prompt + raw preserved verbatim.
+        let dom_ledger = fs::read_to_string(vault.join("wealth").join("_intents.jsonl")).expect("domain ledger written");
+        let lines: Vec<&str> = dom_ledger.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 2);
+        let intent: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(intent["prompt"], "FULL PROMPT net worth?");
+        assert_eq!(intent["prefs"]["framework"], "first-principles");
+        let reply: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
+        assert!(reply["raw"].as_str().unwrap().contains("RAW")); // raw, escape codes intact
+        // Root ledger holds the General turn.
+        assert!(fs::read_to_string(vault.join("_intents.jsonl")).unwrap().contains("\"s2\""));
+
+        // Journal: header + newest-first ordering.
+        journal_append(vault_s.clone(), Some("wealth".into()), "- 2026-06-07 09:00 · [opus] first".into()).unwrap();
+        journal_append(vault_s.clone(), Some("wealth".into()), "- 2026-06-07 10:00 · [opus] second".into()).unwrap();
+        let journal = fs::read_to_string(vault.join("wealth").join("_journal.md")).unwrap();
+        assert!(journal.starts_with("# Journal\n\n"));
+        let i_first = journal.find("first").unwrap();
+        let i_second = journal.find("second").unwrap();
+        assert!(i_second < i_first, "newest entry should be on top");
 
         let _ = fs::remove_dir_all(&vault);
     }
