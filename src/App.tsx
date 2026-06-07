@@ -9180,6 +9180,24 @@ function saveVerifyMap(m: Record<string, "ok">) {
   try { lsSet(AGENT_VERIFY_KEY, JSON.stringify(m)); } catch {}
 }
 
+// Terminal command that logs each CLI in. Prevail uses the CLIs already on
+// the machine and their own credentials — it can't authenticate them — so
+// when a verify fails on auth we point the user at the right login command.
+const CLI_LOGIN_CMD: Record<string, string> = {
+  claude: "claude",
+  codex: "codex login",
+  antigravity: "agy login",
+};
+
+// When a verify error is an auth failure (CLI installed but not signed in),
+// return the login command (or "" if the CLI is unknown). Returns null when
+// the error isn't auth-related, so the raw message keeps showing.
+function authLoginCmd(cliId: string, raw: string): string | null {
+  const isAuth = /\b401\b|invalid authentication|failed to authenticate|unauthorized|not (?:logged|signed) in|please (?:run )?.*login/i.test(raw);
+  if (!isAuth) return null;
+  return CLI_LOGIN_CMD[cliId] ?? "";
+}
+
 function AgentCard({
   cli,
   onStartChat,
@@ -9322,9 +9340,21 @@ function AgentCard({
                     </div>
                     <div className="mt-0.5 font-mono text-[10px] text-text-muted/80">
                       <code className="text-accent">{m.id}</code>
-                      {s === "failed" && err && (
-                        <span className="ml-2 text-warn">· {err}</span>
-                      )}
+                      {s === "failed" && err && (() => {
+                        const loginCmd = authLoginCmd(cli.id, err);
+                        // Not an auth error → show the raw message as before.
+                        if (loginCmd === null) return <span className="ml-2 text-warn">· {err}</span>;
+                        // Auth error → actionable hint; raw error on hover.
+                        return (
+                          <span className="ml-2 text-warn" title={err}>
+                            · not signed in — run{" "}
+                            {loginCmd
+                              ? <code className="text-accent">{loginCmd}</code>
+                              : "this CLI's login"}{" "}
+                            in a terminal, then re-test
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
