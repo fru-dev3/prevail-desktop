@@ -1395,7 +1395,11 @@ fn list_threads(vault: String, domain: Option<String>) -> Result<Vec<ThreadMeta>
         return Ok(vec![]);
     }
     let entries = read_dir_retry(&threads_dir).map_err(|e| e.to_string())?;
-    let mut out: Vec<ThreadMeta> = Vec::new();
+    // Collect each thread with a content-dedup key from its FIRST user message.
+    // NOT the slug: threads are created as empty stubs (hash of the empty
+    // string) and keep that slug after being filled, so slug-hash dedup wrongly
+    // collapsed distinct threads and hid freshly-created "Untitled" threads.
+    let mut rows: Vec<(ThreadMeta, Option<String>)> = Vec::new();
     for entry in entries.flatten() {
         let p = entry.path();
         if p.extension().and_then(|s| s.to_str()) != Some("md") {
@@ -1407,27 +1411,25 @@ fn list_threads(vault: String, domain: Option<String>) -> Result<Vec<ThreadMeta>
         };
         let (fm, body) = split_frontmatter(&raw);
         let turns = parse_thread_body(&body);
-        out.push(thread_meta_from(&p, &fm, &body, &turns));
+        let key = turns
+            .iter()
+            .find(|t| t.role == "user")
+            .map(|t| t.content.trim())
+            .filter(|c| !c.is_empty())
+            .map(|c| c.chars().take(160).collect::<String>().to_lowercase());
+        rows.push((thread_meta_from(&p, &fm, &body, &turns), key));
     }
-    // Dedup: a single conversation can land on disk under two slightly
-    // different slugs (e.g. `<ts>_<hash>` vs `<ts>-<hash>`) when more than one
-    // writer persists it. Both end in the same 8-hex content hash, so collapse
-    // by (domain, trailing-hash), keeping the most complete copy (most turns,
-    // then newest). This makes the rail show one entry regardless.
-    fn trailing_hash(slug: &str) -> Option<String> {
-        let tok = slug.rsplit(|c| c == '-' || c == '_').next()?;
-        if tok.len() == 8 && tok.chars().all(|c| c.is_ascii_hexdigit()) {
-            Some(tok.to_string())
-        } else {
-            None
-        }
-    }
-    out.sort_by(|a, b| b.turn_count.cmp(&a.turn_count).then(b.updated.cmp(&a.updated)));
+    // Dedup the dual-writer case (one conversation saved twice under slightly
+    // different slugs): collapse by (domain, first-user-message), keeping the
+    // most complete copy (most turns, then newest). Empty stubs (key None) are
+    // NEVER deduped, so a new "+ New" thread always shows immediately.
+    rows.sort_by(|a, b| b.0.turn_count.cmp(&a.0.turn_count).then(b.0.updated.cmp(&a.0.updated)));
     let mut seen: std::collections::HashSet<(Option<String>, String)> = std::collections::HashSet::new();
-    out.retain(|m| match trailing_hash(&m.slug) {
-        Some(h) => seen.insert((m.domain.clone(), h)),
+    rows.retain(|(m, key)| match key {
+        Some(k) => seen.insert((m.domain.clone(), k.clone())),
         None => true,
     });
+    let mut out: Vec<ThreadMeta> = rows.into_iter().map(|(m, _)| m).collect();
     out.sort_by(|a, b| b.updated.cmp(&a.updated));
     Ok(out)
 }
