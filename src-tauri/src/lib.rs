@@ -314,7 +314,33 @@ async fn detect_clis(_app: tauri::AppHandle) -> Result<Vec<CliInfo>, String> {
             version,
         });
     }
+    // OpenRouter — an HTTP gateway, not a binary. Available iff an API key is
+    // stored in the Keychain (Settings → Providers). Routes to every model.
+    let or_key = ingestion::keychain::get("prevail.providers", "openrouter").ok();
+    out.push(CliInfo {
+        id: "openrouter".to_string(),
+        label: "OpenRouter".to_string(),
+        bin: "https://openrouter.ai/api/v1".to_string(),
+        available: or_key.as_deref().map(|k| !k.is_empty()).unwrap_or(false),
+        version: None,
+    });
     Ok(out)
+}
+
+// Provider API-key storage (Keychain service "prevail.providers"). Used by the
+// Settings → Providers section + the AI-provider onboarding. get returns "" if
+// unset (so the UI shows "not configured" without treating it as an error).
+#[tauri::command]
+fn provider_key_set(provider: String, key: String) -> Result<(), String> {
+    ingestion::keychain::set("prevail.providers", &provider, &key)
+}
+#[tauri::command]
+fn provider_key_get(provider: String) -> Result<String, String> {
+    Ok(ingestion::keychain::get("prevail.providers", &provider).unwrap_or_default())
+}
+#[tauri::command]
+fn provider_key_del(provider: String) -> Result<(), String> {
+    ingestion::keychain::del("prevail.providers", &provider)
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -2794,6 +2820,9 @@ pub fn run() {
             app_diagnostics,
             app_uninstall,
             set_close_to_tray,
+            provider_key_set,
+            provider_key_get,
+            provider_key_del,
             distill::distill_start,
             distill::distill_stop,
             distill::distill_status,

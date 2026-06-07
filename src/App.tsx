@@ -317,6 +317,16 @@ const MODELS: Record<string, ModelPick[]> = {
     { id: "qwen2.5",  label: "Qwen 2.5",   blurb: "local · alibaba" },
     { id: "mistral",  label: "Mistral 7B", blurb: "local · mistral" },
   ],
+  openrouter: [
+    { id: "anthropic/claude-opus-4.1",       label: "Claude Opus 4.1",   blurb: "via OpenRouter" },
+    { id: "anthropic/claude-sonnet-4.5",     label: "Claude Sonnet 4.5", blurb: "via OpenRouter" },
+    { id: "openai/gpt-5.1",                  label: "GPT-5.1",           blurb: "via OpenRouter" },
+    { id: "google/gemini-2.5-pro",           label: "Gemini 2.5 Pro",    blurb: "via OpenRouter" },
+    { id: "x-ai/grok-4",                     label: "Grok 4",            blurb: "via OpenRouter" },
+    { id: "deepseek/deepseek-chat",          label: "DeepSeek",          blurb: "via OpenRouter" },
+    { id: "qwen/qwen-2.5-72b-instruct",      label: "Qwen 2.5 72B",      blurb: "via OpenRouter" },
+    { id: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B",   blurb: "via OpenRouter" },
+  ],
 };
 
 // Models a ChatGPT-login Codex account rejects (verified). A previously
@@ -528,6 +538,7 @@ const VENDOR_BRAND: Record<string, { hex: string; accent: string; name: string }
   codex:       { hex: "#10a37f", accent: "#10a37f", name: "OpenAI Codex" },
   antigravity: { hex: "#ffffff", accent: "#4285f4", name: "Google Antigravity" },
   ollama:      { hex: "#0a0a0a", accent: "#6b7280", name: "Ollama (local)" },
+  openrouter:  { hex: "#6566f1", accent: "#6566f1", name: "OpenRouter" },
   other:       { hex: "#6b7280", accent: "#6b7280", name: "—" },
 };
 
@@ -5802,6 +5813,14 @@ function ChatPanel({
     // native chat_send path when the CLI isn't present.
     const ENGINE_CHAT_ENABLED = true;
     const useEngine = ENGINE_CHAT_ENABLED && engineAvailable && !!domain;
+    // OpenRouter is engine-only (no subprocess). In the no-domain General space
+    // the engine path isn't used, so guide the user to pick a domain instead of
+    // failing on a non-existent "openrouter" binary.
+    if (selectedCli === "openrouter" && !useEngine) {
+      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: "OpenRouter runs through the engine, which needs a domain. Pick a domain (left sidebar) to chat with OpenRouter models — or use an installed CLI here in General.", ts: Date.now() }]);
+      onStreamEnd(sessionRef.current);
+      return;
+    }
     try {
       if (useEngine) {
         await invoke("engine_chat", {
@@ -9129,12 +9148,13 @@ function SettingsPanel({
   onBack?: () => void;
   onStartChatWith?: (cliId: string, modelId?: string) => void;
 }) {
-  type Section = "general" | "agents" | "user" | "memory" | "safety" | "gateway" | "mcp" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "shortcuts" | "about";
+  type Section = "general" | "agents" | "providers" | "user" | "memory" | "safety" | "gateway" | "mcp" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>("general");
 
   const items: Array<{ id: Section; label: string; icon: typeof Folder }> = [
     { id: "general", label: "General", icon: SettingsIcon },
     { id: "agents", label: "Agents", icon: Sparkles },
+    { id: "providers", label: "Providers", icon: Layers },
     { id: "user", label: "About me", icon: Users },
     { id: "memory", label: "Memory & Context", icon: Brain },
     { id: "safety", label: "Safety", icon: Shield },
@@ -9223,6 +9243,7 @@ function SettingsPanel({
           {section === "agents" && <AgentsSection clis={clis} onStartChatWith={onStartChatWith} />}
           {section === "user" && <UserProfileSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
+          {section === "providers" && <ProvidersSection />}
           {section === "safety" && <SafetySection />}
           {section === "gateway" && <GatewaySection />}
           {section === "mcp" && <McpSection vaultPath={vaultPath} />}
@@ -9900,6 +9921,58 @@ function SettingsRowLite({ title, desc, control }: { title: string; desc: string
       </div>
       <div className="shrink-0">{control}</div>
     </div>
+  );
+}
+
+const DIRECT_PROVIDERS_SOON = ["Anthropic", "OpenAI", "xAI (Grok)", "Google Gemini", "DeepSeek", "Qwen / DashScope", "GLM / Z.AI", "Kimi / Moonshot", "MiniMax", "Hugging Face", "OpenCode Zen"];
+function ProvidersSection() {
+  const [key, setKey] = useState("");
+  const [configured, setConfigured] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    invoke<string>("provider_key_get", { provider: "openrouter" }).then((k) => setConfigured(!!k)).catch(() => {});
+  }, []);
+  async function save() {
+    try {
+      await invoke("provider_key_set", { provider: "openrouter", key: key.trim() });
+      setConfigured(!!key.trim());
+      setKey("");
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1500);
+    } catch (e) { console.error("provider_key_set", e); }
+  }
+  async function remove() {
+    try { await invoke("provider_key_del", { provider: "openrouter" }); setConfigured(false); } catch (e) { console.error(e); }
+  }
+  return (
+    <>
+      <SettingsHeader title="Providers" subtitle="Bring your own models. OpenRouter is one key for 200+ models (Claude, GPT, Gemini, Grok, DeepSeek, Qwen…). Direct providers are coming next." />
+      <div className="rounded-lg border border-border bg-surface p-5">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="font-semibold text-text-primary">OpenRouter</span>
+          <span className="rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">Recommended</span>
+          {configured && <span className="ml-auto rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary">Configured</span>}
+        </div>
+        <div className="mb-3 text-xs text-text-secondary">One API key unlocks every model. Used by the engine inside any domain. <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="text-accent hover:underline">Get a key ›</a></div>
+        <div className="flex items-center gap-2">
+          <input type="password" value={key} placeholder={configured ? "•••••••• (replace)" : "sk-or-v1-…"} onChange={(e) => setKey(e.target.value)}
+            className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-sm focus:border-accent-border focus:outline-none" />
+          <button onClick={save} disabled={!key.trim()} className="rounded-md bg-text-primary px-3 py-1.5 text-sm font-medium text-background hover:opacity-90 disabled:opacity-40">{saved ? "Saved" : "Save"}</button>
+          {configured && <button onClick={remove} className="rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-sm text-warn hover:bg-warn/20">Remove</button>}
+        </div>
+      </div>
+      <div className="mt-4">
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Direct providers</div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {DIRECT_PROVIDERS_SOON.map((name) => (
+            <div key={name} className="flex items-center justify-between rounded-lg border border-border-subtle bg-surface px-4 py-2.5 opacity-70">
+              <span className="text-sm text-text-secondary">{name}</span>
+              <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
 
