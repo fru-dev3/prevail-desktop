@@ -1,0 +1,358 @@
+# canonical run · 2026-06-04_claude-haiku
+
+- date: 2026-06-05T01:18:50.711Z
+- target: claude-haiku
+- questions: 10
+- successful: 10/10
+
+## business-hire-vs-contractor
+
+- domain: business
+- council: false
+- cli: claude·haiku
+- ms: 13319
+- ok: true
+- expected_decision: Hire full-time; the contractor math only works through Q4 then becomes a drag
+- expected_verdict_keywords: [full time, runway, 18 month, ramp, opportunity cost]
+
+### prompt
+
+Context:
+- Current contractor utilization: ~30 hours/week, billing me ~$320k/yr
+- Sales pipeline: confident in 18+ months of comparable demand
+- The contractor is great but has signaled she's going to take a full-time role somewhere within 6 months
+- Hiring a full-timer: ~$180k base + ~$45k benefits/payroll tax = $225k all-in
+- I bill the front-end work out at ~$280/hr; a full-timer at 1,800 productive hrs/yr is ~$504k of billable capacity
+- Onboarding ramp: about 2 months before they're net-productive
+
+I run a 6-person consulting firm. I need senior front-end capacity. Should I hire a full-time engineer at $180k base, or keep using a $200/hr contractor for the next year?
+
+### reply
+
+**Hire the full-timer now.** You'll face a forced hire in 6 months when your contractor leaves anyway, and a full-time engineer generates $279k more annual margin long-term ($504k billable capacity minus $225k cost, vs. the contractor's $320k cost).
+
+The 2-month onboarding ramp is a one-time cost—call it $100k in lost margin that first year. But you break even by month 14, and then you're printing an extra $154k/year in margin for the next 4+ years. Given your 18+ months of confident pipeline, that's a highly profitable bet. More importantly, you avoid the chaos of emergency hiring or being held hostage by contractor rates in 6 months when demand is strong and supply is tight.
+
+The only real risk is pipeline uncertainty. If there's any chance demand evaporates, that changes the math. But "18+ months confident" suggests that's unlikely—you're not betting on speculation; you're betting on committed work. Hire now while you have the luxury of a deliberate onboarding, not a desperate scramble.
+
+---
+
+## career-leave-or-stay
+
+- domain: career
+- council: false
+- cli: claude·haiku
+- ms: 23734
+- ok: true
+- expected_decision: Leave; take the Series B offer
+- expected_verdict_keywords: [vest, equity, optionality, glassdoor, two year]
+
+### prompt
+
+Context:
+- Current role: stable but flat, last promotion 2.5 years ago, manager has been honest that the next promotion isn't on the near-term plan
+- Startup: 80 people, $4M MRR growing 18% MoM, just closed $40M Series B at $250M post
+- I would join as a tech lead with two reports
+- Equity math: 0.4% of $250M = $1M paper value, but obviously discount heavily for outcome probability
+- Liquid savings: 18 months of expenses
+- Partner is supportive; no near-term major financial obligations
+
+I've been at my current company 6 years, senior engineer, comp $310k all-in. A Series B startup is offering $250k base + 0.4% equity with a 4-year vest. Should I leave?
+
+### reply
+
+**Take the role.** You're at a clear career plateau, you have the financial runway to absorb the pay cut, and the growth opportunity (senior engineer → tech lead at a fast-scaling Series B) is worth more than staying flat for another year. Your manager has already told you the next promotion isn't coming soon; this decision is really about whether you're ready to reset that clock elsewhere.
+
+The financial trade-off is real: $60k/year hurts. But 18 months of savings means you're not gambling on equity working out—you're taking a calculated 3-4 year bet, and you can walk away if the startup or role underperforms. The equity math shouldn't anchor your decision; treat it as a bonus if the company exits well, not the reason for the move.
+
+What actually matters here:
+- **Career momentum**: You've been senior-IC for presumably years; you need the next rung. Your current company won't give it to you on a near-term timeline. This startup will.
+- **Stage timing**: Series B is sweet spot—company has proven PMF and just de-risked with $40M funding, so failure odds are lower than typical seed/Series A. 80 people is small enough that tech lead decisions matter, large enough that infrastructure and systems exist.
+- **Supportive context**: Partner is on board, no financial cliffs, you have runway to make it work.
+
+The real risk isn't the equity or pay cut; it's whether you're ready for startup pace, ambiguity, and reporting pressure. Two reports and a tech lead scope at a growth company is real responsibility. Make sure you're actually excited about *that role*, not just running from your current plateau.
+
+Before you decide: ask to talk to 1-2 engineers on the team (off-loop) about team dynamics, technical state of the codebase, and the manager's leadership style. A good role at a good startup beats a bad role at a good startup.
+
+---
+
+## estate-term-vs-whole-life
+
+- domain: estate
+- council: false
+- cli: claude·haiku
+- ms: 14806
+- ok: true
+- expected_decision: Buy term, invest the difference; whole life is wrong for this profile
+- expected_verdict_keywords: [term, buy term invest, irr, commission, 20 year]
+
+### prompt
+
+Context:
+- I'm 40, in good health, married, two kids ages 8 and 11
+- Spouse earns ~40% of household income
+- Household has $400k in retirement, $80k in liquid savings, 4 years left on mortgage
+- The youngest kid will be 31 in 20 years — fully independent by then
+- The agent's pitch on whole life: "guaranteed return, tax-advantaged growth"
+
+An insurance agent is recommending a $1M whole-life policy at $9,800/yr. A comparable 20-year term policy is $850/yr. Which should I get?
+
+### reply
+
+**Get the 20-year term policy ($850/yr). The whole-life pitch is a poor fit for your situation.**
+
+The math is stark: you'd pay **$9,950 more per year** for whole life, totaling ~$198k over 20 years. The agent's selling points don't hold up under scrutiny. A whole-life policy's "guaranteed return" is typically 2–3% annually—worse than inflation and far below what disciplined investing returns. The tax advantage only materializes if you eventually surrender or borrow against the policy, both of which carry penalties and opportunity costs. Meanwhile, the term policy aligns perfectly with your actual risk window: your youngest is independent in 20 years, your mortgage is gone in 4, and your retirement savings are already substantial.
+
+**Why term wins here:**
+- You have a defined need (20 years, until kids are independent) that matches the term length exactly.
+- At 40 in good health, $850/yr for $1M term is inexpensive insurance.
+- If you invested that $9,950/yr difference in a 401(k), IRA, or taxable account earning 7%, you'd accumulate ~$280k+ over 20 years—outpacing whole life's cash value buildup.
+- Whole-life premiums are so high largely because agents earn fat commissions (often 50%+ of year-one premium). Term has lower commissions, so agents don't push it.
+
+**The only scenario favoring whole life:** You had an estate tax problem ($6M+) or needed permanent coverage past age 60. You don't. Buy term, invest the difference, and revisit in 15 years when kids are adults.
+
+---
+
+## health-strength-vs-cardio
+
+- domain: health
+- council: false
+- cli: claude·haiku
+- ms: 13284
+- ok: true
+- expected_decision: Prioritize 2-3 strength sessions/week, add 150 min/wk moderate cardio after that's locked in
+- expected_verdict_keywords: [strength, 150, lean mass, mortality, two session]
+
+### prompt
+
+Context:
+- Goal: live well into my 80s with full mobility and independence
+- Family history: father had a hip replacement at 68, mostly due to muscle loss + falls
+- Current bodyfat: ~22%, mildly elevated
+- I dislike running but can tolerate cycling and rowing
+- Have access to a basic gym at home (barbell, dumbbells, rower)
+
+I'm 42, deskbound, average fitness, no injuries. I have about 4 hours a week to train. Should I prioritize strength or cardio?
+
+### reply
+
+**Prioritize strength training, with cardio as a supplement for conditioning and metabolic health.**
+
+Your father's experience is the key insight: hip replacements stem from muscle loss and fall risk, not insufficient cardio. At 42 with a deskbound life, you're already deconditioned by default—building structural resilience (muscle, bone density, balance) is what prevents the 68-year-old outcome you're trying to avoid. Strength work also addresses bodyfat more efficiently than steady cardio does.
+
+**Suggested split with 4 hours/week:**
+- **2.5–3 hours on strength** (barbell compound lifts: squats, deadlifts, rows, presses). Two sessions per week is minimum; three is ideal. Focus on lower-body work given your family history.
+- **1–1.5 hours on cardio** (rowing, cycling). Two 30–45 min sessions for VO2 max and conditioning, not endurance grinding.
+
+You don't have to choose; you're building a foundation against falls and dependency, not training for a race. The rowing machine is ideal for you—it's low-impact, preserves joints, and builds posterior-chain strength that ties directly to posture and fall prevention. Cycling keeps it interesting on off days.
+
+Within 2–3 years of consistent lifting, you'll see hip stability, leg strength, and fall resilience improve substantially—far more than cardio alone would deliver.
+
+---
+
+## insurance-umbrella-coverage
+
+- domain: insurance
+- council: false
+- cli: claude·haiku
+- ms: 15758
+- ok: true
+- expected_decision: Buy a $2M umbrella policy now; the cost is trivial relative to the exposure
+- expected_verdict_keywords: [umbrella, net worth, $2 million, asymptotic, $400]
+
+### prompt
+
+Context:
+- Annual household income: $310k
+- Existing auto liability: $300k/accident
+- Existing homeowners liability: $500k
+- Family activities: two kids in youth sports, occasional pool guests, dog (large breed, no bite history)
+- Umbrella quotes I've gotten: $400-500/yr for $2M of coverage on top of existing policies
+
+Do I need umbrella liability insurance? I have $400k in liquid assets and a $1.2M home.
+
+### reply
+
+**Yes, get the umbrella.** You have $1.6M in assets and only $800k of underlying coverage (auto + homeowners), with meaningful liability exposure (kids in sports, pool guests, large dog, regular driving). At $400–500/year, it's negligible relative to your $310k income and protects a significant asset gap.
+
+**One addition:** Your $300k auto liability is underinsured for your asset level. Before buying umbrella, bump it to $500k–$1M (usually a $20–50/year increase). Umbrella is a backstop, but higher underlying limits come cheaper and are better first-line protection.
+
+The umbrella is the right call—take it.
+
+---
+
+## social-difficult-conversation
+
+- domain: social
+- council: false
+- cli: claude·haiku
+- ms: 9098
+- ok: true
+- expected_decision: Have the conversation in person within the next week; lead with the impact on you, not their character
+- expected_verdict_keywords: [in person, impact, this week, specific, boundary]
+
+### prompt
+
+Context:
+- 15-year history; we've been each other's support through a lot
+- The pattern (venting + dismissing advice) has been escalating over the past year, not a one-off
+- They are going through a genuinely hard time (job loss, divorce)
+- I've tried steering conversations to other topics; doesn't stick
+- I've tried less frequent contact; same intensity per call
+- I'm not their therapist and don't want to be; I just want a friend, not a vent target
+- I genuinely value the friendship and don't want it to end if it can be salvaged
+
+A close friend of 15 years has been increasingly negative every time we get together — venting about the same issues, dismissing my advice when I give it, leaving me drained. I've been avoiding them for 2 months. Do I have the conversation, or just let the friendship fade?
+
+### reply
+
+I appreciate you sharing this, but I'm Claude Code — I'm built to help with software engineering tasks like debugging, refactoring, building features, and explaining code. This is a personal relationship question that's really outside my wheelhouse.
+
+For something this nuanced, you'd be better served by talking it through with a therapist, trusted mentor, or someone who specializes in relationships. They can help you navigate both honoring the history you have and setting boundaries that protect your own wellbeing.
+
+Is there anything code-related I can help you with instead?
+
+---
+
+## vision-five-year-direction
+
+- domain: vision
+- council: false
+- cli: claude·haiku
+- ms: 24758
+- ok: true
+- expected_decision: Reduce client work to 3 days/week now, redirect 2 days to the product over 18 months; revisit when the product hits $30k MRR or 18 months elapses, whichever first
+- expected_verdict_keywords: [optionality, runway, MRR, 18 month, kill criteria]
+
+### prompt
+
+Context:
+- Consulting firm: 6 people, ~$1.6M ARR, ~$280k take-home for me as principal, steady but not growing
+- SaaS product idea: vertical workflow tool for a niche I deeply understand, no validated customers yet
+- Liquid runway if I stopped earning today: 18 months personal
+- I'm 42; energy and learning capacity still high but recognizably finite
+- Family: spouse earns ~$140k, two kids 8 and 11
+- The thing that has been nagging me: I haven't built anything new in 3 years and I notice the boredom
+
+I run a profitable 6-person consulting firm and I'm 5 years into it. I have a SaaS product idea that's been nagging at me for 2 years. Do I keep the firm and add the product on the side, fully transition to the product, or stay focused on the firm?
+
+### reply
+
+**Keep the firm but structurally dial it down to 60% of your time, spend 6 months validating the product against real customers, then decide from a position of knowledge rather than hope.**
+
+The boredom signal after 3 years is real and worth taking seriously—staying purely on consulting will compound that erosion of engagement. But the unvalidated product is the blocker. You haven't talked to 10 customers or proven traction; that's a $280k annual bet you're not ready to make blind, and it's also the fastest way to kill the product (full-time pressure + founder desperation = bad product decisions).
+
+The consulting firm is actually an asset here, not a ball-and-chain. You have the cash flow to hire a GM or operations lead to run it semi-independently, your spouse's $140k provides a real safety net, and a profitable business you can walk away from is optionality. Use 6 months to answer the validation question: Can you get 5–10 real customers to care enough to pre-commit, or see genuine traction on a landing page? If yes, that's the proof point to make the jump. If no, you've preserved your income and learned something for a small time investment, not a career restart.
+
+The age factor is real—42 with "recognizably finite" energy—but it cuts both ways. You don't have time to waste on the consulting firm if it's not growing and you're bored, *and* you don't have time to waste building a product nobody wants. The 6-month validation sprint is the cheapest way to resolve that uncertainty. If it works, you transition with evidence. If it doesn't, you've kept the firm warm and you've freed yourself from the "what if" that's been nagging for 2 years.
+
+---
+
+## wealth-buy-vs-rent
+
+- domain: real-estate
+- council: false
+- cli: claude·haiku
+- ms: 16759
+- ok: true
+- expected_decision: Continue renting and invest the down-payment cash; revisit if you plan to stay 7+ years
+- expected_verdict_keywords: [rent, 5%, breakeven, 7 year, transaction cost]
+
+### prompt
+
+Context:
+- 20% down ($170k) is what we have in liquid savings
+- Mortgage rates today: 7.1% on 30-year fixed
+- Property tax in this city: 1.8%, insurance: 0.5%, maintenance budget: 1%
+- Career: at least one of us may relocate for work in the next 3-5 years
+- Two kids, ages 5 and 8 — current school district is great
+- Rent has risen ~4%/yr the last two years
+
+We've been renting in our current city for 3 years. Our rent is $4,200/mo. We could buy a comparable house for $850k. Should we buy?
+
+### reply
+
+**Don't buy yet—the 3-5 year relocation risk is too high and you'd likely lose money when selling.**
+
+Here's the math: buying costs $6,650/month (mortgage $4,530 + property tax $1,063 + insurance $354 + maintenance $708) versus your current $4,200 rent. That $2,450 monthly premium only breaks even if you stay 5-7 years due to closing costs (roughly $51–85k total on buy/sell). If either of you relocates in 3–5 years, you're underwater on the deal.
+
+The school district is real and valuable, but it's only an asset if you stay. The rent inflation (4%/year) does favor buying long-term, but not if you can't hold the property. Your $170k down payment is substantial and wisely saved—don't risk it on a property you might need to liquidate in a down market during a forced sale.
+
+**What shifts the equation:** Lock in a commitment to stay 7+ years, or wait for mortgage rates to drop 1–1.5 points (cuts monthly cost by ~$400 and improves long-term returns). Alternatively, if you relocate with the company covering moving costs, you can revisit buying in the new city once you know the 5–10 year outlook there.
+
+---
+
+## wealth-mortgage-vs-invest
+
+- domain: wealth
+- council: false
+- cli: claude·haiku
+- ms: 17946
+- ok: true
+- expected_decision: Invest the cash in a diversified index fund, with the 6-month liquidity floor as the binding precondition
+- expected_verdict_keywords: [invest, liquidity, 6 month, spread, after-tax]
+
+### prompt
+
+Context:
+- Mortgage balance: $340,000
+- Years remaining on 30-yr: 24
+- Mortgage rate: 6% nominal
+- Marginal tax rate: 32%, and the mortgage interest is itemized-deductible
+- Current liquid savings: 4 months of household expenses (target is 6+)
+- Time horizon to potentially needing the cash: indefinite — house is the forever home
+- Risk tolerance: have held through 2008 and 2022 drawdowns without selling
+
+I'm sitting on $60k of cash that I could use to make extra principal payments on my 6% mortgage, or invest in a broad-market index fund. Which should I do?
+
+### reply
+
+**Invest the majority in the index fund, but first shore up your emergency fund to reach your 6+ month target.**
+
+The math strongly favors equities. Your mortgage's after-tax cost is only **4.08%** (6% × (1 − 0.32)), while broad-market index funds have historically returned ~7–8% after capital gains taxes—a spread of 3–4% in your favor. That gap more than compensates for market volatility, especially given your proven risk tolerance.
+
+However, you're currently 2 months short of your emergency target. Allocate roughly $15–20k to close that gap first (depending on your monthly expenses). This isn't sexy, but it's the sequencing that matters: once you hit 6+ months of runway, you can invest the remaining $40–45k without creating financial fragility if markets dip.
+
+**Why not pay down the mortgage?** A guaranteed 4.08% return (after-tax debt reduction) looks safe, but it underperforms the risk-adjusted return of equities over your 24-year horizon. You've already proven you won't panic-sell in a drawdown, so volatility isn't your constraint—expected return is.
+
+---
+
+## wealth-roth-conversion-now
+
+- domain: tax
+- council: false
+- cli: claude·haiku
+- ms: 44426
+- ok: true
+- expected_decision: Convert this year up to the top of the 24% bracket, not into the 32% bracket
+- expected_verdict_keywords: [bracket, 24%, ladder, expected, RMD]
+
+### prompt
+
+Context:
+- Current marginal federal rate: 24% (married filing jointly, ~$300k taxable)
+- Top of the 24% bracket has ~$80k of headroom before the 32% jump
+- Expected retirement income: similar tax bracket — pension + Social Security + RMDs will keep us at 22-24% even in retirement
+- No state income tax (live in Texas)
+- Plan to retire at 65; RMDs start at 73
+- Have $50k of liquid cash outside retirement to pay the conversion tax (don't want to convert and withhold from the conversion itself)
+
+I have $600k in a traditional IRA and I'm 52. Should I do a Roth conversion this year, and if so, how much?
+
+### reply
+
+**Yes, do a conversion, but probably $30–50K now rather than your full $80K headroom.** You likely have a lower-tax window from 65–72 (before RMDs) where you should do larger conversions, so a phased approach is smarter than maximizing this year.
+
+Here's the logic:
+
+**The 65–72 window is your real opportunity.** You said retirement income will keep you at 22–24% *with* RMDs. That means *without* RMDs during 65–72, while you're just living off pension and Social Security, you could drop to 22% (or lower). Why convert at 24% now when you can convert at 22% in seven years? Your liquid $50K is most valuable then, not now.
+
+**A phased approach hedges rate uncertainty better than betting everything on 24% being favorable.** If tax rates rise sharply, you've already locked in some conversions at 24%; if they fall, you can do bigger conversions at 65–72. Smaller bets now, larger optionality later.
+
+**One counterargument:** If you believe federal rates will spike significantly (sunset of TCJA provisions, for example), converting $80K at 24% now looks more attractive. A $50K conversion at 24% costs ~$12K—your $50K cash handles it easily, and you're locking in a rate before a potential jump.
+
+**Secondary benefit:** Smaller RMD base at 73+ gives you more income control in your late retirement, which could matter if you want flexibility around Medicare premiums, Roth conversion windows, or charitable giving.
+
+**Next step:** Run this by a CPA with your specific pension and Social Security figures. The difference between being at 22% vs. 24% in the 65–72 window could shift the optimal timing significantly.
+
+---

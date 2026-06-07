@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "identity": {
+    "name": "health",
+    "label": "Health",
+    "emoji": "",
+    "summary": "",
+    "created": "2026-06-06T18:21:15.265Z"
+  },
+  "config": {
+    "cli": "claude",
+    "model": "",
+    "framework": null,
+    "lens": null,
+    "skills": [],
+    "autoState": false
+  },
+  "context_score": {
+    "domain": "health",
+    "score": 65,
+    "breakdown": {
+      "coverage": {
+        "score": 80,
+        "detail": "4 of 5 canonical files present; missing decisions.md"
+      },
+      "density": {
+        "score": 62,
+        "detail": "495 words across state/decisions/config (target 800 for full marks)"
+      },
+      "freshness": {
+        "score": 100,
+        "detail": "newest knowledge file updated 2 days ago"
+      },
+      "structure": {
+        "score": 80,
+        "detail": "8 of 10 artifact kinds present (state, config, journal, logs, skills, briefs, prior, current)"
+      },
+      "activity": {
+        "score": 10,
+        "detail": "2 log sessions, 0 threads (saturate at 10 each)"
+      },
+      "config_completeness": {
+        "score": 0,
+        "detail": "0 of 45 config.md fields filled in"
+      }
+    },
+    "missing": [
+      {
+        "label": "No decisions.md — decisions aren't being logged",
+        "severity": "warn",
+        "kind": "file"
+      },
+      {
+        "label": "No _threads — no recorded chat activity yet",
+        "severity": "info",
+        "kind": "structure"
+      },
+      {
+        "label": "config.md is mostly unfilled — 0 of 45 config.md fields filled in",
+        "severity": "info",
+        "kind": "config"
+      }
+    ],
+    "freshness_secs": 192199,
+    "assessment": null,
+    "audit_source": null,
+    "computed_at": "2026-06-07T01:38:29.781Z",
+    "audited_at": null
+  },
+  "goals": [],
+  "heartbeat": {
+    "enabled": false,
+    "routines": []
+  },
+  "routing": {
+    "keywords": [],
+    "channels": [],
+    "default": false
+  },
+  "sandbox": {
+    "mode": "open"
+  },
+  "privacy": {
+    "localOnly": false
+  },
+  "archived": false,
+  "archived_at": null
+}
