@@ -1,0 +1,167 @@
+{
+  "runDir": "/Users/dev/Documents/prevail/vault-demo/benchmark/runs/2026-06-04_claude-haiku",
+  "label": "2026-06-04_claude-haiku",
+  "questionScores": [
+    {
+      "id": "business-hire-vs-contractor",
+      "domain": "business",
+      "keyword_score": 20,
+      "keyword_hits": [
+        "ramp"
+      ],
+      "keyword_misses": [
+        "full time",
+        "runway",
+        "18 month",
+        "opportunity cost"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends hiring full-time with reasoning matching the user's rationale about contractor math breaking down and forced-hire pressure."
+    },
+    {
+      "id": "career-leave-or-stay",
+      "domain": "career",
+      "keyword_score": 20,
+      "keyword_hits": [
+        "equity"
+      ],
+      "keyword_misses": [
+        "vest",
+        "optionality",
+        "glassdoor",
+        "two year"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends taking the Series B offer with reasoning aligned to career plateau, financial runway, and growth-stage timing."
+    },
+    {
+      "id": "estate-term-vs-whole-life",
+      "domain": "estate",
+      "keyword_score": 60,
+      "keyword_hits": [
+        "term",
+        "commission",
+        "20 year"
+      ],
+      "keyword_misses": [
+        "buy term invest",
+        "irr"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends term, invest the difference, with reasoning that matches the user's rationale (defined risk window, high commissions, better returns elsewhere)."
+    },
+    {
+      "id": "health-strength-vs-cardio",
+      "domain": "health",
+      "keyword_score": 40,
+      "keyword_hits": [
+        "strength",
+        "two session"
+      ],
+      "keyword_misses": [
+        "150",
+        "lean mass",
+        "mortality"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends prioritizing strength (2-3 sessions) with cardio supplemented, citing the father's muscle loss/fall reasoning that matches the user's rationale."
+    },
+    {
+      "id": "insurance-umbrella-coverage",
+      "domain": "insurance",
+      "keyword_score": 40,
+      "keyword_hits": [
+        "umbrella",
+        "$400"
+      ],
+      "keyword_misses": [
+        "net worth",
+        "$2 million",
+        "asymptotic"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends buying the $2M umbrella with reasoning matching the user's rationale (trivial cost vs. exposure gap)."
+    },
+    {
+      "id": "social-difficult-conversation",
+      "domain": "social",
+      "keyword_score": 0,
+      "keyword_hits": [],
+      "keyword_misses": [
+        "in person",
+        "impact",
+        "this week",
+        "specific",
+        "boundary"
+      ],
+      "judge_score": 0,
+      "judge_rationale": "Model refuses to engage and fails to commit to any decision."
+    },
+    {
+      "id": "vision-five-year-direction",
+      "domain": "vision",
+      "keyword_score": 20,
+      "keyword_hits": [
+        "optionality"
+      ],
+      "keyword_misses": [
+        "runway",
+        "MRR",
+        "18 month",
+        "kill criteria"
+      ],
+      "judge_score": 8,
+      "judge_rationale": "Recommends dialing down consulting to ~60% and reallocating time to the product with a defined revisit checkpoint, closely matching the expected decision though framed as validation rather than MRR target."
+    },
+    {
+      "id": "wealth-buy-vs-rent",
+      "domain": "real-estate",
+      "keyword_score": 40,
+      "keyword_hits": [
+        "rent",
+        "7 year"
+      ],
+      "keyword_misses": [
+        "5%",
+        "breakeven",
+        "transaction cost"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends continuing to rent, citing the 3-5 year relocation risk and explicitly suggests revisiting if they commit to staying 7+ years, matching the ground truth."
+    },
+    {
+      "id": "wealth-mortgage-vs-invest",
+      "domain": "wealth",
+      "keyword_score": 60,
+      "keyword_hits": [
+        "invest",
+        "spread",
+        "after-tax"
+      ],
+      "keyword_misses": [
+        "liquidity",
+        "6 month"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Recommends investing in the index fund with the 6-month liquidity floor as the binding precondition, matching the user's rationale exactly."
+    },
+    {
+      "id": "wealth-roth-conversion-now",
+      "domain": "tax",
+      "keyword_score": 40,
+      "keyword_hits": [
+        "24%",
+        "RMD"
+      ],
+      "keyword_misses": [
+        "bracket",
+        "ladder",
+        "expected"
+      ],
+      "judge_score": 5,
+      "judge_rationale": "Recommends a partial conversion ($30-50K) rather than the full top-of-24%-bracket conversion, partially aligned but materially under the expected decision."
+    }
+  ],
+  "keyword_avg": 34,
+  "judge_avg": 8.3
+}

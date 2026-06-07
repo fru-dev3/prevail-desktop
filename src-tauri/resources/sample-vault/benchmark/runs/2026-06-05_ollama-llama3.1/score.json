@@ -1,0 +1,23 @@
+{
+  "runDir": "/Users/dev/Documents/prevail/vault-demo/benchmark/runs/2026-06-05_ollama-llama3.1",
+  "label": "2026-06-05_ollama-llama3.1",
+  "questionScores": [
+    {
+      "id": "brevity-test",
+      "domain": "vision",
+      "keyword_score": 0,
+      "keyword_hits": [],
+      "keyword_misses": [
+        "invest",
+        "prepay",
+        "mortgage",
+        "sentence",
+        "bottom line"
+      ],
+      "judge_score": null,
+      "judge_rationale": null
+    }
+  ],
+  "keyword_avg": 0,
+  "judge_avg": null
+}

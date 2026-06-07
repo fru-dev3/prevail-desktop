@@ -1,0 +1,3 @@
+# Mail — Config
+
+sensitivity: sensitive
