@@ -5381,7 +5381,12 @@ function ChatPanel({
     thread: string | null;
     cli: string | null;
     model: string | null;
+    intent: string;
   } | null>(null);
+  // Self-learning: accumulate the RAW, unprocessed assistant stream for the
+  // current turn (before ANSI/sycophancy stripping) so the intent ledger
+  // records the model's true output, not just the displayed text.
+  const rawReplyRef = useRef<string>("");
   const persistUsage = useCallback(
     (session: string, ok: boolean, usage?: ChatMessage["usage"]) => {
       const p = pendingUsageRef.current;
@@ -5404,6 +5409,41 @@ function ChatPanel({
           ok,
         },
       }).catch((e) => console.error("usage_append failed", e));
+
+      // Self-learning: append the RAW reply to the intent ledger, paired
+      // with the intent by session, so the turn is fully reconstructable.
+      const raw = rawReplyRef.current;
+      rawReplyRef.current = "";
+      invoke("intent_append", {
+        vault: p.vault,
+        domain: p.domain,
+        record: {
+          kind: "reply",
+          ts: now.getTime(),
+          day,
+          session: p.session,
+          domain: p.domain,
+          thread: p.thread,
+          cli: p.cli,
+          model: p.model,
+          ok,
+          raw,
+          usage: usage ?? null,
+        },
+      }).catch((e) => console.error("intent_append (reply) failed", e));
+
+      // Auto-journal: one distilled line per completed turn, so the journal
+      // builds itself from every conversation (model + intent snippet).
+      const hh = String(now.getHours()).padStart(2, "0");
+      const mm = String(now.getMinutes()).padStart(2, "0");
+      const snippet = p.intent.replace(/\s+/g, " ").slice(0, 100);
+      const modelTag = p.model || p.cli || "?";
+      const status = ok ? "" : " · ✗ failed";
+      invoke("journal_append", {
+        vault: p.vault,
+        domain: p.domain,
+        entry: `- ${day} ${hh}:${mm} · [${modelTag}] ${snippet}${status}`,
+      }).catch((e) => console.error("journal_append failed", e));
     },
     [],
   );
@@ -5438,6 +5478,9 @@ function ChatPanel({
             });
             return;
           }
+          // Self-learning: keep the RAW chunk verbatim (pre-strip) for the
+          // intent ledger before we clean it for display.
+          rawReplyRef.current += e.payload.data;
           // Process only the new chunk (not the growing accumulator)
           // to keep stream rendering O(n) instead of O(n²) for long
           // replies. Sycophancy patterns are short so re-scanning the
@@ -5505,6 +5548,7 @@ function ChatPanel({
               break;
             case "delta": {
               // Incremental text chunk — append to the streaming bubble.
+              rawReplyRef.current += ev.text ?? ""; // raw, for the intent ledger
               const clean = maybeStripSycophancy(stripAnsi(ev.text ?? ""));
               setMessages((m) => {
                 const last = m[m.length - 1];
@@ -5660,6 +5704,8 @@ function ChatPanel({
     setAttachedSkills([]);
     setInput("");
     sessionRef.current = `s-${Date.now()}`;
+    rawReplyRef.current = ""; // fresh raw-output buffer for this turn
+    const turnModel = lsGet(`prevail.model.${selectedCli}`) || null;
     // Snapshot this turn's meta for usage capture (P4.7 Phase 3). Read at
     // 'done' regardless of which path (engine vs native) serves the reply.
     pendingUsageRef.current = {
@@ -5668,8 +5714,42 @@ function ChatPanel({
       domain: domain ?? null,
       thread: activeThreadRef.current,
       cli: selectedCli ?? null,
-      model: lsGet(`prevail.model.${selectedCli}`) || null,
+      model: turnModel,
+      intent: visible,
     };
+    // ── Self-learning: record the INTENT immediately, the instant the user
+    // sends — BEFORE the async model call — so a chat is never lost even on
+    // a crash/quit mid-reply. Captures the exact prompt sent + every
+    // preference in effect, so a future better model can replay it. The
+    // matching raw reply is appended on completion (persistUsage).
+    const prefs = {
+      framework: fwLens.framework ?? null,
+      lens: fwLens.lens ?? null,
+      localOnly: domain ? lsGet(`prevail.domain.${domain}.localOnly`) === "1" : false,
+      web: domain ? getDomainToggle(domain, "web", false) : false,
+      serendipity: domain ? getDomainToggle(domain, "serendipity", false) : false,
+      auto: domain ? getDomainToggle(domain, "auto", false) : false,
+      council: domain ? getDomainToggle(domain, "council", false) : false,
+      skills: attachedSkills,
+      attachments,
+      primedContext: primedContext.map((c) => c.label),
+    };
+    invoke("intent_append", {
+      vault: vaultPath,
+      domain: domain ?? null,
+      record: {
+        kind: "intent",
+        ts: Date.now(),
+        session: sessionRef.current,
+        domain: domain ?? null,
+        thread: activeThreadRef.current,
+        cli: selectedCli ?? null,
+        model: turnModel,
+        message: visible, // what the user typed
+        prompt: promptText, // the exact, fully-assembled prompt sent to the model
+        prefs,
+      },
+    }).catch((e) => console.error("intent_append (intent) failed", e));
     // Announce the stream so the sidebar can pulse the originating
     // domain even if the user navigates away while it runs.
     onStreamStart({
