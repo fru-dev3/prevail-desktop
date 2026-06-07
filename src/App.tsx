@@ -6810,8 +6810,20 @@ function CouncilPanel({
   // Load (or clear) the council transcript when the active thread changes.
   useEffect(() => {
     councilThreadRef.current = activeThreadPath ?? null;
+    // We just saved this convene and adopted its own path — keep the result on
+    // screen (don't clear the replies/verdict the user is reading).
+    if (activeThreadPath && councilSelfSetRef.current === activeThreadPath) {
+      councilSelfSetRef.current = null;
+      return;
+    }
+    // Genuine thread switch (+ New, a different thread, or cleared on domain
+    // change): clear the live convene state so the panel reflects the SELECTED
+    // thread, not the previous convene's question/replies/verdict.
+    setReplies({});
+    setVerdict("");
+    setSubmittedPrompt("");
+    setPhase("idle");
     if (!activeThreadPath) { setCouncilTurns([]); return; }
-    if (councilSelfSetRef.current === activeThreadPath) { councilSelfSetRef.current = null; return; }
     let cancelled = false;
     invoke<{ meta: ThreadMeta; turns: ThreadTurn[] }>("load_thread", { path: activeThreadPath })
       .then((t) => { if (!cancelled) setCouncilTurns(t.turns ?? []); })
