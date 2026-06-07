@@ -285,14 +285,24 @@ pub async fn run_engine_stream_stdin(
     let mut full = args;
     full.push("--json".to_string());
 
-    let mut child = TokioCommand::new(&bin)
-        .args(&full)
+    let mut cmd = TokioCommand::new(&bin);
+    cmd.args(&full)
         .env("PATH", combined_path)
         .env("USER", user)
         .env("LOGNAME", logname)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    // Provider keys for the engine's OpenAI-compatible gateways (OpenRouter,
+    // etc.). Read from the Keychain and injected here so the engine can make
+    // its in-process HTTP call. Named PREVAIL_OPENROUTER_KEY to avoid the
+    // engine's scrubbedEnv strip list (OPENAI_/ANTHROPIC_…).
+    if let Ok(key) = crate::ingestion::keychain::get("prevail.providers", "openrouter") {
+        if !key.is_empty() {
+            cmd.env("PREVAIL_OPENROUTER_KEY", key);
+        }
+    }
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
