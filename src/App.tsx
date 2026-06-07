@@ -1066,6 +1066,15 @@ const SYCOPHANCY_RE = /\b(you're absolutely right!?|you are absolutely right!?|g
 function stripAnsi(s: string): string {
   return s.replace(ANSI_RE, "");
 }
+// Safety: scrub obvious secrets (API keys, bearer tokens, key=value secrets)
+// before persisting to the intent ledger, when Redact Secrets is enabled.
+function maybeRedact(s: string): string {
+  if (lsGet("prevail.pref.redactSecrets") !== "1") return s;
+  return s
+    .replace(/\b(?:sk|pk|rk|ghp|gho|ghs|xoxb|xoxp|AKIA)[-_A-Za-z0-9]{12,}/g, "***REDACTED***")
+    .replace(/\bBearer\s+[A-Za-z0-9._-]{12,}/gi, "Bearer ***REDACTED***")
+    .replace(/("?(?:api[_-]?key|token|secret|password)"?\s*[:=]\s*"?)[A-Za-z0-9._\-]{8,}/gi, "$1***REDACTED***");
+}
 function maybeStripSycophancy(s: string): string {
   if (lsGet("prevail.pref.stripSycophancy") !== "1") return s;
   return s.replace(SYCOPHANCY_RE, "");
@@ -5436,7 +5445,7 @@ function ChatPanel({
 
       // Self-learning: append the RAW reply to the intent ledger, paired
       // with the intent by session, so the turn is fully reconstructable.
-      const raw = rawReplyRef.current;
+      const raw = maybeRedact(rawReplyRef.current);
       rawReplyRef.current = "";
       invoke("intent_append", {
         vault: p.vault,
@@ -5773,8 +5782,8 @@ function ChatPanel({
         thread: activeThreadRef.current,
         cli: selectedCli ?? null,
         model: turnModel,
-        message: visible, // what the user typed
-        prompt: promptText, // the exact, fully-assembled prompt sent to the model
+        message: maybeRedact(visible), // what the user typed
+        prompt: maybeRedact(promptText), // the exact, fully-assembled prompt sent to the model
         prefs,
       },
     }).catch((e) => console.error("intent_append (intent) failed", e));
@@ -9120,7 +9129,7 @@ function SettingsPanel({
   onBack?: () => void;
   onStartChatWith?: (cliId: string, modelId?: string) => void;
 }) {
-  type Section = "general" | "agents" | "user" | "memory" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "shortcuts" | "about";
+  type Section = "general" | "agents" | "user" | "memory" | "safety" | "gateway" | "mcp" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>("general");
 
   const items: Array<{ id: Section; label: string; icon: typeof Folder }> = [
@@ -9128,6 +9137,9 @@ function SettingsPanel({
     { id: "agents", label: "Agents", icon: Sparkles },
     { id: "user", label: "About me", icon: Users },
     { id: "memory", label: "Memory & Context", icon: Brain },
+    { id: "safety", label: "Safety", icon: Shield },
+    { id: "gateway", label: "Gateway", icon: MessagesSquare },
+    { id: "mcp", label: "MCP", icon: Wrench },
     { id: "vault", label: "Vault", icon: Folder },
     { id: "appearance", label: "Appearance", icon: Sparkles },
     { id: "defaults", label: "Defaults", icon: SettingsIcon },
@@ -9211,6 +9223,9 @@ function SettingsPanel({
           {section === "agents" && <AgentsSection clis={clis} onStartChatWith={onStartChatWith} />}
           {section === "user" && <UserProfileSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
+          {section === "safety" && <SafetySection />}
+          {section === "gateway" && <GatewaySection />}
+          {section === "mcp" && <McpSection vaultPath={vaultPath} />}
           {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} />}
           {section === "appearance" && <AppearanceSection appearance={appearance} />}
           {section === "defaults" && (
@@ -9550,6 +9565,15 @@ const PREF = {
   compressionTarget: "prevail.pref.compressionTarget",     // 0..1 of budget to compress toward
   protectedRecent: "prevail.pref.protectedRecent",         // keep most-recent N ledger records raw
   distillIntervalSec: "prevail.pref.distillIntervalSec",   // daemon tick cadence
+  // Safety — guardrails. Most are read by the engine/ingestion; redactSecrets
+  // is enforced desktop-side in the intent-ledger capture path.
+  approvalMode: "prevail.pref.approvalMode",               // "manual" | "auto"
+  approvalTimeoutSec: "prevail.pref.approvalTimeoutSec",   // seconds before an approval prompt times out
+  confirmMcpReloads: "prevail.pref.confirmMcpReloads",     // "1" | "0"
+  commandAllowlist: "prevail.pref.commandAllowlist",       // comma-separated allowed commands
+  redactSecrets: "prevail.pref.redactSecrets",             // "1" | "0" — scrub secrets from saved content
+  allowPrivateUrls: "prevail.pref.allowPrivateUrls",       // "1" | "0"
+  fileCheckpoints: "prevail.pref.fileCheckpoints",         // "1" | "0" — snapshot before file edits
 };
 function getPref(key: string, fallback: string): string {
   const v = lsGet(key);
@@ -9861,6 +9885,107 @@ function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
           </button>
           {distillMsg && <span className="text-xs text-text-secondary">{distillMsg}</span>}
         </div>
+      </div>
+    </>
+  );
+}
+
+// Shared settings Row used by the Phase 3 sections.
+function SettingsRowLite({ title, desc, control }: { title: string; desc: string; control: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-6 border-b border-border-subtle py-4 last:border-0">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-text-primary">{title}</div>
+        <div className="mt-0.5 text-xs text-text-secondary">{desc}</div>
+      </div>
+      <div className="shrink-0">{control}</div>
+    </div>
+  );
+}
+
+function SafetySection() {
+  const [approvalMode, setApprovalMode] = useState(() => getPref(PREF.approvalMode, "manual"));
+  const [approvalTimeout, setApprovalTimeout] = useState(() => getPref(PREF.approvalTimeoutSec, "60"));
+  const [confirmMcp, setConfirmMcp] = useState(() => getPref(PREF.confirmMcpReloads, "1") === "1");
+  const [allowlist, setAllowlist] = useState(() => getPref(PREF.commandAllowlist, ""));
+  const [redact, setRedact] = useState(() => getPref(PREF.redactSecrets, "0") === "1");
+  const [allowPrivate, setAllowPrivate] = useState(() => getPref(PREF.allowPrivateUrls, "0") === "1");
+  const [checkpoints, setCheckpoints] = useState(() => getPref(PREF.fileCheckpoints, "0") === "1");
+  return (
+    <>
+      <SettingsHeader title="Safety" subtitle="Guardrails for what the agent can do and what gets stored. Redact secrets is enforced here; approval, allowlist, and checkpoints are honored by the engine." />
+      <div className="rounded-lg border border-border bg-surface px-5">
+        <SettingsRowLite title="Approval mode" desc="How commands that need explicit approval are handled."
+          control={
+            <select value={approvalMode} onChange={(e) => { setApprovalMode(e.target.value); setPref(PREF.approvalMode, e.target.value); }}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none">
+              <option value="manual">Manual</option>
+              <option value="auto">Auto</option>
+            </select>
+          } />
+        <SettingsRowLite title="Approval timeout" desc="How long an approval prompt waits before timing out."
+          control={<div className="flex items-center gap-1.5"><input type="number" value={approvalTimeout} onChange={(e) => { setApprovalTimeout(e.target.value); setPref(PREF.approvalTimeoutSec, e.target.value); }} className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" /><span className="font-mono text-xs text-text-muted">s</span></div>} />
+        <SettingsRowLite title="Confirm MCP reloads" desc="Ask before reloading MCP servers."
+          control={<Toggle on={confirmMcp} onChange={(v) => { setConfirmMcp(v); setPref(PREF.confirmMcpReloads, v ? "1" : "0"); }} />} />
+        <SettingsRowLite title="Command allowlist" desc="Comma-separated commands the agent may run without prompting."
+          control={<input value={allowlist} placeholder="git, ls, cat" onChange={(e) => { setAllowlist(e.target.value); setPref(PREF.commandAllowlist, e.target.value); }} className="w-56 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
+        <SettingsRowLite title="Redact secrets" desc="Scrub API keys, tokens, and passwords from saved chat transcripts and the intent ledger."
+          control={<Toggle on={redact} onChange={(v) => { setRedact(v); setPref(PREF.redactSecrets, v ? "1" : "0"); }} />} />
+        <SettingsRowLite title="Allow private URLs" desc="Let the agent fetch localhost / private-network URLs."
+          control={<Toggle on={allowPrivate} onChange={(v) => { setAllowPrivate(v); setPref(PREF.allowPrivateUrls, v ? "1" : "0"); }} />} />
+        <SettingsRowLite title="File checkpoints" desc="Snapshot files before the agent edits them so changes can be rolled back."
+          control={<Toggle on={checkpoints} onChange={(v) => { setCheckpoints(v); setPref(PREF.fileCheckpoints, v ? "1" : "0"); }} />} />
+      </div>
+    </>
+  );
+}
+
+const COMING_SOON_GATEWAYS = ["Discord", "Slack", "WhatsApp", "Signal", "Matrix", "Mattermost", "Email (IMAP/SMTP)", "SMS (Twilio)"];
+function GatewaySection() {
+  return (
+    <>
+      <SettingsHeader title="Gateway" subtitle="Chat with your council from anywhere. Connect Prevail to messaging platforms." />
+      <div className="mb-4 rounded-lg border border-border bg-surface p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="font-semibold text-text-primary">Telegram</span>
+          <span className="rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">Live</span>
+        </div>
+        <TelegramCard />
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {COMING_SOON_GATEWAYS.map((name) => (
+          <div key={name} className="flex items-center justify-between rounded-lg border border-border-subtle bg-surface px-4 py-3 opacity-70">
+            <span className="text-sm text-text-secondary">{name}</span>
+            <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function McpSection({ vaultPath }: { vaultPath: string }) {
+  const [enginePath, setEnginePath] = useState<string>("");
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    invoke<{ engine_bin?: string }>("app_diagnostics").then((d) => setEnginePath(d.engine_bin ?? "prevail")).catch(() => setEnginePath("prevail"));
+  }, []);
+  const snippet = JSON.stringify({ mcpServers: { prevail: { command: enginePath || "prevail", args: ["mcp", "--vault", vaultPath] } } }, null, 2);
+  return (
+    <>
+      <SettingsHeader title="MCP" subtitle="Connect Model Context Protocol servers to Prevail, and expose Prevail as an MCP server to other tools." />
+      <div className="mb-5">
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Connected servers (Prevail consumes)</div>
+        <McpCard />
+      </div>
+      <div className="rounded-lg border border-border bg-surface p-5">
+        <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Expose Prevail as an MCP server</div>
+        <div className="mb-3 text-xs text-text-secondary">Add this to another tool's MCP config (e.g. Claude Desktop) to let it use your Prevail vault as an MCP server.</div>
+        <pre className="overflow-auto rounded-md border border-border-subtle bg-background p-3 font-mono text-[11px] text-text-secondary">{snippet}</pre>
+        <button onClick={() => { navigator.clipboard.writeText(snippet).catch(() => {}); setCopied(true); window.setTimeout(() => setCopied(false), 1500); }}
+          className="mt-2 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+          {copied ? "Copied" : "Copy config"}
+        </button>
       </div>
     </>
   );
