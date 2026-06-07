@@ -4482,7 +4482,7 @@ function DomainActionsMenu({
         <Archive className="h-3.5 w-3.5" />
       </button>
       {open && (
-        <div className="absolute left-0 top-7 z-40 w-56 rounded-lg border border-border bg-surface p-1.5 shadow-xl">
+        <div className="absolute right-0 top-7 z-40 w-56 rounded-lg border border-border bg-surface p-1.5 shadow-xl">
           <button
             onClick={backup}
             disabled={busy !== null}
@@ -5438,15 +5438,16 @@ function ChatPanel({
           tabs stay visible whether you're on the chat transcript or
           a domain content view, so you can flip between them mid
           conversation. */}
-      <div className="flex min-w-0 shrink-0 items-center gap-3 overflow-x-auto border-b border-border-subtle px-6 py-2.5">
+      <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-6 py-2.5">
         {domain ? (
           <>
             {(() => {
               const I = domainIcon(domain);
-              return I ? <I className="h-5 w-5 text-accent" /> : <span className="text-accent">◆</span>;
+              return I ? <I className="h-5 w-5 shrink-0 text-accent" /> : <span className="text-accent">◆</span>;
             })()}
-            <span className="font-display text-lg font-semibold">{titleCase(domain)}</span>
+            <span className="shrink-0 font-display text-lg font-semibold">{titleCase(domain)}</span>
             <ContextScoreBadge score={ctxScore} onClick={() => setContextOpen(true)} />
+            <span className="hidden min-w-0 truncate text-sm text-text-muted md:inline">{domainBlurb(domain)}</span>
           </>
         ) : (
           <span className="font-mono text-xs uppercase tracking-[0.2em] text-text-muted">
