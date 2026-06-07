@@ -1409,6 +1409,25 @@ fn list_threads(vault: String, domain: Option<String>) -> Result<Vec<ThreadMeta>
         let turns = parse_thread_body(&body);
         out.push(thread_meta_from(&p, &fm, &body, &turns));
     }
+    // Dedup: a single conversation can land on disk under two slightly
+    // different slugs (e.g. `<ts>_<hash>` vs `<ts>-<hash>`) when more than one
+    // writer persists it. Both end in the same 8-hex content hash, so collapse
+    // by (domain, trailing-hash), keeping the most complete copy (most turns,
+    // then newest). This makes the rail show one entry regardless.
+    fn trailing_hash(slug: &str) -> Option<String> {
+        let tok = slug.rsplit(|c| c == '-' || c == '_').next()?;
+        if tok.len() == 8 && tok.chars().all(|c| c.is_ascii_hexdigit()) {
+            Some(tok.to_string())
+        } else {
+            None
+        }
+    }
+    out.sort_by(|a, b| b.turn_count.cmp(&a.turn_count).then(b.updated.cmp(&a.updated)));
+    let mut seen: std::collections::HashSet<(Option<String>, String)> = std::collections::HashSet::new();
+    out.retain(|m| match trailing_hash(&m.slug) {
+        Some(h) => seen.insert((m.domain.clone(), h)),
+        None => true,
+    });
     out.sort_by(|a, b| b.updated.cmp(&a.updated));
     Ok(out)
 }
