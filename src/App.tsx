@@ -1088,7 +1088,7 @@ function Brand({ className = "", fill = false }: { className?: string; fill?: bo
         {/* The logo mark stands in for the "E". Sized ~1.1em so the round mark
             reads at the same visual weight as the letters. */}
         <span className="inline-flex shrink-0 items-center" style={{ marginInline: "-0.04em" }} aria-label="E">
-          <PrevailLogo size={26} src="/logo-512.png" />
+          <PrevailLogo size={26} src="/logo-512.png" animated={false} />
         </span>
         <span>V</span>
         <span className="text-ai">A</span>
@@ -2072,7 +2072,7 @@ function Sidebar({
         <div className="flex min-w-0 flex-1 items-center gap-3" data-tauri-drag-region>
           {/* Collapsed: icon only. Expanded: the wordmark, whose "E" is the logo. */}
           {collapsed ? (
-            <PrevailLogo size={32} src="/logo-512.png" />
+            <PrevailLogo size={32} src="/logo-512.png" animated={false} />
           ) : (
             <Brand fill className="flex-1 font-sans text-2xl font-extrabold text-text-primary" />
           )}
