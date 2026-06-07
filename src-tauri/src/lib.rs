@@ -2627,3 +2627,87 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod usage_tests {
+    use super::*;
+
+    fn rec(
+        day: &str,
+        cli: &str,
+        model: Option<&str>,
+        domain: Option<&str>,
+        inp: Option<u64>,
+        out: Option<u64>,
+        cost: Option<f64>,
+        ok: bool,
+    ) -> UsageRecord {
+        UsageRecord {
+            ts: 0,
+            day: day.to_string(),
+            domain: domain.map(|s| s.to_string()),
+            thread: None,
+            cli: cli.to_string(),
+            model: model.map(|s| s.to_string()),
+            input_tokens: inp,
+            output_tokens: out,
+            cost_usd: cost,
+            ok,
+        }
+    }
+
+    #[test]
+    fn append_then_summarize_roundtrip() {
+        // Unique temp vault so concurrent test runs don't collide.
+        let vault = std::env::temp_dir().join(format!("prevail-usage-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&vault);
+        let vault_s = vault.to_string_lossy().to_string();
+
+        // Summary on a vault with no usage file → empty, not an error.
+        let empty = usage_summary(vault_s.clone()).expect("empty summary ok");
+        assert_eq!(empty.total_turns, 0);
+
+        // An engine turn (claude/opus, tokens+cost), a native turn (no tokens),
+        // and a second engine turn another day in another domain.
+        usage_append(vault_s.clone(), rec("2026-06-06", "claude", Some("opus"), Some("wealth"), Some(100), Some(40), Some(0.12), true)).unwrap();
+        usage_append(vault_s.clone(), rec("2026-06-06", "codex", None, Some("wealth"), None, None, None, true)).unwrap();
+        usage_append(vault_s.clone(), rec("2026-06-07", "claude", Some("opus"), Some("health"), Some(200), Some(60), Some(0.30), false)).unwrap();
+
+        // The file is real NDJSON — one line per turn.
+        let file = vault.join("usage").join("usage.ndjson");
+        let raw = fs::read_to_string(&file).expect("usage.ndjson written");
+        assert_eq!(raw.lines().filter(|l| !l.trim().is_empty()).count(), 3);
+
+        let s = usage_summary(vault_s.clone()).expect("summary ok");
+        assert_eq!(s.total_turns, 3);
+        assert_eq!(s.total_input_tokens, 300);
+        assert_eq!(s.total_output_tokens, 100);
+        assert!((s.total_cost_usd - 0.42).abs() < 1e-9);
+
+        // by_cli ranks by cost desc → claude (0.42) before codex (0.0).
+        assert_eq!(s.by_cli[0].key, "claude");
+        assert_eq!(s.by_cli[0].turns, 2);
+        let codex = s.by_cli.iter().find(|b| b.key == "codex").unwrap();
+        assert_eq!(codex.turns, 1);
+        assert_eq!(codex.input_tokens, 0);
+
+        // Missing model bucketed under the placeholder.
+        assert!(s.by_model.iter().any(|b| b.key == "—" && b.turns == 1));
+        assert!(s.by_model.iter().any(|b| b.key == "opus" && b.turns == 2));
+
+        // Two domains, two days; days sorted chronologically.
+        assert_eq!(s.by_domain.len(), 2);
+        assert_eq!(s.by_day.len(), 2);
+        assert_eq!(s.by_day[0].key, "2026-06-06");
+        assert_eq!(s.by_day[1].key, "2026-06-07");
+
+        // A corrupt line is skipped, not fatal.
+        use std::io::Write;
+        let mut f = fs::OpenOptions::new().append(true).open(&file).unwrap();
+        writeln!(f, "{{not valid json").unwrap();
+        let s2 = usage_summary(vault_s.clone()).expect("tolerates corrupt line");
+        assert_eq!(s2.total_turns, 3);
+
+        let _ = fs::remove_dir_all(&vault);
+    }
+}
