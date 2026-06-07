@@ -1095,10 +1095,14 @@ function Brand({ className = "", fill = false }: { className?: string; fill?: bo
     // Flexbox justify-between spreads the letters edge-to-edge across
     // whatever width the parent provides. No letter-spacing math.
     return (
-      <span className={`flex w-full items-baseline justify-between ${className}`}>
+      <span className={`flex w-full items-center justify-between ${className}`}>
         <span>P</span>
         <span>R</span>
-        <span>E</span>
+        {/* The logo mark stands in for the "E". Sized ~1.1em so the round mark
+            reads at the same visual weight as the letters. */}
+        <span className="inline-flex shrink-0 items-center" style={{ marginInline: "-0.04em" }} aria-label="E">
+          <PrevailLogo size={26} rounded={false} />
+        </span>
         <span>V</span>
         <span className="text-ai">A</span>
         <span className="text-ai">I</span>
@@ -2079,8 +2083,10 @@ function Sidebar({
         className={`flex shrink-0 items-center ${collapsed ? "justify-center" : "justify-between"} titlebar-pad border-b border-border-subtle px-2 py-2.5`}
       >
         <div className="flex min-w-0 flex-1 items-center gap-3" data-tauri-drag-region>
-          <PrevailLogo size={32} />
-          {!collapsed && (
+          {/* Collapsed: icon only. Expanded: the wordmark, whose "E" is the logo. */}
+          {collapsed ? (
+            <PrevailLogo size={32} />
+          ) : (
             <Brand fill className="flex-1 font-sans text-2xl font-extrabold text-text-primary" />
           )}
         </div>
