@@ -390,6 +390,8 @@ import {
   Mail,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   TrendingUp,
   Users,
   Wallet,
@@ -4178,9 +4180,9 @@ function DomainContextDrawer({
         <button
           onClick={onClose}
           className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
-          title="Hide context"
+          title="Collapse context"
         >
-          ×
+          <PanelRightClose className="h-4 w-4" />
         </button>
       </div>
       <div className="flex-1 overflow-y-auto">
@@ -4680,10 +4682,11 @@ function ChatPanel({
       .then(setUserMd)
       .catch(() => setUserMd(""));
   }, [vaultPath]);
-  // Domain context drawer — opens to the right showing state.md,
-  // decisions, journal, recent logs, skills. Items can be "used in
-  // chat" to inject as prompt context.
-  const [contextOpen, setContextOpen] = useState(false);
+  // Domain context column — a persistent right column showing state.md,
+  // decisions, journal, recent logs, skills. Collapsible; state persisted.
+  // Items can be "used in chat" to inject as prompt context.
+  const [contextOpen, setContextOpen] = useState<boolean>(() => lsGet("prevail.contextOpen") !== "0");
+  useEffect(() => { lsSet("prevail.contextOpen", contextOpen ? "1" : "0"); }, [contextOpen]);
   const [primedContext, setPrimedContext] = useState<{ label: string; body: string }[]>([]);
   function injectContext(body: string, label: string) {
     setPrimedContext((cur) => {
@@ -5294,13 +5297,14 @@ function ChatPanel({
       title: visible.slice(0, 60).replace(/\n/g, " "),
       startedAt: Date.now(),
     });
-    // Prefer the unified engine chat path when the prevail CLI is present
-    // AND we're in a domain (the engine scopes chat to a domain). The
-    // engine assembles its own domain state/skills on top of the message
-    // we send; we still pass the fully-built promptText so attachments,
-    // primed context and multi-turn history continue to work. Falls back
-    // to the native chat_send path when the engine isn't available.
-    const useEngine = engineAvailable && !!domain;
+    // Engine chat is DISABLED while the vault is on v2 but the installed
+    // `prevail` CLI is still v1: the CLI detects domains by `state.md`, not the
+    // v2 `_state.md`, so it rejects every migrated domain with "unknown domain".
+    // The native chat_send path works for any vault version and still injects
+    // domain state via the auto-loaded primedContext. Re-enable once the CLI
+    // ships v2 detection (VAULT-SPEC-v2 §12 stages 3–4).
+    const ENGINE_CHAT_ENABLED = false;
+    const useEngine = ENGINE_CHAT_ENABLED && engineAvailable && !!domain;
     try {
       if (useEngine) {
         await invoke("engine_chat", {
@@ -5525,25 +5529,8 @@ function ChatPanel({
             New chat
           </button>
         )}
-        {domain && (
-          <button
-            onClick={() => setContextOpen((v) => !v)}
-            title="Show domain state, decisions, journal, logs, skills"
-            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider ${
-              contextOpen
-                ? "border-accent-border bg-accent-soft text-accent"
-                : "border-border bg-surface text-text-muted hover:border-accent-border hover:bg-accent-soft hover:text-accent"
-            }`}
-          >
-            <BookOpen className="h-3 w-3" />
-            Context{(() => {
-              // Count only items the user actively added — auto-loaded
-              // state.md is implicit and shouldn't pad this badge.
-              const added = primedContext.filter((c) => !c.label.startsWith("auto:")).length;
-              return added > 0 ? ` · ${added}` : "";
-            })()}
-          </button>
-        )}
+        {/* Context lives in a persistent, collapsible right column now —
+            no toolbar toggle button. */}
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
@@ -6258,7 +6245,7 @@ function ChatPanel({
         </div>
       </div>
       </div>
-      {contextOpen && domain && domainPath && (
+      {domain && domainPath && (contextOpen ? (
         <DomainContextDrawer
           domain={domain}
           vaultPath={vaultPath}
@@ -6269,7 +6256,16 @@ function ChatPanel({
           preferredSet={preferredSkillsSet}
           onTogglePreferred={togglePreferredSkill}
         />
-      )}
+      ) : (
+        <button
+          onClick={() => setContextOpen(true)}
+          title="Show context"
+          className="flex w-9 shrink-0 flex-col items-center gap-2 border-l border-border-subtle bg-surface py-3 text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+        >
+          <PanelRightOpen className="h-4 w-4" />
+          <span className="font-mono text-[9px] uppercase tracking-[0.2em]" style={{ writingMode: "vertical-rl" }}>Context</span>
+        </button>
+      ))}
     </div>
   );
 }
