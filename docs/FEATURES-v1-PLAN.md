@@ -48,18 +48,23 @@ Legend — **Have** / **Partial** / **Missing**, and effort **S/M/L/XL**.
 
 ---
 
-## Phase 0 — Self-learning capture (active goal; foundation for #4)
+## Phase 0 — Self-learning capture (active goal; foundation for #4) — BUILT
 
-Everything memory/context depends on never losing intent. Finish this first.
+Everything memory/context depends on never losing intent. Done + verified:
 
-- [in progress] Capture **model** per turn in threads/sessions (done).
-- Save the **user's intent immediately on send** (close the streaming-debounce loss window).
-- Append-only **intent ledger** (`<vault>/<domain>/_intents.jsonl`): per turn — ts,
-  domain, thread, session, visible message, **exact prompt sent**, **raw output**,
-  cli, model, and **all preferences** (framework, lens, localOnly, web, serendipity,
-  auto, skills, attachments). This is the rebuild-from-scratch source of truth.
-- **Distill** intents → journal (replaces the manual one-line index). Decide:
-  on-demand vs. background process (user wants to weigh this).
+- [x] Capture **model** per turn in threads/sessions (was `null`).
+- [x] Save the **user's intent immediately on send** — `intent_append` fires
+  synchronously before the async model call, so a turn survives a crash mid-reply.
+- [x] Append-only **intent ledger** `<vault>/<domain>/_intents.jsonl` (vault root for
+  General): on send — exact prompt sent, message, cli, model, and **all preferences**
+  (framework, lens, localOnly, web, serendipity, auto, council, skills, attachments,
+  primed context); on completion — the **raw, unstripped reply** paired by session.
+  Engine + native paths. Rebuild-from-scratch source of truth.
+- [x] **Auto-journal**: `journal_append` writes a distilled line per completed turn
+  (date · model · intent snippet), newest-first — no longer manual-only.
+- [x] Verified: `intent_ledger_and_journal_roundtrip` Rust test (8 tests pass), tsc + build green.
+- [ ] Next (optional): LLM-based richer journal distillation + background pass
+  (user wants to weigh on-demand vs. daemon); surface the ledger in a Memory/Context UI (#4).
 
 ## Phase 1 — Config & lifecycle (quick wins, low risk)
 
