@@ -4172,8 +4172,12 @@ function DomainContextDrawer({
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-4 py-3">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Context</div>
-          <div className="font-display text-base font-semibold">
-            <span className="text-accent">◆</span> {titleCase(domain)}
+          <div className="flex items-center gap-2 font-display text-base font-semibold">
+            {(() => {
+              const I = domainIcon(domain);
+              return I ? <I className="h-4 w-4 text-accent" /> : <span className="text-accent">◆</span>;
+            })()}
+            {titleCase(domain)}
           </div>
         </div>
         <button
@@ -5430,7 +5434,10 @@ function ChatPanel({
       <div className="flex min-w-0 shrink-0 items-center gap-3 overflow-x-auto border-b border-border-subtle px-6 py-2.5">
         {domain ? (
           <>
-            <span className="text-accent">◆</span>
+            {(() => {
+              const I = domainIcon(domain);
+              return I ? <I className="h-5 w-5 text-accent" /> : <span className="text-accent">◆</span>;
+            })()}
             <span className="font-display text-lg font-semibold">{titleCase(domain)}</span>
             <ContextScoreBadge score={ctxScore} onClick={() => setContextOpen(true)} />
           </>
@@ -6965,7 +6972,10 @@ function CouncilPanel({
       <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-6 py-3">
         {domain ? (
           <>
-            <span className="text-accent">◆</span>
+            {(() => {
+              const I = domainIcon(domain);
+              return I ? <I className="h-5 w-5 text-accent" /> : <span className="text-accent">◆</span>;
+            })()}
             <span className="font-display text-lg font-semibold">{titleCase(domain)}</span>
             {domainPath && (
               <button
