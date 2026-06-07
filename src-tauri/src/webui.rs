@@ -115,20 +115,20 @@ struct InvokeReq {
 
 impl WebuiState {
     pub fn status(&self) -> WebuiStatus {
-        let i = self.inner.lock().unwrap();
+        let i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         WebuiStatus { running: i.running, port: i.port, user: i.user.clone() }
     }
 
     pub fn stop(&self) {
-        let mut i = self.inner.lock().unwrap();
+        let mut i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         i.running = false;
         i.stop = None; // dropping the listener Arc lets the accept loop error out
     }
 
     // Resolve a pending browser invoke with the host window's result.
     fn resolve(&self, id: u64, out: InvokeOut) {
-        let pending = { self.inner.lock().unwrap().pending.clone() };
-        let tx = pending.lock().unwrap().remove(&id);
+        let pending = { self.inner.lock().unwrap_or_else(|e| e.into_inner()).pending.clone() };
+        let tx = pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
         if let Some(tx) = tx {
             let _ = tx.send(out);
         }
@@ -136,12 +136,12 @@ impl WebuiState {
 
     // Broadcast a host event to every connected SSE client.
     pub fn broadcast(&self, event: &str, payload: &serde_json::Value) {
-        let sse = { self.inner.lock().unwrap().sse.clone() };
+        let sse = { self.inner.lock().unwrap_or_else(|e| e.into_inner()).sse.clone() };
         let frame = format!(
             "data: {}\n\n",
             serde_json::json!({ "event": event, "payload": payload })
         );
-        let mut clients = sse.lock().unwrap();
+        let mut clients = sse.lock().unwrap_or_else(|e| e.into_inner());
         clients.retain(|tx| tx.send(frame.clone()).is_ok());
     }
 
@@ -157,7 +157,7 @@ impl WebuiState {
         let server = tiny_http::Server::from_listener(listener.try_clone().map_err(|e| e.to_string())?, None)
             .map_err(|e| e.to_string())?;
         {
-            let mut i = self.inner.lock().unwrap();
+            let mut i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
             i.running = true;
             i.port = port;
             i.token = token.clone();
@@ -165,9 +165,9 @@ impl WebuiState {
             i.pass = pass.clone();
             i.stop = Some(Arc::new(listener));
         }
-        let next_id = { self.inner.lock().unwrap().next_id.clone() };
-        let pending = { self.inner.lock().unwrap().pending.clone() };
-        let sse = { self.inner.lock().unwrap().sse.clone() };
+        let next_id = { self.inner.lock().unwrap_or_else(|e| e.into_inner()).next_id.clone() };
+        let pending = { self.inner.lock().unwrap_or_else(|e| e.into_inner()).pending.clone() };
+        let sse = { self.inner.lock().unwrap_or_else(|e| e.into_inner()).sse.clone() };
 
         std::thread::spawn(move || {
             for req in server.incoming_requests() {
@@ -240,10 +240,10 @@ fn handle(
         }
         let id = next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx): (Sender<InvokeOut>, Receiver<InvokeOut>) = channel();
-        pending.lock().unwrap().insert(id, tx);
+        pending.lock().unwrap_or_else(|e| e.into_inner()).insert(id, tx);
         let _ = app.emit_to("main", "webui:invoke", serde_json::json!({ "id": id, "cmd": r.cmd, "args": r.args }));
         let out = rx.recv_timeout(Duration::from_secs(310)).unwrap_or(InvokeOut { ok: false, data: serde_json::Value::Null, error: "host timeout".into() });
-        pending.lock().unwrap().remove(&id);
+        pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
         let payload = if out.ok { serde_json::json!({ "data": out.data }) } else { serde_json::json!({ "error": out.error }) };
         let _ = req.respond(json_response(200, &payload));
         return;
@@ -260,7 +260,7 @@ fn handle(
     // ── SSE events ──
     if path == "/api/events" {
         let (tx, rx) = channel::<String>();
-        sse.lock().unwrap().push(tx);
+        sse.lock().unwrap_or_else(|e| e.into_inner()).push(tx);
         let reader = SseReader { rx, buf: Vec::new() };
         let response = tiny_http::Response::empty(200)
             .with_header(header("Content-Type", "text/event-stream"))
