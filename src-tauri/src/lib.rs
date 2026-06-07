@@ -2784,6 +2784,7 @@ pub fn run() {
         .setup(|app| {
             use tauri::menu::{MenuBuilder, MenuItemBuilder};
             use tauri::tray::TrayIconBuilder;
+            use tauri::Manager;
             let show = MenuItemBuilder::with_id("show", "Show Prevail").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "Quit Prevail").build(app)?;
             let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
@@ -2815,6 +2816,19 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Headless / auto-start: if PREVAIL_WEBUI_USER + PREVAIL_WEBUI_PASS
+            // are set, start the WebUI bridge on boot (for a 24/7 remote
+            // assistant, and for automated validation). Loopback-only + the
+            // same allowlist as the manual toggle.
+            if let (Ok(u), Ok(p)) = (std::env::var("PREVAIL_WEBUI_USER"), std::env::var("PREVAIL_WEBUI_PASS")) {
+                if !u.is_empty() && !p.is_empty() {
+                    let port: u16 = std::env::var("PREVAIL_WEBUI_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8787);
+                    let handle = app.handle().clone();
+                    let st = app.state::<webui::WebuiState>();
+                    let _ = st.start(handle, port, u, p);
+                }
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

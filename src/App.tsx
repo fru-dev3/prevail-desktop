@@ -72,7 +72,7 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.3.0";
+const APP_VERSION = "0.4.0";
 
 // Canonical on/off toggle. Track 36×20px, thumb 16×16px, slides
 // 18px. Every switch in the app routes through this so we never
@@ -1594,6 +1594,8 @@ export default function App() {
   // bridge starts on demand). Re-runs when the vault changes.
   useEffect(() => {
     if (!vaultPath) return;
+    // The distillation daemon is owned by the desktop host, not a browser tab.
+    if (isBrowser()) return;
     const on = getPref(PREF.persistentMemory, "1") === "1" && getPref(PREF.autoCompression, "1") === "1";
     if (on) {
       invoke("distill_start", { cfg: distillCfgFromPrefs(vaultPath) }).catch((e) => console.error("distill_start", e));
@@ -1804,6 +1806,10 @@ export default function App() {
 
   useEffect(() => {
     if (!vaultPath) return;
+    // In a browser tab, wait until authenticated — otherwise the scan fires a
+    // pre-login invoke that 401s and leaves a stale "unauthorized" error. The
+    // webAuthed dep re-runs this once sign-in completes.
+    if (isBrowser() && !webAuthed) return;
     let cancelled = false;
     let attempts = 0;
     setDomainsLoaded(false);
@@ -1840,7 +1846,7 @@ export default function App() {
     };
     tryScan();
     return () => { cancelled = true; };
-  }, [vaultPath]);
+  }, [vaultPath, webAuthed]);
 
   // Onboarding auto-open REMOVED. It raced the vault scan (firing while
   // domains were still loading) and popped a modal over an already-populated
