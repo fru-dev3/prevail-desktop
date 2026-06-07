@@ -1,7 +1,7 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
 import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -2710,7 +2710,13 @@ function ThreadsRail({
                         <PenLine className="h-3 w-3" />
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${t.title}"?`)) deleteThread(t.path); }}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            const ok = await tauriConfirm(`Delete "${t.title}"?`, { title: "Delete thread", kind: "warning" });
+                            if (ok) deleteThread(t.path);
+                          } catch (err) { console.error("confirm delete", err); }
+                        }}
                         title="Delete"
                         className="flex h-5 w-5 items-center justify-center rounded bg-background/80 text-text-muted hover:text-err"
                       >
@@ -4339,7 +4345,8 @@ function DrawerImportsSection({
   }, [domain]);
 
   async function vacuum(days: number) {
-    if (!window.confirm(`Delete imports older than ${days} days from ${titleCase(domain)}?`)) return;
+    const ok = await tauriConfirm(`Delete imports older than ${days} days from ${titleCase(domain)}?`, { title: "Prune imports", kind: "warning" }).catch(() => false);
+    if (!ok) return;
     try {
       const n = await invoke<number>("ingestion_vacuum_imports", { domain, olderThanDays: days });
       if (n > 0) {
