@@ -381,9 +381,11 @@ fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String
                 v.push("--model".to_string());
                 v.push(m.to_string());
             }
-            v.push("-p".to_string());
-            v.push("--".to_string()); // end options — prompt may start with "--"
-            v.push(prompt.to_string());
+            // agy's -p/--print takes the prompt as a VALUE (unlike claude/codex
+            // where it's a positional). Use `--print=<value>` so a prompt that
+            // starts with "--" (the "--- Conversation so far ---" preamble) is
+            // passed safely without `--` being parsed as the value.
+            v.push(format!("--print={prompt}"));
             ("agy".to_string(), v)
         }
         "ollama" => {
