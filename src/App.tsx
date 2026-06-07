@@ -1,7 +1,8 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { open, confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
+import { open, save, confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
+import { enable as autostartEnable, disable as autostartDisable, isEnabled as autostartIsEnabled } from "@tauri-apps/plugin-autostart";
 import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -9519,6 +9520,7 @@ function SettingsHeader({ title, subtitle }: { title: string; subtitle?: string 
 const PREF = {
   sendKey: "prevail.pref.sendKey",                  // "enter" | "cmd-enter"
   desktopNotif: "prevail.pref.desktopNotif",        // "1" | "0"
+  closeToTray: "prevail.pref.closeToTray",          // "1" | "0" — hide to tray on window close
   soundOnDone: "prevail.pref.soundOnDone",          // "1" | "0"
   autoConvertLongPaste: "prevail.pref.autoConvertLongPaste", // "1" | "0"
   stripSycophancy: "prevail.pref.stripSycophancy",  // "1" | "0"
@@ -9554,6 +9556,10 @@ function getPref(key: string, fallback: string): string {
 function setPref(key: string, v: string): void { lsSet(key, v); }
 
 function GeneralSection() {
+  const [startOnBoot, setStartOnBoot] = useState(false);
+  useEffect(() => { autostartIsEnabled().then(setStartOnBoot).catch(() => {}); }, []);
+  const [closeToTray, setCloseToTray] = useState(() => getPref(PREF.closeToTray, "0") === "1");
+  useEffect(() => { invoke("set_close_to_tray", { enabled: closeToTray }).catch(() => {}); }, [closeToTray]);
   const [sendKey, setSendKeyState] = useState(() => getPref(PREF.sendKey, "enter"));
   const [desktopNotif, setDesktopNotif] = useState(() => getPref(PREF.desktopNotif, "0") === "1");
   const [soundDone, setSoundDone] = useState(() => getPref(PREF.soundOnDone, "0") === "1");
@@ -9611,6 +9617,16 @@ function GeneralSection() {
         subtitle="App-wide behavior preferences."
       />
       <div className="rounded-lg border border-border bg-surface px-5">
+        <Row
+          title="Start on boot"
+          desc="Launch Prevail automatically when you sign in to this Mac."
+          control={<Switch on={startOnBoot} onChange={async (v) => { try { if (v) await autostartEnable(); else await autostartDisable(); setStartOnBoot(v); } catch (e) { console.error("autostart", e); } }} />}
+        />
+        <Row
+          title="Close to tray"
+          desc="Keep Prevail running in the menu bar when you close the window. Quit from the tray icon or ⌘Q."
+          control={<Switch on={closeToTray} onChange={(v) => { setCloseToTray(v); setPref(PREF.closeToTray, v ? "1" : "0"); }} />}
+        />
         <Row
           title="Send messages with"
           desc="Choose which key combination sends messages. Use Shift+Enter for new lines either way."
@@ -11151,6 +11167,68 @@ function AboutSection() {
   const [checkErr, setCheckErr] = useState<string | null>(null);
   const [includePre, setIncludePre] = useState<boolean>(() => lsGet("prevail.about.includePrerelease") === "1");
   useEffect(() => { lsSet("prevail.about.includePrerelease", includePre ? "1" : "0"); }, [includePre]);
+  const [diag, setDiag] = useState<string | null>(null);
+  const [diagCopied, setDiagCopied] = useState(false);
+
+  async function runDiagnosis() {
+    try {
+      const d = await invoke<{ desktop_version: string; os: string; arch: string; engine_version?: string; engine_bin: string; engine_bundled: boolean; app_support: string }>("app_diagnostics");
+      let clis: CliInfo[] = [];
+      try { clis = await invoke<CliInfo[]>("detect_clis"); } catch { /* ignore */ }
+      setDiag([
+        `Prevail Desktop v${d.desktop_version} (${d.os}/${d.arch})`,
+        `Engine: ${d.engine_version ?? "?"} ${d.engine_bundled ? "(bundled sidecar)" : `(${d.engine_bin})`}`,
+        `App support: ${d.app_support}`,
+        `Agents: ${clis.map((c) => `${c.id}${c.available ? "✓" : "✗"}`).join("  ") || "none detected"}`,
+      ].join("\n"));
+    } catch (e) { setDiag(`diagnosis failed: ${e}`); }
+  }
+
+  async function exportConfig() {
+    const cfg: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)!;
+      if (k.startsWith("prevail.")) cfg[k] = localStorage.getItem(k) ?? "";
+    }
+    try {
+      const path = await save({ defaultPath: "prevail-config.json", filters: [{ name: "JSON", extensions: ["json"] }] });
+      if (!path) return;
+      await invoke("write_text_file", { path, contents: JSON.stringify(cfg, null, 2) });
+    } catch (e) { console.error("exportConfig", e); }
+  }
+
+  async function importConfig() {
+    try {
+      const path = await open({ multiple: false, directory: false, filters: [{ name: "JSON", extensions: ["json"] }] });
+      if (!path || typeof path !== "string") return;
+      const json = await invoke<string>("read_text_file", { path });
+      const cfg = JSON.parse(json) as Record<string, string>;
+      for (const [k, v] of Object.entries(cfg)) if (k.startsWith("prevail.")) localStorage.setItem(k, String(v));
+      window.location.reload();
+    } catch (e) { console.error("importConfig", e); }
+  }
+
+  async function resetConfig() {
+    const ok = await tauriConfirm("Reset all Prevail preferences to defaults? Your vault, chats, and stored secrets are not affected.", { title: "Reset to defaults", kind: "warning" });
+    if (!ok) return;
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)!;
+      // Reset prefs + desktop settings, but keep the vault selection.
+      if ((k.startsWith("prevail.pref.") || k.startsWith("prevail.desktop.") || k.startsWith("prevail.about.")) && k !== "prevail.desktop.vaultPath") keys.push(k);
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+    window.location.reload();
+  }
+
+  async function uninstall(scope: "app" | "data") {
+    const msg = scope === "app"
+      ? "Remove Prevail.app from Applications? Your config, chats, and secrets stay so you can reinstall later."
+      : "Remove the app, all app data, caches, and stored secrets? Your vault folder is NOT deleted. This cannot be undone.";
+    const ok = await tauriConfirm(msg, { title: "Uninstall Prevail", kind: "warning" });
+    if (!ok) return;
+    try { await invoke("app_uninstall", { scope }); } catch (e) { console.error("uninstall", e); }
+  }
 
   async function checkForUpdates() {
     setChecking(true);
@@ -11252,6 +11330,53 @@ function AboutSection() {
         <Row label="Report an issue" href="https://github.com/fru-dev3/prevail-desktop/issues/new" />
         <Row label="Prevail CLI" href="https://github.com/fru-dev3/prevail" />
         <Row label="Official website" href="https://prevail.sh" />
+      </div>
+
+      {/* Config — export / import / reset */}
+      <div className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+        <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Configuration</div>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={exportConfig}
+            className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent">Export config…</button>
+          <button onClick={importConfig}
+            className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent">Import config…</button>
+          <button onClick={resetConfig}
+            className="rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-sm text-warn hover:bg-warn/20">Reset all to defaults</button>
+        </div>
+        <div className="mt-2 text-xs text-text-secondary">Backs up / restores all app preferences (not your vault). Reset clears every preference and reloads.</div>
+      </div>
+
+      {/* Diagnostics */}
+      <div className="mt-4 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Diagnostics</div>
+          <div className="flex gap-2">
+            <button onClick={runDiagnosis}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent">Run diagnosis</button>
+            <button onClick={() => { if (diag) { navigator.clipboard.writeText(diag).catch(() => {}); setDiagCopied(true); window.setTimeout(() => setDiagCopied(false), 1500); } }}
+              disabled={!diag}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-40">{diagCopied ? "Copied" : "Debug dump"}</button>
+          </div>
+        </div>
+        {diag && <pre className="max-h-48 overflow-auto rounded-md border border-border-subtle bg-background p-3 font-mono text-[11px] text-text-secondary">{diag}</pre>}
+      </div>
+
+      {/* Danger zone — uninstall (never touches the vault) */}
+      <div className="mt-4 rounded-2xl border border-warn/30 bg-warn/5 p-5">
+        <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-warn">Danger zone</div>
+        <div className="mb-3 text-xs text-text-secondary">Removes the app and its data. Your vault is never deleted.</div>
+        <div className="flex flex-col gap-2">
+          <button onClick={() => uninstall("app")}
+            className="rounded-md border border-border bg-background px-3 py-2 text-left text-sm text-text-primary hover:border-warn/50">
+            <div className="font-medium">Uninstall the app</div>
+            <div className="text-xs text-text-secondary">Remove /Applications/Prevail.app. Keeps all config, chats, and secrets.</div>
+          </button>
+          <button onClick={() => uninstall("data")}
+            className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-left text-sm text-warn hover:bg-warn/20">
+            <div className="font-medium">Uninstall everything (keep vault)</div>
+            <div className="text-xs">Remove the app, all app data, caches, and stored secrets. Your vault folder stays.</div>
+          </button>
+        </div>
       </div>
 
       <div className="mt-6 flex items-center justify-between gap-3 px-1 text-[11px] text-text-muted">

@@ -27,7 +27,7 @@ use tauri::Emitter;
 // resolve_bin_abs() style: check ~/.local/bin, /opt/homebrew/bin,
 // /usr/local/bin, then fall back to the bare name (PATH resolution).
 
-fn resolve_prevail_bin() -> String {
+pub(crate) fn resolve_prevail_bin() -> String {
     // 1. Bundled engine sidecar — the app ships its own `prevail` engine
     //    (Tauri `externalBin`) so a fresh download is fully self-contained
     //    and never depends on a separately-installed CLI. Tauri places the

@@ -13,6 +13,9 @@
     "fs:default",
     "fs:allow-read-text-file",
     "fs:allow-read-dir",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled",
     "shell:default",
     {
       "identifier": "shell:allow-execute",
