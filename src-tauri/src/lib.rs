@@ -14,6 +14,7 @@
 mod distill;
 mod engine;
 mod ingestion;
+mod surface;
 mod telegram_bridge;
 mod webui;
 
@@ -862,6 +863,12 @@ fn domain_dir(vault: &str, domain: &Option<String>) -> PathBuf {
         Some(d) if is_safe_domain(d) => PathBuf::from(vault).join(d),
         _ => PathBuf::from(vault),
     }
+}
+
+// Public wrapper for sibling modules (surface.rs) — applies the same
+// safe-domain validation.
+pub(crate) fn domain_dir_pub(vault: &str, domain: &str) -> PathBuf {
+    domain_dir(vault, &Some(domain.to_string()))
 }
 
 // Guard a frontend-supplied path before reading/writing it. Blocks traversal
@@ -2878,6 +2885,7 @@ pub fn run() {
             distill::distill_stop,
             distill::distill_status,
             distill::distill_run_once,
+            surface::domain_surface,
             benchmark_questions,
             benchmark_save_question,
             benchmark_delete_question,
