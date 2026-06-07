@@ -1,0 +1,182 @@
+[
+  {
+    "id": "business-hire-vs-contractor",
+    "domain": "business",
+    "prompt": "Context:\n- Current contractor utilization: ~30 hours/week, billing me ~$320k/yr\n- Sales pipeline: confident in 18+ months of comparable demand\n- The contractor is great but has signaled she's going to take a full-time role somewhere within 6 months\n- Hiring a full-timer: ~$180k base + ~$45k benefits/payroll tax = $225k all-in\n- I bill the front-end work out at ~$280/hr; a full-timer at 1,800 productive hrs/yr is ~$504k of billable capacity\n- Onboarding ramp: about 2 months before they're net-productive\n\nI run a 6-person consulting firm. I need senior front-end capacity. Should I hire a full-time engineer at $180k base, or keep using a $200/hr contractor for the next year?",
+    "expected_decision": "Hire full-time; the contractor math only works through Q4 then becomes a drag",
+    "expected_verdict_keywords": [
+      "full time",
+      "runway",
+      "18 month",
+      "ramp",
+      "opportunity cost"
+    ],
+    "reply": "**Hire the full-timer — the math, the continuity risk, and your 18-month pipeline all point the same direction.**\n\n**The math.** Contractor today: ~30 hrs/wk × ~50 wks × $200 = ~$300k cash out, and you bill that capacity at $280/hr × ~1,500 hrs ≈ $420k in, so ~$120k gross margin. Full-timer all-in at $225k delivering ~1,800 productive hours bills at ~$504k, so ~$279k gross margin — roughly **$160k/yr better**, even after eating a 2-month ramp (~$37k of lost contribution in year one). You're still net ahead in year one and well ahead from year two on.\n\n**The risk side reinforces it.** Your contractor has already told you she's leaving within 6 months. That's not a stable base case — that's a countdown. If she walks before you've hired and ramped a replacement, you're staring at a capacity gap against a pipeline you're confident in for 18+ months. Starting the hire now lets her overlap with the new engineer for knowledge transfer, which is the cheapest insurance you'll ever buy on this decision.\n\n**The main thing that would flip this:** pipeline softness. The case rests on \"18+ months of comparable demand.\" If that's more hope than signal — named accounts, signed SOWs, repeat clients — derisk by hiring at a slightly lower level (~$150k) or starting with a senior contract-to-hire, rather than staying on the current contractor and hoping she stays.",
+    "ms": 17359,
+    "council": false,
+    "cli": "claude",
+    "ok": true
+  },
+  {
+    "id": "career-leave-or-stay",
+    "domain": "career",
+    "prompt": "Context:\n- Current role: stable but flat, last promotion 2.5 years ago, manager has been honest that the next promotion isn't on the near-term plan\n- Startup: 80 people, $4M MRR growing 18% MoM, just closed $40M Series B at $250M post\n- I would join as a tech lead with two reports\n- Equity math: 0.4% of $250M = $1M paper value, but obviously discount heavily for outcome probability\n- Liquid savings: 18 months of expenses\n- Partner is supportive; no near-term major financial obligations\n\nI've been at my current company 6 years, senior engineer, comp $310k all-in. A Series B startup is offering $250k base + 0.4% equity with a 4-year vest. Should I leave?",
+    "expected_decision": "Leave; take the Series B offer",
+    "expected_verdict_keywords": [
+      "vest",
+      "equity",
+      "optionality",
+      "glassdoor",
+      "two year"
+    ],
+    "reply": "**Take the offer — the asymmetry favors it.** You're at a stalled role with a clear-eyed manager telling you growth is paused, and you have 18 months of runway plus a supportive partner. That's exactly the financial and personal setup that lets you absorb a $60k cash cut for a tech lead title, two reports, and equity optionality you won't get by waiting.\n\nThe startup signal is unusually strong: 18% MoM at $4M MRR is hypergrowth, and a $40M Series B at $250M post means top-tier investors underwrote that trajectory. Your 0.4% isn't lottery-ticket money — even a modest 3-5x outcome over four years puts the paper value in the $3-5M range, and the *career* compounding (tech lead → eng manager → director at the next place) is worth more than the equity in expectation. The $60k/yr cut is real but recoverable; the 2.5-year promotion stall is the more expensive line item if you stay.\n\nTwo things to verify before signing: (1) the **vesting cliff and acceleration terms** — single-trigger on acquisition matters, and a 1-year cliff means you eat the cash cut with zero equity if it doesn't work out in year one; (2) **whether the tech lead role has a real path to eng manager** within 12-18 months, or if you're being hired into a permanent IC ceiling under a different name. Ask the hiring manager directly — their answer (and how fast they answer) tells you a lot.",
+    "ms": 18057,
+    "council": false,
+    "cli": "claude",
+    "ok": true
+  },
+  {
+    "id": "estate-term-vs-whole-life",
+    "domain": "estate",
+    "prompt": "Context:\n- I'm 40, in good health, married, two kids ages 8 and 11\n- Spouse earns ~40% of household income\n- Household has $400k in retirement, $80k in liquid savings, 4 years left on mortgage\n- The youngest kid will be 31 in 20 years — fully independent by then\n- The agent's pitch on whole life: \"guaranteed return, tax-advantaged growth\"\n\nAn insurance agent is recommending a $1M whole-life policy at $9,800/yr. A comparable 20-year term policy is $850/yr. Which should I get?",
+    "expected_decision": "Buy term, invest the difference; whole life is wrong for this profile",
+    "expected_verdict_keywords": [
+      "term",
+      "buy term invest",
+      "irr",
+      "commission",
+      "20 year"
+    ],
+    "reply": "**Bottom line: Get the 20-year term policy. The whole-life pitch fails the math for your situation.**\n\nThe $8,950/year difference invested in a low-cost index fund (even at a conservative 6% real return) compounds to roughly **$330k over 20 years** — far exceeding the whole-life policy's cash value at that point. Whole life's \"guaranteed return\" is typically 2-4% after fees and mortality charges, which loses to inflation-adjusted equity returns over any 20-year window.\n\nYour situation specifically makes term the obvious choice:\n- **Term matches your actual need.** In 20 years your kids are 28 and 31 — independent. Your mortgage is paid off in 4. Your $400k retirement keeps compounding. The window where your family genuinely needs life insurance income replacement is exactly the term-policy window.\n- **You have better tax-advantaged buckets first.** Max 401(k), backdoor Roth, HSA, 529s. Whole life only makes sense as a tax shelter *after* those are full, and usually only for high-net-worth estate planning (multi-million estates facing estate tax) — not your profile.\n- **Liquidity matters.** Whole life locks $9,800/yr into a vehicle with brutal surrender charges in early years. At 40 with two young kids, you want flexibility, not a 20-year commitment to an illiquid product paying mediocre returns.\n\nThe agent earns a commission of roughly 50-100% of first-year whole-life premium (~$5-10k) vs. ~$50-100 on term. That conflict explains the pitch. Buy the $850 term, invest the difference, revisit in 20 years when you're debt-free with adult kids and a much larger retirement balance.",
+    "ms": 15926,
+    "council": false,
+    "cli": "claude",
+    "ok": true
+  },
+  {
+    "id": "health-strength-vs-cardio",
+    "domain": "health",
+    "prompt": "Context:\n- Goal: live well into my 80s with full mobility and independence\n- Family history: father had a hip replacement at 68, mostly due to muscle loss + falls\n- Current bodyfat: ~22%, mildly elevated\n- I dislike running but can tolerate cycling and rowing\n- Have access to a basic gym at home (barbell, dumbbells, rower)\n\nI'm 42, deskbound, average fitness, no injuries. I have about 4 hours a week to train. Should I prioritize strength or cardio?",
+    "expected_decision": "Prioritize 2-3 strength sessions/week, add 150 min/wk moderate cardio after that's locked in",
+    "expected_verdict_keywords": [
+      "strength",
+      "150",
+      "lean mass",
+      "mortality",
+      "two session"
+    ],
+    "reply": "**Prioritize strength — 3 hours lifting, 1 hour cardio.** Muscle and bone loss are the dominant threats to 80s-mobility given your father's history, and cardio at your level can largely be covered by the rowing-heavy strength sessions plus daily walking.\n\n**Why strength wins the allocation**\n\nSarcopenia (age-related muscle loss) starts accelerating in your 40s and is the direct mechanism behind the falls → hip replacement pattern you saw with your father. Strength training is the only intervention that meaningfully reverses it, and it simultaneously builds bone density, improves insulin sensitivity (helps the 22% bodyfat), and protects joints. Four hours a week is enough to make real progress on strength, but not enough to seriously chase both goals — so the higher-leverage one wins.\n\n**Suggested split (4 hrs/week)**\n\n- **3× 50-min full-body strength sessions** — barbell squat, deadlift, overhead press, bench, row, hinge variations. Progressive overload is the whole game. Two heavy sets per movement, 5–8 reps.\n- **1× 30-min Zone 2 rowing or cycling** — easy conversational pace. Builds aerobic base without eating recovery.\n- **Free: 20-min finisher on lift days** — 5–8 min hard rowing intervals. Covers VO2max cheaply.\n- **Daily 20–30 min walk** — not counted in the 4 hours; this is your real cardio base and the single best longevity habit.\n\n**The tradeoff to know**\n\nYou'll improve cardio more slowly than someone running 4 hrs/week. That's fine — Zone 2 + intervals + walking gets you 80% of the cardiovascular benefit, and you'll still drop bodyfat as muscle mass rises. The thing you can't buy back at 70 is the muscle and bone you didn't build at 42.\n\nWant me to sketch out the actual weekly program with sets/reps and progression?",
+    "ms": 20235,
+    "council": false,
+    "cli": "claude",
+    "ok": true
+  },
+  {
+    "id": "insurance-umbrella-coverage",
+    "domain": "insurance",
+    "prompt": "Context:\n- Annual household income: $310k\n- Existing auto liability: $300k/accident\n- Existing homeowners liability: $500k\n- Family activities: two kids in youth sports, occasional pool guests, dog (large breed, no bite history)\n- Umbrella quotes I've gotten: $400-500/yr for $2M of coverage on top of existing policies\n\nDo I need umbrella liability insurance? I have $400k in liquid assets and a $1.2M home.",
+    "expected_decision": "Buy a $2M umbrella policy now; the cost is trivial relative to the exposure",
+    "expected_verdict_keywords": [
+      "umbrella",
+      "net worth",
+      "$2 million",
+      "asymptotic",
+      "$400"
+    ],
+    "reply": "**Yes — buy the $2M umbrella now.** Your $1.5M+ exposed net worth (home equity + liquid assets + future income) sits well above your $300k/$500k underlying limits, and a large-breed dog + pool + youth-sports car trips are exactly the fact patterns that produce judgments above primary limits. $400-500/yr to close a seven-figure gap is one of the highest-ROI checks you'll write.",
+    "ms": 10287,
+    "council": false,
+    "cli": "claude",
+    "ok": true
+  },
+  {
+    "id": "social-difficult-conversation",
+    "domain": "social",
+    "prompt": "Context:\n- 15-year history; we've been each other's support through a lot\n- The pattern (venting + dismissing advice) has been escalating over the past year, not a one-off\n- They are going through a genuinely hard time (job loss, divorce)\n- I've tried steering conversations to other topics; doesn't stick\n- I've tried less frequent contact; same intensity per call\n- I'm not their therapist and don't want to be; I just want a friend, not a vent target\n- I genuinely value the friendship and don't want it to end if it can be salvaged\n\nA close friend of 15 years has been increasingly negative every time we get together — venting about the same issues, dismissing my advice when I give it, leaving me drained. I've been avoiding them for 2 months. Do I have the conversation, or just let the friendship fade?",
+    "expected_decision": "Have the conversation in person within the next week; lead with the impact on you, not their character",
+    "expected_verdict_keywords": [
+      "in person",
+      "impact",
+      "this week",
+      "specific",
+      "boundary"
+    ],
+    "reply": "Have the conversation — a 15-year friendship is worth one hard, honest exchange before you let it fade.\n\nFading by avoidance is the worst of both options: you lose the friendship anyway, and they never get the chance to know what changed. Given the history and what they're going through (job loss + divorce), they're probably aware they've been hard to be around — most people in crisis are. What you're feeling is real and the pattern is real, but two months of silence will read to them as abandonment during their worst year, which is a heavier ending than the friendship deserves.\n\nThe conversation isn't \"you're draining me.\" It's \"I love you, I'm in this for the long haul, AND I can't be your only outlet — I'm not equipped for it and it's starting to cost the friendship. I need us to be able to talk about other things too, and I need you to have a therapist or support group carrying the weight I can't.\" That reframes it from rejection to a boundary that *preserves* the friendship. If they hear it and adjust (even imperfectly), you have your friend back. If they can't, you'll have your answer — and you'll have given the 15 years the respect of an honest ending instead of a ghosted one.\n\nOne note: do it when you have capacity for it to go badly, not after a draining call when you're already raw.",
+    "ms": 16862,
+    "council": false,
+    "cli": "claude",
+    "ok": true
+  },
+  {
+    "id": "vision-five-year-direction",
+    "domain": "vision",
+    "prompt": "Context:\n- Consulting firm: 6 people, ~$1.6M ARR, ~$280k take-home for me as principal, steady but not growing\n- SaaS product idea: vertical workflow tool for a niche I deeply understand, no validated customers yet\n- Liquid runway if I stopped earning today: 18 months personal\n- I'm 42; energy and learning capacity still high but recognizably finite\n- Family: spouse earns ~$140k, two kids 8 and 11\n- The thing that has been nagging me: I haven't built anything new in 3 years and I notice the boredom\n\nI run a profitable 6-person consulting firm and I'm 5 years into it. I have a SaaS product idea that's been nagging at me for 2 years. Do I keep the firm and add the product on the side, fully transition to the product, or stay focused on the firm?",
+    "expected_decision": "Reduce client work to 3 days/week now, redirect 2 days to the product over 18 months; revisit when the product hits $30k MRR or 18 months elapses, whichever first",
+    "expected_verdict_keywords": [
+      "optionality",
+      "runway",
+      "MRR",
+      "18 month",
+      "kill criteria"
+    ],
+    "reply": "**My read: pursue the SaaS as a deliberate side-pursuit for 6–9 months before deciding anything bigger — the boredom is real signal, but you don't have enough information yet to justify dismantling a $280k take-home business for an unvalidated idea.**\n\nThe three options aren't actually equal. \"Fully transition\" right now is the weakest — you'd be trading a known cash machine for an unvalidated bet at exactly the moment when 18 months runway sounds like a lot but evaporates fast with two kids and a spouse earning $140k (your household burn is almost certainly built around your income, not hers). \"Stay focused on the firm\" ignores the most important data point in your message: 3 years without building something new, and you noticed. That's not a productivity problem, it's a 42-year-old principal quietly recognizing that steady-but-not-growing is its own kind of risk. The middle path — keep the firm, carve out 10–15 hrs/week for 6 months to get the SaaS to 5–10 paying design partners — converts the nagging idea into actual evidence. Either you find real pull (then you have a defensible reason to restructure the firm, hire a #2, or sell), or you don't (and the boredom was about needing a creative outlet, not a new company).\n\nThe thing I'd push back on: don't frame this as \"side project.\" Frame it as a 6-month validation sprint with a written kill/scale decision at the end. Side projects drift for years; sprints force the data. The firm pays for the experiment, your domain expertise compresses the discovery cycle, and you protect the family's downside while testing whether the idea has legs. What's the niche — and what's stopped you from talking to 10 potential buyers in the last 2 years?",
+    "ms": 19557,
+    "council": false,
+    "cli": "claude",
+    "ok": true
+  },
+  {
+    "id": "wealth-buy-vs-rent",
+    "domain": "real-estate",
+    "prompt": "Context:\n- 20% down ($170k) is what we have in liquid savings\n- Mortgage rates today: 7.1% on 30-year fixed\n- Property tax in this city: 1.8%, insurance: 0.5%, maintenance budget: 1%\n- Career: at least one of us may relocate for work in the next 3-5 years\n- Two kids, ages 5 and 8 — current school district is great\n- Rent has risen ~4%/yr the last two years\n\nWe've been renting in our current city for 3 years. Our rent is $4,200/mo. We could buy a comparable house for $850k. Should we buy?",
+    "expected_decision": "Continue renting and invest the down-payment cash; revisit if you plan to stay 7+ years",
+    "expected_verdict_keywords": [
+      "rent",
+      "5%",
+      "breakeven",
+      "7 year",
+      "transaction cost"
+    ],
+    "reply": "**Don't buy — rent for now.** The 3–5 year relocation risk is the dealbreaker; transaction costs alone (~8–10% of $850k = $68–85k) likely exceed any equity you'd build in that window, and the monthly cost of owning is meaningfully higher than your rent.\n\n**The math on owning at $850k, 20% down, 7.1%:**\n- Mortgage P&I on $680k: ~$4,570/mo\n- Property tax (1.8%): ~$1,275/mo\n- Insurance (0.5%): ~$355/mo\n- Maintenance (1%): ~$710/mo\n- **Total: ~$6,910/mo** vs. your $4,200 rent — a **$2,710/mo premium** (~$32k/yr)\n\nIn year one, only ~$8k of those mortgage payments goes to principal (the rest is interest). So you're spending ~$32k/yr more than renting to \"save\" ~$8k in forced equity — a net ~$24k/yr worse, before counting the $170k down payment's opportunity cost (at 4.5% T-bills that's another ~$7.6k/yr foregone).\n\n**The relocation risk compounds it.** Selling in 3–5 years means 6% agent commission + ~2–3% closing/prep on $850k = roughly $70k+ in transaction costs. At 7.1% rates, your loan balance barely moves in the first 3 years (~$25k of principal paid). For buying to beat renting, the home needs to appreciate enough to cover the monthly premium *and* transaction costs — that's ~4–5%/yr appreciation just to break even, which isn't guaranteed.\n\n**When buying would flip:** if the relocation risk drops (one of you locks in a stable role here), if rates fall meaningfully (refi at 5.5% changes the monthly math by ~$700), or if you're confident you'll stay 7+ years. Until then, rent, invest the ~$170k + monthly delta, and revisit in 12–18 months when career direction is clearer.",
+    "ms": 17793,
+    "council": false,
+    "cli": "claude",
+    "ok": true
+  },
+  {
+    "id": "wealth-mortgage-vs-invest",
+    "domain": "wealth",
+    "prompt": "Context:\n- Mortgage balance: $340,000\n- Years remaining on 30-yr: 24\n- Mortgage rate: 6% nominal\n- Marginal tax rate: 32%, and the mortgage interest is itemized-deductible\n- Current liquid savings: 4 months of household expenses (target is 6+)\n- Time horizon to potentially needing the cash: indefinite — house is the forever home\n- Risk tolerance: have held through 2008 and 2022 drawdowns without selling\n\nI'm sitting on $60k of cash that I could use to make extra principal payments on my 6% mortgage, or invest in a broad-market index fund. Which should I do?",
+    "expected_decision": "Invest the cash in a diversified index fund, with the 6-month liquidity floor as the binding precondition",
+    "expected_verdict_keywords": [
+      "invest",
+      "liquidity",
+      "6 month",
+      "spread",
+      "after-tax"
+    ],
+    "reply": "**Invest the $60k — but only after topping up your emergency fund to the 6-month target first.**\n\nYour after-tax mortgage rate is roughly 4.1% (6% × (1 − 32%)), assuming you're actually itemizing above the standard deduction — at $340k × 6% ≈ $20k/yr in interest, you likely are. A broad-market index fund has historically returned ~7% real / ~9–10% nominal over multi-decade horizons, so the expected spread is meaningfully positive. Your demonstrated ability to hold through 2008 and 2022 means you can actually capture that equity premium rather than panic-selling it away, which is the usual reason this math fails in practice.\n\nThe catch is the emergency fund gap. You're at 4 months against a 6-month target, and a paid-down mortgage is not liquid — extra principal payments don't lower your monthly payment or give you cash back if you lose income. Peel off roughly $10–15k to hit the 6-month buffer first, then deploy the remaining ~$45–50k into the index fund (lump sum beats DCA on expected value, though DCA over 3–6 months is fine if it helps you sleep). Revisit if rates fall and you refinance below ~4% — the math tightens considerably at that point.\n\nOne thing worth flagging: this assumes the $60k isn't already earmarked for tax-advantaged space you haven't filled (401k match, Roth IRA, HSA). Max those first if there's room — they dominate both options.",
+    "ms": 15056,
+    "council": false,
+    "cli": "claude",
+    "ok": true
+  },
+  {
+    "id": "wealth-roth-conversion-now",
+    "domain": "tax",
+    "prompt": "Context:\n- Current marginal federal rate: 24% (married filing jointly, ~$300k taxable)\n- Top of the 24% bracket has ~$80k of headroom before the 32% jump\n- Expected retirement income: similar tax bracket — pension + Social Security + RMDs will keep us at 22-24% even in retirement\n- No state income tax (live in Texas)\n- Plan to retire at 65; RMDs start at 73\n- Have $50k of liquid cash outside retirement to pay the conversion tax (don't want to convert and withhold from the conversion itself)\n\nI have $600k in a traditional IRA and I'm 52. Should I do a Roth conversion this year, and if so, how much?",
+    "expected_decision": "Convert this year up to the top of the 24% bracket, not into the 32% bracket",
+    "expected_verdict_keywords": [
+      "bracket",
+      "24%",
+      "ladder",
+      "expected",
+      "RMD"
+    ],
+    "reply": "**Yes, convert — but only ~$80k this year to fill the 24% bracket, not the full $600k.**\n\nThe case for converting is real: with no state tax (Texas) and outside cash to pay the bill, you avoid the two biggest frictions that usually kill conversions. Filling the 24% bracket gets you ~$80k converted at $19,200 of federal tax — a known rate today versus uncertain future rates, plus you shrink future RMDs that would otherwise compound for 21 years before the IRS forces distributions. Paying with outside cash means the full $80k moves into the Roth and grows tax-free, which is the whole point.\n\nThe case against going bigger: crossing into the 32% bracket means paying a 33% premium on every marginal dollar (32 vs 24) to solve a problem you don't clearly have — your projected retirement bracket is 22-24%, so converting at 32% today to avoid 24% later is a guaranteed loss. The math only flips if you expect rates to rise significantly or your retirement income to push higher than projected. Better to repeat the ~$80k fill-up annually for the next 13 years until RMDs — that's potentially $1M+ converted at the 24% rate without ever touching 32%.\n\nOne watch-out: at 52 you're 11 years from Medicare, so IRMAA isn't a factor yet, but a conversion this size will spike your AGI — check whether it affects ACA subsidies (if applicable), the 3.8% NIIT on investment income, or any phaseouts you're near. Run the actual number with your CPA before December.",
+    "ms": 16724,
+    "council": false,
+    "cli": "claude",
+    "ok": true
+  }
+]

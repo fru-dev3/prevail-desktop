@@ -387,6 +387,7 @@ import {
   Shield,
   Sparkles,
   Sun,
+  Mail,
   TrendingUp,
   Users,
   Wallet,
@@ -437,6 +438,9 @@ const DOMAIN_ICONS: Record<string, LucideIcon> = {
   research: BookOpen,
   books: BookOpen,
   reading: BookOpen,
+  mail: Mail,
+  email: Mail,
+  inbox: Mail,
 };
 
 function domainIcon(name: string): LucideIcon | null {
@@ -476,6 +480,9 @@ const DOMAIN_BLURBS: Record<string, string> = {
   explore: "Curiosities, trips, and things worth discovering.",
   travel: "Curiosities, trips, and things worth discovering.",
   chief: "Your command center — today's priorities and what matters now.",
+  mail: "Your inbox — important threads handled, noise filtered, nothing dropped.",
+  email: "Your inbox — important threads handled, noise filtered, nothing dropped.",
+  inbox: "Your inbox — important threads handled, noise filtered, nothing dropped.",
 };
 
 function domainBlurb(name: string): string {

@@ -1,0 +1,168 @@
+{
+  "runDir": "/Users/frunde/Documents/prevail/vault-demo/benchmark/runs/2026-06-04_claude",
+  "label": "2026-06-04_claude",
+  "questionScores": [
+    {
+      "id": "business-hire-vs-contractor",
+      "domain": "business",
+      "keyword_score": 20,
+      "keyword_hits": [
+        "ramp"
+      ],
+      "keyword_misses": [
+        "full time",
+        "runway",
+        "18 month",
+        "opportunity cost"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends hiring full-time with margin math, continuity risk, and pipeline reasoning that mirrors the user's rationale."
+    },
+    {
+      "id": "career-leave-or-stay",
+      "domain": "career",
+      "keyword_score": 60,
+      "keyword_hits": [
+        "vest",
+        "equity",
+        "optionality"
+      ],
+      "keyword_misses": [
+        "glassdoor",
+        "two year"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends taking the Series B offer with reasoning that aligns with the user's rationale around stalled promotion, financial runway, and equity/career upside."
+    },
+    {
+      "id": "estate-term-vs-whole-life",
+      "domain": "estate",
+      "keyword_score": 60,
+      "keyword_hits": [
+        "term",
+        "commission",
+        "20 year"
+      ],
+      "keyword_misses": [
+        "buy term invest",
+        "irr"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends term + invest the difference with reasoning matching the user's rationale (kids' timeline, mortgage paid off, better tax-advantaged buckets, agent commission conflict)."
+    },
+    {
+      "id": "health-strength-vs-cardio",
+      "domain": "health",
+      "keyword_score": 20,
+      "keyword_hits": [
+        "strength"
+      ],
+      "keyword_misses": [
+        "150",
+        "lean mass",
+        "mortality",
+        "two session"
+      ],
+      "judge_score": 9,
+      "judge_rationale": "Clearly prioritizes strength with father-history/sarcopenia reasoning matching the user's rationale, though cardio allocation is slightly lower than the 150 min/wk target."
+    },
+    {
+      "id": "insurance-umbrella-coverage",
+      "domain": "insurance",
+      "keyword_score": 60,
+      "keyword_hits": [
+        "umbrella",
+        "net worth",
+        "$400"
+      ],
+      "keyword_misses": [
+        "$2 million",
+        "asymptotic"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends buying the $2M umbrella now, framing the premium as trivial against the exposure — matching the user's rationale exactly."
+    },
+    {
+      "id": "social-difficult-conversation",
+      "domain": "social",
+      "keyword_score": 20,
+      "keyword_hits": [
+        "boundary"
+      ],
+      "keyword_misses": [
+        "in person",
+        "impact",
+        "this week",
+        "specific"
+      ],
+      "judge_score": 9,
+      "judge_rationale": "Clearly recommends having the conversation and leads with impact/needs rather than character, though doesn't explicitly specify in-person or a one-week timeline."
+    },
+    {
+      "id": "vision-five-year-direction",
+      "domain": "vision",
+      "keyword_score": 40,
+      "keyword_hits": [
+        "runway",
+        "18 month"
+      ],
+      "keyword_misses": [
+        "optionality",
+        "MRR",
+        "kill criteria"
+      ],
+      "judge_score": 7,
+      "judge_rationale": "Recommends a similar reduce-and-test middle path but proposes a shorter 6-month validation sprint at 10-15 hrs/week rather than the user's 18-month, 2-days-per-week commitment with a $30k MRR trigger."
+    },
+    {
+      "id": "wealth-buy-vs-rent",
+      "domain": "real-estate",
+      "keyword_score": 60,
+      "keyword_hits": [
+        "rent",
+        "5%",
+        "transaction cost"
+      ],
+      "keyword_misses": [
+        "breakeven",
+        "7 year"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends continued renting with relocation-risk and 7+ year framing matching the user's rationale."
+    },
+    {
+      "id": "wealth-mortgage-vs-invest",
+      "domain": "wealth",
+      "keyword_score": 80,
+      "keyword_hits": [
+        "invest",
+        "6 month",
+        "spread",
+        "after-tax"
+      ],
+      "keyword_misses": [
+        "liquidity"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Recommends investing in the index fund with the 6-month emergency fund top-up as the explicit precondition, matching the user's rationale exactly."
+    },
+    {
+      "id": "wealth-roth-conversion-now",
+      "domain": "tax",
+      "keyword_score": 60,
+      "keyword_hits": [
+        "bracket",
+        "24%",
+        "RMD"
+      ],
+      "keyword_misses": [
+        "ladder",
+        "expected"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Correctly recommends filling the 24% bracket (~$80k) with reasoning that mirrors the user's rationale—avoiding the 32% jump given similar retirement bracket, no state tax, and outside cash to pay."
+    }
+  ],
+  "keyword_avg": 48,
+  "judge_avg": 9.5
+}

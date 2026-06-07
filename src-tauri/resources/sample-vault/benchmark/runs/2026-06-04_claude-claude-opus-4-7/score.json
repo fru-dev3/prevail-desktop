@@ -1,0 +1,338 @@
+{
+  "runDir": "/Users/frunde/Documents/prevail/vault-demo/benchmark/runs/2026-06-04_claude-claude-opus-4-7",
+  "label": "2026-06-04_claude-claude-opus-4-7",
+  "questionScores": [
+    {
+      "id": "bias-trap-anchoring",
+      "domain": "wealth",
+      "keyword_score": 20,
+      "keyword_hits": [
+        "$25k"
+      ],
+      "keyword_misses": [
+        "reject",
+        "not buy",
+        "opportunity cost",
+        "anchor"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly rejects the purchase, reframes the fake \"deal,\" and redirects to disciplined saving — matching the user's ground truth."
+    },
+    {
+      "id": "brevity-test",
+      "domain": "vision",
+      "keyword_score": 40,
+      "keyword_hits": [
+        "invest",
+        "mortgage"
+      ],
+      "keyword_misses": [
+        "prepay",
+        "sentence",
+        "bottom line"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Commits to investing in one sentence with reasoning matching the spread, horizon, and emergency-fund rationale."
+    },
+    {
+      "id": "business-hire-vs-contractor",
+      "domain": "business",
+      "keyword_score": 20,
+      "keyword_hits": [
+        "ramp"
+      ],
+      "keyword_misses": [
+        "full time",
+        "runway",
+        "18 month",
+        "opportunity cost"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends hiring full-time with reasoning that matches the user's rationale about the contractor's exit making the math break down."
+    },
+    {
+      "id": "business-pricing-decision",
+      "domain": "business",
+      "keyword_score": 100,
+      "keyword_hits": [
+        "grandfather",
+        "SLA",
+        "Pinetree",
+        "renewal",
+        "25%"
+      ],
+      "keyword_misses": [],
+      "judge_score": 9,
+      "judge_rationale": "Matches expected decision on SLA-tied increase, grandfathering Q1 renewals, and pausing Pinetree for AR; slightly differs by offering +10% legacy option rather than tying timing strictly to renewal date."
+    },
+    {
+      "id": "career-leave-or-stay",
+      "domain": "career",
+      "keyword_score": 40,
+      "keyword_hits": [
+        "vest",
+        "equity"
+      ],
+      "keyword_misses": [
+        "optionality",
+        "glassdoor",
+        "two year"
+      ],
+      "judge_score": 9,
+      "judge_rationale": "Clearly recommends leaving for the Series B with reasoning that matches the user's rationale, with practical negotiation tactics added."
+    },
+    {
+      "id": "estate-term-vs-whole-life",
+      "domain": "estate",
+      "keyword_score": 60,
+      "keyword_hits": [
+        "term",
+        "commission",
+        "20 year"
+      ],
+      "keyword_misses": [
+        "buy term invest",
+        "irr"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends term + invest the difference with reasoning (temporary need, tax-advantaged space, agent incentives) matching the user's rationale."
+    },
+    {
+      "id": "family-cultural-obligation",
+      "domain": "social",
+      "keyword_score": 80,
+      "keyword_hits": [
+        "send",
+        "contribute",
+        "conversation",
+        "future"
+      ],
+      "keyword_misses": [
+        "sustainable"
+      ],
+      "judge_score": 7,
+      "judge_rationale": "Recommends a capped contribution with direct family conversation, but the suggested $10-15K range sits below the user's $15-25k ground truth."
+    },
+    {
+      "id": "health-lab-panel-review",
+      "domain": "health",
+      "keyword_score": 100,
+      "keyword_hits": [
+        "HOMA-IR",
+        "ApoB",
+        "Lp(a)",
+        "insulin",
+        "vitamin D"
+      ],
+      "keyword_misses": [],
+      "judge_score": 8,
+      "judge_rationale": "Recommends the right three priorities but reorders cardiovascular ahead of insulin resistance, diverging from the user's stated priority order."
+    },
+    {
+      "id": "health-strength-vs-cardio",
+      "domain": "health",
+      "keyword_score": 20,
+      "keyword_hits": [
+        "strength"
+      ],
+      "keyword_misses": [
+        "150",
+        "lean mass",
+        "mortality",
+        "two session"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends prioritizing strength (2-3 sessions) with cardio added after, matching the user's rationale around sarcopenia and family hip history."
+    },
+    {
+      "id": "insufficient-info-recognition",
+      "domain": "chief",
+      "keyword_score": 20,
+      "keyword_hits": [
+        "depends"
+      ],
+      "keyword_misses": [
+        "insufficient",
+        "need more",
+        "ask",
+        "savings rate"
+      ],
+      "judge_score": 2,
+      "judge_rationale": "Model commits to HDHP+HSA instead of declining to recommend and asking for missing facts."
+    },
+    {
+      "id": "insurance-umbrella-coverage",
+      "domain": "insurance",
+      "keyword_score": 40,
+      "keyword_hits": [
+        "umbrella",
+        "net worth"
+      ],
+      "keyword_misses": [
+        "$2 million",
+        "asymptotic",
+        "$400"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends buying the $2M umbrella with reasoning that matches the user's exposure-vs-cost rationale."
+    },
+    {
+      "id": "legal-msa-review",
+      "domain": "estate",
+      "keyword_score": 100,
+      "keyword_hits": [
+        "uncapped indemnification",
+        "payment terms",
+        "non-compete",
+        "asymmetric",
+        "termination"
+      ],
+      "keyword_misses": [],
+      "judge_score": 10,
+      "judge_rationale": "Reply explicitly flags all five expected clauses (uncapped indemnification, net-60 payment, unilateral termination for convenience, 18-month non-compete, asymmetric liability cap) with risk-ranked reasoning matching the user's rationale."
+    },
+    {
+      "id": "recency-knowledge-cutoff",
+      "domain": "vision",
+      "keyword_score": 80,
+      "keyword_hits": [
+        "June 18",
+        "Antigravity",
+        "migrate",
+        "shutdown"
+      ],
+      "keyword_misses": [
+        "agy"
+      ],
+      "judge_score": 9,
+      "judge_rationale": "Correctly recommends migrating to Antigravity CLI before June 18, 2026, matching the expected decision, though the binary name differs (`av` vs `agy`)."
+    },
+    {
+      "id": "social-difficult-conversation",
+      "domain": "social",
+      "keyword_score": 0,
+      "keyword_hits": [],
+      "keyword_misses": [
+        "in person",
+        "impact",
+        "this week",
+        "specific",
+        "boundary"
+      ],
+      "judge_score": 9,
+      "judge_rationale": "Clearly recommends having the conversation and leads with impact (\"I leave them depleted\") rather than character, matching the user's rationale; slightly docked for not explicitly urging in-person within a week."
+    },
+    {
+      "id": "tax-end-of-year-strategy",
+      "domain": "tax",
+      "keyword_score": 40,
+      "keyword_hits": [
+        "tax-loss harvest",
+        "mega-backdoor"
+      ],
+      "keyword_misses": [
+        "defer",
+        "IRMAA",
+        "qualified dividend"
+      ],
+      "judge_score": 3,
+      "judge_rationale": "Correctly identifies loss harvest and mega-backdoor Roth but recommends selling NVDA in 2026 instead of deferring to January 2027, contradicting the user's expected decision."
+    },
+    {
+      "id": "tax-passive-loss-trap",
+      "domain": "tax",
+      "keyword_score": 100,
+      "keyword_hits": [
+        "passive activity",
+        "real estate professional",
+        "750",
+        "W-2",
+        "suspended"
+      ],
+      "keyword_misses": [],
+      "judge_score": 10,
+      "judge_rationale": "Correctly recommends the expected decision with reasoning that matches the user's rationale (passive loss rules, REPS exception with hours/time test)."
+    },
+    {
+      "id": "vision-five-year-direction",
+      "domain": "vision",
+      "keyword_score": 40,
+      "keyword_hits": [
+        "runway",
+        "18 month"
+      ],
+      "keyword_misses": [
+        "optionality",
+        "MRR",
+        "kill criteria"
+      ],
+      "judge_score": 6,
+      "judge_rationale": "Recommends a staged validation/transition that overlaps with the user's plan but defers the structural time-reallocation decision and ends in a clarifying question rather than committing to the 3-days/2-days split."
+    },
+    {
+      "id": "wealth-buy-vs-rent",
+      "domain": "real-estate",
+      "keyword_score": 60,
+      "keyword_hits": [
+        "rent",
+        "5%",
+        "transaction cost"
+      ],
+      "keyword_misses": [
+        "breakeven",
+        "7 year"
+      ],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends renting with strong reasoning on transaction costs, relocation risk, and the 7+ year revisit threshold matching the user's ground truth."
+    },
+    {
+      "id": "wealth-mortgage-vs-invest",
+      "domain": "wealth",
+      "keyword_score": 100,
+      "keyword_hits": [
+        "invest",
+        "liquidity",
+        "6 month",
+        "spread",
+        "after-tax"
+      ],
+      "keyword_misses": [],
+      "judge_score": 10,
+      "judge_rationale": "Clearly recommends investing in the index fund with the 6-month emergency fund as the binding precondition, matching the user's rationale exactly."
+    },
+    {
+      "id": "wealth-q4-pnl-review",
+      "domain": "wealth",
+      "keyword_score": 60,
+      "keyword_hits": [
+        "AR aging",
+        "collections",
+        "December"
+      ],
+      "keyword_misses": [
+        "12.5%",
+        "sprint"
+      ],
+      "judge_score": 7,
+      "judge_rationale": "Recommends the AR-collections sprint clearly but only hedges on lowering the target rather than committing to the ~12.5% reset."
+    },
+    {
+      "id": "wealth-roth-conversion-now",
+      "domain": "tax",
+      "keyword_score": 60,
+      "keyword_hits": [
+        "bracket",
+        "24%",
+        "RMD"
+      ],
+      "keyword_misses": [
+        "ladder",
+        "expected"
+      ],
+      "judge_score": 0,
+      "judge_rationale": "Model recommends against converting this year, directly opposing the user's expected decision to convert up to the top of the 24% bracket."
+    }
+  ],
+  "keyword_avg": 56.2,
+  "judge_avg": 8
+}
