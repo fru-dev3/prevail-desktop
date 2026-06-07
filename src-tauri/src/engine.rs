@@ -388,12 +388,38 @@ pub struct MissingItem {
     pub kind: String,
 }
 
+/// Mirrors ContextScore.json $defs/RelevanceItem — one expected, domain-specific
+/// context item (e.g. "Most recent tax return") and whether it's present/fresh.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelevanceItem {
+    pub id: String,
+    pub label: String,
+    pub present: bool,
+    pub stale: bool,
+    pub severity: String,
+    pub detail: String,
+    pub recommend: String,
+}
+
+/// Mirrors ContextScore.json $defs/DomainRelevance — the domain-intelligent
+/// half of the score (how much of what matters for THIS domain is present).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DomainRelevance {
+    pub matched: String,
+    pub score: i64,
+    pub detail: String,
+    pub items: Vec<RelevanceItem>,
+}
+
 /// Mirrors ContextScore.json — output of `prevail score <domain>`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextScore {
     pub domain: String,
     pub score: i64,
     pub breakdown: ScoreBreakdown,
+    /// Domain-intelligent relevance layer; null for domains with no rubric.
+    #[serde(default)]
+    pub relevance: Option<DomainRelevance>,
     pub missing: Vec<MissingItem>,
     pub freshness_secs: i64,
     /// Optional LLM narrative; null when the score is purely heuristic.

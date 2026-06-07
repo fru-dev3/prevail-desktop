@@ -399,6 +399,9 @@ import {
   Wallet,
   Wrench,
   X,
+  AlertTriangle,
+  Circle,
+  ChevronLeft,
   type LucideIcon,
 } from "lucide-react";
 
@@ -634,10 +637,26 @@ interface MissingItem {
   severity: string; // info | warn | critical
   kind: string;
 }
+interface RelevanceItem {
+  id: string;
+  label: string;
+  present: boolean;
+  stale: boolean;
+  severity: string; // info | warn | critical
+  detail: string;
+  recommend: string;
+}
+interface DomainRelevance {
+  matched: string;
+  score: number;
+  detail: string;
+  items: RelevanceItem[];
+}
 interface ContextScore {
   domain: string;
   score: number;
   breakdown: ScoreBreakdown;
+  relevance: DomainRelevance | null;
   missing: MissingItem[];
   freshness_secs: number;
   assessment: string | null;
@@ -2029,6 +2048,20 @@ function Sidebar({
     });
   };
   const [railFilter, setRailFilter] = useState("");
+  // App-wide aggregate score (mean of every domain's context score) — the
+  // single "how ready is my whole life-OS" number, pinned bottom-left.
+  const [lifeScore, setLifeScore] = useState<{ value: number; count: number } | null>(null);
+  useEffect(() => {
+    let on = true;
+    invoke<LifeReadiness>("engine_score_all", { vault: vaultPath })
+      .then((lr) => {
+        if (on && lr && lr.life_readiness !== null) {
+          setLifeScore({ value: lr.life_readiness, count: lr.domains.length });
+        }
+      })
+      .catch(() => {});
+    return () => { on = false; };
+  }, [vaultPath, domains.length]);
   const sortedDomains = useMemo(() => {
     const q = railFilter.trim().toLowerCase();
     const isPinned = (d: Domain) => pinned.has(d.name);
@@ -2476,6 +2509,37 @@ function Sidebar({
           </div>
         )}
       </div>
+
+      {/* App-wide readiness — the aggregate of every domain's score. */}
+      {lifeScore && (
+        <button
+          onClick={() => setTab("settings")}
+          title={`Life readiness — mean context score across ${lifeScore.count} domain${lifeScore.count === 1 ? "" : "s"}. Click for settings.`}
+          className={`flex items-center border-t border-border-subtle transition-colors hover:bg-surface-warm ${
+            collapsed ? "justify-center px-2 py-2" : "gap-2.5 px-3 py-2"
+          }`}
+        >
+          <span className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center">
+            <svg viewBox="0 0 36 36" className="h-7 w-7 -rotate-90">
+              <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-border, #2a2a2a)" strokeWidth="3" />
+              <circle
+                cx="18" cy="18" r="15" fill="none"
+                stroke={scoreColor(lifeScore.value)} strokeWidth="3" strokeLinecap="round"
+                strokeDasharray={`${(lifeScore.value / 100) * 94.2} 94.2`}
+              />
+            </svg>
+            <span className="absolute font-mono text-[9px] font-semibold" style={{ color: scoreColor(lifeScore.value) }}>
+              {lifeScore.value}
+            </span>
+          </span>
+          {!collapsed && (
+            <span className="flex min-w-0 flex-col items-start leading-tight">
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">Life readiness</span>
+              <span className="text-xs text-text-secondary">{lifeScore.count} domain{lifeScore.count === 1 ? "" : "s"} scored</span>
+            </span>
+          )}
+        </button>
+      )}
 
       {/* Settings + Upgrade + theme — pinned to bottom */}
       <div className={`border-t border-border-subtle ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1 px-2 py-2"}`}>
@@ -4784,8 +4848,6 @@ function ChatPanel({
   const [ctxScoreLoading, setCtxScoreLoading] = useState(false);
   const [ctxScoreRescanning, setCtxScoreRescanning] = useState(false);
   const [ctxScoreError, setCtxScoreError] = useState<string | null>(null);
-  // Score-breakdown modal: opened by clicking the score badge in the header.
-  const [scoreOpen, setScoreOpen] = useState(false);
   useEffect(() => {
     setDomainTab("chat");
     const pref = loadPreferredSkills(domain);
@@ -5501,17 +5563,6 @@ function ChatPanel({
           </div>
         </div>
       )}
-      {scoreOpen && domain && (
-        <ScoreBreakdownModal
-          domain={domain}
-          score={ctxScore}
-          loading={ctxScoreLoading}
-          rescanning={ctxScoreRescanning}
-          error={ctxScoreError}
-          onRescan={rescanContextScore}
-          onClose={() => setScoreOpen(false)}
-        />
-      )}
       {/* Header — domain title + persistent tab strip + actions. The
           tabs stay visible whether you're on the chat transcript or
           a domain content view, so you can flip between them mid
@@ -5524,7 +5575,10 @@ function ChatPanel({
               return I ? <I className="h-5 w-5 shrink-0 text-accent" /> : <span className="text-accent">◆</span>;
             })()}
             <span className="shrink-0 font-display text-lg font-semibold">{titleCase(domain)}</span>
-            <ContextScoreBadge score={ctxScore} onClick={() => setScoreOpen(true)} />
+            <ContextScoreBadge
+              score={ctxScore}
+              onClick={() => setDomainTab(domainTab === "context" ? "chat" : "context")}
+            />
             <span className="hidden min-w-0 truncate text-sm text-text-muted md:inline">{domainBlurb(domain)}</span>
           </>
         ) : (
@@ -5765,13 +5819,21 @@ function ChatPanel({
         {domain && domainTab !== "chat" && (
           <div className="mx-auto w-full max-w-3xl px-6 py-6">
             {domainTab === "context" && (
-              <ContextScorePanel
-                score={ctxScore}
-                loading={ctxScoreLoading}
-                rescanning={ctxScoreRescanning}
-                error={ctxScoreError}
-                onRescan={rescanContextScore}
-              />
+              <>
+                <button
+                  onClick={() => setDomainTab("chat")}
+                  className="mb-4 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-accent"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" /> Conversation
+                </button>
+                <ContextScorePanel
+                  score={ctxScore}
+                  loading={ctxScoreLoading}
+                  rescanning={ctxScoreRescanning}
+                  error={ctxScoreError}
+                  onRescan={rescanContextScore}
+                />
+              </>
             )}
             {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && <div className="text-sm text-text-muted">loading…</div>}
             {domainCtx && domainTab === "state" && (domainCtx.state ? <Markdown source={domainCtx.state} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">state.md</code> in this domain.</div>)}
@@ -7755,10 +7817,62 @@ function ContextScorePanel({
         </div>
       </div>
 
+      {/* Domain fit — the domain-intelligent relevance checklist. Only present
+          when the CLI matched a rubric for this domain. */}
+      {score.relevance && (
+        <div>
+          <div className="mb-2 flex items-baseline justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+              Domain fit
+            </span>
+            <span className="font-mono text-[10px] text-text-muted">{score.relevance.detail}</span>
+          </div>
+          <div className="flex flex-col gap-1.5 rounded-2xl border border-border bg-surface p-3">
+            {score.relevance.items.map((it) => {
+              const tone = it.present && !it.stale ? "ok" : it.stale ? "warn" : it.severity === "critical" ? "danger" : "muted";
+              const dotColor =
+                tone === "ok" ? "var(--color-ok, #2e9e5b)"
+                : tone === "warn" ? "var(--color-warn, #c98a2b)"
+                : tone === "danger" ? "var(--color-danger, #d24b4b)"
+                : "var(--color-text-muted, #888)";
+              return (
+                <div
+                  key={it.id}
+                  className="flex items-start gap-2.5 rounded-lg px-2 py-1.5 hover:bg-surface-warm"
+                >
+                  <span className="mt-0.5 shrink-0" style={{ color: dotColor }}>
+                    {it.present && !it.stale ? (
+                      <Check className="h-4 w-4" />
+                    ) : it.stale ? (
+                      <AlertTriangle className="h-4 w-4" />
+                    ) : (
+                      <Circle className="h-4 w-4" />
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`text-sm font-medium ${it.present ? "text-text-primary" : "text-text-secondary"}`}
+                      >
+                        {it.label}
+                      </span>
+                      <span className="shrink-0 font-mono text-[10px] text-text-muted">{it.detail}</span>
+                    </div>
+                    {(!it.present || it.stale) && (
+                      <div className="mt-0.5 text-[11px] text-text-muted">{it.recommend}</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Six dimensions */}
       <div>
         <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
-          Dimensions
+          Structural readiness
         </div>
         <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-5">
           {SCORE_DIMENSIONS.map(({ key, label }) => {
@@ -7841,77 +7955,6 @@ function ContextScorePanel({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// Score-breakdown modal: clicking the header score badge opens this. It frames
-// the number ("why it's X"), the six dimensions, and the what's-to-do list, all
-// via the existing ContextScorePanel.
-function ScoreBreakdownModal({
-  domain,
-  score,
-  loading,
-  rescanning,
-  error,
-  onRescan,
-  onClose,
-}: {
-  domain: string;
-  score: ContextScore | null;
-  loading: boolean;
-  rescanning: boolean;
-  error: string | null;
-  onRescan: () => void;
-  onClose: () => void;
-}) {
-  const Icon = domainIcon(domain);
-  const color = score ? scoreColor(score.score) : "var(--color-text-muted, #888)";
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="mt-[6vh] flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-6 py-4">
-          <div className="flex min-w-0 items-center gap-2.5">
-            {Icon ? <Icon className="h-5 w-5 shrink-0 text-accent" /> : null}
-            <div className="min-w-0">
-              <h2 className="truncate font-display text-lg font-semibold tracking-tight">
-                {titleCase(domain)} · Score
-              </h2>
-              <p className="text-xs text-text-muted">
-                Why it's{" "}
-                <span style={{ color }} className="font-mono font-semibold">
-                  {score ? score.score : "—"}
-                </span>{" "}
-                — and what raises it.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
-            title="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          <ContextScorePanel
-            score={score}
-            loading={loading}
-            rescanning={rescanning}
-            error={error}
-            onRescan={onRescan}
-          />
-        </div>
-      </div>
     </div>
   );
 }
