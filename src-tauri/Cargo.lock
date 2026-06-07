@@ -2572,7 +2572,7 @@ dependencies = [
 
 [[package]]
 name = "prevail-desktop"
-version = "0.2.94"
+version = "0.3.0"
 dependencies = [
  "libc",
  "serde",

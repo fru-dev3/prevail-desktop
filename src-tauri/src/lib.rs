@@ -11,6 +11,7 @@
 // whatever AI CLIs the user already has, and avoids the bundled-sidecar
 // signing complexity for the first release.
 
+mod engine;
 mod ingestion;
 mod telegram_bridge;
 
@@ -290,8 +291,20 @@ fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String
         "codex" => {
             let mut v = vec!["exec".to_string(), "--skip-git-repo-check".to_string()];
             if let Some(m) = model {
+                // Model id may carry a reasoning-effort suffix as
+                // "<model>@<effort>" (e.g. "gpt-5.5@high"). Split it off
+                // and pass the effort via `-c model_reasoning_effort`,
+                // since codex has no per-model "high" id.
+                let (base, effort) = match m.split_once('@') {
+                    Some((b, e)) => (b, Some(e)),
+                    None => (m, None),
+                };
                 v.push("--model".to_string());
-                v.push(m.to_string());
+                v.push(base.to_string());
+                if let Some(e) = effort {
+                    v.push("-c".to_string());
+                    v.push(format!("model_reasoning_effort={e}"));
+                }
             }
             v.push(prompt.to_string());
             ("codex".to_string(), v)
@@ -588,6 +601,85 @@ fn benchmark_run_detail(run_dir: String) -> Result<serde_json::Value, String> {
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| format!("read {}: {}", path, e))
+}
+
+// Diagnostic: the frontend's fatal-error handler writes the crash here so
+// production render failures (blank window) are inspectable from disk.
+#[tauri::command]
+fn log_fatal(msg: String) {
+    let _ = fs::write("/tmp/prevail-fatal.log", msg);
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&from, &to)?;
+        } else {
+            fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
+// Where we remember the last-chosen vault so it survives a webview-cache
+// wipe (which clears localStorage). Read on boot as a fallback.
+fn bootstrap_vault_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    Some(Path::new(&home).join("Library/Application Support/sh.prevail.desktop/bootstrap-vault.txt"))
+}
+
+fn write_bootstrap_vault(path: &str) {
+    if let Some(bf) = bootstrap_vault_path() {
+        if let Some(p) = bf.parent() {
+            let _ = fs::create_dir_all(p);
+        }
+        let _ = fs::write(&bf, path);
+    }
+}
+
+/// Copy the bundled sample vault into the user's Documents and return its
+/// path, so a new user can explore every feature without creating domains.
+#[tauri::command]
+fn import_sample_vault(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+    let src = app
+        .path()
+        .resolve("resources/sample-vault", tauri::path::BaseDirectory::Resource)
+        .map_err(|e| format!("resolve sample resource: {e}"))?;
+    if !src.exists() {
+        return Err(format!("bundled sample vault not found at {}", src.display()));
+    }
+    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+    let dest = Path::new(&home).join("Documents/Prevail Sample Vault");
+    if dest.exists() {
+        let _ = fs::remove_dir_all(&dest);
+    }
+    copy_dir_recursive(&src, &dest).map_err(|e| format!("copy sample vault: {e}"))?;
+    let dest_str = dest.to_string_lossy().to_string();
+    write_bootstrap_vault(&dest_str);
+    Ok(dest_str)
+}
+
+/// Persist the chosen vault path so it survives a cache wipe.
+#[tauri::command]
+fn remember_vault(path: String) {
+    write_bootstrap_vault(&path);
+}
+
+/// Boot fallback: the last vault we remembered (when localStorage was wiped).
+#[tauri::command]
+fn bootstrap_vault() -> Option<String> {
+    let bf = bootstrap_vault_path()?;
+    let s = fs::read_to_string(&bf).ok()?;
+    let s = s.trim();
+    if s.is_empty() || !Path::new(s).exists() {
+        return None;
+    }
+    Some(s.to_string())
 }
 
 // Create a new domain folder under the vault root. Writes a minimal
@@ -1324,7 +1416,49 @@ fn save_thread(
                 .map(|t| t.content.as_str())
                 .unwrap_or("");
             let hash = fnv1a32(first_user.as_bytes());
-            format!("{stamp}_{hash:08x}")
+            let hash_suffix = format!("{hash:08x}");
+            // Dedup safety net: the frontend autosave can fire two
+            // slug=null saves seconds apart for the SAME new conversation
+            // (e.g. once when the prompt is sent, once when the reply
+            // lands). Each previously produced a distinct
+            // `<timestamp>_<hash>.md`, so the thread appeared twice. If a
+            // thread with this same first-message hash was created very
+            // recently, reuse it instead of creating a duplicate.
+            let mut reuse: Option<String> = None;
+            if !first_user.is_empty() {
+                if let Ok(rd) = fs::read_dir(&threads_dir) {
+                    let mut best: Option<(u64, String)> = None;
+                    for e in rd.flatten() {
+                        let p = e.path();
+                        if p.extension().and_then(|x| x.to_str()) != Some("md") {
+                            continue;
+                        }
+                        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                        if !stem.ends_with(&hash_suffix) {
+                            continue;
+                        }
+                        let created = read_to_string_retry(&p)
+                            .ok()
+                            .and_then(|raw| {
+                                split_frontmatter(&raw)
+                                    .0
+                                    .get("created")
+                                    .map(|s| parse_iso8601_z(s))
+                            })
+                            .unwrap_or(0);
+                        // Only merge into a thread created in the last 10
+                        // minutes, so genuinely separate conversations that
+                        // happen to share a first message stay distinct.
+                        if created != 0 && now.saturating_sub(created) < 600 {
+                            if best.as_ref().map(|(c, _)| created > *c).unwrap_or(true) {
+                                best = Some((created, stem.to_string()));
+                            }
+                        }
+                    }
+                    reuse = best.map(|(_, s)| s);
+                }
+            }
+            reuse.unwrap_or_else(|| format!("{stamp}_{hash_suffix}"))
         }
     };
 
@@ -1883,6 +2017,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             scan_vault,
             detect_clis,
+            log_fatal,
+            import_sample_vault,
+            remember_vault,
+            bootstrap_vault,
             chat_send,
             benchmark_runs,
             benchmark_run_detail,
@@ -1901,6 +2039,19 @@ pub fn run() {
             read_skill,
             benchmark_start,
             benchmark_score,
+            engine::engine_domains,
+            engine::engine_score,
+            engine::engine_manifest_get,
+            engine::engine_score_all,
+            engine::engine_score_history,
+            engine::engine_onboard_recommend,
+            engine::engine_onboard_apply,
+            engine::engine_vault_backup,
+            engine::engine_vault_archive,
+            engine::engine_vault_restore,
+            engine::engine_list_archived,
+            engine::engine_manifest_set,
+            engine::engine_chat,
             list_threads,
             load_thread,
             save_thread,
