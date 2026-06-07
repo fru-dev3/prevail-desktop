@@ -78,14 +78,14 @@ impl DistillState {
     }
 
     pub async fn status(&self) -> DistillStatus {
-        let arc = { self.inner.lock().unwrap().status.clone() };
+        let arc = { self.inner.lock().unwrap_or_else(|e| e.into_inner()).status.clone() };
         let s = arc.lock().await;
         s.clone()
     }
 
     pub async fn stop(&self) {
         let (tx, handle, arc) = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
             (inner.stop_tx.take(), inner.handle.take(), inner.status.clone())
         };
         if let Some(tx) = tx {
@@ -100,7 +100,7 @@ impl DistillState {
     pub async fn start(&self, cfg: DistillConfig) {
         self.stop().await;
         let (stop_tx, mut stop_rx) = watch::channel(false);
-        let arc = { self.inner.lock().unwrap().status.clone() };
+        let arc = { self.inner.lock().unwrap_or_else(|e| e.into_inner()).status.clone() };
         {
             let mut s = arc.lock().await;
             *s = DistillStatus::default();
@@ -133,7 +133,7 @@ impl DistillState {
             status_for_task.lock().await.running = false;
         });
 
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner.handle = Some(handle);
         inner.stop_tx = Some(stop_tx);
     }

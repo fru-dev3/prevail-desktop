@@ -66,7 +66,7 @@ impl BridgeState {
 
     pub async fn status(&self) -> BridgeStatus {
         let status_arc = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
             inner.status.clone()
         };
         let s = status_arc.lock().await;
@@ -75,7 +75,7 @@ impl BridgeState {
 
     pub async fn stop(&self) {
         let (stop_tx_opt, handle_opt, status_arc) = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
             (inner.stop_tx.take(), inner.handle.take(), inner.status.clone())
         };
         if let Some(tx) = stop_tx_opt {
@@ -93,7 +93,7 @@ impl BridgeState {
         self.stop().await;
         let (stop_tx, mut stop_rx) = watch::channel(false);
         let status_arc = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
             inner.status.clone()
         };
         {
@@ -197,7 +197,7 @@ impl BridgeState {
             s.running = false;
         });
 
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner.handle = Some(handle);
         inner.stop_tx = Some(stop_tx);
     }
