@@ -5082,6 +5082,17 @@ function ChatPanel({
     return () => { if (saveTimer.current) window.clearTimeout(saveTimer.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
+  // The slug=null save guard above is one-shot PER ChatPanel INSTANCE, but the
+  // panel persists across domain switches — so without this, only the first-ever
+  // chat saved and later new-domain chats silently never created a thread. When
+  // the active thread clears (new domain, "New chat", domain switch), release the
+  // guard so the next fresh conversation can create its own thread.
+  useEffect(() => {
+    if (!activeThreadPath) {
+      initialSaveDispatchedRef.current = false;
+      savePendingRef.current = false;
+    }
+  }, [activeThreadPath]);
   const sessionRef = useRef(`s-${Date.now()}`);
   const unlistenRefs = useRef<UnlistenFn[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
