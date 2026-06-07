@@ -118,8 +118,16 @@ fn read_to_string_retry(p: &Path) -> std::io::Result<String> {
 /// content lines (typically the `**Key:** value` metadata) with markdown
 /// markers stripped. Returns None if nothing meaningful is found.
 fn meaningful_preview(md: &str) -> Option<String> {
+    // Strip a leading YAML frontmatter block (--- … ---) so v2 `_state.md`
+    // provenance (`derived_from:` etc.) never leaks into the card preview.
+    let mut lines: Vec<&str> = md.lines().collect();
+    if lines.first().map(|l| l.trim()) == Some("---") {
+        if let Some(end) = lines.iter().skip(1).position(|l| l.trim() == "---") {
+            lines = lines.split_off(end + 2); // drop through the closing `---`
+        }
+    }
     let mut picked: Vec<String> = Vec::new();
-    for raw in md.lines() {
+    for raw in lines {
         let line = raw.trim();
         if line.is_empty()
             || line.starts_with('#')
@@ -167,13 +175,28 @@ fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
         if !p.is_dir() {
             continue;
         }
-        let state_path = p.join("state.md");
-        let has_state = state_path.exists();
-        // Only count as a domain if state.md exists (matches CLI behavior).
-        if !has_state {
+        // Domain detection — forward + backward compatible across the v1→v2
+        // migration. v2: a folder is a domain because the human declared intent
+        // (`soul.md`). v1: detected by hand-written `state.md`. Transition: the
+        // agent's derived `_state.md`. Any of the three makes it a domain.
+        let soul_path = p.join("soul.md");
+        let state_v2 = p.join("_state.md"); // v2 derived snapshot
+        let state_v1 = p.join("state.md"); // v1 hand-written snapshot
+        let is_domain = soul_path.exists() || state_v2.exists() || state_v1.exists();
+        if !is_domain {
             continue;
         }
-        let state_preview = read_to_string_retry(&state_path)
+        // "has_state" now means a usable snapshot exists (derived or legacy).
+        let has_state = state_v2.exists() || state_v1.exists();
+        // Preview prefers the v2 derived snapshot, falls back to v1, then to soul.
+        let preview_src = if state_v2.exists() {
+            state_v2
+        } else if state_v1.exists() {
+            state_v1
+        } else {
+            soul_path
+        };
+        let state_preview = read_to_string_retry(&preview_src)
             .ok()
             .and_then(|s| meaningful_preview(&s));
         domains.push(Domain {
@@ -323,6 +346,10 @@ fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String
                 v.push(m.to_string());
             }
             v.push("-p".to_string());
+            // `--` ends option parsing so a prompt that starts with "--"
+            // (e.g. the "--- Conversation so far ---" preamble) is treated as
+            // the positional prompt, not an unknown flag.
+            v.push("--".to_string());
             v.push(prompt.to_string());
             ("claude".to_string(), v)
         }
@@ -344,6 +371,7 @@ fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String
                     v.push(format!("model_reasoning_effort={e}"));
                 }
             }
+            v.push("--".to_string()); // end options — prompt may start with "--"
             v.push(prompt.to_string());
             ("codex".to_string(), v)
         }
@@ -354,6 +382,7 @@ fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String
                 v.push(m.to_string());
             }
             v.push("-p".to_string());
+            v.push("--".to_string()); // end options — prompt may start with "--"
             v.push(prompt.to_string());
             ("agy".to_string(), v)
         }
@@ -362,7 +391,8 @@ fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String
             let m = model.unwrap_or("llama3.2");
             (
                 "ollama".to_string(),
-                vec!["run".to_string(), m.to_string(), prompt.to_string()],
+                // `--` ends options — prompt may start with "--".
+                vec!["run".to_string(), m.to_string(), "--".to_string(), prompt.to_string()],
             )
         }
         _ => ("echo".to_string(), vec![format!("unknown cli: {}", cli)]),
