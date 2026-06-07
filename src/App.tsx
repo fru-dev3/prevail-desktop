@@ -3489,6 +3489,73 @@ function buildQuickActions(domain: string | null): { glyph: string; label: strin
 // chat hasn't started yet. Surfaces state / decisions / journal /
 // session logs / skills as tabs so the user can read the domain
 // before asking. Clicking a tab item primes it into the next prompt.
+// Proactive surfacing for a domain — questions worth asking + suggested next
+// actions, generated from the vault (cached). Click one to seed the composer.
+interface SurfaceResult { questions: string[]; actions: string[]; generated_at: number; stale: boolean }
+function SurfacePanel({ vaultPath, domain, onPick }: { vaultPath: string; domain: string; onPick: (t: string) => void }) {
+  const [data, setData] = useState<SurfaceResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string>("");
+  const load = useCallback(async (force: boolean) => {
+    // Off when persistent memory is disabled (it's the proactive layer).
+    if (getPref(PREF.persistentMemory, "1") !== "1") return;
+    setLoading(true); setErr("");
+    try {
+      const r = await invoke<SurfaceResult>("domain_surface", {
+        vault: vaultPath,
+        domain,
+        provider: getPref(PREF.memoryProvider, "claude"),
+        model: getPref(PREF.distillModel, "claude-haiku-4-5"),
+        force,
+      });
+      setData(r);
+    } catch (e) { setErr(String(e)); } finally { setLoading(false); }
+  }, [vaultPath, domain]);
+  useEffect(() => { void load(false); }, [load]);
+
+  if (getPref(PREF.persistentMemory, "1") !== "1") return null;
+  const hasContent = data && (data.questions.length > 0 || data.actions.length > 0);
+  if (!hasContent && !loading && !err) return null;
+
+  return (
+    <div className="mb-4 rounded-xl border border-accent-border/40 bg-accent-soft/40 px-4 py-3">
+      <div className="mb-2 flex items-center gap-2">
+        <Sparkles className="h-3.5 w-3.5 text-accent" />
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">For you · {titleCase(domain)}</span>
+        <button onClick={() => void load(true)} disabled={loading}
+          className="ml-auto font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-accent disabled:opacity-40">
+          {loading ? "thinking…" : "refresh"}
+        </button>
+      </div>
+      {err && <div className="text-xs text-text-muted">Couldn't surface insights ({err.slice(0, 80)}). Needs a working agent.</div>}
+      {hasContent && (
+        <div className="flex flex-col gap-2.5">
+          {data!.questions.length > 0 && (
+            <div>
+              <div className="mb-1 text-[11px] font-semibold text-text-secondary">Questions worth asking</div>
+              <div className="flex flex-col gap-1">
+                {data!.questions.map((q, i) => (
+                  <button key={i} onClick={() => onPick(q)} className="text-left text-sm text-text-primary hover:text-accent">· {q}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          {data!.actions.length > 0 && (
+            <div>
+              <div className="mb-1 text-[11px] font-semibold text-text-secondary">Suggested next steps</div>
+              <div className="flex flex-col gap-1">
+                {data!.actions.map((a, i) => (
+                  <button key={i} onClick={() => onPick(a)} className="text-left text-sm text-text-primary hover:text-accent">→ {a}</button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DomainHome({
   domain,
   vaultPath,
@@ -3547,7 +3614,9 @@ function DomainHome({
         {!loading && ctx && (
           <div>
             {tab === "chat" && (
-              <ul className="mx-auto flex max-w-2xl flex-col gap-2">
+              <div className="mx-auto max-w-2xl">
+                <SurfacePanel vaultPath={vaultPath} domain={domain} onPick={onPickPrompt} />
+                <ul className="flex flex-col gap-2">
                 {buildQuickActions(domain).map((q) => (
                   <li key={q.label}>
                     <button
@@ -3563,7 +3632,8 @@ function DomainHome({
                     </button>
                   </li>
                 ))}
-              </ul>
+                </ul>
+              </div>
             )}
             {tab === "state" && (
               ctx.state ? (
