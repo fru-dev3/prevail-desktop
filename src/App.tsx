@@ -1860,7 +1860,6 @@ export default function App() {
                 clis={clis}
                 fwLens={fwLens}
                 onSwitchToCouncil={() => setTab("council")}
-                onOpenInFinder={() => openInFinder(selectedDomainPath)}
                 activeThreadPath={activeThreadPath}
                 onActiveThreadChange={setActiveThreadPath}
                 onThreadsChanged={() => void refreshThreads()}
@@ -4298,9 +4297,14 @@ function DomainContextDrawer({
           </>
         )}
       </div>
-      <div className="border-t border-border-subtle px-4 py-2 font-mono text-[10px] text-text-muted" title={domainPath}>
-        {domainPath.split("/").slice(-3).join("/")}
-      </div>
+      <button
+        onClick={() => { void invoke("open_in_finder", { path: domainPath }); }}
+        title={`Open ${domainPath} in Finder`}
+        className="flex w-full items-center gap-1.5 border-t border-border-subtle px-4 py-2 text-left font-mono text-[10px] text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+      >
+        <Folder className="h-3 w-3 shrink-0" />
+        <span className="truncate">{domainPath.split("/").slice(-3).join("/")}</span>
+      </button>
       </aside>
     </div>
   );
@@ -4523,7 +4527,6 @@ function ChatPanel({
   clis,
   fwLens,
   onSwitchToCouncil,
-  onOpenInFinder,
   activeThreadPath,
   onActiveThreadChange,
   onThreadsChanged,
@@ -4541,7 +4544,6 @@ function ChatPanel({
   clis: CliInfo[];
   fwLens: ReturnType<typeof useFrameworkLens>;
   onSwitchToCouncil: () => void;
-  onOpenInFinder: () => void;
   activeThreadPath: string | null;
   onActiveThreadChange: (p: string | null) => void;
   onThreadsChanged: () => void;
@@ -4685,7 +4687,7 @@ function ChatPanel({
   // Domain context column — a persistent right column showing state.md,
   // decisions, journal, recent logs, skills. Collapsible; state persisted.
   // Items can be "used in chat" to inject as prompt context.
-  const [contextOpen, setContextOpen] = useState<boolean>(() => lsGet("prevail.contextOpen") !== "0");
+  const [contextOpen, setContextOpen] = useState<boolean>(() => lsGet("prevail.contextOpen") === "1");
   useEffect(() => { lsSet("prevail.contextOpen", contextOpen ? "1" : "0"); }, [contextOpen]);
   const [primedContext, setPrimedContext] = useState<{ label: string; body: string }[]>([]);
   function injectContext(body: string, label: string) {
@@ -5425,68 +5427,12 @@ function ChatPanel({
           tabs stay visible whether you're on the chat transcript or
           a domain content view, so you can flip between them mid
           conversation. */}
-      <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-6 py-2.5">
+      <div className="flex min-w-0 shrink-0 items-center gap-3 overflow-x-auto border-b border-border-subtle px-6 py-2.5">
         {domain ? (
           <>
             <span className="text-accent">◆</span>
             <span className="font-display text-lg font-semibold">{titleCase(domain)}</span>
-            <ContextScoreBadge score={ctxScore} onClick={() => setDomainTab("context")} />
-            {domainPath && (
-              <button
-                onClick={onOpenInFinder}
-                title="Open domain folder in Finder"
-                className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent"
-              >
-                <Folder className="h-3.5 w-3.5" />
-              </button>
-            )}
-            <DomainActionsMenu domain={domain} vaultPath={vaultPath} onArchived={onArchived} />
-            <button
-              onClick={() => setDomainTab("prefs")}
-              title={hasAnyDomainOverride ? "Domain preferences (overrides active)" : "Domain preferences"}
-              className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
-                hasAnyDomainOverride
-                  ? "text-accent hover:bg-accent-soft"
-                  : "text-text-muted hover:bg-surface-warm hover:text-accent"
-              }`}
-            >
-              <SettingsIcon className="h-3.5 w-3.5" />
-            </button>
-            {/* Tab strip — persistent. State auto-loaded so the tab
-                count badges reflect real content (1 if state exists,
-                etc.). Click a non-Chat tab to view that doc; Chat
-                returns you to the transcript. */}
-            <nav className="ml-3 flex items-center gap-0.5 text-[11px] font-medium uppercase tracking-wider">
-              {([
-                { id: "chat", label: "Chat", count: undefined },
-                { id: "context", label: "Context", count: ctxScore ? ctxScore.score : undefined },
-                { id: "state", label: "State", count: domainCtx?.state ? 1 : 0 },
-                { id: "decisions", label: "Decisions", count: domainCtx?.decisions ? 1 : 0 },
-                { id: "journal", label: "Journal", count: domainCtx?.journal ? 1 : 0 },
-                { id: "logs", label: "Sessions", count: domainCtx?.recent_logs?.length ?? 0 },
-                { id: "skills", label: "Skills", count: domainCtx?.skills?.length ?? 0 },
-                { id: "prefs", label: "Prefs", count: undefined },
-              ] as { id: DomainTab; label: string; count?: number }[]).map((t) => {
-                const active = domainTab === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => setDomainTab(t.id)}
-                    className={`relative -mb-2.5 flex items-center gap-1 px-2 pb-3 pt-2 transition-colors ${
-                      active ? "text-accent" : "text-text-muted hover:text-text-secondary"
-                    }`}
-                  >
-                    {t.label}
-                    {t.count !== undefined && (
-                      <span className={`rounded-full px-1.5 py-0 font-mono text-[10px] ${active ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
-                        {t.count}
-                      </span>
-                    )}
-                    {active && <span className="absolute -bottom-px left-0 right-0 h-0.5 bg-accent" />}
-                  </button>
-                );
-              })}
-            </nav>
+            <ContextScoreBadge score={ctxScore} onClick={() => setContextOpen(true)} />
           </>
         ) : (
           <span className="font-mono text-xs uppercase tracking-[0.2em] text-text-muted">
@@ -5494,6 +5440,22 @@ function ChatPanel({
           </span>
         )}
         <div className="flex-1" />
+        {domain && (
+          <>
+            <button
+              onClick={() => setDomainTab(domainTab === "prefs" ? "chat" : "prefs")}
+              title={hasAnyDomainOverride ? "Domain preferences (overrides active)" : "Domain preferences"}
+              className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                domainTab === "prefs" || hasAnyDomainOverride
+                  ? "text-accent hover:bg-accent-soft"
+                  : "text-text-muted hover:bg-surface-warm hover:text-accent"
+              }`}
+            >
+              <SettingsIcon className="h-3.5 w-3.5" />
+            </button>
+            <DomainActionsMenu domain={domain} vaultPath={vaultPath} onArchived={onArchived} />
+          </>
+        )}
         {messages.length > 0 && (
           <button
             onClick={async () => {
