@@ -5337,13 +5337,11 @@ function ChatPanel({
       title: visible.slice(0, 60).replace(/\n/g, " "),
       startedAt: Date.now(),
     });
-    // Engine chat is DISABLED while the vault is on v2 but the installed
-    // `prevail` CLI is still v1: the CLI detects domains by `state.md`, not the
-    // v2 `_state.md`, so it rejects every migrated domain with "unknown domain".
-    // The native chat_send path works for any vault version and still injects
-    // domain state via the auto-loaded primedContext. Re-enable once the CLI
-    // ships v2 detection (VAULT-SPEC-v2 §12 stages 3–4).
-    const ENGINE_CHAT_ENABLED = false;
+    // Engine chat: the installed `prevail` CLI is now v2-aware (detects domains
+    // by soul.md / reads _state.md — VAULT-SPEC-v2 stages 3–4), so the engine
+    // path grounds replies in the domain's real state again. Falls back to the
+    // native chat_send path when the CLI isn't present.
+    const ENGINE_CHAT_ENABLED = true;
     const useEngine = ENGINE_CHAT_ENABLED && engineAvailable && !!domain;
     try {
       if (useEngine) {
