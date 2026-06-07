@@ -6,10 +6,16 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"            # desktop repo root
-CLI="$(cd "$HERE/../fd-apps-prevail-cli" 2>/dev/null && pwd || true)"
+# Engine repo location: $PREVAIL_CLI_DIR override (used by CI) else the sibling
+# checkout used in local dev.
+if [ -n "${PREVAIL_CLI_DIR:-}" ]; then
+  CLI="$(cd "$PREVAIL_CLI_DIR" 2>/dev/null && pwd || true)"
+else
+  CLI="$(cd "$HERE/../fd-apps-prevail-cli" 2>/dev/null && pwd || true)"
+fi
 
 if [ -z "${CLI:-}" ] || [ ! -f "$CLI/package.json" ]; then
-  echo "prepare-sidecar: cannot find fd-apps-prevail-cli next to the desktop repo" >&2
+  echo "prepare-sidecar: cannot find the prevail-cli engine repo (set PREVAIL_CLI_DIR or check it out next to the desktop repo)" >&2
   exit 1
 fi
 

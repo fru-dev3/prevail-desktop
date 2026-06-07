@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   release:
-    name: Build, sign & notarize (macOS universal)
+    name: Build, sign & notarize (Apple Silicon)
     runs-on: macos-latest
 
     steps:
@@ -23,11 +23,24 @@ jobs:
         with:
           node-version: 20
 
+      # Engine sidecar: check out the CLI repo + Bun so prepare-sidecar.sh (run
+      # by beforeBuildCommand) can compile the bundled `prevail` engine in CI.
+      - name: Checkout engine (prevail-cli)
+        uses: actions/checkout@v4
+        with:
+          repository: fru-dev3/prevail
+          path: engine
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install engine deps
+        run: cd engine && bun install
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          # Universal binary needs both arches.
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: aarch64-apple-darwin
 
       - name: Cache Rust build
         uses: swatinem/rust-cache@v2
@@ -40,29 +53,23 @@ jobs:
       - name: Build, sign & notarize
         uses: tauri-apps/tauri-action@v0
         env:
-          # --- GitHub release creation ---
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+          # Where prepare-sidecar.sh finds the engine repo (checked out above).
+          PREVAIL_CLI_DIR: ${{ github.workspace }}/engine
           # --- Developer ID signing ---
-          # Base64-encoded .p12 of the Developer ID Application certificate.
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          # Password that protects the exported .p12.
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # "Developer ID Application: Fru Nde (TXN399AHT5)"
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # Password used to create the temporary CI keychain.
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-
-          # --- Notarization (notarytool via Apple ID) ---
+          # --- Notarization ---
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          # App-specific password (1Password: "Prevail - Apple Notarization").
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          # Team ID: TXN399AHT5
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # --- Updater artifact signing (in-app auto-update feed) ---
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          # Build a universal binary that runs on Apple Silicon and Intel.
-          args: --target universal-apple-darwin
-          # Use the pushed tag (v*) as the release tag/name.
+          args: --target aarch64-apple-darwin
           tagName: ${{ github.ref_name }}
           releaseName: "Prevail ${{ github.ref_name }}"
           releaseBody: "See CHANGELOG.md for details."

@@ -1,57 +1,66 @@
-# Prevail desktop
+# Prevail Desktop
 
-Native macOS cockpit for AI council deliberation. Tauri 2 + React 19 + Tailwind 4.
+A local-first **life-OS** for macOS — a native cockpit that runs AI per
+life-domain (wealth, health, tax, career…), grounded in a local markdown vault.
+Tauri 2 + React 19 + Tailwind 4, with a bundled engine (the
+[Prevail CLI](https://github.com/fru-dev3/prevail)) — same vault format, no
+terminal required.
 
-The companion to the [Prevail CLI](https://github.com/fru-dev3/prevail) — same vault format, same canonical benchmark, no terminal required.
+> **Local-first.** Your vault, chats, and the durable *intent ledger* stay on
+> your machine. Nothing leaves unless you turn on an integration.
 
-## What v0.1 ships
+## What it does (v0.4)
 
-- **Vault picker** — pick any folder; child folders with a `state.md` become domains
-- **Domain sidebar** — list every domain in the chosen vault
-- **Chat panel** — send a prompt to one of your installed CLIs (Claude / Codex / Antigravity / Ollama), stream the reply live
-- **Council panel** — fan one question out to every available CLI in parallel, then auto-synthesize a verdict with the chair model you pick
-- **Benchmark viewer** — read every scored run from `<vault>/benchmark/runs/`, surface the leaderboard, click any row to drill into per-question prompts / replies / keyword hits / judge rationale
-
-## What v0.1 deliberately does NOT have
-
-- Live MCP server inside the app (use the CLI for that)
-- Configure / Tools / Telegram panels
-- Auto-distill summaries / scheduled briefings
-- Skills, lenses, frameworks, web-access cycling
-- Two-machine sync (writes to your own local vault only)
-- Auto-update inside the app (manual DMG download for v0.x)
-
-These all stay in the CLI; the desktop is a deliberate MVP that proves the pattern. v0.2+ adds the rest.
+- **Domains** — each folder with `soul.md`/`state.md` becomes a life-domain; chat
+  is grounded in that domain's real state and history.
+- **Self-learning** — every chat is captured as an *intent* the moment you send
+  (raw transcript, never lost), distilled into per-domain memory (`_memory.md`)
+  that's fed back into future chats. See `docs/` for the model.
+- **Any model** — installed CLIs (Claude / Codex / Antigravity / Ollama) **or**
+  bring-your-own via the **OpenRouter** gateway (one key, 200+ models). Switch
+  models per turn; context carries across.
+- **Council** — fan one question to multiple models in parallel; a chair model
+  synthesizes a verdict.
+- **Memory & Context, Safety, Gateway (Telegram), MCP (consume + expose),
+  Providers, Remote (WebUI)** — all in Settings.
+- **Usage dashboard**, benchmark viewer, in-app **auto-update**, start-on-boot,
+  tray, export/import config.
+- **Remote (WebUI)** — serve the *same* UI to a browser (no duplicate UI);
+  off by default, loopback-bound, allowlisted. Reach it via Tailscale.
 
 ## Requirements
+- macOS 13+ (Apple Silicon).
+- Optional: `claude` / `codex` / `agy` / `ollama` on `$PATH`, and/or an OpenRouter
+  key (Settings → Providers). The bundled engine handles the rest.
+- A vault folder, or load the bundled sample on first launch.
 
-- macOS 13+
-- One or more of: `claude`, `codex`, `agy`, `ollama` installed and on `$PATH`. The app spawns them as subprocesses; it does not bring its own API keys.
-- An existing vault folder, or [the demo vault](https://github.com/fru-dev3/prevail/tree/main/vault-demo).
-
-## Install (end users)
-
-Download the latest `.dmg` from the [releases page](https://github.com/fru-dev3/prevail-desktop/releases) and drag `Prevail.app` to `/Applications`.
-
-The app is **unsigned for v0.1** — on first launch, right-click → **Open**, then confirm. macOS will remember the choice. Signing and notarization come in v0.2.
+## Install
+Download the signed, **notarized** `.dmg` from
+[prevail.sh](https://prevail.sh) or the
+[releases page](https://github.com/fru-dev3/prevail-desktop/releases) and drag
+`Prevail.app` to `/Applications`. (Notarized — no Gatekeeper "damaged" warning.)
 
 ## Develop
-
 ```bash
 npm install
-npm run tauri:dev      # hot-reload dev mode
-npm run tauri:build    # produces a .dmg under src-tauri/target/release/bundle/dmg/
+npm run tauri dev     # hot-reload
+npm run tauri build   # signed .dmg under src-tauri/target/release/bundle/dmg/
 ```
+The engine **sidecar** is built from the sibling `fd-apps-prevail-cli` repo by
+`scripts/prepare-sidecar.sh` (wired into `beforeBuildCommand`). See
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Architecture
+- **Frontend:** Vite + React 19 + Tailwind 4. Talks to the backend only through
+  `src/bridge.ts` (Tauri IPC on desktop, HTTP/SSE in the browser).
+- **Backend (Rust):** Tauri 2 — engine seam (`engine.rs`), distillation daemon
+  (`distill.rs`), Telegram bridge, WebUI bridge (`webui.rs`), ingestion/MCP.
+- **Bundled engine:** the `prevail` CLI ships as a Tauri `externalBin` sidecar —
+  the install is fully self-contained.
 
-- **Frontend:** Vite + React 19 + Tailwind 4 + framer-motion + lucide-react. Single `App.tsx` with all panels.
-- **Backend (Rust):** Tauri 2 with `tauri-plugin-shell` (spawn CLIs), `tauri-plugin-dialog` (folder picker), `tauri-plugin-fs` (read state.md / benchmark JSON).
-- **No sidecar binary:** v0.1 calls the user's existing `claude` / `codex` / `agy` / `ollama` CLIs directly via PATH. No bundled prevail binary, no MCP, no daemon.
-- **Streaming:** Rust spawns the CLI, captures stdout chunks, emits them as Tauri events. The React UI listens via `@tauri-apps/api/event` and updates state per chunk.
-
-See `src-tauri/src/lib.rs` for every Rust command and `src/App.tsx` for the UI.
+## Security
+See [SECURITY.md](SECURITY.md). Vault is **not** encrypted at rest; secrets live
+in the Keychain; the WebUI is loopback-only + allowlisted when enabled.
 
 ## License
-
 MIT. © 2026 fru.dev.
