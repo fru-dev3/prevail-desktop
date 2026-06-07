@@ -20,9 +20,14 @@ function showFatal(msg: string) {
 window.addEventListener("error", (e) =>
   showFatal((e.error && (e.error.stack || e.error.message)) || e.message || "unknown error"),
 );
-window.addEventListener("unhandledrejection", (e) =>
-  showFatal("Unhandled promise rejection:\n" + ((e.reason && (e.reason.stack || e.reason.message)) || String(e.reason))),
-);
+// A stray promise rejection should NOT nuke the whole app — log it and keep
+// running. Only render/startup errors (the "error" listener + ErrorBoundary
+// above) are fatal.
+window.addEventListener("unhandledrejection", (e) => {
+  const msg = (e.reason && (e.reason.stack || e.reason.message)) || String(e.reason);
+  console.error("[prevail] unhandled rejection (non-fatal):", msg);
+  void invoke("log_fatal", { msg: "unhandledrejection (non-fatal): " + msg }).catch(() => {});
+});
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { err: unknown }> {
   state = { err: null as unknown };
