@@ -1,5 +1,5 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke, listen, type UnlistenFn } from "./bridge";
+import { invoke, listen, isBrowser, setWebToken, type UnlistenFn } from "./bridge";
 import { open, save, confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
 import { enable as autostartEnable, disable as autostartDisable, isEnabled as autostartIsEnabled } from "@tauri-apps/plugin-autostart";
 import { check as checkUpdate } from "@tauri-apps/plugin-updater";
@@ -1459,8 +1459,44 @@ function domainColor(name: string): string {
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return DOMAIN_PALETTE[h % DOMAIN_PALETTE.length];
 }
+// Browser login screen for the WebUI. Authenticates against the bridge
+// server's /api/login, stores the token, then lets the real app mount.
+function WebLogin({ onAuthed }: { onAuthed: () => void }) {
+  const [user, setUser] = useState("");
+  const [pass, setPass] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function login() {
+    setBusy(true); setErr("");
+    try {
+      const res = await fetch("/api/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ user, pass }) });
+      if (!res.ok) { setErr("Invalid username or password"); return; }
+      const j = (await res.json()) as { token?: string };
+      if (!j.token) { setErr("Login failed"); return; }
+      setWebToken(j.token);
+      onAuthed();
+    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+  }
+  return (
+    <div className="flex h-screen flex-col items-center justify-center bg-background px-6">
+      <PrevailLogo size={64} src="/logo-512.png" animated={false} />
+      <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">Prevail — Web</h1>
+      <p className="mt-1 text-sm text-text-muted">Sign in to your remote agent.</p>
+      <div className="mt-6 w-full max-w-xs space-y-2">
+        <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="Username" className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus:border-accent-border focus:outline-none" />
+        <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void login(); }} placeholder="Password" className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus:border-accent-border focus:outline-none" />
+        <button onClick={login} disabled={busy || !user || !pass} className="w-full rounded-md bg-accent py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50">{busy ? "Signing in…" : "Sign in"}</button>
+        {err && <div className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{err}</div>}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const appearance = useAppearance();
+  // WebUI login gate — in a browser tab the app must authenticate to the
+  // bridge server before any invoke works. On the desktop this is always true.
+  const [webAuthed, setWebAuthed] = useState(() => !isBrowser() || !!sessionStorage.getItem("prevail.web.token"));
   const [vaultPath, setVaultPath] = useState<string | null>(() =>
     localStorage.getItem(LS.vault),
   );
@@ -1525,6 +1561,31 @@ export default function App() {
       console.error("refreshDomains", e);
     }
   }, [vaultPath, refreshDomainStats]);
+  // WebUI host bridge: when running as the DESKTOP host (not a browser tab),
+  // execute proxied invokes from web clients and forward events to them. This
+  // is what lets the same UI run in a browser with zero duplicate code — the
+  // host window is the executor (webview-proxy). No-op in a browser tab.
+  useEffect(() => {
+    if (isBrowser()) return;
+    let unlistens: UnlistenFn[] = [];
+    (async () => {
+      unlistens.push(await listen<{ id: number; cmd: string; args: Record<string, unknown> }>("webui:invoke", async (e) => {
+        const { id, cmd, args } = e.payload;
+        try {
+          const data = await invoke(cmd, args);
+          await invoke("webui_resolve", { id, ok: true, data });
+        } catch (err) {
+          await invoke("webui_resolve", { id, ok: false, error: String(err) });
+        }
+      }));
+      // Forward the event channels the UI listens to → web clients.
+      const channels = ["chat:chunk", "chat:done", "engine-chat:line", "engine-chat:done", "benchmark:chunk", "benchmark:done", "ingestion:artifact", "ingestion:browser", "tg:message_in", "tg:message_out"];
+      for (const ch of channels) {
+        unlistens.push(await listen<unknown>(ch, (e) => { void invoke("webui_event", { event: ch, payload: e.payload }); }));
+      }
+    })();
+    return () => { unlistens.forEach((u) => u()); unlistens = []; };
+  }, []);
   // Self-learning: start/stop the background distillation daemon based on the
   // Memory & Context prefs once a vault is known (mirrors how the Telegram
   // bridge starts on demand). Re-runs when the vault changes.
@@ -1806,6 +1867,7 @@ export default function App() {
     }
   }
 
+  if (isBrowser() && !webAuthed) return <WebLogin onAuthed={() => setWebAuthed(true)} />;
   if (!vaultPath) return <VaultWizard onPick={pickVault} onLoadSample={loadSample} />;
 
   if (tab === "settings") {
@@ -9147,7 +9209,7 @@ function SettingsPanel({
   onBack?: () => void;
   onStartChatWith?: (cliId: string, modelId?: string) => void;
 }) {
-  type Section = "general" | "agents" | "providers" | "user" | "memory" | "safety" | "gateway" | "mcp" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "shortcuts" | "about";
+  type Section = "general" | "agents" | "providers" | "user" | "memory" | "safety" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>("general");
 
   const items: Array<{ id: Section; label: string; icon: typeof Folder }> = [
@@ -9159,6 +9221,7 @@ function SettingsPanel({
     { id: "safety", label: "Safety", icon: Shield },
     { id: "gateway", label: "Gateway", icon: MessagesSquare },
     { id: "mcp", label: "MCP", icon: Wrench },
+    { id: "remote", label: "Remote (WebUI)", icon: Monitor },
     { id: "vault", label: "Vault", icon: Folder },
     { id: "appearance", label: "Appearance", icon: Sparkles },
     { id: "defaults", label: "Defaults", icon: SettingsIcon },
@@ -9246,6 +9309,7 @@ function SettingsPanel({
           {section === "safety" && <SafetySection />}
           {section === "gateway" && <GatewaySection />}
           {section === "mcp" && <McpSection vaultPath={vaultPath} />}
+          {section === "remote" && <RemoteSection />}
           {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} />}
           {section === "appearance" && <AppearanceSection appearance={appearance} />}
           {section === "defaults" && (
@@ -9594,6 +9658,10 @@ const PREF = {
   redactSecrets: "prevail.pref.redactSecrets",             // "1" | "0" — scrub secrets from saved content
   allowPrivateUrls: "prevail.pref.allowPrivateUrls",       // "1" | "0"
   fileCheckpoints: "prevail.pref.fileCheckpoints",         // "1" | "0" — snapshot before file edits
+  // Remote / WebUI — serve the same UI to a browser via the bridge server.
+  webuiPort: "prevail.pref.webuiPort",                     // integer port
+  webuiUser: "prevail.pref.webuiUser",                     // login username
+  webuiPass: "prevail.pref.webuiPass",                     // login password (local only)
 };
 function getPref(key: string, fallback: string): string {
   const v = lsGet(key);
@@ -10032,6 +10100,61 @@ function GatewaySection() {
           </div>
         ))}
       </div>
+    </>
+  );
+}
+
+function RemoteSection() {
+  const [running, setRunning] = useState(false);
+  const [port, setPort] = useState(() => getPref(PREF.webuiPort, "8787"));
+  const [user, setUser] = useState(() => getPref(PREF.webuiUser, "admin"));
+  const [pass, setPass] = useState(() => {
+    let p = getPref(PREF.webuiPass, "");
+    if (!p) { p = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6); setPref(PREF.webuiPass, p); }
+    return p;
+  });
+  const [showPass, setShowPass] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    invoke<{ running: boolean }>("webui_status").then((s) => setRunning(!!s.running)).catch(() => {});
+  }, []);
+  async function toggle(on: boolean) {
+    setErr("");
+    try {
+      if (on) {
+        await invoke("webui_start", { port: Number(port) || 8787, user, pass });
+        setRunning(true);
+      } else {
+        await invoke("webui_stop");
+        setRunning(false);
+      }
+    } catch (e) { setErr(String(e)); }
+  }
+  return (
+    <>
+      <SettingsHeader title="Remote (WebUI)" subtitle="Serve this exact app to a browser — same UI, no rebuild. Then reach it from your phone or laptop, anywhere, via Tailscale or Cloudflare." />
+      <div className="rounded-lg border border-border bg-surface px-5">
+        <SettingsRowLite title="Enable WebUI" desc="Run the bridge server so a browser can use Prevail. This Mac must stay on."
+          control={<Toggle on={running} onChange={toggle} />} />
+        <SettingsRowLite title="Port" desc="Local port the WebUI listens on."
+          control={<input type="number" value={port} disabled={running} onChange={(e) => { setPort(e.target.value); setPref(PREF.webuiPort, e.target.value); }} className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />} />
+        <SettingsRowLite title="Username" desc="Login for the WebUI."
+          control={<input value={user} disabled={running} onChange={(e) => { setUser(e.target.value); setPref(PREF.webuiUser, e.target.value); }} className="w-40 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />} />
+        <SettingsRowLite title="Password" desc="Keep this private — anyone with it and the URL can use your agent."
+          control={
+            <div className="flex items-center gap-2">
+              <input type={showPass ? "text" : "password"} value={pass} disabled={running} onChange={(e) => { setPass(e.target.value); setPref(PREF.webuiPass, e.target.value); }} className="w-40 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />
+              <button onClick={() => setShowPass((v) => !v)} className="font-mono text-[11px] text-text-muted hover:text-accent">{showPass ? "hide" : "show"}</button>
+            </div>
+          } />
+      </div>
+      {running && (
+        <div className="mt-4 rounded-lg border border-accent-border bg-accent-soft px-5 py-4">
+          <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-accent">Live</div>
+          <div className="text-sm text-text-primary">Open <a href={`http://localhost:${port}`} target="_blank" rel="noreferrer" className="font-mono text-accent hover:underline">http://localhost:{port}</a> in a browser, or from another device use this Mac's Tailscale/LAN address on port {port}.</div>
+        </div>
+      )}
+      {err && <div className="mt-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{err}</div>}
     </>
   );
 }
