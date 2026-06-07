@@ -112,6 +112,44 @@ fn read_to_string_retry(p: &Path) -> std::io::Result<String> {
     fs::read_to_string(p)
 }
 
+/// Pull a short, human-meaningful summary from a domain's state.md for card
+/// previews. Skips the H1 title, blockquote synthetic-data warnings, horizontal
+/// rules, code fences and blank lines, then takes the first couple of real
+/// content lines (typically the `**Key:** value` metadata) with markdown
+/// markers stripped. Returns None if nothing meaningful is found.
+fn meaningful_preview(md: &str) -> Option<String> {
+    let mut picked: Vec<String> = Vec::new();
+    for raw in md.lines() {
+        let line = raw.trim();
+        if line.is_empty()
+            || line.starts_with('#')
+            || line.starts_with('>')
+            || line.starts_with("---")
+            || line.starts_with("```")
+        {
+            continue;
+        }
+        let cleaned = line
+            .replace("**", "")
+            .replace('`', "")
+            .trim_start_matches(|c: char| c == '-' || c == '*' || c == ' ')
+            .trim()
+            .to_string();
+        if cleaned.is_empty() {
+            continue;
+        }
+        picked.push(cleaned);
+        if picked.len() >= 2 {
+            break;
+        }
+    }
+    if picked.is_empty() {
+        None
+    } else {
+        Some(picked.join(" · "))
+    }
+}
+
 #[tauri::command]
 fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
     let root = PathBuf::from(&path);
@@ -137,7 +175,7 @@ fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
         }
         let state_preview = read_to_string_retry(&state_path)
             .ok()
-            .map(|s| s.lines().take(3).collect::<Vec<&str>>().join("\n"));
+            .and_then(|s| meaningful_preview(&s));
         domains.push(Domain {
             name,
             path: p.to_string_lossy().to_string(),

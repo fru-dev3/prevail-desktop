@@ -1413,14 +1413,14 @@ export default function App() {
     );
     setDomainStats(Object.fromEntries(results));
   }, []);
-  // Onboarding flow — modal shown when the vault has zero domains, or
-  // opened manually via "Set up domains". `onboardDismissed` tracks an
-  // explicit close so we don't keep re-popping the modal in an empty vault.
+  // Onboarding flow — opt-in only, opened manually via "Set up domains".
+  // It never auto-appears (the old auto-open raced the scan and popped over
+  // a populated vault). The dismissed flag is retained so manual closes are
+  // tracked even though nothing auto-reopens.
   const [onboardOpen, setOnboardOpen] = useState(false);
-  const [onboardDismissed, setOnboardDismissed] = useState(false);
-  // True only after the first scan_vault for the current vault resolves, so
-  // we never flash onboarding during the brief 0-domains loading window.
-  const [domainsLoaded, setDomainsLoaded] = useState(false);
+  const [, setOnboardDismissed] = useState(false);
+  // Tracks whether the first scan_vault for the current vault has resolved.
+  const [, setDomainsLoaded] = useState(false);
   // Reusable vault re-scan (used by onboarding apply + archive/restore).
   const refreshDomains = useCallback(async () => {
     if (!vaultPath) return;
@@ -1638,17 +1638,10 @@ export default function App() {
     return () => { cancelled = true; };
   }, [vaultPath]);
 
-  // Auto-open the onboarding flow once when a healthy vault has zero
-  // domains. Skip if the user already dismissed it this session, or if a
-  // scan error is showing (so we don't stack a modal over an error state).
-  useEffect(() => {
-    if (!vaultPath) return;
-    if (vaultError) return;
-    if (onboardDismissed) return;
-    if (domainsLoaded && domains.length === 0 && !onboardOpen) {
-      setOnboardOpen(true);
-    }
-  }, [vaultPath, vaultError, domainsLoaded, domains.length, onboardDismissed, onboardOpen]);
+  // Onboarding auto-open REMOVED. It raced the vault scan (firing while
+  // domains were still loading) and popped a modal over an already-populated
+  // vault, then never auto-closed. Onboarding is now opt-in only via the
+  // explicit "Set up domains" control; it never auto-appears.
 
   async function pickVault() {
     const dir = await open({ directory: true, multiple: false });
@@ -5582,7 +5575,7 @@ function ChatPanel({
                         transition={{ delay: 0.04 * i, type: "spring", stiffness: 140, damping: 18 }}
                         whileHover={{ y: -3 }}
                         whileTap={{ scale: 0.99 }}
-                        className="group relative flex h-36 flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface p-5 text-left transition-all duration-200 hover:border-border hover:shadow-[0_10px_34px_-12px_rgba(0,0,0,0.18)]"
+                        className="group relative flex h-44 flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface p-5 text-left transition-all duration-200 hover:border-border hover:shadow-[0_10px_34px_-12px_rgba(0,0,0,0.18)]"
                       >
                         {/* oversized watermark glyph — editorial fill, no text clutter */}
                         {Icon && (
@@ -5619,7 +5612,12 @@ function ChatPanel({
                           <div className="font-display text-lg font-semibold leading-tight tracking-tight text-text-primary">
                             {titleCase(d.name)}
                           </div>
-                          <div className="mt-2 flex items-center gap-2.5">
+                          {d.state_preview && (
+                            <p className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-text-secondary/85">
+                              {d.state_preview}
+                            </p>
+                          )}
+                          <div className="mt-2.5 flex items-center gap-2.5">
                             <span className="h-px w-7 rounded-full transition-all duration-300 group-hover:w-12" style={{ background: color }} />
                             <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
                               {importCount > 0 ? `${importCount} import${importCount === 1 ? "" : "s"}` : d.has_state ? "open" : "needs state"}
