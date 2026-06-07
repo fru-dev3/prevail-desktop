@@ -388,6 +388,8 @@ import {
   Sparkles,
   Sun,
   Mail,
+  PanelLeftClose,
+  PanelLeftOpen,
   TrendingUp,
   Users,
   Wallet,
@@ -2082,7 +2084,7 @@ function Sidebar({
             title="Collapse sidebar"
             className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
           >
-            <span className="text-[12px] leading-none">◂</span>
+            <PanelLeftClose className="h-4 w-4" />
           </button>
         )}
       </div>
@@ -2092,7 +2094,7 @@ function Sidebar({
           title="Expand sidebar"
           className="mx-auto mt-1 flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
         >
-          <span className="text-[12px] leading-none">▸</span>
+          <PanelLeftOpen className="h-4 w-4" />
         </button>
       )}
 
@@ -2235,7 +2237,7 @@ function Sidebar({
                 {isFirstAll && renderGroupHeader("All", allOpen, setAllOpen, sortedDomains.length - pinned.size)}
                 {((isPinned && pinnedOpen) || (!isPinned && allOpen)) && (
               <li
-                className="group flex items-center gap-1"
+                className="group flex items-center gap-1 pl-2.5"
               >
                 <button
                   onMouseDown={(e) => {
@@ -2323,7 +2325,7 @@ function Sidebar({
                   }`}
                   title={isPinned ? "Unpin" : "Pin to top"}
                 >
-                  <Pin className={`h-3.5 w-3.5 ${isPinned ? "fill-accent text-accent" : ""}`} />
+                  <Pin className={`h-3 w-3 ${isPinned ? "fill-accent text-accent" : ""}`} />
                 </button>
                 <button
                   onClick={() => openInFinder(d.path)}
