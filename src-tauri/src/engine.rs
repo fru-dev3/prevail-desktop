@@ -28,6 +28,21 @@ use tauri::Emitter;
 // /usr/local/bin, then fall back to the bare name (PATH resolution).
 
 fn resolve_prevail_bin() -> String {
+    // 1. Bundled engine sidecar — the app ships its own `prevail` engine
+    //    (Tauri `externalBin`) so a fresh download is fully self-contained
+    //    and never depends on a separately-installed CLI. Tauri places the
+    //    sidecar next to the app's main executable (Contents/MacOS/prevail,
+    //    target-triple stripped at bundle time).
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let sidecar = dir.join("prevail");
+            if sidecar.exists() {
+                return sidecar.to_string_lossy().to_string();
+            }
+        }
+    }
+    // 2. A developer-installed CLI on common paths (covers `tauri dev`,
+    //    where there's no bundled sidecar next to the debug binary).
     let home = std::env::var("HOME").unwrap_or_default();
     let candidates = [
         format!("{home}/.local/bin/prevail"),
@@ -41,7 +56,7 @@ fn resolve_prevail_bin() -> String {
             return c.clone();
         }
     }
-    // Fall back to the bare name; tokio/std will resolve via PATH.
+    // 3. Fall back to the bare name; tokio/std will resolve via PATH.
     "prevail".to_string()
 }
 
