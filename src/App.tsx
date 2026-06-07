@@ -402,6 +402,7 @@ import {
   AlertTriangle,
   Circle,
   ChevronLeft,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -1623,6 +1624,18 @@ export default function App() {
   useEffect(() => { void refreshThreads(); }, [refreshThreads]);
   const [clis, setClis] = useState<CliInfo[]>([]);
   const [tab, setTab] = useState<TabId>("chat");
+  // A domain can launch a scoped benchmark; it dispatches this event and we
+  // jump to the Benchmark page pre-scoped to that domain.
+  const [benchScope, setBenchScope] = useState<string | null>(null);
+  useEffect(() => {
+    const onBench = (e: Event) => {
+      const d = (e as CustomEvent<string>).detail || null;
+      setBenchScope(d);
+      setTab("benchmark");
+    };
+    window.addEventListener("prevail:benchmark-domain", onBench as EventListener);
+    return () => window.removeEventListener("prevail:benchmark-domain", onBench as EventListener);
+  }, []);
   const [vaultError, setVaultError] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
     () => lsGet("prevail.sidebarCollapsed") === "1",
@@ -1931,7 +1944,7 @@ export default function App() {
                 onThreadsChanged={() => void refreshThreads()}
               />
             )}
-            {tab === "benchmark" && <BenchmarkPanel vaultPath={vaultPath} />}
+            {tab === "benchmark" && <BenchmarkPanel vaultPath={vaultPath} initialDomain={benchScope} />}
           </div>
         </main>
       </div>
@@ -5590,6 +5603,13 @@ function ChatPanel({
         {domain && (
           <>
             <button
+              onClick={() => window.dispatchEvent(new CustomEvent("prevail:benchmark-domain", { detail: domain }))}
+              title={`Benchmark models on the ${titleCase(domain)} questions`}
+              className="flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+            </button>
+            <button
               onClick={() => setDomainTab(domainTab === "prefs" ? "chat" : "prefs")}
               title={hasAnyDomainOverride ? "Domain preferences (overrides active)" : "Domain preferences"}
               className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
@@ -7703,10 +7723,6 @@ function parseRunLabel(label: string): { vendor: string; model: string; ts?: str
   return { vendor, model, ts };
 }
 
-function VendorBadge({ vendor }: { vendor: string }) {
-  return <ProviderMark vendor={vendor} size={28} />;
-}
-
 function ScoreBar({ value, max, color = "var(--color-accent)" }: { value: number | null; max: number; color?: string }) {
   const pct = value === null ? 0 : Math.min(100, (value / max) * 100);
   return (
@@ -7968,506 +7984,760 @@ const BENCH_CLI_OPTIONS = [
   { id: "ollama",      label: "Ollama" },
 ] as const;
 
-function NewBenchmarkModal({
+// ─────────────────────────────────────────────────────────────────────
+// BENCHMARK PAGE — run (multi-model, per-domain or global), results
+// (by-model leaderboard + model×domain effectiveness matrix), and a
+// questions manager. Replaces the old leaderboard+popup. No modals.
+
+interface BenchQuestion {
+  id: string;
+  domain: string;
+  prompt: string;
+  context: string;
+  notes: string;
+  council: boolean;
+  expected_decision: string;
+  expected_verdict_keywords: string[];
+  path: string;
+}
+interface MatrixDomainCell {
+  judge_avg: number | null;
+  keyword_avg: number | null;
+  count: number;
+}
+interface MatrixRow {
+  label: string;
+  run_dir: string;
+  judge_avg: number | null;
+  keyword_avg: number | null;
+  per_domain: Record<string, MatrixDomainCell>;
+}
+
+type BenchJobStatus = "queued" | "running" | "scoring" | "done" | "error";
+interface BenchJob {
+  key: string;
+  cli: string;
+  model: string;
+  label: string;
+  status: BenchJobStatus;
+  note?: string;
+}
+
+const MODEL_SEP = "::";
+
+function BenchmarkPanel({
   vaultPath,
-  onClose,
-  onDone,
+  initialDomain,
 }: {
   vaultPath: string;
-  onClose: () => void;
-  onDone: () => void;
+  initialDomain?: string | null;
 }) {
-  const [cli, setCli] = useState<string>(() => lsGet(LS.defaultChatCli) || "claude");
-  const [model, setModel] = useState<string>(() => {
-    const def = lsGet(LS.defaultChatCli) || "claude";
-    return lsGet(`prevail.model.${def}`) || (MODELS[def]?.[0]?.id ?? "");
-  });
-  const [council, setCouncil] = useState(false);
-  const [domain, setDomain] = useState<string>("");
-  const [phase, setPhase] = useState<"idle" | "running" | "scoring" | "done" | "error">("idle");
-  const [log, setLog] = useState<string>("");
-  const [runExitCode, setRunExitCode] = useState<number | null>(null);
-  const sessionRef = useRef(`bench-${Date.now()}`);
-  const unlistenRefs = useRef<UnlistenFn[]>([]);
+  const [view, setView] = useState<"run" | "results" | "questions">(
+    initialDomain ? "run" : "results",
+  );
+
+  // Data
+  const [runs, setRuns] = useState<BenchmarkRun[]>([]);
+  const [matrix, setMatrix] = useState<MatrixRow[]>([]);
+  const [questions, setQuestions] = useState<BenchQuestion[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+
+  const refresh = useCallback(() => {
+    invoke<BenchmarkRun[]>("benchmark_runs", { vault: vaultPath }).then(setRuns).catch((e) => setErr(String(e)));
+    invoke<MatrixRow[]>("benchmark_matrix", { vault: vaultPath }).then(setMatrix).catch(() => {});
+    invoke<BenchQuestion[]>("benchmark_questions", { vault: vaultPath }).then(setQuestions).catch(() => {});
+  }, [vaultPath]);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Domains available to scope/filter by (union of question domains).
+  const allDomains = useMemo(() => {
+    const s = new Set<string>();
+    for (const q of questions) s.add(q.domain);
+    for (const m of matrix) for (const d of Object.keys(m.per_domain)) s.add(d);
+    return Array.from(s).sort();
+  }, [questions, matrix]);
+
+  // ── Run config ──────────────────────────────────────────────────
+  const [mode, setMode] = useState<"single" | "council">("single");
+  const [selModels, setSelModels] = useState<Set<string>>(() => new Set([`claude${MODEL_SEP}opus`]));
+  const [scope, setScope] = useState<Set<string>>(
+    () => new Set(initialDomain ? [initialDomain.toLowerCase()] : []),
+  );
+  const [jobs, setJobs] = useState<BenchJob[]>([]);
+  const [running, setRunning] = useState(false);
+  const [log, setLog] = useState("");
   const logRef = useRef<HTMLPreElement>(null);
+  useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log]);
 
-  useEffect(() => {
-    if (MODELS[cli] && !MODELS[cli].some((m) => m.id === model)) {
-      setModel(MODELS[cli][0]?.id ?? "");
-    }
-  }, [cli, model]);
+  const toggleModel = (cli: string, model: string) => {
+    const k = `${cli}${MODEL_SEP}${model}`;
+    setSelModels((cur) => {
+      const next = new Set(cur);
+      next.has(k) ? next.delete(k) : next.add(k);
+      return next;
+    });
+  };
+  const toggleScope = (d: string) =>
+    setScope((cur) => {
+      const next = new Set(cur);
+      next.has(d) ? next.delete(d) : next.add(d);
+      return next;
+    });
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const u1 = await listen<{ session: string; stream: string; data: string }>(
-        "benchmark:chunk",
-        (e) => {
-          if (e.payload.session !== sessionRef.current) return;
-          if (!mounted) return;
-          setLog((l) => l + e.payload.data);
-        },
-      );
-      const u2 = await listen<{ session: string; code: number | null; phase?: string }>(
-        "benchmark:done",
-        (e) => {
-          if (e.payload.session !== sessionRef.current) return;
-          if (!mounted) return;
-          const done_phase = e.payload.phase ?? "run";
-          if (done_phase === "run") {
-            setRunExitCode(e.payload.code);
-            if (e.payload.code === 0) {
-              // chain into scoring automatically
-              kickScore();
-            } else {
-              setPhase("error");
-            }
-          } else {
-            setPhase(e.payload.code === 0 ? "done" : "error");
-            if (e.payload.code === 0) onDone();
-          }
-        },
-      );
-      unlistenRefs.current = [u1, u2];
-    })();
-    return () => {
-      mounted = false;
-      unlistenRefs.current.forEach((u) => u());
-      unlistenRefs.current = [];
-    };
+  // Wait for a specific benchmark:done event (matched by session + phase).
+  const waitForDone = useCallback((session: string, phase: string) => {
+    return new Promise<number | null>((resolve) => {
+      let unlisten: UnlistenFn | null = null;
+      let chunkUn: UnlistenFn | null = null;
+      listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
+        if (e.payload.session === session && e.payload.phase === phase) {
+          unlisten?.();
+          chunkUn?.();
+          resolve(e.payload.code);
+        }
+      }).then((u) => { unlisten = u; });
+      listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
+        if (e.payload.session === session) setLog((l) => (l + e.payload.data).slice(-8000));
+      }).then((u) => { chunkUn = u; });
+    });
   }, []);
 
-  useEffect(() => {
-    if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight;
-    }
-  }, [log]);
-
-  async function kickScore() {
-    setPhase("scoring");
-    setLog((l) => l + "\n— scoring run —\n");
-    const scoreSession = `${sessionRef.current}-score`;
-    sessionRef.current = scoreSession;
-    try {
-      await invoke("benchmark_score", {
-        args: { session_id: scoreSession, vault: vaultPath },
-      });
-    } catch (e) {
-      setLog((l) => l + `\n(score error: ${e})\n`);
-      setPhase("error");
-    }
-  }
-
-  async function start() {
+  async function runBenchmark() {
+    const scopeStr = Array.from(scope).join(",");
+    const plannedJobs: BenchJob[] =
+      mode === "council"
+        ? [{ key: "council", cli: "", model: "", label: "Council", status: "queued" }]
+        : Array.from(selModels).map((k) => {
+            const [cli, model] = k.split(MODEL_SEP);
+            const ml = MODELS[cli]?.find((m) => m.id === model)?.label ?? model;
+            return { key: k, cli, model, label: `${titleCase(cli)} · ${ml}`, status: "queued" as BenchJobStatus };
+          });
+    if (plannedJobs.length === 0) { setErr("Pick at least one model to run."); return; }
+    setErr(null);
+    setRunning(true);
     setLog("");
-    setRunExitCode(null);
-    setPhase("running");
-    sessionRef.current = `bench-${Date.now()}`;
+    setJobs(plannedJobs);
+    const setJob = (key: string, patch: Partial<BenchJob>) =>
+      setJobs((cur) => cur.map((j) => (j.key === key ? { ...j, ...patch } : j)));
+
     try {
-      await invoke("benchmark_start", {
-        args: {
-          session_id: sessionRef.current,
-          vault: vaultPath,
-          cli,
-          model: model || null,
-          council,
-          domain: domain.trim() || null,
-        },
-      });
-    } catch (e) {
-      setLog((l) => l + `\n(spawn error: ${e})\n`);
-      setPhase("error");
+      for (const job of plannedJobs) {
+        setJob(job.key, { status: "running" });
+        const session = `bench-${job.key.replace(/[^a-z0-9]/gi, "")}-${Date.now()}`;
+        try {
+          await invoke("benchmark_start", {
+            args: {
+              session_id: session,
+              vault: vaultPath,
+              cli: job.cli || "claude",
+              model: job.model || null,
+              council: mode === "council",
+              domain: scopeStr || null,
+            },
+          });
+          const code = await waitForDone(session, "run");
+          if (code !== 0 && code !== null) { setJob(job.key, { status: "error", note: `exit ${code}` }); continue; }
+          setJob(job.key, { status: "scoring" });
+        } catch (e) {
+          setJob(job.key, { status: "error", note: String(e) });
+        }
+      }
+      // Score every new (unscored) run in one robust pass.
+      const scoreSession = `bench-score-${Date.now()}`;
+      await invoke("benchmark_score", { args: { session_id: scoreSession, vault: vaultPath, all: true } });
+      await waitForDone(scoreSession, "score");
+      setJobs((cur) => cur.map((j) => (j.status === "scoring" || j.status === "running" ? { ...j, status: "done" } : j)));
+      refresh();
+      setView("results");
+    } finally {
+      setRunning(false);
     }
   }
-
-  const busy = phase === "running" || phase === "scoring";
-  const cliModels = MODELS[cli] ?? [];
 
   return (
-    <div
-      className="absolute inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm"
-      onClick={() => { if (!busy) onClose(); }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl border border-border bg-surface"
-      >
-        <div className="flex items-center justify-between border-b border-border-subtle px-5 py-3">
-          <h3 className="font-display text-xl font-semibold">Run new benchmark</h3>
+    <div className="flex h-full flex-col">
+      {/* Page header: sub-tabs */}
+      <div className="flex shrink-0 items-center gap-1 border-b border-border-subtle px-4 py-2.5">
+        {([
+          ["run", "Run", Sparkles],
+          ["results", "Results", TrendingUp],
+          ["questions", "Questions", FileText],
+        ] as const).map(([id, label, Icon]) => (
           <button
-            onClick={onClose}
-            disabled={busy}
-            className="rounded-md border border-border px-2 py-1 text-xs hover:bg-surface-warm disabled:opacity-40"
+            key={id}
+            onClick={() => setView(id)}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
+              view === id ? "bg-accent-soft text-accent" : "text-text-secondary hover:bg-surface-warm"
+            }`}
           >
-            {busy ? "running…" : "close"}
+            <Icon className="h-3.5 w-3.5" />
+            {label}
           </button>
-        </div>
-
-        <div className="space-y-4 overflow-y-auto px-5 py-4">
-          <div>
-            <label className="font-mono text-xs uppercase tracking-wider text-text-muted">Mode</label>
-            <div className="mt-2 flex gap-2">
-              <button
-                onClick={() => setCouncil(false)}
-                disabled={busy}
-                className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
-                  !council ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-secondary hover:bg-surface-warm"
-                }`}
-              >
-                Single model
-              </button>
-              <button
-                onClick={() => setCouncil(true)}
-                disabled={busy}
-                className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors ${
-                  council ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-secondary hover:bg-surface-warm"
-                }`}
-              >
-                <Scale className="h-3.5 w-3.5" /> Council
-              </button>
-            </div>
-          </div>
-
-          {!council && (
-            <>
-              <div>
-                <label className="font-mono text-xs uppercase tracking-wider text-text-muted">CLI</label>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {BENCH_CLI_OPTIONS.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => setCli(c.id)}
-                      disabled={busy}
-                      className={`rounded-md border px-3 py-1.5 font-mono text-xs transition-colors ${
-                        cli === c.id ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-secondary hover:bg-surface-warm"
-                      }`}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {cliModels.length > 0 && (
-                <div>
-                  <label className="font-mono text-xs uppercase tracking-wider text-text-muted">Model</label>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {cliModels.map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => setModel(m.id)}
-                        disabled={busy}
-                        className={`rounded-md border px-3 py-1.5 font-mono text-xs transition-colors ${
-                          model === m.id ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-secondary hover:bg-surface-warm"
-                        }`}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-
-          <div>
-            <label className="font-mono text-xs uppercase tracking-wider text-text-muted">
-              Domain filter <span className="ml-1 text-text-muted/70">(optional)</span>
-            </label>
-            <input
-              value={domain}
-              onChange={(e) => setDomain(e.target.value)}
-              disabled={busy}
-              placeholder="e.g. tax — leave blank to run all"
-              className="mt-2 w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none"
-            />
-          </div>
-
-          {phase !== "idle" && (
-            <div>
-              <div className="mb-2 flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-text-muted">
-                <span className={busy ? "pulse-soft text-accent" : runExitCode === 0 && phase === "done" ? "text-ok" : phase === "error" ? "text-err" : "text-text-muted"}>
-                  ●
-                </span>
-                {phase === "running" && "running benchmark…"}
-                {phase === "scoring" && "scoring run…"}
-                {phase === "done" && "done · leaderboard refreshed"}
-                {phase === "error" && "errored — check log"}
-              </div>
-              <pre
-                ref={logRef}
-                className="max-h-64 overflow-y-auto rounded-md border border-border bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary"
-              >
-                {log || "(no output yet)"}
-              </pre>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-5 py-3">
+        ))}
+        <div className="flex-1" />
+        {initialDomain && (
           <span className="font-mono text-[11px] text-text-muted">
-            shells out to <code className="text-accent">prevail bench run --canonical</code>
+            scoped to <span className="text-accent">{titleCase(initialDomain)}</span>
           </span>
-          <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              disabled={busy}
-              className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-40"
-            >
-              Close
-            </button>
-            <button
-              onClick={start}
-              disabled={busy || (!council && !cli)}
-              className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-background hover:bg-accent-hover disabled:bg-surface-strong disabled:text-text-muted"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              {phase === "idle" ? "Start run" : busy ? "Running…" : "Run again"}
-            </button>
-          </div>
-        </div>
+        )}
+      </div>
+
+      {err && <div className="mx-4 mt-3 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{err}</div>}
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {view === "run" && (
+          <BenchRunConfig
+            mode={mode} setMode={setMode}
+            selModels={selModels} toggleModel={toggleModel}
+            allDomains={allDomains} scope={scope} toggleScope={toggleScope}
+            questionCount={questions.length}
+            running={running} jobs={jobs} log={log} logRef={logRef}
+            onRun={runBenchmark}
+          />
+        )}
+        {view === "results" && (
+          <BenchResults runs={runs} matrix={matrix} allDomains={allDomains} vaultPath={vaultPath} />
+        )}
+        {view === "questions" && (
+          <BenchQuestions
+            vaultPath={vaultPath} questions={questions} allDomains={allDomains}
+            onChanged={refresh}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function BenchmarkPanel({ vaultPath }: { vaultPath: string }) {
-  const [runs, setRuns] = useState<BenchmarkRun[]>([]);
+function BenchRunConfig({
+  mode, setMode, selModels, toggleModel, allDomains, scope, toggleScope,
+  questionCount, running, jobs, log, logRef, onRun,
+}: {
+  mode: "single" | "council";
+  setMode: (m: "single" | "council") => void;
+  selModels: Set<string>;
+  toggleModel: (cli: string, model: string) => void;
+  allDomains: string[];
+  scope: Set<string>;
+  toggleScope: (d: string) => void;
+  questionCount: number;
+  running: boolean;
+  jobs: BenchJob[];
+  log: string;
+  logRef: React.RefObject<HTMLPreElement | null>;
+  onRun: () => void;
+}) {
+  const selCount = mode === "council" ? 1 : selModels.size;
+  return (
+    <div className="mx-auto max-w-3xl space-y-7 px-6 py-6">
+      {/* Mode */}
+      <section>
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Mode</div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setMode("single")}
+            className={`rounded-md border px-3 py-1.5 text-sm ${mode === "single" ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-secondary hover:bg-surface-warm"}`}
+          >
+            Models (compare)
+          </button>
+          <button
+            onClick={() => setMode("council")}
+            className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm ${mode === "council" ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-secondary hover:bg-surface-warm"}`}
+          >
+            <Scale className="h-3.5 w-3.5" /> Council
+          </button>
+        </div>
+      </section>
+
+      {/* Models (multi-select) — hidden in council mode */}
+      {mode === "single" && (
+        <section>
+          <div className="mb-2 flex items-baseline justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Models</span>
+            <span className="font-mono text-[10px] text-text-muted">{selModels.size} selected — runs head-to-head</span>
+          </div>
+          <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
+            {BENCH_CLI_OPTIONS.map((c) => (
+              <div key={c.id}>
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <ProviderMark vendor={c.id} size={16} />
+                  <span className="text-xs font-medium text-text-secondary">{c.label}</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(MODELS[c.id] ?? []).map((m) => {
+                    const on = selModels.has(`${c.id}${MODEL_SEP}${m.id}`);
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => toggleModel(c.id, m.id)}
+                        title={m.blurb}
+                        className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[11px] ${on ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:bg-surface-warm"}`}
+                      >
+                        {on && <Check className="h-3 w-3" />}
+                        {m.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Domain scope */}
+      <section>
+        <div className="mb-2 flex items-baseline justify-between">
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Domain scope</span>
+          <span className="font-mono text-[10px] text-text-muted">{scope.size === 0 ? "all domains" : `${scope.size} selected`}</span>
+        </div>
+        {allDomains.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-xs text-text-muted">
+            No questions yet — add some in the <span className="text-accent">Questions</span> tab first.
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => scope.forEach((d) => toggleScope(d))}
+              className={`rounded-md border px-2.5 py-1 font-mono text-[11px] ${scope.size === 0 ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:bg-surface-warm"}`}
+            >
+              All
+            </button>
+            {allDomains.map((d) => {
+              const on = scope.has(d);
+              const Icon = domainIcon(d);
+              return (
+                <button
+                  key={d}
+                  onClick={() => toggleScope(d)}
+                  className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] ${on ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:bg-surface-warm"}`}
+                >
+                  {Icon && <Icon className="h-3 w-3" />}
+                  {titleCase(d)}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Run */}
+      <section className="flex items-center gap-3">
+        <button
+          onClick={onRun}
+          disabled={running || questionCount === 0 || selCount === 0}
+          className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
+        >
+          {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {running ? "Running…" : mode === "council" ? "Run council benchmark" : `Run ${selCount} model${selCount === 1 ? "" : "s"}`}
+        </button>
+        <span className="text-xs text-text-muted">
+          {questionCount} question{questionCount === 1 ? "" : "s"}
+          {scope.size > 0 ? ` · scoped` : ""} · auto-scored after each run
+        </span>
+      </section>
+
+      {/* Live job status */}
+      {jobs.length > 0 && (
+        <section className="space-y-2">
+          {jobs.map((j) => (
+            <div key={j.key} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+              <BenchStatusDot status={j.status} />
+              <span className="flex-1 text-sm text-text-primary">{j.label}</span>
+              <span className="font-mono text-[11px] text-text-muted">{j.note ?? j.status}</span>
+            </div>
+          ))}
+          {log && (
+            <pre ref={logRef} className="max-h-40 overflow-y-auto rounded-lg border border-border bg-background p-3 font-mono text-[10px] leading-relaxed text-text-muted">
+              {log}
+            </pre>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+function BenchStatusDot({ status }: { status: BenchJobStatus }) {
+  if (status === "running" || status === "scoring")
+    return <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />;
+  if (status === "done") return <Check className="h-3.5 w-3.5 text-ok" />;
+  if (status === "error") return <AlertTriangle className="h-3.5 w-3.5 text-danger" />;
+  return <Circle className="h-3.5 w-3.5 text-text-muted" />;
+}
+
+function BenchResults({
+  runs, matrix, allDomains, vaultPath,
+}: {
+  runs: BenchmarkRun[];
+  matrix: MatrixRow[];
+  allDomains: string[];
+  vaultPath: string;
+}) {
+  const [resultsView, setResultsView] = useState<"model" | "matrix">("model");
+  const [domainFilter, setDomainFilter] = useState<string>("all");
   const [selected, setSelected] = useState<RunDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [expandedQ, setExpandedQ] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [vendorFilter, setVendorFilter] = useState<string>("all");
-  const [showNewModal, setShowNewModal] = useState(false);
-
-  useEffect(() => {
-    invoke<BenchmarkRun[]>("benchmark_runs", { vault: vaultPath })
-      .then((r) => {
-        setRuns(r);
-        setErr(null);
-      })
-      .catch((e) => setErr(String(e)));
-  }, [vaultPath]);
 
   async function loadRun(runDir: string) {
     setLoadingDetail(true);
     setExpandedQ(null);
     try {
-      const detail = await invoke<RunDetail>("benchmark_run_detail", { runDir });
-      setSelected(detail);
-    } catch (e) {
-      setErr(String(e));
-    } finally {
+      setSelected(await invoke<RunDetail>("benchmark_run_detail", { runDir }));
+    } catch { /* ignore */ } finally {
       setLoadingDetail(false);
     }
   }
 
-  const parsed = useMemo(
-    () => runs.map((r) => ({ ...r, parsed: parseRunLabel(r.label) })),
-    [runs],
-  );
-  const vendors = useMemo(() => {
-    const set = new Set(parsed.map((r) => r.parsed.vendor));
-    return Array.from(set).sort();
-  }, [parsed]);
-  const filteredRuns = useMemo(
-    () => vendorFilter === "all" ? parsed : parsed.filter((r) => r.parsed.vendor === vendorFilter),
-    [parsed, vendorFilter],
-  );
-  const sortedRuns = useMemo(
-    () => [...filteredRuns].sort((a, b) => (b.judge_avg ?? -1) - (a.judge_avg ?? -1)),
-    [filteredRuns],
-  );
+  // By-model leaderboard, optionally showing a single domain's score.
+  const leaderboard = useMemo(() => {
+    const rows = runs.map((r) => {
+      const parsed = parseRunLabel(r.label);
+      const mrow = matrix.find((m) => m.run_dir === r.run_dir);
+      const cell = domainFilter !== "all" ? mrow?.per_domain[domainFilter] : null;
+      const judge = domainFilter === "all" ? r.judge_avg : cell?.judge_avg ?? null;
+      const kw = domainFilter === "all" ? r.keyword_avg : cell?.keyword_avg ?? null;
+      return { ...r, parsed, judge, kw, present: domainFilter === "all" || !!cell };
+    });
+    return rows
+      .filter((r) => r.present)
+      .sort((a, b) => (b.judge ?? -1) - (a.judge ?? -1));
+  }, [runs, matrix, domainFilter]);
 
-  return (
-    <div className="flex h-full">
-      <div className="flex w-[28rem] shrink-0 flex-col border-r border-border-subtle bg-surface">
-        <div className="space-y-3 border-b border-border-subtle px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">
-              <span className="text-accent">◈</span> Leaderboard · {runs.length} run{runs.length === 1 ? "" : "s"}
-            </div>
-            <button
-              onClick={() => setShowNewModal(true)}
-              className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background hover:bg-accent-hover"
-              title="Run a new benchmark"
-            >
-              <Sparkles className="h-3 w-3" />
-              Run new
-            </button>
-          </div>
-          {/* Vendor filter chips */}
-          <div className="flex flex-wrap items-center gap-1">
-            <button
-              onClick={() => setVendorFilter("all")}
-              className={`rounded-md border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
-                vendorFilter === "all"
-                  ? "border-accent-border bg-accent-soft text-accent"
-                  : "border-border bg-background text-text-muted hover:bg-surface-warm"
-              }`}
-            >
-              all
-            </button>
-            {vendors.map((v) => (
-              <button
-                key={v}
-                onClick={() => setVendorFilter(v)}
-                className={`rounded-md border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
-                  vendorFilter === v
-                    ? "border-accent-border bg-accent-soft text-accent"
-                    : "border-border bg-background text-text-muted hover:bg-surface-warm"
-                }`}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
+  if (selected) {
+    return (
+      <div className="px-6 py-6">
+        <button
+          onClick={() => setSelected(null)}
+          className="mb-4 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-accent"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" /> Results
+        </button>
+        <h2 className="font-display text-2xl font-semibold">{selected.score.label}</h2>
+        <div className="mt-3 flex gap-6 font-mono text-sm">
+          <div><span className="text-text-muted">judge: </span><span className="text-accent">{selected.score.judge_avg?.toFixed(1) ?? "—"}</span><span className="text-text-muted"> / 10</span></div>
+          <div><span className="text-text-muted">keyword: </span><span className="text-text-primary">{selected.score.keyword_avg !== null ? Math.round(selected.score.keyword_avg) + "%" : "—"}</span></div>
+          <div><span className="text-text-muted">questions: </span><span className="text-text-primary">{selected.score.questionScores.length}</span></div>
         </div>
-        <div className="flex-1 overflow-y-auto p-2">
-          {err && <div className="m-2 rounded border border-warn/40 bg-warn/10 p-3 text-xs text-warn">{err}</div>}
-          {runs.length === 0 && !err && (
-            <div className="p-4 text-xs text-text-muted">
-              No scored runs in <code className="text-accent">{vaultPath}/benchmark/runs/</code> yet.
-              Hit <span className="text-accent">Run new</span> to kick one off.
-            </div>
-          )}
-          {sortedRuns.map((r, idx) => {
-            const active = selected?.score.runDir === r.run_dir;
+        <div className="mt-8 space-y-2">
+          {selected.score.questionScores.map((q) => {
+            const expanded = expandedQ === q.id;
+            const record = selected.records.find((r) => r.id === q.id);
             return (
-              <button
-                key={r.label}
-                onClick={() => loadRun(r.run_dir)}
-                className={`mb-1 flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors ${
-                  active ? "bg-accent-soft" : "hover:bg-surface-warm"
-                }`}
-              >
-                <span className="w-5 shrink-0 text-center font-mono text-[10px] text-text-muted">
-                  {idx + 1}
-                </span>
-                <VendorBadge vendor={r.parsed.vendor} />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-mono text-xs text-text-primary">{r.parsed.model || r.label}</div>
-                  <div className="mt-1.5">
-                    <ScoreBar value={r.judge_avg} max={10} />
+              <div key={q.id} className="overflow-hidden rounded-lg border border-border bg-surface">
+                <button onClick={() => setExpandedQ(expanded ? null : q.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-warm">
+                  <span className="text-text-muted">{expanded ? "▾" : "▸"}</span>
+                  <span className="w-28 shrink-0 truncate font-mono text-sm text-text-primary">{q.id}</span>
+                  <span className="rounded bg-surface-warm px-1.5 py-0 font-mono text-[10px] text-text-muted">{q.domain}</span>
+                  <div className="min-w-0 flex-1"><ScoreBar value={q.judge_score} max={10} /></div>
+                  <span className="flex shrink-0 items-center gap-3 font-mono text-xs">
+                    <span className="text-text-muted">{q.keyword_score !== null ? Math.round(q.keyword_score) + "%" : "—"}</span>
+                    <span className="w-10 text-right text-accent">{q.judge_score ?? "—"}/10</span>
+                  </span>
+                </button>
+                {expanded && (
+                  <div className="space-y-3 border-t border-border-subtle px-6 py-4 text-sm">
+                    <div><div className="mb-1 font-mono text-xs uppercase tracking-wider text-text-muted">question</div><div className="whitespace-pre-wrap text-text-primary">{record?.prompt ?? "(n/a)"}</div></div>
+                    {record?.expected_decision && <div><div className="mb-1 font-mono text-xs uppercase tracking-wider text-text-muted">expected decision</div><div className="whitespace-pre-wrap text-ok">{record.expected_decision}</div></div>}
+                    <div><div className="mb-1 font-mono text-xs uppercase tracking-wider text-text-muted">model said</div><div className="whitespace-pre-wrap text-text-primary">{record?.reply ?? "(no reply)"}</div></div>
+                    {q.judge_rationale && <div><div className="mb-1 font-mono text-xs uppercase tracking-wider text-text-muted">judge ({q.judge_score}/10)</div><div className="whitespace-pre-wrap text-text-secondary">{q.judge_rationale}</div></div>}
                   </div>
-                </div>
-                <div className="shrink-0 text-right font-mono">
-                  <div className="text-sm font-semibold text-accent">
-                    {r.judge_avg !== null ? r.judge_avg.toFixed(1) : "—"}
-                  </div>
-                  <div className="text-[10px] text-text-muted">
-                    {r.keyword_avg !== null ? Math.round(r.keyword_avg) + "%" : "—"} kw
-                  </div>
-                </div>
-              </button>
+                )}
+              </div>
             );
           })}
         </div>
       </div>
+    );
+  }
 
-      {showNewModal && (
-        <NewBenchmarkModal
-          vaultPath={vaultPath}
-          onClose={() => setShowNewModal(false)}
-          onDone={() => {
-            invoke<BenchmarkRun[]>("benchmark_runs", { vault: vaultPath })
-              .then(setRuns)
-              .catch((e) => setErr(String(e)));
-          }}
-        />
+  return (
+    <div className="px-6 py-5">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="inline-flex rounded-md border border-border p-0.5">
+          {([["model", "By model"], ["matrix", "Model × domain"]] as const).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setResultsView(id)}
+              className={`rounded px-2.5 py-1 text-xs ${resultsView === id ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {resultsView === "model" && allDomains.length > 0 && (
+          <select
+            value={domainFilter}
+            onChange={(e) => setDomainFilter(e.target.value)}
+            className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary"
+          >
+            <option value="all">all domains</option>
+            {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+          </select>
+        )}
+        <div className="flex-1" />
+        <span className="font-mono text-[11px] text-text-muted">{runs.length} run{runs.length === 1 ? "" : "s"}</span>
+      </div>
+
+      {runs.length === 0 && (
+        <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+          No scored runs yet. Head to <span className="text-accent">Run</span> to kick one off.
+        </div>
       )}
 
-      <div className="flex-1 overflow-y-auto">
-        {!selected && !loadingDetail && (
-          <div className="flex h-full items-center justify-center text-text-muted">
-            <div className="text-center">
-              <Sparkles className="mx-auto h-8 w-8 opacity-50" />
-              <p className="mt-4 text-sm">Pick a run on the left to drill in.</p>
-            </div>
-          </div>
-        )}
-        {loadingDetail && <div className="p-6 text-sm text-text-muted">loading run…</div>}
-        {selected && !loadingDetail && (
-          <div className="px-6 py-6">
-            <div className="font-mono text-xs uppercase tracking-[0.2em] text-text-muted">run</div>
-            <h2 className="mt-2 font-display text-2xl font-semibold">{selected.score.label}</h2>
-            <div className="mt-3 flex gap-6 font-mono text-sm">
-              <div>
-                <span className="text-text-muted">judge: </span>
-                <span className="text-accent">{selected.score.judge_avg !== null ? selected.score.judge_avg.toFixed(1) : "—"}</span>
-                <span className="text-text-muted"> / 10</span>
-              </div>
-              <div>
-                <span className="text-text-muted">keyword: </span>
-                <span className="text-text-primary">{selected.score.keyword_avg !== null ? Math.round(selected.score.keyword_avg) + "%" : "—"}</span>
-              </div>
-              <div>
-                <span className="text-text-muted">questions: </span>
-                <span className="text-text-primary">{selected.score.questionScores.length}</span>
-              </div>
-            </div>
+      {resultsView === "model" && runs.length > 0 && (
+        <div className="overflow-hidden rounded-2xl border border-border">
+          {loadingDetail && <div className="p-3 text-xs text-text-muted">loading…</div>}
+          {leaderboard.map((r, i) => (
+            <button
+              key={r.label}
+              onClick={() => loadRun(r.run_dir)}
+              className="flex w-full items-center gap-3 border-b border-border-subtle px-3 py-2.5 text-left last:border-0 hover:bg-surface-warm"
+            >
+              <span className="w-5 text-center font-mono text-[11px] text-text-muted">{i + 1}</span>
+              <ProviderMark vendor={r.parsed.vendor} size={22} />
+              <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-primary">{r.parsed.model || r.label}</span>
+              <div className="hidden w-40 sm:block"><ScoreBar value={r.judge} max={10} color={scoreColor((r.judge ?? 0) * 10)} /></div>
+              <span className="w-14 text-right font-mono text-sm font-semibold text-accent">{r.judge?.toFixed(1) ?? "—"}</span>
+              <span className="w-12 text-right font-mono text-[11px] text-text-muted">{r.kw !== null ? Math.round(r.kw) + "%" : "—"}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
-            <div className="mt-8 space-y-2">
-              {selected.score.questionScores.map((q) => {
-                const expanded = expandedQ === q.id;
-                const record = selected.records.find((r) => r.id === q.id);
-                return (
-                  <div key={q.id} className="overflow-hidden rounded-lg border border-border bg-surface">
-                    <button
-                      onClick={() => setExpandedQ(expanded ? null : q.id)}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-warm"
-                    >
-                      <span className="text-text-muted">{expanded ? "▾" : "▸"}</span>
-                      <span className="w-28 shrink-0 truncate font-mono text-sm text-text-primary">{q.id}</span>
-                      <div className="min-w-0 flex-1">
-                        <ScoreBar value={q.judge_score} max={10} />
-                      </div>
-                      <span className="flex shrink-0 items-center gap-3 font-mono text-xs">
-                        <span className="text-text-muted">{q.keyword_score !== null ? Math.round(q.keyword_score) + "%" : "—"}</span>
-                        <span className="w-10 text-right text-accent">{q.judge_score !== null ? q.judge_score : "—"}/10</span>
-                      </span>
-                    </button>
-                    {expanded && (
-                      <div className="space-y-3 border-t border-border-subtle px-6 py-4 text-sm">
-                        <div>
-                          <div className="mb-1 font-mono text-xs uppercase tracking-wider text-text-muted">question</div>
-                          <div className="whitespace-pre-wrap text-text-primary">{record?.prompt ?? "(prompt not in records)"}</div>
-                        </div>
-                        {record?.expected_decision && (
-                          <div>
-                            <div className="mb-1 font-mono text-xs uppercase tracking-wider text-text-muted">expected decision</div>
-                            <div className="whitespace-pre-wrap text-ok">{record.expected_decision}</div>
-                          </div>
-                        )}
-                        <div>
-                          <div className="mb-1 font-mono text-xs uppercase tracking-wider text-text-muted">model said</div>
-                          <div className="whitespace-pre-wrap text-text-primary">{record?.reply ?? "(no reply)"}</div>
-                        </div>
-                        <div className="flex gap-6 font-mono text-xs">
-                          <div>
-                            <span className="text-ok">✓ hit: </span>
-                            <span className="text-text-secondary">{q.keyword_hits.join(", ") || "(none)"}</span>
-                          </div>
-                          <div>
-                            <span className="text-warn">✗ miss: </span>
-                            <span className="text-text-secondary">{q.keyword_misses.join(", ") || "(none)"}</span>
-                          </div>
-                        </div>
-                        {q.judge_rationale && (
-                          <div>
-                            <div className="mb-1 font-mono text-xs uppercase tracking-wider text-text-muted">judge rationale ({q.judge_score}/10)</div>
-                            <div className="whitespace-pre-wrap text-text-secondary">{q.judge_rationale}</div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
+      {resultsView === "matrix" && runs.length > 0 && (
+        <BenchMatrix matrix={matrix} allDomains={allDomains} onPick={loadRun} />
+      )}
+      {/* vaultPath kept for future per-run actions */}
+      <span className="hidden">{vaultPath}</span>
     </div>
+  );
+}
+
+// Model × domain pivot — rows are runs (models), columns are domains, cells
+// are judge averages. Best cell per column is highlighted so "which model
+// wins which domain" reads at a glance.
+function BenchMatrix({
+  matrix, allDomains, onPick,
+}: {
+  matrix: MatrixRow[];
+  allDomains: string[];
+  onPick: (runDir: string) => void;
+}) {
+  const bestPerDomain = useMemo(() => {
+    const best: Record<string, number> = {};
+    for (const d of allDomains) {
+      let b = -1;
+      for (const m of matrix) {
+        const v = m.per_domain[d]?.judge_avg;
+        if (v != null && v > b) b = v;
+      }
+      best[d] = b;
+    }
+    return best;
+  }, [matrix, allDomains]);
+
+  const rows = useMemo(
+    () => [...matrix].sort((a, b) => (b.judge_avg ?? -1) - (a.judge_avg ?? -1)),
+    [matrix],
+  );
+
+  if (allDomains.length === 0) return <div className="text-sm text-text-muted">No domain data yet.</div>;
+
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-border">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-border bg-surface">
+            <th className="sticky left-0 bg-surface px-3 py-2 text-left font-mono text-[10px] uppercase tracking-wider text-text-muted">Model</th>
+            {allDomains.map((d) => (
+              <th key={d} className="px-3 py-2 text-center font-mono text-[10px] uppercase tracking-wider text-text-muted">{titleCase(d)}</th>
+            ))}
+            <th className="px-3 py-2 text-center font-mono text-[10px] uppercase tracking-wider text-accent">Overall</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((m) => {
+            const parsed = parseRunLabel(m.label);
+            return (
+              <tr key={m.run_dir} className="border-b border-border-subtle last:border-0 hover:bg-surface-warm">
+                <td className="sticky left-0 bg-background px-3 py-2">
+                  <button onClick={() => onPick(m.run_dir)} className="inline-flex items-center gap-1.5 hover:text-accent">
+                    <ProviderMark vendor={parsed.vendor} size={16} />
+                    <span className="font-mono text-xs text-text-primary">{parsed.model || m.label}</span>
+                  </button>
+                </td>
+                {allDomains.map((d) => {
+                  const cell = m.per_domain[d];
+                  const v = cell?.judge_avg ?? null;
+                  const isBest = v != null && v === bestPerDomain[d] && v >= 0;
+                  return (
+                    <td key={d} className="px-3 py-2 text-center font-mono text-xs">
+                      {v == null ? (
+                        <span className="text-text-muted/40">—</span>
+                      ) : (
+                        <span
+                          className={isBest ? "rounded px-1.5 py-0.5 font-semibold" : ""}
+                          style={isBest ? { background: "var(--color-ok, #2e9e5b)", color: "#fff" } : { color: scoreColor(v * 10) }}
+                        >
+                          {v.toFixed(1)}
+                        </span>
+                      )}
+                    </td>
+                  );
+                })}
+                <td className="px-3 py-2 text-center font-mono text-xs font-semibold text-accent">{m.judge_avg?.toFixed(1) ?? "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function BenchQuestions({
+  vaultPath, questions, allDomains, onChanged,
+}: {
+  vaultPath: string;
+  questions: BenchQuestion[];
+  allDomains: string[];
+  onChanged: () => void;
+}) {
+  const [filter, setFilter] = useState<string>("all");
+  const [editing, setEditing] = useState<BenchQuestion | "new" | null>(null);
+  const blank: BenchQuestion = { id: "", domain: "", prompt: "", context: "", notes: "", council: false, expected_decision: "", expected_verdict_keywords: [], path: "" };
+  const [draft, setDraft] = useState<BenchQuestion>(blank);
+  const [saving, setSaving] = useState(false);
+
+  const shown = filter === "all" ? questions : questions.filter((q) => q.domain === filter);
+
+  const openEditor = (q: BenchQuestion | "new") => {
+    setEditing(q);
+    setDraft(q === "new" ? blank : { ...q });
+  };
+
+  async function save() {
+    if (!draft.domain.trim() || !draft.prompt.trim()) return;
+    setSaving(true);
+    try {
+      await invoke("benchmark_save_question", {
+        vault: vaultPath,
+        q: {
+          id: draft.id || null,
+          domain: draft.domain.trim().toLowerCase(),
+          prompt: draft.prompt,
+          context: draft.context,
+          notes: draft.notes,
+          council: draft.council,
+          expected_decision: draft.expected_decision,
+          expected_verdict_keywords: draft.expected_verdict_keywords,
+        },
+      });
+      setEditing(null);
+      onChanged();
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function remove(q: BenchQuestion) {
+    const ok = await tauriConfirm(`Delete benchmark question "${q.id}"?`, { title: "Delete question", kind: "warning" });
+    if (!ok) return;
+    await invoke("benchmark_delete_question", { path: q.path });
+    if (editing !== "new" && editing && editing.id === q.id) setEditing(null);
+    onChanged();
+  }
+
+  if (editing) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-4 px-6 py-6">
+        <button onClick={() => setEditing(null)} className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-accent">
+          <ChevronLeft className="h-3.5 w-3.5" /> Questions
+        </button>
+        <h2 className="font-display text-xl font-semibold">{editing === "new" ? "New question" : draft.id}</h2>
+        <Field label="Domain">
+          <input value={draft.domain} onChange={(e) => setDraft({ ...draft, domain: e.target.value })} list="bench-domains" placeholder="wealth" className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+          <datalist id="bench-domains">{allDomains.map((d) => <option key={d} value={d} />)}</datalist>
+        </Field>
+        <Field label="Prompt — the question as you'd ask it">
+          <textarea value={draft.prompt} onChange={(e) => setDraft({ ...draft, prompt: e.target.value })} rows={3} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+        </Field>
+        <Field label="Context — facts the model needs (numbers, dates)">
+          <textarea value={draft.context} onChange={(e) => setDraft({ ...draft, context: e.target.value })} rows={3} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+        </Field>
+        <Field label="Expected decision — your real ground-truth answer">
+          <input value={draft.expected_decision} onChange={(e) => setDraft({ ...draft, expected_decision: e.target.value })} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+        </Field>
+        <Field label="Expected keywords — comma-separated, for the mechanical floor">
+          <input
+            value={draft.expected_verdict_keywords.join(", ")}
+            onChange={(e) => setDraft({ ...draft, expected_verdict_keywords: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
+            placeholder="liquidity, 6 month floor, diversify"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          />
+        </Field>
+        <Field label="Notes — what you actually decided, and why">
+          <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} rows={2} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+        </Field>
+        <label className="flex items-center gap-2 text-sm text-text-secondary">
+          <input type="checkbox" checked={draft.council} onChange={(e) => setDraft({ ...draft, council: e.target.checked })} />
+          Run via council (multi-model panel) by default
+        </label>
+        <div className="flex items-center gap-2 pt-2">
+          <button onClick={save} disabled={saving || !draft.domain.trim() || !draft.prompt.trim()} className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save
+          </button>
+          {editing !== "new" && (
+            <button onClick={() => remove(draft)} className="inline-flex items-center gap-1.5 rounded-lg border border-danger/40 px-3 py-2 text-sm text-danger hover:bg-danger/10">
+              <Trash2 className="h-3.5 w-3.5" /> Delete
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-6 py-5">
+      <div className="mb-4 flex items-center gap-3">
+        <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
+          <option value="all">all domains</option>
+          {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+        </select>
+        <div className="flex-1" />
+        <button onClick={() => openEditor("new")} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background hover:bg-accent-hover">
+          <Plus className="h-3 w-3" /> New question
+        </button>
+      </div>
+      {shown.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+          No questions{filter !== "all" ? ` in ${titleCase(filter)}` : ""} yet. Hit <span className="text-accent">New question</span> to add one.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border border-border">
+          {shown.map((q) => (
+            <button key={q.id} onClick={() => openEditor(q)} className="flex w-full items-start gap-3 border-b border-border-subtle px-4 py-3 text-left last:border-0 hover:bg-surface-warm">
+              <span className="mt-0.5 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{q.domain}</span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm text-text-primary">{q.prompt || <span className="text-text-muted">(empty prompt)</span>}</div>
+                {q.expected_decision && <div className="mt-0.5 truncate text-[11px] text-ok">→ {q.expected_decision}</div>}
+              </div>
+              {q.council && <Scale className="h-3.5 w-3.5 shrink-0 text-text-muted" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-text-muted">{label}</span>
+      {children}
+    </label>
   );
 }
 

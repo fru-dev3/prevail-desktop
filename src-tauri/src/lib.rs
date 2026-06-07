@@ -666,6 +666,310 @@ fn benchmark_run_detail(run_dir: String) -> Result<serde_json::Value, String> {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Benchmark questions — CRUD over <vault>/benchmark/questions/*.md. The
+// markdown format (frontmatter + ## Prompt/## Context/## Notes) mirrors the
+// CLI's canonical-bench.ts readQuestion/writeDraftQuestion exactly, so the
+// CLI and the desktop read/write the same files interchangeably.
+
+#[derive(Serialize)]
+struct BenchQuestion {
+    id: String,
+    domain: String,
+    prompt: String,
+    context: String,
+    notes: String,
+    council: bool,
+    expected_decision: String,
+    expected_verdict_keywords: Vec<String>,
+    path: String,
+}
+
+#[derive(Deserialize)]
+pub struct BenchQuestionInput {
+    id: Option<String>,
+    domain: String,
+    prompt: String,
+    context: Option<String>,
+    notes: Option<String>,
+    council: Option<bool>,
+    expected_decision: Option<String>,
+    expected_verdict_keywords: Option<Vec<String>>,
+}
+
+// Pull a `## Heading` section body out of the markdown (until the next ##).
+fn extract_section(body: &str, heading: &str) -> String {
+    let needle = format!("## {heading}");
+    let mut lines = body.lines();
+    let mut found = false;
+    let mut out: Vec<&str> = Vec::new();
+    while let Some(l) = lines.next() {
+        if found {
+            if l.trim_start().starts_with("## ") {
+                break;
+            }
+            out.push(l);
+        } else if l.trim() == needle {
+            found = true;
+        }
+    }
+    out.join("\n").trim().to_string()
+}
+
+fn parse_bench_question(path: &Path) -> Option<BenchQuestion> {
+    let raw = fs::read_to_string(path).ok()?;
+    let mut id = String::new();
+    let mut domain = String::new();
+    let mut council = false;
+    let mut expected_decision = String::new();
+    let mut keywords: Vec<String> = Vec::new();
+    let mut body_start = 0usize;
+    let lines: Vec<&str> = raw.lines().collect();
+    if lines.first().map(|l| l.trim()) == Some("---") {
+        let mut i = 1;
+        while i < lines.len() && lines[i].trim() != "---" {
+            if let Some((k, v)) = lines[i].split_once(':') {
+                let key = k.trim();
+                let val = v.trim();
+                match key {
+                    "id" => id = val.to_string(),
+                    "domain" => domain = val.to_string(),
+                    "council" => council = val == "true",
+                    "expected_decision" => {
+                        expected_decision = val.trim_matches('"').to_string()
+                    }
+                    "expected_verdict_keywords" => {
+                        if val.starts_with('[') && val.ends_with(']') {
+                            keywords = val[1..val.len() - 1]
+                                .split(',')
+                                .map(|s| s.trim().trim_matches(|c| c == '"' || c == '\'').to_string())
+                                .filter(|s| !s.is_empty() && !s.starts_with('<'))
+                                .collect();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            i += 1;
+        }
+        body_start = i + 1;
+    }
+    if id.is_empty() || domain.is_empty() {
+        return None;
+    }
+    let body = lines.get(body_start..).map(|s| s.join("\n")).unwrap_or_default();
+    let clean = |s: String| if s.starts_with('<') && s.ends_with('>') { String::new() } else { s };
+    Some(BenchQuestion {
+        id,
+        domain,
+        prompt: clean(extract_section(&body, "Prompt")),
+        context: clean(extract_section(&body, "Context")),
+        notes: clean(extract_section(&body, "Notes")),
+        council,
+        expected_decision: if expected_decision.starts_with('<') { String::new() } else { expected_decision },
+        expected_verdict_keywords: keywords,
+        path: path.to_string_lossy().to_string(),
+    })
+}
+
+#[tauri::command]
+fn benchmark_questions(vault: String) -> Result<Vec<BenchQuestion>, String> {
+    let dir = Path::new(&vault).join("benchmark").join("questions");
+    if !dir.exists() {
+        return Ok(vec![]);
+    }
+    let mut out = Vec::new();
+    for entry in fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+        let p = entry.path();
+        if p.extension().and_then(|s| s.to_str()) != Some("md") {
+            continue;
+        }
+        if let Some(q) = parse_bench_question(&p) {
+            out.push(q);
+        }
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(out)
+}
+
+fn slugify(s: &str) -> String {
+    let mut out = String::new();
+    let mut last_dash = false;
+    for ch in s.to_lowercase().chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+            last_dash = false;
+        } else if (ch == ' ' || ch == '-' || ch == '_') && !last_dash {
+            out.push('-');
+            last_dash = true;
+        }
+        if out.len() >= 50 {
+            break;
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+#[tauri::command]
+fn benchmark_save_question(vault: String, q: BenchQuestionInput) -> Result<BenchQuestion, String> {
+    let dir = Path::new(&vault).join("benchmark").join("questions");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // Determine the id: keep existing, else slug from domain + prompt (unique).
+    let id = match &q.id {
+        Some(existing) if !existing.is_empty() => existing.clone(),
+        _ => {
+            let base = format!("{}-{}", slugify(&q.domain), {
+                let s = slugify(&q.prompt);
+                if s.is_empty() { "draft".into() } else { s }
+            });
+            let mut candidate = base.clone();
+            let mut n = 2;
+            while dir.join(format!("{candidate}.md")).exists() {
+                candidate = format!("{base}-{n}");
+                n += 1;
+            }
+            candidate
+        }
+    };
+    let council = q.council.unwrap_or(false);
+    let esc = |s: &str| -> String {
+        if s.contains([':', '#', '"', '\n']) {
+            format!("\"{}\"", s.replace('"', "\\\""))
+        } else {
+            s.to_string()
+        }
+    };
+    let kw = q.expected_verdict_keywords.clone().unwrap_or_default();
+    let kw_line = if kw.is_empty() {
+        "[]".to_string()
+    } else {
+        format!("[{}]", kw.iter().map(|k| esc(k)).collect::<Vec<_>>().join(", "))
+    };
+    let mut md = String::new();
+    md.push_str("---\n");
+    md.push_str(&format!("id: {id}\n"));
+    md.push_str(&format!("domain: {}\n", q.domain));
+    md.push_str(&format!("council: {council}\n"));
+    md.push_str(&format!(
+        "expected_decision: {}\n",
+        esc(q.expected_decision.as_deref().unwrap_or(""))
+    ));
+    md.push_str(&format!("expected_verdict_keywords: {kw_line}\n"));
+    md.push_str("---\n\n");
+    md.push_str("## Prompt\n\n");
+    md.push_str(q.prompt.trim());
+    md.push_str("\n\n## Context\n\n");
+    md.push_str(q.context.as_deref().unwrap_or("").trim());
+    md.push_str("\n\n## Notes\n\n");
+    md.push_str(q.notes.as_deref().unwrap_or("").trim());
+    md.push('\n');
+    let path = dir.join(format!("{id}.md"));
+    fs::write(&path, md).map_err(|e| e.to_string())?;
+    parse_bench_question(&path).ok_or_else(|| "failed to re-read saved question".into())
+}
+
+#[tauri::command]
+fn benchmark_delete_question(path: String) -> Result<(), String> {
+    // Guard: only delete inside a benchmark/questions directory.
+    if !path.replace('\\', "/").contains("/benchmark/questions/") || !path.ends_with(".md") {
+        return Err("refusing to delete: not a benchmark question file".into());
+    }
+    fs::remove_file(&path).map_err(|e| e.to_string())
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Benchmark matrix — per-run, per-domain effectiveness, so the UI can pivot
+// "which model is best for which domain". Reads every run's score.json.
+
+#[derive(Deserialize)]
+struct ScoreQuestion {
+    domain: String,
+    judge_score: Option<f64>,
+    keyword_score: Option<f64>,
+}
+
+#[derive(Deserialize)]
+struct MatrixScoreFile {
+    label: String,
+    #[serde(rename = "runDir")]
+    run_dir: String,
+    judge_avg: Option<f64>,
+    keyword_avg: Option<f64>,
+    #[serde(rename = "questionScores")]
+    question_scores: Vec<ScoreQuestion>,
+}
+
+#[derive(Serialize)]
+struct DomainCell {
+    judge_avg: Option<f64>,
+    keyword_avg: Option<f64>,
+    count: usize,
+}
+
+#[derive(Serialize)]
+struct MatrixRow {
+    label: String,
+    run_dir: String,
+    judge_avg: Option<f64>,
+    keyword_avg: Option<f64>,
+    per_domain: std::collections::HashMap<String, DomainCell>,
+}
+
+#[tauri::command]
+fn benchmark_matrix(vault: String) -> Result<Vec<MatrixRow>, String> {
+    let runs_dir = Path::new(&vault).join("benchmark").join("runs");
+    if !runs_dir.exists() {
+        return Ok(vec![]);
+    }
+    let mut rows = Vec::new();
+    for entry in fs::read_dir(&runs_dir).map_err(|e| e.to_string())?.flatten() {
+        let score_file = entry.path().join("score.json");
+        if !score_file.exists() {
+            continue;
+        }
+        let raw = match fs::read_to_string(&score_file) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let parsed: MatrixScoreFile = match serde_json::from_str(&raw) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        // Group this run's questions by domain.
+        let mut by_domain: std::collections::HashMap<String, (Vec<f64>, Vec<f64>)> =
+            std::collections::HashMap::new();
+        for qs in &parsed.question_scores {
+            let e = by_domain.entry(qs.domain.clone()).or_default();
+            if let Some(j) = qs.judge_score {
+                e.0.push(j);
+            }
+            if let Some(k) = qs.keyword_score {
+                e.1.push(k);
+            }
+        }
+        let avg = |xs: &[f64]| -> Option<f64> {
+            if xs.is_empty() {
+                None
+            } else {
+                Some((xs.iter().sum::<f64>() / xs.len() as f64 * 10.0).round() / 10.0)
+            }
+        };
+        let mut per_domain = std::collections::HashMap::new();
+        for (d, (js, ks)) in by_domain {
+            let count = js.len().max(ks.len());
+            per_domain.insert(d, DomainCell { judge_avg: avg(&js), keyword_avg: avg(&ks), count });
+        }
+        rows.push(MatrixRow {
+            label: parsed.label,
+            run_dir: parsed.run_dir,
+            judge_avg: parsed.judge_avg,
+            keyword_avg: parsed.keyword_avg,
+            per_domain,
+        });
+    }
+    Ok(rows)
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Read state.md / log files for a domain
 
 #[tauri::command]
@@ -2060,6 +2364,7 @@ pub struct BenchmarkScoreArgs {
     pub session_id: String,
     pub vault: String,
     pub run: Option<String>,
+    pub all: Option<bool>,
     pub judge_cli: Option<String>,
     pub judge_model: Option<String>,
     pub no_judge: Option<bool>,
@@ -2074,7 +2379,9 @@ async fn benchmark_score(
         "--vault".into(), args.vault.clone(),
         "bench".into(), "score".into(),
     ];
-    if let Some(r) = &args.run {
+    if args.all.unwrap_or(false) {
+        cli_args.push("--all".into());
+    } else if let Some(r) = &args.run {
         cli_args.push("--run".into());
         cli_args.push(r.clone());
     }
@@ -2115,6 +2422,10 @@ pub fn run() {
             chat_send,
             benchmark_runs,
             benchmark_run_detail,
+            benchmark_questions,
+            benchmark_save_question,
+            benchmark_delete_question,
+            benchmark_matrix,
             read_file,
             telegram_send,
             open_in_finder,
