@@ -21,7 +21,31 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
+
+// Deny-by-default allowlist of commands a REMOTE web client may invoke. Only
+// the read + chat + thread-persistence surface needed to USE Prevail — never
+// secrets (provider_key_*), arbitrary file I/O (read/write_text_file, read_file),
+// destructive/admin ops (app_uninstall, webui_start/stop, *_vault_*, ingestion_*,
+// telegram_*), or the host→server callbacks (webui_resolve/event).
+const WEBUI_ALLOWED: &[&str] = &[
+    // vault / domains / skills (read)
+    "scan_vault", "engine_domains", "domain_context", "scan_skills", "read_skill",
+    // chat
+    "chat_send", "engine_chat", "abort_sessions", "detect_clis",
+    // threads
+    "list_threads", "load_thread", "save_thread", "rename_thread", "delete_thread", "save_session",
+    // memory / profile (read)
+    "read_user_md", "read_memory_md",
+    // self-learning ledger
+    "intent_append", "journal_append", "usage_append", "usage_summary",
+    // scores (read)
+    "engine_score", "engine_score_all", "engine_score_history", "engine_manifest_get",
+    // benchmark (read)
+    "benchmark_runs", "benchmark_run_detail", "benchmark_questions", "benchmark_matrix",
+    // status
+    "webui_status",
+];
 
 #[derive(Default)]
 pub struct WebuiState {
@@ -54,10 +78,32 @@ struct InvokeOut {
     error: String,
 }
 
-fn hash_token(user: &str, pass: &str) -> String {
+// 32 random bytes from the OS CSPRNG, hex-encoded. Falls back to a SHA256 of
+// high-res time only if /dev/urandom is unreadable (extremely unlikely on macOS).
+fn random_token() -> String {
+    use std::io::Read;
+    let mut buf = [0u8; 32];
+    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
+        if f.read_exact(&mut buf).is_ok() {
+            return buf.iter().map(|b| format!("{b:02x}")).collect();
+        }
+    }
     let mut h = Sha256::new();
-    h.update(format!("prevail-webui:{user}:{pass}").as_bytes());
+    h.update(format!("{:?}", std::time::SystemTime::now()).as_bytes());
     format!("{:x}", h.finalize())
+}
+
+// Constant-time string comparison (avoids timing oracles on the token).
+fn ct_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for i in 0..a.len() {
+        diff |= a[i] ^ b[i];
+    }
+    diff == 0
 }
 
 #[derive(Deserialize)]
@@ -80,7 +126,7 @@ impl WebuiState {
     }
 
     // Resolve a pending browser invoke with the host window's result.
-    pub fn resolve(&self, id: u64, out: InvokeOut) {
+    fn resolve(&self, id: u64, out: InvokeOut) {
         let pending = { self.inner.lock().unwrap().pending.clone() };
         let tx = pending.lock().unwrap().remove(&id);
         if let Some(tx) = tx {
@@ -101,8 +147,13 @@ impl WebuiState {
 
     pub fn start(&self, app: tauri::AppHandle, port: u16, user: String, pass: String) -> Result<(), String> {
         self.stop();
-        let token = hash_token(&user, &pass);
-        let listener = std::net::TcpListener::bind(("0.0.0.0", port)).map_err(|e| format!("bind :{port}: {e}"))?;
+        // Random per-session token (NOT derived from the password). Login
+        // exchanges user/pass for this token; it never leaves the device except
+        // to the authenticated client.
+        let token = random_token();
+        // Bind to loopback only. Remote access is via Tailscale/SSH tunnel —
+        // never expose the bridge on all interfaces.
+        let listener = std::net::TcpListener::bind(("127.0.0.1", port)).map_err(|e| format!("bind 127.0.0.1:{port}: {e}"))?;
         let server = tiny_http::Server::from_listener(listener.try_clone().map_err(|e| e.to_string())?, None)
             .map_err(|e| e.to_string())?;
         {
@@ -144,9 +195,11 @@ fn handle(
 
     let authed = || -> bool {
         // Header bearer OR ?token= query (for EventSource which can't set headers).
-        let hdr = req.headers().iter().find(|h| h.field.equiv("Authorization")).map(|h| h.value.as_str().to_string());
-        if hdr.as_deref() == Some(token) { return true; }
-        url.split('?').nth(1).map(|q| q.split('&').any(|kv| kv == format!("token={token}"))).unwrap_or(false)
+        // Constant-time comparison against the random session token.
+        if let Some(h) = req.headers().iter().find(|h| h.field.equiv("Authorization")) {
+            if ct_eq(h.value.as_str(), token) { return true; }
+        }
+        url.split('?').nth(1).map(|q| q.split('&').filter_map(|kv| kv.strip_prefix("token=")).any(|t| ct_eq(t, token))).unwrap_or(false)
     };
 
     // ── Login ──
@@ -180,6 +233,11 @@ fn handle(
             Ok(r) => r,
             Err(e) => { let _ = req.respond(json_response(400, &serde_json::json!({ "error": format!("bad request: {e}") }))); return; }
         };
+        // Deny-by-default: only allowlisted commands may be proxied from the web.
+        if !WEBUI_ALLOWED.contains(&r.cmd.as_str()) {
+            let _ = req.respond(json_response(403, &serde_json::json!({ "error": format!("command '{}' is not permitted over the WebUI", r.cmd) })));
+            return;
+        }
         let id = next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx): (Sender<InvokeOut>, Receiver<InvokeOut>) = channel();
         pending.lock().unwrap().insert(id, tx);
@@ -191,15 +249,11 @@ fn handle(
         return;
     }
 
-    // ── Emit (browser → host) ──
-    if path == "/api/emit" && method == tiny_http::Method::Post {
-        let mut body = String::new();
-        let _ = req.as_reader().read_to_string(&mut body);
-        let v: serde_json::Value = serde_json::from_str(&body).unwrap_or(serde_json::json!({}));
-        if let Some(ev) = v.get("event").and_then(|e| e.as_str()) {
-            let _ = app.emit(ev, v.get("payload").cloned().unwrap_or(serde_json::Value::Null));
-        }
-        let _ = req.respond(json_response(200, &serde_json::json!({ "ok": true })));
+    // ── Emit (browser → host) ── disabled: a remote client must not be able to
+    // fire arbitrary Tauri events into the host. The web app drives everything
+    // through allowlisted /api/invoke instead.
+    if path == "/api/emit" {
+        let _ = req.respond(json_response(403, &serde_json::json!({ "error": "emit is not permitted over the WebUI" })));
         return;
     }
 
