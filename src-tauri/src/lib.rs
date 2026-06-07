@@ -683,6 +683,9 @@ fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
 
 #[tauri::command]
 fn benchmark_run_detail(run_dir: String) -> Result<serde_json::Value, String> {
+    if run_dir.contains("..") || !run_dir.contains("/benchmark/") {
+        return Err("invalid run_dir".into());
+    }
     let results_file = Path::new(&run_dir).join("results.json");
     let score_file = Path::new(&run_dir).join("score.json");
     let results = fs::read_to_string(&results_file)
@@ -844,11 +847,35 @@ fn usage_summary(vault: String) -> Result<UsageSummary, String> {
 // domain, model, and every preference in effect, so a future (better) model
 // can be re-run against the original intent and the result rebuilt.
 
+// A domain name is safe to join into a path only if it's a plain segment:
+// no separators, no "..", no leading dot, reasonable length. Anything else
+// (a traversal attempt, incl. via the WebUI) falls back to the vault root.
+fn is_safe_domain(d: &str) -> bool {
+    !d.is_empty()
+        && d.len() <= 64
+        && !d.starts_with('.')
+        && d.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
 fn domain_dir(vault: &str, domain: &Option<String>) -> PathBuf {
     match domain {
-        Some(d) if !d.is_empty() => PathBuf::from(vault).join(d),
+        Some(d) if is_safe_domain(d) => PathBuf::from(vault).join(d),
         _ => PathBuf::from(vault),
     }
+}
+
+// Guard a frontend-supplied path before reading/writing it. Blocks traversal
+// and confines the operation to a Prevail-managed file shape (e.g. a thread
+// markdown under "/_threads/"). Critical now that some commands are reachable
+// over the WebUI. Returns Ok(()) only if the path looks legitimate.
+fn guard_managed_path(path: &str, must_contain: &str, ext: &str) -> Result<(), String> {
+    if path.contains("..") {
+        return Err("invalid path".into());
+    }
+    if !path.contains(must_contain) || !path.ends_with(ext) {
+        return Err(format!("path must be a Prevail {must_contain} {ext} file"));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -2073,6 +2100,7 @@ fn list_threads(vault: String, domain: Option<String>) -> Result<Vec<ThreadMeta>
 
 #[tauri::command]
 fn load_thread(path: String) -> Result<ThreadFull, String> {
+    guard_managed_path(&path, "/_threads/", ".md")?;
     let p = PathBuf::from(&path);
     if !p.exists() {
         return Err(format!("thread not found: {path}"));
@@ -2256,6 +2284,7 @@ fn save_thread(
 
 #[tauri::command]
 fn rename_thread(path: String, new_title: String) -> Result<(), String> {
+    guard_managed_path(&path, "/_threads/", ".md")?;
     let p = PathBuf::from(&path);
     if !p.exists() {
         return Err(format!("thread not found: {path}"));
@@ -2310,9 +2339,7 @@ fn rename_thread(path: String, new_title: String) -> Result<(), String> {
 
 #[tauri::command]
 fn delete_thread(path: String) -> Result<(), String> {
-    if !path.contains("_threads/") {
-        return Err(format!("refusing to delete path outside _threads/: {path}"));
-    }
+    guard_managed_path(&path, "/_threads/", ".md")?;
     let p = PathBuf::from(&path);
     if !p.exists() {
         return Err(format!("thread not found: {path}"));
