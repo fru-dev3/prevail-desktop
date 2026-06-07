@@ -5,6 +5,7 @@ import { open, confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
 import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { PrevailLogo } from "./PrevailLogo";
 
 // Renders LLM output as proper markdown — headings, lists, bold,
 // inline code, fenced blocks, tables. Wraps each block element in
@@ -1074,21 +1075,7 @@ function extractCliError(stderr?: string): string | null {
 // ─────────────────────────────────────────────────────────────────────
 // Brand — official Prevail logo, byte-identical to the site
 
-function PrevailLogo({ size = 28, rounded = true }: { size?: number; rounded?: boolean }) {
-  // iOS-style rounded-square radius: ~22.37% of side (Apple's "superellipse"
-  // approximation rounds to ~22% — we use the same ratio everywhere).
-  const radius = rounded ? Math.round(size * 0.22) : 0;
-  return (
-    <img
-      src="/logo.png"
-      alt="Prevail"
-      width={size}
-      height={size}
-      style={{ width: size, height: size, borderRadius: radius }}
-      draggable={false}
-    />
-  );
-}
+// PrevailLogo (animated 3D mark) is imported from ./PrevailLogo.
 
 function Brand({ className = "", fill = false }: { className?: string; fill?: boolean }) {
   if (fill) {
@@ -1101,7 +1088,7 @@ function Brand({ className = "", fill = false }: { className?: string; fill?: bo
         {/* The logo mark stands in for the "E". Sized ~1.1em so the round mark
             reads at the same visual weight as the letters. */}
         <span className="inline-flex shrink-0 items-center" style={{ marginInline: "-0.04em" }} aria-label="E">
-          <PrevailLogo size={26} rounded={false} />
+          <PrevailLogo size={26} src="/logo-512.png" />
         </span>
         <span>V</span>
         <span className="text-ai">A</span>
@@ -1267,7 +1254,7 @@ function OnboardingModal({
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-6 py-4">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-accent" />
+            <PrevailLogo size={22} src="/logo-512.png" />
             <h2 className="font-display text-lg font-semibold tracking-tight">Set up your domains</h2>
           </div>
           <button
@@ -2085,7 +2072,7 @@ function Sidebar({
         <div className="flex min-w-0 flex-1 items-center gap-3" data-tauri-drag-region>
           {/* Collapsed: icon only. Expanded: the wordmark, whose "E" is the logo. */}
           {collapsed ? (
-            <PrevailLogo size={32} />
+            <PrevailLogo size={32} src="/logo-512.png" />
           ) : (
             <Brand fill className="flex-1 font-sans text-2xl font-extrabold text-text-primary" />
           )}
@@ -2877,7 +2864,7 @@ function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLoadSampl
               animate={{ rotate: -360 }} transition={{ duration: 18, repeat: Infinity, ease: "linear" }}>
               <circle cx="56" cy="56" r="53" stroke="#2d7fe4" strokeOpacity="0.28" strokeWidth="1" strokeDasharray="2 10" />
             </motion.svg>
-            <PrevailLogo size={88} />
+            <PrevailLogo size={88} src="/logo-512.png" />
           </div>
         </motion.div>
 
@@ -5553,7 +5540,7 @@ function ChatPanel({
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 && !domain && (
           <div className="flex h-full flex-col items-center px-6 py-10">
-            <img src="/logo.png" alt="" className="h-14 w-14 rounded-2xl opacity-90" />
+            <PrevailLogo size={72} src="/logo-512.png" />
             <h2 className="mt-5 font-display text-3xl font-semibold tracking-tight">
               What should we work on?
             </h2>
@@ -6074,7 +6061,7 @@ function ChatPanel({
                       onClick={attachDomainState}
                       className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-warm"
                     >
-                      <PrevailLogo size={16} />
+                      <PrevailLogo size={16} src="/logo-512.png" animated={false} />
                       Attach {titleCase(domain)} state
                     </button>
                   )}
