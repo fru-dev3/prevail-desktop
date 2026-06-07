@@ -11,6 +11,7 @@
 // whatever AI CLIs the user already has, and avoids the bundled-sidecar
 // signing complexity for the first release.
 
+mod distill;
 mod engine;
 mod ingestion;
 mod telegram_bridge;
@@ -1522,6 +1523,17 @@ fn write_user_md(vault: String, body: String) -> Result<(), String> {
     fs::write(&p, body).map_err(|e| format!("write user.md: {e}"))
 }
 
+// Distilled long-term memory for a domain (vault root for General), written
+// by the distill daemon. Prepended to prompts like user.md. Empty if none yet.
+#[tauri::command]
+fn read_memory_md(vault: String, domain: Option<String>) -> Result<String, String> {
+    let p = domain_dir(&vault, &domain).join("_memory.md");
+    if !p.exists() {
+        return Ok(String::new());
+    }
+    read_to_string_retry(&p).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn write_paste_attachment(vault: String, body: String) -> Result<String, String> {
     let dir = PathBuf::from(&vault).join("_paste");
@@ -2603,6 +2615,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(ingestion::OrchestratorState::default())
         .manage(telegram_bridge::BridgeState::new())
+        .manage(distill::DistillState::new())
         .invoke_handler(tauri::generate_handler![
             scan_vault,
             detect_clis,
@@ -2617,6 +2630,11 @@ pub fn run() {
             usage_summary,
             intent_append,
             journal_append,
+            read_memory_md,
+            distill::distill_start,
+            distill::distill_stop,
+            distill::distill_status,
+            distill::distill_run_once,
             benchmark_questions,
             benchmark_save_question,
             benchmark_delete_question,
