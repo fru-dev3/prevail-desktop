@@ -443,6 +443,45 @@ function domainIcon(name: string): LucideIcon | null {
   return DOMAIN_ICONS[name.toLowerCase()] ?? null;
 }
 
+// Friendly one-line descriptions for the domain cards — plain, warm, no jargon.
+// Shown as the card subtitle; falls back to a generic line for unknown domains.
+const DOMAIN_BLURBS: Record<string, string> = {
+  wealth: "Your money, savings, and the path to financial freedom.",
+  finance: "Your money, savings, and the path to financial freedom.",
+  health: "Your energy, fitness, and long-term wellbeing.",
+  fitness: "Your energy, fitness, and long-term wellbeing.",
+  tax: "Filings, deadlines, and keeping more of what you earn.",
+  taxes: "Filings, deadlines, and keeping more of what you earn.",
+  career: "Your work, growth, and where you're headed next.",
+  work: "Your work, growth, and where you're headed next.",
+  business: "Your ventures, clients, and what you're building.",
+  insurance: "Coverage, renewals, and protecting what matters.",
+  estate: "Your legacy, documents, and looking after your people.",
+  calendar: "What's coming up — and making time for what counts.",
+  schedule: "What's coming up — and making time for what counts.",
+  benefits: "Perks, plans, and everything your employer offers.",
+  brand: "Your name, your voice, and how the world sees you.",
+  content: "Ideas, posts, and the things you create.",
+  "real-estate": "Property, home, and the roof over your head.",
+  realestate: "Property, home, and the roof over your head.",
+  home: "Your space, your projects, and daily life at home.",
+  records: "Important documents, kept safe and easy to find.",
+  vision: "The big picture — where you're going, and why.",
+  social: "Friends, connections, and staying in touch.",
+  family: "The people closest to you, and staying connected.",
+  learning: "Skills, courses, and growing your mind.",
+  learn: "Skills, courses, and growing your mind.",
+  intel: "Research, signals, and staying in the know.",
+  intelligence: "Research, signals, and staying in the know.",
+  explore: "Curiosities, trips, and things worth discovering.",
+  travel: "Curiosities, trips, and things worth discovering.",
+  chief: "Your command center — today's priorities and what matters now.",
+};
+
+function domainBlurb(name: string): string {
+  return DOMAIN_BLURBS[name.toLowerCase()] ?? "A space to track and work on this part of your life.";
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Provider brand marks. Real SVG glyphs from simple-icons (MIT) for
 // Anthropic/Claude and Ollama. OpenAI's mark isn't in simple-icons due
@@ -5612,11 +5651,9 @@ function ChatPanel({
                           <div className="font-display text-lg font-semibold leading-tight tracking-tight text-text-primary">
                             {titleCase(d.name)}
                           </div>
-                          {d.state_preview && (
-                            <p className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-text-secondary/85">
-                              {d.state_preview}
-                            </p>
-                          )}
+                          <p className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-text-secondary/85">
+                            {domainBlurb(d.name)}
+                          </p>
                           <div className="mt-2.5 flex items-center gap-2.5">
                             <span className="h-px w-7 rounded-full transition-all duration-300 group-hover:w-12" style={{ background: color }} />
                             <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">

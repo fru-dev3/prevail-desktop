@@ -307,6 +307,7 @@ async fn run_cli(cli: &str, model: Option<&str>, prompt: &str) -> Result<String,
                 v.push(m.to_string());
             }
             v.push("-p".into());
+            v.push("--".into()); // end options — prompt may start with "--"
             v.push(prompt.to_string());
             ("claude", v)
         }
@@ -316,6 +317,7 @@ async fn run_cli(cli: &str, model: Option<&str>, prompt: &str) -> Result<String,
                 v.push("--model".into());
                 v.push(m.to_string());
             }
+            v.push("--".into()); // end options — prompt may start with "--"
             v.push(prompt.to_string());
             ("codex", v)
         }
@@ -326,12 +328,13 @@ async fn run_cli(cli: &str, model: Option<&str>, prompt: &str) -> Result<String,
                 v.push(m.to_string());
             }
             v.push("-p".into());
+            v.push("--".into()); // end options — prompt may start with "--"
             v.push(prompt.to_string());
             ("agy", v)
         }
         "ollama" => {
             let m = model.unwrap_or("llama3.2");
-            ("ollama", vec!["run".into(), m.to_string(), prompt.to_string()])
+            ("ollama", vec!["run".into(), m.to_string(), "--".into(), prompt.to_string()])
         }
         _ => return Err(format!("unknown cli: {cli}")),
     };
