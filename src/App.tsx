@@ -403,6 +403,10 @@ import {
   Circle,
   ChevronLeft,
   Trash2,
+  Activity,
+  Coins,
+  Cpu,
+  Layers,
   type LucideIcon,
 } from "lucide-react";
 
@@ -4645,6 +4649,165 @@ function DomainActionsMenu({
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Usage dashboard (P4.7 Phase 4) — reads the aggregated <vault>/usage
+// summary written by usage_append at each turn close and renders totals
+// plus breakdowns by CLI, model, and domain, with a per-day activity
+// strip. Surfaced on the no-domain landing; renders nothing until there's
+// at least one captured turn, so new vaults stay clean.
+
+interface UsageBucket {
+  key: string;
+  turns: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+interface UsageSummary {
+  total_turns: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost_usd: number;
+  by_cli: UsageBucket[];
+  by_model: UsageBucket[];
+  by_domain: UsageBucket[];
+  by_day: UsageBucket[];
+}
+
+function compactNum(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+  return `${n}`;
+}
+function fmtCost(n: number): string {
+  if (n === 0) return "$0";
+  if (n < 0.01) return "<$0.01";
+  return `$${n.toFixed(2)}`;
+}
+
+function UsageBreakdown({
+  title,
+  icon: Icon,
+  rows,
+}: {
+  title: string;
+  icon: LucideIcon;
+  rows: UsageBucket[];
+}) {
+  if (rows.length === 0) return null;
+  const max = Math.max(1, ...rows.map((r) => r.turns));
+  return (
+    <div className="rounded-xl border border-border-subtle bg-surface p-4">
+      <div className="mb-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+        <Icon className="h-3.5 w-3.5" />
+        {title}
+      </div>
+      <div className="flex flex-col gap-2">
+        {rows.slice(0, 6).map((r) => (
+          <div key={r.key} className="flex items-center gap-3">
+            <div className="w-24 shrink-0 truncate font-mono text-[11px] text-text-secondary" title={r.key}>
+              {r.key}
+            </div>
+            <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-surface-warm">
+              <span
+                className="absolute inset-y-0 left-0 rounded-full bg-accent"
+                style={{ width: `${(r.turns / max) * 100}%` }}
+              />
+            </div>
+            <div className="w-10 shrink-0 text-right font-mono text-[11px] tabular-nums text-text-secondary">
+              {r.turns}
+            </div>
+            <div className="w-14 shrink-0 text-right font-mono text-[11px] tabular-nums text-text-muted">
+              {fmtCost(r.cost_usd)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function UsageDashboard({ vault, nonce }: { vault: string; nonce?: number }) {
+  const [summary, setSummary] = useState<UsageSummary | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const s = await invoke<UsageSummary>("usage_summary", { vault });
+        if (alive) setSummary(s);
+      } catch (e) {
+        console.error("usage_summary failed", e);
+      }
+    })();
+    return () => { alive = false; };
+  }, [vault, nonce]);
+
+  if (!summary || summary.total_turns === 0) return null;
+
+  const stats: { label: string; value: string; icon: LucideIcon }[] = [
+    { label: "Turns", value: summary.total_turns.toLocaleString(), icon: MessagesSquare },
+    {
+      label: "Tokens",
+      value: compactNum(summary.total_input_tokens + summary.total_output_tokens),
+      icon: TrendingUp,
+    },
+    { label: "Cost", value: fmtCost(summary.total_cost_usd), icon: Coins },
+  ];
+  // Per-day activity strip — last 14 days of recorded turns.
+  const days = summary.by_day.slice(-14);
+  const dayMax = Math.max(1, ...days.map((d) => d.turns));
+
+  return (
+    <div className="mt-10 w-full max-w-4xl">
+      <div className="mb-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+        <Activity className="h-3.5 w-3.5" />
+        Usage
+      </div>
+
+      {/* hero totals */}
+      <div className="grid grid-cols-3 gap-3">
+        {stats.map((s) => (
+          <div key={s.label} className="rounded-xl border border-border-subtle bg-surface p-4">
+            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+              <s.icon className="h-3.5 w-3.5" />
+              {s.label}
+            </div>
+            <div className="mt-1.5 font-display text-2xl font-semibold tabular-nums text-text-primary">
+              {s.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* per-day activity strip */}
+      {days.length > 1 && (
+        <div className="mt-3 rounded-xl border border-border-subtle bg-surface p-4">
+          <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+            Activity · last {days.length} day{days.length === 1 ? "" : "s"}
+          </div>
+          <div className="flex h-16 items-end gap-1">
+            {days.map((d) => (
+              <div
+                key={d.key}
+                className="flex-1 rounded-t bg-accent/70 transition-colors hover:bg-accent"
+                style={{ height: `${Math.max(6, (d.turns / dayMax) * 100)}%` }}
+                title={`${d.key} · ${d.turns} turn${d.turns === 1 ? "" : "s"} · ${fmtCost(d.cost_usd)}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* breakdowns */}
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <UsageBreakdown title="By agent" icon={Cpu} rows={summary.by_cli} />
+        <UsageBreakdown title="By model" icon={Layers} rows={summary.by_model} />
+        <UsageBreakdown title="By domain" icon={Users} rows={summary.by_domain} />
+      </div>
+    </div>
+  );
+}
+
 function ChatPanel({
   domain,
   domainPath,
@@ -5201,6 +5364,46 @@ function ChatPanel({
   const unlistenRefs = useRef<UnlistenFn[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // P4.7 Phase 3 — capture real chat usage. We snapshot the turn's meta
+  // (vault/domain/thread/cli/model) at send time so the mount-once 'done'
+  // listeners (which have stale closures) can persist an accurate record
+  // when the turn closes. One turn streams at a time, so a single pending
+  // slot is sufficient; it's cleared after the matching 'done' to avoid
+  // double-counting the same turn.
+  const pendingUsageRef = useRef<{
+    session: string;
+    vault: string;
+    domain: string | null;
+    thread: string | null;
+    cli: string | null;
+    model: string | null;
+  } | null>(null);
+  const persistUsage = useCallback(
+    (session: string, ok: boolean, usage?: ChatMessage["usage"]) => {
+      const p = pendingUsageRef.current;
+      if (!p || p.session !== session) return;
+      pendingUsageRef.current = null; // persist a turn exactly once
+      const now = new Date();
+      const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      invoke("usage_append", {
+        vault: p.vault,
+        record: {
+          ts: now.getTime(),
+          day,
+          domain: p.domain,
+          thread: p.thread,
+          cli: p.cli || "unknown",
+          model: p.model,
+          input_tokens: usage?.input_tokens ?? null,
+          output_tokens: usage?.output_tokens ?? null,
+          cost_usd: usage?.cost_usd ?? null,
+          ok,
+        },
+      }).catch((e) => console.error("usage_append failed", e));
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!selectedCli && available.length > 0) setSelectedCli(available[0].id);
   }, [available, selectedCli]);
@@ -5253,6 +5456,9 @@ function ChatPanel({
           // started in this panel get reconciled even after the user
           // navigates away. The App layer ignores unknown sessions.
           onStreamEnd(e.payload.session);
+          // Capture usage for native-path turns (no token accounting, but
+          // the turn still counts). code===0 (or null timeout) → ok.
+          persistUsage(e.payload.session, e.payload.code === 0);
           if (e.payload.session !== sessionRef.current) return;
           setMessages((m) => {
             const last = m[m.length - 1];
@@ -5360,10 +5566,15 @@ function ChatPanel({
         (e) => {
           if (!mounted) return;
           onStreamEnd(e.payload.session);
-          if (e.payload.session !== sessionRef.current) return;
+          // Capture usage for engine-path turns — pull the token/cost
+          // accounting off the streaming bubble before we flip it closed.
           setMessages((m) => {
             const last = m[m.length - 1];
-            if (last && last.streaming) return [...m.slice(0, -1), { ...last, streaming: false }];
+            if (last && last.streaming) {
+              persistUsage(e.payload.session, e.payload.code === 0, last.usage);
+              return [...m.slice(0, -1), { ...last, streaming: false }];
+            }
+            persistUsage(e.payload.session, e.payload.code === 0);
             return m;
           });
         },
@@ -5445,6 +5656,16 @@ function ChatPanel({
     setAttachedSkills([]);
     setInput("");
     sessionRef.current = `s-${Date.now()}`;
+    // Snapshot this turn's meta for usage capture (P4.7 Phase 3). Read at
+    // 'done' regardless of which path (engine vs native) serves the reply.
+    pendingUsageRef.current = {
+      session: sessionRef.current,
+      vault: vaultPath,
+      domain: domain ?? null,
+      thread: activeThreadRef.current,
+      cli: selectedCli ?? null,
+      model: lsGet(`prevail.model.${selectedCli}`) || null,
+    };
     // Announce the stream so the sidebar can pulse the originating
     // domain even if the user navigates away while it runs.
     onStreamStart({
@@ -5810,6 +6031,8 @@ function ChatPanel({
                 </p>
               </div>
             )}
+
+            <UsageDashboard vault={vaultPath} nonce={chatViewNonce} />
           </div>
         )}
         {domain && domainTab === "chat" && messages.length === 0 && (
