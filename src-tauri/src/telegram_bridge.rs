@@ -327,9 +327,9 @@ async fn run_cli(cli: &str, model: Option<&str>, prompt: &str) -> Result<String,
                 v.push("--model".into());
                 v.push(m.to_string());
             }
-            v.push("-p".into());
-            v.push("--".into()); // end options — prompt may start with "--"
-            v.push(prompt.to_string());
+            // agy's -p/--print takes the prompt as a VALUE; `--print=<value>`
+            // is safe for prompts that start with "--".
+            v.push(format!("--print={prompt}"));
             ("agy", v)
         }
         "ollama" => {
