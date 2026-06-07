@@ -1504,6 +1504,11 @@ export default function App() {
     startedAt: number;
   };
   const [runningStreams, setRunningStreams] = useState<RunningStream[]>([]);
+  // Domains whose background run finished while you were looking elsewhere.
+  // The live amber pulse vanishes the instant a stream ends; this keeps a
+  // steady "ready" marker on the domain until you actually open it, so a
+  // finished run is never silently lost when several are in flight at once.
+  const [finishedDomains, setFinishedDomains] = useState<Record<string, number>>({});
   const notifyPermissionRef = useRef<NotificationPermission | "unknown">(typeof Notification !== "undefined" ? Notification.permission : "unknown");
   useEffect(() => {
     if (typeof Notification === "undefined") return;
@@ -1551,6 +1556,11 @@ export default function App() {
         if (ended.domain !== selectedDomainRef.current) {
           const where = ended.domain ? titleCase(ended.domain) : "no domain";
           notifyDone(`Reply ready · ${where}`, ended.title || "Your conversation just finished.");
+          // Leave a persistent "ready" marker on the domain you weren't watching.
+          if (ended.domain) {
+            const dom = ended.domain;
+            setFinishedDomains((m) => ({ ...m, [dom]: Date.now() }));
+          }
         }
       }
       return cur.filter((x) => x.sessionId !== sessionId);
@@ -1558,6 +1568,21 @@ export default function App() {
   }, []);
   const runningDomains = useMemo(() => new Set(runningStreams.map((s) => s.domain ?? "")), [runningStreams]);
   const runningThreadPaths = useMemo(() => new Set(runningStreams.map((s) => s.threadPath ?? "").filter(Boolean)), [runningStreams]);
+  // Opening a domain clears its "ready" marker — you've now seen it.
+  useEffect(() => {
+    if (!selectedDomain) return;
+    setFinishedDomains((m) => {
+      if (!(selectedDomain in m)) return m;
+      const next = { ...m };
+      delete next[selectedDomain];
+      return next;
+    });
+  }, [selectedDomain]);
+  // A domain shows "ready" only when it's done AND not currently re-running.
+  const finishedDomainSet = useMemo(
+    () => new Set(Object.keys(finishedDomains).filter((d) => !runningDomains.has(d))),
+    [finishedDomains, runningDomains],
+  );
   // Persisted rail widths. Min/max enforced when dragging.
   const [domainRailWidth, setDomainRailWidth] = useState<number>(() => {
     const v = parseInt(lsGet("prevail.domainRailWidth"), 10);
@@ -1756,6 +1781,7 @@ export default function App() {
           }}
           appearance={appearance}
           runningDomains={runningDomains}
+          finishedDomains={finishedDomainSet}
           domainStats={domainStats}
           railWidth={domainRailWidth}
           onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
@@ -1864,6 +1890,7 @@ export default function App() {
                 domains={domains}
                 domainStats={domainStats}
                 runningDomains={runningDomains}
+                finishedDomains={finishedDomainSet}
                 onPickDomain={(name) => setSelectedDomain(name)}
                 onArchived={(name) => {
                   if (selectedDomain === name) setSelectedDomain("");
@@ -1951,6 +1978,7 @@ function Sidebar({
   onDomainCreated,
   appearance,
   runningDomains,
+  finishedDomains,
   domainStats,
   railWidth,
   onOpenOnboarding,
@@ -1969,6 +1997,7 @@ function Sidebar({
   onDomainCreated: (d: Domain) => void;
   appearance: ReturnType<typeof useAppearance>;
   runningDomains: Set<string>;
+  finishedDomains: Set<string>;
   domainStats: Record<string, number>;
   railWidth: number;
   onOpenOnboarding: () => void;
@@ -2314,9 +2343,18 @@ function Sidebar({
                       {domainStats[d.name]}
                     </span>
                   )}
-                  {runningDomains.has(d.name) && (
+                  {runningDomains.has(d.name) ? (
                     <span className="pulse-soft inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn" title="A reply is streaming in this domain" />
-                  )}
+                  ) : finishedDomains.has(d.name) ? (
+                    <span
+                      className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{
+                        background: "var(--color-ok, #2e9e5b)",
+                        boxShadow: "0 0 0 3px color-mix(in srgb, var(--color-ok, #2e9e5b) 28%, transparent)",
+                      }}
+                      title="Just finished — open to view"
+                    />
+                  ) : null}
                 </button>
                 <button
                   onClick={() => togglePin(d.name)}
@@ -4546,6 +4584,7 @@ function ChatPanel({
   domains,
   domainStats,
   runningDomains,
+  finishedDomains,
   onPickDomain,
   onArchived,
 }: {
@@ -4564,6 +4603,7 @@ function ChatPanel({
   domains: Domain[];
   domainStats: Record<string, number>;
   runningDomains: Set<string>;
+  finishedDomains: Set<string>;
   onPickDomain: (name: string) => void;
   onArchived: (name: string) => void;
 }) {
@@ -4744,6 +4784,8 @@ function ChatPanel({
   const [ctxScoreLoading, setCtxScoreLoading] = useState(false);
   const [ctxScoreRescanning, setCtxScoreRescanning] = useState(false);
   const [ctxScoreError, setCtxScoreError] = useState<string | null>(null);
+  // Score-breakdown modal: opened by clicking the score badge in the header.
+  const [scoreOpen, setScoreOpen] = useState(false);
   useEffect(() => {
     setDomainTab("chat");
     const pref = loadPreferredSkills(domain);
@@ -5459,6 +5501,17 @@ function ChatPanel({
           </div>
         </div>
       )}
+      {scoreOpen && domain && (
+        <ScoreBreakdownModal
+          domain={domain}
+          score={ctxScore}
+          loading={ctxScoreLoading}
+          rescanning={ctxScoreRescanning}
+          error={ctxScoreError}
+          onRescan={rescanContextScore}
+          onClose={() => setScoreOpen(false)}
+        />
+      )}
       {/* Header — domain title + persistent tab strip + actions. The
           tabs stay visible whether you're on the chat transcript or
           a domain content view, so you can flip between them mid
@@ -5471,7 +5524,7 @@ function ChatPanel({
               return I ? <I className="h-5 w-5 shrink-0 text-accent" /> : <span className="text-accent">◆</span>;
             })()}
             <span className="shrink-0 font-display text-lg font-semibold">{titleCase(domain)}</span>
-            <ContextScoreBadge score={ctxScore} onClick={() => setContextOpen(true)} />
+            <ContextScoreBadge score={ctxScore} onClick={() => setScoreOpen(true)} />
             <span className="hidden min-w-0 truncate text-sm text-text-muted md:inline">{domainBlurb(domain)}</span>
           </>
         ) : (
@@ -5635,9 +5688,18 @@ function ChatPanel({
                             {Icon ? <Icon className="h-[18px] w-[18px]" /> : <span className="font-mono text-sm">◆</span>}
                           </span>
                           <span className="flex items-center gap-2">
-                            {running && (
+                            {running ? (
                               <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full bg-warn" title="A reply is streaming here" />
-                            )}
+                            ) : finishedDomains.has(d.name) ? (
+                              <span
+                                className="inline-block h-1.5 w-1.5 rounded-full"
+                                style={{
+                                  background: "var(--color-ok, #2e9e5b)",
+                                  boxShadow: "0 0 0 3px color-mix(in srgb, var(--color-ok, #2e9e5b) 28%, transparent)",
+                                }}
+                                title="Just finished — open to view"
+                              />
+                            ) : null}
                             <ChevronRight
                               className="h-4 w-4 -translate-x-1 text-text-muted opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100"
                             />
@@ -7779,6 +7841,77 @@ function ContextScorePanel({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Score-breakdown modal: clicking the header score badge opens this. It frames
+// the number ("why it's X"), the six dimensions, and the what's-to-do list, all
+// via the existing ContextScorePanel.
+function ScoreBreakdownModal({
+  domain,
+  score,
+  loading,
+  rescanning,
+  error,
+  onRescan,
+  onClose,
+}: {
+  domain: string;
+  score: ContextScore | null;
+  loading: boolean;
+  rescanning: boolean;
+  error: string | null;
+  onRescan: () => void;
+  onClose: () => void;
+}) {
+  const Icon = domainIcon(domain);
+  const color = score ? scoreColor(score.score) : "var(--color-text-muted, #888)";
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="mt-[6vh] flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-6 py-4">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {Icon ? <Icon className="h-5 w-5 shrink-0 text-accent" /> : null}
+            <div className="min-w-0">
+              <h2 className="truncate font-display text-lg font-semibold tracking-tight">
+                {titleCase(domain)} · Score
+              </h2>
+              <p className="text-xs text-text-muted">
+                Why it's{" "}
+                <span style={{ color }} className="font-mono font-semibold">
+                  {score ? score.score : "—"}
+                </span>{" "}
+                — and what raises it.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
+            title="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <ContextScorePanel
+            score={score}
+            loading={loading}
+            rescanning={rescanning}
+            error={error}
+            onRescan={onRescan}
+          />
+        </div>
+      </div>
     </div>
   );
 }
