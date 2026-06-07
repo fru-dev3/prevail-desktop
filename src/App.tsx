@@ -6481,7 +6481,11 @@ function ChatPanel({
                 </svg>
               </button>
               {modelMenuOpen && (
-                <div className="absolute bottom-full right-0 z-40 mb-1 w-72 overflow-hidden rounded-lg border border-border bg-surface shadow-xl">
+                // Anchor left: the picker button sits on the left of the
+                // composer toolbar, so opening rightward keeps the menu on
+                // screen. (right-0 ran it off the window's left edge at
+                // non-maximized widths, hiding the left-aligned model names.)
+                <div className="absolute bottom-full left-0 z-40 mb-1 w-72 overflow-hidden rounded-lg border border-border bg-surface shadow-xl">
                   <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
                     Model
                   </div>
