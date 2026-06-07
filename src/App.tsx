@@ -1433,6 +1433,9 @@ export default function App() {
   // Active thread defines what's loaded into the chat transcript.
   const [threads, setThreads] = useState<ThreadMeta[]>([]);
   const [activeThreadPath, setActiveThreadPath] = useState<string | null>(null);
+  // Bumped on every thread pick so the chat panel returns to the chat view even
+  // when the same thread is re-clicked (e.g. to escape the Preferences view).
+  const [chatViewNonce, setChatViewNonce] = useState(0);
   // Per-domain import counts shown as a tiny badge in the sidebar.
   // Refreshed when ingestion:artifact fires (any tier writes a file)
   // or when the domain list changes.
@@ -1788,7 +1791,7 @@ export default function App() {
               activePath={activeThreadPath}
               selectedDomain={selectedDomain}
               vaultPath={vaultPath}
-              onPick={(p) => setActiveThreadPath(p)}
+              onPick={(p) => { setActiveThreadPath(p); setChatViewNonce((n) => n + 1); }}
               onNew={async () => {
                 // Create the thread file immediately so the user gets
                 // a renameable entry in the rail BEFORE typing the
@@ -1862,6 +1865,7 @@ export default function App() {
                 fwLens={fwLens}
                 onSwitchToCouncil={() => setTab("council")}
                 activeThreadPath={activeThreadPath}
+                chatViewNonce={chatViewNonce}
                 onActiveThreadChange={setActiveThreadPath}
                 onThreadsChanged={() => void refreshThreads()}
                 onStreamStart={markStreamStart}
@@ -4541,6 +4545,7 @@ function ChatPanel({
   fwLens,
   onSwitchToCouncil,
   activeThreadPath,
+  chatViewNonce,
   onActiveThreadChange,
   onThreadsChanged,
   onStreamStart,
@@ -4558,6 +4563,7 @@ function ChatPanel({
   fwLens: ReturnType<typeof useFrameworkLens>;
   onSwitchToCouncil: () => void;
   activeThreadPath: string | null;
+  chatViewNonce: number;
   onActiveThreadChange: (p: string | null) => void;
   onThreadsChanged: () => void;
   onStreamStart: (s: { sessionId: string; domain: string | null; threadPath: string | null; title: string; startedAt: number }) => void;
@@ -4969,8 +4975,19 @@ function ChatPanel({
   // overwrite them and the assistant placeholder loses streaming:true,
   // which is the original cause of the "(empty reply)" symptom.
   const selfSetPathRef = useRef<string | null>(null);
+  // Any thread pick returns to the chat view — even re-clicking the active
+  // thread (which doesn't change activeThreadPath), so you can always escape
+  // the Preferences view by clicking a thread. Skips the initial mount.
+  const chatViewMounted = useRef(false);
+  useEffect(() => {
+    if (chatViewMounted.current) setDomainTab("chat");
+    else chatViewMounted.current = true;
+  }, [chatViewNonce]);
   // Load the thread when activeThreadPath changes.
   useEffect(() => {
+    // Picking a thread (or starting a new one) always returns to the chat view,
+    // even if Preferences was open — otherwise the click appears to do nothing.
+    setDomainTab("chat");
     if (!activeThreadPath) { setMessages([]); return; }
     if (selfSetPathRef.current === activeThreadPath) {
       selfSetPathRef.current = null;
@@ -5269,6 +5286,7 @@ function ChatPanel({
 
   async function send() {
     if (!input.trim() || !selectedCli) return;
+    setDomainTab("chat"); // sending always shows the chat, even from Preferences
     const visible = input.trim();
     const userMsg: ChatMessage = { role: "user", content: visible, ts: Date.now() };
     const replyMsg: ChatMessage = { role: "assistant", cli: selectedCli, content: "", ts: Date.now(), streaming: true };
