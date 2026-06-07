@@ -4,6 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Prevail</title>
+    <script>
+      // Safety net: show fatal boot/render errors instead of a blank window.
+      (function () {
+        function dump(msg) {
+          var el = document.getElementById("root") || document.body;
+          if (el)
+            el.innerHTML =
+              '<pre style="white-space:pre-wrap;padding:20px;margin:0;font:12px ui-monospace,Menlo,monospace;color:#b3261e;background:#faf8f1;height:100vh;overflow:auto">Prevail hit an error:\n\n' +
+              String(msg).replace(/</g, "&lt;") +
+              "</pre>";
+        }
+        window.addEventListener("error", function (e) {
+          dump((e.error && (e.error.stack || e.error.message)) || e.message || "error");
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+          dump("Unhandled rejection:\n" + ((e.reason && (e.reason.stack || e.reason.message)) || e.reason));
+        });
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

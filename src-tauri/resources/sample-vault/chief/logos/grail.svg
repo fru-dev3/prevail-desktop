@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 160" width="420" height="160">
+  <rect width="420" height="160" fill="#080610" rx="12"/>
+
+  <!-- Icon: minimalist chalice -->
+  <g transform="translate(24, 18)">
+    <!-- Cup bowl — two curved sides meeting at a rounded bottom -->
+    <path d="M 10 18 L 10 58 Q 10 88 52 92 Q 94 88 94 58 L 94 18 Z"
+          fill="#7C3AED" opacity="0.85"/>
+    <!-- Rim highlight -->
+    <rect x="10" y="14" width="84" height="8" rx="4" fill="#A78BFA"/>
+    <!-- Stem -->
+    <rect x="46" y="92" width="12" height="22" rx="3" fill="#6D28D9"/>
+    <!-- Base -->
+    <rect x="28" y="110" width="48" height="8" rx="4" fill="#5B21B6"/>
+    <!-- Inner gleam -->
+    <ellipse cx="36" cy="44" rx="6" ry="14" fill="white" opacity="0.12"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text font-family="ui-sans-serif, system-ui, -apple-system, Helvetica, sans-serif"
+        font-size="68" font-weight="800" letter-spacing="-2">
+    <tspan x="148" y="108" fill="#F1F5F9">gr</tspan><tspan fill="#A78BFA">AI</tspan><tspan fill="#F1F5F9">l</tspan>
+  </text>
+
+  <!-- Tagline -->
+  <text x="150" y="136"
+        font-family="ui-sans-serif, system-ui, -apple-system, Helvetica, sans-serif"
+        font-size="13" fill="#6D28D9" letter-spacing="3" font-weight="500">THE AI READINESS QUEST</text>
+</svg>

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Prevail",
-  "version": "0.2.94",
+  "version": "0.3.0",
   "identifier": "sh.prevail.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -39,10 +39,12 @@
     ],
     "resources": [
       "resources/automation/playwright_runner.js",
-      "resources/automation/recipes.json"
+      "resources/automation/recipes.json",
+      "resources/sample-vault/**/*"
     ],
     "macOS": {
-      "minimumSystemVersion": "13.0"
+      "minimumSystemVersion": "13.0",
+      "entitlements": "entitlements.plist"
     }
   }
 }

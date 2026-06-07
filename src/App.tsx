@@ -2,6 +2,7 @@ import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } fr
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -68,7 +69,7 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.2.94";
+const APP_VERSION = "0.3.0";
 
 // Canonical on/off toggle. Track 36×20px, thumb 16×16px, slides
 // 18px. Every switch in the app routes through this so we never
@@ -285,15 +286,17 @@ const MODELS: Record<string, ModelPick[]> = {
     { id: "claude-haiku-4-5",  label: "Haiku 4.5",      blurb: "fastest, cheapest" },
   ],
   codex: [
-    // ChatGPT-account users: gpt-5.5 is the only model that works
-    // — every gpt-5 / gpt-4o / o-series variant returns
-    // "model not supported when using Codex with a ChatGPT account".
-    // gpt-5 family kept for users with API-key or Pro access.
-    { id: "gpt-5.5",     label: "GPT-5.5",       blurb: "current flagship · works on ChatGPT login" },
-    { id: "gpt-5-codex", label: "GPT-5 Codex",   blurb: "API / Pro only" },
-    { id: "gpt-5",       label: "GPT-5",         blurb: "API / Pro only" },
-    { id: "gpt-5-high",  label: "GPT-5 (high)",  blurb: "API / Pro · extra reasoning" },
-    { id: "gpt-5-mini",  label: "GPT-5 mini",    blurb: "API / Pro · fast + cheap" },
+    // gpt-5.5 is the ONLY model Codex accepts on a ChatGPT-login
+    // account — every gpt-5 / gpt-5-codex / gpt-5-mini / o-series
+    // variant returns 400 "model not supported when using Codex with a
+    // ChatGPT account". Verified empirically against `codex exec`.
+    // The "@<effort>" suffix is parsed in cli_args() (lib.rs) into
+    // `-c model_reasoning_effort=<effort>`; minimal effort 400s, so
+    // only default / medium / high are offered. All three are tested
+    // working.
+    { id: "gpt-5.5",        label: "GPT-5.5",          blurb: "flagship · fast (default)" },
+    { id: "gpt-5.5@medium", label: "GPT-5.5 (medium)", blurb: "balanced reasoning" },
+    { id: "gpt-5.5@high",   label: "GPT-5.5 (high)",   blurb: "max reasoning · slower" },
   ],
   antigravity: [
     { id: "Gemini 3.1 Pro (High)",        label: "Gemini 3.1 Pro (High)",        blurb: "extra reasoning" },
@@ -311,7 +314,40 @@ const MODELS: Record<string, ModelPick[]> = {
     { id: "mistral",  label: "Mistral 7B", blurb: "local · mistral" },
   ],
 };
+
+// Models a ChatGPT-login Codex account rejects (verified). A previously
+// saved pick like "gpt-5-codex" persists in localStorage and keeps
+// failing even after we trim the dropdown — so heal it on launch.
+const DEAD_MODELS = new Set([
+  "gpt-5-codex", "gpt-5", "gpt-5-high", "gpt-5-mini", "gpt-5.1",
+  "gpt-5.5-codex", "gpt-4o", "o3", "o4-mini",
+]);
+
+// One-time migration: reset any stale per-CLI model pick that's no longer
+// in MODELS, and replace any known-dead model id (global or per-domain)
+// with the working gpt-5.5. Safe + idempotent.
+function migrateModelPrefs() {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && /^prevail\.(model\.|domain\..+\.model$)/.test(k)) keys.push(k);
+    }
+    for (const cli of Object.keys(MODELS)) {
+      const ids = new Set(MODELS[cli].map((m) => m.id));
+      const cur = lsGet(`prevail.model.${cli}`);
+      if (cur && !ids.has(cur)) lsSet(`prevail.model.${cli}`, MODELS[cli][0].id);
+    }
+    for (const k of keys) {
+      const v = lsGet(k);
+      if (v && DEAD_MODELS.has(v)) lsSet(k, "gpt-5.5");
+    }
+  } catch {
+    /* localStorage unavailable — ignore */
+  }
+}
 import {
+  Archive,
   ArrowLeft,
   ArrowUpRight,
   Award,
@@ -320,8 +356,11 @@ import {
   Briefcase,
   Calendar as CalendarIcon,
   Check,
+  ChevronDown,
+  ChevronRight,
   Compass,
   Crown,
+  Download,
   Eye,
   FileText,
 
@@ -331,6 +370,7 @@ import {
   Heart,
   Home,
   Github,
+  Loader2,
   MessageSquare,
   Monitor,
   Moon,
@@ -340,6 +380,7 @@ import {
   Pin,
   Plus,
   Receipt,
+  RotateCcw,
   Scale,
   Send,
   Settings as SettingsIcon,
@@ -348,7 +389,9 @@ import {
   Sun,
   TrendingUp,
   Users,
+  Wallet,
   Wrench,
+  X,
   type LucideIcon,
 } from "lucide-react";
 
@@ -414,13 +457,23 @@ import {
 const siClaude = siClaudeRaw as { path: string };
 const siOllama = siOllamaRaw as { path: string };
 
-const VENDOR_BRAND: Record<string, { hex: string; name: string }> = {
-  claude:      { hex: "#cc785c", name: "Anthropic Claude" },
-  codex:       { hex: "#10a37f", name: "OpenAI Codex" },
-  antigravity: { hex: "#ffffff", name: "Google Antigravity" },
-  ollama:      { hex: "#0a0a0a", name: "Ollama (local)" },
-  other:       { hex: "#6b7280", name: "—" },
+// `hex` = icon-tile background (true brand color). `accent` = a
+// display-safe variant used for text/borders that must stay legible on
+// both light and dark surfaces (white/black brand marks would vanish).
+const VENDOR_BRAND: Record<string, { hex: string; accent: string; name: string }> = {
+  claude:      { hex: "#cc785c", accent: "#cc785c", name: "Anthropic Claude" },
+  codex:       { hex: "#10a37f", accent: "#10a37f", name: "OpenAI Codex" },
+  antigravity: { hex: "#ffffff", accent: "#4285f4", name: "Google Antigravity" },
+  ollama:      { hex: "#0a0a0a", accent: "#6b7280", name: "Ollama (local)" },
+  other:       { hex: "#6b7280", accent: "#6b7280", name: "—" },
 };
+
+// Brand accent for a vendor, safe for text/border use. Returns the hex
+// plus a low-alpha tint suitable for a subtle bubble background.
+function vendorAccent(vendor: string): { accent: string; tint: string } {
+  const v = VENDOR_BRAND[vendor] ?? VENDOR_BRAND.other;
+  return { accent: v.accent, tint: `${v.accent}14` }; // 14 ≈ 8% alpha
+}
 
 function ProviderMark({ vendor, size = 28 }: { vendor: string; size?: number }) {
   const v = VENDOR_BRAND[vendor] ?? VENDOR_BRAND.other;
@@ -510,6 +563,168 @@ interface DomainContextBundle {
   recent_logs: DomainLogEntry[];
   skills: { domain: string; name: string; path: string; description: string | null }[];
 }
+
+// ── Context Score (mirrors engine.rs ContextScore / ContextScore.json) ──
+interface ScoreDimension {
+  score: number;
+  detail: string;
+}
+interface ScoreBreakdown {
+  coverage: ScoreDimension;
+  density: ScoreDimension;
+  freshness: ScoreDimension;
+  structure: ScoreDimension;
+  activity: ScoreDimension;
+  config_completeness: ScoreDimension;
+}
+interface MissingItem {
+  label: string;
+  severity: string; // info | warn | critical
+  kind: string;
+}
+interface ContextScore {
+  domain: string;
+  score: number;
+  breakdown: ScoreBreakdown;
+  missing: MissingItem[];
+  freshness_secs: number;
+  assessment: string | null;
+  audit_source: string | null;
+  computed_at: string;
+  audited_at: number | null;
+}
+interface LifeReadiness {
+  life_readiness: number | null;
+  domains: ContextScore[];
+  computed_at: string | null;
+}
+
+// ── Onboarding (mirrors engine.rs / OnboardingRecommendation.json) ──
+interface ProposedDomain {
+  name: string;
+  label: string;
+  emoji: string;
+  summary: string;
+  reason: string;
+  recommended: boolean;
+  starterGoals?: string[];
+  suggestedSkills?: string[];
+}
+interface OnboardingRecommendation {
+  domains: ProposedDomain[];
+  rationale: string;
+  generated_at: string;
+}
+
+// ── Domain manifest config (subset mirrors DomainManifest.json config) ──
+// Only the fields the desktop reads/writes for per-domain prefs. Kept
+// lenient so the engine can carry extra fields without breaking us.
+interface ManifestConfig {
+  cli?: string;
+  model?: string;
+  framework?: string | null;
+  lens?: string | null;
+  skills?: string[];
+  autoState?: boolean;
+}
+// Per-domain privacy block (mirrors DomainManifest.json privacy).
+interface ManifestPrivacy {
+  localOnly?: boolean;
+}
+// Per-domain sandbox block (mirrors DomainManifest.json sandbox).
+interface ManifestSandbox {
+  mode?: string; // "open" | "locked"
+}
+// Per-domain routing block (mirrors DomainManifest.json routing).
+interface ManifestRouting {
+  keywords?: string[];
+  channels?: string[];
+  default?: boolean;
+}
+interface DomainManifest {
+  config?: ManifestConfig;
+  privacy?: ManifestPrivacy;
+  sandbox?: ManifestSandbox;
+  routing?: ManifestRouting;
+  [k: string]: unknown;
+}
+
+// ── Backup (mirrors engine.rs / BackupResult.json) ──
+interface BackupResult {
+  ok: boolean;
+  archive_path: string | null;
+  scope: "vault" | "domain";
+  domains: string[];
+  file_count: number;
+  bytes: number;
+  created_at: string;
+  error?: string | null;
+}
+
+// The ~6 onboarding questions. Free-form answers are bundled into a single
+// JSON document ({ answers: { ... } }) sent to `engine_onboard_recommend`.
+const ONBOARDING_QUESTIONS: {
+  id: string;
+  prompt: string;
+  placeholder: string;
+}[] = [
+  { id: "focus", prompt: "What are you focused on right now?", placeholder: "building ventures, getting healthier, managing money…" },
+  { id: "roles", prompt: "What roles or hats do you wear?", placeholder: "founder, parent, investor, creator…" },
+  { id: "money", prompt: "How do you want to handle money & wealth?", placeholder: "track net worth, taxes, investing, real estate…" },
+  { id: "health", prompt: "Anything around health, fitness, or wellbeing?", placeholder: "fitness goals, sleep, mental health… (leave blank to skip)" },
+  { id: "work", prompt: "What does your work or business look like?", placeholder: "company, clients, content, career…" },
+  { id: "other", prompt: "Anything else you'd like a domain for?", placeholder: "learning, relationships, travel, side projects…" },
+];
+
+function bytesHuman(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+// The six dimensions, in display order, with friendly labels. Frozen to
+// match the engine's ScoreBreakdown shape.
+const SCORE_DIMENSIONS: { key: keyof ScoreBreakdown; label: string }[] = [
+  { key: "coverage", label: "Coverage" },
+  { key: "density", label: "Density" },
+  { key: "freshness", label: "Freshness" },
+  { key: "structure", label: "Structure" },
+  { key: "activity", label: "Activity" },
+  { key: "config_completeness", label: "Config" },
+];
+
+// Color thresholds: green >=75, amber 50-74, red <50. Returns a CSS color.
+function scoreColor(score: number): string {
+  if (score >= 75) return "var(--color-ok, #2e9e5b)";
+  if (score >= 50) return "var(--color-warn, #c98a2b)";
+  return "var(--color-danger, #d24b4b)";
+}
+// Human freshness from seconds.
+function formatFreshness(secs: number): string {
+  if (secs < 0) return "unknown";
+  const d = Math.floor(secs / 86400);
+  if (d >= 1) return d === 1 ? "1 day ago" : `${d} days ago`;
+  const h = Math.floor(secs / 3600);
+  if (h >= 1) return h === 1 ? "1 hour ago" : `${h} hours ago`;
+  const m = Math.floor(secs / 60);
+  if (m >= 1) return m === 1 ? "1 minute ago" : `${m} minutes ago`;
+  return "just now";
+}
+function formatAuditedAt(ms: number | null): string {
+  if (!ms) return "never audited";
+  try {
+    return new Date(ms).toLocaleString();
+  } catch {
+    return "unknown";
+  }
+}
+const SEVERITY_ORDER: Record<string, number> = { critical: 0, warn: 1, info: 2 };
+const SEVERITY_LABEL: Record<string, string> = {
+  critical: "Critical",
+  warn: "Warnings",
+  info: "Suggestions",
+};
 
 interface Domain {
   name: string;
@@ -777,6 +992,34 @@ function maybeStripSycophancy(s: string): string {
   return s.replace(SYCOPHANCY_RE, "");
 }
 
+// Pull a concise, human-readable error out of a CLI's noisy stderr.
+// CLIs emit a startup banner (version, workdir, model, session id…) plus
+// the actual failure. We want only the failure. Codex emits structured
+// `ERROR: {json}` lines whose `.error.message` is the useful part; other
+// CLIs print a plain error line. Falls back to the last non-empty line.
+function extractCliError(stderr?: string): string | null {
+  if (!stderr) return null;
+  const lines = stderr.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return null;
+  // Prefer an explicit ERROR line; parse JSON payload when present.
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (/^ERROR[:\s]/i.test(line) || /\berror\b/i.test(line)) {
+      const braceAt = line.indexOf("{");
+      if (braceAt !== -1) {
+        try {
+          const obj = JSON.parse(line.slice(braceAt));
+          const msg = obj?.error?.message ?? obj?.message;
+          if (typeof msg === "string" && msg) return msg;
+        } catch { /* fall through to raw line */ }
+      }
+      return line.replace(/^ERROR[:\s]+/i, "");
+    }
+  }
+  // No explicit error marker — surface the last line of output.
+  return lines[lines.length - 1];
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Brand — official Prevail logo, byte-identical to the site
 
@@ -827,12 +1070,12 @@ type Mode = "light" | "dark" | "system";
 type Palette = "vault" | "midnight" | "ember" | "mono" | "cyberpunk" | "slate";
 
 const PALETTES: { id: Palette; name: string; blurb: string; swatch: { bg: string; surface: string; accent: string; ai: string } }[] = [
-  { id: "vault",     name: "Vault",     blurb: "Cream + gold — focused, warm",                       swatch: { bg: "#faf8f1", surface: "#ffffff", accent: "#a8862d", ai: "#1976d2" } },
-  { id: "midnight",  name: "Midnight",  blurb: "Deep blue-violet with cool accents",                  swatch: { bg: "#0a0d1f", surface: "#131730", accent: "#818cf8", ai: "#22d3ee" } },
-  { id: "ember",     name: "Ember",     blurb: "Warm crimson and bronze — forge vibes",               swatch: { bg: "#1a0a06", surface: "#2a130c", accent: "#ef6c4a", ai: "#fbbf24" } },
-  { id: "mono",      name: "Mono",      blurb: "Clean grayscale — minimal and focused",               swatch: { bg: "#f7f7f8", surface: "#ffffff", accent: "#18181b", ai: "#3b82f6" } },
-  { id: "cyberpunk", name: "Cyberpunk", blurb: "Neon green on black — matrix terminal",               swatch: { bg: "#030a06", surface: "#08130c", accent: "#22ff77", ai: "#ff45a1" } },
-  { id: "slate",     name: "Slate",     blurb: "Cool slate blue — focused developer theme",           swatch: { bg: "#0c1220", surface: "#131b2e", accent: "#38bdf8", ai: "#a5b4fc" } },
+  { id: "vault",     name: "Vault",     blurb: "Cream + gold — focused, warm",                       swatch: { bg: "#faf8f1", surface: "#ffffff", accent: "#a8862d", ai: "#60a8c0" } },
+  { id: "midnight",  name: "Midnight",  blurb: "Deep blue-violet with cool accents",                  swatch: { bg: "#0a0d1f", surface: "#131730", accent: "#818cf8", ai: "#60a8c0" } },
+  { id: "ember",     name: "Ember",     blurb: "Warm crimson and bronze — forge vibes",               swatch: { bg: "#1a0a06", surface: "#2a130c", accent: "#ef6c4a", ai: "#60a8c0" } },
+  { id: "mono",      name: "Mono",      blurb: "Clean grayscale — minimal and focused",               swatch: { bg: "#f7f7f8", surface: "#ffffff", accent: "#18181b", ai: "#60a8c0" } },
+  { id: "cyberpunk", name: "Cyberpunk", blurb: "Neon green on black — matrix terminal",               swatch: { bg: "#030a06", surface: "#08130c", accent: "#22ff77", ai: "#60a8c0" } },
+  { id: "slate",     name: "Slate",     blurb: "Cool slate blue — focused developer theme",           swatch: { bg: "#0c1220", surface: "#131b2e", accent: "#38bdf8", ai: "#60a8c0" } },
 ];
 
 function useAppearance() {
@@ -892,8 +1135,242 @@ function useFrameworkLens() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Onboarding flow — shown when the vault has zero domains (or via the
+// "Set up domains" button). Three steps:
+//   1. answer ~6 questions  → engine_onboard_recommend (answers on stdin)
+//   2. pick from a checkbox list of recommended domains
+//   3. engine_onboard_apply (picks on stdin) → caller refreshes scan_vault
+function OnboardingModal({
+  vaultPath,
+  onClose,
+  onApplied,
+}: {
+  vaultPath: string;
+  onClose: () => void;
+  onApplied: () => void;
+}) {
+  type Step = "questions" | "review" | "applying";
+  const [step, setStep] = useState<Step>("questions");
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [rec, setRec] = useState<OnboardingRecommendation | null>(null);
+  const [picks, setPicks] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function requestRecommendation() {
+    setBusy(true);
+    setError(null);
+    try {
+      const answersJson = JSON.stringify({ answers });
+      const value = await invoke<OnboardingRecommendation>("engine_onboard_recommend", {
+        vault: vaultPath,
+        answersJson,
+      });
+      setRec(value);
+      // Pre-select the recommended set.
+      setPicks(new Set(value.domains.filter((d) => d.recommended).map((d) => d.name)));
+      setStep("review");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyPicks() {
+    if (picks.size === 0) return;
+    setBusy(true);
+    setError(null);
+    setStep("applying");
+    try {
+      const picksJson = JSON.stringify({ picks: Array.from(picks) });
+      await invoke("engine_onboard_apply", { vault: vaultPath, picksJson });
+      onApplied();
+      onClose();
+    } catch (e) {
+      setError(String(e));
+      setStep("review");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function togglePick(name: string) {
+    setPicks((cur) => {
+      const next = new Set(cur);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  const answeredCount = ONBOARDING_QUESTIONS.filter((q) => (answers[q.id] ?? "").trim()).length;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-accent" />
+            <h2 className="font-display text-lg font-semibold tracking-tight">Set up your domains</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
+            title="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          {error && (
+            <div className="mb-4 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+              {error}
+            </div>
+          )}
+
+          {step === "questions" && (
+            <>
+              <p className="mb-4 text-sm text-text-secondary">
+                A few quick questions. Prevail proposes a starter set of life domains
+                from your answers — you pick what to keep. Leave any blank to skip.
+              </p>
+              <div className="flex flex-col gap-4">
+                {ONBOARDING_QUESTIONS.map((q) => (
+                  <label key={q.id} className="block">
+                    <span className="mb-1 block text-sm font-medium text-text-primary">{q.prompt}</span>
+                    <textarea
+                      value={answers[q.id] ?? ""}
+                      onChange={(e) => setAnswers((cur) => ({ ...cur, [q.id]: e.target.value }))}
+                      placeholder={q.placeholder}
+                      rows={2}
+                      className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+                    />
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+
+          {step === "review" && rec && (
+            <>
+              {rec.rationale && (
+                <p className="mb-4 rounded-md border border-border-subtle bg-background px-3 py-2 text-sm text-text-secondary">
+                  {rec.rationale}
+                </p>
+              )}
+              <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+                Recommended domains · {picks.size} selected
+              </div>
+              <ul className="flex flex-col gap-2">
+                {rec.domains.map((d) => {
+                  const on = picks.has(d.name);
+                  return (
+                    <li key={d.name}>
+                      <button
+                        onClick={() => togglePick(d.name)}
+                        className={`flex w-full items-start gap-3 rounded-lg border-2 px-3 py-2.5 text-left transition-colors ${
+                          on
+                            ? "border-accent bg-accent-soft ring-2 ring-accent/20"
+                            : "border-border-subtle bg-background hover:border-accent-border"
+                        }`}
+                      >
+                        <span
+                          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
+                            on ? "border-accent bg-accent text-background" : "border-border bg-surface"
+                          }`}
+                        >
+                          {on && <Check className="h-3 w-3" strokeWidth={3} />}
+                        </span>
+                        <span className="text-xl leading-none">{d.emoji || "◆"}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-display text-sm font-semibold text-text-primary">{d.label}</span>
+                            <span className="font-mono text-[10px] text-text-muted">/{d.name}</span>
+                            {d.recommended && (
+                              <span className="rounded-full bg-accent/15 px-1.5 py-0 font-mono text-[8px] uppercase tracking-wider text-accent">
+                                recommended
+                              </span>
+                            )}
+                          </div>
+                          {d.summary && <div className="mt-0.5 text-xs text-text-secondary">{d.summary}</div>}
+                          {d.reason && <div className="mt-1 text-[11px] italic text-text-muted">{d.reason}</div>}
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+
+          {step === "applying" && (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-text-secondary">
+              <Loader2 className="h-6 w-6 animate-spin text-accent" />
+              <span className="text-sm">Scaffolding {picks.size} domain{picks.size === 1 ? "" : "s"}…</span>
+            </div>
+          )}
+        </div>
+
+        {/* Footer actions */}
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border-subtle px-6 py-4">
+          {step === "questions" ? (
+            <>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
+                {answeredCount}/{ONBOARDING_QUESTIONS.length} answered
+              </span>
+              <button
+                onClick={requestRecommendation}
+                disabled={busy || answeredCount === 0}
+                className="flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                Recommend domains
+              </button>
+            </>
+          ) : step === "review" ? (
+            <>
+              <button
+                onClick={() => setStep("questions")}
+                disabled={busy}
+                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-40"
+              >
+                Back
+              </button>
+              <button
+                onClick={applyPicks}
+                disabled={busy || picks.size === 0}
+                className="flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Create {picks.size} domain{picks.size === 1 ? "" : "s"}
+              </button>
+            </>
+          ) : (
+            <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">working…</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // App root — vault picker, sidebar, tabs
 
+// Deterministic per-domain accent color — turns the monochrome card grid
+// into a colorful, scannable board. Muted, on-brand palette.
+const DOMAIN_PALETTE = [
+  "#cc785c", "#2d7fe4", "#5fae74", "#c4a35a", "#a78bfa", "#e0823d",
+  "#3fa6a0", "#c44e8a", "#7c83ff", "#6b8e23", "#d2674f", "#b8860b",
+];
+function domainColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return DOMAIN_PALETTE[h % DOMAIN_PALETTE.length];
+}
 export default function App() {
   const appearance = useAppearance();
   const [vaultPath, setVaultPath] = useState<string | null>(() =>
@@ -911,6 +1388,20 @@ export default function App() {
   const [domainStats, setDomainStats] = useState<Record<string, number>>({});
   const domainsRef = useRef<Domain[]>([]);
   useEffect(() => { domainsRef.current = domains; }, [domains]);
+  // Heal stale/unsupported model picks (e.g. gpt-5-codex → gpt-5.5) once on launch.
+  useEffect(() => { migrateModelPrefs(); }, []);
+  // If localStorage was wiped (e.g. webview cache clear) but we remembered a
+  // vault on disk, restore it so the user isn't bounced back to first-launch.
+  useEffect(() => {
+    if (vaultPath) return;
+    (async () => {
+      try {
+        const bp = await invoke<string | null>("bootstrap_vault");
+        if (bp) { setVaultPath(bp); lsSet(LS.vault, bp); }
+      } catch { /* ignore */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const refreshDomainStats = useCallback(async (names: string[]) => {
     const results = await Promise.all(
       names.map(async (n) => {
@@ -922,6 +1413,27 @@ export default function App() {
     );
     setDomainStats(Object.fromEntries(results));
   }, []);
+  // Onboarding flow — modal shown when the vault has zero domains, or
+  // opened manually via "Set up domains". `onboardDismissed` tracks an
+  // explicit close so we don't keep re-popping the modal in an empty vault.
+  const [onboardOpen, setOnboardOpen] = useState(false);
+  const [onboardDismissed, setOnboardDismissed] = useState(false);
+  // True only after the first scan_vault for the current vault resolves, so
+  // we never flash onboarding during the brief 0-domains loading window.
+  const [domainsLoaded, setDomainsLoaded] = useState(false);
+  // Reusable vault re-scan (used by onboarding apply + archive/restore).
+  const refreshDomains = useCallback(async () => {
+    if (!vaultPath) return;
+    try {
+      const d = await invoke<Domain[]>("scan_vault", { path: vaultPath });
+      setDomains(d);
+      setVaultError(null);
+      setDomainsLoaded(true);
+      void refreshDomainStats(d.map((x) => x.name));
+    } catch (e) {
+      console.error("refreshDomains", e);
+    }
+  }, [vaultPath, refreshDomainStats]);
   useEffect(() => {
     let unl: UnlistenFn | null = null;
     (async () => {
@@ -1090,6 +1602,7 @@ export default function App() {
     if (!vaultPath) return;
     let cancelled = false;
     let attempts = 0;
+    setDomainsLoaded(false);
     const tryScan = async () => {
       while (!cancelled && attempts < 5) {
         try {
@@ -1097,6 +1610,7 @@ export default function App() {
           if (cancelled) return;
           setDomains(d);
           setVaultError(null);
+          setDomainsLoaded(true);
           void refreshDomainStats(d.map((x) => x.name));
           // Land on no-domain chat by default. User picks a domain
           // from the sidebar to enter its context.
@@ -1124,16 +1638,42 @@ export default function App() {
     return () => { cancelled = true; };
   }, [vaultPath]);
 
+  // Auto-open the onboarding flow once when a healthy vault has zero
+  // domains. Skip if the user already dismissed it this session, or if a
+  // scan error is showing (so we don't stack a modal over an error state).
+  useEffect(() => {
+    if (!vaultPath) return;
+    if (vaultError) return;
+    if (onboardDismissed) return;
+    if (domainsLoaded && domains.length === 0 && !onboardOpen) {
+      setOnboardOpen(true);
+    }
+  }, [vaultPath, vaultError, domainsLoaded, domains.length, onboardDismissed, onboardOpen]);
+
   async function pickVault() {
     const dir = await open({ directory: true, multiple: false });
     if (typeof dir === "string") {
       setVaultPath(dir);
       lsSet(LS.vault, dir);
+      void invoke("remember_vault", { path: dir }).catch(() => {});
       setSelectedDomain(null);
     }
   }
 
-  if (!vaultPath) return <VaultWizard onPick={pickVault} />;
+  // Import the bundled sample vault (fully-populated demo domains) so the
+  // user can explore every feature without creating anything.
+  async function loadSample() {
+    try {
+      const path = await invoke<string>("import_sample_vault");
+      setVaultPath(path);
+      lsSet(LS.vault, path);
+      setSelectedDomain(null);
+    } catch (e) {
+      console.error("import_sample_vault failed", e);
+    }
+  }
+
+  if (!vaultPath) return <VaultWizard onPick={pickVault} onLoadSample={loadSample} />;
 
   if (tab === "settings") {
     return (
@@ -1180,6 +1720,8 @@ export default function App() {
           runningDomains={runningDomains}
           domainStats={domainStats}
           railWidth={domainRailWidth}
+          onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
+          onDomainsChanged={() => void refreshDomains()}
         />
         {!sidebarCollapsed && (
           <ResizeHandle
@@ -1285,6 +1827,10 @@ export default function App() {
                 domainStats={domainStats}
                 runningDomains={runningDomains}
                 onPickDomain={(name) => setSelectedDomain(name)}
+                onArchived={(name) => {
+                  if (selectedDomain === name) setSelectedDomain("");
+                  void refreshDomains();
+                }}
               />
             )}
             {tab === "council" && (
@@ -1294,6 +1840,8 @@ export default function App() {
                 vaultPath={vaultPath}
                 clis={clis}
                 fwLens={fwLens}
+                activeThreadPath={activeThreadPath}
+                onActiveThreadChange={setActiveThreadPath}
                 onOpenInFinder={() => openInFinder(selectedDomainPath)}
                 onSwitchToChat={() => setTab("chat")}
                 onThreadsChanged={() => void refreshThreads()}
@@ -1324,6 +1872,13 @@ export default function App() {
             setTab("chat");
             setQuickSwitcherOpen(false);
           }}
+        />
+      )}
+      {onboardOpen && (
+        <OnboardingModal
+          vaultPath={vaultPath}
+          onClose={() => { setOnboardOpen(false); setOnboardDismissed(true); }}
+          onApplied={() => void refreshDomains()}
         />
       )}
     </div>
@@ -1360,6 +1915,8 @@ function Sidebar({
   runningDomains,
   domainStats,
   railWidth,
+  onOpenOnboarding,
+  onDomainsChanged,
 }: {
   collapsed: boolean;
   setCollapsed: (v: boolean | ((cur: boolean) => boolean)) => void;
@@ -1376,6 +1933,8 @@ function Sidebar({
   runningDomains: Set<string>;
   domainStats: Record<string, number>;
   railWidth: number;
+  onOpenOnboarding: () => void;
+  onDomainsChanged: () => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -1426,6 +1985,38 @@ function Sidebar({
       setAdding(false);
     } catch (e) {
       setAddError(String(e));
+    }
+  }
+
+  // Archived domains — fetched from the engine. Shown in a collapsible
+  // group at the bottom of the rail, each with a Restore action.
+  const [archived, setArchived] = useState<string[]>([]);
+  const [archivedOpen, setArchivedOpen] = useState<boolean>(() => lsGet("prevail.sidebar.archivedOpen") === "1");
+  useEffect(() => { lsSet("prevail.sidebar.archivedOpen", archivedOpen ? "1" : "0"); }, [archivedOpen]);
+  const [restoring, setRestoring] = useState<string | null>(null);
+  const refreshArchived = useCallback(async () => {
+    if (!vaultPath) return;
+    try {
+      const list = await invoke<string[]>("engine_list_archived", { vault: vaultPath });
+      setArchived(list);
+    } catch {
+      // Engine may not support archiving yet — keep the group hidden.
+      setArchived([]);
+    }
+  }, [vaultPath]);
+  // Refresh when the active domain set changes (e.g. after archive/restore).
+  useEffect(() => { void refreshArchived(); }, [refreshArchived, domains.length]);
+
+  async function restoreDomain(name: string) {
+    setRestoring(name);
+    try {
+      await invoke("engine_vault_restore", { vault: vaultPath, domain: name });
+      await refreshArchived();
+      onDomainsChanged();
+    } catch (e) {
+      console.error("restore domain", e);
+    } finally {
+      setRestoring(null);
     }
   }
 
@@ -1524,9 +2115,28 @@ function Sidebar({
           <div className="mx-2 my-2 rounded border border-warn/40 bg-warn/10 p-2 text-xs text-warn">{vaultError}</div>
         )}
         {domains.length === 0 && !vaultError && !collapsed && (
-          <div className="px-3 py-3 text-xs text-text-muted">
-            no domains yet. click <span className="text-accent">+ new domain</span> below to create one.
+          <div className="px-3 py-3">
+            <div className="mb-2 text-xs text-text-muted">
+              no domains yet. let Prevail recommend a starter set, or create one manually below.
+            </div>
+            <button
+              onClick={onOpenOnboarding}
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-background transition-opacity hover:opacity-90"
+            >
+              <Sparkles className="h-4 w-4" />
+              Set up domains
+            </button>
           </div>
+        )}
+        {domains.length > 0 && !vaultError && !collapsed && (
+          <button
+            onClick={onOpenOnboarding}
+            title="Recommend more domains"
+            className="mx-2 mt-1 flex items-center gap-1.5 rounded px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-accent"
+          >
+            <Sparkles className="h-3 w-3" />
+            set up domains
+          </button>
         )}
         <ul className={`space-y-0.5 ${collapsed ? "px-1.5 py-2" : "px-2"}`}>
           {sortedDomains.map((d, i) => {
@@ -1746,6 +2356,44 @@ function Sidebar({
             >
               <Plus className="h-4 w-4" />
             </button>
+          </div>
+        )}
+
+        {/* Archived domains — collapsible. Hidden from the active list;
+            restore brings them back into the vault scan. */}
+        {!collapsed && archived.length > 0 && (
+          <div className="mt-3 px-2">
+            <button
+              onClick={() => setArchivedOpen((v) => !v)}
+              className="flex w-full items-center gap-1.5 rounded px-1 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-text-secondary"
+            >
+              {archivedOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              <Archive className="h-3 w-3" />
+              Archived
+              <span className="ml-auto rounded-full bg-surface-strong px-1.5 text-[9px] text-text-muted">{archived.length}</span>
+            </button>
+            {archivedOpen && (
+              <ul className="mt-1 space-y-0.5">
+                {archived.map((name) => (
+                  <li
+                    key={name}
+                    className="group flex items-center gap-2 rounded-md px-2 py-1 text-text-muted"
+                  >
+                    <Archive className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                    <span className="min-w-0 flex-1 truncate text-xs">{titleCase(name)}</span>
+                    <button
+                      onClick={() => restoreDomain(name)}
+                      disabled={restoring === name}
+                      title={`Restore ${titleCase(name)}`}
+                      className="flex shrink-0 items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted opacity-0 hover:border-accent-border hover:text-accent group-hover:opacity-100 disabled:opacity-100"
+                    >
+                      {restoring === name ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                      restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
       </div>
@@ -2038,43 +2686,205 @@ function ThreadsRail({
   );
 }
 
-function VaultWizard({ onPick }: { onPick: () => void }) {
+// One floating life-domain chip: parallaxes with the cursor (via shared
+// springs) and gently bobs. Icons only — never emojis.
+function FloatingChip({
+  chip,
+  sx,
+  sy,
+  reduce,
+}: {
+  chip: { Icon: LucideIcon; t: string; x: string; y: string; d: number; depth: number };
+  sx: ReturnType<typeof useSpring>;
+  sy: ReturnType<typeof useSpring>;
+  reduce: boolean;
+}) {
+  const tx = useTransform(sx, (v: number) => v * chip.depth);
+  const ty = useTransform(sy, (v: number) => v * chip.depth);
+  const { Icon } = chip;
+  return (
+    <motion.div className="absolute" style={{ left: chip.x, top: chip.y, x: reduce ? 0 : tx, y: reduce ? 0 : ty }}>
+      <motion.div
+        className="flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-3 py-1.5 text-xs font-medium text-text-secondary shadow-sm"
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={reduce ? { opacity: 0.9, scale: 1 } : { opacity: 0.92, scale: 1, y: [0, -9, 0] }}
+        transition={
+          reduce
+            ? { duration: 0.4, delay: 0.4 }
+            : {
+                opacity: { delay: 0.7 + chip.d * 0.15, duration: 0.6 },
+                scale: { delay: 0.7 + chip.d * 0.15, duration: 0.6 },
+                y: { duration: 4 + chip.d, repeat: Infinity, ease: "easeInOut", delay: chip.d },
+              }
+        }
+      >
+        <Icon className="h-3.5 w-3.5 text-accent" />
+        {chip.t}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLoadSample: () => void }) {
+  // Staggered entrance for the center column.
+  const container = { hidden: {}, show: { transition: { staggerChildren: 0.09, delayChildren: 0.12 } } };
+  const item = {
+    hidden: { opacity: 0, y: 14 },
+    show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 120, damping: 16 } },
+  };
+  const reduce = useReducedMotion();
+  // Pointer parallax — shared springs the chips read from for depth.
+  const px = useMotionValue(0);
+  const py = useMotionValue(0);
+  const sx = useSpring(px, { stiffness: 60, damping: 18 });
+  const sy = useSpring(py, { stiffness: 60, damping: 18 });
+  const onMove = (e: React.MouseEvent) => {
+    if (reduce) return;
+    px.set(e.clientX / window.innerWidth - 0.5);
+    py.set(e.clientY / window.innerHeight - 0.5);
+  };
+  // Decorative life-domain chips (icons, never emojis) that drift + parallax.
+  const chips = [
+    { Icon: Wallet,    t: "Wealth",  x: "11%", y: "24%", d: 0.0, depth: 26 },
+    { Icon: Heart,     t: "Health",  x: "79%", y: "18%", d: 0.6, depth: 38 },
+    { Icon: Receipt,   t: "Tax",     x: "17%", y: "71%", d: 1.2, depth: 20 },
+    { Icon: Briefcase, t: "Career",  x: "82%", y: "67%", d: 0.9, depth: 32 },
+    { Icon: Home,      t: "Home",    x: "7%",  y: "48%", d: 1.6, depth: 44 },
+    { Icon: Archive,   t: "Records", x: "87%", y: "45%", d: 0.3, depth: 16 },
+  ];
   return (
     <div
-      className="flex h-screen flex-col items-center justify-center bg-background text-text-primary"
+      className="relative flex h-screen flex-col items-center justify-center overflow-hidden bg-background text-text-primary"
       data-tauri-drag-region
+      onMouseMove={onMove}
     >
-      <div className="max-w-xl px-8 text-center">
-        <div className="mb-6 flex justify-center">
-          <PrevailLogo size={88} />
-        </div>
-        <div className="font-mono text-xs uppercase tracking-[0.2em] text-accent">◆ first launch</div>
-        <h1 className="mt-6 font-display text-5xl font-semibold tracking-tight">
-          Welcome to <Brand />.
-        </h1>
-        <p className="mt-6 text-text-secondary">
-          Pick a folder to use as your vault. Each child folder with a <code className="text-accent">state.md</code> file becomes a life domain.
-        </p>
-        <p className="mt-3 text-sm text-text-muted">
-          New to <Brand />?{" "}
-          <a
-            href="https://github.com/fru-dev3/prevail/tree/main/vault-demo"
-            target="_blank"
-            rel="noreferrer"
-            className="text-accent hover:underline"
-          >
-            grab the demo vault on GitHub
-          </a>{" "}
-          and point this at it.
-        </p>
-        <button
-          onClick={onPick}
-          className="mt-10 inline-flex items-center gap-2 rounded-md bg-accent px-6 py-3 font-medium text-background transition-all hover:bg-accent-hover hover:-translate-y-0.5"
-        >
-          <Folder className="h-4 w-4" /> Pick vault folder
-        </button>
-        <div className="mt-6 font-mono text-xs text-text-muted">v0.2.0 · vault stays local · no cloud</div>
+      {/* animated aurora background */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden>
+        <motion.div
+          className="absolute -left-40 -top-40 h-[42rem] w-[42rem] rounded-full blur-3xl"
+          style={{ background: "radial-gradient(circle at center, rgba(196,163,90,0.20), transparent 60%)" }}
+          animate={{ x: [0, 60, -20, 0], y: [0, 40, 10, 0], scale: [1, 1.1, 0.95, 1] }}
+          transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          className="absolute -right-40 top-1/4 h-[38rem] w-[38rem] rounded-full blur-3xl"
+          style={{ background: "radial-gradient(circle at center, rgba(45,127,228,0.15), transparent 60%)" }}
+          animate={{ x: [0, -50, 20, 0], y: [0, 30, -20, 0], scale: [1, 1.08, 1, 1] }}
+          transition={{ duration: 26, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          className="absolute bottom-[-12rem] left-1/3 h-[34rem] w-[34rem] rounded-full blur-3xl"
+          style={{ background: "radial-gradient(circle at center, rgba(196,163,90,0.13), transparent 60%)" }}
+          animate={{ x: [0, 40, -30, 0], y: [0, -30, 10, 0] }}
+          transition={{ duration: 30, repeat: Infinity, ease: "easeInOut" }}
+        />
       </div>
+
+      {/* film grain */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.04] mix-blend-overlay"
+        aria-hidden
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
+          backgroundSize: "140px 140px",
+        }}
+      />
+
+      {/* drifting + parallaxing life-domain chips */}
+      <div className="pointer-events-none absolute inset-0 hidden md:block" aria-hidden>
+        {chips.map((c) => (
+          <FloatingChip key={c.t} chip={c} sx={sx} sy={sy} reduce={!!reduce} />
+        ))}
+      </div>
+
+      {/* center column */}
+      <motion.div variants={container} initial="hidden" animate="show" className="relative z-10 max-w-xl px-8 text-center">
+        {/* logo with orbiting rings + pulsing glow */}
+        <motion.div variants={item} className="mb-7 flex justify-center">
+          <div className="relative flex items-center justify-center" style={{ width: 132, height: 132 }}>
+            <motion.div
+              className="absolute rounded-full"
+              style={{ inset: 16, boxShadow: "0 0 60px rgba(196,163,90,0.40)" }}
+              animate={{ opacity: [0.45, 0.85, 0.45], scale: [0.95, 1.06, 0.95] }}
+              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <motion.svg className="absolute" width={132} height={132} viewBox="0 0 132 132" fill="none"
+              animate={{ rotate: 360 }} transition={{ duration: 24, repeat: Infinity, ease: "linear" }}>
+              <circle cx="66" cy="66" r="62" stroke="var(--color-accent)" strokeOpacity="0.35" strokeWidth="1" strokeDasharray="3 7" />
+            </motion.svg>
+            <motion.svg className="absolute" width={112} height={112} viewBox="0 0 112 112" fill="none"
+              animate={{ rotate: -360 }} transition={{ duration: 18, repeat: Infinity, ease: "linear" }}>
+              <circle cx="56" cy="56" r="53" stroke="#2d7fe4" strokeOpacity="0.28" strokeWidth="1" strokeDasharray="2 10" />
+            </motion.svg>
+            <PrevailLogo size={88} />
+          </div>
+        </motion.div>
+
+        <motion.div variants={item} className="font-mono text-[11px] uppercase tracking-[0.3em] text-accent">◆ first launch</motion.div>
+
+        <motion.div variants={item} className="relative mt-5 inline-block overflow-hidden px-1 py-1">
+          <h1 className="font-display text-5xl font-semibold leading-[0.95] tracking-tight sm:text-6xl">
+            Welcome to <Brand />.
+          </h1>
+          {!reduce && (
+            <motion.span
+              aria-hidden
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background: "linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)",
+                mixBlendMode: "overlay",
+              }}
+              initial={{ x: "-130%" }}
+              animate={{ x: "130%" }}
+              transition={{ duration: 1.1, delay: 0.7, ease: "easeInOut" }}
+            />
+          )}
+        </motion.div>
+
+        <motion.p variants={item} className="mx-auto mt-5 max-w-2xl whitespace-nowrap text-[15px] text-text-secondary">
+          Your life in <span className="font-medium text-text-primary">domains</span> — scored, private, <span className="font-medium text-accent">local-first</span>.
+        </motion.p>
+
+        {/* feature pills */}
+        <motion.div variants={item} className="mt-6 flex flex-wrap items-center justify-center gap-2">
+          {[
+            { Icon: Shield, t: "Local-first · no cloud" },
+            { Icon: TrendingUp, t: "Context Score" },
+            { Icon: Users, t: "Multi-model council" },
+          ].map(({ Icon, t }) => (
+            <span key={t} className="inline-flex items-center gap-1.5 rounded-full border border-accent-border bg-accent-soft px-3 py-1 font-mono text-[11px] text-accent">
+              <Icon className="h-3 w-3" />{t}
+            </span>
+          ))}
+        </motion.div>
+
+        {/* CTA — point to a vault, or import bundled sample data */}
+        <motion.div variants={item} className="mt-9 flex flex-wrap items-center justify-center gap-3">
+          <motion.button
+            onClick={onPick}
+            whileHover={{ y: -2, scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="inline-flex items-center gap-2.5 rounded-xl bg-accent px-7 py-3.5 text-[15px] font-semibold text-background shadow-lg transition-colors hover:bg-accent-hover"
+          >
+            <Folder className="h-4 w-4" /> Pick your vault folder
+          </motion.button>
+          <motion.button
+            onClick={onLoadSample}
+            whileHover={{ y: -2, scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="inline-flex items-center gap-2.5 rounded-xl border border-accent-border bg-accent-soft px-7 py-3.5 text-[15px] font-semibold text-accent transition-colors hover:bg-accent hover:text-background"
+          >
+            <Sparkles className="h-4 w-4" /> Load sample data
+          </motion.button>
+        </motion.div>
+
+        <motion.div variants={item} className="mt-5 text-xs text-text-muted">
+          Sample data drops in a fully-populated vault so you can explore every feature.
+          <span className="mx-2 opacity-40">·</span>
+          <span className="font-mono">v{APP_VERSION} · stays on your Mac</span>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }
@@ -2317,6 +3127,31 @@ interface ChatMessage {
   content: string;
   ts: number;
   streaming?: boolean;
+  // Captured stderr from the CLI. Surfaced in the "No output" panel so
+  // the real failure reason (e.g. "model not supported on ChatGPT
+  // account", quota, auth) is visible instead of a generic message.
+  stderr?: string;
+  // Token / cost accounting from the engine's `usage` ChatEvent, when the
+  // reply came through the unified engine chat path (Track D5). Null on
+  // replies that came through the native chat_send path.
+  usage?: { input_tokens?: number; output_tokens?: number; cost_usd?: number };
+}
+
+// Mirrors fd-apps-prevail-cli/docs/schemas/ChatEvent.json — a single
+// NDJSON event on the `prevail chat --json` stream. Consumers MUST
+// tolerate unknown `type` values for forward compatibility, so `type`
+// stays a bare string and every payload field is optional.
+interface ChatEvent {
+  type: string; // start | user | delta | assistant | tool | usage | done | error
+  thread?: string;
+  ts?: number;
+  domain?: string;
+  role?: "user" | "assistant" | "system" | "tool";
+  text?: string;
+  tool?: { name?: string; input?: unknown; output?: unknown };
+  usage?: { input_tokens?: number; output_tokens?: number; cost_usd?: number };
+  engine?: string;
+  error?: string;
 }
 
 // Council is for "why" / "should I" / steelman / decision questions —
@@ -2564,6 +3399,7 @@ function DomainHome({
 // icons for CLIs, prose labels for everything else.
 function DomainPrefsPanel({
   domain,
+  vaultPath,
   clis,
   skills,
   preferredSkills,
@@ -2571,6 +3407,7 @@ function DomainPrefsPanel({
   onChanged,
 }: {
   domain: string;
+  vaultPath: string;
   clis: CliInfo[];
   skills: SkillEntry[];
   preferredSkills: string[];
@@ -2588,15 +3425,112 @@ function DomainPrefsPanel({
   const fwKey = `prevail.domain.${domain}.framework`;
   const lensKey = `prevail.domain.${domain}.lens`;
   const autoStateKey = `prevail.domain.${domain}.autoState`;
+  // Privacy / sandbox / routing live in top-level manifest blocks (not
+  // config), but we mirror to localStorage too so the rest of the app
+  // (ChatPanel reads prevail.domain.<name>.localOnly) keeps working.
+  const localOnlyKey = `prevail.domain.${domain}.localOnly`;
+  const sandboxKey = `prevail.domain.${domain}.sandbox`;
+  const keywordsKey = `prevail.domain.${domain}.routing.keywords`;
+
+  // Per-domain prefs are stored in the domain's manifest (config block)
+  // when the engine supports it, and ALSO mirrored to localStorage so the
+  // rest of the app (ChatPanel) — which reads localStorage — keeps working.
+  // On mount we load the manifest and hydrate any localStorage keys that
+  // aren't already set from it. When the manifest is unavailable we fall
+  // back to localStorage-only (the previous behavior).
+  const [manifestReady, setManifestReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const m = await invoke<DomainManifest>("engine_manifest_get", { vault: vaultPath, domain });
+        if (cancelled) return;
+        const cfg = m?.config;
+        if (cfg) {
+          // Hydrate localStorage from the manifest only where the user
+          // hasn't already set a local override, so the manifest acts as
+          // the durable store without clobbering an in-flight local edit.
+          if (!lsGet(cliKey) && cfg.cli) lsSet(cliKey, cfg.cli);
+          if (!lsGet(modelKey) && cfg.model) lsSet(modelKey, cfg.model);
+          if (!lsGet(fwKey) && cfg.framework) lsSet(fwKey, cfg.framework);
+          if (!lsGet(lensKey) && cfg.lens) lsSet(lensKey, cfg.lens);
+          if (!lsGet(autoStateKey)) lsSet(autoStateKey, cfg.autoState === false ? "0" : "1");
+          // Preferred skills come from the parent; seed them from the
+          // manifest when none are pinned yet.
+          if (Array.isArray(cfg.skills) && cfg.skills.length > 0 && preferredSkills.length === 0) {
+            for (const s of cfg.skills) onTogglePreferredSkill(s);
+          }
+        }
+        // Hydrate top-level privacy / sandbox / routing blocks.
+        if (!lsGet(localOnlyKey)) lsSet(localOnlyKey, m?.privacy?.localOnly ? "1" : "0");
+        if (!lsGet(sandboxKey)) lsSet(sandboxKey, m?.sandbox?.mode === "locked" ? "locked" : "open");
+        if (!lsGet(keywordsKey) && Array.isArray(m?.routing?.keywords)) {
+          lsSet(keywordsKey, (m.routing!.keywords as string[]).join(", "));
+        }
+      } catch {
+        // Engine/manifest unavailable — localStorage remains the source.
+      } finally {
+        if (!cancelled) { setManifestReady(true); force(); }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultPath, domain]);
+
+  // Merge a partial config block into the manifest. Best-effort: failures
+  // are swallowed so localStorage stays the working fallback.
+  const persistManifest = useCallback(
+    (config: Record<string, unknown>) => {
+      const json = JSON.stringify({ config });
+      invoke("engine_manifest_set", { vault: vaultPath, domain, json }).catch(() => {
+        /* manifest write unsupported — localStorage already holds the value */
+      });
+    },
+    [vaultPath, domain],
+  );
+
+  // Merge an arbitrary top-level manifest patch (e.g. privacy / sandbox /
+  // routing blocks). Best-effort — same fallback contract as persistManifest.
+  const persistManifestTop = useCallback(
+    (patch: Record<string, unknown>) => {
+      const json = JSON.stringify(patch);
+      invoke("engine_manifest_set", { vault: vaultPath, domain, json }).catch(() => {
+        /* manifest write unsupported — localStorage already holds the value */
+      });
+    },
+    [vaultPath, domain],
+  );
+
+  // Mirror preferred-skill changes into the manifest once loaded.
+  const skillsSig = preferredSkills.join(",");
+  useEffect(() => {
+    if (!manifestReady) return;
+    persistManifest({ skills: preferredSkills });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skillsSig, manifestReady]);
 
   const pickedCli = lsGet(cliKey);
   const pickedModel = lsGet(modelKey);
   const pickedFw = lsGet(fwKey);
   const pickedLens = lsGet(lensKey);
   const autoState = lsGet(autoStateKey) !== "0";
+  const localOnly = lsGet(localOnlyKey) === "1";
+  const sandboxMode = lsGet(sandboxKey) === "locked" ? "locked" : "open";
+  const keywordsRaw = lsGet(keywordsKey);
+
+  // Map a localStorage pref key to its manifest config field so writes go
+  // to both stores.
+  const KEY_TO_CONFIG: Record<string, string> = {
+    [cliKey]: "cli",
+    [modelKey]: "model",
+    [fwKey]: "framework",
+    [lensKey]: "lens",
+  };
 
   function setOverride(key: string, value: string) {
     lsSet(key, value);
+    const field = KEY_TO_CONFIG[key];
+    if (field) persistManifest({ [field]: value || null });
     force();
   }
 
@@ -2617,9 +3551,12 @@ function DomainPrefsPanel({
         </div>
         <button
           onClick={() => {
-            for (const k of [cliKey, modelKey, fwKey, lensKey, autoStateKey, `prevail.domain.${domain}.skills`]) {
+            for (const k of [cliKey, modelKey, fwKey, lensKey, autoStateKey, `prevail.domain.${domain}.skills`, localOnlyKey, sandboxKey, keywordsKey]) {
               lsSet(k, "");
             }
+            // Clear the manifest config overrides too.
+            persistManifest({ cli: null, model: null, framework: null, lens: null, autoState: true, skills: [] });
+            persistManifestTop({ privacy: { localOnly: false }, sandbox: { mode: "open" }, routing: { keywords: [] } });
             force();
           }}
           className="shrink-0 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn"
@@ -2821,9 +3758,88 @@ function DomainPrefsPanel({
           </div>
           <Toggle
             on={autoState}
-            onChange={(v) => { lsSet(autoStateKey, v ? "1" : "0"); force(); }}
+            onChange={(v) => { lsSet(autoStateKey, v ? "1" : "0"); persistManifest({ autoState: v }); force(); }}
             label="Auto-attach state.md"
           />
+        </div>
+      </section>
+
+      {/* Privacy — local-only (Ollama) pin → manifest.privacy.localOnly */}
+      <section className="mb-6 rounded-xl border border-border bg-surface p-4">
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Privacy</div>
+        <div className="flex items-center justify-between gap-3 py-2">
+          <div>
+            <div className="text-sm font-semibold text-text-primary">Local-only (Ollama)</div>
+            <div className="mt-0.5 text-xs text-text-secondary">
+              {localOnly
+                ? "Every prompt in this domain is forced through a local model — nothing leaves your machine."
+                : "Off — prompts use the domain's configured CLI, which may call a cloud model."}
+            </div>
+          </div>
+          <Toggle
+            on={localOnly}
+            onChange={(v) => {
+              lsSet(localOnlyKey, v ? "1" : "0");
+              persistManifestTop({ privacy: { localOnly: v } });
+              force();
+            }}
+            label="Local-only (Ollama)"
+          />
+        </div>
+      </section>
+
+      {/* Sandbox — open | locked → manifest.sandbox.mode */}
+      <section className="mb-6 rounded-xl border border-border bg-surface p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Sandbox</div>
+            <p className="mt-0.5 text-sm text-text-secondary">
+              {sandboxMode === "locked"
+                ? "Locked — agents can read this domain but cannot write files or run shell side-effects."
+                : "Open — agents can read and write within this domain's folder."}
+            </p>
+          </div>
+          <select
+            value={sandboxMode}
+            onChange={(e) => {
+              const v = e.target.value === "locked" ? "locked" : "open";
+              lsSet(sandboxKey, v);
+              persistManifestTop({ sandbox: { mode: v } });
+              force();
+            }}
+            className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none"
+          >
+            <option value="open">open</option>
+            <option value="locked">locked</option>
+          </select>
+        </div>
+      </section>
+
+      {/* Channels / routing — editable keywords → manifest.routing.keywords */}
+      <section className="mb-6 rounded-xl border border-border bg-surface p-4">
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Channels &amp; routing</div>
+        <p className="mb-3 text-sm text-text-secondary">
+          When a bridge (e.g. Telegram) receives a message, these keywords help route it to {titleCase(domain)}.
+          Comma-separated. Saved to the domain manifest.
+        </p>
+        <input
+          defaultValue={keywordsRaw}
+          key={`kw-${domain}-${manifestReady ? 1 : 0}`}
+          placeholder="invoices, taxes, deductions…"
+          onBlur={(e) => {
+            const list = e.target.value
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+            lsSet(keywordsKey, list.join(", "));
+            persistManifestTop({ routing: { keywords: list } });
+            force();
+          }}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm focus:border-accent-border focus:outline-none"
+          spellCheck={false}
+        />
+        <div className="mt-2 font-mono text-[10px] text-text-muted">
+          Edits save when the field loses focus.
         </div>
       </section>
     </div>
@@ -3333,6 +4349,130 @@ function DrawerImportsSection({
   );
 }
 
+// Domain actions menu — "Back up" and "Archive" for a single domain.
+// Used in the domain header. Backs up via engine_vault_backup(domainOpt),
+// archives via engine_vault_archive. Archive never deletes data; it just
+// flips the manifest flag and hides the domain from the active sidebar.
+function DomainActionsMenu({
+  domain,
+  vaultPath,
+  onArchived,
+}: {
+  domain: string;
+  vaultPath: string;
+  onArchived: (name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<null | "backup" | "archive">(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setConfirmArchive(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  async function backup() {
+    setBusy("backup");
+    setNote(null);
+    try {
+      const res = await invoke<BackupResult>("engine_vault_backup", {
+        vault: vaultPath,
+        domainOpt: domain,
+      });
+      setNote(
+        res.ok
+          ? `Backed up ${res.file_count} file${res.file_count === 1 ? "" : "s"} (${bytesHuman(res.bytes)})`
+          : `Backup failed: ${res.error ?? "unknown error"}`,
+      );
+    } catch (e) {
+      setNote(`Backup failed: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function archive() {
+    setBusy("archive");
+    setNote(null);
+    try {
+      await invoke("engine_vault_archive", { vault: vaultPath, domain });
+      setOpen(false);
+      setConfirmArchive(false);
+      onArchived(domain);
+    } catch (e) {
+      setNote(`Archive failed: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title="Back up / Archive domain"
+        className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent"
+      >
+        <Archive className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-7 z-40 w-56 rounded-lg border border-border bg-surface p-1.5 shadow-xl">
+          <button
+            onClick={backup}
+            disabled={busy !== null}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-text-primary hover:bg-surface-warm disabled:opacity-50"
+          >
+            {busy === "backup" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            Back up this domain
+          </button>
+          {!confirmArchive ? (
+            <button
+              onClick={() => setConfirmArchive(true)}
+              disabled={busy !== null}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-text-primary hover:bg-surface-warm disabled:opacity-50"
+            >
+              <Archive className="h-3.5 w-3.5" />
+              Archive domain…
+            </button>
+          ) : (
+            <div className="rounded-md border border-border-subtle bg-background p-2">
+              <div className="mb-1.5 text-xs text-text-secondary">
+                Hide <span className="font-semibold">{titleCase(domain)}</span> from the active list? Nothing is deleted — restore it any time.
+              </div>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={archive}
+                  disabled={busy !== null}
+                  className="flex items-center gap-1 rounded bg-warn px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:opacity-90 disabled:opacity-50"
+                >
+                  {busy === "archive" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
+                  archive
+                </button>
+                <button
+                  onClick={() => setConfirmArchive(false)}
+                  disabled={busy !== null}
+                  className="rounded border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:bg-surface-warm"
+                >
+                  cancel
+                </button>
+              </div>
+            </div>
+          )}
+          {note && <div className="mt-1 px-2 py-1 text-[11px] text-text-muted">{note}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChatPanel({
   domain,
   domainPath,
@@ -3350,6 +4490,7 @@ function ChatPanel({
   domainStats,
   runningDomains,
   onPickDomain,
+  onArchived,
 }: {
   domain: string | null;
   domainPath: string | null;
@@ -3367,8 +4508,38 @@ function ChatPanel({
   domainStats: Record<string, number>;
   runningDomains: Set<string>;
   onPickDomain: (name: string) => void;
+  onArchived: (name: string) => void;
 }) {
   const available = useMemo(() => clis.filter((c) => c.available), [clis]);
+
+  // ── Unified engine chat (Track D5) ────────────────────────────────
+  // When the `prevail` CLI is present we prefer driving the conversation
+  // through `engine_chat`, which streams a typed ChatEvent NDJSON stream
+  // (start/user/delta/assistant/usage/done/error) and threads through the
+  // domain manifest's configured engine, privacy (localOnly) and skills.
+  // When it's absent we fall back to the native chat_send path below.
+  // This is purely additive — neither path is removed.
+  const [engineAvailable, setEngineAvailable] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    // Probe once: if `prevail domains` answers, the CLI is installed and
+    // the engine chat path is usable. Any error (CLI missing, bad vault)
+    // leaves us on the native path.
+    (async () => {
+      try {
+        await invoke("engine_domains", { vault: vaultPath });
+        if (alive) setEngineAvailable(true);
+      } catch {
+        if (alive) setEngineAvailable(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [vaultPath]);
+  // Per-domain "local only" privacy pin (mirrors manifest.privacy.localOnly).
+  // Persisted by the manifest editor; read here so engine chat can force a
+  // local engine for this turn.
+  const localOnly = domain ? lsGet(`prevail.domain.${domain}.localOnly`) === "1" : false;
+
   // Per-domain model preference. Keys: prevail.domain.<name>.cli and
   // prevail.domain.<name>.model. When set, override the global default
   // while in that domain. Global default kicks in for no-domain chats
@@ -3502,9 +4673,16 @@ function ChatPanel({
   // Persistent domain tab. "chat" shows the transcript; the other
   // tabs replace the transcript with the domain's reference content.
   // Composer stays at the bottom regardless of tab.
-  type DomainTab = "chat" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs";
+  type DomainTab = "chat" | "context" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs";
   const [domainTab, setDomainTab] = useState<DomainTab>("chat");
   const [domainCtx, setDomainCtx] = useState<DomainContextBundle | null>(null);
+  // Context score for the active domain. Cached in state per-domain; the
+  // header badge and Context tab both read from here. Loaded (cheap,
+  // no-audit) on domain open; the Re-scan button forces an audit.
+  const [ctxScore, setCtxScore] = useState<ContextScore | null>(null);
+  const [ctxScoreLoading, setCtxScoreLoading] = useState(false);
+  const [ctxScoreRescanning, setCtxScoreRescanning] = useState(false);
+  const [ctxScoreError, setCtxScoreError] = useState<string | null>(null);
   useEffect(() => {
     setDomainTab("chat");
     const pref = loadPreferredSkills(domain);
@@ -3517,6 +4695,40 @@ function ChatPanel({
       .catch(() => { if (mounted) setDomainCtx(null); });
     return () => { mounted = false; };
   }, [domain, vaultPath]);
+  // Load the (cached / heuristic) context score when a domain opens.
+  useEffect(() => {
+    setCtxScore(null);
+    setCtxScoreError(null);
+    if (!domain || !vaultPath) return;
+    let mounted = true;
+    setCtxScoreLoading(true);
+    invoke<ContextScore>("engine_score", { vault: vaultPath, domain, audit: false })
+      .then((s) => { if (mounted) setCtxScore(s); })
+      .catch((e) => { if (mounted) setCtxScoreError(String(e)); })
+      .finally(() => { if (mounted) setCtxScoreLoading(false); });
+    return () => { mounted = false; };
+  }, [domain, vaultPath]);
+  const rescanContextScore = useCallback(() => {
+    if (!domain || !vaultPath) return;
+    setCtxScoreRescanning(true);
+    setCtxScoreError(null);
+    invoke<ContextScore>("engine_score", { vault: vaultPath, domain, audit: true })
+      .then((s) => setCtxScore(s))
+      .catch((e) => setCtxScoreError(String(e)))
+      .finally(() => setCtxScoreRescanning(false));
+  }, [domain, vaultPath]);
+  // Aggregate "Life Readiness" — averaged across all domains. Loaded on
+  // the no-domain landing. Re-fetched when a re-scan finishes so the
+  // headline number stays roughly current.
+  const [lifeReadiness, setLifeReadiness] = useState<LifeReadiness | null>(null);
+  useEffect(() => {
+    if (domain || !vaultPath) return;
+    let mounted = true;
+    invoke<LifeReadiness>("engine_score_all", { vault: vaultPath })
+      .then((lr) => { if (mounted) setLifeReadiness(lr); })
+      .catch(() => { if (mounted) setLifeReadiness(null); });
+    return () => { mounted = false; };
+  }, [domain, vaultPath, ctxScoreRescanning]);
   const togglePreferredSkill = useCallback((name: string) => {
     setPreferredSkills((cur) => {
       const next = cur.includes(name) ? cur.filter((n) => n !== name) : [...cur, name];
@@ -3804,8 +5016,21 @@ function ChatPanel({
         "chat:chunk",
         (e) => {
           if (e.payload.session !== sessionRef.current) return;
-          if (e.payload.stream !== "stdout") return;
           if (!mounted) return;
+          // Capture stderr so a failing CLI's real error (model
+          // rejected, quota, auth) can be surfaced in the "No output"
+          // panel instead of a generic message.
+          if (e.payload.stream === "stderr") {
+            const errChunk = stripAnsi(e.payload.data);
+            setMessages((m) => {
+              const last = m[m.length - 1];
+              if (last && last.streaming) {
+                return [...m.slice(0, -1), { ...last, stderr: (last.stderr ?? "") + errChunk }];
+              }
+              return m;
+            });
+            return;
+          }
           // Process only the new chunk (not the growing accumulator)
           // to keep stream rendering O(n) instead of O(n²) for long
           // replies. Sycophancy patterns are short so re-scanning the
@@ -3836,7 +5061,114 @@ function ChatPanel({
           });
         },
       );
-      unlistenRefs.current = [u1, u2];
+      // ── Unified engine chat stream (Track D5) ────────────────────
+      // `engine_chat` emits a ChatEvent NDJSON stream wrapped as
+      // { session, data: <ChatEvent> } on `engine-chat:line`, closing
+      // with `engine-chat:done`. We render into the SAME `messages`
+      // state and reuse the existing chat bubble rendering, so this is
+      // purely an alternate producer for the assistant reply.
+      const u3 = await listen<{ session: string; stream?: string; data: ChatEvent | string }>(
+        "engine-chat:line",
+        (e) => {
+          if (e.payload.session !== sessionRef.current) return;
+          if (!mounted) return;
+          // stderr lines arrive as raw strings — capture them on the
+          // streaming assistant bubble so failures surface like the
+          // native path's "No output" panel.
+          if (e.payload.stream === "stderr" || typeof e.payload.data === "string") {
+            const errChunk = stripAnsi(String(e.payload.data));
+            setMessages((m) => {
+              const last = m[m.length - 1];
+              if (last && last.streaming) {
+                return [...m.slice(0, -1), { ...last, stderr: (last.stderr ?? "") + errChunk + "\n" }];
+              }
+              return m;
+            });
+            return;
+          }
+          const ev = e.payload.data as ChatEvent;
+          switch (ev.type) {
+            case "start":
+            case "user":
+              // 'start' opens the turn; 'user' echoes the prompt we
+              // already optimistically rendered. Nothing to append.
+              break;
+            case "delta": {
+              // Incremental text chunk — append to the streaming bubble.
+              const clean = maybeStripSycophancy(stripAnsi(ev.text ?? ""));
+              setMessages((m) => {
+                const last = m[m.length - 1];
+                if (last && last.streaming) {
+                  return [...m.slice(0, -1), { ...last, content: last.content + clean }];
+                }
+                return m;
+              });
+              break;
+            }
+            case "assistant": {
+              // Finalized reply. If we streamed deltas the content is
+              // already there; otherwise (engine emitted only a final
+              // assistant event) set it now. Either way keep streaming
+              // true until 'done' so the spinner persists.
+              const full = maybeStripSycophancy(stripAnsi(ev.text ?? ""));
+              setMessages((m) => {
+                const last = m[m.length - 1];
+                if (last && last.streaming) {
+                  // Prefer the longer of accumulated deltas vs final text
+                  // so we don't truncate a stream that already arrived.
+                  const content = last.content.length >= full.length ? last.content : full;
+                  return [...m.slice(0, -1), { ...last, content }];
+                }
+                return m;
+              });
+              break;
+            }
+            case "usage": {
+              // Token / cost accounting — stash on the streaming bubble.
+              setMessages((m) => {
+                const last = m[m.length - 1];
+                if (last && last.streaming) {
+                  return [...m.slice(0, -1), { ...last, usage: ev.usage }];
+                }
+                return m;
+              });
+              break;
+            }
+            case "error": {
+              setMessages((m) => {
+                const last = m[m.length - 1];
+                if (last && last.streaming) {
+                  return [...m.slice(0, -1), { ...last, stderr: (last.stderr ?? "") + (ev.error ?? "engine error") + "\n" }];
+                }
+                return m;
+              });
+              break;
+            }
+            case "done":
+              // 'done' on the stream closes the turn; the dedicated
+              // engine-chat:done event below flips streaming off.
+              break;
+            default:
+              // Unknown event type — tolerate per the schema's forward-
+              // compat requirement. No-op.
+              break;
+          }
+        },
+      );
+      const u4 = await listen<{ session: string; code: number }>(
+        "engine-chat:done",
+        (e) => {
+          if (!mounted) return;
+          onStreamEnd(e.payload.session);
+          if (e.payload.session !== sessionRef.current) return;
+          setMessages((m) => {
+            const last = m[m.length - 1];
+            if (last && last.streaming) return [...m.slice(0, -1), { ...last, streaming: false }];
+            return m;
+          });
+        },
+      );
+      unlistenRefs.current = [u1, u2, u3, u4];
     })();
     return () => {
       mounted = false;
@@ -3921,17 +5253,52 @@ function ChatPanel({
       title: visible.slice(0, 60).replace(/\n/g, " "),
       startedAt: Date.now(),
     });
+    // Prefer the unified engine chat path when the prevail CLI is present
+    // AND we're in a domain (the engine scopes chat to a domain). The
+    // engine assembles its own domain state/skills on top of the message
+    // we send; we still pass the fully-built promptText so attachments,
+    // primed context and multi-turn history continue to work. Falls back
+    // to the native chat_send path when the engine isn't available.
+    const useEngine = engineAvailable && !!domain;
     try {
-      await invoke("chat_send", {
-        args: {
-          cli: selectedCli,
+      if (useEngine) {
+        await invoke("engine_chat", {
+          session: sessionRef.current,
+          vault: vaultPath,
+          domain,
+          message: promptText,
+          cli: selectedCli || null,
           model: lsGet(`prevail.model.${selectedCli}`) || null,
-          prompt: promptText,
-          session_id: sessionRef.current,
-          timeout_sec: (() => { const n = parseInt(getPref(PREF.llmPromptTimeoutSec, "300"), 10); return Number.isFinite(n) && n > 0 ? n : null; })(),
-        },
-      });
+          localOnly,
+        });
+      } else {
+        await invoke("chat_send", {
+          args: {
+            cli: selectedCli,
+            model: lsGet(`prevail.model.${selectedCli}`) || null,
+            prompt: promptText,
+            session_id: sessionRef.current,
+            timeout_sec: (() => { const n = parseInt(getPref(PREF.llmPromptTimeoutSec, "300"), 10); return Number.isFinite(n) && n > 0 ? n : null; })(),
+          },
+        });
+      }
     } catch (e) {
+      // If the engine path failed to even spawn, fall back to the native
+      // path once so a transient engine issue doesn't drop the turn.
+      if (useEngine) {
+        try {
+          await invoke("chat_send", {
+            args: {
+              cli: selectedCli,
+              model: lsGet(`prevail.model.${selectedCli}`) || null,
+              prompt: promptText,
+              session_id: sessionRef.current,
+              timeout_sec: (() => { const n = parseInt(getPref(PREF.llmPromptTimeoutSec, "300"), 10); return Number.isFinite(n) && n > 0 ? n : null; })(),
+            },
+          });
+          return;
+        } catch { /* fall through to error rendering */ }
+      }
       setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `(error spawning ${selectedCli}: ${e})`, ts: Date.now() }]);
       onStreamEnd(sessionRef.current);
     }
@@ -4018,6 +5385,7 @@ function ChatPanel({
           <>
             <span className="text-accent">◆</span>
             <span className="font-display text-lg font-semibold">{titleCase(domain)}</span>
+            <ContextScoreBadge score={ctxScore} onClick={() => setDomainTab("context")} />
             {domainPath && (
               <button
                 onClick={onOpenInFinder}
@@ -4027,6 +5395,7 @@ function ChatPanel({
                 <Folder className="h-3.5 w-3.5" />
               </button>
             )}
+            <DomainActionsMenu domain={domain} vaultPath={vaultPath} onArchived={onArchived} />
             <button
               onClick={() => setDomainTab("prefs")}
               title={hasAnyDomainOverride ? "Domain preferences (overrides active)" : "Domain preferences"}
@@ -4045,6 +5414,7 @@ function ChatPanel({
             <nav className="ml-3 flex items-center gap-0.5 text-[11px] font-medium uppercase tracking-wider">
               {([
                 { id: "chat", label: "Chat", count: undefined },
+                { id: "context", label: "Context", count: ctxScore ? ctxScore.score : undefined },
                 { id: "state", label: "State", count: domainCtx?.state ? 1 : 0 },
                 { id: "decisions", label: "Decisions", count: domainCtx?.decisions ? 1 : 0 },
                 { id: "journal", label: "Journal", count: domainCtx?.journal ? 1 : 0 },
@@ -4145,6 +5515,26 @@ function ChatPanel({
             <p className="mt-2 max-w-md text-center text-sm text-text-muted">
               Start chatting, or pick a domain to ground the conversation in its state and history.
             </p>
+            {lifeReadiness && lifeReadiness.life_readiness !== null && (
+              <div
+                className="mt-6 flex items-center gap-3 rounded-full border px-4 py-2"
+                style={{ borderColor: scoreColor(lifeReadiness.life_readiness) }}
+                title={`Life Readiness — average context score across ${lifeReadiness.domains.length} domain${lifeReadiness.domains.length === 1 ? "" : "s"}`}
+              >
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+                  Life Readiness
+                </span>
+                <span
+                  className="font-display text-2xl font-bold leading-none"
+                  style={{ color: scoreColor(lifeReadiness.life_readiness) }}
+                >
+                  {lifeReadiness.life_readiness}
+                </span>
+                <span className="font-mono text-[11px] text-text-muted">
+                  / 100 · {lifeReadiness.domains.length} domain{lifeReadiness.domains.length === 1 ? "" : "s"}
+                </span>
+              </div>
+            )}
             <AgentPickerRail
               clis={available}
               selected={selectedCli}
@@ -4177,44 +5567,66 @@ function ChatPanel({
                   </div>
                   <span className="font-mono text-[10px] text-text-muted">more in sidebar</span>
                 </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  {featured.map((d) => {
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {featured.map((d, i) => {
                     const Icon = DOMAIN_ICONS[d.name];
                     const importCount = domainStats[d.name] ?? 0;
                     const running = runningDomains.has(d.name);
+                    const color = domainColor(d.name);
                     return (
-                      <button
+                      <motion.button
                         key={d.name}
                         onClick={() => onPickDomain(d.name)}
-                        className="group flex items-start gap-3 rounded-xl border border-border bg-surface p-3 text-left transition-all hover:-translate-y-px hover:border-accent-border hover:shadow-md"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.04 * i, type: "spring", stiffness: 140, damping: 18 }}
+                        whileHover={{ y: -3 }}
+                        whileTap={{ scale: 0.99 }}
+                        className="group relative flex h-36 flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface p-5 text-left transition-all duration-200 hover:border-border hover:shadow-[0_10px_34px_-12px_rgba(0,0,0,0.18)]"
                       >
-                        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
-                          {Icon ? <Icon className="h-4 w-4" /> : <span>◆</span>}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-display text-sm font-semibold tracking-tight text-text-primary">
-                              {titleCase(d.name)}
-                            </span>
+                        {/* oversized watermark glyph — editorial fill, no text clutter */}
+                        {Icon && (
+                          <Icon
+                            aria-hidden
+                            className="pointer-events-none absolute -bottom-6 -right-5 h-28 w-28 transition-transform duration-500 group-hover:scale-110 group-hover:-rotate-3"
+                            style={{ color, opacity: 0.06 }}
+                          />
+                        )}
+                        {/* faint accent wash, reveals on hover */}
+                        <span
+                          aria-hidden
+                          className="pointer-events-none absolute -right-16 -top-16 h-32 w-32 rounded-full opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-25"
+                          style={{ background: color }}
+                        />
+
+                        {/* top: accent glyph + reveal chevron */}
+                        <div className="flex items-center justify-between">
+                          <span style={{ color }}>
+                            {Icon ? <Icon className="h-[18px] w-[18px]" /> : <span className="font-mono text-sm">◆</span>}
+                          </span>
+                          <span className="flex items-center gap-2">
                             {running && (
                               <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full bg-warn" title="A reply is streaming here" />
                             )}
+                            <ChevronRight
+                              className="h-4 w-4 -translate-x-1 text-text-muted opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100"
+                            />
+                          </span>
+                        </div>
+
+                        {/* name anchored at the bottom with a growing accent hairline */}
+                        <div className="relative mt-auto">
+                          <div className="font-display text-lg font-semibold leading-tight tracking-tight text-text-primary">
+                            {titleCase(d.name)}
                           </div>
-                          {d.state_preview && (
-                            <div className="mt-0.5 line-clamp-2 text-[11px] text-text-secondary">
-                              {d.state_preview}
-                            </div>
-                          )}
-                          <div className="mt-1.5 flex items-center gap-2 font-mono text-[10px] text-text-muted">
-                            {importCount > 0 && (
-                              <span className="rounded bg-accent-soft px-1.5 py-0 text-accent">
-                                {importCount} import{importCount === 1 ? "" : "s"}
-                              </span>
-                            )}
-                            {d.has_state ? "state.md" : "no state.md yet"}
+                          <div className="mt-2 flex items-center gap-2.5">
+                            <span className="h-px w-7 rounded-full transition-all duration-300 group-hover:w-12" style={{ background: color }} />
+                            <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
+                              {importCount > 0 ? `${importCount} import${importCount === 1 ? "" : "s"}` : d.has_state ? "open" : "needs state"}
+                            </span>
                           </div>
                         </div>
-                      </button>
+                      </motion.button>
                     );
                   })}
                 </div>
@@ -4257,7 +5669,16 @@ function ChatPanel({
         )}
         {domain && domainTab !== "chat" && (
           <div className="mx-auto w-full max-w-3xl px-6 py-6">
-            {!domainCtx && domainTab !== "prefs" && <div className="text-sm text-text-muted">loading…</div>}
+            {domainTab === "context" && (
+              <ContextScorePanel
+                score={ctxScore}
+                loading={ctxScoreLoading}
+                rescanning={ctxScoreRescanning}
+                error={ctxScoreError}
+                onRescan={rescanContextScore}
+              />
+            )}
+            {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && <div className="text-sm text-text-muted">loading…</div>}
             {domainCtx && domainTab === "state" && (domainCtx.state ? <Markdown source={domainCtx.state} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">state.md</code> in this domain.</div>)}
             {domainCtx && domainTab === "decisions" && (domainCtx.decisions ? <Markdown source={domainCtx.decisions} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">decisions.md</code> yet.</div>)}
             {domainCtx && domainTab === "journal" && (domainCtx.journal ? <Markdown source={domainCtx.journal} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no journal entries yet.</div>)}
@@ -4297,6 +5718,7 @@ function ChatPanel({
             {domainTab === "prefs" && domain && (
               <DomainPrefsPanel
                 domain={domain}
+                vaultPath={vaultPath}
                 clis={clis}
                 skills={domainCtx?.skills ?? []}
                 preferredSkills={preferredSkills}
@@ -4878,24 +6300,37 @@ function ChatBubble({
     : vendor === "ollama" ? "Ollama"
     : vendor;
   const empty = !msg.content && !msg.streaming;
+  // Per-provider brand color for the name + bubble accent so each
+  // model's turns are visually distinguishable at a glance.
+  const { accent, tint } = vendorAccent(vendor);
+  // The real failure reason from the CLI's stderr, if any.
+  const cliError = empty ? extractCliError(msg.stderr) : null;
+  // Brand styling only on normal replies — error bubbles keep the warn
+  // palette so failures still read as failures.
+  const bubbleStyle: React.CSSProperties = empty
+    ? {}
+    : { borderLeftColor: accent, borderLeftWidth: 3, background: tint };
   return (
     <div className="group mb-8 flex items-start gap-3">
       <ProviderMark vendor={vendor} size={32} />
       <div className="min-w-0 flex-1">
         <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-text-secondary">
-          <span className="font-display font-semibold tracking-tight">{vendorName}</span>
+          <span className="font-display font-semibold tracking-tight" style={{ color: accent }}>{vendorName}</span>
           {msg.streaming && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
-              <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full bg-accent" />
+            <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider" style={{ color: accent, background: tint }}>
+              <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
               {msg.content ? "writing" : "thinking"}
             </span>
           )}
         </div>
-        <div className={`rounded-2xl rounded-tl-md border px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
-          empty
-            ? "border-warn/40 bg-warn/5"
-            : "border-border-subtle bg-surface"
-        }`}>
+        <div
+          className={`rounded-2xl rounded-tl-md border px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
+            empty
+              ? "border-warn/40 bg-warn/5"
+              : "border-border-subtle bg-surface"
+          }`}
+          style={bubbleStyle}
+        >
           {msg.content ? (
             <Markdown source={msg.content} />
           ) : msg.streaming ? (
@@ -4908,10 +6343,21 @@ function ChatBubble({
                 <div className="font-mono text-[11px] uppercase tracking-wider text-warn">
                   No output
                 </div>
-                <p className="mt-1 text-sm text-text-secondary">
-                  {vendorName} finished without producing any text. This usually means
-                  the model rejected the prompt, hit a quota, or returned an error.
-                </p>
+                {cliError ? (
+                  <>
+                    <p className="mt-1 text-sm text-text-secondary">
+                      {vendorName} returned an error instead of a reply:
+                    </p>
+                    <pre className="mt-1.5 whitespace-pre-wrap rounded-md bg-warn/10 px-2 py-1.5 font-mono text-[11px] leading-snug text-warn">
+                      {cliError}
+                    </pre>
+                  </>
+                ) : (
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {vendorName} finished without producing any text. This usually means
+                    the model rejected the prompt, hit a quota, or returned an error.
+                  </p>
+                )}
                 {onRetry && (
                   <button
                     onClick={onRetry}
@@ -4970,6 +6416,7 @@ interface PanelistReply {
   content: string;
   streaming: boolean;
   startedAt: number;
+  stderr?: string;
 }
 
 // One panelist slot = a (CLI, model) pair. Multiple slots can share the
@@ -4990,6 +6437,8 @@ function CouncilPanel({
   vaultPath: _vaultPath,
   clis,
   fwLens,
+  activeThreadPath,
+  onActiveThreadChange,
   onOpenInFinder,
   onSwitchToChat,
   onThreadsChanged,
@@ -4999,6 +6448,8 @@ function CouncilPanel({
   vaultPath: string;
   clis: CliInfo[];
   fwLens: ReturnType<typeof useFrameworkLens>;
+  activeThreadPath: string | null;
+  onActiveThreadChange: (path: string | null) => void;
   onOpenInFinder: () => void;
   onSwitchToChat: () => void;
   onThreadsChanged?: () => void;
@@ -5221,14 +6672,25 @@ function CouncilPanel({
         (e) => {
           if (!mounted) return;
           if (!e.payload.session.startsWith(sessionRef.current)) return;
-          if (e.payload.stream !== "stdout") return;
           if (e.payload.session.endsWith(":chair")) {
+            if (e.payload.stream !== "stdout") return;
             setVerdict((v) => v + stripAnsi(e.payload.data));
             return;
           }
           const slotMatch = e.payload.session.match(/:slot:(.+)$/);
           if (!slotMatch) return;
           const slotKey = slotMatch[1];
+          // Capture stderr so a panelist that errored shows its real
+          // failure reason instead of a silent empty card.
+          if (e.payload.stream === "stderr") {
+            const errChunk = stripAnsi(e.payload.data);
+            setReplies((r) => {
+              const existing = r[slotKey] ?? { cli: e.payload.cli, content: "", streaming: true, startedAt: Date.now() };
+              return { ...r, [slotKey]: { ...existing, stderr: (existing.stderr ?? "") + errChunk } };
+            });
+            return;
+          }
+          if (e.payload.stream !== "stdout") return;
           const clean = maybeStripSycophancy(stripAnsi(e.payload.data));
           setReplies((r) => {
             const existing = r[slotKey] ?? { cli: e.payload.cli, content: "", streaming: true, startedAt: Date.now() };
@@ -5296,19 +6758,39 @@ function CouncilPanel({
   // Mirrors ChatPanel's auto-save but fires only on phase === "done"
   // so the file represents the complete deliberation rather than
   // intermediate in-flight state.
+  // Accumulated prior turns for the active council thread, so convenes
+  // continue a multi-turn conversation instead of spawning a new thread.
+  const [councilTurns, setCouncilTurns] = useState<ThreadTurn[]>([]);
+  const councilThreadRef = useRef<string | null>(activeThreadPath);
+  const councilSelfSetRef = useRef<string | null>(null);
+  // Load (or clear) the council transcript when the active thread changes.
+  useEffect(() => {
+    councilThreadRef.current = activeThreadPath ?? null;
+    if (!activeThreadPath) { setCouncilTurns([]); return; }
+    if (councilSelfSetRef.current === activeThreadPath) { councilSelfSetRef.current = null; return; }
+    let cancelled = false;
+    invoke<{ meta: ThreadMeta; turns: ThreadTurn[] }>("load_thread", { path: activeThreadPath })
+      .then((t) => { if (!cancelled) setCouncilTurns(t.turns ?? []); })
+      .catch((e) => console.error("load_thread (council)", e));
+    return () => { cancelled = true; };
+  }, [activeThreadPath]);
+
   const councilSavedRef = useRef(false);
   useEffect(() => {
     if (phase !== "done") { councilSavedRef.current = false; return; }
     if (councilSavedRef.current) return;
     if (!_vaultPath || !submittedPrompt) return;
     councilSavedRef.current = true;
-    const turns: { role: string; cli: string | null; model: string | null; content: string }[] = [
+    // Start from whatever is already in this thread so each convene
+    // appends rather than replaces.
+    const prior = councilTurns;
+    const fresh: ThreadTurn[] = [
       { role: "user", cli: null, model: null, content: submittedPrompt },
     ];
     for (const s of panelistSlots) {
       const r = replies[s.key];
       if (!r || !r.content.trim()) continue;
-      turns.push({
+      fresh.push({
         role: "assistant",
         cli: s.cli,
         model: s.model || null,
@@ -5316,24 +6798,38 @@ function CouncilPanel({
       });
     }
     if (verdict.trim()) {
-      turns.push({
+      fresh.push({
         role: "assistant",
         cli: chairSlotObj?.cli ?? null,
         model: chairSlotObj?.model || null,
         content: `### Council verdict\n\n${verdict.trim()}`,
       });
     }
-    const title = `Council · ${submittedPrompt.slice(0, 50).replace(/\n/g, " ")}`;
+    const allTurns = [...prior, ...fresh];
+    // Reuse the existing thread's slug when continuing; else create new.
+    const cur = councilThreadRef.current;
+    const slug = cur ? cur.split("/").pop()?.replace(/\.md$/, "") ?? null : null;
+    // Title comes from the FIRST user turn of the conversation.
+    const firstUser = (prior.find((t) => t.role === "user")?.content ?? submittedPrompt);
+    const title = `Council · ${firstUser.slice(0, 50).replace(/\n/g, " ")}`;
     invoke<string>("save_thread", {
       vault: _vaultPath,
       domain: domain ?? null,
-      slug: null,
+      slug,
       title,
-      turns,
+      turns: allTurns,
     })
-      .then(() => onThreadsChanged?.())
+      .then((path) => {
+        setCouncilTurns(allTurns);
+        if (!councilThreadRef.current) {
+          councilThreadRef.current = path;
+          councilSelfSetRef.current = path;
+          onActiveThreadChange(path);
+        }
+        onThreadsChanged?.();
+      })
       .catch((e) => console.error("save_thread (council)", e));
-  }, [phase, submittedPrompt, replies, verdict, panelistSlots, chairSlotObj, _vaultPath, domain, onThreadsChanged]);
+  }, [phase, submittedPrompt, replies, verdict, panelistSlots, chairSlotObj, _vaultPath, domain, councilTurns, onActiveThreadChange, onThreadsChanged]);
 
   async function convene() {
     if (!prompt.trim() || panelistSlots.length === 0) return;
@@ -5356,7 +6852,24 @@ function CouncilPanel({
     const skillsPreamble = attachedSkills.length > 0
       ? `Use the following skills as part of your reply: ${attachedSkills.map((n) => `/${n}`).join(", ")}\n\n`
       : "";
-    const enrichedPrompt = fwLens.buildPrompt(`${userPreamble}${primedPreamble}${skillsPreamble}${trimmed}`);
+    // Continuation: feed prior council turns (questions + chair verdicts)
+    // so this convene builds on the conversation so far.
+    const histItems = councilTurns.filter(
+      (t) => t.role === "user" || t.content.startsWith("### Council verdict"),
+    );
+    const historyPreamble = histItems.length
+      ? "--- Conversation so far ---\n" +
+        histItems
+          .map((t) =>
+            t.role === "user"
+              ? `User: ${t.content}`
+              : `Council verdict: ${t.content.replace(/^### Council verdict\n\n/, "")}`,
+          )
+          .join("\n\n")
+          .slice(0, 6000) +
+        "\n\n--- New question (continue the conversation) ---\n"
+      : "";
+    const enrichedPrompt = fwLens.buildPrompt(`${userPreamble}${primedPreamble}${historyPreamble}${skillsPreamble}${trimmed}`);
     setPrompt("");
     setAttachedSkills([]);
     for (const s of panelistSlots) {
@@ -5481,7 +6994,32 @@ function CouncilPanel({
 
       {/* Hero / transcript area */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {phase === "idle" && (
+        {/* Prior council turns — multi-turn continuation history */}
+        {councilTurns.length > 0 && (
+          <div className="mx-auto max-w-3xl space-y-4 px-6 pt-6">
+            {councilTurns.map((t, i) =>
+              t.role === "user" ? (
+                <div key={i} className="rounded-2xl border border-border-subtle bg-surface px-4 py-3 font-mono text-sm text-text-primary">
+                  <span className="text-accent">$ </span>
+                  {t.content}
+                </div>
+              ) : t.content.startsWith("### Council verdict") ? (
+                <div key={i} className="rounded-2xl border border-accent-border bg-accent-soft px-4 py-3">
+                  <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-accent">Council verdict</div>
+                  <div className="text-sm leading-relaxed text-text-secondary">
+                    <Markdown source={t.content.replace(/^### Council verdict\n\n/, "")} />
+                  </div>
+                </div>
+              ) : null,
+            )}
+            {phase !== "idle" && (
+              <div className="pb-1 pt-1 text-center font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">
+                — continuing —
+              </div>
+            )}
+          </div>
+        )}
+        {councilTurns.length === 0 && phase === "idle" && (
           <div className="flex h-full flex-col items-center justify-start px-6 py-10">
             <img src="/logo.png" alt="" className="h-14 w-14 rounded-2xl opacity-90" />
             <h2 className="mt-5 font-display text-3xl font-semibold tracking-tight">
@@ -5534,23 +7072,37 @@ function CouncilPanel({
             <div className="space-y-4">
               {panelistSlots.map((s) => {
                 const r = replies[s.key];
+                const cardAccent = vendorAccent(s.cli);
+                const cardErrored = !!r && !r.streaming && !r.content;
+                const cardError = cardErrored ? extractCliError(r.stderr) : null;
                 return (
-                  <div key={s.key} className="overflow-hidden rounded-lg border border-border bg-surface">
+                  <div
+                    key={s.key}
+                    className="overflow-hidden rounded-lg border border-border bg-surface"
+                    style={{ borderLeftColor: cardAccent.accent, borderLeftWidth: 3 }}
+                  >
                     <div className="flex items-center justify-between gap-2 border-b border-border-subtle bg-surface-warm px-4 py-2 font-mono text-xs">
                       <span className="flex items-center gap-2">
                         <ProviderMark vendor={s.cli} size={18} />
-                        <span className="text-text-primary">{s.cliLabel.toLowerCase()}</span>
+                        <span style={{ color: cardAccent.accent }}>{s.cliLabel.toLowerCase()}</span>
                         <span className="text-text-muted">· {s.modelLabel}</span>
                       </span>
                       <span className="text-text-muted">
                         {!r && "queued"}
                         {r?.streaming && <span className="pulse-soft text-accent">streaming</span>}
-                        {r && !r.streaming && <span className="text-ok">✓ done</span>}
+                        {r && !r.streaming && !cardErrored && <span className="text-ok">✓ done</span>}
+                        {cardErrored && <span className="text-warn">⚠ no output</span>}
                       </span>
                     </div>
                     <div className="px-5 py-4">
                       {r?.content ? (
                         <Markdown source={r.content} />
+                      ) : cardErrored ? (
+                        cardError ? (
+                          <pre className="whitespace-pre-wrap rounded-md bg-warn/10 px-2 py-1.5 font-mono text-[11px] leading-snug text-warn">{cardError}</pre>
+                        ) : (
+                          <p className="text-sm text-text-secondary">{s.cliLabel} produced no output (model rejected the prompt, hit a quota, or errored).</p>
+                        )
                       ) : (
                         <ThinkingDots />
                       )}
@@ -5955,6 +7507,197 @@ function ScoreBar({ value, max, color = "var(--color-accent)" }: { value: number
   return (
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-strong">
       <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+    </div>
+  );
+}
+
+// Small color-coded Context Score pill for the domain header. Click jumps
+// to the Context tab. Tooltip shows freshness + audit recency.
+function ContextScoreBadge({
+  score,
+  onClick,
+}: {
+  score: ContextScore | null;
+  onClick?: () => void;
+}) {
+  if (!score) return null;
+  const color = scoreColor(score.score);
+  const tip = `Context score ${score.score}/100 · updated ${formatFreshness(
+    score.freshness_secs,
+  )}${score.audited_at ? ` · audited ${formatAuditedAt(score.audited_at)}` : " · heuristic"}`;
+  return (
+    <button
+      onClick={onClick}
+      title={tip}
+      className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide transition-colors hover:opacity-80"
+      style={{ borderColor: color, color }}
+    >
+      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+      {score.score}
+    </button>
+  );
+}
+
+// Full Context tab: big score ring, the six dimensions as ScoreBars, the
+// what's-missing list grouped by severity, the LLM assessment + last
+// audited, and a Re-scan button (forces a fresh audit).
+function ContextScorePanel({
+  score,
+  loading,
+  rescanning,
+  error,
+  onRescan,
+}: {
+  score: ContextScore | null;
+  loading: boolean;
+  rescanning: boolean;
+  error: string | null;
+  onRescan: () => void;
+}) {
+  if (loading && !score) {
+    return <div className="text-sm text-text-muted">computing context score…</div>;
+  }
+  if (error && !score) {
+    return (
+      <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+        couldn't compute a context score: <span className="text-text-secondary">{error}</span>
+      </div>
+    );
+  }
+  if (!score) {
+    return (
+      <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+        no context score yet.
+      </div>
+    );
+  }
+
+  const color = scoreColor(score.score);
+  // Group missing items by severity for the what's-missing section.
+  const grouped: Record<string, MissingItem[]> = {};
+  for (const m of score.missing) {
+    (grouped[m.severity] ??= []).push(m);
+  }
+  const severities = Object.keys(grouped).sort(
+    (a, b) => (SEVERITY_ORDER[a] ?? 99) - (SEVERITY_ORDER[b] ?? 99),
+  );
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Big score + re-scan */}
+      <div className="flex items-center gap-5 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+        <div
+          className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-4"
+          style={{ borderColor: color }}
+        >
+          <span className="font-display text-4xl font-bold leading-none" style={{ color }}>
+            {score.score}
+          </span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="font-display text-lg font-semibold tracking-tight">Context Score</div>
+          <div className="mt-0.5 text-xs text-text-muted">
+            updated {formatFreshness(score.freshness_secs)}
+            {score.audit_source ? ` · ${score.audit_source}` : " · heuristic"}
+          </div>
+          <div className="mt-3">
+            <button
+              onClick={onRescan}
+              disabled={rescanning}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:bg-accent-soft hover:text-accent disabled:opacity-50"
+            >
+              {rescanning ? "Re-scanning…" : "Re-scan (audit)"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Six dimensions */}
+      <div>
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+          Dimensions
+        </div>
+        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-5">
+          {SCORE_DIMENSIONS.map(({ key, label }) => {
+            const dim = score.breakdown[key];
+            return (
+              <div key={key}>
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-sm font-medium text-text-primary">{label}</span>
+                  <span className="font-mono text-xs" style={{ color: scoreColor(dim.score) }}>
+                    {dim.score}
+                  </span>
+                </div>
+                <ScoreBar value={dim.score} max={100} color={scoreColor(dim.score)} />
+                {dim.detail && (
+                  <div className="mt-1 text-[11px] text-text-muted">{dim.detail}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* What's missing, grouped by severity */}
+      {score.missing.length > 0 && (
+        <div>
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+            What's missing
+          </div>
+          <div className="flex flex-col gap-4 rounded-2xl border border-border bg-surface p-5">
+            {severities.map((sev) => {
+              const tone =
+                sev === "critical" ? "danger" : sev === "warn" ? "warn" : "ok";
+              const dot =
+                tone === "danger"
+                  ? "var(--color-danger, #d24b4b)"
+                  : tone === "warn"
+                  ? "var(--color-warn, #c98a2b)"
+                  : "var(--color-text-muted, #888)";
+              return (
+                <div key={sev}>
+                  <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                    {SEVERITY_LABEL[sev] ?? sev}
+                  </div>
+                  <ul className="flex flex-col gap-1.5">
+                    {grouped[sev].map((m, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-text-primary">
+                        <span
+                          className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                          style={{ background: dot }}
+                        />
+                        <span>
+                          {m.label}
+                          {m.kind && (
+                            <span className="ml-1.5 rounded bg-surface-warm px-1 py-0 font-mono text-[10px] text-text-muted">
+                              {m.kind}
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Assessment + last audited */}
+      {score.assessment && (
+        <div>
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+            Assessment
+          </div>
+          <div className="rounded-2xl border border-border bg-surface p-5">
+            <p className="text-sm leading-relaxed text-text-primary">{score.assessment}</p>
+            <div className="mt-3 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+              last audited · {formatAuditedAt(score.audited_at)}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -6868,6 +8611,10 @@ const PREF = {
   // the UI forever. Read by send() and passed to the Rust spawner.
   llmPromptTimeoutSec: "prevail.pref.llmPromptTimeoutSec",   // integer seconds
   streamStallTimeoutSec: "prevail.pref.streamStallTimeoutSec", // integer seconds — no chunks for this long → kill
+  // Budget — a soft monthly USD cap the user sets, plus the running spend
+  // estimate. Display-only until the engine exposes a budget status command.
+  budgetMonthlyCapUsd: "prevail.pref.budgetMonthlyCapUsd", // decimal USD, "" = no cap
+  budgetSpentUsd: "prevail.pref.budgetSpentUsd",           // decimal USD estimate
 };
 function getPref(key: string, fallback: string): string {
   const v = lsGet(key);
@@ -6882,6 +8629,33 @@ function GeneralSection() {
   const [autoConvert, setAutoConvert] = useState(() => getPref(PREF.autoConvertLongPaste, "1") === "1");
   const [stripSyc, setStripSyc] = useState(() => getPref(PREF.stripSycophancy, "0") === "1");
   const [promptTimeout, setPromptTimeout] = useState<string>(() => getPref(PREF.llmPromptTimeoutSec, "300"));
+  const [budgetCap, setBudgetCap] = useState<string>(() => getPref(PREF.budgetMonthlyCapUsd, ""));
+  // Running spend estimate. Display-only: seeded from localStorage and, if the
+  // engine ever exposes a `engine_budget_status` command, refreshed from it.
+  const [budgetSpent, setBudgetSpent] = useState<number>(() => {
+    const v = parseFloat(getPref(PREF.budgetSpentUsd, "0"));
+    return Number.isFinite(v) ? v : 0;
+  });
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const s = await invoke<{ spent_usd?: number; cap_usd?: number }>("engine_budget_status");
+        if (!alive) return;
+        if (typeof s?.spent_usd === "number") setBudgetSpent(s.spent_usd);
+        if (typeof s?.cap_usd === "number" && !getPref(PREF.budgetMonthlyCapUsd, "")) {
+          setBudgetCap(String(s.cap_usd));
+        }
+      } catch {
+        /* no engine budget command — stays display-only from localStorage */
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+  const capNum = parseFloat(budgetCap);
+  const hasCap = Number.isFinite(capNum) && capNum > 0;
+  const pct = hasCap ? Math.min(100, Math.round((budgetSpent / capNum) * 100)) : 0;
+  const meterColor = pct >= 90 ? "var(--color-danger, #d24b4b)" : pct >= 70 ? "var(--color-warn, #c98a2b)" : "var(--color-ok, #2e9e5b)";
 
   const Row = ({
     title, desc, control,
@@ -6957,6 +8731,45 @@ function GeneralSection() {
             </div>
           }
         />
+        <Row
+          title="Monthly budget cap"
+          desc="A soft USD cap for model spend. The meter below tracks estimated spend against it. Leave blank for no cap."
+          control={
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-xs text-text-muted">$</span>
+              <input
+                type="number"
+                min={0}
+                step="1"
+                value={budgetCap}
+                placeholder="0"
+                onChange={(e) => { setBudgetCap(e.target.value); setPref(PREF.budgetMonthlyCapUsd, e.target.value); }}
+                className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none"
+              />
+            </div>
+          }
+        />
+      </div>
+
+      {/* Budget meter — display-only spend vs cap. */}
+      <div className="mt-6 rounded-lg border border-border bg-surface px-5 py-4">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Budget this month</div>
+          <div className="font-mono text-xs text-text-secondary">
+            ${budgetSpent.toFixed(2)}{hasCap ? ` / $${capNum.toFixed(2)}` : " spent"}
+          </div>
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-surface-strong">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: hasCap ? `${pct}%` : "0%", background: meterColor }}
+          />
+        </div>
+        <div className="mt-1.5 font-mono text-[10px] text-text-muted">
+          {hasCap
+            ? `${pct}% of cap used${pct >= 90 ? " · approaching limit" : ""}`
+            : "Set a cap above to track usage against it."}
+        </div>
       </div>
     </>
   );
@@ -7016,6 +8829,26 @@ function UserProfileSection({ vaultPath }: { vaultPath: string }) {
 }
 
 function VaultSettings({ vaultPath, onChange }: { vaultPath: string; onChange: () => void }) {
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupNote, setBackupNote] = useState<string | null>(null);
+  async function backupVault() {
+    setBackingUp(true);
+    setBackupNote(null);
+    try {
+      const res = await invoke<BackupResult>("engine_vault_backup", { vault: vaultPath, domainOpt: null });
+      if (res.ok) {
+        setBackupNote(
+          `Backed up ${res.domains.length} domain${res.domains.length === 1 ? "" : "s"} · ${res.file_count} file${res.file_count === 1 ? "" : "s"} · ${bytesHuman(res.bytes)}${res.archive_path ? ` → ${res.archive_path}` : ""}`,
+        );
+      } else {
+        setBackupNote(`Backup failed: ${res.error ?? "unknown error"}`);
+      }
+    } catch (e) {
+      setBackupNote(`Backup failed: ${String(e)}`);
+    } finally {
+      setBackingUp(false);
+    }
+  }
   return (
     <>
       <SettingsHeader title="Vault" subtitle="Where Prevail reads + writes your domain folders. Each child folder with a state.md becomes a life domain." />
@@ -7031,6 +8864,21 @@ function VaultSettings({ vaultPath, onChange }: { vaultPath: string; onChange: (
       <div className="mt-1 rounded-lg border border-border bg-surface p-4 font-mono text-xs text-text-primary">
         {vaultPath}
       </div>
+      <SettingRow label="Back up vault" desc="Write a compressed archive of the entire vault. Nothing is deleted.">
+        <button
+          onClick={backupVault}
+          disabled={backingUp}
+          className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50"
+        >
+          {backingUp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+          {backingUp ? "Backing up…" : "Back up vault"}
+        </button>
+      </SettingRow>
+      {backupNote && (
+        <div className="mt-1 break-all rounded-lg border border-border-subtle bg-surface px-3 py-2 font-mono text-[11px] text-text-secondary">
+          {backupNote}
+        </div>
+      )}
     </>
   );
 }
@@ -8924,6 +10772,16 @@ function TelegramCard() {
               ))}
             </ul>
           )}
+        </div>
+
+        <div className="rounded-lg border border-border-subtle bg-background px-3 py-2">
+          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Routing keywords</div>
+          <p className="mt-1 text-xs text-text-secondary">
+            Inbound messages are matched against each domain's keywords to pick where they land.
+            Set them per-domain under{" "}
+            <span className="font-mono text-accent">Domain → Prefs → Channels &amp; routing</span>{" "}
+            (saved to <span className="font-mono">manifest.routing.keywords</span>).
+          </p>
         </div>
 
         <p className="text-xs text-text-muted">

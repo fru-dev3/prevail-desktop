@@ -6,7 +6,18 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Tauri's custom asset protocol can refuse to execute `crossorigin`
+    // module scripts (silent blank window). Strip the attribute.
+    {
+      name: "tauri-strip-crossorigin",
+      transformIndexHtml: {
+        order: "post" as const,
+        handler: (html: string) => html.replace(/\scrossorigin/g, ""),
+      },
+    },
+  ],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
