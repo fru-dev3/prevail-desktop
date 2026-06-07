@@ -9997,7 +9997,7 @@ function ProvidersSection() {
   const [configured, setConfigured] = useState(false);
   const [saved, setSaved] = useState(false);
   useEffect(() => {
-    invoke<string>("provider_key_get", { provider: "openrouter" }).then((k) => setConfigured(!!k)).catch(() => {});
+    invoke<boolean>("provider_key_exists", { provider: "openrouter" }).then((ok) => setConfigured(!!ok)).catch(() => {});
   }, []);
   async function save() {
     try {

@@ -335,9 +335,12 @@ async fn detect_clis(_app: tauri::AppHandle) -> Result<Vec<CliInfo>, String> {
 fn provider_key_set(provider: String, key: String) -> Result<(), String> {
     ingestion::keychain::set("prevail.providers", &provider, &key)
 }
+// Presence check only — never returns the secret value to the frontend.
 #[tauri::command]
-fn provider_key_get(provider: String) -> Result<String, String> {
-    Ok(ingestion::keychain::get("prevail.providers", &provider).unwrap_or_default())
+fn provider_key_exists(provider: String) -> bool {
+    ingestion::keychain::get("prevail.providers", &provider)
+        .map(|k| !k.is_empty())
+        .unwrap_or(false)
 }
 #[tauri::command]
 fn provider_key_del(provider: String) -> Result<(), String> {
@@ -2823,7 +2826,7 @@ pub fn run() {
             app_uninstall,
             set_close_to_tray,
             provider_key_set,
-            provider_key_get,
+            provider_key_exists,
             provider_key_del,
             webui::webui_start,
             webui::webui_stop,
