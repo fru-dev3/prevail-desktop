@@ -388,6 +388,7 @@ import {
   Sparkles,
   Sun,
   Mail,
+  MessagesSquare,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -2101,15 +2102,16 @@ function Sidebar({
 
       {/* Domain list (icon rail when collapsed, full list when expanded) */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        {/* New chat — no-domain conversation. Clearing selectedDomain
-            unbinds the chat from any domain context. */}
+        {/* General — the home for chats not tied to any domain. Selecting it
+            unbinds the chat from domain context; its threads live in the vault
+            root _threads/. New threads are created via the threads rail's +. */}
         <div className={collapsed ? "flex justify-center p-2" : "px-2 pt-2"}>
           <button
             onClick={() => {
               setSelectedDomain("");
               if (tab === "settings") setTab("chat");
             }}
-            title="Start a chat with no domain attached"
+            title="General — chats not tied to any domain"
             className={
               collapsed
                 ? `flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
@@ -2124,8 +2126,8 @@ function Sidebar({
                   }`
             }
           >
-            <Plus className="h-4 w-4" />
-            {!collapsed && "New chat"}
+            <MessagesSquare className="h-4 w-4" />
+            {!collapsed && "General"}
           </button>
         </div>
         {!collapsed && domains.length >= 4 && (
@@ -2594,7 +2596,7 @@ function ThreadsRail({
     <aside className="flex shrink-0 flex-col border-r border-border-subtle bg-surface" style={{ width: railWidth }}>
       <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-3 py-2.5">
         <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
-          Threads{selectedDomain ? ` · ${titleCase(selectedDomain)}` : ""}
+          Threads · {selectedDomain ? titleCase(selectedDomain) : "General"}
         </span>
         <div className="flex items-center gap-0.5">
           <button
