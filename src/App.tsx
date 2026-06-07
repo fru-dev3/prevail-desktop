@@ -72,7 +72,7 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.4.0";
+const APP_VERSION = "0.4.1";
 
 // Canonical on/off toggle. Track 36×20px, thumb 16×16px, slides
 // 18px. Every switch in the app routes through this so we never
@@ -96,13 +96,13 @@ function Toggle({
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!on)}
-      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
+      className={`inline-flex h-5 w-9 shrink-0 items-center overflow-hidden rounded-full px-0.5 transition-colors disabled:opacity-50 ${
         on ? "bg-accent" : "bg-surface-strong"
       }`}
     >
       <span
-        className={`absolute top-0.5 h-4 w-4 rounded-full bg-background shadow-sm transition-transform ${
-          on ? "translate-x-[18px]" : "translate-x-0.5"
+        className={`h-4 w-4 rounded-full bg-white shadow-sm ring-1 ring-black/10 transition-transform duration-200 ${
+          on ? "translate-x-4" : "translate-x-0"
         }`}
       />
     </button>
@@ -421,7 +421,6 @@ import {
   Layers,
   Landmark,
   Plug,
-  Cloud,
   type LucideIcon,
 } from "lucide-react";
 
@@ -527,10 +526,18 @@ function domainBlurb(name: string): string {
 import {
   siClaude as siClaudeRaw,
   siOllama as siOllamaRaw,
+  siGmail, siGooglecalendar, siGoogledrive, siGooglesheets, siDropbox, siNotion,
+  siDiscord, siGithub, siGitlab, siLinear, siStripe, siShopify, siCoinbase,
+  siTelegram, siWhatsapp, siReddit, siYoutube, siSpotify, siZoom, siAirtable,
+  siTrello, siAsana, siTodoist, siHubspot, siQuickbooks, siCalendly, siObsidian,
+  siWise, siRobinhood, siStrava, siFitbit,
 } from "simple-icons";
 
 const siClaude = siClaudeRaw as { path: string };
 const siOllama = siOllamaRaw as { path: string };
+
+// A simple-icons brand mark (real SVG path + brand hex).
+type Brand = { path: string; hex: string; title: string };
 
 // `hex` = icon-tile background (true brand color). `accent` = a
 // display-safe variant used for text/borders that must stay legible on
@@ -10174,50 +10181,114 @@ function ProvidersSection() {
   );
 }
 
-// Connectors — data sources that auto-build per-domain context. Routed through
-// a connector hub (Composio: a Zapier-style service you authenticate once to
-// unlock many integrations). Placeholders for now; live wiring comes next.
-const CONNECTORS: { name: string; domain: string; icon: LucideIcon }[] = [
-  { name: "Plaid (bank & cards)", domain: "wealth", icon: Landmark },
-  { name: "Gmail", domain: "general", icon: Mail },
-  { name: "Outlook / IMAP email", domain: "general", icon: Mail },
-  { name: "Google Calendar", domain: "calendar", icon: CalendarIcon },
-  { name: "Google Drive", domain: "general", icon: Cloud },
-  { name: "Dropbox", domain: "general", icon: Cloud },
-  { name: "Notion", domain: "general", icon: FileText },
-  { name: "Slack", domain: "general", icon: MessageSquare },
-  { name: "GitHub", domain: "career", icon: Github },
-  { name: "QuickBooks", domain: "business", icon: Coins },
-  { name: "Stripe", domain: "business", icon: Coins },
-  { name: "Apple Health", domain: "health", icon: Heart },
+// Connectors — data sources that auto-build per-domain context, routed through
+// a connector hub (Composio). Real brand marks (simple-icons) where available,
+// else a tinted lucide fallback. Placeholders for now; live wiring next.
+type Connector = { name: string; domain: string; brand?: Brand; icon?: LucideIcon; color?: string };
+const CONNECTOR_GROUPS: { category: string; items: Connector[] }[] = [
+  { category: "Finance", items: [
+    { name: "Plaid (banks & cards)", domain: "wealth", icon: Landmark, color: "#111111" },
+    { name: "Coinbase", domain: "wealth", brand: siCoinbase as Brand },
+    { name: "Robinhood", domain: "wealth", brand: siRobinhood as Brand },
+    { name: "Wise", domain: "wealth", brand: siWise as Brand },
+    { name: "QuickBooks", domain: "business", brand: siQuickbooks as Brand },
+    { name: "Stripe", domain: "business", brand: siStripe as Brand },
+    { name: "Shopify", domain: "business", brand: siShopify as Brand },
+  ]},
+  { category: "Email & Calendar", items: [
+    { name: "Gmail", domain: "general", brand: siGmail as Brand },
+    { name: "Outlook / IMAP", domain: "general", icon: Mail, color: "#0A66C2" },
+    { name: "Google Calendar", domain: "calendar", brand: siGooglecalendar as Brand },
+    { name: "Calendly", domain: "calendar", brand: siCalendly as Brand },
+  ]},
+  { category: "Files & Notes", items: [
+    { name: "Google Drive", domain: "general", brand: siGoogledrive as Brand },
+    { name: "Google Sheets", domain: "general", brand: siGooglesheets as Brand },
+    { name: "Dropbox", domain: "general", brand: siDropbox as Brand },
+    { name: "Notion", domain: "general", brand: siNotion as Brand },
+    { name: "Obsidian", domain: "general", brand: siObsidian as Brand },
+  ]},
+  { category: "Productivity", items: [
+    { name: "Slack", domain: "general", icon: MessageSquare, color: "#4A154B" },
+    { name: "Linear", domain: "career", brand: siLinear as Brand },
+    { name: "Trello", domain: "general", brand: siTrello as Brand },
+    { name: "Asana", domain: "general", brand: siAsana as Brand },
+    { name: "Todoist", domain: "general", brand: siTodoist as Brand },
+    { name: "Airtable", domain: "general", brand: siAirtable as Brand },
+    { name: "Zoom", domain: "general", brand: siZoom as Brand },
+    { name: "HubSpot", domain: "business", brand: siHubspot as Brand },
+  ]},
+  { category: "Developer", items: [
+    { name: "GitHub", domain: "career", brand: siGithub as Brand },
+    { name: "GitLab", domain: "career", brand: siGitlab as Brand },
+  ]},
+  { category: "Health & Fitness", items: [
+    { name: "Apple Health", domain: "health", icon: Heart, color: "#FF2D55" },
+    { name: "Strava", domain: "health", brand: siStrava as Brand },
+    { name: "Fitbit", domain: "health", brand: siFitbit as Brand },
+  ]},
+  { category: "Social & Media", items: [
+    { name: "Reddit", domain: "explore", brand: siReddit as Brand },
+    { name: "YouTube", domain: "content", brand: siYoutube as Brand },
+    { name: "Spotify", domain: "explore", brand: siSpotify as Brand },
+    { name: "Discord", domain: "general", brand: siDiscord as Brand },
+    { name: "WhatsApp", domain: "general", brand: siWhatsapp as Brand },
+    { name: "Telegram", domain: "general", brand: siTelegram as Brand },
+  ]},
 ];
+
+function ConnectorIcon({ c }: { c: Connector }) {
+  return (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-white">
+      {c.brand ? (
+        <svg width={18} height={18} viewBox="0 0 24 24" fill={`#${c.brand.hex}`} aria-hidden>
+          <path d={c.brand.path} />
+        </svg>
+      ) : c.icon ? (
+        <c.icon className="h-[18px] w-[18px]" style={{ color: c.color }} />
+      ) : null}
+    </span>
+  );
+}
+
 function ConnectorsSection() {
+  const total = CONNECTOR_GROUPS.reduce((n, g) => n + g.items.length, 0);
   return (
     <>
       <SettingsHeader
         title="Connectors"
-        subtitle="Connect your data sources so Prevail auto-syncs and builds full context per domain — bank statements into Wealth, email into the right place, and more. Connections route through a connector hub (one auth unlocks many integrations)."
+        subtitle="Connect your data sources so Prevail auto-syncs and builds full context per domain — bank statements into Wealth, email where it belongs, and more."
       />
-      <div className="mb-4 rounded-lg border border-border-subtle bg-surface p-4">
-        <div className="flex items-center gap-2">
-          <Plug className="h-4 w-4 text-text-muted" />
-          <span className="text-sm font-semibold text-text-primary">Connector hub</span>
-          <span className="ml-auto rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
-        </div>
-        <div className="mt-1 text-xs text-text-secondary">Authenticate once to a hub (Composio) and enable any connector below. Pulled data lands in the matching domain's vault and feeds the intent ledger + memory.</div>
-      </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {CONNECTORS.map((c) => (
-          <div key={c.name} className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-4 py-3 opacity-80">
-            <c.icon className="h-4 w-4 shrink-0 text-text-muted" />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm text-text-primary">{c.name}</div>
-              <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">→ {titleCase(c.domain)}</div>
-            </div>
-            <span className="shrink-0 rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
+      {/* Connector hub */}
+      <div className="mb-6 flex items-start gap-3 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft">
+          <Plug className="h-5 w-5 text-accent" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-text-primary">Composio connector hub</span>
+            <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
           </div>
-        ))}
+          <div className="mt-1 text-xs text-text-secondary">Authenticate once to Composio and switch on any connector below. Pulled data lands in the matching domain's vault and feeds the intent ledger + memory. {total} integrations planned.</div>
+        </div>
       </div>
+      {CONNECTOR_GROUPS.map((g) => (
+        <div key={g.category} className="mb-5">
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">{g.category}</div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {g.items.map((c) => (
+              <div key={c.name} className="group flex items-center gap-3 rounded-xl border border-border-subtle bg-surface px-3 py-2.5 transition-colors hover:border-border">
+                <ConnectorIcon c={c} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-text-primary">{c.name}</div>
+                  <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">→ {titleCase(c.domain)}</div>
+                </div>
+                <span className="shrink-0 rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">Soon</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </>
   );
 }
