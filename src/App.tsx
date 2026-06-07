@@ -8120,28 +8120,44 @@ function BenchmarkPanel({
     const setJob = (key: string, patch: Partial<BenchJob>) =>
       setJobs((cur) => cur.map((j) => (j.key === key ? { ...j, ...patch } : j)));
 
-    try {
-      for (const job of plannedJobs) {
-        setJob(job.key, { status: "running" });
-        const session = `bench-${job.key.replace(/[^a-z0-9]/gi, "")}-${Date.now()}`;
-        try {
-          await invoke("benchmark_start", {
-            args: {
-              session_id: session,
-              vault: vaultPath,
-              cli: job.cli || "claude",
-              model: job.model || null,
-              council: mode === "council",
-              domain: scopeStr || null,
-            },
-          });
-          const code = await waitForDone(session, "run");
-          if (code !== 0 && code !== null) { setJob(job.key, { status: "error", note: `exit ${code}` }); continue; }
-          setJob(job.key, { status: "scoring" });
-        } catch (e) {
-          setJob(job.key, { status: "error", note: String(e) });
-        }
+    // Run one job: start the model, wait for it, mark scoring.
+    const runOne = async (job: BenchJob) => {
+      setJob(job.key, { status: "running" });
+      const session = `bench-${job.key.replace(/[^a-z0-9]/gi, "")}-${Date.now()}`;
+      try {
+        await invoke("benchmark_start", {
+          args: {
+            session_id: session,
+            vault: vaultPath,
+            cli: job.cli || "claude",
+            model: job.model || null,
+            council: mode === "council",
+            domain: scopeStr || null,
+          },
+        });
+        const code = await waitForDone(session, "run");
+        if (code !== 0 && code !== null) { setJob(job.key, { status: "error", note: `exit ${code}` }); return; }
+        setJob(job.key, { status: "scoring" });
+      } catch (e) {
+        setJob(job.key, { status: "error", note: String(e) });
       }
+    };
+
+    try {
+      // Different CLIs are independent processes → run them concurrently. A
+      // single CLI's models stay sequential so we don't fire two requests at
+      // the same subscription at once (rate limits / contention).
+      const byCli = new Map<string, BenchJob[]>();
+      for (const job of plannedJobs) {
+        const g = byCli.get(job.cli) ?? [];
+        g.push(job);
+        byCli.set(job.cli, g);
+      }
+      await Promise.all(
+        Array.from(byCli.values()).map(async (group) => {
+          for (const job of group) await runOne(job);
+        }),
+      );
       // Score every new (unscored) run in one robust pass.
       const scoreSession = `bench-score-${Date.now()}`;
       await invoke("benchmark_score", { args: { session_id: scoreSession, vault: vaultPath, all: true } });
@@ -8333,7 +8349,7 @@ function BenchRunConfig({
         </button>
         <span className="text-xs text-text-muted">
           {questionCount} question{questionCount === 1 ? "" : "s"}
-          {scope.size > 0 ? ` · scoped` : ""} · auto-scored after each run
+          {scope.size > 0 ? ` · scoped` : ""} · different CLIs run in parallel · auto-scored
         </span>
       </section>
 
