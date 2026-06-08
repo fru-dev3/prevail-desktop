@@ -362,6 +362,7 @@ function migrateModelPrefs() {
 import {
   Archive,
   ArrowLeft,
+  ArrowRight,
   ArrowUpRight,
   Award,
   BookOpen,
@@ -3774,6 +3775,13 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
   const [data, setData] = useState<SurfaceResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string>("");
+  // Dismissed insights stay hidden (persisted per domain).
+  const DISMISS_KEY = `prevail.surface.dismissed.${domain}`;
+  const [dismissed, setDismissed] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(lsGet(DISMISS_KEY) || "[]")); } catch { return new Set(); }
+  });
+  const dismiss = (item: string) => setDismissed((d) => { const n = new Set(d); n.add(item); lsSet(DISMISS_KEY, JSON.stringify([...n])); return n; });
+  const [saved, setSaved] = useState<Set<string>>(() => new Set());
   const load = useCallback(async (force: boolean) => {
     // Off when persistent memory is disabled (it's the proactive layer).
     if (getPref(PREF.persistentMemory, "1") !== "1") return;
@@ -3806,33 +3814,56 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
         </button>
       </div>
       {err && <div className="text-xs text-text-muted">Couldn't surface insights ({err.slice(0, 80)}). Needs a working agent.</div>}
-      {hasContent && (
-        <div className="flex flex-col gap-2.5">
-          {data!.questions.length > 0 && (
-            <div>
-              <div className="mb-1 text-[11px] font-semibold text-text-secondary">Questions worth asking</div>
-              <div className="flex flex-col gap-1">
-                {data!.questions.map((q, i) => (
-                  <button key={i} onClick={() => onPick(q)} className="text-left text-sm text-text-primary hover:text-accent">· {q}</button>
-                ))}
+      {hasContent && (() => {
+        const questions = data!.questions.filter((q) => !dismissed.has(q));
+        const actions = data!.actions.filter((a) => !dismissed.has(a));
+        if (questions.length === 0 && actions.length === 0) {
+          return <div className="py-2 text-xs text-text-muted">All caught up — nothing surfaced right now. <button onClick={() => void load(true)} className="text-accent hover:underline">Refresh</button> for more.</div>;
+        }
+        return (
+          <div className="flex flex-col gap-4">
+            {questions.length > 0 && (
+              <div>
+                <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
+                  <Lightbulb className="h-3 w-3" /> Questions worth asking
+                </div>
+                <div className="flex flex-col gap-2">
+                  {questions.map((q, i) => (
+                    <div key={i} className="group flex items-start gap-3 rounded-lg border border-border-subtle bg-surface p-3 transition-colors hover:border-accent-border">
+                      <p className="min-w-0 flex-1 text-sm leading-snug text-text-primary">{q}</p>
+                      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button onClick={() => onPick(q)} title="Ask this in chat" className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-background hover:bg-accent-hover">Ask <ArrowRight className="h-2.5 w-2.5" /></button>
+                        <button onClick={() => dismiss(q)} title="Dismiss" className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-warn"><X className="h-3.5 w-3.5" /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-          {data!.actions.length > 0 && (
-            <div>
-              <div className="mb-1 text-[11px] font-semibold text-text-secondary">Suggested next steps</div>
-              <div className="flex flex-col gap-1">
-                {data!.actions.map((a, i) => (
-                  <div key={i} className="group flex items-center gap-2">
-                    <button onClick={() => onPick(a)} className="flex-1 text-left text-sm text-text-primary hover:text-accent">→ {a}</button>
-                    <button onClick={() => onAddTask(a)} title="Add as task" className="font-mono text-[10px] uppercase tracking-wider text-text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-accent">+ task</button>
-                  </div>
-                ))}
+            )}
+            {actions.length > 0 && (
+              <div>
+                <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
+                  <ArrowRight className="h-3 w-3" /> Suggested next steps
+                </div>
+                <div className="flex flex-col gap-2">
+                  {actions.map((a, i) => (
+                    <div key={i} className="group flex items-start gap-3 rounded-lg border border-border-subtle bg-surface p-3 transition-colors hover:border-accent-border">
+                      <p className="min-w-0 flex-1 text-sm leading-snug text-text-primary">{a}</p>
+                      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button onClick={() => { onAddTask(a); setSaved((s) => new Set(s).add(a)); }} title="Save as task" className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[9px] uppercase tracking-wider ${saved.has(a) ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
+                          {saved.has(a) ? <><Check className="h-2.5 w-2.5" /> Saved</> : <><Plus className="h-2.5 w-2.5" /> Task</>}
+                        </button>
+                        <button onClick={() => onPick(a)} title="Work on this in chat" className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-background hover:bg-accent-hover">Do <ArrowRight className="h-2.5 w-2.5" /></button>
+                        <button onClick={() => dismiss(a)} title="Dismiss" className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-warn"><X className="h-3.5 w-3.5" /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
