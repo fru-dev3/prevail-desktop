@@ -918,9 +918,9 @@ interface Framework {
   instruction: string;
 }
 const FRAMEWORKS: Framework[] = [
-  { id: "none", label: "OFF", blurb: "No framework — model's default response shape", instruction: "" },
-  { id: "bluf", label: "BLUF", blurb: "Bottom Line Up Front — lead with the answer", instruction: "Apply the BLUF framework. Your first sentence MUST be the bottom line — the single most important conclusion or recommendation. Then provide supporting context in 1-3 short paragraphs. Never bury the conclusion under context." },
-  { id: "win", label: "WIN", blurb: "What's Important Now — name the ONE next move", instruction: "Apply the WIN (What's Important Now) framework. Identify the ONE most important next move the user should make. State that move in the first sentence. Drop everything that doesn't directly serve that next step." },
+  { id: "none", label: "OFF", blurb: "No framework, model's default response shape", instruction: "" },
+  { id: "bluf", label: "BLUF", blurb: "Bottom Line Up Front, lead with the answer", instruction: "Apply the BLUF framework. Your first sentence MUST be the bottom line — the single most important conclusion or recommendation. Then provide supporting context in 1-3 short paragraphs. Never bury the conclusion under context." },
+  { id: "win", label: "WIN", blurb: "What's Important Now, name the ONE next move", instruction: "Apply the WIN (What's Important Now) framework. Identify the ONE most important next move the user should make. State that move in the first sentence. Drop everything that doesn't directly serve that next step." },
   { id: "scqa", label: "SCQA", blurb: "Situation → Complication → Question → Answer", instruction: "Structure your response as SCQA: a one-line Situation, a one-line Complication, a one-line Question, then a decisive Answer." },
   { id: "sbar", label: "SBAR", blurb: "Situation · Background · Assessment · Recommendation", instruction: "Structure your response as SBAR: Situation, Background, Assessment, Recommendation. Each in 1-2 lines max." },
   { id: "ooda", label: "OODA", blurb: "Observe → Orient → Decide → Act", instruction: "Structure your response as an OODA loop: Observe, Orient, Decide, Act. Each step labelled and one line." },
@@ -935,15 +935,15 @@ interface Lens {
   instruction: string;
 }
 const LENSES: Lens[] = [
-  { id: "none", label: "OFF", blurb: "No lens — single response, default angle", instruction: "" },
+  { id: "none", label: "OFF", blurb: "No lens, single response, default angle", instruction: "" },
   { id: "first-principles", label: "FIRST PRINCIPLES", blurb: "Strip the problem to fundamentals", instruction: "Approach this problem from first principles. Forget conventional wisdom, prior advice, industry best practice, or what 'most people do.' Strip the problem to its fundamental mechanics and rebuild the answer from there." },
   { id: "outsider", label: "OUTSIDER", blurb: "Challenge the thinking; ignore prior context", instruction: "Approach this as a complete outsider with no prior context. Challenge every assumption that the question seems to bake in." },
   { id: "contrarian", label: "CONTRARIAN", blurb: "Argue the strongest case against the obvious answer", instruction: "Argue the strongest possible case against the obvious or expected answer. Don't be devil's advocate — actually pressure-test the consensus until something cracks." },
   { id: "expansionist", label: "EXPANSIONIST", blurb: "What's the bigger version of this question?", instruction: "Don't answer the question as asked. First ask: what's the bigger version of this question? Then answer THAT." },
-  { id: "executor", label: "EXECUTOR", blurb: "Skip the framing — literal next step today", instruction: "Skip all framing. The user wants the literal next step they should take today. State the action in one imperative sentence, then list 2-3 concrete tasks." },
+  { id: "executor", label: "EXECUTOR", blurb: "Skip the framing, literal next step today", instruction: "Skip all framing. The user wants the literal next step they should take today. State the action in one imperative sentence, then list 2-3 concrete tasks." },
   { id: "alien", label: "ALIEN", blurb: "An outsider notices what's obvious to you", instruction: "You are an alien observer with no familiarity with this user's biases. State what is plainly obvious about their situation that they themselves are too close to see." },
-  { id: "mom", label: "MOM", blurb: "Plain English — what would she actually do?", instruction: "Answer as a wise mom would — plain English, no jargon, sentimentally honest, practical. What would she actually tell her child to do?" },
-  { id: "dad", label: "DAD", blurb: "Hard-nosed — what's the trap you're not seeing?", instruction: "Answer as a hard-nosed dad would — direct, no coddling. Name the trap the user is not seeing. Tell them what they will regret in 10 years if they get this wrong." },
+  { id: "mom", label: "MOM", blurb: "Plain English, what would she actually do?", instruction: "Answer as a wise mom would — plain English, no jargon, sentimentally honest, practical. What would she actually tell her child to do?" },
+  { id: "dad", label: "DAD", blurb: "Hard-nosed, what's the trap you're not seeing?", instruction: "Answer as a hard-nosed dad would — direct, no coddling. Name the trap the user is not seeing. Tell them what they will regret in 10 years if they get this wrong." },
 ];
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1304,12 +1304,12 @@ type Mode = "light" | "dark" | "system";
 type Palette = "vault" | "midnight" | "ember" | "mono" | "cyberpunk" | "slate";
 
 const PALETTES: { id: Palette; name: string; blurb: string; swatch: { bg: string; surface: string; accent: string; ai: string } }[] = [
-  { id: "vault",     name: "Vault",     blurb: "Cream + gold — focused, warm",                       swatch: { bg: "#faf8f1", surface: "#ffffff", accent: "#a8862d", ai: "#60a8c0" } },
+  { id: "vault",     name: "Vault",     blurb: "Cream + gold, focused, warm",                       swatch: { bg: "#faf8f1", surface: "#ffffff", accent: "#a8862d", ai: "#60a8c0" } },
   { id: "midnight",  name: "Midnight",  blurb: "Deep blue-violet with cool accents",                  swatch: { bg: "#0a0d1f", surface: "#131730", accent: "#818cf8", ai: "#60a8c0" } },
-  { id: "ember",     name: "Ember",     blurb: "Warm crimson and bronze — forge vibes",               swatch: { bg: "#1a0a06", surface: "#2a130c", accent: "#ef6c4a", ai: "#60a8c0" } },
-  { id: "mono",      name: "Mono",      blurb: "Clean grayscale — minimal and focused",               swatch: { bg: "#f7f7f8", surface: "#ffffff", accent: "#18181b", ai: "#60a8c0" } },
-  { id: "cyberpunk", name: "Cyberpunk", blurb: "Neon green on black — matrix terminal",               swatch: { bg: "#030a06", surface: "#08130c", accent: "#22ff77", ai: "#60a8c0" } },
-  { id: "slate",     name: "Slate",     blurb: "Cool slate blue — focused developer theme",           swatch: { bg: "#0c1220", surface: "#131b2e", accent: "#38bdf8", ai: "#60a8c0" } },
+  { id: "ember",     name: "Ember",     blurb: "Warm crimson and bronze, forge vibes",               swatch: { bg: "#1a0a06", surface: "#2a130c", accent: "#ef6c4a", ai: "#60a8c0" } },
+  { id: "mono",      name: "Mono",      blurb: "Clean grayscale, minimal and focused",               swatch: { bg: "#f7f7f8", surface: "#ffffff", accent: "#18181b", ai: "#60a8c0" } },
+  { id: "cyberpunk", name: "Cyberpunk", blurb: "Neon green on black, matrix terminal",               swatch: { bg: "#030a06", surface: "#08130c", accent: "#22ff77", ai: "#60a8c0" } },
+  { id: "slate",     name: "Slate",     blurb: "Cool slate blue, focused developer theme",           swatch: { bg: "#0c1220", surface: "#131b2e", accent: "#38bdf8", ai: "#60a8c0" } },
 ];
 
 function useAppearance() {
@@ -11816,18 +11816,46 @@ function FrameworksSection() {
         subtitle="The bracketed preamble Prevail prepends to every prompt. A framework shapes the structure of the answer; a lens shapes the perspective it comes from."
       />
 
-      {/* Why this matters — the unique idea behind the feature. */}
-      <div className="mb-7 rounded-2xl border border-accent-border bg-accent-soft/50 p-5">
+      {/* Why this matters, shown visually rather than as a paragraph. */}
+      <div className="mb-7 rounded-2xl border border-accent-border bg-accent-soft/40 p-5">
         <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-accent">
           <Lightbulb className="h-3.5 w-3.5" /> Why this matters
         </div>
-        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-text-secondary">
-          Most tools send your raw question straight to a model and take whatever comes back. Prevail wraps it in a
-          framework and a lens first, so the same model reasons in a deliberate shape (lead with the answer, situation to
-          recommendation, first principles, steelman, an outsider's eye) instead of a generic default. It's a small move
-          with an outsized effect: the structure you ask for is usually the structure you get. Stack a framework with a
-          lens to pressure-test one decision from several angles at once.
-        </p>
+
+        {/* The flow: raw question, wrapped in framework + lens, sharper answer. */}
+        <div className="mt-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-1 flex-col items-center rounded-xl border border-border-subtle bg-background px-3 py-3 text-center">
+            <MessageSquare className="h-5 w-5 text-text-muted" />
+            <div className="mt-1.5 text-sm font-semibold text-text-primary">Your question</div>
+            <div className="text-[11px] text-text-muted">as you'd type it</div>
+          </div>
+          <ArrowRight className="mx-auto h-4 w-4 shrink-0 rotate-90 text-accent sm:rotate-0" />
+          <div className="flex flex-1 flex-col items-center rounded-xl border border-accent-border bg-accent-soft px-3 py-3 text-center">
+            <div className="flex items-center gap-1.5 text-lg text-accent">◆<span className="text-text-muted">+</span>◇</div>
+            <div className="mt-1.5 text-sm font-semibold text-accent">Framework + Lens</div>
+            <div className="text-[11px] text-text-muted">a deliberate shape</div>
+          </div>
+          <ArrowRight className="mx-auto h-4 w-4 shrink-0 rotate-90 text-accent sm:rotate-0" />
+          <div className="flex flex-1 flex-col items-center rounded-xl border border-border-subtle bg-background px-3 py-3 text-center">
+            <Sparkles className="h-5 w-5 text-accent" />
+            <div className="mt-1.5 text-sm font-semibold text-text-primary">Sharper answer</div>
+            <div className="text-[11px] text-text-muted">structured, on-angle</div>
+          </div>
+        </div>
+
+        {/* What each control does. */}
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-border-subtle bg-background p-3.5">
+            <div className="flex items-center gap-2"><span className="text-accent">◆</span><span className="text-sm font-semibold text-text-primary">Framework</span></div>
+            <p className="mt-1 text-[13px] leading-snug text-text-secondary">Shapes the structure. BLUF leads with the answer; SCQA walks situation to recommendation.</p>
+          </div>
+          <div className="rounded-xl border border-border-subtle bg-background p-3.5">
+            <div className="flex items-center gap-2"><span className="text-accent">◇</span><span className="text-sm font-semibold text-text-primary">Lens</span></div>
+            <p className="mt-1 text-[13px] leading-snug text-text-secondary">Shapes the perspective. First principles, steelman, or an outsider's eye.</p>
+          </div>
+        </div>
+
+        <p className="mt-3 text-[13px] text-text-muted">Stack a framework with a lens to pressure-test one decision from several angles at once.</p>
       </div>
 
       {/* One full-width column, stacked: Frameworks, then Lenses. */}
@@ -11889,6 +11917,7 @@ type PreambleOption = { id: string; label: string; blurb: string; instruction?: 
 function PreambleColumn({
   glyph,
   title,
+  tagline,
   options,
   active,
   selectedId,
@@ -11904,17 +11933,19 @@ function PreambleColumn({
 }) {
   return (
     <div className="flex min-w-0 flex-col">
-      {/* Column header */}
-      <div className="mb-3 flex items-baseline gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
-        <span className="text-accent">{glyph}</span> {title}
-        <span>· {options.length}</span>
-      </div>
-
-      {/* Active summary */}
-      <div className="mb-4 rounded-lg border border-accent-border bg-accent-soft p-4">
-        <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">Active</div>
-        <div className="mt-1 font-display text-2xl font-semibold tracking-tight">{active?.label ?? "—"}</div>
-        <p className="mt-1.5 text-sm text-text-secondary">{active?.blurb}</p>
+      {/* Prominent section header. The current selection is a small badge on
+          the right, not a giant card — the header is the focus. */}
+      <div className="mb-3 border-b border-border-subtle pb-3">
+        <div className="flex items-center gap-2.5">
+          <span className="text-lg text-accent">{glyph}</span>
+          <h3 className="font-display text-2xl font-bold tracking-tight">{title}</h3>
+          <span className="font-mono text-xs text-text-muted">{options.length}</span>
+          <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full border border-accent-border bg-accent-soft px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+            Active · {active?.label ?? "Off"}
+          </span>
+        </div>
+        {tagline && <p className="mt-1.5 text-sm text-text-secondary">{tagline}</p>}
       </div>
 
       {/* Option list */}
