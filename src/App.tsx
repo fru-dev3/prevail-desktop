@@ -2443,20 +2443,13 @@ function Sidebar({
       className="flex shrink-0 flex-col border-r border-border-subtle bg-surface"
       style={{ width: collapsed ? 56 : railWidth }}
     >
-      {/* Top — brand + collapse. The whole row is draggable so the
-          user can move the window from here. Collapsed: only logo. */}
+      {/* Row 1 — window controls. Leaves the top-left empty for macOS's native
+          traffic-light buttons; the sidebar collapse toggle sits at the FAR
+          RIGHT, away from them. Whole row is draggable. */}
       <div
         data-tauri-drag-region
-        className={`flex shrink-0 items-center ${collapsed ? "justify-center" : "justify-between"} titlebar-pad border-b border-border-subtle px-2 py-2.5`}
+        className="flex h-8 shrink-0 items-center justify-end px-2"
       >
-        <div className="flex min-w-0 flex-1 items-center gap-3" data-tauri-drag-region>
-          {/* Collapsed: icon only. Expanded: the wordmark, whose "E" is the logo. */}
-          {collapsed ? (
-            <PrevailLogo size={32} src="/logo-512.png" animated={false} />
-          ) : (
-            <Brand fill className="flex-1 font-sans text-2xl font-extrabold text-text-primary" />
-          )}
-        </div>
         {!collapsed && (
           <button
             onClick={() => setCollapsed(true)}
@@ -2467,15 +2460,26 @@ function Sidebar({
           </button>
         )}
       </div>
-      {collapsed && (
-        <button
-          onClick={() => setCollapsed(false)}
-          title="Expand sidebar"
-          className="mx-auto mt-1 flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
-        >
-          <PanelLeftOpen className="h-4 w-4" />
-        </button>
-      )}
+      {/* Row 2 — the Prevail mark on its own, taking the full width. */}
+      <div
+        data-tauri-drag-region
+        className="shrink-0 border-b border-border-subtle px-3 pb-3"
+      >
+        {collapsed ? (
+          <div className="flex flex-col items-center gap-1.5">
+            <PrevailLogo size={30} src="/logo-512.png" animated={false} />
+            <button
+              onClick={() => setCollapsed(false)}
+              title="Expand sidebar"
+              className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <Brand fill className="w-full font-sans text-2xl font-extrabold text-text-primary" />
+        )}
+      </div>
 
       {/* Domain list (icon rail when collapsed, full list when expanded) */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
