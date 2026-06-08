@@ -555,6 +555,18 @@ pub async fn telegram_bridge_start(
     cfg: BridgeConfig,
 ) -> Result<(), String> {
     crate::bunker::guard_cloud()?; // the Telegram bridge polls the Telegram cloud API
+    // Audit #7: the bot token is a secret and must live in the Keychain, not
+    // localStorage. The frontend stores it via provider_key_set("telegram") and
+    // passes an empty token; resolve it here so the secret never persists in the
+    // renderer. A non-empty token (legacy/immediate) is still accepted.
+    let mut cfg = cfg;
+    if cfg.token.trim().is_empty() {
+        cfg.token = crate::ingestion::keychain::get("prevail.providers", "telegram")
+            .map_err(|_| "no Telegram token configured".to_string())?;
+        if cfg.token.trim().is_empty() {
+            return Err("no Telegram token configured".into());
+        }
+    }
     state.start(app, cfg).await;
     Ok(())
 }
