@@ -8820,13 +8820,17 @@ function ContextScoreBadge({
     <button
       onClick={onClick}
       title={tip}
-      className="group inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[11px] font-semibold tracking-wide transition-all hover:shadow-sm"
-      style={{ borderColor: color, color }}
+      className="group inline-flex cursor-pointer items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide transition-colors hover:bg-surface-warm"
     >
-      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
-      {score.score}<span className="opacity-50">/100</span>
-      {/* explicit edit affordance so it's obvious the score is clickable */}
-      <Pencil className="h-2.5 w-2.5 opacity-60 transition-opacity group-hover:opacity-100" />
+      <span className="inline-flex items-center gap-1.5">
+        <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+        <span style={{ color }}>{score.score}<span className="opacity-50">/100</span></span>
+      </span>
+      {/* Edit affordance is hidden until hover, so the header stays calm. */}
+      <Pencil
+        className="h-2.5 w-2.5 max-w-0 overflow-hidden text-text-muted opacity-0 transition-all duration-150 group-hover:ml-1.5 group-hover:max-w-[14px] group-hover:opacity-100"
+        style={{ color }}
+      />
     </button>
   );
 }
