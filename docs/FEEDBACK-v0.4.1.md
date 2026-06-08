@@ -66,6 +66,19 @@ a single DMG via scripts/release.sh.
 Fru's overall verdict: "very, very impressed… it is unbelievable." Good signal —
 this is refinement of a working product, not a rescue.
 
+**2026-06-08 sweep — Waves 2/3 + Bunker complete:** every functional item shipped
+and pushed: I3 (stale summary), I4 (Decision/Risks → Council), I6 (intents_read +
+visible), I7 (skill_create + fixed the `skills/` vs `_skills/` scan mismatch that
+hid 100+ sample skills), I8 (domain Insights tab), I9 (model+lens+framework on
+bubbles, honest status words), I10 (OpenRouter re-detect + activation feedback),
+T1/T2 (Telegram typing + HTML formatting), A1/A2/A3 (Gateway/Connectors merges +
+Council settings section), A4/A8/A9 (council shares thread; light/heavy drag
+context), A5 (Chat tab), A6 (auto domain-name keyword), A7 (footer bridge chips).
+UI: U3/U4 (list pickers), U6 (icon size), U7/U8 (already fine), U9 (back button),
+U10 (already domain-scoped). **Still open — subjective visual redesigns needing
+eyes-on:** U1 (Connectors layout), U2 (Gateway formatting/brand colors), U5
+(composer toolbar redesign).
+
 ---
 
 ## Wave 1 — Critical bugs (data loss, crashes, broken core promise)
