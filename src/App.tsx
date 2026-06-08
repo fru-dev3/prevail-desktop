@@ -941,7 +941,7 @@ const LENSES: Lens[] = [
 // Settings. Keeps the surface count low so each tab has a clear job.
 type TabId = "chat" | "council" | "benchmark" | "settings";
 const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
-  { id: "chat", label: "Conversation", icon: MessageSquare },
+  { id: "chat", label: "Chat", icon: MessageSquare },
   { id: "council", label: "Council", icon: Scale },
   { id: "benchmark", label: "Benchmark", icon: Sparkles },
 ];
@@ -1901,9 +1901,20 @@ export default function App() {
     try { await invoke("open_in_finder", { path }); } catch (e) { console.error("open_in_finder", e); }
   }
 
-  useEffect(() => {
-    invoke<CliInfo[]>("detect_clis").then(setClis).catch(() => setClis([]));
+  // Re-detectable so saving a provider key (OpenRouter) or starting a local
+  // server can refresh the picker without a reload. Returns the fresh list.
+  const refreshClis = useCallback(async (): Promise<CliInfo[]> => {
+    try {
+      const list = await invoke<CliInfo[]>("detect_clis");
+      setClis(list);
+      return list;
+    } catch {
+      return [];
+    }
   }, []);
+  useEffect(() => {
+    void refreshClis();
+  }, [refreshClis]);
 
   useEffect(() => {
     if (!vaultPath) return;
@@ -1999,6 +2010,7 @@ export default function App() {
           vaultPath={vaultPath}
           onChangeVault={pickVault}
           clis={clis}
+          onRefreshClis={refreshClis}
           bunkerEnabled={bunkerEnabled}
           onBunkerChange={applyBunker}
           onBack={() => setTab("chat")}
@@ -9545,6 +9557,7 @@ function SettingsPanel({
   vaultPath,
   onChangeVault,
   clis,
+  onRefreshClis,
   onBack,
   onStartChatWith,
   bunkerEnabled,
@@ -9554,12 +9567,13 @@ function SettingsPanel({
   vaultPath: string;
   onChangeVault: () => void;
   clis: CliInfo[];
+  onRefreshClis: () => Promise<CliInfo[]>;
   onBack?: () => void;
   onStartChatWith?: (cliId: string, modelId?: string) => void;
   bunkerEnabled: boolean;
   onBunkerChange: (on: boolean) => void;
 }) {
-  type Section = "general" | "agents" | "providers" | "privacy" | "connectors" | "user" | "memory" | "safety" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "shortcuts" | "about";
+  type Section = "general" | "agents" | "providers" | "privacy" | "connectors" | "user" | "memory" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>("general");
 
   const items: Array<{ id: Section; label: string; icon: typeof Folder }> = [
@@ -9570,6 +9584,7 @@ function SettingsPanel({
     { id: "user", label: "About me", icon: Users },
     { id: "memory", label: "Memory & Context", icon: Brain },
     { id: "safety", label: "Safety", icon: Shield },
+    { id: "council", label: "Council", icon: Scale },
     { id: "connectors", label: "Connectors", icon: Plug },
     { id: "gateway", label: "Gateway", icon: MessagesSquare },
     { id: "mcp", label: "MCP", icon: Wrench },
@@ -9579,8 +9594,6 @@ function SettingsPanel({
     { id: "defaults", label: "Defaults", icon: SettingsIcon },
     { id: "frameworks", label: "Frameworks", icon: Scale },
     { id: "skills", label: "Skills", icon: Sparkles },
-    { id: "tools", label: "Integrations", icon: Wrench },
-    { id: "ingestion", label: "Ingestion", icon: Network },
     { id: "shortcuts", label: "Shortcuts", icon: SettingsIcon },
     { id: "about", label: "About", icon: Github },
   ];
@@ -9623,7 +9636,7 @@ function SettingsPanel({
         {items.map((it) => {
           const Icon = it.icon;
           const active = section === it.id;
-          const showLive = it.id === "tools" && liveBridges > 0;
+          const showLive = it.id === "gateway" && liveBridges > 0;
           return (
             <button
               key={it.id}
@@ -9658,33 +9671,43 @@ function SettingsPanel({
           {section === "agents" && <AgentsSection clis={clis} onStartChatWith={onStartChatWith} />}
           {section === "user" && <UserProfileSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
-          {section === "providers" && <ProvidersSection />}
-          {section === "connectors" && <ConnectorsSection />}
+          {section === "providers" && <ProvidersSection onActivated={onRefreshClis} />}
+          {section === "council" && <CouncilSettingsSection clis={clis} />}
+          {section === "connectors" && (
+            <>
+              <ConnectorsSection />
+              {/* A2: Ingestion folded in — same concept (getting your data into
+                  the vault), one section. */}
+              <div className="mt-8 border-t border-border-subtle pt-8">
+                <IngestionSection />
+              </div>
+            </>
+          )}
           {section === "safety" && <SafetySection />}
-          {section === "gateway" && <GatewaySection />}
+          {section === "gateway" && (
+            <>
+              <SettingsHeader title="Gateway" subtitle="Reach your vault from elsewhere. Your data stays local; these bridges and routing rules let you talk to Prevail from Telegram, WhatsApp, and other surfaces." />
+              <GatewaySection />
+              {/* A1: Integrations folded into Gateway — bridges live with the
+                  routing that drives them. */}
+              <div className="mt-6 grid gap-4">
+                <TelegramCard />
+                <WhatsAppCard />
+              </div>
+            </>
+          )}
           {section === "mcp" && <McpSection vaultPath={vaultPath} />}
           {section === "remote" && <RemoteSection />}
           {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} />}
           {section === "appearance" && <AppearanceSection appearance={appearance} />}
           {section === "defaults" && (
             <>
-              <SettingsHeader title="Defaults" subtitle="Pre-select the model + reasoning shape Prevail uses across new chats and councils." />
+              <SettingsHeader title="Defaults" subtitle="Pre-select the model + reasoning shape Prevail uses across new chats. Council defaults live in their own Council section." />
               <DefaultsForm clis={clis} />
             </>
           )}
           {section === "frameworks" && <FrameworksSection />}
           {section === "skills" && <SkillsSection vaultPath={vaultPath} />}
-          {section === "tools" && (
-            <>
-              <SettingsHeader title="Integrations" subtitle="Bridges and gateways. Your vault stays local; these surfaces let you reach it from elsewhere." />
-              <div className="mt-6 grid gap-4">
-                <TelegramCard />
-                <WhatsAppCard />
-                <McpCard />
-              </div>
-            </>
-          )}
-          {section === "ingestion" && <IngestionSection />}
           {section === "shortcuts" && <ShortcutsSection />}
           {section === "about" && <AboutSection />}
         </div>
@@ -10455,10 +10478,13 @@ function SettingsRowLite({ title, desc, control }: { title: string; desc: string
 }
 
 const DIRECT_PROVIDERS_SOON = ["Anthropic", "OpenAI", "xAI (Grok)", "Google Gemini", "DeepSeek", "Qwen / DashScope", "GLM / Z.AI", "Kimi / Moonshot", "MiniMax", "Hugging Face", "OpenCode Zen"];
-function ProvidersSection() {
+function ProvidersSection({ onActivated }: { onActivated?: () => Promise<CliInfo[]> }) {
   const [key, setKey] = useState("");
   const [configured, setConfigured] = useState(false);
   const [saved, setSaved] = useState(false);
+  // I10: after a key save we re-detect providers and confirm OpenRouter is now
+  // selectable, so the user gets real activation feedback instead of silence.
+  const [activated, setActivated] = useState<boolean | null>(null);
   useEffect(() => {
     invoke<boolean>("provider_key_exists", { provider: "openrouter" }).then((ok) => setConfigured(!!ok)).catch(() => {});
   }, []);
@@ -10469,10 +10495,23 @@ function ProvidersSection() {
       setKey("");
       setSaved(true);
       window.setTimeout(() => setSaved(false), 1500);
+      // Re-detect so OpenRouter immediately shows as available in every picker,
+      // and report back whether activation took.
+      if (onActivated) {
+        const list = await onActivated();
+        const ok = list.some((c) => c.id === "openrouter" && c.available);
+        setActivated(ok);
+        window.setTimeout(() => setActivated(null), 6000);
+      }
     } catch (e) { console.error("provider_key_set", e); }
   }
   async function remove() {
-    try { await invoke("provider_key_del", { provider: "openrouter" }); setConfigured(false); } catch (e) { console.error(e); }
+    try {
+      await invoke("provider_key_del", { provider: "openrouter" });
+      setConfigured(false);
+      setActivated(null);
+      if (onActivated) await onActivated();
+    } catch (e) { console.error(e); }
   }
   return (
     <>
@@ -10490,6 +10529,18 @@ function ProvidersSection() {
           <button onClick={save} disabled={!key.trim()} className="rounded-md bg-text-primary px-3 py-1.5 text-sm font-medium text-background hover:opacity-90 disabled:opacity-40">{saved ? "Saved" : "Save"}</button>
           {configured && <button onClick={remove} className="rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-sm text-warn hover:bg-warn/20">Remove</button>}
         </div>
+        {activated === true && (
+          <div className="mt-3 flex items-center gap-2 rounded-md border border-accent-border bg-accent-soft px-3 py-2 text-xs text-accent">
+            <Check className="h-4 w-4" />
+            OpenRouter activated — now selectable in every model picker (Chat &amp; Council).
+          </div>
+        )}
+        {activated === false && (
+          <div className="mt-3 flex items-center gap-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
+            <AlertTriangle className="h-4 w-4" />
+            Key saved, but OpenRouter didn&apos;t come online. Double-check the key at openrouter.ai/keys.
+          </div>
+        )}
       </div>
       <div className="mt-4">
         <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Direct providers</div>
@@ -12491,26 +12542,54 @@ function PaletteCard({
   );
 }
 
+// A3: Council config pulled out of "Defaults" into its own first-class section
+// — the multi-model panel is too central to the product to bury. Surfaces the
+// default chair (who writes the verdict) plus a plain-language explainer.
+function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
+  const firstAvailable = useMemo(() => clis.find((c) => c.available)?.id ?? "", [clis]);
+  const [defaultChairCli, setDefaultChairCli] = useState(() => lsGet(LS.defaultChairCli) || firstAvailable);
+  useEffect(() => { lsSet(LS.defaultChairCli, defaultChairCli); }, [defaultChairCli]);
+  useEffect(() => {
+    if (!defaultChairCli && firstAvailable) setDefaultChairCli(firstAvailable);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstAvailable]);
+  return (
+    <>
+      <SettingsHeader title="Council" subtitle="Convene a panel of models on one question — each answers independently, then a chair synthesizes the verdict. Pick which model writes that verdict by default." />
+      <div className="space-y-6">
+        <CliPickerCard
+          label="Default council chair"
+          hint="Writes the verdict after panelists answer"
+          clis={clis}
+          value={defaultChairCli}
+          onChange={setDefaultChairCli}
+        />
+        <div className="rounded-lg border border-border-subtle bg-surface p-4 text-xs leading-relaxed text-text-secondary">
+          <span className="font-semibold text-text-primary">How it works.</span> Pick panelists and run a council from the <span className="text-accent">Council</span> tab inside any domain. Panelists answer in parallel; the chair reads every answer and writes a consensus + disagreements + recommended action. Thumbs up/down on a verdict trains future runs.
+        </div>
+      </div>
+    </>
+  );
+}
+
 function DefaultsForm({ clis }: { clis: CliInfo[] }) {
   // Framework + Lens live in the dedicated Settings → Frameworks tab.
-  // Removed from Defaults to stop the duplication confusion.
+  // Council chair lives in Settings → Council (A3). Removed from Defaults to
+  // stop the duplication/burying confusion.
   const firstAvailable = useMemo(() => clis.find((c) => c.available)?.id ?? "", [clis]);
   const [defaultChatCli, setDefaultChatCli] = useState(() => lsGet(LS.defaultChatCli) || firstAvailable);
-  const [defaultChairCli, setDefaultChairCli] = useState(() => lsGet(LS.defaultChairCli) || firstAvailable);
 
   useEffect(() => { lsSet(LS.defaultChatCli, defaultChatCli); }, [defaultChatCli]);
-  useEffect(() => { lsSet(LS.defaultChairCli, defaultChairCli); }, [defaultChairCli]);
   // Adopt the first available CLI as default once detection finishes
   // and no explicit pick has been saved yet.
   useEffect(() => {
     if (!defaultChatCli && firstAvailable) setDefaultChatCli(firstAvailable);
-    if (!defaultChairCli && firstAvailable) setDefaultChairCli(firstAvailable);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstAvailable]);
 
   return (
     <div className="space-y-6">
-      {/* CLI + chair as visual chip pickers */}
+      {/* CLI as a visual chip picker — the council chair moved to Settings → Council */}
       <div className="flex flex-col gap-4">
         <CliPickerCard
           label="Default chat CLI"
@@ -12518,13 +12597,6 @@ function DefaultsForm({ clis }: { clis: CliInfo[] }) {
           clis={clis}
           value={defaultChatCli}
           onChange={setDefaultChatCli}
-        />
-        <CliPickerCard
-          label="Default council chair"
-          hint="Writes the verdict after panelists answer"
-          clis={clis}
-          value={defaultChairCli}
-          onChange={setDefaultChairCli}
         />
       </div>
 
