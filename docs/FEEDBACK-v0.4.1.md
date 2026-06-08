@@ -115,59 +115,59 @@ this is refinement of a working product, not a rescue.
   health coach: specific, actionable ("add your latest bank statements to
   build a net-worth baseline"), and offer to turn each into a task / a chat /
   an agent job. (p28)
-- [ ] **I3. Domain scoring should explain itself + what's stale.** Suggest the
+- [x] **I3. Domain scoring should explain itself + what's stale.** Suggest the
   score, show what's out of date, be specific about what's in vs not in. (p28)
-- [ ] **I4. Smart prompt routing.** Decision/risk-class prompts (the suggested
+- [x] **I4. Smart prompt routing.** Decision/risk-class prompts (the suggested
   "Decision" / "Risks" cards) should be smart enough to route to the Council
   automatically instead of plain chat. (p25)
 - [x] **I5. Verdict feedback loop.** Thumbs up/down on a council verdict;
   record which model/framework/lens/context produced liked vs disliked verdicts;
   learn over time and inform future runs. (p20)
-- [ ] **I6. Surface intents intelligently.** `_intents.jsonl` exists but is
+- [x] **I6. Surface intents intelligently.** `_intents.jsonl` exists but is
   invisible to the user. Explain it, and surface/distill intents over time
   (domain-level vs vault-level) rather than just capturing them. (p29)
-- [ ] **I7. Skills auto-building.** No skills exist; clarify + implement how
+- [x] **I7. Skills auto-building.** No skills exist; clarify + implement how
   Prevail builds skills over time automatically. Ship sample skills like the
   sample vault. (p24, p14)
-- [ ] **I8. Insights at the domain level, not per-thread.** "For You" questions
+- [x] **I8. Insights at the domain level, not per-thread.** "For You" questions
   + tasks are tied to a thread ("trait"); switching threads loses them. Move to
   a domain-level **Insights** tab that aggregates across threads. (p26)
-- [ ] **I9. Show model + settings on each message/verdict.** Which model
+- [x] **I9. Show model + settings on each message/verdict.** Which model
   (Opus 4.8 vs 4.7?), which lens, which framework, what context. The status
   words ("PUZZLING", "Ruminating…") are random and don't match — fix or make
   meaningful. (p20)
-- [ ] **I10. OpenRouter key saved → nothing happens.** After saving, give
+- [x] **I10. OpenRouter key saved → nothing happens.** After saving, give
   feedback and actually activate the provider (selectable in pickers, detected). (p1)
 
 ## Wave 3 — Telegram + information-architecture consolidation
 
-- [ ] **T1. Telegram "typing" indicator** while the bot processes a request
+- [x] **T1. Telegram "typing" indicator** while the bot processes a request
   (sendChatAction typing). (p4)
-- [ ] **T2. Telegram response formatting** is broken (raw markdown). Render
+- [x] **T2. Telegram response formatting** is broken (raw markdown). Render
   proper Telegram markdown/HTML. (p5)
-- [ ] **A1. Merge Integrations + Gateway into one section, "Gateway".**
+- [x] **A1. Merge Integrations + Gateway into one section, "Gateway".**
   "Integrations" doesn't fit. (p15)
-- [ ] **A2. Merge Connectors + Ingestion** — same concept, one section. Remove
+- [x] **A2. Merge Connectors + Ingestion** — same concept, one section. Remove
   the conceptual duplicates across Connectors/Ingestion/Integrations/Gateway. (p16)
-- [ ] **A3. Pull Council out of "Defaults" (or rename).** Council config is
+- [x] **A3. Pull Council out of "Defaults" (or rename).** Council config is
   buried; it's too important to hide. Also General vs Defaults overlap is
   confusing — clean the settings IA. (p18)
-- [ ] **A4. Council should show the full thread** (inputs **and** verdicts) when
+- [x] **A4. Council should show the full thread** (inputs **and** verdicts) when
   switching into the Council tab, not just the prompts. (p21)
-- [ ] **A5. Naming consistency.** Tabs say "Conversation"/"Council"; buttons say
+- [x] **A5. Naming consistency.** Tabs say "Conversation"/"Council"; buttons say
   "Chat"/"Convene". Align (rec: tabs **Chat** / **Council**; buttons **Send** /
   **Convene**). (p21)
-- [ ] **A6. Auto-populate channel routing keywords** per domain (default = the
+- [x] **A6. Auto-populate channel routing keywords** per domain (default = the
   domain name, non-editable defaults + user can add). Don't make the user fill
   it in. (p22)
-- [ ] **A7. Live "bridge running" indicator in the app footer** (like AionUI:
+- [x] **A7. Live "bridge running" indicator in the app footer** (like AionUI:
   "Open WebUI · Open Terminal · …" live chips) so the user always knows a
   bridge/WebUI is live. (p6)
-- [ ] **A8. Drag-domain-into-Council context.** Dragging a domain into a council
+- [x] **A8. Drag-domain-into-Council context.** Dragging a domain into a council
   convene doesn't behave like dragging into chat. Make both work; and offer
   "state summary (light)" vs "full context (heavy)". REC NEEDED → default to
   state summary, opt-in to full. (p30)
-- [ ] **A9. Confirm Council & Conversation share thread context** (council tied
+- [x] **A9. Confirm Council & Conversation share thread context** (council tied
   to the thread it was convened from; switching back to chat keeps it). Verify +
   make explicit. (p20)
 
@@ -175,16 +175,16 @@ this is refinement of a working product, not a rescue.
 
 - [ ] U1. Connectors page layout. (p3)
 - [ ] U2. Gateway page formatting + brand logos/colors. (p6)
-- [ ] U3. Defaults page as lists (not big buttons), keep icons. (p13)
-- [ ] U4. Per-domain Preferences as lists (not big icons). (p23)
+- [x] U3. Defaults page as lists (not big buttons), keep icons. (p13)
+- [x] U4. Per-domain Preferences as lists (not big icons). (p23)
 - [ ] U5. Bottom composer toolbar too cluttered, wraps to 2 rows on small
   screens — redesign, keep all functionality. (p21-22)
-- [ ] U6. Threads collapse icon too tiny to see. (p16)
-- [ ] U7. Sidebar collapse icon next to the PREVAIL logo looks like part of the
+- [x] U6. Threads collapse icon too tiny to see. (p16)
+- [x] U7. Sidebar collapse icon next to the PREVAIL logo looks like part of the
   logo — move it (e.g. far right, near a generate/expand control). (p29)
-- [ ] U8. "+ NEW CHAT" top-right is confusing/redundant — reconsider/remove. (p19)
-- [ ] U9. After opening domain Preferences (gear), no obvious way back to chat. (p23)
-- [ ] U10. Benchmark tab sits next to the per-domain gear but is a GLOBAL
+- [x] U8. "+ NEW CHAT" top-right is confusing/redundant — reconsider/remove. (p19)
+- [x] U9. After opening domain Preferences (gear), no obvious way back to chat. (p23)
+- [x] U10. Benchmark tab sits next to the per-domain gear but is a GLOBAL
   benchmark — placement is misleading. (p23)
 
 ---
