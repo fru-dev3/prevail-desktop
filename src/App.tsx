@@ -9333,7 +9333,7 @@ function BenchRunConfig({
 }) {
   const selCount = mode === "council" ? 1 : selModels.size;
   return (
-    <div className="mx-auto max-w-3xl space-y-7 px-6 py-6">
+    <div className="w-full space-y-7 px-6 py-6">
       {/* Mode */}
       <section>
         <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Mode</div>
@@ -9360,32 +9360,35 @@ function BenchRunConfig({
             <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Models</span>
             <span className="font-mono text-[10px] text-text-muted">{selModels.size} selected — runs head-to-head</span>
           </div>
-          {/* Thin-row list grouped by provider — same dimensions as the
-              Installed CLIs and domain-preference pickers. Multi-select: the
-              circle fills with a check when a model is on the panel. */}
-          <div className="overflow-hidden rounded-2xl border border-border bg-surface">
-            {BENCH_CLI_OPTIONS.map((c, ci) => (
+          {/* Provider groups, each a spaced stack of standalone model cards —
+              same gap-3 separated-card rhythm as the Installed CLIs page.
+              Multi-select: the circle fills with a check when a model is on
+              the panel. */}
+          <div className="space-y-6">
+            {BENCH_CLI_OPTIONS.map((c) => (
               <div key={c.id}>
-                <div className={`flex items-center gap-2 bg-surface-warm/50 px-4 py-1.5 ${ci > 0 ? "border-t border-border" : ""}`}>
-                  <ProviderMark vendor={c.id} size={18} />
+                <div className="mb-2 flex items-center gap-2">
+                  <ProviderMark vendor={c.id} size={20} />
                   <span className="font-display text-sm font-semibold tracking-tight">{c.label}</span>
                 </div>
-                {(MODELS[c.id] ?? []).map((m) => {
-                  const on = selModels.has(`${c.id}${MODEL_SEP}${m.id}`);
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => toggleModel(c.id, m.id)}
-                      className={`flex w-full items-center gap-3 border-t border-border-subtle px-4 py-2 text-left transition-colors ${on ? "bg-accent-soft" : "hover:bg-surface-warm"}`}
-                    >
-                      <span className={`shrink-0 font-mono text-sm ${on ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
-                      {m.blurb && <span className="min-w-0 flex-1 truncate text-[11px] text-text-muted">{m.blurb}</span>}
-                      <span className={`ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${on ? "bg-accent text-background" : "border border-border"}`}>
-                        {on && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
-                      </span>
-                    </button>
-                  );
-                })}
+                <div className="flex flex-col gap-2">
+                  {(MODELS[c.id] ?? []).map((m) => {
+                    const on = selModels.has(`${c.id}${MODEL_SEP}${m.id}`);
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => toggleModel(c.id, m.id)}
+                        className={`flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${on ? "border-accent bg-accent-soft" : "border-border-subtle bg-surface hover:border-accent-border"}`}
+                      >
+                        <span className={`shrink-0 font-mono text-sm ${on ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
+                        {m.blurb && <span className="min-w-0 flex-1 truncate text-[11px] text-text-muted">{m.blurb}</span>}
+                        <span className={`ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${on ? "bg-accent text-background" : "border border-border"}`}>
+                          {on && <Check className="h-3 w-3" strokeWidth={3} />}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             ))}
           </div>
