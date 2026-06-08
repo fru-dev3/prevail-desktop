@@ -396,6 +396,7 @@ pub async fn telegram_bridge_start(
     state: tauri::State<'_, BridgeState>,
     cfg: BridgeConfig,
 ) -> Result<(), String> {
+    crate::bunker::guard_cloud()?; // the Telegram bridge polls the Telegram cloud API
     state.start(app, cfg).await;
     Ok(())
 }

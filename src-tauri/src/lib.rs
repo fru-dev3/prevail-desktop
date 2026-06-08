@@ -11,6 +11,7 @@
 // whatever AI CLIs the user already has, and avoids the bundled-sidecar
 // signing complexity for the first release.
 
+mod bunker;
 mod distill;
 mod engine;
 mod ingestion;
@@ -496,6 +497,10 @@ async fn chat_send(
 ) -> Result<(), String> {
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command as TokioCommand;
+
+    // Bunker Mode: refuse any cloud provider at the execution layer (not just
+    // the UI). Local providers (ollama/lmstudio/mlx) pass through.
+    bunker::guard_cli(&args.cli)?;
 
     let (bin_name, cli_args) = cli_args(&args.cli, &args.prompt, args.model.as_deref());
     let bin_abs = resolve_bin_abs(&bin_name);
@@ -2979,6 +2984,8 @@ pub fn run() {
             decision_append,
             decisions_read,
             decision_feedback,
+            bunker::bunker_status,
+            bunker::bunker_set,
             read_memory_md,
             write_text_file,
             read_text_file,

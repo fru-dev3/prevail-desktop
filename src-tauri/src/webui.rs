@@ -52,6 +52,10 @@ const WEBUI_ALLOWED: &[&str] = &[
     "benchmark_runs", "benchmark_run_detail", "benchmark_questions", "benchmark_matrix",
     // status
     "webui_status",
+    // Bunker Mode: read-only status for the ribbon/card. bunker_set is
+    // deliberately NOT exposed — a remote browser must never be able to
+    // disable the local-only trust guarantee.
+    "bunker_status",
 ];
 
 #[derive(Default)]
