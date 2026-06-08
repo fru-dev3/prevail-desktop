@@ -148,17 +148,38 @@ impl BridgeState {
                                         }),
                                     );
 
+                                    // T1: keep the "typing…" indicator alive
+                                    // while the model works (Telegram clears it
+                                    // after ~5s, so refresh every 4s until done).
+                                    let typing_token = cfg.token.clone();
+                                    let typing_chat = cfg.chat_id.clone();
+                                    let typing_task = tokio::spawn(async move {
+                                        loop {
+                                            let _ = send_chat_action(&typing_token, &typing_chat, "typing").await;
+                                            tokio::time::sleep(Duration::from_secs(4)).await;
+                                        }
+                                    });
                                     // Dispatch to the CLI and reply.
-                                    match run_cli(&cfg.cli, cfg.model.as_deref(), &text).await {
+                                    let cli_result = run_cli(&cfg.cli, cfg.model.as_deref(), &text).await;
+                                    typing_task.abort();
+                                    match cli_result {
                                         Ok(reply) => {
                                             let reply = if reply.trim().is_empty() {
                                                 "(no output)".to_string()
                                             } else {
                                                 reply
                                             };
-                                            // Telegram caps message length at 4096 chars.
-                                            for chunk in chunk_text(&reply, 4000) {
-                                                match send_message(&cfg.token, &cfg.chat_id, &chunk).await {
+                                            // Telegram caps message length at 4096 chars. Chunk the
+                                            // RAW reply (so HTML tags never split across a boundary),
+                                            // then format each chunk. T2: send as HTML; on a parse
+                                            // error fall back to plain text so a reply is never lost.
+                                            for chunk in chunk_text(&reply, 3500) {
+                                                let html = format_for_telegram(&chunk);
+                                                let sent = match send_message(&cfg.token, &cfg.chat_id, &html, true).await {
+                                                    Ok(()) => Ok(()),
+                                                    Err(_) => send_message(&cfg.token, &cfg.chat_id, &chunk, false).await,
+                                                };
+                                                match sent {
                                                     Ok(_) => {
                                                         let mut s = status_for_task.lock().await;
                                                         s.outbound_count += 1;
@@ -268,13 +289,24 @@ async fn fetch_updates(token: &str, offset: i64) -> Result<Vec<TgUpdate>, String
     Ok(parsed.result)
 }
 
-async fn send_message(token: &str, chat_id: &str, text: &str) -> Result<(), String> {
+/// Send a chat message. When `html` is true the text is sent with
+/// `parse_mode=HTML` so the small subset of tags we emit (<b> <i> <code> <pre>)
+/// renders as formatting instead of literal markup (T2).
+async fn send_message(token: &str, chat_id: &str, text: &str, html: bool) -> Result<(), String> {
     let url = format!("https://api.telegram.org/bot{token}/sendMessage");
-    let body = format!(
-        "{{\"chat_id\":\"{}\",\"text\":{}}}",
-        chat_id,
-        serde_json::to_string(text).map_err(|e| e.to_string())?,
-    );
+    let body = if html {
+        format!(
+            "{{\"chat_id\":\"{}\",\"text\":{},\"parse_mode\":\"HTML\"}}",
+            chat_id,
+            serde_json::to_string(text).map_err(|e| e.to_string())?,
+        )
+    } else {
+        format!(
+            "{{\"chat_id\":\"{}\",\"text\":{}}}",
+            chat_id,
+            serde_json::to_string(text).map_err(|e| e.to_string())?,
+        )
+    };
     let out = TokioCommand::new("curl")
         .args([
             "-fsS",
@@ -296,6 +328,126 @@ async fn send_message(token: &str, chat_id: &str, text: &str) -> Result<(), Stri
         ));
     }
     Ok(())
+}
+
+/// Show the "typing…" indicator in the chat (T1). Best-effort — failures are
+/// ignored by the caller since it's only cosmetic.
+async fn send_chat_action(token: &str, chat_id: &str, action: &str) -> Result<(), String> {
+    let url = format!("https://api.telegram.org/bot{token}/sendChatAction");
+    let body = format!("{{\"chat_id\":\"{chat_id}\",\"action\":\"{action}\"}}");
+    let out = TokioCommand::new("curl")
+        .args(["-fsS", "-X", "POST", "-H", "Content-Type: application/json", "-d", &body, &url])
+        .output()
+        .await
+        .map_err(|e| format!("curl spawn: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(())
+}
+
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+/// Apply inline markdown → HTML on a single already-trimmed line body:
+/// `**bold**`/`__bold__` → <b>, `` `code` `` → <code>. The input is HTML-escaped
+/// first so any stray `<`/`>`/`&` render literally and never break the parse.
+fn inline_md_to_html(line: &str) -> String {
+    let esc = escape_html(line);
+    // Inline code first so bold markers inside backticks aren't transformed.
+    let coded = wrap_pairs(&esc, '`', "<code>", "</code>");
+    // Bold: ** … ** then __ … __.
+    let b1 = wrap_delim(&coded, "**", "<b>", "</b>");
+    wrap_delim(&b1, "__", "<b>", "</b>")
+}
+
+/// Replace matched pairs of a single delimiter char with open/close tags.
+fn wrap_pairs(s: &str, delim: char, open: &str, close: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut open_now = true;
+    // Only transform fully-paired delimiters; leave a lone trailing one literal.
+    let pair_floor = {
+        let count = s.matches(delim).count();
+        count - (count % 2)
+    };
+    let mut seen = 0;
+    for ch in s.chars() {
+        if ch == delim && seen < pair_floor {
+            out.push_str(if open_now { open } else { close });
+            open_now = !open_now;
+            seen += 1;
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+/// Replace matched pairs of a multi-char delimiter (e.g. "**") with tags.
+fn wrap_delim(s: &str, delim: &str, open: &str, close: &str) -> String {
+    let n = s.matches(delim).count();
+    let pairs = n / 2;
+    if pairs == 0 {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    let mut replaced = 0;
+    let mut open_now = true;
+    while replaced < pairs * 2 {
+        if let Some(idx) = rest.find(delim) {
+            out.push_str(&rest[..idx]);
+            out.push_str(if open_now { open } else { close });
+            open_now = !open_now;
+            replaced += 1;
+            rest = &rest[idx + delim.len()..];
+        } else {
+            break;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Convert a model's GitHub-flavored markdown into the subset of HTML that
+/// Telegram's `parse_mode=HTML` supports (T2). Handles fenced code blocks,
+/// inline code, bold, headings (→ bold), and bullet normalization. Anything
+/// else is HTML-escaped so it renders literally rather than as raw markup.
+fn format_for_telegram(md: &str) -> String {
+    let mut out = String::new();
+    let mut in_code = false;
+    for line in md.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") {
+            if in_code {
+                out.push_str("</pre>\n");
+                in_code = false;
+            } else {
+                out.push_str("<pre>");
+                in_code = true;
+            }
+            continue;
+        }
+        if in_code {
+            out.push_str(&escape_html(line));
+            out.push('\n');
+            continue;
+        }
+        if trimmed.starts_with('#') {
+            let heading = trimmed.trim_start_matches('#').trim_start();
+            out.push_str(&format!("<b>{}</b>\n", inline_md_to_html(heading)));
+        } else if let Some(rest) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
+            out.push_str(&format!("• {}\n", inline_md_to_html(rest)));
+        } else {
+            out.push_str(&inline_md_to_html(line));
+            out.push('\n');
+        }
+    }
+    if in_code {
+        out.push_str("</pre>");
+    }
+    out.trim_end().to_string()
 }
 
 pub(crate) async fn run_cli(cli: &str, model: Option<&str>, prompt: &str) -> Result<String, String> {
@@ -414,4 +566,34 @@ pub async fn telegram_bridge_status(
     state: tauri::State<'_, BridgeState>,
 ) -> Result<BridgeStatus, String> {
     Ok(state.status().await)
+}
+
+#[cfg(test)]
+mod tg_format_tests {
+    use super::*;
+
+    #[test]
+    fn converts_bold_and_inline_code() {
+        let out = format_for_telegram("Use **bold** and `code` here");
+        assert_eq!(out, "Use <b>bold</b> and <code>code</code> here");
+    }
+
+    #[test]
+    fn headings_and_bullets() {
+        let out = format_for_telegram("# Title\n- one\n- two");
+        assert_eq!(out, "<b>Title</b>\n• one\n• two");
+    }
+
+    #[test]
+    fn escapes_html_and_fences_code_blocks() {
+        let out = format_for_telegram("a < b & c\n```\nx<y\n```");
+        assert_eq!(out, "a &lt; b &amp; c\n<pre>x&lt;y\n</pre>");
+    }
+
+    #[test]
+    fn lone_marker_left_literal() {
+        // An unpaired ** must not produce an unbalanced <b>.
+        let out = format_for_telegram("2 ** 3 = 8");
+        assert_eq!(out, "2 ** 3 = 8");
+    }
 }
