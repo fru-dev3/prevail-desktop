@@ -9916,26 +9916,41 @@ function SettingsPanel({
   type Section = "general" | "agents" | "providers" | "privacy" | "connectors" | "user" | "memory" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>("general");
 
-  const items: Array<{ id: Section; label: string; icon: typeof Folder }> = [
-    { id: "general", label: "General", icon: SettingsIcon },
-    { id: "privacy", label: "Privacy & Connectivity", icon: ShieldCheck },
-    { id: "agents", label: "Agents", icon: Sparkles },
-    { id: "providers", label: "Providers", icon: Layers },
-    { id: "user", label: "About me", icon: Users },
-    { id: "memory", label: "Memory & Context", icon: Brain },
-    { id: "safety", label: "Safety", icon: Shield },
-    { id: "council", label: "Council", icon: Scale },
-    { id: "connectors", label: "Connectors", icon: Plug },
-    { id: "gateway", label: "Gateway", icon: MessagesSquare },
-    { id: "mcp", label: "MCP", icon: Wrench },
-    { id: "remote", label: "Remote (WebUI)", icon: Monitor },
-    { id: "vault", label: "Vault", icon: Folder },
-    { id: "appearance", label: "Appearance", icon: Sparkles },
-    { id: "defaults", label: "Defaults", icon: SettingsIcon },
-    { id: "frameworks", label: "Frameworks", icon: Scale },
-    { id: "skills", label: "Skills", icon: Sparkles },
-    { id: "shortcuts", label: "Shortcuts", icon: SettingsIcon },
-    { id: "about", label: "About", icon: Github },
+  // Grouped settings nav — the flat 19-item list was hard to scan and mixed
+  // unrelated concerns (e.g. General vs Defaults overlap). Organized into
+  // labeled sections so related settings sit together and the redundancy reads
+  // as intentional structure.
+  type NavItem = { id: Section; label: string; icon: typeof Folder };
+  const navGroups: Array<{ heading: string; items: NavItem[] }> = [
+    { heading: "Models & AI", items: [
+      { id: "agents", label: "Agents (CLIs)", icon: Sparkles },
+      { id: "providers", label: "Providers", icon: Layers },
+      { id: "defaults", label: "Defaults", icon: SettingsIcon },
+      { id: "council", label: "Council", icon: Scale },
+      { id: "frameworks", label: "Frameworks", icon: Scale },
+      { id: "skills", label: "Skills", icon: Sparkles },
+    ]},
+    { heading: "Privacy & Safety", items: [
+      { id: "privacy", label: "Privacy & Connectivity", icon: ShieldCheck },
+      { id: "safety", label: "Safety", icon: Shield },
+    ]},
+    { heading: "Connect", items: [
+      { id: "connectors", label: "Connectors", icon: Plug },
+      { id: "gateway", label: "Gateway", icon: MessagesSquare },
+      { id: "mcp", label: "MCP", icon: Wrench },
+      { id: "remote", label: "Remote (WebUI)", icon: Monitor },
+    ]},
+    { heading: "You & Vault", items: [
+      { id: "user", label: "About me", icon: Users },
+      { id: "memory", label: "Memory & Context", icon: Brain },
+      { id: "vault", label: "Vault", icon: Folder },
+    ]},
+    { heading: "App", items: [
+      { id: "general", label: "General", icon: SettingsIcon },
+      { id: "appearance", label: "Appearance", icon: Sparkles },
+      { id: "shortcuts", label: "Shortcuts", icon: SettingsIcon },
+      { id: "about", label: "About", icon: Github },
+    ]},
   ];
 
   // Live-bridge counter — used to light up the Integrations row in
@@ -9973,34 +9988,41 @@ function SettingsPanel({
         <div className="mb-1 px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
           Settings
         </div>
-        {items.map((it) => {
-          const Icon = it.icon;
-          const active = section === it.id;
-          const showLive = it.id === "gateway" && liveBridges > 0;
-          return (
-            <button
-              key={it.id}
-              onClick={() => setSection(it.id)}
-              className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                active
-                  ? "bg-accent-soft text-accent"
-                  : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              <span className="flex-1">{it.label}</span>
-              {showLive && (
-                <span
-                  className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent"
-                  title={`${liveBridges} bridge${liveBridges === 1 ? "" : "s"} live`}
+        {navGroups.map((group) => (
+          <div key={group.heading} className="mb-1.5">
+            <div className="mb-0.5 mt-2 px-3 font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted/70">
+              {group.heading}
+            </div>
+            {group.items.map((it) => {
+              const Icon = it.icon;
+              const active = section === it.id;
+              const showLive = it.id === "gateway" && liveBridges > 0;
+              return (
+                <button
+                  key={it.id}
+                  onClick={() => setSection(it.id)}
+                  className={`flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm transition-colors ${
+                    active
+                      ? "bg-accent-soft text-accent"
+                      : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+                  }`}
                 >
-                  <span className="pulse-soft inline-block h-1 w-1 rounded-full bg-accent" />
-                  live{liveBridges > 1 ? ` ${liveBridges}` : ""}
-                </span>
-              )}
-            </button>
-          );
-        })}
+                  <Icon className="h-4 w-4" />
+                  <span className="flex-1">{it.label}</span>
+                  {showLive && (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent"
+                      title={`${liveBridges} bridge${liveBridges === 1 ? "" : "s"} live`}
+                    >
+                      <span className="pulse-soft inline-block h-1 w-1 rounded-full bg-accent" />
+                      live{liveBridges > 1 ? ` ${liveBridges}` : ""}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </aside>
 
       {/* Main pane */}
