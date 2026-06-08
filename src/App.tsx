@@ -2070,6 +2070,7 @@ export default function App() {
           onRefreshClis={refreshClis}
           bunkerEnabled={bunkerEnabled}
           onBunkerChange={applyBunker}
+          onSetupDomains={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
           onBack={() => setTab("chat")}
           onStartChatWith={(cliId, modelId) => {
             lsSet(LS.defaultChatCli, cliId);
@@ -2551,16 +2552,7 @@ function Sidebar({
             </button>
           </div>
         )}
-        {domains.length > 0 && !vaultError && !collapsed && (
-          <button
-            onClick={onOpenOnboarding}
-            title="Recommend more domains"
-            className="mx-2 mt-1 flex items-center gap-1.5 rounded px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-accent"
-          >
-            <Sparkles className="h-3 w-3" />
-            set up domains
-          </button>
-        )}
+        {/* "Set up domains" moved to Settings → Vault to declutter the sidebar. */}
         <ul className={`space-y-0.5 ${collapsed ? "px-1.5 py-2" : "px-2"}`}>
           {sortedDomains.map((d, i) => {
             const active = d.name === selectedDomain && tab !== "settings";
@@ -2576,13 +2568,11 @@ function Sidebar({
                 <button
                   onClick={() => set(!open)}
                   title={`${open ? "Collapse" : "Expand"} ${label}`}
-                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted hover:bg-surface-warm hover:text-text-secondary"
+                  className="group/h flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
                 >
-                  <span className={`inline-flex h-3 w-3 items-center justify-center text-[11px] leading-none transition-transform ${open ? "rotate-90" : ""} text-text-secondary`}>
-                    ▶
-                  </span>
+                  <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
                   <span>{label}</span>
-                  <span className="ml-auto rounded-full bg-surface-warm px-1.5 py-0 font-mono text-[10px] text-text-muted">{count}</span>
+                  <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{count}</span>
                 </button>
               </li>
             );
@@ -2712,7 +2702,7 @@ function Sidebar({
                 <button
                   onClick={() => togglePin(d.name)}
                   className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${
-                    isPinned || active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                    active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                   }`}
                   title={isPinned ? "Unpin" : "Pin to top"}
                 >
@@ -9922,6 +9912,7 @@ function SettingsPanel({
   onStartChatWith,
   bunkerEnabled,
   onBunkerChange,
+  onSetupDomains,
 }: {
   appearance: ReturnType<typeof useAppearance>;
   vaultPath: string;
@@ -9932,6 +9923,7 @@ function SettingsPanel({
   onStartChatWith?: (cliId: string, modelId?: string) => void;
   bunkerEnabled: boolean;
   onBunkerChange: (on: boolean) => void;
+  onSetupDomains?: () => void;
 }) {
   type Section = "general" | "models" | "privacy" | "connectors" | "user" | "memory" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>("general");
@@ -10072,7 +10064,7 @@ function SettingsPanel({
           {section === "gateway" && <GatewaySection />}
           {section === "mcp" && <McpSection vaultPath={vaultPath} />}
           {section === "remote" && <RemoteSection />}
-          {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} />}
+          {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} onSetupDomains={onSetupDomains} />}
           {section === "appearance" && <AppearanceSection appearance={appearance} />}
           {section === "frameworks" && <FrameworksSection />}
           {section === "skills" && <SkillsSection vaultPath={vaultPath} />}
@@ -11393,7 +11385,7 @@ function UserProfileSection({ vaultPath }: { vaultPath: string }) {
   );
 }
 
-function VaultSettings({ vaultPath, onChange }: { vaultPath: string; onChange: () => void }) {
+function VaultSettings({ vaultPath, onChange, onSetupDomains }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void }) {
   const [backingUp, setBackingUp] = useState(false);
   const [backupNote, setBackupNote] = useState<string | null>(null);
   async function backupVault() {
@@ -11428,6 +11420,17 @@ function VaultSettings({ vaultPath, onChange }: { vaultPath: string; onChange: (
           Change
         </button>
       </SettingRow>
+      {onSetupDomains && (
+        <SettingRow label="Domains" desc="Let Prevail recommend a starter set of life domains, or add more.">
+          <button
+            onClick={onSetupDomains}
+            className="inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-sm text-accent hover:bg-accent hover:text-background"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Set up domains
+          </button>
+        </SettingRow>
+      )}
       <div className="mt-1 rounded-lg border border-border bg-surface p-4 font-mono text-xs text-text-primary">
         {vaultPath}
       </div>
