@@ -1013,12 +1013,15 @@ function preferredLocalCli(clis: { id: string; available: boolean }[]): string |
 // The always-visible Bunker Mode status bar. Never disappears while the app
 // runs, so the user always knows whether anything can leave their machine.
 function BunkerRibbon({ enabled }: { enabled: boolean }) {
+  // High-contrast in BOTH modes: a clear tinted bar (not a translucent wash that
+  // disappears over warm/cream themes) with dark text in light mode and light
+  // text in dark mode. Legibility is non-negotiable for an always-on trust bar.
   return (
     <div
       className={`flex shrink-0 items-center justify-center gap-2 border-t px-4 py-1 text-[11px] ${
         enabled
-          ? "border-emerald-700/30 bg-emerald-900/15 text-emerald-700 dark:text-emerald-300"
-          : "border-amber-700/30 bg-amber-900/10 text-amber-700 dark:text-amber-300"
+          ? "border-emerald-300 bg-emerald-100 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+          : "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
       }`}
       title={
         enabled
@@ -1030,7 +1033,7 @@ function BunkerRibbon({ enabled }: { enabled: boolean }) {
       <span className="font-mono font-semibold uppercase tracking-[0.18em]">
         {enabled ? "Bunker Mode" : "Cloud Connected"}
       </span>
-      <span className="opacity-70">
+      <span className="opacity-90">
         ·{" "}
         {enabled
           ? "Local models only • Network disabled"
