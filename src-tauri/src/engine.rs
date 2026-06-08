@@ -275,6 +275,7 @@ pub async fn run_engine_stream_stdin(
     args: Vec<String>,
     stdin_body: String,
     event_prefix: &'static str,
+    extra_env: Vec<(&'static str, String)>,
 ) -> Result<(), String> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::process::Command as TokioCommand;
@@ -309,6 +310,12 @@ pub async fn run_engine_stream_stdin(
                 cmd.env("PREVAIL_OPENROUTER_KEY", key);
             }
         }
+    }
+    // Per-call env overrides (e.g. PREVAIL_OLLAMA_URL redirect so the engine's
+    // local provider path reaches LM Studio / MLX instead of Ollama). Local-only,
+    // so safe under Bunker Mode.
+    for (k, v) in &extra_env {
+        cmd.env(k, v);
     }
     let mut child = cmd
         .spawn()
@@ -834,11 +841,21 @@ pub async fn engine_chat(
     // Auto-switch a stale cloud selection to an available local provider rather
     // than hard-blocking; errors only when nothing local can serve the request.
     let mut switched = false;
+    let mut extra_env: Vec<(&'static str, String)> = Vec::new();
     if let Some(c) = cli.filter(|s| !s.is_empty()) {
         let eff = crate::bunker::resolve_cli(&c)?;
         switched = eff != c;
-        args.push("--cli".to_string());
-        args.push(eff);
+        // LM Studio / MLX are OpenAI-compatible local servers the engine reaches
+        // through its `ollama` provider path. Pass `--cli ollama` and redirect
+        // PREVAIL_OLLAMA_URL to the right port — no engine-side change needed.
+        if let Some(url) = crate::bunker::local_endpoint_url(&eff) {
+            extra_env.push(("PREVAIL_OLLAMA_URL", url.to_string()));
+            args.push("--cli".to_string());
+            args.push("ollama".to_string());
+        } else {
+            args.push("--cli".to_string());
+            args.push(eff);
+        }
     }
     // Drop the model when we switched providers — the requested id belongs to the
     // old (cloud) CLI; let the engine pick the local provider's default.
@@ -852,5 +869,5 @@ pub async fn engine_chat(
         args.push("--local-only".to_string());
     }
 
-    run_engine_stream_stdin(app, session, args, message, "engine-chat").await
+    run_engine_stream_stdin(app, session, args, message, "engine-chat", extra_env).await
 }
