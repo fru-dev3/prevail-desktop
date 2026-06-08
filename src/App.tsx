@@ -8813,25 +8813,52 @@ function ContextScoreBadge({
 }) {
   if (!score) return null;
   const color = scoreColor(score.score);
-  const tip = `Context score ${score.score} out of 100 · updated ${formatFreshness(
-    score.freshness_secs,
-  )}${score.audited_at ? ` · audited ${formatAuditedAt(score.audited_at)}` : " · heuristic"} · click to review & rescan`;
+  const tier = score.score >= 80 ? "Strong" : score.score >= 60 ? "Solid" : score.score >= 40 ? "Thin" : "Sparse";
   return (
-    <button
-      onClick={onClick}
-      title={tip}
-      className="group inline-flex cursor-pointer items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide transition-colors hover:bg-surface-warm"
-    >
-      <span className="inline-flex items-center gap-1.5">
-        <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
-        <span style={{ color }}>{score.score}<span className="opacity-50">/100</span></span>
-      </span>
-      {/* Edit affordance is hidden until hover, so the header stays calm. */}
-      <Pencil
-        className="h-2.5 w-2.5 max-w-0 overflow-hidden text-text-muted opacity-0 transition-all duration-150 group-hover:ml-1.5 group-hover:max-w-[14px] group-hover:opacity-100"
-        style={{ color }}
-      />
-    </button>
+    <div className="group relative inline-flex">
+      <button
+        onClick={onClick}
+        className="inline-flex cursor-pointer items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide transition-colors hover:bg-surface-warm"
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+          <span style={{ color }}>{score.score}<span className="opacity-50">/100</span></span>
+        </span>
+        {/* Edit affordance is hidden until hover, so the header stays calm. */}
+        <Pencil
+          className="h-2.5 w-2.5 max-w-0 overflow-hidden text-text-muted opacity-0 transition-all duration-150 group-hover:ml-1.5 group-hover:max-w-[14px] group-hover:opacity-100"
+          style={{ color }}
+        />
+      </button>
+      {/* Formatted hover card — replaces the flat native title tooltip. */}
+      <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-60 translate-y-1 rounded-xl border border-border bg-surface p-3 text-left opacity-0 shadow-xl transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Context score</span>
+          <span className="rounded-full px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider" style={{ color, background: `${color}1a` }}>{tier}</span>
+        </div>
+        <div className="mb-2 flex items-baseline gap-1 font-mono">
+          <span className="text-2xl font-bold leading-none" style={{ color }}>{score.score}</span>
+          <span className="text-sm text-text-muted">/ 100</span>
+        </div>
+        <div className="mb-2.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-warm">
+          <div className="h-full rounded-full" style={{ width: `${score.score}%`, background: color }} />
+        </div>
+        <div className="space-y-1 text-[11px]">
+          <div className="flex items-center justify-between">
+            <span className="text-text-muted">Updated</span>
+            <span className="text-text-secondary">{formatFreshness(score.freshness_secs)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-text-muted">{score.audited_at ? "Audited" : "Source"}</span>
+            <span className="text-text-secondary">{score.audited_at ? formatAuditedAt(score.audited_at) : "heuristic estimate"}</span>
+          </div>
+        </div>
+        <div className="mt-2.5 flex items-center gap-1.5 border-t border-border-subtle pt-2 text-[10px] text-text-muted">
+          <Pencil className="h-2.5 w-2.5" />
+          Click to review and rescan
+        </div>
+      </div>
+    </div>
   );
 }
 
