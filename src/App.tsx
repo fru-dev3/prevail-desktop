@@ -1039,6 +1039,42 @@ function BunkerRibbon({ enabled }: { enabled: boolean }) {
   );
 }
 
+// A7: live "bridge running" chips in the app footer — so you always know a
+// Telegram bridge or the WebUI is serving your vault, from anywhere in the app
+// (not just buried in Settings). Polls every 4s; renders nothing when idle.
+function BridgeStatusChips() {
+  const [tg, setTg] = useState(false);
+  const [web, setWeb] = useState(false);
+  useEffect(() => {
+    if (isBrowser()) return; // these bridges are a desktop-host concern
+    let alive = true;
+    async function poll() {
+      try { const t = await invoke<{ running: boolean }>("telegram_bridge_status"); if (alive) setTg(!!t.running); } catch { /* ignore */ }
+      try { const w = await invoke<{ running: boolean }>("webui_status"); if (alive) setWeb(!!w.running); } catch { /* ignore */ }
+    }
+    void poll();
+    const id = window.setInterval(() => void poll(), 4000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, []);
+  if (!tg && !web) return null;
+  const Chip = ({ Icon, label, title }: { Icon: LucideIcon; label: string; title: string }) => (
+    <span
+      title={title}
+      className="inline-flex items-center gap-1.5 rounded-full border border-emerald-700/30 bg-emerald-900/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-300"
+    >
+      <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+      <Icon className="h-3 w-3" />
+      {label}
+    </span>
+  );
+  return (
+    <div className="pointer-events-none absolute bottom-1 left-2 z-20 flex items-center gap-1.5">
+      {web && <Chip Icon={Monitor} label="WebUI" title="WebUI is live — reachable in your browser (Settings → Remote)" />}
+      {tg && <Chip Icon={MessagesSquare} label="Telegram" title="Telegram bridge is live — messages route to your domains" />}
+    </div>
+  );
+}
+
 // Per-domain preferred skills — auto-attach on entering a domain.
 function loadPreferredSkills(domain: string | null): string[] {
   if (!domain) return [];
@@ -2192,6 +2228,8 @@ export default function App() {
         </main>
       </div>
       <BunkerRibbon enabled={bunkerEnabled} />
+      {/* A7: live bridge/WebUI chips — bottom-left, follow you across the app */}
+      <BridgeStatusChips />
       {/* Tiny version pill — bottom-right corner, low-prominence */}
       <span className="pointer-events-none absolute bottom-1.5 right-2 select-none font-mono text-[9px] tracking-wider text-text-muted/60">
         v{APP_VERSION}
@@ -3545,6 +3583,10 @@ interface ChatMessage {
   // reply came through the unified engine chat path (Track D5). Null on
   // replies that came through the native chat_send path.
   usage?: { input_tokens?: number; output_tokens?: number; cost_usd?: number };
+  // I9: the framework + lens in effect when this turn was sent, so each message
+  // records HOW it was produced (not just which model). Shown in the bubble.
+  framework?: string;
+  lens?: string;
 }
 
 // Mirrors fd-apps-prevail-cli/docs/schemas/ChatEvent.json — a single
@@ -3995,7 +4037,12 @@ function DomainPrefsPanel({
         if (!lsGet(localOnlyKey)) lsSet(localOnlyKey, m?.privacy?.localOnly ? "1" : "0");
         if (!lsGet(sandboxKey)) lsSet(sandboxKey, m?.sandbox?.mode === "locked" ? "locked" : "open");
         if (!lsGet(keywordsKey) && Array.isArray(m?.routing?.keywords)) {
-          lsSet(keywordsKey, (m.routing!.keywords as string[]).join(", "));
+          // A6: the domain name is an implicit, non-editable default keyword, so
+          // strip it from the editable "extras" we hydrate into the input.
+          const extras = (m.routing!.keywords as string[]).filter(
+            (k) => k.trim().toLowerCase() !== domain.toLowerCase(),
+          );
+          lsSet(keywordsKey, extras.join(", "));
         }
       } catch {
         // Engine/manifest unavailable — localStorage remains the source.
@@ -4345,24 +4392,37 @@ function DomainPrefsPanel({
         </div>
       </section>
 
-      {/* Channels / routing — editable keywords → manifest.routing.keywords */}
+      {/* Channels / routing — domain name is always matched (A6); the input
+          holds extra keywords → manifest.routing.keywords = [domain, ...extras] */}
       <section className="mb-6 rounded-xl border border-border bg-surface p-4">
         <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Channels &amp; routing</div>
         <p className="mb-3 text-sm text-text-secondary">
-          When a bridge (e.g. Telegram) receives a message, these keywords help route it to {titleCase(domain)}.
-          Comma-separated. Saved to the domain manifest.
+          When a bridge (e.g. Telegram) receives a message, these keywords route it to {titleCase(domain)}.
+          The domain name always matches; add extras below. Saved to the domain manifest.
         </p>
+        <div className="mb-2 flex items-center gap-2">
+          <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-xs text-accent" title="Always matched — the domain name is a built-in keyword">
+            <Pin className="h-3 w-3" /> {domain.toLowerCase()}
+          </span>
+          <span className="font-mono text-[10px] text-text-muted">always on</span>
+        </div>
         <input
           defaultValue={keywordsRaw}
           key={`kw-${domain}-${manifestReady ? 1 : 0}`}
-          placeholder="invoices, taxes, deductions…"
+          placeholder="extra keywords: invoices, taxes, deductions…"
           onBlur={(e) => {
-            const list = e.target.value
+            const extras = e.target.value
               .split(",")
               .map((s) => s.trim())
-              .filter(Boolean);
-            lsSet(keywordsKey, list.join(", "));
-            persistManifestTop({ routing: { keywords: list } });
+              .filter(Boolean)
+              .filter((k) => k.toLowerCase() !== domain.toLowerCase());
+            lsSet(keywordsKey, extras.join(", "));
+            // Persist the domain name as the first keyword so routing always
+            // matches it even when the user adds none.
+            const full = [domain.toLowerCase(), ...extras].filter(
+              (k, i, a) => a.indexOf(k) === i,
+            );
+            persistManifestTop({ routing: { keywords: full } });
             force();
           }}
           className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm focus:border-accent-border focus:outline-none"
@@ -6070,7 +6130,7 @@ function ChatPanel({
     const chatModel = lsGet(`prevail.model.${chatCli}`) || null;
     const visible = input.trim();
     const userMsg: ChatMessage = { role: "user", content: visible, ts: Date.now() };
-    const replyMsg: ChatMessage = { role: "assistant", cli: chatCli, model: chatModel || undefined, content: "", ts: Date.now(), streaming: true };
+    const replyMsg: ChatMessage = { role: "assistant", cli: chatCli, model: chatModel || undefined, framework: fwLens.framework ?? undefined, lens: fwLens.lens ?? undefined, content: "", ts: Date.now(), streaming: true };
     setMessages((m) => [...m, userMsg, replyMsg]);
     // Attach file paths to the prompt so the CLI can read them.
     const attachPreamble = attachments.length > 0
@@ -7143,6 +7203,13 @@ function ChatPanel({
   );
 }
 
+// Resolve a human label for a model id (e.g. "claude-opus-4-8" → "Opus 4.8").
+function modelLabel(cli?: string, id?: string): string {
+  if (!id) return "";
+  const m = cli ? MODELS[cli]?.find((x) => x.id === id) : undefined;
+  return m?.label ?? id;
+}
+
 function ChatBubble({
   msg,
   onCopy,
@@ -7231,6 +7298,17 @@ function ChatBubble({
       <div className="min-w-0 flex-1">
         <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-text-secondary">
           <span className="font-display font-semibold tracking-tight" style={{ color: accent }}>{vendorName}</span>
+          {/* I9: which model + how it was shaped (framework/lens) — so each turn
+              is self-describing, not a mystery. */}
+          {msg.role === "assistant" && msg.model && (
+            <span className="font-mono text-[10px] lowercase text-text-muted" title={`Model: ${msg.model}`}>{modelLabel(msg.cli, msg.model)}</span>
+          )}
+          {msg.role === "assistant" && msg.framework && (
+            <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Reasoning framework in effect">{msg.framework}</span>
+          )}
+          {msg.role === "assistant" && msg.lens && (
+            <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Lens in effect">{msg.lens}</span>
+          )}
           {msg.streaming && (
             <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider" style={{ color: accent, background: tint }}>
               <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
@@ -7312,25 +7390,20 @@ function ChatBubble({
 // Animated three-dot indicator shown while a CLI is spinning up and
 // hasn't streamed its first token yet. Replaces the dead "…" feel
 // with something that obviously "ticks".
-// Whimsical "working" words (Claude-Code style) cycled while a model hasn't
-// streamed its first token yet — beats a static "thinking".
-const THINKING_WORDS = [
-  "Thinking", "Pondering", "Noodling", "Cogitating", "Ruminating", "Mulling",
-  "Percolating", "Marinating", "Conjuring", "Tinkering", "Simmering", "Churning",
-  "Brewing", "Finagling", "Wrangling", "Sleuthing", "Scheming", "Puzzling",
-  "Deliberating", "Contemplating", "Synthesizing", "Reasoning", "Reckoning",
-  "Musing", "Crunching", "Deducing", "Untangling", "Vibing", "Computing", "Spelunking",
-];
+// I9: the status word used to be a random whimsical verb ("Puzzling",
+// "Ruminating") that rotated every 2.4s — which read as if it meant something
+// about the model's state when it didn't. Replaced with an HONEST progression
+// keyed to elapsed wait time, so it actually conveys "this is taking a while".
 function useThinkingWord() {
-  const [w, setW] = useState(() => THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)]);
+  const [secs, setSecs] = useState(0);
   useEffect(() => {
-    const id = window.setInterval(
-      () => setW(THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)]),
-      2400,
-    );
+    const id = window.setInterval(() => setSecs((s) => s + 1), 1000);
     return () => window.clearInterval(id);
   }, []);
-  return w;
+  if (secs < 4) return "Thinking";
+  if (secs < 12) return "Still thinking";
+  if (secs < 30) return "Working on it";
+  return "Taking a while";
 }
 function ThinkingWord() {
   return <>{useThinkingWord()}</>;
