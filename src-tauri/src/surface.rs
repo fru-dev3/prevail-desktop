@@ -158,6 +158,9 @@ pub async fn domain_surface(
 
     let context = gather_context(&dir);
     let prompt = build_prompt(&domain, &context);
+    // Bunker Mode: proactive surface generation runs a model — obey the app-wide
+    // local-only guarantee instead of silently calling a cloud provider.
+    crate::bunker::guard_cli(&provider)?;
     let model_opt = if model.is_empty() { None } else { Some(model.as_str()) };
     let out = crate::telegram_bridge::run_cli(&provider, model_opt, &prompt).await?;
     let mut res = parse_surface(&out);
