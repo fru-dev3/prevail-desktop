@@ -421,6 +421,8 @@ import {
   Layers,
   Landmark,
   Plug,
+  ThumbsUp,
+  ThumbsDown,
   type LucideIcon,
 } from "lucide-react";
 
@@ -7455,6 +7457,10 @@ function CouncilPanel({
   const [phase, setPhase] = useState<"idle" | "panelists" | "synthesizing" | "done">("idle");
   const [replies, setReplies] = useState<Record<string, PanelistReply>>({});
   const [verdict, setVerdict] = useState<string>("");
+  // The decision-log id for the verdict currently on screen, so the user can
+  // attach a thumbs up/down (decision_feedback) to it. (feedback v0.4.1 I5)
+  const [verdictDecisionId, setVerdictDecisionId] = useState<string | null>(null);
+  const [verdictRating, setVerdictRating] = useState<"up" | "down" | null>(null);
   const sessionRef = useRef<string>("");
   const unlistenRefs = useRef<UnlistenFn[]>([]);
 
@@ -7612,6 +7618,29 @@ function CouncilPanel({
       });
     }
     const allTurns = [...prior, ...fresh];
+    // Self-learning: record the verdict as a durable DECISION so the domain
+    // learns from it — feeds _state derivation, scoring, and the Insights
+    // surface, and can carry a thumbs up/down. (feedback v0.4.1 I1/I5)
+    if (verdict.trim()) {
+      const decisionId = `d-${Date.now()}`;
+      setVerdictDecisionId(decisionId);
+      setVerdictRating(null);
+      invoke("decision_append", {
+        vault: _vaultPath,
+        domain: domain ?? null,
+        record: {
+          id: decisionId,
+          kind: "council",
+          ts: Date.now(),
+          domain: domain ?? null,
+          thread: councilThreadRef.current,
+          prompt: submittedPrompt,
+          verdict: verdict.trim(),
+          chair: chairSlotObj ? { cli: chairSlotObj.cli, model: chairSlotObj.model || null } : null,
+          panelists: panelistSlots.map((s) => ({ cli: s.cli, model: s.model || null })),
+        },
+      }).catch((e) => console.error("decision_append (council)", e));
+    }
     // Reuse the existing thread's slug when continuing; else create new.
     const cur = councilThreadRef.current;
     const slug = cur ? cur.split("/").pop()?.replace(/\.md$/, "") ?? null : null;
@@ -7946,6 +7975,36 @@ function CouncilPanel({
                   )}
                   {phase === "synthesizing" && verdict && <span className="cursor-blink text-accent">▌</span>}
                 </div>
+                {/* Verdict feedback — thumbs up/down trains which model + lens +
+                    framework produce verdicts the user trusts. (v0.4.1 I5) */}
+                {phase === "done" && verdict && verdictDecisionId && (
+                  <div className="mt-4 flex items-center gap-2 border-t border-accent-border/40 pt-3 text-xs text-text-muted">
+                    <span>Was this verdict useful?</span>
+                    <button
+                      title="Good verdict"
+                      onClick={() => {
+                        const next = verdictRating === "up" ? null : "up";
+                        setVerdictRating(next);
+                        invoke("decision_feedback", { vault: _vaultPath, domain: domain ?? null, id: verdictDecisionId, rating: next ?? "clear", note: null }).catch((e) => console.error("decision_feedback", e));
+                      }}
+                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 transition-colors ${verdictRating === "up" ? "border-accent bg-accent-soft text-accent" : "border-border hover:bg-surface-strong"}`}
+                    >
+                      <ThumbsUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      title="Not useful"
+                      onClick={() => {
+                        const next = verdictRating === "down" ? null : "down";
+                        setVerdictRating(next);
+                        invoke("decision_feedback", { vault: _vaultPath, domain: domain ?? null, id: verdictDecisionId, rating: next ?? "clear", note: null }).catch((e) => console.error("decision_feedback", e));
+                      }}
+                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 transition-colors ${verdictRating === "down" ? "border-red-400 bg-red-500/10 text-red-500" : "border-border hover:bg-surface-strong"}`}
+                    >
+                      <ThumbsDown className="h-3.5 w-3.5" />
+                    </button>
+                    {verdictRating && <span className="text-text-muted">· saved</span>}
+                  </div>
+                )}
               </div>
             )}
           </div>
