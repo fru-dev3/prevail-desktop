@@ -3395,6 +3395,9 @@ function DomainStatusBar({
   );
   // Cycle keeps its value (◆ STRATEGIST) since that's the useful part; the
   // glyph + tooltip identify which control it is, so the word label is dropped.
+  // Framework/Lens pill. When OFF it shows what it IS (the label, e.g.
+  // "Framework"); when active it shows the chosen value (e.g. "Strategist") with
+  // a tiny label prefix so it's always obvious which control it is.
   const Cycle = ({
     glyph, label, value, active, onClick,
   }: { glyph: string; label: string; value: string; active: boolean; onClick: () => void }) => (
@@ -3408,7 +3411,13 @@ function DomainStatusBar({
       }`}
     >
       <span>{glyph}</span>
-      <span className="uppercase tracking-wider">{value}</span>
+      {active ? (
+        <span className="tracking-wider">
+          <span className="opacity-60">{label}:</span> <span className="uppercase">{value}</span>
+        </span>
+      ) : (
+        <span className="uppercase tracking-wider">{label}</span>
+      )}
     </button>
   );
   const cycleFramework = () => {
@@ -6565,43 +6574,8 @@ function ChatPanel({
             <DomainActionsMenu domain={domain} vaultPath={vaultPath} onArchived={onArchived} />
           </>
         )}
-        {messages.length > 0 && (
-          <button
-            onClick={async () => {
-              // Persist the session before clearing so nothing is lost.
-              if (messages.length > 0 && vaultPath) {
-                try {
-                  const first = messages.find((m) => m.role === "user");
-                  const title = first ? first.content.slice(0, 80).replace(/\n/g, " ") : "session";
-                  await invoke<string>("save_session", {
-                    vault: vaultPath,
-                    domain: domain ?? null,
-                    title,
-                    turns: messages.map((m) => ({
-                      role: m.role,
-                      cli: m.cli ?? null,
-                      model: m.model ?? null,
-                      content: m.content,
-                    })),
-                  });
-                } catch (e) {
-                  console.error("save_session failed", e);
-                }
-              }
-              setMessages([]);
-              setInput("");
-              setAttachments([]);
-              setPrimedContext([]);
-            }}
-            title="Save & clear — the session is appended to _log/"
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:bg-accent-soft hover:text-accent"
-          >
-            <Plus className="h-3 w-3" />
-            New chat
-          </button>
-        )}
-        {/* Context lives in a persistent, collapsible right column now —
-            no toolbar toggle button. */}
+        {/* "New chat" removed from the header — the threads rail's + already
+            starts a new chat (and context lives in the right column now). */}
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
