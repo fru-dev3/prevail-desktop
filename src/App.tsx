@@ -4244,7 +4244,8 @@ function DomainPrefsPanel({
             </button>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {/* U4: list rows (not big icon cards), keeping the provider icon. */}
+        <div className="flex flex-col gap-1.5">
           {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
             const picked = pickedCli === c.id;
             const disabled = !c.available;
@@ -4254,30 +4255,25 @@ function DomainPrefsPanel({
                 disabled={disabled}
                 onClick={() => setOverride(cliKey, c.id)}
                 title={disabled ? `${c.label} not installed` : c.label}
-                className={`group relative flex flex-col items-center gap-1.5 rounded-lg border-2 px-2 py-3 transition-all ${
+                className={`group flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
                   picked
-                    ? "border-accent bg-accent-soft shadow-md ring-2 ring-accent/30"
+                    ? "border-accent bg-accent-soft ring-1 ring-accent/20"
                     : disabled
                     ? "border-border-subtle bg-background opacity-40"
-                    : "border-border bg-background hover:-translate-y-px hover:border-accent-border hover:shadow-sm"
+                    : "border-border bg-background hover:bg-surface-warm"
                 }`}
               >
-                {picked && (
-                  <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-background shadow-sm">
-                    <Check className="h-3 w-3" strokeWidth={3} />
-                  </span>
-                )}
-                <ProviderMark vendor={c.id} size={32} />
-                <span className={`font-display text-sm font-semibold tracking-tight ${picked ? "text-accent" : "text-text-primary"}`}>
+                <ProviderMark vendor={c.id} size={22} />
+                <span className={`flex-1 font-display text-sm font-semibold tracking-tight ${picked ? "text-accent" : "text-text-primary"}`}>
                   {c.label}
                 </span>
-                {picked && (
-                  <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[8px] uppercase tracking-wider text-background">
-                    selected
-                  </span>
-                )}
                 {disabled && (
                   <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">not installed</span>
+                )}
+                {picked && (
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-background">
+                    <Check className="h-3 w-3" strokeWidth={3} />
+                  </span>
                 )}
               </button>
             );
@@ -12975,7 +12971,8 @@ function CliPickerCard({
     <div className="rounded-lg border border-border bg-surface p-4">
       <div className="text-xs uppercase tracking-wider text-text-muted">{label}</div>
       <p className="mt-0.5 text-xs text-text-muted/80">{hint}</p>
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {/* U3/U4: list rows (not big button cards), keeping the provider icon. */}
+      <div className="mt-3 flex flex-col gap-1.5">
         {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
           const picked = value === c.id;
           const disabled = !c.available;
@@ -12985,30 +12982,25 @@ function CliPickerCard({
               disabled={disabled}
               onClick={() => onChange(c.id)}
               title={disabled ? `${c.label} not installed` : c.label}
-              className={`group relative flex flex-col items-center gap-1.5 rounded-lg border-2 px-2 py-2.5 transition-all ${
+              className={`group flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
                 picked
-                  ? "border-accent bg-accent-soft shadow-md ring-2 ring-accent/30"
+                  ? "border-accent bg-accent-soft ring-1 ring-accent/20"
                   : disabled
                   ? "border-border-subtle bg-background opacity-40"
-                  : "border-border bg-background hover:-translate-y-px hover:border-accent-border hover:shadow-sm"
+                  : "border-border bg-background hover:bg-surface-warm"
               }`}
             >
-              {picked && (
-                <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-background shadow-sm">
-                  <Check className="h-2.5 w-2.5" strokeWidth={3} />
-                </span>
-              )}
-              <ProviderMark vendor={c.id} size={28} />
-              <span className={`font-display text-xs font-semibold tracking-tight ${picked ? "text-accent" : "text-text-primary"}`}>
+              <ProviderMark vendor={c.id} size={22} />
+              <span className={`flex-1 font-display text-sm font-semibold tracking-tight ${picked ? "text-accent" : "text-text-primary"}`}>
                 {c.label}
               </span>
-              {picked && (
-                <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[8px] uppercase tracking-wider text-background">
-                  selected
-                </span>
-              )}
               {disabled && (
                 <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">not installed</span>
+              )}
+              {picked && (
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-background">
+                  <Check className="h-3 w-3" strokeWidth={3} />
+                </span>
               )}
             </button>
           );
