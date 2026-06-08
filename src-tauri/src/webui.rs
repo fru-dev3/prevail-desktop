@@ -42,7 +42,7 @@ const WEBUI_ALLOWED: &[&str] = &[
     // memory / profile (read)
     "read_user_md", "read_memory_md",
     // self-learning ledger
-    "intent_append", "journal_append", "usage_append", "usage_summary",
+    "intent_append", "intents_read", "journal_append", "usage_append", "usage_summary",
     "decision_append", "decisions_read", "decision_feedback",
     // proactive surface + per-domain tasks/goals (read vault + model + checklist)
     "domain_surface", "tasks_read", "tasks_set", "tasks_add", "read_memory_md",
