@@ -3980,7 +3980,7 @@ function DomainHome({
         {!loading && ctx && (
           <div>
             {tab === "chat" && (
-              <div className="mx-auto max-w-2xl">
+              <div className="w-full">
                 <SurfacePanel vaultPath={vaultPath} domain={domain} onPick={onPickPrompt}
                   onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }} />
                 <TasksPanel vaultPath={vaultPath} domain={domain} nonce={taskNonce} />
@@ -4698,7 +4698,7 @@ function NewSkillForm({ vaultPath, domain, seed, onCreated }: { vaultPath: strin
   }
   if (!open) {
     return (
-      <div className="mx-auto mb-3 flex max-w-2xl items-center justify-between">
+      <div className="mb-3 flex w-full items-center justify-between">
         <p className="text-xs text-text-muted">Skills are reusable prompts Prevail runs on demand (<span className="font-mono text-accent">/name</span> in chat). Pin your favorites to auto-attach.</p>
         <button onClick={() => setOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:bg-accent-soft hover:text-accent">
           <Sparkles className="h-3 w-3" /> New skill
@@ -4707,7 +4707,7 @@ function NewSkillForm({ vaultPath, domain, seed, onCreated }: { vaultPath: strin
     );
   }
   return (
-    <div className="mx-auto mb-3 max-w-2xl rounded-xl border border-accent-border bg-surface p-4">
+    <div className="mb-3 w-full rounded-xl border border-accent-border bg-surface p-4">
       <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">New skill · {titleCase(domain)}</div>
       <input
         value={name}
@@ -4766,7 +4766,7 @@ function SkillsList({
     try { await invoke("open_in_finder", { path }); } catch {}
   }
   return (
-    <ul className="mx-auto flex max-w-2xl flex-col gap-2">
+    <ul className="flex w-full flex-col gap-2">
       {skills.map((s) => {
         const open = expanded === s.path;
         return (
@@ -9332,6 +9332,22 @@ function BenchRunConfig({
   onRun: () => void;
 }) {
   const selCount = mode === "council" ? 1 : selModels.size;
+  // Collapsible provider groups. Smart default: open the providers that
+  // already have a model on the panel, collapse the rest — so you land
+  // focused on what's selected, not a wall of every model.
+  const [collapsedProviders, setCollapsedProviders] = useState<Set<string>>(() =>
+    new Set(
+      BENCH_CLI_OPTIONS
+        .filter((c) => !(MODELS[c.id] ?? []).some((m) => selModels.has(`${c.id}${MODEL_SEP}${m.id}`)))
+        .map((c) => c.id),
+    ),
+  );
+  const toggleProvider = (id: string) =>
+    setCollapsedProviders((cur) => {
+      const next = new Set(cur);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   return (
     <div className="w-full space-y-7 px-6 py-6">
       {/* Mode */}
@@ -9364,33 +9380,50 @@ function BenchRunConfig({
               same gap-3 separated-card rhythm as the Installed CLIs page.
               Multi-select: the circle fills with a check when a model is on
               the panel. */}
-          <div className="space-y-6">
-            {BENCH_CLI_OPTIONS.map((c) => (
-              <div key={c.id}>
-                <div className="mb-2 flex items-center gap-2">
-                  <ProviderMark vendor={c.id} size={20} />
-                  <span className="font-display text-sm font-semibold tracking-tight">{c.label}</span>
+          <div className="space-y-4">
+            {BENCH_CLI_OPTIONS.map((c) => {
+              const models = MODELS[c.id] ?? [];
+              const selectedHere = models.filter((m) => selModels.has(`${c.id}${MODEL_SEP}${m.id}`)).length;
+              const collapsed = collapsedProviders.has(c.id);
+              return (
+                <div key={c.id}>
+                  <button
+                    onClick={() => toggleProvider(c.id)}
+                    className="mb-2 flex w-full items-center gap-2 rounded-md py-1 text-left transition-colors hover:text-accent"
+                  >
+                    {collapsed ? <ChevronRight className="h-4 w-4 text-text-muted" /> : <ChevronDown className="h-4 w-4 text-text-muted" />}
+                    <ProviderMark vendor={c.id} size={20} />
+                    <span className="font-display text-sm font-semibold tracking-tight">{c.label}</span>
+                    {selectedHere > 0 && (
+                      <span className="rounded-full bg-accent px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-background">
+                        {selectedHere} on panel
+                      </span>
+                    )}
+                    <span className="ml-auto font-mono text-[10px] text-text-muted">{models.length} model{models.length === 1 ? "" : "s"}</span>
+                  </button>
+                  {!collapsed && (
+                    <div className="flex flex-col gap-2">
+                      {models.map((m) => {
+                        const on = selModels.has(`${c.id}${MODEL_SEP}${m.id}`);
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => toggleModel(c.id, m.id)}
+                            className={`flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${on ? "border-accent bg-accent-soft" : "border-border-subtle bg-surface hover:border-accent-border"}`}
+                          >
+                            <span className={`shrink-0 font-mono text-sm ${on ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
+                            {m.blurb && <span className="min-w-0 flex-1 truncate text-[11px] text-text-muted">{m.blurb}</span>}
+                            <span className={`ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${on ? "bg-accent text-background" : "border border-border"}`}>
+                              {on && <Check className="h-3 w-3" strokeWidth={3} />}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                <div className="flex flex-col gap-2">
-                  {(MODELS[c.id] ?? []).map((m) => {
-                    const on = selModels.has(`${c.id}${MODEL_SEP}${m.id}`);
-                    return (
-                      <button
-                        key={m.id}
-                        onClick={() => toggleModel(c.id, m.id)}
-                        className={`flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${on ? "border-accent bg-accent-soft" : "border-border-subtle bg-surface hover:border-accent-border"}`}
-                      >
-                        <span className={`shrink-0 font-mono text-sm ${on ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
-                        {m.blurb && <span className="min-w-0 flex-1 truncate text-[11px] text-text-muted">{m.blurb}</span>}
-                        <span className={`ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${on ? "bg-accent text-background" : "border border-border"}`}>
-                          {on && <Check className="h-3 w-3" strokeWidth={3} />}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -9989,13 +10022,10 @@ function SettingsPanel({
 
       {/* Main pane */}
       <div className="min-w-0 flex-1 overflow-y-auto">
-        {/* Width: use the screen's real estate. Form-style sections stay
-            readable at max-w-5xl; the picker-heavy / multi-column sections
-            (frameworks, models, defaults, council) get the full max-w-6xl. */}
-        <div className={`mx-auto px-8 py-10 ${
-          (["frameworks", "models", "council"] as const).includes(section as never)
-            ? "max-w-6xl" : "max-w-5xl"
-        }`}>
+        {/* Full width — settings use the whole pane, left-aligned, to match
+            the rest of the app. Long prose inside sections caps itself
+            (subtitles use max-w-2xl) so readability stays intact. */}
+        <div className="w-full px-8 py-10">
           {section === "general" && <GeneralSection />}
           {section === "privacy" && <PrivacyConnectivitySection enabled={bunkerEnabled} onChange={onBunkerChange} />}
           {section === "models" && <ModelsSection clis={clis} onStartChatWith={onStartChatWith} onActivated={onRefreshClis} />}
