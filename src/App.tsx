@@ -13067,13 +13067,23 @@ function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   const available = useMemo(() => clis.filter((c) => c.available && (!isBunkerOn() || isLocalCli(c.id))), [clis]);
   const [members, setMembers] = useState<Set<string>>(() => new Set(readCouncilMembers()));
   const [chair, setChair] = useState<string>(() => readCouncilChair());
-  const [expanded, setExpanded] = useState<string>("");
-  // First-run default: the first model of the first three available providers.
+  // Each provider expands/collapses INDEPENDENTLY — a Set of open provider ids,
+  // not a single value (opening one never closes another).
+  const [expandedSet, setExpandedSet] = useState<Set<string>>(() => new Set());
+  // Once providers are detected: prune any stale slot keys that no longer map to
+  // a real (available provider, model) — that's what made the count drift from
+  // the visible badges — then seed a sensible default if the panel is empty.
   useEffect(() => {
-    if (members.size === 0 && readCouncilMembers().length === 0 && available.length) {
-      setMembers(new Set(available.slice(0, 3).map((c) => councilSlotKey(c.id, councilModelsFor(c.id)[0].id))));
-    }
-    if (!expanded && available.length) setExpanded(available[0].id);
+    if (available.length === 0) return;
+    const valid = new Set<string>();
+    for (const c of available) for (const m of councilModelsFor(c.id)) valid.add(councilSlotKey(c.id, m.id));
+    setMembers((prev) => {
+      const pruned = new Set([...prev].filter((k) => valid.has(k)));
+      if (pruned.size > 0) return pruned.size === prev.size ? prev : pruned;
+      // Empty after pruning → seed the first model of the first three providers.
+      return new Set(available.slice(0, 3).map((c) => councilSlotKey(c.id, councilModelsFor(c.id)[0].id)));
+    });
+    setExpandedSet((e) => (e.size ? e : new Set([available[0].id])));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [available]);
   useEffect(() => { lsSet(COUNCIL_MEMBERS_KEY, JSON.stringify([...members])); }, [members]);
@@ -13111,10 +13121,10 @@ function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
         {available.map((c) => {
           const models = councilModelsFor(c.id);
           const picked = models.filter((m) => members.has(councilSlotKey(c.id, m.id))).length;
-          const isExp = expanded === c.id;
+          const isExp = expandedSet.has(c.id);
           return (
             <div key={c.id} className={`overflow-hidden rounded-lg border bg-surface transition-colors ${isExp || picked > 0 ? "border-accent-border" : "border-border-subtle"}`}>
-              <button onClick={() => setExpanded((e) => (e === c.id ? "" : c.id))} className="flex w-full items-center gap-3 px-4 py-3 text-left">
+              <button onClick={() => setExpandedSet((e) => { const n = new Set(e); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })} className="flex w-full items-center gap-3 px-4 py-3 text-left">
                 {isExp ? <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" /> : <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />}
                 <ProviderMark vendor={c.id} size={26} />
                 <span className="flex-1 font-display text-sm font-semibold text-text-primary">{c.label}</span>
