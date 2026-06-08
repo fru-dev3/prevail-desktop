@@ -328,6 +328,19 @@ async fn detect_clis(_app: tauri::AppHandle) -> Result<Vec<CliInfo>, String> {
         available: or_key.as_deref().map(|k| !k.is_empty()).unwrap_or(false),
         version: None,
     });
+    // Local OpenAI-compatible model servers (no spawnable binary): available iff
+    // their default port is listening. The engine reaches them via the
+    // PREVAIL_OLLAMA_URL redirect (see bunker::local_endpoint_url). Probed the
+    // same way as Ollama's daemon — a TCP connect is enough to know it's up.
+    for (id, label) in [("lmstudio", "LM Studio"), ("mlx", "MLX")] {
+        out.push(CliInfo {
+            id: id.to_string(),
+            label: label.to_string(),
+            bin: bunker::local_endpoint_url(id).unwrap_or("").to_string(),
+            available: bunker::local_cli_available(id),
+            version: None,
+        });
+    }
     Ok(out)
 }
 
