@@ -536,6 +536,8 @@ import {
   siTelegram, siWhatsapp, siReddit, siYoutube, siSpotify, siZoom, siAirtable,
   siTrello, siAsana, siTodoist, siHubspot, siQuickbooks, siCalendly, siObsidian,
   siWise, siRobinhood, siStrava, siFitbit,
+  // Model-provider brand marks (Settings → Models, direct-provider roadmap).
+  siAnthropic, siGooglegemini, siHuggingface, siX as siXRaw, siDeepseek, siQwen, siMinimax,
 } from "simple-icons";
 
 const siClaude = siClaudeRaw as { path: string };
@@ -9932,7 +9934,7 @@ function SettingsPanel({
   bunkerEnabled: boolean;
   onBunkerChange: (on: boolean) => void;
 }) {
-  type Section = "general" | "models" | "privacy" | "connectors" | "user" | "memory" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "shortcuts" | "about";
+  type Section = "general" | "models" | "privacy" | "connectors" | "user" | "memory" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>("general");
 
   // Grouped settings nav — the flat 19-item list was hard to scan and mixed
@@ -9943,7 +9945,6 @@ function SettingsPanel({
   const navGroups: Array<{ heading: string; items: NavItem[] }> = [
     { heading: "Models & AI", items: [
       { id: "models", label: "Models", icon: Layers },
-      { id: "defaults", label: "Defaults", icon: SettingsIcon },
       { id: "council", label: "Council", icon: Scale },
       { id: "frameworks", label: "Frameworks", icon: Scale },
       { id: "skills", label: "Skills", icon: Sparkles },
@@ -10049,7 +10050,7 @@ function SettingsPanel({
             readable at max-w-5xl; the picker-heavy / multi-column sections
             (frameworks, models, defaults, council) get the full max-w-6xl. */}
         <div className={`mx-auto px-8 py-10 ${
-          (["frameworks", "models", "defaults", "council"] as const).includes(section as never)
+          (["frameworks", "models", "council"] as const).includes(section as never)
             ? "max-w-6xl" : "max-w-5xl"
         }`}>
           {section === "general" && <GeneralSection />}
@@ -10074,12 +10075,6 @@ function SettingsPanel({
           {section === "remote" && <RemoteSection />}
           {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} />}
           {section === "appearance" && <AppearanceSection appearance={appearance} />}
-          {section === "defaults" && (
-            <>
-              <SettingsHeader title="Defaults" subtitle="Pre-select the model + reasoning shape Prevail uses across new chats. Council defaults live in their own Council section." />
-              <DefaultsForm clis={clis} />
-            </>
-          )}
           {section === "frameworks" && <FrameworksSection />}
           {section === "skills" && <SkillsSection vaultPath={vaultPath} />}
           {section === "shortcuts" && <ShortcutsSection />}
@@ -10090,10 +10085,10 @@ function SettingsPanel({
   );
 }
 
-// Unified "Models" section — merges the former Agents (installed CLI binaries)
-// and Providers (bring-your-own-key API gateways) pages, since both answer the
-// same question: where your models come from. Two labeled subsections keep the
-// local-vs-hosted distinction obvious instead of being two cryptic nav items.
+// Unified "Models" section — the single home for everything model-related. It
+// absorbed the old Agents + Providers pages AND the separate Defaults page:
+// each provider expands to its models where you can TEST a model and SET IT AS
+// THE DEFAULT, all in one place. No reason to set the default anywhere else.
 function ModelsSection({
   clis,
   onStartChatWith,
@@ -10103,18 +10098,30 @@ function ModelsSection({
   onStartChatWith?: (cliId: string, modelId?: string) => void;
   onActivated?: () => Promise<CliInfo[]>;
 }) {
+  const firstAvailable = useMemo(() => clis.find((c) => c.available)?.id ?? "", [clis]);
+  const [defaultChatCli, setDefaultChatCli] = useState(() => lsGet(LS.defaultChatCli) || firstAvailable);
+  useEffect(() => { if (defaultChatCli) lsSet(LS.defaultChatCli, defaultChatCli); }, [defaultChatCli]);
+  useEffect(() => {
+    if (!defaultChatCli && firstAvailable) setDefaultChatCli(firstAvailable);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstAvailable]);
   return (
     <>
       <SettingsHeader
         title="Models"
-        subtitle="Where your AI comes from. Installed command-line agents run locally; API providers unlock hosted models with one key."
+        subtitle="Every provider Prevail can use. Expand one to test its models and set the default a new chat opens with. Installed CLIs run locally; API providers unlock hosted models with one key."
       />
       <section className="mb-8">
         <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-secondary">
           <Sparkles className="h-3.5 w-3.5 text-accent" /> Installed CLIs
         </div>
-        <p className="mb-4 text-xs text-text-muted">Detected from your machine — Prevail routes prompts to them but doesn&apos;t install or update them.</p>
-        <AgentsSection clis={clis} onStartChatWith={onStartChatWith} embedded />
+        <AgentsSection
+          clis={clis}
+          onStartChatWith={onStartChatWith}
+          defaultChatCli={defaultChatCli}
+          onMakeDefault={setDefaultChatCli}
+          embedded
+        />
       </section>
       <section className="border-t border-border-subtle pt-8">
         <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-secondary">
@@ -10131,10 +10138,14 @@ function AgentsSection({
   clis,
   onStartChatWith,
   embedded,
+  defaultChatCli,
+  onMakeDefault,
 }: {
   clis: CliInfo[];
   onStartChatWith?: (cliId: string, modelId?: string) => void;
   embedded?: boolean;
+  defaultChatCli?: string;
+  onMakeDefault?: (cliId: string) => void;
 }) {
   const detected = clis.filter((c) => c.available);
   const missing = clis.filter((c) => !c.available);
@@ -10153,7 +10164,13 @@ function AgentsSection({
           </div>
           <div className="flex flex-col gap-3">
             {detected.map((c) => (
-              <AgentCard key={c.id} cli={c} onStartChat={onStartChatWith} />
+              <AgentCard
+                key={c.id}
+                cli={c}
+                onStartChat={onStartChatWith}
+                isDefault={defaultChatCli === c.id}
+                onMakeDefault={onMakeDefault ? () => onMakeDefault(c.id) : undefined}
+              />
             ))}
           </div>
         </section>
@@ -10212,13 +10229,23 @@ function authLoginCmd(cliId: string, raw: string): string | null {
 function AgentCard({
   cli,
   onStartChat,
+  isDefault,
+  onMakeDefault,
 }: {
   cli: CliInfo;
   onStartChat?: (cliId: string, modelId?: string) => void;
+  isDefault?: boolean;
+  onMakeDefault?: () => void;
 }) {
   const brand = VENDOR_BRAND[cli.id] ?? VENDOR_BRAND.other;
   const models = MODELS[cli.id] ?? [];
   const [open, setOpen] = useState(false);
+  // The provider's default model (what a new chat uses). Set right here in
+  // Models, so there's no separate Defaults page.
+  const modelKey = `prevail.model.${cli.id}`;
+  const [defaultModel, setDefaultModel] = useState(() => lsGet(modelKey) || models[0]?.id || "");
+  useEffect(() => { if (defaultModel) lsSet(modelKey, defaultModel); }, [modelKey, defaultModel]);
+  const setAsDefault = (modelId: string) => { setDefaultModel(modelId); onMakeDefault?.(); };
   const [status, setStatus] = useState<Record<string, ModelVerifyStatus>>(() => {
     const map = loadVerifyMap();
     const out: Record<string, ModelVerifyStatus> = {};
@@ -10295,6 +10322,11 @@ function AgentCard({
               }`}>
                 {cli.available ? "Detected" : "Not installed"}
               </span>
+              {isDefault && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-background">
+                  <Check className="h-2.5 w-2.5" strokeWidth={3} /> Default chat
+                </span>
+              )}
               {cli.available && models.length > 0 && (
                 <span className="font-mono text-[10px] text-text-muted">
                   · {models.filter((m) => status[m.id] === "ok").length}/{models.length} verified
@@ -10340,13 +10372,14 @@ function AgentCard({
               const s = status[m.id];
               const err = errors[m.id];
               return (
-                <div key={m.id} className="flex items-start gap-3 rounded-md border border-border-subtle bg-background px-3 py-2">
+                <div key={m.id} className={`flex items-start gap-3 rounded-md border px-3 py-2 ${defaultModel === m.id ? "border-accent-border bg-accent-soft" : "border-border-subtle bg-background"}`}>
                   <div className="mt-0.5 w-3 shrink-0 text-center text-[12px] leading-none">
                     <StatusGlyph s={s} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-x-2">
                       <span className="font-mono text-sm text-text-primary">{m.label}</span>
+                      {defaultModel === m.id && <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[8px] uppercase tracking-wider text-background">default</span>}
                       {m.blurb && <span className="text-[11px] text-text-muted">{m.blurb}</span>}
                     </div>
                     <div className="mt-0.5 font-mono text-[10px] text-text-muted/80">
@@ -10376,6 +10409,17 @@ function AgentCard({
                     >
                       {s === "verifying" ? "testing…" : s === "ok" ? "re-test" : "test"}
                     </button>
+                    {defaultModel === m.id ? (
+                      <span className="rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-accent">default</span>
+                    ) : (
+                      <button
+                        onClick={() => setAsDefault(m.id)}
+                        title="Use this model by default for new chats"
+                        className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                      >
+                        set default
+                      </button>
+                    )}
                     <button
                       onClick={() => onStartChat?.(cli.id, m.id)}
                       className={`rounded-md border px-2 py-1 font-mono text-[9px] uppercase tracking-wider ${
@@ -10892,7 +10936,39 @@ function SettingsRowLite({ title, desc, control }: { title: string; desc: string
   );
 }
 
-const DIRECT_PROVIDERS_SOON = ["Anthropic", "OpenAI", "xAI (Grok)", "Google Gemini", "DeepSeek", "Qwen / DashScope", "GLM / Z.AI", "Kimi / Moonshot", "MiniMax", "Hugging Face", "OpenCode Zen"];
+// OpenAI dropped its logo from simple-icons (trademark), so we keep the glyph
+// path inline (same one ProviderMark uses for Codex).
+const OPENAI_PATH = "M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973l-.001.142v5.518a.79.79 0 0 0 .388.677l5.815 3.354-2.02 1.168a.075.075 0 0 1-.071 0l-4.83-2.788a4.504 4.504 0 0 1-1.647-6.098zm16.597 3.855L13.116 8.38 15.131 7.22a.071.071 0 0 1 .07 0l4.83 2.792a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.394-.674zm2.01-3.023l-.142-.085-4.774-2.781a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.659 4.139l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z";
+
+// Direct API providers on the roadmap — shown with real brand marks. `path`+`hex`
+// render the company logo on a white tile; `mono` is a fallback for brands with
+// no official simple-icon yet.
+type DirectProvider = { name: string; path?: string; hex?: string; mono?: string };
+const DIRECT_PROVIDERS_SOON: DirectProvider[] = [
+  { name: "Anthropic", path: siAnthropic.path, hex: `#${siAnthropic.hex}` },
+  { name: "OpenAI", path: OPENAI_PATH, hex: "#000000" },
+  { name: "xAI (Grok)", path: siXRaw.path, hex: "#000000" },
+  { name: "Google Gemini", path: siGooglegemini.path, hex: `#${siGooglegemini.hex}` },
+  { name: "DeepSeek", path: siDeepseek.path, hex: `#${siDeepseek.hex}` },
+  { name: "Qwen / DashScope", path: siQwen.path, hex: `#${siQwen.hex}` },
+  { name: "MiniMax", path: siMinimax.path, hex: `#${siMinimax.hex}` },
+  { name: "Hugging Face", path: siHuggingface.path, hex: `#${siHuggingface.hex}` },
+  { name: "GLM / Z.AI", mono: "Z" },
+  { name: "Kimi / Moonshot", mono: "K" },
+  { name: "OpenCode Zen", mono: "OZ" },
+];
+
+function DirectProviderMark({ p }: { p: DirectProvider }) {
+  return (
+    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-white">
+      {p.path ? (
+        <svg width={16} height={16} viewBox="0 0 24 24" fill={p.hex ?? "#111"} aria-hidden><path d={p.path} /></svg>
+      ) : (
+        <span className="font-mono text-[9px] font-semibold text-text-muted">{p.mono}</span>
+      )}
+    </span>
+  );
+}
 function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promise<CliInfo[]>; embedded?: boolean }) {
   const [key, setKey] = useState("");
   const [configured, setConfigured] = useState(false);
@@ -10960,9 +11036,10 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
       <div className="mt-4">
         <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Direct providers</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {DIRECT_PROVIDERS_SOON.map((name) => (
-            <div key={name} className="flex items-center justify-between rounded-lg border border-border-subtle bg-surface px-4 py-2.5 opacity-70">
-              <span className="text-sm text-text-secondary">{name}</span>
+          {DIRECT_PROVIDERS_SOON.map((p) => (
+            <div key={p.name} className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-4 py-2.5">
+              <DirectProviderMark p={p} />
+              <span className="flex-1 text-sm text-text-secondary">{p.name}</span>
               <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
             </div>
           ))}
@@ -13052,108 +13129,6 @@ function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   );
 }
 
-// Redesigned Defaults — one expandable provider→model accordion instead of a
-// flat CLI list stacked above a separate per-CLI model block. Each row IS a
-// provider; mark one as the default chat, expand it to choose its model. Council
-// panel + chair live in their own Council section (clarified in the intro).
-function DefaultsForm({ clis }: { clis: CliInfo[] }) {
-  const available = useMemo(
-    () => clis.filter((c) => c.available && MODELS[c.id] && (!isBunkerOn() || isLocalCli(c.id))),
-    [clis],
-  );
-  const firstAvailable = available[0]?.id ?? "";
-  const [defaultChatCli, setDefaultChatCli] = useState(() => lsGet(LS.defaultChatCli) || firstAvailable);
-  const [expanded, setExpanded] = useState<string>(() => lsGet(LS.defaultChatCli) || firstAvailable);
-  useEffect(() => { if (defaultChatCli) lsSet(LS.defaultChatCli, defaultChatCli); }, [defaultChatCli]);
-  useEffect(() => {
-    if (!defaultChatCli && firstAvailable) { setDefaultChatCli(firstAvailable); setExpanded(firstAvailable); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firstAvailable]);
-
-  return (
-    <div className="space-y-4">
-      <p className="text-sm leading-relaxed text-text-secondary">
-        Pick the model that opens when you start a new chat. Mark a provider as the <span className="font-semibold text-accent">default</span>, and expand it to choose which of its models to use. The multi-model panel and its chair live in <span className="font-semibold text-accent">Settings → Council</span>.
-      </p>
-      {available.length === 0 && (
-        <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
-          No chat providers available{isBunkerOn() ? " in Bunker Mode (local only)" : ""}. Install a CLI or start a local model from <span className="text-accent">Settings → Models</span>.
-        </div>
-      )}
-      <div className="space-y-2.5">
-        {available.map((c) => (
-          <DefaultCliRow
-            key={c.id}
-            cli={c}
-            isDefault={defaultChatCli === c.id}
-            expanded={expanded === c.id}
-            onToggleExpand={() => setExpanded((e) => (e === c.id ? "" : c.id))}
-            onMakeDefault={() => { setDefaultChatCli(c.id); setExpanded(c.id); }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DefaultCliRow({ cli, isDefault, expanded, onToggleExpand, onMakeDefault }: {
-  cli: CliInfo;
-  isDefault: boolean;
-  expanded: boolean;
-  onToggleExpand: () => void;
-  onMakeDefault: () => void;
-}) {
-  const key = `prevail.model.${cli.id}`;
-  const models = MODELS[cli.id] ?? [];
-  const [picked, setPicked] = useState(() => lsGet(key) || models[0]?.id || "");
-  useEffect(() => { lsSet(key, picked); }, [key, picked]);
-  const current = models.find((m) => m.id === picked);
-  return (
-    <div className={`overflow-hidden rounded-xl border bg-surface transition-colors ${expanded || isDefault ? "border-accent-border" : "border-border"}`}>
-      <div className="flex items-center gap-3 px-4 py-3">
-        <button onClick={onToggleExpand} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-          {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" /> : <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />}
-          <ProviderMark vendor={cli.id} size={26} />
-          <span className="shrink-0 font-display text-sm font-semibold text-text-primary">{cli.label}</span>
-          <span className="truncate font-mono text-xs text-text-muted">{current?.label ?? "default model"}</span>
-        </button>
-        {isDefault ? (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background">
-            <Check className="h-3 w-3" strokeWidth={3} /> Default chat
-          </span>
-        ) : (
-          <button onClick={onMakeDefault} className="shrink-0 rounded-full border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
-            Make default
-          </button>
-        )}
-      </div>
-      {expanded && (
-        <div className="border-t border-border-subtle bg-background/40 p-3">
-          <div className="grid gap-2 sm:grid-cols-2">
-            {models.map((m) => {
-              const on = picked === m.id;
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => setPicked(m.id)}
-                  className={`flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-left transition-colors ${
-                    on ? "border-accent bg-accent-soft" : "border-border bg-surface hover:bg-surface-warm"
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <div className={`font-mono text-sm ${on ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</div>
-                    {m.blurb && <div className="truncate text-[11px] text-text-muted">{m.blurb}</div>}
-                  </div>
-                  {on && <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-background"><Check className="h-3 w-3" strokeWidth={3} /></span>}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 
 // FrameworkPickerCard was deleted with v0.2.92 — the chip-row UI
