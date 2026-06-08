@@ -1274,17 +1274,15 @@ function extractCliError(stderr?: string): string | null {
 
 function Brand({ className = "", fill = false }: { className?: string; fill?: boolean }) {
   if (fill) {
-    // Flexbox justify-between spreads the letters edge-to-edge across
-    // whatever width the parent provides. No letter-spacing math.
+    // Clean wordmark spread edge-to-edge. We spell it out (no embedded mark)
+    // so it reads instantly and the real wit — the "AI" hiding in prevAIl —
+    // carries the brand. The chevron+star mark lives where it has room: the
+    // app icon, the Council hero, the empty state.
     return (
-      <span className={`flex w-full items-center justify-between ${className}`}>
+      <span className={`flex w-full items-center justify-between ${className}`} aria-label="Prevail">
         <span>P</span>
         <span>R</span>
-        {/* The logo mark stands in for the "E". Sized ~1.1em so the round mark
-            reads at the same visual weight as the letters. */}
-        <span className="inline-flex shrink-0 items-center" style={{ marginInline: "-0.04em" }} aria-label="E">
-          <PrevailLogo size={26} src="/logo-512.png" animated={false} />
-        </span>
+        <span>E</span>
         <span>V</span>
         <span className="text-ai">A</span>
         <span className="text-ai">I</span>
