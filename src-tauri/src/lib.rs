@@ -922,6 +922,106 @@ fn journal_append(vault: String, domain: Option<String>, entry: String) -> Resul
     Ok(())
 }
 
+/// Append a DECISION to the domain's append-only decision log
+/// (`<domain>/_decisions.jsonl`). A council verdict, an accepted recommendation,
+/// or a user-stated preference ("make Mayo my favorite hospital") is a decision
+/// — durable, provenance-tagged, and fed into state derivation + scoring so the
+/// domain actually learns. Mirrors `intent_append`. (feedback v0.4.1 I1/I5)
+#[tauri::command]
+fn decision_append(
+    vault: String,
+    domain: Option<String>,
+    record: serde_json::Value,
+) -> Result<(), String> {
+    use std::io::Write;
+    let dir = domain_dir(&vault, &domain);
+    fs::create_dir_all(&dir).map_err(|e| format!("mkdir decisions: {e}"))?;
+    let file = dir.join("_decisions.jsonl");
+    let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
+    let mut f = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&file)
+        .map_err(|e| format!("open _decisions.jsonl: {e}"))?;
+    writeln!(f, "{line}").map_err(|e| format!("write decision: {e}"))?;
+    Ok(())
+}
+
+/// Read the domain's decision log (newest first), capped at `limit`. Used by
+/// the Insights surface + to attach a feedback rating to a prior verdict.
+#[tauri::command]
+fn decisions_read(
+    vault: String,
+    domain: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let dir = domain_dir(&vault, &domain);
+    let file = dir.join("_decisions.jsonl");
+    let text = match read_to_string_retry(&file) {
+        Ok(t) => t,
+        Err(_) => return Ok(vec![]),
+    };
+    let mut out: Vec<serde_json::Value> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect();
+    out.reverse(); // newest first
+    if let Some(n) = limit {
+        out.truncate(n);
+    }
+    Ok(out)
+}
+
+/// Attach a thumbs up/down (and optional note) to a recorded decision, keyed by
+/// its `id`. Rewrites the JSONL with the matching record's `feedback` set so the
+/// distiller/learning loop can prefer the model+framework+lens combos that
+/// produced liked verdicts. (feedback v0.4.1 I5)
+#[tauri::command]
+fn decision_feedback(
+    vault: String,
+    domain: Option<String>,
+    id: String,
+    rating: String, // "up" | "down" | "clear"
+    note: Option<String>,
+) -> Result<(), String> {
+    let dir = domain_dir(&vault, &domain);
+    let file = dir.join("_decisions.jsonl");
+    let text = read_to_string_retry(&file).map_err(|e| format!("read _decisions.jsonl: {e}"))?;
+    let mut lines: Vec<serde_json::Value> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect();
+    let mut found = false;
+    for rec in lines.iter_mut() {
+        if rec.get("id").and_then(|v| v.as_str()) == Some(id.as_str()) {
+            if let Some(obj) = rec.as_object_mut() {
+                if rating == "clear" {
+                    obj.remove("feedback");
+                } else {
+                    obj.insert(
+                        "feedback".into(),
+                        serde_json::json!({ "rating": rating, "note": note }),
+                    );
+                }
+            }
+            found = true;
+            break;
+        }
+    }
+    if !found {
+        return Err(format!("decision not found: {id}"));
+    }
+    let body: String = lines
+        .iter()
+        .filter_map(|r| serde_json::to_string(r).ok())
+        .collect::<Vec<_>>()
+        .join("\n");
+    fs::write(&file, format!("{body}\n")).map_err(|e| format!("write _decisions.jsonl: {e}"))?;
+    Ok(())
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Benchmark questions — CRUD over <vault>/benchmark/questions/*.md. The
 // markdown format (frontmatter + ## Prompt/## Context/## Notes) mirrors the
@@ -2876,6 +2976,9 @@ pub fn run() {
             usage_summary,
             intent_append,
             journal_append,
+            decision_append,
+            decisions_read,
+            decision_feedback,
             read_memory_md,
             write_text_file,
             read_text_file,
@@ -3093,6 +3196,55 @@ mod usage_tests {
         let i_first = journal.find("first").unwrap();
         let i_second = journal.find("second").unwrap();
         assert!(i_second < i_first, "newest entry should be on top");
+
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn decision_log_append_read_feedback() {
+        let vault = std::env::temp_dir().join(format!("prevail-decision-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&vault);
+        let vault_s = vault.to_string_lossy().to_string();
+
+        decision_append(
+            vault_s.clone(),
+            Some("health".into()),
+            serde_json::json!({ "id": "d-1", "kind": "council", "ts": 1, "verdict": "go with Mayo" }),
+        )
+        .unwrap();
+        decision_append(
+            vault_s.clone(),
+            Some("health".into()),
+            serde_json::json!({ "id": "d-2", "kind": "chat", "ts": 2, "verdict": "annual physical in March" }),
+        )
+        .unwrap();
+
+        // Read returns newest-first.
+        let recs = decisions_read(vault_s.clone(), Some("health".into()), None).unwrap();
+        assert_eq!(recs.len(), 2);
+        assert_eq!(recs[0]["id"], "d-2");
+        assert_eq!(recs[1]["id"], "d-1");
+
+        // limit caps the result.
+        let one = decisions_read(vault_s.clone(), Some("health".into()), Some(1)).unwrap();
+        assert_eq!(one.len(), 1);
+        assert_eq!(one[0]["id"], "d-2");
+
+        // Feedback attaches to the right record and survives a re-read.
+        decision_feedback(vault_s.clone(), Some("health".into()), "d-1".into(), "up".into(), Some("spot on".into())).unwrap();
+        let after = decisions_read(vault_s.clone(), Some("health".into()), None).unwrap();
+        let d1 = after.iter().find(|r| r["id"] == "d-1").unwrap();
+        assert_eq!(d1["feedback"]["rating"], "up");
+        assert_eq!(d1["feedback"]["note"], "spot on");
+
+        // clear removes the feedback.
+        decision_feedback(vault_s.clone(), Some("health".into()), "d-1".into(), "clear".into(), None).unwrap();
+        let cleared = decisions_read(vault_s.clone(), Some("health".into()), None).unwrap();
+        let d1c = cleared.iter().find(|r| r["id"] == "d-1").unwrap();
+        assert!(d1c.get("feedback").is_none());
+
+        // Unknown id errors.
+        assert!(decision_feedback(vault_s.clone(), Some("health".into()), "nope".into(), "up".into(), None).is_err());
 
         let _ = fs::remove_dir_all(&vault);
     }

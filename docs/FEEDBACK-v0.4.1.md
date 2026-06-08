@@ -24,6 +24,15 @@ a single DMG via scripts/release.sh.
   - B9 ✅ MCP expose config normalizes DMG/translocated paths to
     /Applications/Prevail.app + warns the user to move the app.
   - B10 ✅ session-log filename collision counter (no overwrite on same-second saves).
+- **Wave 2 in progress:**
+  - I1 (part) ✅ decision log: new `_decisions.jsonl` writer (`decision_append` /
+    `decisions_read` / `decision_feedback` in lib.rs, + WEBUI_ALLOWED, + Rust test).
+    Council verdicts now auto-record as decisions (App.tsx convene effect).
+  - I5 ✅ verdict feedback: thumbs up/down under the live council verdict →
+    `decision_feedback` (rating stored on the decision record for learning).
+  - I1 (remaining): extend distill daemon to derive `_state.md` + extract chat
+    decisions; I2/I3 coach-quality surface/score; I6 surface intents; I8 Insights
+    tab; I9 message metadata; I10 OpenRouter activation feedback. ← next.
 
 Fru's overall verdict: "very, very impressed… it is unbelievable." Good signal —
 this is refinement of a working product, not a rescue.
