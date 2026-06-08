@@ -497,8 +497,8 @@ const DOMAIN_BLURBS: Record<string, string> = {
   business: "Your ventures, clients, and what you're building.",
   insurance: "Coverage, renewals, and protecting what matters.",
   estate: "Your legacy, documents, and looking after your people.",
-  calendar: "What's coming up — and making time for what counts.",
-  schedule: "What's coming up — and making time for what counts.",
+  calendar: "What's coming up, and making time for what counts.",
+  schedule: "What's coming up, and making time for what counts.",
   benefits: "Perks, plans, and everything your employer offers.",
   brand: "Your name, your voice, and how the world sees you.",
   content: "Ideas, posts, and the things you create.",
@@ -506,7 +506,7 @@ const DOMAIN_BLURBS: Record<string, string> = {
   realestate: "Property, home, and the roof over your head.",
   home: "Your space, your projects, and daily life at home.",
   records: "Important documents, kept safe and easy to find.",
-  vision: "The big picture — where you're going, and why.",
+  vision: "The big picture: where you're going, and why.",
   social: "Friends, connections, and staying in touch.",
   family: "The people closest to you, and staying connected.",
   learning: "Skills, courses, and growing your mind.",
@@ -515,10 +515,10 @@ const DOMAIN_BLURBS: Record<string, string> = {
   intelligence: "Research, signals, and staying in the know.",
   explore: "Curiosities, trips, and things worth discovering.",
   travel: "Curiosities, trips, and things worth discovering.",
-  chief: "Your command center — today's priorities and what matters now.",
-  mail: "Your inbox — important threads handled, noise filtered, nothing dropped.",
-  email: "Your inbox — important threads handled, noise filtered, nothing dropped.",
-  inbox: "Your inbox — important threads handled, noise filtered, nothing dropped.",
+  chief: "Your command center for today's priorities and what matters now.",
+  mail: "Your inbox: important threads handled, noise filtered, nothing dropped.",
+  email: "Your inbox: important threads handled, noise filtered, nothing dropped.",
+  inbox: "Your inbox: important threads handled, noise filtered, nothing dropped.",
 };
 
 function domainBlurb(name: string): string {
@@ -3866,7 +3866,7 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
         </button>
       </div>
       {err && <div className="text-xs text-text-muted">{/Bunker/i.test(err)
-        ? "Bunker Mode is on — start a local model (Ollama) and insights will surface on-device."
+        ? "Bunker Mode is on. Start a local model (Ollama) and insights will surface on-device."
         : `Couldn't surface insights (${err.slice(0, 80)}). Needs a working agent.`}</div>}
       {hasContent && (() => {
         const questions = data!.questions.filter((q) => !dismissed.has(q));
@@ -6585,11 +6585,13 @@ function ChatPanel({
             return I ? <I className="h-5 w-5 shrink-0 text-accent" /> : <span className="text-accent">◆</span>;
           })()}
           <span className="shrink-0 font-display text-lg font-semibold">{titleCase(domain)}</span>
-          <ContextScoreBadge
-            score={ctxScore}
-            onClick={() => setDomainTab(domainTab === "context" ? "chat" : "context")}
-          />
-          <span className="hidden min-w-0 truncate text-sm text-text-muted md:inline">{domainBlurb(domain)}</span>
+          <span className="hidden min-w-0 flex-1 truncate text-sm text-text-muted md:inline">{domainBlurb(domain)}</span>
+          <div className="ml-auto shrink-0">
+            <ContextScoreBadge
+              score={ctxScore}
+              onClick={() => setDomainTab(domainTab === "context" ? "chat" : "context")}
+            />
+          </div>
         </div>
       )}
 
@@ -6607,7 +6609,7 @@ function ChatPanel({
               <div
                 className="mt-6 flex items-center gap-3 rounded-full border px-4 py-2"
                 style={{ borderColor: scoreColor(lifeReadiness.life_readiness) }}
-                title={`Life Readiness — average context score across ${lifeReadiness.domains.length} domain${lifeReadiness.domains.length === 1 ? "" : "s"}`}
+                title={`Life Readiness · average context score across ${lifeReadiness.domains.length} domain${lifeReadiness.domains.length === 1 ? "" : "s"}`}
               >
                 <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
                   Life Readiness
@@ -8811,19 +8813,19 @@ function ContextScoreBadge({
 }) {
   if (!score) return null;
   const color = scoreColor(score.score);
-  const tip = `Context score ${score.score}/100 · updated ${formatFreshness(
+  const tip = `Context score ${score.score} out of 100 · updated ${formatFreshness(
     score.freshness_secs,
-  )}${score.audited_at ? ` · audited ${formatAuditedAt(score.audited_at)}` : " · heuristic"} — click to review & rescan`;
+  )}${score.audited_at ? ` · audited ${formatAuditedAt(score.audited_at)}` : " · heuristic"} · click to review & rescan`;
   return (
     <button
       onClick={onClick}
       title={tip}
-      className="group inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide transition-all hover:shadow-sm"
+      className="group inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[11px] font-semibold tracking-wide transition-all hover:shadow-sm"
       style={{ borderColor: color, color }}
     >
       <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
-      {score.score}
-      {/* explicit edit affordance — makes it obvious the score is clickable */}
+      {score.score}<span className="opacity-50">/100</span>
+      {/* explicit edit affordance so it's obvious the score is clickable */}
       <Pencil className="h-2.5 w-2.5 opacity-60 transition-opacity group-hover:opacity-100" />
     </button>
   );
