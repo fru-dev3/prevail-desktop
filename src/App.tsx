@@ -7770,24 +7770,17 @@ function CouncilPanel({
   useEffect(() => {
     setSelectedSlots((cur) => {
       if (cur.size > 0) return cur;
-      // Seed from the configured default council members (Settings → Council).
-      // Each member uses its per-provider default model; fall back to that CLI's
-      // first slot. If no members are configured yet, default to one slot per
-      // available CLI (legacy behavior).
+      // Seed from the configured default council panel (Settings → Council),
+      // which stores exact slot keys (`${cli}::${model}`) — so a panel can hold
+      // several models from the same provider. Only keep slots that still exist
+      // and whose provider is available. If nothing's configured, default to one
+      // slot per available CLI.
       const configured = readCouncilMembers();
       const def = new Set<string>();
-      const pickSlotForCli = (cliId: string): string | undefined => {
-        const model = lsGet(`prevail.model.${cliId}`) || "";
-        const exact = allSlots.find((s) => s.cli === cliId && s.model === model);
-        return (exact ?? allSlots.find((s) => s.cli === cliId))?.key;
-      };
-      if (configured.length) {
-        for (const cliId of configured) {
-          const cli = clis.find((c) => c.id === cliId);
-          if (!cli?.available) continue;
-          const k = pickSlotForCli(cliId);
-          if (k) def.add(k);
-        }
+      for (const key of configured) {
+        const slot = allSlots.find((s) => s.key === key);
+        const cli = slot && clis.find((c) => c.id === slot.cli);
+        if (slot && cli?.available) def.add(key);
       }
       if (def.size === 0) {
         const seen = new Set<string>();
@@ -7833,6 +7826,13 @@ function CouncilPanel({
   const [chairSlot, setChairSlot] = useState<string>("");
   useEffect(() => {
     if (chairSlot) return;
+    // Prefer the configured chair SLOT (a specific model); fall back to the
+    // legacy chair-by-CLI, then the first panelist.
+    const savedSlot = readCouncilChair();
+    if (savedSlot && allSlots.some((s) => s.key === savedSlot)) {
+      setChairSlot(savedSlot);
+      return;
+    }
     const savedCli = lsGet(LS.defaultChairCli);
     if (savedCli) {
       const match = allSlots.find((s) => s.cli === savedCli);
@@ -7847,7 +7847,7 @@ function CouncilPanel({
 
   useEffect(() => {
     const s = allSlots.find((x) => x.key === chairSlot);
-    if (s) lsSet(LS.defaultChairCli, s.cli);
+    if (s) { lsSet(COUNCIL_CHAIR_KEY, s.key); lsSet(LS.defaultChairCli, s.cli); }
   }, [chairSlot, allSlots]);
 
   const chairSlotObj = useMemo(
@@ -13045,84 +13045,122 @@ function PaletteCard({
   );
 }
 
-// Default council membership — which providers sit on the panel by default, and
-// who chairs. Stored as CLI ids; each panelist uses its per-provider default
-// model from Settings → Defaults. Council sessions seed from these.
+// Default council membership — stored as SLOT KEYS (`${cli}::${model}`) so the
+// panel can hold specific models, e.g. three different Claude models plus two
+// Codex models. The chair is one slot key. Council sessions seed from these.
 const COUNCIL_MEMBERS_KEY = "prevail.council.defaultMembers";
-function readCouncilMembers(): string[] {
-  try { const a = JSON.parse(lsGet(COUNCIL_MEMBERS_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; }
+const COUNCIL_CHAIR_KEY = "prevail.council.defaultChair";
+function councilSlotKey(cliId: string, modelId: string): string { return `${cliId}::${modelId}`; }
+function councilModelsFor(cliId: string): ModelPick[] {
+  return MODELS[cliId] ?? [{ id: "", label: "Default", blurb: "" } as ModelPick];
 }
+function readCouncilMembers(): string[] {
+  // Only accept slot-key-shaped entries (`cli::model`). Older builds stored bare
+  // CLI ids here; those are ignored so the panel re-seeds with real slots.
+  try { const a = JSON.parse(lsGet(COUNCIL_MEMBERS_KEY) || "[]"); return Array.isArray(a) ? a.filter((x) => typeof x === "string" && x.includes("::")) : []; } catch { return []; }
+}
+function readCouncilChair(): string { return lsGet(COUNCIL_CHAIR_KEY) || ""; }
 
-// A3: Council config is its own first-class section. Distinguishes Defaults
-// (single-model chat) from Council (multi-model panel): here you choose the
-// default panel MEMBERS and the chair who writes the verdict.
+// Council config — its own first-class section. You pick the EXACT models on the
+// default panel (per-provider, multiple models allowed) and which one chairs.
 function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   const available = useMemo(() => clis.filter((c) => c.available && (!isBunkerOn() || isLocalCli(c.id))), [clis]);
-  const firstAvailable = available[0]?.id ?? "";
-  const [members, setMembers] = useState<string[]>(() => {
-    const m = readCouncilMembers();
-    return m.length ? m : available.slice(0, 3).map((c) => c.id); // sensible default: first 3
-  });
-  const [chair, setChair] = useState(() => lsGet(LS.defaultChairCli) || firstAvailable);
-  useEffect(() => { lsSet(COUNCIL_MEMBERS_KEY, JSON.stringify(members)); }, [members]);
-  useEffect(() => { if (chair) lsSet(LS.defaultChairCli, chair); }, [chair]);
-  // Keep the chair pointed at an actual member.
+  const [members, setMembers] = useState<Set<string>>(() => new Set(readCouncilMembers()));
+  const [chair, setChair] = useState<string>(() => readCouncilChair());
+  const [expanded, setExpanded] = useState<string>("");
+  // First-run default: the first model of the first three available providers.
   useEffect(() => {
-    if (members.length && !members.includes(chair)) setChair(members[0]);
+    if (members.size === 0 && readCouncilMembers().length === 0 && available.length) {
+      setMembers(new Set(available.slice(0, 3).map((c) => councilSlotKey(c.id, councilModelsFor(c.id)[0].id))));
+    }
+    if (!expanded && available.length) setExpanded(available[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [available]);
+  useEffect(() => { lsSet(COUNCIL_MEMBERS_KEY, JSON.stringify([...members])); }, [members]);
+  useEffect(() => {
+    lsSet(COUNCIL_CHAIR_KEY, chair);
+    const cli = chair.split("::")[0];
+    if (cli) lsSet(LS.defaultChairCli, cli); // back-compat
+  }, [chair]);
+  // Chair must be a current member.
+  useEffect(() => {
+    if (members.size && !members.has(chair)) setChair([...members][0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [members]);
-  const toggleMember = (id: string) =>
-    setMembers((m) => (m.includes(id) ? m.filter((x) => x !== id) : [...m, id]));
+
+  const toggle = (key: string) => setMembers((m) => { const n = new Set(m); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  // Resolve a readable chair label from its slot key.
+  const chairLabel = (() => {
+    if (!chair) return "—";
+    const [cli, model] = chair.split("::");
+    const c = clis.find((x) => x.id === cli);
+    const m = councilModelsFor(cli).find((x) => x.id === model);
+    return `${c?.label ?? cli} · ${m?.label ?? (model || "default")}`;
+  })();
 
   return (
     <>
-      <SettingsHeader title="Council" subtitle="A council convenes several models on one question — each answers independently, then a chair synthesizes the verdict. Set who's on the panel by default and who chairs." />
-      <div className="space-y-6">
-        {/* Defaults vs Council, made explicit */}
-        <div className="rounded-lg border border-border-subtle bg-surface p-4 text-xs leading-relaxed text-text-secondary">
-          <span className="font-semibold text-text-primary">Chat vs Council.</span> <span className="text-accent">Defaults</span> sets the single model a normal chat opens with. <span className="text-accent">Council</span> (this page) sets the panel of models that deliberate together — each member uses its own default model from Defaults.
-        </div>
-
-        {/* Default panel members */}
-        <div>
-          <div className="mb-1 text-xs uppercase tracking-wider text-text-muted">Default panel members</div>
-          <p className="mb-3 text-xs text-text-muted/80">Who's on the council when you convene one. You can still add/remove members per session.</p>
-          <div className="space-y-2">
-            {available.length === 0 && <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-sm text-text-muted">No providers available{isBunkerOn() ? " in Bunker Mode" : ""}.</div>}
-            {available.map((c) => {
-              const on = members.includes(c.id);
-              const isChair = chair === c.id;
-              return (
-                <div key={c.id} className={`flex items-center gap-3 rounded-md border px-3 py-2 ${on ? "border-accent-border bg-accent-soft" : "border-border bg-surface"}`}>
-                  <button onClick={() => toggleMember(c.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${on ? "border-accent bg-accent text-background" : "border-border bg-background"}`}>
-                      {on && <Check className="h-3 w-3" strokeWidth={3} />}
-                    </span>
-                    <ProviderMark vendor={c.id} size={22} />
-                    <span className="font-display text-sm font-semibold text-text-primary">{c.label}</span>
-                  </button>
-                  {/* Chair selector — only members can chair */}
-                  {on && (
-                    <button
-                      onClick={() => setChair(c.id)}
-                      title={isChair ? "Chairs the council (writes the verdict)" : "Make chair"}
-                      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider ${
-                        isChair ? "bg-accent text-background" : "border border-border text-text-muted hover:border-accent-border hover:text-accent"
-                      }`}
-                    >
-                      <Crown className="h-3 w-3" /> {isChair ? "Chair" : "Make chair"}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-border-subtle bg-surface p-4 text-xs leading-relaxed text-text-secondary">
-          <span className="font-semibold text-text-primary">How it works.</span> Convene a council from the <span className="text-accent">Council</span> tab inside any domain — it starts with these members. Panelists answer in parallel; the <span className="inline-flex items-center gap-0.5"><Crown className="h-3 w-3" /> chair</span> reads every answer and writes a consensus + disagreements + recommended action. Thumbs up/down on a verdict trains future runs.
-        </div>
+      <SettingsHeader title="Council" subtitle="Convene several models on one question — each answers independently, then a chair writes the verdict. Pick the exact models on your default panel (you can add several from the same provider)." />
+      {/* Compact summary bar — what the panel is right now. */}
+      <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-accent-border bg-accent-soft px-4 py-3 text-sm">
+        <span className="font-semibold text-text-primary">{members.size} model{members.size === 1 ? "" : "s"} on the panel</span>
+        <span className="inline-flex items-center gap-1 text-text-secondary"><Crown className="h-3.5 w-3.5 text-accent" /> chair: <span className="font-medium text-text-primary">{chairLabel}</span></span>
       </div>
+      <div className="space-y-2">
+        {available.length === 0 && <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-sm text-text-muted">No providers available{isBunkerOn() ? " in Bunker Mode (local only)" : ""}.</div>}
+        {available.map((c) => {
+          const models = councilModelsFor(c.id);
+          const picked = models.filter((m) => members.has(councilSlotKey(c.id, m.id))).length;
+          const isExp = expanded === c.id;
+          return (
+            <div key={c.id} className={`overflow-hidden rounded-lg border bg-surface transition-colors ${isExp || picked > 0 ? "border-accent-border" : "border-border-subtle"}`}>
+              <button onClick={() => setExpanded((e) => (e === c.id ? "" : c.id))} className="flex w-full items-center gap-3 px-4 py-3 text-left">
+                {isExp ? <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" /> : <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />}
+                <ProviderMark vendor={c.id} size={26} />
+                <span className="flex-1 font-display text-sm font-semibold text-text-primary">{c.label}</span>
+                {picked > 0 && <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-background">{picked} on panel</span>}
+                <span className="shrink-0 font-mono text-[10px] text-text-muted">{models.length} model{models.length === 1 ? "" : "s"}</span>
+              </button>
+              {isExp && (
+                <div className="space-y-1.5 border-t border-border-subtle bg-background/40 p-3">
+                  {models.map((m) => {
+                    const key = councilSlotKey(c.id, m.id);
+                    const on = members.has(key);
+                    const isChair = chair === key;
+                    return (
+                      <div key={key} className={`flex items-center gap-3 rounded-md border px-3 py-2 ${on ? "border-accent-border bg-accent-soft" : "border-border-subtle bg-surface"}`}>
+                        <button onClick={() => toggle(key)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                          <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${on ? "border-accent bg-accent text-background" : "border-border bg-background"}`}>
+                            {on && <Check className="h-3 w-3" strokeWidth={3} />}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="font-mono text-sm text-text-primary">{m.label}</span>
+                            {m.blurb && <span className="ml-2 text-[11px] text-text-muted">{m.blurb}</span>}
+                          </span>
+                        </button>
+                        {on && (
+                          <button
+                            onClick={() => setChair(key)}
+                            title={isChair ? "Chairs the council (writes the verdict)" : "Make this model the chair"}
+                            className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider ${
+                              isChair ? "bg-accent text-background" : "border border-border text-text-muted hover:border-accent-border hover:text-accent"
+                            }`}
+                          >
+                            <Crown className="h-3 w-3" /> {isChair ? "Chair" : "Chair"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-4 text-xs leading-relaxed text-text-muted">
+        Convene a council from the <span className="text-accent">Council</span> tab in any domain — it starts with this panel. Each model answers in parallel; the <Crown className="inline h-3 w-3" /> chair synthesizes a consensus + disagreements + recommended action. <span className="text-accent">Defaults</span> sets your single-model chat; this sets the panel.
+      </p>
     </>
   );
 }
