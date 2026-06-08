@@ -1877,6 +1877,21 @@ export default function App() {
     window.addEventListener("prevail:benchmark-domain", onBench as EventListener);
     return () => window.removeEventListener("prevail:benchmark-domain", onBench as EventListener);
   }, []);
+  // I4: a high-stakes quick-action (Decision / Risks) routes to the Council. The
+  // card dispatches this event; we switch the domain + Council tab and seed the
+  // question so the user just picks panelists and convenes.
+  const [councilSeed, setCouncilSeed] = useState<string | null>(null);
+  useEffect(() => {
+    const onSeed = (e: Event) => {
+      const detail = (e as CustomEvent<{ domain?: string; prompt: string }>).detail;
+      if (!detail?.prompt) return;
+      if (detail.domain) setSelectedDomain(detail.domain);
+      setCouncilSeed(detail.prompt);
+      setTab("council");
+    };
+    window.addEventListener("prevail:council-seed", onSeed as EventListener);
+    return () => window.removeEventListener("prevail:council-seed", onSeed as EventListener);
+  }, []);
   const [vaultError, setVaultError] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
     () => lsGet("prevail.sidebarCollapsed") === "1",
@@ -2221,6 +2236,8 @@ export default function App() {
                 onOpenInFinder={() => openInFinder(selectedDomainPath)}
                 onSwitchToChat={() => setTab("chat")}
                 onThreadsChanged={() => void refreshThreads()}
+                seedPrompt={councilSeed}
+                onSeedConsumed={() => setCouncilSeed(null)}
               />
             )}
             {tab === "benchmark" && <BenchmarkPanel vaultPath={vaultPath} initialDomain={benchScope} />}
@@ -3652,13 +3669,16 @@ function buildCouncilQuickActions(domain: string | null): { glyph: string; label
   ];
 }
 
-function buildQuickActions(domain: string | null): { glyph: string; label: string; prompt: string }[] {
+// I4: high-stakes cards (Decision, Risks) are flagged `council: true` so a click
+// routes to the multi-model Council instead of a single-model chat — a decision
+// or a risk audit benefits from independent panelists + a synthesized verdict.
+function buildQuickActions(domain: string | null): { glyph: string; label: string; prompt: string; council?: boolean }[] {
   const d = domain ? titleCase(domain) : "this domain";
   return [
     { glyph: "◆", label: "Status", prompt: `Read state.md for ${d} and summarize where I am right now in 5 bullets.` },
     { glyph: "◇", label: "Next action", prompt: `Given the current ${d} state, what's the single highest-leverage next action I should take this week? Be specific.` },
-    { glyph: "▸", label: "Decision", prompt: `Walk me through the most important open decision in ${d} right now — options, trade-offs, and your recommendation.` },
-    { glyph: "●", label: "Risks", prompt: `What are the top 3 risks or blind spots in my ${d} plan? Rank by severity.` },
+    { glyph: "▸", label: "Decision", prompt: `Walk me through the most important open decision in ${d} right now — options, trade-offs, and your recommendation.`, council: true },
+    { glyph: "●", label: "Risks", prompt: `What are the top 3 risks or blind spots in my ${d} plan? Rank by severity.`, council: true },
   ];
 }
 
@@ -3847,11 +3867,14 @@ function DomainHome({
                 {buildQuickActions(domain).map((q) => (
                   <li key={q.label}>
                     <button
-                      onClick={() => onPickPrompt(q.prompt)}
+                      onClick={() => q.council
+                        ? window.dispatchEvent(new CustomEvent("prevail:council-seed", { detail: { domain, prompt: q.prompt } }))
+                        : onPickPrompt(q.prompt)}
                       className="block w-full rounded-xl border border-border bg-surface px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-px hover:border-accent-border hover:shadow-md"
                     >
-                      <div className="font-mono text-[11px] uppercase tracking-wider text-accent">
-                        <span className="mr-1">{q.glyph}</span>{q.label}
+                      <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-accent">
+                        <span><span className="mr-1">{q.glyph}</span>{q.label}</span>
+                        {q.council && <span className="rounded-full border border-accent-border bg-accent-soft px-1.5 py-0 text-[9px] normal-case tracking-normal">→ Council</span>}
                       </div>
                       <div className="mt-1 text-sm leading-relaxed text-text-secondary">
                         {q.prompt}
@@ -7469,6 +7492,8 @@ function CouncilPanel({
   onOpenInFinder,
   onSwitchToChat,
   onThreadsChanged,
+  seedPrompt,
+  onSeedConsumed,
 }: {
   domain: string | null;
   domainPath: string | null;
@@ -7480,6 +7505,8 @@ function CouncilPanel({
   onOpenInFinder: () => void;
   onSwitchToChat: () => void;
   onThreadsChanged?: () => void;
+  seedPrompt?: string | null;
+  onSeedConsumed?: () => void;
 }) {
   // All possible (cli, model) panelist slots across ALL providers —
   // even ones not installed are listed (greyed out) so the user knows
@@ -7680,6 +7707,16 @@ function CouncilPanel({
     return () => { mounted = false; };
   }, [domain, _vaultPath]);
   const [prompt, setPrompt] = useState("");
+  // I4: a Decision/Risks card from the domain home routes here with a seeded
+  // question — drop it into the composer so the user just picks panelists and
+  // convenes. Consumed once so it doesn't re-fire on re-render.
+  useEffect(() => {
+    if (seedPrompt) {
+      setPrompt(seedPrompt);
+      onSeedConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedPrompt]);
   // Snapshot of the prompt at the moment the council was convened.
   // Composer `prompt` clears after submit so the textarea is empty for
   // the next question; this preserves the question text shown above
