@@ -100,6 +100,42 @@ fn local_provider_available() -> bool {
     TcpStream::connect_timeout(&addr, Duration::from_millis(250)).is_ok()
 }
 
+/// The local provider to fall back to when Bunker Mode must serve a model
+/// request the caller aimed at a cloud CLI. Returns the first *available* local
+/// provider (probed for real), or `None` when nothing local can run. Today only
+/// Ollama is probed (daemon on 127.0.0.1:11434); LM Studio / MLX detection is a
+/// recorded deferred refinement, so they never report available yet.
+pub fn preferred_local_cli() -> Option<&'static str> {
+    LOCAL_CLIS.iter().copied().find(|c| match *c {
+        "ollama" => local_provider_available(),
+        _ => false, // lmstudio / mlx detection deferred — see FEEDBACK-v0.4.1
+    })
+}
+
+/// Resolve the CLI to actually run under Bunker Mode. This is the auto-switch
+/// refinement: rather than hard-blocking a stale cloud default, transparently
+/// fall back to an available local provider. The returned string is what the
+/// caller should invoke.
+///
+///   • Bunker off          → the requested CLI, unchanged.
+///   • requested is local  → unchanged (local always runs).
+///   • requested is cloud  → swapped for the preferred available local CLI;
+///     `Err(BLOCKED)` ONLY when no local provider exists to switch to (so the
+///     UI can prompt the user to install/start one).
+///
+/// Note: this applies to *model invocations* only. Network actions with no
+/// local equivalent (web search, Telegram, Composio) stay hard-blocked via
+/// `guard_cloud` — there is nothing local to switch them to.
+pub fn resolve_cli(requested: &str) -> Result<String, String> {
+    if !bunker_enabled() || is_local_cli(requested) {
+        return Ok(requested.to_string());
+    }
+    match preferred_local_cli() {
+        Some(local) => Ok(local.to_string()),
+        None => Err(BLOCKED.to_string()),
+    }
+}
+
 /// Runtime enforcement state for the Status Verification Card. These flags
 /// reflect what the policy layer ACTUALLY does, not a UI assumption: when
 /// `enabled` is true the guards above are live, so network/web/cloud are blocked.
@@ -150,6 +186,35 @@ mod tests {
         *CACHE.lock().unwrap() = Some(false);
         assert_eq!(guard_cli("claude"), Ok(()));
         assert_eq!(guard_cloud(), Ok(()));
+        *CACHE.lock().unwrap() = None; // reset cache for other tests
+    }
+
+    #[test]
+    fn resolve_cli_passes_through_when_disabled_or_local() {
+        // Bunker off → requested CLI is returned verbatim, cloud or not.
+        *CACHE.lock().unwrap() = Some(false);
+        assert_eq!(resolve_cli("claude"), Ok("claude".to_string()));
+        assert_eq!(resolve_cli("ollama"), Ok("ollama".to_string()));
+        // Bunker on but the request is already local → unchanged, no probe.
+        *CACHE.lock().unwrap() = Some(true);
+        assert_eq!(resolve_cli("ollama"), Ok("ollama".to_string()));
+        assert_eq!(resolve_cli("MLX"), Ok("MLX".to_string()));
+        *CACHE.lock().unwrap() = None; // reset cache for other tests
+    }
+
+    #[test]
+    fn resolve_cli_cloud_under_bunker_switches_or_blocks() {
+        // Bunker on + cloud request: the result depends on whether a local
+        // provider is actually reachable on this machine. Either way it must
+        // NEVER return a cloud CLI — that is the whole guarantee.
+        *CACHE.lock().unwrap() = Some(true);
+        match resolve_cli("claude") {
+            Ok(chosen) => assert!(
+                is_local_cli(&chosen),
+                "auto-switch must land on a local CLI, got {chosen}"
+            ),
+            Err(e) => assert_eq!(e, BLOCKED, "no local provider → canonical block"),
+        }
         *CACHE.lock().unwrap() = None; // reset cache for other tests
     }
 }

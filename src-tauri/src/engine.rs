@@ -831,14 +831,22 @@ pub async fn engine_chat(
     // Bunker Mode: refuse cloud providers, and force the engine local-only
     // regardless of the per-domain toggle so a cloud model can never run.
     let bunker = crate::bunker::bunker_enabled();
+    // Auto-switch a stale cloud selection to an available local provider rather
+    // than hard-blocking; errors only when nothing local can serve the request.
+    let mut switched = false;
     if let Some(c) = cli.filter(|s| !s.is_empty()) {
-        crate::bunker::guard_cli(&c)?;
+        let eff = crate::bunker::resolve_cli(&c)?;
+        switched = eff != c;
         args.push("--cli".to_string());
-        args.push(c);
+        args.push(eff);
     }
-    if let Some(m) = model.filter(|s| !s.is_empty()) {
-        args.push("--model".to_string());
-        args.push(m);
+    // Drop the model when we switched providers — the requested id belongs to the
+    // old (cloud) CLI; let the engine pick the local provider's default.
+    if !switched {
+        if let Some(m) = model.filter(|s| !s.is_empty()) {
+            args.push("--model".to_string());
+            args.push(m);
+        }
     }
     if bunker || localOnly.unwrap_or(false) {
         args.push("--local-only".to_string());

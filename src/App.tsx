@@ -992,6 +992,13 @@ const LOCAL_CLI_IDS = new Set(["ollama", "lmstudio", "mlx"]);
 function isLocalCli(id: string): boolean {
   return LOCAL_CLI_IDS.has(id.toLowerCase());
 }
+// Bunker Mode auto-switch target: the local provider to fall back to when a
+// cloud CLI is selected. First *available* local CLI, or null if none is
+// installed/running. Mirrors bunker.rs `preferred_local_cli` (Ollama today;
+// LM Studio / MLX detection is a recorded deferred refinement).
+function preferredLocalCli(clis: { id: string; available: boolean }[]): string | null {
+  return clis.find((c) => isLocalCli(c.id) && c.available)?.id ?? null;
+}
 
 // The always-visible Bunker Mode status bar. Never disappears while the app
 // runs, so the user always knows whether anything can leave their machine.
@@ -5795,6 +5802,17 @@ function ChatPanel({
     if (!selectedCli && available.length > 0) setSelectedCli(available[0].id);
   }, [available, selectedCli]);
 
+  // Bunker Mode auto-switch: if the persisted/selected CLI is a cloud one (a
+  // stale default from before Bunker was enabled), switch the picker to an
+  // available local provider so what's highlighted matches what will actually
+  // run. Re-evaluates whenever the bunker flag, selection, or CLI list changes.
+  const bunkerOn = isBunkerOn();
+  useEffect(() => {
+    if (!bunkerOn || !selectedCli || isLocalCli(selectedCli)) return;
+    const local = preferredLocalCli(clis);
+    if (local) setSelectedCli(local);
+  }, [bunkerOn, selectedCli, clis]);
+
   useEffect(() => {
     if (selectedCli) lsSet(LS.defaultChatCli, selectedCli);
   }, [selectedCli]);
@@ -6013,9 +6031,25 @@ function ChatPanel({
   async function send() {
     if (!input.trim() || !selectedCli) return;
     setDomainTab("chat"); // sending always shows the chat, even from Preferences
+    // Bunker Mode: auto-switch a (stale) cloud selection to an available local
+    // provider instead of letting the backend hard-block. If nothing local is
+    // installed/running, surface the canonical guidance and bail. The backend
+    // resolves this too (the real guarantee); doing it here keeps the bubble,
+    // model pick, and usage capture honest about which provider actually ran.
+    let chatCli = selectedCli;
+    if (isBunkerOn() && !isLocalCli(chatCli)) {
+      const local = preferredLocalCli(clis);
+      if (!local) {
+        setMessages((m) => [...m, { role: "user", content: input.trim(), ts: Date.now() }, { role: "assistant", content: "Bunker Mode is on, so replies stay on this device — but no local model provider (Ollama) was detected. Install or start Ollama, or leave Bunker Mode in Settings → Privacy & Connectivity.", ts: Date.now() }]);
+        setInput("");
+        return;
+      }
+      chatCli = local;
+    }
+    const chatModel = lsGet(`prevail.model.${chatCli}`) || null;
     const visible = input.trim();
     const userMsg: ChatMessage = { role: "user", content: visible, ts: Date.now() };
-    const replyMsg: ChatMessage = { role: "assistant", cli: selectedCli, model: selectedModel || undefined, content: "", ts: Date.now(), streaming: true };
+    const replyMsg: ChatMessage = { role: "assistant", cli: chatCli, model: chatModel || undefined, content: "", ts: Date.now(), streaming: true };
     setMessages((m) => [...m, userMsg, replyMsg]);
     // Attach file paths to the prompt so the CLI can read them.
     const attachPreamble = attachments.length > 0
@@ -6052,7 +6086,7 @@ function ChatPanel({
     setInput("");
     sessionRef.current = `s-${Date.now()}`;
     rawReplyRef.current = ""; // fresh raw-output buffer for this turn
-    const turnModel = lsGet(`prevail.model.${selectedCli}`) || null;
+    const turnModel = chatModel;
     // Snapshot this turn's meta for usage capture (P4.7 Phase 3). Read at
     // 'done' regardless of which path (engine vs native) serves the reply.
     pendingUsageRef.current = {
@@ -6060,7 +6094,7 @@ function ChatPanel({
       vault: vaultPath,
       domain: domain ?? null,
       thread: activeThreadRef.current,
-      cli: selectedCli ?? null,
+      cli: chatCli ?? null,
       model: turnModel,
       intent: visible,
     };
@@ -6090,7 +6124,7 @@ function ChatPanel({
         session: sessionRef.current,
         domain: domain ?? null,
         thread: activeThreadRef.current,
-        cli: selectedCli ?? null,
+        cli: chatCli ?? null,
         model: turnModel,
         message: maybeRedact(visible), // what the user typed
         prompt: maybeRedact(promptText), // the exact, fully-assembled prompt sent to the model
@@ -6115,7 +6149,7 @@ function ChatPanel({
     // OpenRouter is engine-only (no subprocess). In the no-domain General space
     // the engine path isn't used, so guide the user to pick a domain instead of
     // failing on a non-existent "openrouter" binary.
-    if (selectedCli === "openrouter" && !useEngine) {
+    if (chatCli === "openrouter" && !useEngine) {
       setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: "OpenRouter runs through the engine, which needs a domain. Pick a domain (left sidebar) to chat with OpenRouter models — or use an installed CLI here in General.", ts: Date.now() }]);
       onStreamEnd(sessionRef.current);
       return;
@@ -6127,15 +6161,15 @@ function ChatPanel({
           vault: vaultPath,
           domain,
           message: promptText,
-          cli: selectedCli || null,
-          model: lsGet(`prevail.model.${selectedCli}`) || null,
+          cli: chatCli || null,
+          model: chatModel,
           localOnly,
         });
       } else {
         await invoke("chat_send", {
           args: {
-            cli: selectedCli,
-            model: lsGet(`prevail.model.${selectedCli}`) || null,
+            cli: chatCli,
+            model: chatModel,
             prompt: promptText,
             session_id: sessionRef.current,
             timeout_sec: (() => { const n = parseInt(getPref(PREF.llmPromptTimeoutSec, "300"), 10); return Number.isFinite(n) && n > 0 ? n : null; })(),
@@ -6149,8 +6183,8 @@ function ChatPanel({
         try {
           await invoke("chat_send", {
             args: {
-              cli: selectedCli,
-              model: lsGet(`prevail.model.${selectedCli}`) || null,
+              cli: chatCli,
+              model: chatModel,
               prompt: promptText,
               session_id: sessionRef.current,
               timeout_sec: (() => { const n = parseInt(getPref(PREF.llmPromptTimeoutSec, "300"), 10); return Number.isFinite(n) && n > 0 ? n : null; })(),
@@ -6159,7 +6193,7 @@ function ChatPanel({
           return;
         } catch { /* fall through to error rendering */ }
       }
-      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `(error spawning ${selectedCli}: ${e})`, ts: Date.now() }]);
+      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `(error spawning ${chatCli}: ${e})`, ts: Date.now() }]);
       onStreamEnd(sessionRef.current);
     }
   }
