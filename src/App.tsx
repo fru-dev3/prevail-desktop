@@ -985,15 +985,17 @@ const LS = {
 // Per-domain toggles mirroring the CLI status bar:
 // council on/off · web access · save replies · serendipity · auto-council.
 type DomainToggle = "council" | "web" | "save" | "serendipity" | "auto";
-function domainTogglesKey(domain: string, t: DomainToggle): string {
-  return `prevail.desktop.domain.${domain}.${t}`;
+// `null` / "" domain means General — it gets its own bucket so the modes
+// persist there too.
+function domainTogglesKey(domain: string | null, t: DomainToggle): string {
+  return `prevail.desktop.domain.${domain || "__general__"}.${t}`;
 }
-function getDomainToggle(domain: string, t: DomainToggle, fallback: boolean): boolean {
+function getDomainToggle(domain: string | null, t: DomainToggle, fallback: boolean): boolean {
   const raw = lsGet(domainTogglesKey(domain, t));
   if (raw === "") return fallback;
   return raw === "1";
 }
-function setDomainToggle(domain: string, t: DomainToggle, v: boolean): void {
+function setDomainToggle(domain: string | null, t: DomainToggle, v: boolean): void {
   lsSet(domainTogglesKey(domain, t), v ? "1" : "0");
 }
 
@@ -3416,7 +3418,7 @@ function DomainStatusBar({
   const [serendipity, setSeren]   = useState(false);
   const [auto, setAuto]           = useState(false);
   useEffect(() => {
-    if (!domain) return;
+    // Loads for General too (domain null → the __general__ bucket).
     setCouncil(getDomainToggle(domain, "council", false));
     setWeb(getDomainToggle(domain, "web", true));
     setSave(getDomainToggle(domain, "save", true));
@@ -3444,7 +3446,7 @@ function DomainStatusBar({
   ) => {
     const next = !cur;
     set(next);
-    if (domain) setDomainToggle(domain, t, next);
+    setDomainToggle(domain, t, next);
   };
   // One row of the Modes popover: a glyph, the name + on/off badge, and a
   // one-line description, so the control explains itself.
@@ -3512,14 +3514,14 @@ function DomainStatusBar({
       {/* Per-prompt reasoning controls — change often, so they sit inline. */}
       <Cycle glyph="◆" label="Framework" value={fw?.label ?? "OFF"} active={fwLens.framework !== "none"} onClick={cycleFramework} />
       <Cycle glyph="◇" label="Lens" value={ln?.label ?? "OFF"} active={fwLens.lens !== "none"} onClick={cycleLens} />
-      {domain && (
-        <div ref={modesRef} className="relative inline-flex items-center">
+      <div ref={modesRef} className="relative inline-flex items-center">
           <span className="mx-1 select-none text-text-muted/40">·</span>
-          {/* Per-domain modes — set once, rarely changed, so they're tucked in a
-              popover with an active-count badge instead of crowding the row. */}
+          {/* Modes — set once, rarely changed, so they're tucked in a popover
+              with an active-count badge instead of crowding the row. Available
+              everywhere, including General (stored in its own bucket). */}
           <button
             onClick={() => setModesOpen((v) => !v)}
-            title="Domain modes: web access, save history, serendipity, auto-council"
+            title="Modes: web access, save history, serendipity, auto-council"
             className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
               modesOpen
                 ? "border-accent-border bg-accent-soft text-accent"
@@ -3533,11 +3535,11 @@ function DomainStatusBar({
           </button>
           {modesOpen && (
             <div className="absolute bottom-full left-0 z-50 mb-2 w-80 rounded-xl border border-border bg-surface p-1.5 shadow-xl">
-              <div className="px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Domain modes</div>
+              <div className="px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Modes</div>
               <ModeRow glyph="○" label="Web access" on={web} onClick={() => flip("web", web, setWeb)}
                 desc="Let the model fetch URLs and web-search while replying. Off keeps the reply offline." />
               <ModeRow glyph="▣" label="Save history" on={save} onClick={() => flip("save", save, setSave)}
-                desc="Log every reply to this domain's history so you can re-read it later. Off makes the turn ephemeral." />
+                desc="Log every reply to history so you can re-read it later. Off makes the turn ephemeral." />
               <ModeRow glyph="◉" label="Serendipity" on={serendipity} onClick={() => flip("serendipity", serendipity, setSeren)}
                 desc="Invite lateral, off-topic angles. Off stays strictly on-topic." />
               <ModeRow glyph="◐" label="Auto-council" on={auto} onClick={() => flip("auto", auto, setAuto)}
@@ -3545,7 +3547,6 @@ function DomainStatusBar({
             </div>
           )}
         </div>
-      )}
     </>
   );
 }
@@ -6529,10 +6530,10 @@ function ChatPanel({
       framework: fwLens.framework ?? null,
       lens: fwLens.lens ?? null,
       localOnly: localOnly,
-      web: isBunkerOn() ? false : (domain ? getDomainToggle(domain, "web", false) : false),
-      serendipity: domain ? getDomainToggle(domain, "serendipity", false) : false,
-      auto: domain ? getDomainToggle(domain, "auto", false) : false,
-      council: domain ? getDomainToggle(domain, "council", false) : false,
+      web: isBunkerOn() ? false : getDomainToggle(domain, "web", false),
+      serendipity: getDomainToggle(domain, "serendipity", false),
+      auto: getDomainToggle(domain, "auto", false),
+      council: getDomainToggle(domain, "council", false),
       skills: attachedSkills,
       attachments,
       primedContext: primedContext.map((c) => c.label),
