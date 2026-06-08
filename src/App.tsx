@@ -2088,6 +2088,10 @@ export default function App() {
 
   return (
     <div className="relative flex h-screen flex-col bg-background text-text-primary">
+      {/* Full-width title bar — the macOS traffic lights live in the top-left
+          here, in a consistent strip that spans the whole window, so they never
+          overflow a collapsed sidebar rail. Draggable. */}
+      <div data-tauri-drag-region className="h-9 shrink-0" />
       {bunkerEnabled && !bunkerLocalOk && (
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-600/30 bg-amber-500/10 px-4 py-1.5 text-xs text-amber-800 dark:text-amber-300">
           <ShieldCheck className="h-3.5 w-3.5" />
@@ -2443,16 +2447,12 @@ function Sidebar({
       className="flex shrink-0 flex-col border-r border-border-subtle bg-surface"
       style={{ width: collapsed ? 56 : railWidth }}
     >
-      {/* Row 1 — empty draggable strip that reserves the macOS title-bar height
-          so the native red/yellow/green traffic lights (top-left, over the cream
-          sidebar) have room. No controls here — they'd land under the system
-          overlay region. */}
-      <div data-tauri-drag-region className="h-7 shrink-0" />
-      {/* Row 2 — the Prevail mark, full width, with the sidebar toggle on the
-          far right (clearly in the content area, below the overlay strip). */}
+      {/* The Prevail mark on its own row, full width, with the sidebar toggle on
+          the far right. The macOS traffic lights are handled by the full-width
+          title bar above this whole layout, so the sidebar starts clean here. */}
       <div
         data-tauri-drag-region
-        className="flex shrink-0 items-center gap-2 border-b border-border-subtle px-3 pb-3 pt-0.5"
+        className="flex shrink-0 items-center gap-2 border-b border-border-subtle px-3 pb-3 pt-1"
       >
         {collapsed ? (
           <div className="mx-auto flex flex-col items-center gap-2">
