@@ -1,7 +1,7 @@
 {
   "name": "fd-apps-prevail-desktop",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Prevail desktop — native macOS cockpit for AI council deliberation",
   "type": "module",
   "scripts": {
