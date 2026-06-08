@@ -4901,8 +4901,13 @@ function DomainContextDrawer({
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({
-    state: false, decisions: false, journal: false, logs: false, skills: false,
+    recent: true, memory: false, state: false, decisions: false, journal: false, logs: false, skills: false,
   });
+  // Live decision ledger (_decisions.jsonl) + distilled long-term memory.
+  // These update the moment a verdict is saved — no waiting on distillation.
+  type DecisionRecord = { id?: string; ts?: number; kind?: string; prompt?: string; verdict?: string; feedback?: { rating?: string } | string | null };
+  const [decisionLog, setDecisionLog] = useState<DecisionRecord[]>([]);
+  const [memory, setMemory] = useState<string>("");
   const [drawerWidth, setDrawerWidth] = useState<number>(() => {
     const v = parseInt(lsGet("prevail.contextDrawer.width"), 10);
     return Number.isFinite(v) && v > 0 ? v : 320;
@@ -4911,11 +4916,31 @@ function DomainContextDrawer({
   useEffect(() => {
     let mounted = true;
     setLoading(true);
-    invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain })
-      .then((c) => { if (mounted) { setCtx(c); setErr(null); } })
-      .catch((e) => { if (mounted) setErr(String(e)); })
-      .finally(() => { if (mounted) setLoading(false); });
-    return () => { mounted = false; };
+    const load = () => {
+      // Domain files (state/decisions/journal/logs/skills) only exist for a
+      // real domain; General has none, so skip the call and show the
+      // cross-cutting context instead.
+      if (domain) {
+        invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain })
+          .then((c) => { if (mounted) { setCtx(c); setErr(null); } })
+          .catch((e) => { if (mounted) setErr(String(e)); })
+          .finally(() => { if (mounted) setLoading(false); });
+      } else {
+        if (mounted) { setCtx(null); setErr(null); setLoading(false); }
+      }
+      invoke<DecisionRecord[]>("decisions_read", { vault: vaultPath, domain: domain || null, limit: 15 })
+        .then((d) => { if (mounted) setDecisionLog(Array.isArray(d) ? d : []); })
+        .catch(() => { if (mounted) setDecisionLog([]); });
+      invoke<string>("read_memory_md", { vault: vaultPath, domain: domain || null })
+        .then((m) => { if (mounted) setMemory(m || ""); })
+        .catch(() => { if (mounted) setMemory(""); });
+    };
+    load();
+    // Refresh the instant a decision/verdict is saved anywhere in the app.
+    const onChanged = () => load();
+    window.addEventListener("prevail:context-changed", onChanged);
+    return () => { mounted = false; window.removeEventListener("prevail:context-changed", onChanged); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultPath, domain]);
 
   const Section = ({
@@ -4948,10 +4973,10 @@ function DomainContextDrawer({
           <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Context</div>
           <div className="flex items-center gap-2 font-display text-base font-semibold">
             {(() => {
-              const I = domainIcon(domain);
+              const I = domain ? domainIcon(domain) : MessageSquare;
               return I ? <I className="h-4 w-4 text-accent" /> : <span className="text-accent">◆</span>;
             })()}
-            {titleCase(domain)}
+            {domain ? titleCase(domain) : "General"}
           </div>
         </div>
         <button
@@ -4965,6 +4990,59 @@ function DomainContextDrawer({
       <div className="flex-1 overflow-y-auto">
         {loading && <div className="p-4 text-xs text-text-muted">loading…</div>}
         {err && <div className="m-2 rounded border border-warn/40 bg-warn/10 p-3 text-xs text-warn">{err}</div>}
+        {!domain && (
+          <div className="border-b border-border-subtle px-4 py-2.5 text-[11px] text-text-muted">
+            Context that spans your whole workspace: decisions you've made and what Prevail has learned. Pick a domain for its state, journal, and skills.
+          </div>
+        )}
+        {/* Recent decisions — read straight from the live ledger, so a council
+            verdict or saved decision appears here the instant it's written. */}
+        <Section keyName="recent" title="Recent decisions" count={decisionLog.length} body={
+          decisionLog.length === 0 ? (
+            <div className="text-xs text-text-muted">No decisions yet. Council verdicts and saved decisions appear here instantly.</div>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {decisionLog.map((d, i) => {
+                const fb = typeof d.feedback === "object" && d.feedback ? d.feedback.rating : (typeof d.feedback === "string" ? d.feedback : undefined);
+                const ago = d.ts ? formatFreshness(Math.max(0, Math.floor((Date.now() - d.ts) / 1000))) : "";
+                return (
+                  <li key={d.id ?? i} className="rounded-lg border border-border-subtle bg-background p-2.5">
+                    <div className="mb-1 flex items-center justify-between gap-2 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                      <span>{d.kind ?? "decision"}{ago ? ` · ${ago}` : ""}</span>
+                      {fb === "up" && <ThumbsUp className="h-3 w-3 text-accent" />}
+                      {fb === "down" && <ThumbsDown className="h-3 w-3 text-red-500" />}
+                    </div>
+                    {d.prompt && <div className="line-clamp-1 text-[11px] font-semibold text-text-primary">{d.prompt}</div>}
+                    {d.verdict && <div className="mt-1 line-clamp-3 whitespace-pre-wrap text-[11px] leading-snug text-text-secondary">{d.verdict}</div>}
+                    {d.verdict && (
+                      <button
+                        onClick={() => onInjectContext(d.verdict!, `decision · ${(d.prompt ?? "").slice(0, 30)}`)}
+                        className="mt-1.5 rounded-md border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+                      >
+                        → use in chat
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )
+        } />
+        <Section keyName="memory" title="Long-term memory" body={
+          memory.trim() ? (
+            <>
+              <button
+                onClick={() => onInjectContext(memory, `${domain ? titleCase(domain) : "General"} · memory`)}
+                className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+              >
+                → use in chat
+              </button>
+              <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
+                {memory.length > 1200 ? memory.slice(0, 1200) + "\n…" : memory}
+              </pre>
+            </>
+          ) : <div className="text-xs text-text-muted">No distilled memory yet. It builds up as you use this {domain ? "domain" : "workspace"}.</div>
+        } />
         {ctx && (
           <>
             <Section keyName="state" title="State" body={
@@ -7386,11 +7464,11 @@ function ChatPanel({
         </div>
       </div>
       </div>
-      {domain && domainPath && (contextOpen ? (
+      {contextOpen ? (
         <DomainContextDrawer
-          domain={domain}
+          domain={domain ?? ""}
           vaultPath={vaultPath}
-          domainPath={domainPath}
+          domainPath={domainPath ?? ""}
           onClose={() => setContextOpen(false)}
           onInjectContext={(body, label) => injectContext(body, label)}
           onInsertSkill={(name) => insertSkillSlash(name)}
@@ -7405,7 +7483,7 @@ function ChatPanel({
         >
           <PanelRightOpen className="h-4 w-4" />
         </button>
-      ))}
+      )}
     </div>
   );
 }
@@ -8148,7 +8226,9 @@ function CouncilPanel({
           chair: chairSlotObj ? { cli: chairSlotObj.cli, model: chairSlotObj.model || null } : null,
           panelists: panelistSlots.map((s) => ({ cli: s.cli, model: s.model || null })),
         },
-      }).catch((e) => console.error("decision_append (council)", e));
+      })
+        .then(() => window.dispatchEvent(new CustomEvent("prevail:context-changed")))
+        .catch((e) => console.error("decision_append (council)", e));
     }
     // Reuse the existing thread's slug when continuing; else create new.
     const cur = councilThreadRef.current;
@@ -8531,7 +8611,7 @@ function CouncilPanel({
                       onClick={() => {
                         const next = verdictRating === "up" ? null : "up";
                         setVerdictRating(next);
-                        invoke("decision_feedback", { vault: _vaultPath, domain: domain ?? null, id: verdictDecisionId, rating: next ?? "clear", note: null }).catch((e) => console.error("decision_feedback", e));
+                        invoke("decision_feedback", { vault: _vaultPath, domain: domain ?? null, id: verdictDecisionId, rating: next ?? "clear", note: null }).then(() => window.dispatchEvent(new CustomEvent("prevail:context-changed"))).catch((e) => console.error("decision_feedback", e));
                       }}
                       className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 transition-colors ${verdictRating === "up" ? "border-accent bg-accent-soft text-accent" : "border-border hover:bg-surface-strong"}`}
                     >
@@ -8542,7 +8622,7 @@ function CouncilPanel({
                       onClick={() => {
                         const next = verdictRating === "down" ? null : "down";
                         setVerdictRating(next);
-                        invoke("decision_feedback", { vault: _vaultPath, domain: domain ?? null, id: verdictDecisionId, rating: next ?? "clear", note: null }).catch((e) => console.error("decision_feedback", e));
+                        invoke("decision_feedback", { vault: _vaultPath, domain: domain ?? null, id: verdictDecisionId, rating: next ?? "clear", note: null }).then(() => window.dispatchEvent(new CustomEvent("prevail:context-changed"))).catch((e) => console.error("decision_feedback", e));
                       }}
                       className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 transition-colors ${verdictRating === "down" ? "border-red-400 bg-red-500/10 text-red-500" : "border-border hover:bg-surface-strong"}`}
                     >
@@ -8862,9 +8942,9 @@ function CouncilPanel({
         </div>
       </div>
       </div>
-      {domain && _vaultPath && (contextOpen ? (
+      {_vaultPath && (contextOpen ? (
         <DomainContextDrawer
-          domain={domain}
+          domain={domain ?? ""}
           vaultPath={_vaultPath}
           domainPath={domainPath ?? ""}
           onClose={() => setContextOpen(false)}
