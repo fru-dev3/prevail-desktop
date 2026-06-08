@@ -409,7 +409,7 @@ import {
   PanelRightOpen,
   Pencil,
   Target,
-  HelpCircle,
+  SlidersHorizontal,
   ShieldOff,
   CloudOff,
   Wifi,
@@ -3423,6 +3423,17 @@ function DomainStatusBar({
     setSeren(getDomainToggle(domain, "serendipity", false));
     setAuto(getDomainToggle(domain, "auto", false));
   }, [domain]);
+  // The per-domain modes (web/save/serendipity/auto) live in a popover so the
+  // composer row stays focused on the per-prompt Framework + Lens controls.
+  const [modesOpen, setModesOpen] = useState(false);
+  const modesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!modesOpen) return;
+    const onDoc = (e: MouseEvent) => { if (modesRef.current && !modesRef.current.contains(e.target as Node)) setModesOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [modesOpen]);
+  const activeModes = [web, save, serendipity, auto].filter(Boolean).length;
 
   const fw = FRAMEWORKS.find((f) => f.id === fwLens.framework);
   const ln = LENSES.find((l) => l.id === fwLens.lens);
@@ -3435,23 +3446,23 @@ function DomainStatusBar({
     set(next);
     if (domain) setDomainToggle(domain, t, next);
   };
-  // U5: compact pills so the composer toolbar stops wrapping to two rows. The
-  // accent fill already signals ON, so the separate ON/OFF badge was redundant
-  // width — dropped. State + full description stay in the tooltip.
-  const Toggle = ({
-    glyph, label, on, onClick, help,
-  }: { glyph: string; label: string; on: boolean; onClick: () => void; help: string }) => (
+  // One row of the Modes popover: a glyph, the name + on/off badge, and a
+  // one-line description, so the control explains itself.
+  const ModeRow = ({
+    glyph, label, on, desc, onClick,
+  }: { glyph: string; label: string; on: boolean; desc: string; onClick: () => void }) => (
     <button
       onClick={onClick}
-      title={`${label}: ${on ? "ON" : "OFF"}\n${help}`}
-      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-1 font-mono text-[10px] transition-colors ${
-        on
-          ? "border-accent-border bg-accent-soft text-accent"
-          : "border-border bg-surface text-text-muted hover:bg-surface-warm hover:text-text-secondary"
-      }`}
+      className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-surface-warm"
     >
-      <span>{glyph}</span>
-      <span className="uppercase tracking-wider">{label}</span>
+      <span className={`mt-0.5 font-mono text-sm ${on ? "text-accent" : "text-text-muted"}`}>{glyph}</span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-text-primary">{label}</span>
+          <span className={`ml-auto shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider ${on ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>{on ? "On" : "Off"}</span>
+        </span>
+        <span className="mt-0.5 block text-[11px] leading-snug text-text-secondary">{desc}</span>
+      </span>
     </button>
   );
   // Cycle keeps its value (◆ STRATEGIST) since that's the useful part; the
@@ -3498,53 +3509,42 @@ function DomainStatusBar({
   // Auto are per-domain so they only render when a domain is selected.
   return (
     <>
-      {/* Legend — hover the ? to learn what every composer toggle does, so the
-          terse pills aren't a mystery. */}
-      <span className="group relative inline-flex">
-        <button
-          type="button"
-          title="What do these toggles do?"
-          className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
-        >
-          <HelpCircle className="h-3.5 w-3.5" />
-        </button>
-        <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-80 rounded-xl border border-border bg-surface p-3 text-left opacity-0 shadow-xl transition-opacity duration-150 group-hover:opacity-100">
-          <div className="mb-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Composer toggles</div>
-          <ul className="flex flex-col gap-1.5 text-[12px] leading-snug">
-            <li><span className="font-semibold text-accent">◆ Framework</span> <span className="text-text-secondary">shapes the answer's structure (BLUF leads with the answer, SCQA walks situation to recommendation).</span></li>
-            <li><span className="font-semibold text-accent">◇ Lens</span> <span className="text-text-secondary">shapes the perspective (first principles, steelman, an outsider's eye).</span></li>
-            <li><span className="font-semibold text-accent">○ Web</span> <span className="text-text-secondary">lets the model fetch URLs and web-search while replying. Off keeps the reply offline.</span></li>
-            <li><span className="font-semibold text-accent">▣ Save</span> <span className="text-text-secondary">logs every reply to this domain's history so you can re-read it later. Off makes the turn ephemeral.</span></li>
-            <li><span className="font-semibold text-accent">◉ Serendipity</span> <span className="text-text-secondary">invites lateral, off-topic angles. Off stays strictly on-topic.</span></li>
-            <li><span className="font-semibold text-accent">◐ Auto</span> <span className="text-text-secondary">auto-convenes a full council on every send (all panelists + a chair verdict) instead of one model.</span></li>
-          </ul>
-        </div>
-      </span>
+      {/* Per-prompt reasoning controls — change often, so they sit inline. */}
       <Cycle glyph="◆" label="Framework" value={fw?.label ?? "OFF"} active={fwLens.framework !== "none"} onClick={cycleFramework} />
       <Cycle glyph="◇" label="Lens" value={ln?.label ?? "OFF"} active={fwLens.lens !== "none"} onClick={cycleLens} />
       {domain && (
-        <>
-          <Toggle
-            glyph="○" label="Web" on={web}
-            onClick={() => flip("web", web, setWeb)}
-            help="When ON, the CLI is allowed to fetch URLs and web-search during replies in this domain. When OFF, replies stay offline (model knowledge only)."
-          />
-          <Toggle
-            glyph="▣" label="Save" on={save}
-            onClick={() => flip("save", save, setSave)}
-            help="When ON, every reply is appended to <domain>/_log/ as markdown so you can re-read or search history later. When OFF, this turn is ephemeral."
-          />
-          <Toggle
-            glyph="◉" label="Serendipity" on={serendipity}
-            onClick={() => flip("serendipity", serendipity, setSeren)}
-            help="When ON, the prompt is enriched with a 'consider lateral / off-topic angles' instruction so the reply may surface adjacent ideas. When OFF, strictly on-topic."
-          />
-          <Toggle
-            glyph="◐" label="Auto" on={auto}
-            onClick={() => flip("auto", auto, setAuto)}
-            help="Auto-Council mode. When ON, every prompt you send here is automatically convened as a council (all panelists answer + chair synthesizes) instead of going to a single model."
-          />
-        </>
+        <div ref={modesRef} className="relative inline-flex items-center">
+          <span className="mx-1 select-none text-text-muted/40">·</span>
+          {/* Per-domain modes — set once, rarely changed, so they're tucked in a
+              popover with an active-count badge instead of crowding the row. */}
+          <button
+            onClick={() => setModesOpen((v) => !v)}
+            title="Domain modes: web access, save history, serendipity, auto-council"
+            className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
+              modesOpen
+                ? "border-accent-border bg-accent-soft text-accent"
+                : "border-border bg-surface text-text-muted hover:bg-surface-warm hover:text-text-secondary"
+            }`}
+          >
+            <SlidersHorizontal className="h-3 w-3" /> Modes
+            {activeModes > 0 && (
+              <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[9px] font-bold text-background">{activeModes}</span>
+            )}
+          </button>
+          {modesOpen && (
+            <div className="absolute bottom-full left-0 z-50 mb-2 w-80 rounded-xl border border-border bg-surface p-1.5 shadow-xl">
+              <div className="px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Domain modes</div>
+              <ModeRow glyph="○" label="Web access" on={web} onClick={() => flip("web", web, setWeb)}
+                desc="Let the model fetch URLs and web-search while replying. Off keeps the reply offline." />
+              <ModeRow glyph="▣" label="Save history" on={save} onClick={() => flip("save", save, setSave)}
+                desc="Log every reply to this domain's history so you can re-read it later. Off makes the turn ephemeral." />
+              <ModeRow glyph="◉" label="Serendipity" on={serendipity} onClick={() => flip("serendipity", serendipity, setSeren)}
+                desc="Invite lateral, off-topic angles. Off stays strictly on-topic." />
+              <ModeRow glyph="◐" label="Auto-council" on={auto} onClick={() => flip("auto", auto, setAuto)}
+                desc="Auto-convene the full council on every send instead of one model." />
+            </div>
+          )}
+        </div>
       )}
     </>
   );
