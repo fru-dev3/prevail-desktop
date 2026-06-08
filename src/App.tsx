@@ -8275,12 +8275,12 @@ function CouncilPanel({
           </div>
         )}
         {councilTurns.length === 0 && phase === "idle" && (
-          <div className="flex h-full flex-col items-center justify-start px-6 py-10">
-            <img src="/logo.png" alt="" className="h-14 w-14 rounded-2xl opacity-90" />
-            <h2 className="mt-5 font-display text-3xl font-semibold tracking-tight">
+          <div className="flex h-full flex-col items-center justify-start px-6 py-6">
+            <img src="/logo.png" alt="" className="h-10 w-10 rounded-2xl opacity-90" />
+            <h2 className="mt-3 font-display text-2xl font-semibold tracking-tight">
               <Brand /> Council
             </h2>
-            <p className="mt-2 max-w-md text-center text-sm text-text-muted">
+            <p className="mt-1.5 max-w-md text-center text-[13px] text-text-muted">
               {panelistSlots.length === 0 ? (
                 <>Add panelists below, then ask the council.</>
               ) : (
@@ -8289,28 +8289,25 @@ function CouncilPanel({
                   <span className="text-accent">
                     {chairSlotObj ? `${chairSlotObj.cliLabel.toLowerCase()} · ${chairSlotObj.modelLabel}` : "—"}
                   </span>
+                  {" "}· best for <span className="text-accent">why</span> / <span className="text-accent">should-I</span> decisions, not quick lookups.
                 </>
               )}
             </p>
 
-            <p className="mt-6 max-w-xl text-center text-sm leading-relaxed text-text-secondary">
-              Council is best for <span className="text-accent">why</span>, <span className="text-accent">should I</span>, and decision-level questions where you want multiple model perspectives + a chair-synthesized verdict — not quick lookups.
-            </p>
-
-            <ul className="mt-6 flex w-full max-w-2xl flex-col gap-2">
+            {/* Compact starter rows — one line each (glyph · label · the short
+                question). Clicking loads the full prompt into the composer, so
+                the body text doesn't need to sit here as a wall. */}
+            <ul className="mt-5 flex w-full max-w-2xl flex-col gap-1.5">
               {buildCouncilQuickActions(domain).map((q) => (
                 <li key={q.label}>
                   <button
                     onClick={() => setPrompt(q.prompt)}
-                    className="block w-full rounded-xl border border-border bg-surface px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-px hover:border-accent-border hover:shadow-md"
+                    title={q.prompt}
+                    className="flex w-full items-center gap-2.5 rounded-lg border border-border bg-surface px-4 py-2.5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm"
                   >
-                    <div className="flex items-baseline gap-2 font-mono text-[11px] uppercase tracking-wider text-accent">
-                      <span>{q.glyph}</span> {q.label}
-                      <span className="ml-1 text-text-secondary normal-case">— {q.blurb}</span>
-                    </div>
-                    <div className="mt-1 text-sm leading-relaxed text-text-secondary">
-                      {q.prompt}
-                    </div>
+                    <span className="shrink-0 font-mono text-[11px] uppercase tracking-wider text-accent">{q.glyph} {q.label}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-text-secondary">{q.blurb}</span>
+                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-text-muted" />
                   </button>
                 </li>
               ))}
