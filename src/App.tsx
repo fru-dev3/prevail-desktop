@@ -10659,11 +10659,42 @@ function AgentCard({
   );
 }
 
-function SettingsHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+// Pick a representative icon for a settings page from its title, so every
+// header gets a matching glyph without threading an icon through 20 call sites.
+function settingsHeaderIcon(title: string): typeof Folder {
+  const t = title.toLowerCase();
+  if (/privacy/.test(t)) return ShieldCheck;
+  if (/council/.test(t)) return Scale;
+  if (/framework|lens/.test(t)) return Scale;
+  if (/skill/.test(t)) return Sparkles;
+  if (/model|agent|provider/.test(t)) return Layers;
+  if (/safety/.test(t)) return Shield;
+  if (/gateway/.test(t)) return MessagesSquare;
+  if (/remote|webui/.test(t)) return Monitor;
+  if (/mcp/.test(t)) return Wrench;
+  if (/vault/.test(t)) return Folder;
+  if (/memory|context/.test(t)) return Brain;
+  if (/about me|user|profile/.test(t)) return Users;
+  if (/appearance/.test(t)) return Sparkles;
+  if (/shortcut/.test(t)) return SettingsIcon;
+  if (/connector|integration|ingest/.test(t)) return Plug;
+  if (/about/.test(t)) return Github;
+  return SettingsIcon;
+}
+
+function SettingsHeader({ title, subtitle, icon }: { title: string; subtitle?: string; icon?: typeof Folder }) {
+  const Icon = icon ?? settingsHeaderIcon(title);
   return (
-    <div className="mb-6">
-      <h2 className="font-display text-2xl font-semibold tracking-tight">{title}</h2>
-      {subtitle && <p className="mt-1 max-w-2xl text-sm text-text-secondary">{subtitle}</p>}
+    <div className="mb-8 border-b border-border-subtle pb-5">
+      <div className="flex items-start gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent ring-1 ring-accent-border/50">
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 pt-0.5">
+          <h2 className="font-display text-[26px] font-bold leading-tight tracking-tight">{title}</h2>
+          {subtitle && <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-text-secondary">{subtitle}</p>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -11782,16 +11813,29 @@ function FrameworksSection() {
     <>
       <SettingsHeader
         title="Frameworks & Lenses"
-        subtitle="The bracketed preamble Prevail prepends to every prompt. Framework shapes structure; lens shapes perspective."
+        subtitle="The bracketed preamble Prevail prepends to every prompt. A framework shapes the structure of the answer; a lens shapes the perspective it comes from."
       />
 
-      {/* Two columns: Frameworks (left) · Lenses (right) — each
-          column is independent and uses the full width of its half. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      {/* Why this matters — the unique idea behind the feature. */}
+      <div className="mb-7 rounded-2xl border border-accent-border bg-accent-soft/50 p-5">
+        <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-accent">
+          <Lightbulb className="h-3.5 w-3.5" /> Why this matters
+        </div>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-text-secondary">
+          Most tools send your raw question straight to a model and take whatever comes back. Prevail wraps it in a
+          framework and a lens first, so the same model reasons in a deliberate shape (lead with the answer, situation to
+          recommendation, first principles, steelman, an outsider's eye) instead of a generic default. It's a small move
+          with an outsized effect: the structure you ask for is usually the structure you get. Stack a framework with a
+          lens to pressure-test one decision from several angles at once.
+        </p>
+      </div>
+
+      {/* One full-width column, stacked: Frameworks, then Lenses. */}
+      <div className="space-y-8">
         <PreambleColumn
           glyph="◆"
           title="Frameworks"
-          tagline="Structure — how the answer is shaped."
+          tagline="Structure: how the answer is shaped."
           options={FRAMEWORKS}
           active={activeFramework}
           selectedId={fwLens.framework}
@@ -11800,7 +11844,7 @@ function FrameworksSection() {
         <PreambleColumn
           glyph="◇"
           title="Lenses"
-          tagline="Perspective — the angle the answer comes from."
+          tagline="Perspective: the angle the answer comes from."
           options={LENSES}
           active={activeLens}
           selectedId={fwLens.lens}
@@ -11808,10 +11852,34 @@ function FrameworksSection() {
         />
       </div>
 
-      <p className="mt-6 rounded border border-border-subtle bg-surface px-3 py-2 text-xs text-text-muted">
-        Custom frameworks + lenses are queued — for now these are the same set the prevail CLI ships with, sync'd from
-        <code className="ml-1 text-accent">src/framework.ts</code> and <code className="text-accent">src/lens.ts</code>.
-      </p>
+      {/* More coming soon + feedback + website. */}
+      <div className="mt-8 rounded-2xl border border-border-subtle bg-surface p-5">
+        <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
+          <Sparkles className="h-3.5 w-3.5 text-accent" /> More coming soon
+        </div>
+        <p className="mt-2 max-w-3xl text-sm text-text-secondary">
+          Custom frameworks and lenses (write and save your own) are on the way. Today's set ships with Prevail. Have a
+          framework or lens you'd want built in? Tell us, it shapes what we add next.
+        </p>
+        <div className="mt-3.5 flex flex-wrap gap-2">
+          <a
+            href="https://github.com/fru-dev3/prevail-desktop/issues/new"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
+          >
+            <MessageSquare className="h-3.5 w-3.5" /> Suggestions & feedback
+          </a>
+          <a
+            href="https://prevail.sh"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
+          >
+            <Globe className="h-3.5 w-3.5" /> prevail.sh
+          </a>
+        </div>
+      </div>
     </>
   );
 }
