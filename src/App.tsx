@@ -2216,32 +2216,33 @@ export default function App() {
                 to Chat first if you're on Council/Benchmark); archive lives in
                 the overflow menu. Only shown when a real domain is active. */}
             {selectedDomain && (
-              <div className="mr-1 flex items-center gap-0.5 border-r border-border-subtle pr-2">
+              <div className="flex items-center gap-1">
                 <button
                   onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "insights" ? "chat" : "insights"); }}
                   title="Insights — what to work on, your tasks, and recent intents"
-                  className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                  className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
                     tab === "chat" && domainTab === "insights"
                       ? "bg-accent-soft text-accent"
                       : "text-text-muted hover:bg-surface-warm hover:text-accent"
                   }`}
                 >
-                  <Lightbulb className="h-4 w-4" />
+                  <Lightbulb className="h-4 w-4" /> Insights
                 </button>
                 <button
                   onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "prefs" ? "chat" : "prefs"); }}
                   title="Domain preferences"
-                  className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                  className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
                     tab === "chat" && domainTab === "prefs"
                       ? "bg-accent-soft text-accent"
                       : "text-text-muted hover:bg-surface-warm hover:text-accent"
                   }`}
                 >
-                  <SettingsIcon className="h-4 w-4" />
+                  <SettingsIcon className="h-4 w-4" /> Preferences
                 </button>
                 <DomainActionsMenu
                   domain={selectedDomain}
                   vaultPath={vaultPath}
+                  label="Archive"
                   onArchived={(name) => {
                     if (selectedDomain === name) setSelectedDomain("");
                     void refreshDomains();
@@ -2249,15 +2250,6 @@ export default function App() {
                 />
               </div>
             )}
-            <a
-              href="https://github.com/fru-dev3/prevail-desktop"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 px-3 py-2 text-xs text-text-muted hover:text-accent"
-            >
-              <Github className="h-3.5 w-3.5" />
-              github
-            </a>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -5147,10 +5139,12 @@ function DomainActionsMenu({
   domain,
   vaultPath,
   onArchived,
+  label,
 }: {
   domain: string;
   vaultPath: string;
   onArchived: (name: string) => void;
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<null | "backup" | "archive">(null);
@@ -5210,9 +5204,12 @@ function DomainActionsMenu({
       <button
         onClick={() => setOpen((v) => !v)}
         title="Back up / Archive domain"
-        className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent"
+        className={`flex items-center gap-1.5 rounded text-text-muted transition-colors hover:bg-surface-warm hover:text-accent ${
+          label ? "px-2.5 py-1.5 text-[13px]" : "h-6 w-6 justify-center"
+        }`}
       >
         <Archive className="h-3.5 w-3.5" />
+        {label}
       </button>
       {open && (
         <div className="absolute right-0 top-7 z-40 w-56 rounded-lg border border-border bg-surface p-1.5 shadow-xl">
@@ -9366,29 +9363,32 @@ function BenchRunConfig({
             <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Models</span>
             <span className="font-mono text-[10px] text-text-muted">{selModels.size} selected — runs head-to-head</span>
           </div>
-          <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
-            {BENCH_CLI_OPTIONS.map((c) => (
+          {/* Thin-row list grouped by provider — same dimensions as the
+              Installed CLIs and domain-preference pickers. Multi-select: the
+              circle fills with a check when a model is on the panel. */}
+          <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+            {BENCH_CLI_OPTIONS.map((c, ci) => (
               <div key={c.id}>
-                <div className="mb-1.5 flex items-center gap-1.5">
-                  <ProviderMark vendor={c.id} size={16} />
-                  <span className="text-xs font-medium text-text-secondary">{c.label}</span>
+                <div className={`flex items-center gap-2 bg-surface-warm/50 px-4 py-1.5 ${ci > 0 ? "border-t border-border" : ""}`}>
+                  <ProviderMark vendor={c.id} size={18} />
+                  <span className="font-display text-sm font-semibold tracking-tight">{c.label}</span>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {(MODELS[c.id] ?? []).map((m) => {
-                    const on = selModels.has(`${c.id}${MODEL_SEP}${m.id}`);
-                    return (
-                      <button
-                        key={m.id}
-                        onClick={() => toggleModel(c.id, m.id)}
-                        title={m.blurb}
-                        className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[11px] ${on ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:bg-surface-warm"}`}
-                      >
-                        {on && <Check className="h-3 w-3" />}
-                        {m.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                {(MODELS[c.id] ?? []).map((m) => {
+                  const on = selModels.has(`${c.id}${MODEL_SEP}${m.id}`);
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => toggleModel(c.id, m.id)}
+                      className={`flex w-full items-center gap-3 border-t border-border-subtle px-4 py-2 text-left transition-colors ${on ? "bg-accent-soft" : "hover:bg-surface-warm"}`}
+                    >
+                      <span className={`shrink-0 font-mono text-sm ${on ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
+                      {m.blurb && <span className="min-w-0 flex-1 truncate text-[11px] text-text-muted">{m.blurb}</span>}
+                      <span className={`ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${on ? "bg-accent text-background" : "border border-border"}`}>
+                        {on && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             ))}
           </div>
