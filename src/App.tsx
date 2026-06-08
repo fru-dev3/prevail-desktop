@@ -7771,14 +7771,33 @@ function CouncilPanel({
   useEffect(() => {
     setSelectedSlots((cur) => {
       if (cur.size > 0) return cur;
-      const seen = new Set<string>();
+      // Seed from the configured default council members (Settings → Council).
+      // Each member uses its per-provider default model; fall back to that CLI's
+      // first slot. If no members are configured yet, default to one slot per
+      // available CLI (legacy behavior).
+      const configured = readCouncilMembers();
       const def = new Set<string>();
-      for (const s of allSlots) {
-        const cli = clis.find((c) => c.id === s.cli);
-        if (!cli?.available) continue;
-        if (seen.has(s.cli)) continue;
-        seen.add(s.cli);
-        def.add(s.key);
+      const pickSlotForCli = (cliId: string): string | undefined => {
+        const model = lsGet(`prevail.model.${cliId}`) || "";
+        const exact = allSlots.find((s) => s.cli === cliId && s.model === model);
+        return (exact ?? allSlots.find((s) => s.cli === cliId))?.key;
+      };
+      if (configured.length) {
+        for (const cliId of configured) {
+          const cli = clis.find((c) => c.id === cliId);
+          if (!cli?.available) continue;
+          const k = pickSlotForCli(cliId);
+          if (k) def.add(k);
+        }
+      }
+      if (def.size === 0) {
+        const seen = new Set<string>();
+        for (const s of allSlots) {
+          const cli = clis.find((c) => c.id === s.cli);
+          if (!cli?.available || seen.has(s.cli)) continue;
+          seen.add(s.cli);
+          def.add(s.key);
+        }
       }
       return def;
     });
@@ -10026,7 +10045,13 @@ function SettingsPanel({
 
       {/* Main pane */}
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <div className={`mx-auto ${section === "frameworks" ? "max-w-6xl" : "max-w-3xl"} px-8 py-10`}>
+        {/* Width: use the screen's real estate. Form-style sections stay
+            readable at max-w-5xl; the picker-heavy / multi-column sections
+            (frameworks, models, defaults, council) get the full max-w-6xl. */}
+        <div className={`mx-auto px-8 py-10 ${
+          (["frameworks", "models", "defaults", "council"] as const).includes(section as never)
+            ? "max-w-6xl" : "max-w-5xl"
+        }`}>
           {section === "general" && <GeneralSection />}
           {section === "privacy" && <PrivacyConnectivitySection enabled={bunkerEnabled} onChange={onBunkerChange} />}
           {section === "models" && <ModelsSection clis={clis} onStartChatWith={onStartChatWith} onActivated={onRefreshClis} />}
@@ -12945,200 +12970,191 @@ function PaletteCard({
   );
 }
 
-// A3: Council config pulled out of "Defaults" into its own first-class section
-// — the multi-model panel is too central to the product to bury. Surfaces the
-// default chair (who writes the verdict) plus a plain-language explainer.
+// Default council membership — which providers sit on the panel by default, and
+// who chairs. Stored as CLI ids; each panelist uses its per-provider default
+// model from Settings → Defaults. Council sessions seed from these.
+const COUNCIL_MEMBERS_KEY = "prevail.council.defaultMembers";
+function readCouncilMembers(): string[] {
+  try { const a = JSON.parse(lsGet(COUNCIL_MEMBERS_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+
+// A3: Council config is its own first-class section. Distinguishes Defaults
+// (single-model chat) from Council (multi-model panel): here you choose the
+// default panel MEMBERS and the chair who writes the verdict.
 function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
-  const firstAvailable = useMemo(() => clis.find((c) => c.available)?.id ?? "", [clis]);
-  const [defaultChairCli, setDefaultChairCli] = useState(() => lsGet(LS.defaultChairCli) || firstAvailable);
-  useEffect(() => { lsSet(LS.defaultChairCli, defaultChairCli); }, [defaultChairCli]);
+  const available = useMemo(() => clis.filter((c) => c.available && (!isBunkerOn() || isLocalCli(c.id))), [clis]);
+  const firstAvailable = available[0]?.id ?? "";
+  const [members, setMembers] = useState<string[]>(() => {
+    const m = readCouncilMembers();
+    return m.length ? m : available.slice(0, 3).map((c) => c.id); // sensible default: first 3
+  });
+  const [chair, setChair] = useState(() => lsGet(LS.defaultChairCli) || firstAvailable);
+  useEffect(() => { lsSet(COUNCIL_MEMBERS_KEY, JSON.stringify(members)); }, [members]);
+  useEffect(() => { if (chair) lsSet(LS.defaultChairCli, chair); }, [chair]);
+  // Keep the chair pointed at an actual member.
   useEffect(() => {
-    if (!defaultChairCli && firstAvailable) setDefaultChairCli(firstAvailable);
+    if (members.length && !members.includes(chair)) setChair(members[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firstAvailable]);
+  }, [members]);
+  const toggleMember = (id: string) =>
+    setMembers((m) => (m.includes(id) ? m.filter((x) => x !== id) : [...m, id]));
+
   return (
     <>
-      <SettingsHeader title="Council" subtitle="Convene a panel of models on one question — each answers independently, then a chair synthesizes the verdict. Pick which model writes that verdict by default." />
+      <SettingsHeader title="Council" subtitle="A council convenes several models on one question — each answers independently, then a chair synthesizes the verdict. Set who's on the panel by default and who chairs." />
       <div className="space-y-6">
-        <CliPickerCard
-          label="Default council chair"
-          hint="Writes the verdict after panelists answer"
-          clis={clis}
-          value={defaultChairCli}
-          onChange={setDefaultChairCli}
-        />
+        {/* Defaults vs Council, made explicit */}
         <div className="rounded-lg border border-border-subtle bg-surface p-4 text-xs leading-relaxed text-text-secondary">
-          <span className="font-semibold text-text-primary">How it works.</span> Pick panelists and run a council from the <span className="text-accent">Council</span> tab inside any domain. Panelists answer in parallel; the chair reads every answer and writes a consensus + disagreements + recommended action. Thumbs up/down on a verdict trains future runs.
+          <span className="font-semibold text-text-primary">Chat vs Council.</span> <span className="text-accent">Defaults</span> sets the single model a normal chat opens with. <span className="text-accent">Council</span> (this page) sets the panel of models that deliberate together — each member uses its own default model from Defaults.
+        </div>
+
+        {/* Default panel members */}
+        <div>
+          <div className="mb-1 text-xs uppercase tracking-wider text-text-muted">Default panel members</div>
+          <p className="mb-3 text-xs text-text-muted/80">Who's on the council when you convene one. You can still add/remove members per session.</p>
+          <div className="space-y-2">
+            {available.length === 0 && <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-sm text-text-muted">No providers available{isBunkerOn() ? " in Bunker Mode" : ""}.</div>}
+            {available.map((c) => {
+              const on = members.includes(c.id);
+              const isChair = chair === c.id;
+              return (
+                <div key={c.id} className={`flex items-center gap-3 rounded-md border px-3 py-2 ${on ? "border-accent-border bg-accent-soft" : "border-border bg-surface"}`}>
+                  <button onClick={() => toggleMember(c.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${on ? "border-accent bg-accent text-background" : "border-border bg-background"}`}>
+                      {on && <Check className="h-3 w-3" strokeWidth={3} />}
+                    </span>
+                    <ProviderMark vendor={c.id} size={22} />
+                    <span className="font-display text-sm font-semibold text-text-primary">{c.label}</span>
+                  </button>
+                  {/* Chair selector — only members can chair */}
+                  {on && (
+                    <button
+                      onClick={() => setChair(c.id)}
+                      title={isChair ? "Chairs the council (writes the verdict)" : "Make chair"}
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider ${
+                        isChair ? "bg-accent text-background" : "border border-border text-text-muted hover:border-accent-border hover:text-accent"
+                      }`}
+                    >
+                      <Crown className="h-3 w-3" /> {isChair ? "Chair" : "Make chair"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border-subtle bg-surface p-4 text-xs leading-relaxed text-text-secondary">
+          <span className="font-semibold text-text-primary">How it works.</span> Convene a council from the <span className="text-accent">Council</span> tab inside any domain — it starts with these members. Panelists answer in parallel; the <span className="inline-flex items-center gap-0.5"><Crown className="h-3 w-3" /> chair</span> reads every answer and writes a consensus + disagreements + recommended action. Thumbs up/down on a verdict trains future runs.
         </div>
       </div>
     </>
   );
 }
 
+// Redesigned Defaults — one expandable provider→model accordion instead of a
+// flat CLI list stacked above a separate per-CLI model block. Each row IS a
+// provider; mark one as the default chat, expand it to choose its model. Council
+// panel + chair live in their own Council section (clarified in the intro).
 function DefaultsForm({ clis }: { clis: CliInfo[] }) {
-  // Framework + Lens live in the dedicated Settings → Frameworks tab.
-  // Council chair lives in Settings → Council (A3). Removed from Defaults to
-  // stop the duplication/burying confusion.
-  const firstAvailable = useMemo(() => clis.find((c) => c.available)?.id ?? "", [clis]);
+  const available = useMemo(
+    () => clis.filter((c) => c.available && MODELS[c.id] && (!isBunkerOn() || isLocalCli(c.id))),
+    [clis],
+  );
+  const firstAvailable = available[0]?.id ?? "";
   const [defaultChatCli, setDefaultChatCli] = useState(() => lsGet(LS.defaultChatCli) || firstAvailable);
-
-  useEffect(() => { lsSet(LS.defaultChatCli, defaultChatCli); }, [defaultChatCli]);
-  // Adopt the first available CLI as default once detection finishes
-  // and no explicit pick has been saved yet.
+  const [expanded, setExpanded] = useState<string>(() => lsGet(LS.defaultChatCli) || firstAvailable);
+  useEffect(() => { if (defaultChatCli) lsSet(LS.defaultChatCli, defaultChatCli); }, [defaultChatCli]);
   useEffect(() => {
-    if (!defaultChatCli && firstAvailable) setDefaultChatCli(firstAvailable);
+    if (!defaultChatCli && firstAvailable) { setDefaultChatCli(firstAvailable); setExpanded(firstAvailable); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstAvailable]);
 
   return (
-    <div className="space-y-6">
-      {/* CLI as a visual chip picker — the council chair moved to Settings → Council */}
-      <div className="flex flex-col gap-4">
-        <CliPickerCard
-          label="Default chat CLI"
-          hint="Opens when you click a domain"
-          clis={clis}
-          value={defaultChatCli}
-          onChange={setDefaultChatCli}
-        />
-      </div>
-
-      {/* Per-CLI model quickpicks */}
-      <div>
-        <div className="mb-2 font-mono text-xs uppercase tracking-[0.2em] text-text-muted">
-          Model · per CLI
+    <div className="space-y-4">
+      <p className="text-sm leading-relaxed text-text-secondary">
+        Pick the model that opens when you start a new chat. Mark a provider as the <span className="font-semibold text-accent">default</span>, and expand it to choose which of its models to use. The multi-model panel and its chair live in <span className="font-semibold text-accent">Settings → Council</span>.
+      </p>
+      {available.length === 0 && (
+        <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+          No chat providers available{isBunkerOn() ? " in Bunker Mode (local only)" : ""}. Install a CLI or start a local model from <span className="text-accent">Settings → Models</span>.
         </div>
-        <div className="flex flex-col gap-4">
-          {clis.filter((c) => MODELS[c.id]).map((c) => (
-            <ModelPickerCard key={c.id} cli={c} />
-          ))}
-        </div>
+      )}
+      <div className="space-y-2.5">
+        {available.map((c) => (
+          <DefaultCliRow
+            key={c.id}
+            cli={c}
+            isDefault={defaultChatCli === c.id}
+            expanded={expanded === c.id}
+            onToggleExpand={() => setExpanded((e) => (e === c.id ? "" : c.id))}
+            onMakeDefault={() => { setDefaultChatCli(c.id); setExpanded(c.id); }}
+          />
+        ))}
       </div>
-
-      {/* Framework + Lens used to live here as small chip rows, but
-          they're already set in Settings → Frameworks (the dedicated
-          full-width two-column layout with descriptions). Removed
-          here to stop the duplication confusion. */}
     </div>
   );
 }
 
-function CliPickerCard({
-  label, hint, clis, value, onChange,
-}: {
-  label: string;
-  hint: string;
-  clis: CliInfo[];
-  value: string;
-  onChange: (v: string) => void;
+function DefaultCliRow({ cli, isDefault, expanded, onToggleExpand, onMakeDefault }: {
+  cli: CliInfo;
+  isDefault: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onMakeDefault: () => void;
 }) {
-  return (
-    <div className="rounded-lg border border-border bg-surface p-4">
-      <div className="text-xs uppercase tracking-wider text-text-muted">{label}</div>
-      <p className="mt-0.5 text-xs text-text-muted/80">{hint}</p>
-      {/* U3/U4: list rows (not big button cards), keeping the provider icon. */}
-      <div className="mt-3 flex flex-col gap-1.5">
-        {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
-          const picked = value === c.id;
-          const disabled = !c.available;
-          return (
-            <button
-              key={c.id}
-              disabled={disabled}
-              onClick={() => onChange(c.id)}
-              title={disabled ? `${c.label} not installed` : c.label}
-              className={`group flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
-                picked
-                  ? "border-accent bg-accent-soft ring-1 ring-accent/20"
-                  : disabled
-                  ? "border-border-subtle bg-background opacity-40"
-                  : "border-border bg-background hover:bg-surface-warm"
-              }`}
-            >
-              <ProviderMark vendor={c.id} size={22} />
-              <span className={`flex-1 font-display text-sm font-semibold tracking-tight ${picked ? "text-accent" : "text-text-primary"}`}>
-                {c.label}
-              </span>
-              {disabled && (
-                <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">not installed</span>
-              )}
-              {picked && (
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-background">
-                  <Check className="h-3 w-3" strokeWidth={3} />
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ModelPickerCard({ cli }: { cli: CliInfo }) {
   const key = `prevail.model.${cli.id}`;
   const models = MODELS[cli.id] ?? [];
   const [picked, setPicked] = useState(() => lsGet(key) || models[0]?.id || "");
   useEffect(() => { lsSet(key, picked); }, [key, picked]);
   const current = models.find((m) => m.id === picked);
-
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
-      <div className="flex items-center justify-between">
-        <div className="font-mono text-xs uppercase tracking-wider text-text-muted">
-          {cli.label.toLowerCase()}
-        </div>
-        {!cli.available && (
-          <span className="rounded bg-surface-strong px-1.5 py-0.5 font-mono text-[10px] text-text-muted">
-            not installed
+    <div className={`overflow-hidden rounded-xl border bg-surface transition-colors ${expanded || isDefault ? "border-accent-border" : "border-border"}`}>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button onClick={onToggleExpand} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+          {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" /> : <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />}
+          <ProviderMark vendor={cli.id} size={26} />
+          <span className="shrink-0 font-display text-sm font-semibold text-text-primary">{cli.label}</span>
+          <span className="truncate font-mono text-xs text-text-muted">{current?.label ?? "default model"}</span>
+        </button>
+        {isDefault ? (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background">
+            <Check className="h-3 w-3" strokeWidth={3} /> Default chat
           </span>
+        ) : (
+          <button onClick={onMakeDefault} className="shrink-0 rounded-full border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+            Make default
+          </button>
         )}
       </div>
-      <div className="mt-3 grid gap-2">
-        {models.map((m) => {
-          const on = picked === m.id;
-          return (
-            <button
-              key={m.id}
-              onClick={() => setPicked(m.id)}
-              className={`group flex items-center justify-between rounded-md border-2 px-3 py-2 text-left transition-colors ${
-                on
-                  ? "border-accent bg-accent-soft ring-2 ring-accent/20"
-                  : "border-border bg-background hover:bg-surface-warm"
-              }`}
-            >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className={`font-mono text-sm ${on ? "font-semibold text-accent" : "text-text-primary"}`}>
-                    {m.label}
-                  </span>
-                  {on && (
-                    <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[8px] uppercase tracking-wider text-background">
-                      selected
-                    </span>
-                  )}
-                </div>
-                {m.blurb && (
-                  <div className="text-[11px] text-text-muted">{m.blurb}</div>
-                )}
-              </div>
-              {on && (
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-background">
-                  <Check className="h-3 w-3" strokeWidth={3} />
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      {current && (
-        <div className="mt-3 truncate font-mono text-[10px] text-text-muted">
-          → passed as --model {current.id}
+      {expanded && (
+        <div className="border-t border-border-subtle bg-background/40 p-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            {models.map((m) => {
+              const on = picked === m.id;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setPicked(m.id)}
+                  className={`flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-left transition-colors ${
+                    on ? "border-accent bg-accent-soft" : "border-border bg-surface hover:bg-surface-warm"
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className={`font-mono text-sm ${on ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</div>
+                    {m.blurb && <div className="truncate text-[11px] text-text-muted">{m.blurb}</div>}
+                  </div>
+                  {on && <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-background"><Check className="h-3 w-3" strokeWidth={3} /></span>}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
   );
 }
+
 
 // FrameworkPickerCard was deleted with v0.2.92 — the chip-row UI
 // it provided lived only in Settings → Defaults as a duplicate of
