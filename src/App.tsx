@@ -2952,9 +2952,9 @@ function ThreadsRail({
         <button
           onClick={() => setCollapsed(false)}
           title="Expand threads rail"
-          className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
+          className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
         >
-          <span className="text-[12px] leading-none">▸</span>
+          <PanelRightOpen className="h-4 w-4" />
         </button>
         <button
           onClick={onNew}
@@ -3021,9 +3021,9 @@ function ThreadsRail({
           <button
             onClick={() => setCollapsed(true)}
             title="Collapse threads rail"
-            className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
+            className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
           >
-            <span className="text-[12px] leading-none">◂</span>
+            <PanelRightClose className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -4052,6 +4052,7 @@ function DomainPrefsPanel({
   preferredSkills,
   onTogglePreferredSkill,
   onChanged,
+  onBack,
 }: {
   domain: string;
   vaultPath: string;
@@ -4060,6 +4061,7 @@ function DomainPrefsPanel({
   preferredSkills: string[];
   onTogglePreferredSkill: (name: string) => void;
   onChanged: () => void;
+  onBack?: () => void;
 }) {
   // Read overrides directly so save buttons are unnecessary —
   // bump tick on every write so this component re-renders.
@@ -4190,6 +4192,15 @@ function DomainPrefsPanel({
 
   return (
     <div className="mx-auto w-full max-w-4xl px-2 py-2">
+      {/* U9: explicit way back to the conversation from Preferences. */}
+      {onBack && (
+        <button
+          onClick={onBack}
+          className="mb-4 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-accent"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" /> Chat
+        </button>
+      )}
       {/* Header */}
       <div className="mb-6 flex items-end justify-between gap-3">
         <div>
@@ -6888,6 +6899,7 @@ function ChatPanel({
                 preferredSkills={preferredSkills}
                 onTogglePreferredSkill={togglePreferredSkill}
                 onChanged={() => setPrefsTick((t) => t + 1)}
+                onBack={() => setDomainTab("chat")}
               />
             )}
           </div>
