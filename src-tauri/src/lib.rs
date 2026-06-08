@@ -1557,7 +1557,16 @@ fn extract_skill_description(body: &str) -> Option<String> {
                 let lt = l.trim();
                 if let Some(rest) = lt.strip_prefix("description:") {
                     let val = rest.trim().trim_matches('"').trim();
-                    if !val.is_empty() {
+                    // YAML block scalar (`description: >` or `|`) — the text is on
+                    // the following indented lines; grab the first non-empty one.
+                    if val == ">" || val == "|" || val.is_empty() {
+                        if let Some(next) = lines.next() {
+                            let n = next.trim();
+                            if !n.is_empty() && n != "---" {
+                                return Some(n.chars().take(140).collect());
+                            }
+                        }
+                    } else {
                         return Some(val.chars().take(140).collect());
                     }
                 }
@@ -2606,9 +2615,10 @@ fn domain_context(vault: String, domain: String) -> Result<DomainContext, String
         }
     }
 
-    // Skills — re-scan only this domain's skills/.
+    // Skills — re-scan only this domain's _skills/ (the on-disk convention used
+    // by the bundled sample vault + the engine's heartbeat writer).
     let mut skills: Vec<SkillEntry> = Vec::new();
-    let skills_dir = root.join("skills");
+    let skills_dir = root.join("_skills");
     if skills_dir.is_dir() {
         if let Ok(it) = read_dir_retry(&skills_dir) {
             for entry in it.flatten() {
@@ -2660,7 +2670,7 @@ fn scan_skills(vault: String) -> Result<Vec<SkillEntry>, String> {
         if NON_DOMAIN_DIRS.contains(&domain_name.as_str()) || domain_name.starts_with('.') {
             continue;
         }
-        let skills_dir = domain_path.join("skills");
+        let skills_dir = domain_path.join("_skills");
         if !skills_dir.exists() || !skills_dir.is_dir() {
             continue;
         }
@@ -2675,18 +2685,14 @@ fn scan_skills(vault: String) -> Result<Vec<SkillEntry>, String> {
                     continue;
                 }
                 // Try to read a SKILL.md or README.md for a one-line description.
+                // Use the frontmatter-aware extractor so a YAML `---` block (the
+                // sample-vault skill format) isn't mistaken for the description.
                 let mut description: Option<String> = None;
                 for candidate in &["SKILL.md", "README.md", "skill.md"] {
                     let f = p.join(candidate);
                     if let Ok(s) = fs::read_to_string(&f) {
-                        let first = s
-                            .lines()
-                            .find(|l| !l.trim().is_empty() && !l.starts_with('#'))
-                            .unwrap_or("")
-                            .trim()
-                            .to_string();
-                        if !first.is_empty() {
-                            description = Some(first.chars().take(140).collect());
+                        if let Some(desc) = extract_skill_description(&s) {
+                            description = Some(desc);
                             break;
                         }
                     }
@@ -2702,6 +2708,48 @@ fn scan_skills(vault: String) -> Result<Vec<SkillEntry>, String> {
     }
     out.sort_by(|a, b| a.domain.cmp(&b.domain).then(a.name.cmp(&b.name)));
     Ok(out)
+}
+
+/// I7: create a reusable skill from the UI (e.g. "save this prompt as a skill").
+/// Writes `<vault>/<domain>/skills/<slug>/SKILL.md` with `runner: llm` frontmatter
+/// and the supplied body as the prompt. Returns the file path. The slug is
+/// sanitized to `[a-z0-9-]` which also makes path-traversal impossible.
+#[tauri::command]
+fn skill_create(
+    vault: String,
+    domain: Option<String>,
+    name: String,
+    body: String,
+) -> Result<String, String> {
+    // Sanitize → lowercase kebab slug; collapse runs of dashes; trim ends.
+    let mut slug = String::new();
+    let mut prev_dash = false;
+    for c in name.trim().to_lowercase().chars() {
+        if c.is_ascii_alphanumeric() {
+            slug.push(c);
+            prev_dash = false;
+        } else if !prev_dash {
+            slug.push('-');
+            prev_dash = true;
+        }
+    }
+    let slug = slug.trim_matches('-').to_string();
+    if slug.is_empty() {
+        return Err("skill name must contain letters or numbers".into());
+    }
+    let title = name.trim();
+    if body.trim().is_empty() {
+        return Err("skill body is empty".into());
+    }
+    let dir = domain_dir(&vault, &domain).join("_skills").join(&slug);
+    fs::create_dir_all(&dir).map_err(|e| format!("mkdir skill: {e}"))?;
+    let file = dir.join("SKILL.md");
+    let content = format!(
+        "---\nid: {slug}\nrunner: llm\ntrigger: on-demand\n---\n\n# {title}\n\n{}\n",
+        body.trim(),
+    );
+    fs::write(&file, content).map_err(|e| format!("write SKILL.md: {e}"))?;
+    Ok(file.to_string_lossy().to_string())
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -3070,6 +3118,7 @@ pub fn run() {
             create_domain,
             domain_context,
             scan_skills,
+            skill_create,
             abort_sessions,
             read_user_md,
             write_user_md,
