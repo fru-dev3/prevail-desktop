@@ -2443,37 +2443,38 @@ function Sidebar({
       className="flex shrink-0 flex-col border-r border-border-subtle bg-surface"
       style={{ width: collapsed ? 56 : railWidth }}
     >
-      {/* Row 1 — window controls. Leaves the top-left empty for macOS's native
-          traffic-light buttons; the sidebar collapse toggle sits at the FAR
-          RIGHT, away from them. Whole row is draggable. */}
+      {/* Row 1 — window-controls strip. The native macOS traffic lights live in
+          the top-left (transparent title bar over the cream sidebar); the
+          sidebar toggle sits at the far right. Extra top padding gives the
+          lights room to breathe, matching the standard macOS app header. */}
       <div
         data-tauri-drag-region
-        className="flex h-8 shrink-0 items-center justify-end px-2"
+        className="flex h-11 shrink-0 items-center justify-end px-3 pt-1.5"
       >
         {!collapsed && (
           <button
             onClick={() => setCollapsed(true)}
             title="Collapse sidebar"
-            className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-text-primary"
           >
-            <PanelLeftClose className="h-4 w-4" />
+            <PanelLeftClose className="h-[18px] w-[18px]" strokeWidth={1.75} />
           </button>
         )}
       </div>
-      {/* Row 2 — the Prevail mark on its own, taking the full width. */}
+      {/* Row 2 — the Prevail mark on its own, full width, left-aligned. */}
       <div
         data-tauri-drag-region
-        className="shrink-0 border-b border-border-subtle px-3 pb-3"
+        className="shrink-0 border-b border-border-subtle px-3 pb-4 pt-1"
       >
         {collapsed ? (
-          <div className="flex flex-col items-center gap-1.5">
+          <div className="flex flex-col items-center gap-2">
             <PrevailLogo size={30} src="/logo-512.png" animated={false} />
             <button
               onClick={() => setCollapsed(false)}
               title="Expand sidebar"
-              className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-text-primary"
             >
-              <PanelLeftOpen className="h-4 w-4" />
+              <PanelLeftOpen className="h-[18px] w-[18px]" strokeWidth={1.75} />
             </button>
           </div>
         ) : (
