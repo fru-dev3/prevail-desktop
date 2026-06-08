@@ -2443,31 +2443,19 @@ function Sidebar({
       className="flex shrink-0 flex-col border-r border-border-subtle bg-surface"
       style={{ width: collapsed ? 56 : railWidth }}
     >
-      {/* Row 1 — window-controls strip. The native macOS traffic lights live in
-          the top-left (transparent title bar over the cream sidebar); the
-          sidebar toggle sits at the far right. Extra top padding gives the
-          lights room to breathe, matching the standard macOS app header. */}
+      {/* Row 1 — empty draggable strip that reserves the macOS title-bar height
+          so the native red/yellow/green traffic lights (top-left, over the cream
+          sidebar) have room. No controls here — they'd land under the system
+          overlay region. */}
+      <div data-tauri-drag-region className="h-7 shrink-0" />
+      {/* Row 2 — the Prevail mark, full width, with the sidebar toggle on the
+          far right (clearly in the content area, below the overlay strip). */}
       <div
         data-tauri-drag-region
-        className="flex h-11 shrink-0 items-center justify-end px-3 pt-1.5"
-      >
-        {!collapsed && (
-          <button
-            onClick={() => setCollapsed(true)}
-            title="Collapse sidebar"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-text-primary"
-          >
-            <PanelLeftClose className="h-[18px] w-[18px]" strokeWidth={1.75} />
-          </button>
-        )}
-      </div>
-      {/* Row 2 — the Prevail mark on its own, full width, left-aligned. */}
-      <div
-        data-tauri-drag-region
-        className="shrink-0 border-b border-border-subtle px-3 pb-4 pt-1"
+        className="flex shrink-0 items-center gap-2 border-b border-border-subtle px-3 pb-3 pt-0.5"
       >
         {collapsed ? (
-          <div className="flex flex-col items-center gap-2">
+          <div className="mx-auto flex flex-col items-center gap-2">
             <PrevailLogo size={30} src="/logo-512.png" animated={false} />
             <button
               onClick={() => setCollapsed(false)}
@@ -2478,7 +2466,16 @@ function Sidebar({
             </button>
           </div>
         ) : (
-          <Brand fill className="w-full font-sans text-2xl font-extrabold text-text-primary" />
+          <>
+            <Brand fill className="min-w-0 flex-1 font-sans text-xl font-extrabold text-text-primary" />
+            <button
+              onClick={() => setCollapsed(true)}
+              title="Collapse sidebar"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-text-primary"
+            >
+              <PanelLeftClose className="h-[18px] w-[18px]" strokeWidth={1.75} />
+            </button>
+          </>
         )}
       </div>
 
