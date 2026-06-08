@@ -70,47 +70,47 @@ this is refinement of a working product, not a rescue.
 
 ## Wave 1 — Critical bugs (data loss, crashes, broken core promise)
 
-- [ ] **B1. Cross-model context loss (THE killer).** Switching models mid-thread
+- [x] **B1. Cross-model context loss (THE killer).** Switching models mid-thread
   drops the conversation history. Asked about "C-Zero" on Claude, switched to
   Codex, asked "was he any good?" → Codex had no context ("Who do you mean by
   'he'?"). Works when switching back to the cloud model, breaks switching to a
   different one. This is the core differentiator ("chat with one model, switch
   to another mid-conversation") — must carry the FULL thread to whatever model
   is active. (pdf p17)
-- [ ] **B2. Vault backup crashes.** "Backup failed: TypeError: undefined is not
+- [x] **B2. Vault backup crashes.** "Backup failed: TypeError: undefined is not
   an object (evaluating 'f.domains.length')". (p11)
-- [ ] **B3. Domain backup reports "undefined files".** "Backed up undefined
+- [x] **B3. Domain backup reports "undefined files".** "Backed up undefined
   files (657.3 KB)" — the count is undefined; archive/restore work fine, only
   backup is wrong. (p27)
-- [ ] **B4. WebUI crashes on "Pick your vault".** "TypeError: Cannot read
+- [x] **B4. WebUI crashes on "Pick your vault".** "TypeError: Cannot read
   properties of undefined (reading 'invoke')" — the dialog/file-picker path
   isn't bridged for the browser transport. (p8)
-- [ ] **B5. WebUI "Load sample data" does nothing.** Same bridge gap. (p9)
-- [ ] **B6. WebUI should inherit the running desktop's vault.** When the desktop
+- [x] **B5. WebUI "Load sample data" does nothing.** Same bridge gap. (p9)
+- [x] **B6. WebUI should inherit the running desktop's vault.** When the desktop
   app is already running and serving the WebUI, the browser shouldn't show
   onboarding (pick vault / load sample) — it should be in sync automatically. (p8)
-- [ ] **B7. "Load sample data" duplicates the vault.** Creates `apps 2`,
+- [x] **B7. "Load sample data" duplicates the vault.** Creates `apps 2`,
   `health 2`, `tax 2`, … — every domain doubled with a " 2" suffix. Loading
   samples twice (or onto an existing vault) must be idempotent / not duplicate. (p2)
-- [ ] **B8. Sample vault has non-domain folders.** Contains `apps`, `benchmark`,
+- [x] **B8. Sample vault has non-domain folders.** Contains `apps`, `benchmark`,
   `complete`, `core` (+ `AGENTS-operating.md`, `profile.md`) that aren't real
   life-domains. Expectation: just the ~10 domains. Clean the shipped sample
   vault. (p11, p12)
-- [ ] **B9. MCP "expose" config points at a dev/DMG path.** Generated config
+- [x] **B9. MCP "expose" config points at a dev/DMG path.** Generated config
   shows `command: "/Volumes/Prevail/Prevail.app/Contents/MacOS/prevail"` (the
   mounted DMG, not `/Applications/...`) and a hardcoded vault path. Must resolve
   the installed app path + the user's actual vault at runtime. (p7)
-- [ ] **B10. Duplicate session log files** with the same date in the session
+- [x] **B10. Duplicate session log files** with the same date in the session
   folder. (p24)
 
 ## Wave 2 — Self-learning intelligence (the soul of the product)
 
-- [ ] **I1. State + decisions aren't being written from conversations.** Health
+- [x] **I1. State + decisions aren't being written from conversations.** Health
   `state.md` is blank and there are no decisions even after chats + a council
   verdict. User said "make Mayo Clinic my favorite" → never captured as a
   decision; state never updated. The distillation must turn conversations into
   `_state.md` + `_decisions.jsonl`. (p24, p28)
-- [ ] **I2. "What's missing" must read like a domain expert, not a dev.** Today:
+- [x] **I2. "What's missing" must read like a domain expert, not a dev.** Today:
   "decisions.md MDE, knowledge files are thin, no journal." Should be a wealth/
   health coach: specific, actionable ("add your latest bank statements to
   build a net-worth baseline"), and offer to turn each into a task / a chat /
@@ -120,7 +120,7 @@ this is refinement of a working product, not a rescue.
 - [ ] **I4. Smart prompt routing.** Decision/risk-class prompts (the suggested
   "Decision" / "Risks" cards) should be smart enough to route to the Council
   automatically instead of plain chat. (p25)
-- [ ] **I5. Verdict feedback loop.** Thumbs up/down on a council verdict;
+- [x] **I5. Verdict feedback loop.** Thumbs up/down on a council verdict;
   record which model/framework/lens/context produced liked vs disliked verdicts;
   learn over time and inform future runs. (p20)
 - [ ] **I6. Surface intents intelligently.** `_intents.jsonl` exists but is
