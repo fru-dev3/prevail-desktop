@@ -990,14 +990,22 @@ function savePreferredSkills(domain: string | null, skills: string[]): void {
 
 // Concatenates a list of chat messages into a single text payload for
 // passing as context to a stateless CLI. Drops the oldest turns until
-// the total stays under `maxChars`. The most-recent placeholder reply
-// (empty content) is excluded automatically.
+// the total stays under `maxChars`. Empty-content messages (the streaming
+// placeholder for an in-flight reply) are excluded automatically.
+//
+// IMPORTANT: callers pass the PRIOR conversation — at send() time React's
+// state update for the just-typed user turn + its placeholder has not yet
+// committed, so `msgs` does NOT contain them. We must therefore keep every
+// prior turn (filtering only empties). A previous version sliced off the
+// last two entries on the assumption the new pair was already present, which
+// silently dropped the most-recent completed exchange — so a follow-up that
+// referenced it (e.g. "was he any good?") reached the model with no context,
+// most visibly when switching models mid-thread. (feedback v0.4.1 B1)
 function buildChatContext(
   msgs: { role: "user" | "assistant"; cli?: string; content: string }[],
   maxChars: number,
 ): string {
-  // Skip trailing streaming placeholder + the user msg we just pushed.
-  const sliced = msgs.slice(0, -2).filter((m) => m.content.trim().length > 0);
+  const sliced = msgs.filter((m) => m.content.trim().length > 0);
   if (sliced.length === 0) return "";
   const lines: string[] = [];
   for (let i = sliced.length - 1; i >= 0; i--) {
@@ -1861,6 +1869,17 @@ export default function App() {
   // explicit "Set up domains" control; it never auto-appears.
 
   async function pickVault() {
+    // The native folder picker (tauri-plugin-dialog) only exists in the
+    // desktop runtime; calling it in a browser throws "Cannot read properties
+    // of undefined (reading 'invoke')". In the WebUI the browser inherits the
+    // desktop's vault automatically (bootstrap_vault), so this path is a
+    // fallback — guide the user to the desktop instead of crashing. (B4)
+    if (isBrowser()) {
+      window.alert(
+        "Pick your vault from the Prevail desktop app on this Mac — a browser can't open a native folder picker. The web view then syncs to it automatically.",
+      );
+      return;
+    }
     const dir = await open({ directory: true, multiple: false });
     if (typeof dir === "string") {
       setVaultPath(dir);
@@ -4799,9 +4818,10 @@ function DomainActionsMenu({
         vault: vaultPath,
         domainOpt: domain,
       });
+      const files = res.file_count ?? 0;
       setNote(
         res.ok
-          ? `Backed up ${res.file_count} file${res.file_count === 1 ? "" : "s"} (${bytesHuman(res.bytes)})`
+          ? `Backed up ${files} file${files === 1 ? "" : "s"} (${bytesHuman(res.bytes ?? 0)})`
           : `Backup failed: ${res.error ?? "unknown error"}`,
       );
     } catch (e) {
@@ -10409,13 +10429,31 @@ function RemoteSection() {
   );
 }
 
+// The MCP "expose" config is pasted into Claude Desktop and used long-term, so
+// it must reference a STABLE absolute path — not the transient location the app
+// happens to be running from. When launched straight off the mounted DMG
+// (/Volumes/…) or under macOS App Translocation (/private/var/folders/…), the
+// bundled-sidecar path would vanish the moment the volume ejects. Normalize
+// those to the canonical installed location. (feedback v0.4.1 B9)
+function mcpCommandPath(enginePath: string): { command: string; unstable: boolean } {
+  const p = (enginePath || "").trim();
+  const unstable =
+    p === "" ||
+    p.includes("/Volumes/") ||
+    p.includes("AppTranslocation") ||
+    p.includes("/private/var/folders/");
+  if (unstable) return { command: "/Applications/Prevail.app/Contents/MacOS/prevail", unstable: true };
+  return { command: p, unstable: false };
+}
+
 function McpSection({ vaultPath }: { vaultPath: string }) {
   const [enginePath, setEnginePath] = useState<string>("");
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     invoke<{ engine_bin?: string }>("app_diagnostics").then((d) => setEnginePath(d.engine_bin ?? "prevail")).catch(() => setEnginePath("prevail"));
   }, []);
-  const snippet = JSON.stringify({ mcpServers: { prevail: { command: enginePath || "prevail", args: ["mcp", "--vault", vaultPath] } } }, null, 2);
+  const { command: mcpCommand, unstable: mcpPathUnstable } = mcpCommandPath(enginePath);
+  const snippet = JSON.stringify({ mcpServers: { prevail: { command: mcpCommand, args: ["mcp", "--vault", vaultPath] } } }, null, 2);
   return (
     <>
       <SettingsHeader title="MCP" subtitle="Connect Model Context Protocol servers to Prevail, and expose Prevail as an MCP server to other tools." />
@@ -10426,6 +10464,11 @@ function McpSection({ vaultPath }: { vaultPath: string }) {
       <div className="rounded-lg border border-border bg-surface p-5">
         <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Expose Prevail as an MCP server</div>
         <div className="mb-3 text-xs text-text-secondary">Add this to another tool's MCP config (e.g. Claude Desktop) to let it use your Prevail vault as an MCP server.</div>
+        {mcpPathUnstable && (
+          <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-text-secondary">
+            Prevail is running from a temporary location (a mounted disk image or quarantine). Move <span className="font-mono">Prevail.app</span> into your <span className="font-mono">Applications</span> folder so this path stays valid after you eject the installer.
+          </div>
+        )}
         <pre className="overflow-auto rounded-md border border-border-subtle bg-background p-3 font-mono text-[11px] text-text-secondary">{snippet}</pre>
         <button onClick={() => { navigator.clipboard.writeText(snippet).catch(() => {}); setCopied(true); window.setTimeout(() => setCopied(false), 1500); }}
           className="mt-2 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
@@ -10498,8 +10541,10 @@ function VaultSettings({ vaultPath, onChange }: { vaultPath: string; onChange: (
     try {
       const res = await invoke<BackupResult>("engine_vault_backup", { vault: vaultPath, domainOpt: null });
       if (res.ok) {
+        const nDomains = res.domains?.length ?? 0;
+        const files = res.file_count ?? 0;
         setBackupNote(
-          `Backed up ${res.domains.length} domain${res.domains.length === 1 ? "" : "s"} · ${res.file_count} file${res.file_count === 1 ? "" : "s"} · ${bytesHuman(res.bytes)}${res.archive_path ? ` → ${res.archive_path}` : ""}`,
+          `Backed up ${nDomains} domain${nDomains === 1 ? "" : "s"} · ${files} file${files === 1 ? "" : "s"} · ${bytesHuman(res.bytes ?? 0)}${res.archive_path ? ` → ${res.archive_path}` : ""}`,
         );
       } else {
         setBackupNote(`Backup failed: ${res.error ?? "unknown error"}`);

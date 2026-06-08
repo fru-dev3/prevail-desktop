@@ -1747,7 +1747,15 @@ fn save_session(
     let secs = now as i64;
     let (year, month, day, hh, mm, ss) = secs_to_ymdhms(secs);
     let stem = format!("{year:04}-{month:02}-{day:02}_{hh:02}-{mm:02}-{ss:02}");
-    let file = log_dir.join(format!("{stem}_session.md"));
+    // Two saves within the same second (e.g. an auto-save racing a manual
+    // "save & clear") would otherwise collide on the same filename. Add a
+    // numeric suffix so neither is silently overwritten. (feedback v0.4.1 B10)
+    let mut file = log_dir.join(format!("{stem}_session.md"));
+    let mut dup = 2;
+    while file.exists() {
+        file = log_dir.join(format!("{stem}-{dup}_session.md"));
+        dup += 1;
+    }
     let mut body = String::new();
     body.push_str("---\n");
     if let Some(t) = &title { body.push_str(&format!("title: {t}\n")); }
