@@ -3669,6 +3669,37 @@ interface ChatEvent {
   error?: string;
 }
 
+// Pull <think>…</think> / <thinking>…</thinking> reasoning blocks out of a
+// model's output so they can render in a collapsible disclosure instead of
+// polluting the answer. Tolerates an unclosed trailing block during streaming.
+function splitThinking(raw: string): { thinking: string; answer: string } {
+  if (!raw || raw.indexOf("<think") === -1) return { thinking: "", answer: raw };
+  let thinking = "";
+  const answer = raw.replace(/<think(?:ing)?>([\s\S]*?)(?:<\/think(?:ing)?>|$)/gi, (_m, inner: string) => {
+    thinking += inner;
+    return "";
+  });
+  return { thinking: thinking.trim(), answer: answer.trim() };
+}
+
+// Collapsible "Thinking" disclosure. Native <details> — no per-card React
+// state. Gated by the Show-model-thinking preference at the call site.
+function ThinkingDisclosure({ text, open }: { text: string; open?: boolean }) {
+  if (!text) return null;
+  return (
+    <details open={open} className="group mb-3 rounded-lg border border-border-subtle bg-surface-warm/40">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted [&::-webkit-details-marker]:hidden">
+        <Brain className="h-3.5 w-3.5" />
+        Thinking
+        <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+      </summary>
+      <div className="whitespace-pre-wrap border-t border-border-subtle px-3 py-2 text-[13px] leading-relaxed text-text-secondary">
+        {text}
+      </div>
+    </details>
+  );
+}
+
 // Council is for "why" / "should I" / steelman / decision questions —
 // the kinds of asks where multiple model perspectives + a chair help.
 // These hints surface when the council is idle so the user knows what
@@ -7501,7 +7532,18 @@ function ChatBubble({
           style={bubbleStyle}
         >
           {msg.content ? (
-            <Markdown source={msg.content} />
+            msg.role === "assistant" ? (() => {
+              const showThinking = getPref(PREF.showThinking, "1") === "1";
+              const { thinking, answer } = splitThinking(msg.content);
+              return (
+                <>
+                  {showThinking && thinking && <ThinkingDisclosure text={thinking} open={!answer} />}
+                  {answer ? <Markdown source={answer} /> : (!thinking && msg.streaming ? <ThinkingDots /> : null)}
+                </>
+              );
+            })() : (
+              <Markdown source={msg.content} />
+            )
           ) : msg.streaming ? (
             <ThinkingDots />
           ) : (
@@ -8402,14 +8444,18 @@ function CouncilPanel({
                 const cardError = cardErrored ? extractCliError(r.stderr) : null;
                 // Synthesis ran without this panelist → it was skipped, not pending.
                 const skipped = !!synthesisSlots && !synthesisSlots.some((x) => x.key === s.key) && (!r || (!r.content && r.streaming));
+                const showThinking = getPref(PREF.showThinking, "1") === "1";
+                const parts = r?.content ? splitThinking(r.content) : { thinking: "", answer: "" };
                 return (
-                  <div
+                  <details
                     key={s.key}
-                    className="overflow-hidden rounded-lg border border-border bg-surface"
+                    open={!skipped}
+                    className="group overflow-hidden rounded-lg border border-border bg-surface"
                     style={{ borderLeftColor: cardAccent.accent, borderLeftWidth: 3 }}
                   >
-                    <div className="flex items-center justify-between gap-2 border-b border-border-subtle bg-surface-warm px-4 py-2 font-mono text-xs">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 border-b border-border-subtle bg-surface-warm px-4 py-2 font-mono text-xs [&::-webkit-details-marker]:hidden">
                       <span className="flex items-center gap-2">
+                        <ChevronRight className="h-3.5 w-3.5 text-text-muted transition-transform group-open:rotate-90" />
                         <ProviderMark vendor={s.cli} size={18} />
                         <span style={{ color: cardAccent.accent }}>{s.cliLabel.toLowerCase()}</span>
                         <span className="text-text-muted">· {s.modelLabel}</span>
@@ -8424,10 +8470,14 @@ function CouncilPanel({
                           </>
                         )}
                       </span>
-                    </div>
+                    </summary>
                     <div className="px-5 py-4">
                       {r?.content ? (
-                        <Markdown source={r.content} />
+                        <>
+                          {showThinking && parts.thinking && <ThinkingDisclosure text={parts.thinking} open={!parts.answer} />}
+                          {parts.answer ? <Markdown source={parts.answer} /> : (!parts.thinking && r.streaming ? <ThinkingDots /> : null)}
+                          {r.streaming && parts.answer && <span className="cursor-blink text-accent">▌</span>}
+                        </>
                       ) : skipped ? (
                         <p className="text-sm text-text-muted">Didn't respond in time. Left out of the verdict.</p>
                       ) : cardErrored ? (
@@ -8439,30 +8489,37 @@ function CouncilPanel({
                       ) : (
                         <ThinkingDots />
                       )}
-                      {r?.streaming && r?.content && <span className="cursor-blink text-accent">▌</span>}
                     </div>
-                  </div>
+                  </details>
                 );
               })}
             </div>
 
-            {(phase === "synthesizing" || phase === "done") && (
-              <div className="mt-8 rounded-lg border border-accent-border bg-accent-soft p-6">
-                <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.2em] text-accent">
+            {(phase === "synthesizing" || phase === "done") && (() => {
+              const vparts = splitThinking(verdict);
+              const showThinking = getPref(PREF.showThinking, "1") === "1";
+              return (
+              <details open className="group mt-8 overflow-hidden rounded-lg border border-accent-border bg-accent-soft">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-6 py-4 font-mono text-xs uppercase tracking-[0.2em] text-accent [&::-webkit-details-marker]:hidden">
+                  <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
                   <Crown className="h-3.5 w-3.5" />
                   <span>
                     verdict · synthesized by{" "}
                     {chairSlotObj ? `${chairSlotObj.cliLabel.toLowerCase()} · ${chairSlotObj.modelLabel}` : "—"}
                   </span>
                   {phase === "synthesizing" && <span className="pulse-soft">streaming</span>}
-                </div>
-                <div className="mt-3">
+                </summary>
+              <div className="px-6 pb-6">
+                <div>
                   {verdict ? (
-                    <Markdown source={verdict} />
+                    <>
+                      {showThinking && vparts.thinking && <ThinkingDisclosure text={vparts.thinking} open={!vparts.answer} />}
+                      {vparts.answer ? <Markdown source={vparts.answer} /> : (!vparts.thinking ? <ThinkingDots /> : null)}
+                    </>
                   ) : (
                     <ThinkingDots />
                   )}
-                  {phase === "synthesizing" && verdict && <span className="cursor-blink text-accent">▌</span>}
+                  {phase === "synthesizing" && vparts.answer && <span className="cursor-blink text-accent">▌</span>}
                 </div>
                 {/* Verdict feedback — thumbs up/down trains which model + lens +
                     framework produce verdicts the user trusts. (v0.4.1 I5) */}
@@ -8495,7 +8552,9 @@ function CouncilPanel({
                   </div>
                 )}
               </div>
-            )}
+              </details>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -10730,6 +10789,7 @@ const PREF = {
   stripSycophancy: "prevail.pref.stripSycophancy",  // "1" | "0"
   alwaysShowContextUsage: "prevail.pref.alwaysShowContextUsage", // "1" | "0"
   dontCollapseToolCalls: "prevail.pref.dontCollapseToolCalls",   // "1" | "0"
+  showThinking: "prevail.pref.showThinking",        // "1" | "0" — show model <think> reasoning
   // System — hard caps on CLI runs so a stuck process doesn't hang
   // the UI forever. Read by send() and passed to the Rust spawner.
   llmPromptTimeoutSec: "prevail.pref.llmPromptTimeoutSec",   // integer seconds
@@ -10782,6 +10842,7 @@ function GeneralSection() {
   const [soundDone, setSoundDone] = useState(() => getPref(PREF.soundOnDone, "0") === "1");
   const [autoConvert, setAutoConvert] = useState(() => getPref(PREF.autoConvertLongPaste, "1") === "1");
   const [stripSyc, setStripSyc] = useState(() => getPref(PREF.stripSycophancy, "0") === "1");
+  const [showThinking, setShowThinking] = useState(() => getPref(PREF.showThinking, "1") === "1");
   const [promptTimeout, setPromptTimeout] = useState<string>(() => getPref(PREF.llmPromptTimeoutSec, "300"));
   const [budgetCap, setBudgetCap] = useState<string>(() => getPref(PREF.budgetMonthlyCapUsd, ""));
   // Running spend estimate. Display-only: seeded from localStorage and, if the
@@ -10877,6 +10938,11 @@ function GeneralSection() {
           title={`Strip "You're absolutely right!" sycophancy`}
           desc="Filters fluff openers from streamed replies before they hit the screen. Has no effect on saved logs."
           control={<Switch on={stripSyc} onChange={(v) => { setStripSyc(v); setPref(PREF.stripSycophancy, v ? "1" : "0"); }} />}
+        />
+        <Row
+          title="Show model thinking"
+          desc="When a model exposes its reasoning, show it in a collapsible 'Thinking' block above the answer (Chat and Council). Turn off to hide reasoning entirely."
+          control={<Switch on={showThinking} onChange={(v) => { setShowThinking(v); setPref(PREF.showThinking, v ? "1" : "0"); }} />}
         />
         <Row
           title="LLM prompt timeout"
