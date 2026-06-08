@@ -193,7 +193,9 @@ async fn distill_dir(dir: &Path, cfg: &DistillConfig) -> Result<u64, String> {
     }
 
     let memory_path = dir.join("_memory.md");
-    let existing = std::fs::read_to_string(&memory_path).unwrap_or_default();
+    let state_path = dir.join("_state.md");
+    let existing_memory = std::fs::read_to_string(&memory_path).unwrap_or_default();
+    let existing_state = std::fs::read_to_string(&state_path).unwrap_or_default();
     let domain_label = dir
         .file_name()
         .and_then(|s| s.to_str())
@@ -201,7 +203,8 @@ async fn distill_dir(dir: &Path, cfg: &DistillConfig) -> Result<u64, String> {
         .to_string();
     let prompt = build_distill_prompt(
         &domain_label,
-        &existing,
+        &existing_memory,
+        &existing_state,
         &activity,
         (cfg.target * cfg.memory_budget_chars as f64) as usize,
         cfg.memory_budget_chars,
@@ -209,15 +212,36 @@ async fn distill_dir(dir: &Path, cfg: &DistillConfig) -> Result<u64, String> {
 
     let model = if cfg.model.is_empty() { None } else { Some(cfg.model.as_str()) };
     let out = crate::telegram_bridge::run_cli(&cfg.provider, model, &prompt).await?;
-    let body = out.trim();
-    if body.is_empty() {
+    if out.trim().is_empty() {
         return Err("distill model produced no output".into());
     }
-    let mut memory = format!("# Memory\n\n<!-- prevail:distilled — auto-generated; regenerated as new intents arrive -->\n\n{body}\n");
+    let parsed = parse_distill_output(&out);
+
+    // MEMORY (fallback: if the model ignored the section markers, treat the
+    // whole output as the memory body so we never regress to writing nothing).
+    let mem_body = parsed.memory.clone().unwrap_or_else(|| out.trim().to_string());
+    let mut memory = format!("# Memory\n\n<!-- prevail:distilled — auto-generated; regenerated as new intents arrive -->\n\n{}\n", mem_body.trim());
     if memory.chars().count() > cfg.memory_budget_chars {
         memory = memory.chars().take(cfg.memory_budget_chars).collect();
     }
     write_atomic(&memory_path, &memory).map_err(|e| format!("write _memory.md: {e}"))?;
+
+    // STATE — a derived snapshot of where the domain stands now. Only write when
+    // the model produced one (so a malformed response can't blank a good state).
+    if let Some(state_body) = parsed.state.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        let state_doc = format!(
+            "# {} — state\n\n<!-- prevail:distilled — auto-derived from your activity; safe to edit, but it is regenerated as new intents arrive -->\n\n{}\n",
+            title_case_label(&domain_label),
+            state_body,
+        );
+        let _ = write_atomic(&state_path, &state_doc); // best-effort; never fail the pass
+    }
+
+    // DECISIONS — append any explicit decision/preference the user made in the
+    // new activity to the append-only decision log (mirrors decision_append).
+    if !parsed.decisions.is_empty() {
+        append_decisions(dir, &parsed.decisions);
+    }
 
     // Advance cursor only after the successful write.
     let line_count = records.len() as u64;
@@ -290,21 +314,126 @@ fn render_activity(records: &[serde_json::Value]) -> String {
 
 fn build_distill_prompt(
     domain: &str,
-    existing: &str,
+    existing_memory: &str,
+    existing_state: &str,
     activity: &str,
     target_chars: usize,
     budget_chars: usize,
 ) -> String {
-    let existing = if existing.trim().is_empty() { "(empty)" } else { existing.trim() };
+    let existing_memory = if existing_memory.trim().is_empty() { "(empty)" } else { existing_memory.trim() };
+    let existing_state = if existing_state.trim().is_empty() { "(empty)" } else { existing_state.trim() };
     format!(
-        "You maintain a compact long-term MEMORY for the user's \"{domain}\" space. \
-Merge the NEW activity into the EXISTING memory. Compress aggressively: keep \
-standing facts, preferences, decisions, and open threads; drop chit-chat and \
-anything superseded. Aim for ~{target_chars} characters, hard maximum \
-{budget_chars}. Output ONLY markdown under these headings: \
-'## Standing context', '## Recent themes', '## Open threads'. No preamble.\n\n\
---- EXISTING MEMORY ---\n{existing}\n\n--- NEW ACTIVITY ---\n{activity}"
+        "You maintain three derived artifacts for the user's \"{domain}\" space by \
+merging the NEW activity into what already exists. Output EXACTLY three sections, \
+each introduced by its marker on its own line, in this order and nothing else:\n\n\
+===MEMORY===\n\
+A compact long-term memory. Compress aggressively: keep standing facts, \
+preferences, decisions, and open threads; drop chit-chat and anything \
+superseded. Aim for ~{target_chars} characters, hard max {budget_chars}. Use \
+markdown headings '## Standing context', '## Recent themes', '## Open threads'.\n\n\
+===STATE===\n\
+A concise snapshot of where things stand RIGHT NOW in this domain — key facts, \
+current numbers/status, what is settled vs pending. Merge with the existing \
+state; don't drop still-true facts. Markdown, a few short sections.\n\n\
+===DECISIONS===\n\
+Zero or more JSON objects, ONE PER LINE, ONLY for explicit decisions or \
+durable preferences the user expressed in the NEW activity (e.g. chose a plan, \
+named a favorite, committed to an action). Each line: \
+{{\"decision\":\"<one sentence>\",\"rationale\":\"<short, optional>\"}}. \
+Output nothing here if there were none.\n\n\
+--- EXISTING MEMORY ---\n{existing_memory}\n\n\
+--- EXISTING STATE ---\n{existing_state}\n\n\
+--- NEW ACTIVITY ---\n{activity}"
     )
+}
+
+/// The three artifacts parsed out of a distill model response. Any may be
+/// absent if the model didn't emit that section (we degrade gracefully).
+struct Distilled {
+    memory: Option<String>,
+    state: Option<String>,
+    decisions: Vec<serde_json::Value>,
+}
+
+/// Slice the text strictly between `start` (exclusive) and the next `end`
+/// marker (or end-of-string). Returns the trimmed inner text, or None if the
+/// start marker is absent.
+fn section_between(out: &str, start: &str, end: Option<&str>) -> Option<String> {
+    let s = out.find(start)? + start.len();
+    let rest = &out[s..];
+    let e = match end.and_then(|m| rest.find(m)) {
+        Some(i) => i,
+        None => rest.len(),
+    };
+    Some(rest[..e].trim().to_string())
+}
+
+fn parse_distill_output(out: &str) -> Distilled {
+    let memory = section_between(out, "===MEMORY===", Some("===STATE==="))
+        .or_else(|| section_between(out, "===MEMORY===", Some("===DECISIONS===")))
+        .filter(|s| !s.is_empty());
+    let state = section_between(out, "===STATE===", Some("===DECISIONS==="))
+        .filter(|s| !s.is_empty());
+    let decisions = section_between(out, "===DECISIONS===", None)
+        .map(|blob| {
+            blob.lines()
+                .filter_map(|l| {
+                    let t = l.trim();
+                    if t.is_empty() { return None; }
+                    serde_json::from_str::<serde_json::Value>(t).ok()
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Distilled { memory, state, decisions }
+}
+
+// Append distilled decisions to <dir>/_decisions.jsonl, the same append-only log
+// the council writes via decision_append. Each gets a stable-ish id + ms ts and
+// kind:"chat" + source:"distill" so the Insights surface can show it and so the
+// learning loop can tell auto-extracted decisions from council verdicts.
+fn append_decisions(dir: &Path, decisions: &[serde_json::Value]) {
+    use std::io::Write;
+    let path = dir.join("_decisions.jsonl");
+    let mut f = match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let base_ms = now_secs() * 1000;
+    for (i, d) in decisions.iter().enumerate() {
+        let decision = d.get("decision").and_then(|v| v.as_str()).unwrap_or("").trim();
+        if decision.is_empty() {
+            continue;
+        }
+        let rationale = d.get("rationale").and_then(|v| v.as_str()).unwrap_or("");
+        let ts = base_ms + i as u64;
+        let rec = serde_json::json!({
+            "id": format!("d-distill-{ts}"),
+            "kind": "chat",
+            "source": "distill",
+            "ts": ts,
+            "decision": decision,
+            "rationale": rationale,
+        });
+        if let Ok(line) = serde_json::to_string(&rec) {
+            let _ = writeln!(f, "{line}");
+        }
+    }
+}
+
+// 'real-estate' → 'Real Estate'. Local copy (lib.rs has its own titleCase in TS).
+fn title_case_label(slug: &str) -> String {
+    slug.split(|c| c == '-' || c == '_')
+        .filter(|s| !s.is_empty())
+        .map(|w| {
+            let mut ch = w.chars();
+            match ch.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + ch.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn ledger_dirs(vault: &Path) -> Vec<PathBuf> {
@@ -419,6 +548,33 @@ mod tests {
         let (none, zero) = plan_distill(&slice, 4);
         assert!(none.is_empty());
         assert_eq!(zero, 0);
+    }
+
+    #[test]
+    fn parse_distill_output_splits_three_sections() {
+        let out = "===MEMORY===\n## Standing context\nLikes Mayo.\n===STATE===\n# Health — state\nPCP: Mayo Clinic.\n===DECISIONS===\n{\"decision\":\"Use Mayo Clinic as primary network\",\"rationale\":\"top ranked\"}\n{\"decision\":\"Annual physical in March\"}\n";
+        let p = parse_distill_output(out);
+        assert!(p.memory.as_deref().unwrap().contains("Standing context"));
+        assert!(p.memory.as_deref().unwrap().contains("Likes Mayo"));
+        assert!(!p.memory.as_deref().unwrap().contains("Health — state")); // state didn't bleed in
+        assert!(p.state.as_deref().unwrap().contains("PCP: Mayo Clinic"));
+        assert_eq!(p.decisions.len(), 2);
+        assert_eq!(p.decisions[0]["decision"], "Use Mayo Clinic as primary network");
+    }
+
+    #[test]
+    fn parse_distill_output_no_markers_is_all_memory_fallback() {
+        let out = "just a blob of memory text with no markers";
+        let p = parse_distill_output(out);
+        assert!(p.memory.is_none()); // caller falls back to the whole output
+        assert!(p.state.is_none());
+        assert!(p.decisions.is_empty());
+    }
+
+    #[test]
+    fn title_case_label_basic() {
+        assert_eq!(title_case_label("real-estate"), "Real Estate");
+        assert_eq!(title_case_label("health"), "Health");
     }
 
     #[test]
