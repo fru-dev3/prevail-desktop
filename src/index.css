@@ -15,12 +15,15 @@
   --color-border: #d8d1bd;
   --color-border-subtle: #e8e3d1;
   --color-text-primary: #1a1814;
-  --color-text-secondary: #5a544a;
-  --color-text-muted: #8a8270;
-  --color-accent: #a8862d;
-  --color-accent-hover: #c4a35a;
-  --color-accent-soft: rgba(168, 134, 45, 0.08);
-  --color-accent-border: rgba(168, 134, 45, 0.28);
+  --color-text-secondary: #514b41;
+  --color-text-muted: #6f6857;
+  --color-accent: #806413;
+  --color-accent-hover: #a8862d;
+  --color-accent-soft: rgba(168, 134, 45, 0.12);
+  --color-accent-border: rgba(168, 134, 45, 0.32);
+  /* Foreground for SOLID accent fills (badges/buttons). High-contrast vs accent
+     in every theme — light for dark accents, dark for light accents. */
+  --color-on-accent: #ffffff;
   --color-ai: #60a8c0;
   --color-ai-soft: rgba(96, 168, 192, 0.10);
   --color-ok: #2e7d32;
@@ -69,9 +72,9 @@
   --color-border: #c7cce0;
   --color-border-subtle: #dde0ee;
   --color-text-primary: #14152a;
-  --color-text-secondary: #4a4f6b;
-  --color-text-muted: #7d829a;
-  --color-accent: #4f46e5;
+  --color-text-secondary: #414661;
+  --color-text-muted: #5f657f;
+  --color-accent: #4338ca;
   --color-accent-hover: #6366f1;
   --color-accent-soft: rgba(79, 70, 229, 0.08);
   --color-accent-border: rgba(79, 70, 229, 0.28);
@@ -105,12 +108,12 @@
   --color-border: #e2c6a3;
   --color-border-subtle: #f0dcc1;
   --color-text-primary: #2a1610;
-  --color-text-secondary: #6b4a3a;
-  --color-text-muted: #957860;
-  --color-accent: #c0392b;
-  --color-accent-hover: #e74c3c;
-  --color-accent-soft: rgba(192, 57, 43, 0.08);
-  --color-accent-border: rgba(192, 57, 43, 0.28);
+  --color-text-secondary: #5e4030;
+  --color-text-muted: #7a6048;
+  --color-accent: #b32d1f;
+  --color-accent-hover: #c0392b;
+  --color-accent-soft: rgba(179, 45, 31, 0.12);
+  --color-accent-border: rgba(179, 45, 31, 0.32);
   --color-ai: #60a8c0;
   --color-ai-soft: rgba(96, 168, 192, 0.10);
 }
@@ -141,12 +144,12 @@
   --color-border: #d1d1d6;
   --color-border-subtle: #e8e8eb;
   --color-text-primary: #18181b;
-  --color-text-secondary: #52525b;
-  --color-text-muted: #71717a;
+  --color-text-secondary: #3f3f46;
+  --color-text-muted: #5c5c63;
   --color-accent: #18181b;
   --color-accent-hover: #27272a;
-  --color-accent-soft: rgba(24, 24, 27, 0.06);
-  --color-accent-border: rgba(24, 24, 27, 0.2);
+  --color-accent-soft: rgba(24, 24, 27, 0.08);
+  --color-accent-border: rgba(24, 24, 27, 0.24);
   --color-ai: #60a8c0;
   --color-ai-soft: rgba(96, 168, 192, 0.10);
 }
@@ -177,12 +180,12 @@
   --color-border: #a8d4b3;
   --color-border-subtle: #c5e5cc;
   --color-text-primary: #052e0d;
-  --color-text-secondary: #2e6238;
-  --color-text-muted: #5a8666;
-  --color-accent: #16a34a;
-  --color-accent-hover: #22c55e;
-  --color-accent-soft: rgba(22, 163, 74, 0.08);
-  --color-accent-border: rgba(22, 163, 74, 0.28);
+  --color-text-secondary: #275432;
+  --color-text-muted: #456b52;
+  --color-accent: #15803d;
+  --color-accent-hover: #16a34a;
+  --color-accent-soft: rgba(21, 128, 61, 0.12);
+  --color-accent-border: rgba(21, 128, 61, 0.30);
   --color-ai: #60a8c0;
   --color-ai-soft: rgba(96, 168, 192, 0.10);
 }
@@ -213,12 +216,12 @@
   --color-border: #94a3b8;
   --color-border-subtle: #cbd5e1;
   --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-muted: #64748b;
-  --color-accent: #0369a1;
-  --color-accent-hover: #0284c7;
-  --color-accent-soft: rgba(3, 105, 161, 0.08);
-  --color-accent-border: rgba(3, 105, 161, 0.28);
+  --color-text-secondary: #3b475c;
+  --color-text-muted: #51607a;
+  --color-accent: #075985;
+  --color-accent-hover: #0369a1;
+  --color-accent-soft: rgba(7, 89, 133, 0.12);
+  --color-accent-border: rgba(7, 89, 133, 0.30);
   --color-ai: #60a8c0;
   --color-ai-soft: rgba(96, 168, 192, 0.10);
 }
