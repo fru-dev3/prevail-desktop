@@ -500,6 +500,8 @@ pub(crate) async fn run_cli(cli: &str, model: Option<&str>, prompt: &str) -> Res
 
     let out = TokioCommand::new(&bin_abs)
         .args(&args)
+        .env_clear()
+        .envs(crate::scrubbed_env_pairs())
         .env("PATH", combined_path)
         .env("USER", user)
         .env("LOGNAME", logname)

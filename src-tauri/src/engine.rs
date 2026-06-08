@@ -80,6 +80,8 @@ pub fn run_engine_json(args: &[&str]) -> Result<serde_json::Value, String> {
 
     let out = Command::new(&bin)
         .args(&full)
+        .env_clear()
+        .envs(crate::scrubbed_env_pairs())
         .env("PATH", combined_path)
         .env("USER", user)
         .env("LOGNAME", logname)
@@ -122,6 +124,8 @@ pub fn run_engine_json_stdin(
 
     let mut child = Command::new(&bin)
         .args(&full)
+        .env_clear()
+        .envs(crate::scrubbed_env_pairs())
         .env("PATH", combined_path)
         .env("USER", user)
         .env("LOGNAME", logname)
@@ -192,6 +196,8 @@ pub async fn run_engine_stream(
 
     let mut child = TokioCommand::new(&bin)
         .args(&full)
+        .env_clear()
+        .envs(crate::scrubbed_env_pairs())
         .env("PATH", combined_path)
         .env("USER", user)
         .env("LOGNAME", logname)
@@ -288,6 +294,8 @@ pub async fn run_engine_stream_stdin(
 
     let mut cmd = TokioCommand::new(&bin);
     cmd.args(&full)
+        .env_clear()
+        .envs(crate::scrubbed_env_pairs())
         .env("PATH", combined_path)
         .env("USER", user)
         .env("LOGNAME", logname)

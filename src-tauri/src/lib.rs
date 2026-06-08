@@ -254,6 +254,8 @@ fn probe_cli_version(bin: &str) -> Option<String> {
     let (combined, user, logname) = build_cli_env();
     let out = Command::new(&path)
         .arg("--version")
+        .env_clear()
+        .envs(scrubbed_env_pairs())
         .env("PATH", combined)
         .env("USER", user)
         .env("LOGNAME", logname)
@@ -483,6 +485,39 @@ pub(crate) fn build_cli_env() -> (String, String, String) {
     (combined, user, logname)
 }
 
+// Secret env patterns to strip before handing the environment to a model
+// subprocess (audit #4). Ports the CLI's `scrubbedEnv` denylist verbatim
+// (cli-bridge.ts) so a prompt-injected / tool-using model that runs `env` can't
+// dump provider keys, Telegram/GitHub/AWS tokens, or *_SECRET/_PASSWORD values
+// into a reply that lands in the vault or ships to Telegram.
+const SECRET_ENV_PREFIXES: &[&str] = &[
+    "PREVAIL_TELEGRAM_",
+    "ANTHROPIC_API_",
+    "OPENAI_API_",
+    "GOOGLE_API_",
+    "GEMINI_API_",
+    "TELEGRAM_BOT_",
+    "AWS_",
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
+    "OP_SERVICE_ACCOUNT_TOKEN",
+];
+const SECRET_ENV_SUBSTRINGS: &[&str] = &["_SECRET", "_PRIVATE_KEY", "_PASSWORD"];
+
+fn is_secret_env_key(k: &str) -> bool {
+    SECRET_ENV_PREFIXES.iter().any(|p| k.starts_with(p))
+        || SECRET_ENV_SUBSTRINGS.iter().any(|s| k.contains(s))
+}
+
+/// The current process environment minus secret-bearing variables. Spawn sites
+/// call `.env_clear().envs(scrubbed_env_pairs())` before re-setting the enriched
+/// PATH/USER/LOGNAME, so the child inherits everything it needs (HOME, locale,
+/// etc.) but never the operator's API keys/tokens. Denylist, not allowlist, so
+/// CLI auth (which reads HOME/USER) keeps working.
+pub(crate) fn scrubbed_env_pairs() -> Vec<(String, String)> {
+    std::env::vars().filter(|(k, _)| !is_secret_env_key(k)).collect()
+}
+
 pub(crate) fn resolve_bin_abs(bin: &str) -> String {
     // Mirror the detection logic — find the binary's absolute path so
     // we can spawn it even when the Finder-launched app has minimal
@@ -528,6 +563,8 @@ async fn chat_send(
 
     let mut child = TokioCommand::new(&bin_abs)
         .args(&cli_args)
+        .env_clear()
+        .envs(scrubbed_env_pairs())
         .env("PATH", combined_path)
         // USER + LOGNAME — claude reads these to scope its macOS
         // Keychain lookup. Finder-launched GUI apps inherit from
@@ -1625,6 +1662,8 @@ async fn verify_cli_model(args: VerifyArgs) -> Result<String, String> {
 
     let mut child = TokioCommand::new(&bin_abs)
         .args(&cli_args)
+        .env_clear()
+        .envs(scrubbed_env_pairs())
         .env("PATH", combined_path)
         .env("USER", &user)
         .env("LOGNAME", &logname)
@@ -2851,6 +2890,8 @@ async fn spawn_prevail_streaming(
 
     let mut child = TokioCommand::new(&bin)
         .args(&args)
+        .env_clear()
+        .envs(scrubbed_env_pairs())
         .env("PATH", combined_path)
         .env("USER", user)
         .env("LOGNAME", logname)
@@ -3173,6 +3214,38 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod env_scrub_tests {
+    use super::*;
+
+    #[test]
+    fn secret_keys_are_classified() {
+        // Mirrors cli-bridge.ts SECRET_ENV_PREFIXES / SECRET_ENV_SUBSTRINGS.
+        for k in [
+            "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY",
+            "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN", "GH_TOKEN",
+            "TELEGRAM_BOT_TOKEN", "PREVAIL_TELEGRAM_TOKEN", "OP_SERVICE_ACCOUNT_TOKEN",
+            "MY_CLIENT_SECRET", "SSH_PRIVATE_KEY", "DB_PASSWORD",
+        ] {
+            assert!(is_secret_env_key(k), "{k} should be treated as secret");
+        }
+        // Things the CLIs legitimately need must NOT be stripped.
+        for k in ["PATH", "HOME", "USER", "LOGNAME", "LANG", "TERM", "PREVAIL_OPENROUTER_KEY", "PREVAIL_OLLAMA_URL"] {
+            assert!(!is_secret_env_key(k), "{k} must survive the scrub");
+        }
+    }
+
+    #[test]
+    fn scrubbed_env_omits_a_seeded_secret() {
+        std::env::set_var("ANTHROPIC_API_KEY", "sk-should-not-leak");
+        std::env::set_var("HOME", "/Users/test");
+        let pairs = scrubbed_env_pairs();
+        assert!(pairs.iter().all(|(k, _)| k != "ANTHROPIC_API_KEY"), "secret leaked into child env");
+        assert!(pairs.iter().any(|(k, _)| k == "HOME"), "HOME must be preserved for CLI auth");
+        std::env::remove_var("ANTHROPIC_API_KEY");
+    }
 }
 
 #[cfg(test)]
