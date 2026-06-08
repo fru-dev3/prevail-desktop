@@ -4618,6 +4618,67 @@ function AgentPickerRail({
   );
 }
 
+// I7: create a reusable skill from the UI — the "build skills over time" path.
+// A skill is just a named, reusable prompt the model runs on demand (slash
+// `/name` in chat). Seeded from the composer's "Save as skill" or written here.
+function NewSkillForm({ vaultPath, domain, seed, onCreated }: { vaultPath: string; domain: string; seed?: string | null; onCreated: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [body, setBody] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  // Open + pre-fill when a "Save as skill" seed arrives from the composer.
+  useEffect(() => {
+    if (seed != null) { setOpen(true); setBody(seed); }
+  }, [seed]);
+  async function create() {
+    setErr("");
+    if (!name.trim() || !body.trim()) { setErr("Give the skill a name and a body."); return; }
+    setSaving(true);
+    try {
+      await invoke("skill_create", { vault: vaultPath, domain, name: name.trim(), body: body.trim() });
+      setName(""); setBody(""); setOpen(false);
+      onCreated();
+    } catch (e) { setErr(String(e)); }
+    finally { setSaving(false); }
+  }
+  if (!open) {
+    return (
+      <div className="mx-auto mb-3 flex max-w-2xl items-center justify-between">
+        <p className="text-xs text-text-muted">Skills are reusable prompts Prevail runs on demand (<span className="font-mono text-accent">/name</span> in chat). Pin your favorites to auto-attach.</p>
+        <button onClick={() => setOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:bg-accent-soft hover:text-accent">
+          <Sparkles className="h-3 w-3" /> New skill
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="mx-auto mb-3 max-w-2xl rounded-xl border border-accent-border bg-surface p-4">
+      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">New skill · {titleCase(domain)}</div>
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Skill name (e.g. Weekly review)"
+        className="mb-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-accent-border focus:outline-none"
+      />
+      <textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        rows={5}
+        placeholder="What should this skill do? Write it as a prompt the model will follow."
+        className="mb-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-accent-border focus:outline-none"
+      />
+      {err && <div className="mb-2 text-xs text-warn">{err}</div>}
+      <div className="flex items-center gap-2">
+        <button onClick={create} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Create skill
+        </button>
+        <button onClick={() => setOpen(false)} className="rounded-md border border-border px-3 py-1.5 text-sm text-text-muted hover:bg-surface-warm">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 function SkillsList({
   skills,
   onInsert,
@@ -5546,6 +5607,25 @@ function ChatPanel({
       .catch(() => { if (mounted) setDomainCtx(null); });
     return () => { mounted = false; };
   }, [domain, vaultPath]);
+  // Re-pull the domain bundle (e.g. after creating a skill) without a remount.
+  const refreshDomainCtx = useCallback(() => {
+    if (!domain || !vaultPath) return;
+    invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain })
+      .then(setDomainCtx)
+      .catch(() => {});
+  }, [domain, vaultPath]);
+  // I7: "Save as skill" — the composer dispatches this with the typed prompt;
+  // we jump to the Skills tab and pre-fill the new-skill form.
+  const [newSkillSeed, setNewSkillSeed] = useState<string | null>(null);
+  useEffect(() => {
+    const onNewSkill = (e: Event) => {
+      const body = (e as CustomEvent<string>).detail ?? "";
+      setNewSkillSeed(body);
+      setDomainTab("skills");
+    };
+    window.addEventListener("prevail:new-skill", onNewSkill as EventListener);
+    return () => window.removeEventListener("prevail:new-skill", onNewSkill as EventListener);
+  }, []);
   // Load the (cached / heuristic) context score when a domain opens.
   useEffect(() => {
     setCtxScore(null);
@@ -6783,13 +6863,21 @@ function ChatPanel({
                   </ul>
                 )
             )}
-            {domainCtx && domainTab === "skills" && (
-              <SkillsList
-                skills={domainCtx.skills}
-                onInsert={(name) => { insertSkillSlash(name); setDomainTab("chat"); }}
-                preferredSet={preferredSkillsSet}
-                onTogglePreferred={togglePreferredSkill}
-              />
+            {domainCtx && domainTab === "skills" && domain && (
+              <>
+                <NewSkillForm
+                  vaultPath={vaultPath}
+                  domain={domain}
+                  seed={newSkillSeed}
+                  onCreated={() => { setNewSkillSeed(null); refreshDomainCtx(); }}
+                />
+                <SkillsList
+                  skills={domainCtx.skills}
+                  onInsert={(name) => { insertSkillSlash(name); setDomainTab("chat"); }}
+                  preferredSet={preferredSkillsSet}
+                  onTogglePreferred={togglePreferredSkill}
+                />
+              </>
             )}
             {domainTab === "prefs" && domain && (
               <DomainPrefsPanel
@@ -7104,6 +7192,16 @@ function ChatPanel({
                     >
                       <PrevailLogo size={16} src="/logo-512.png" animated={false} />
                       Attach {titleCase(domain)} state
+                    </button>
+                  )}
+                  {/* I7: turn the prompt you're writing into a reusable skill. */}
+                  {domain && input.trim() && (
+                    <button
+                      onClick={() => { window.dispatchEvent(new CustomEvent("prevail:new-skill", { detail: input.trim() })); setPlusOpen(false); }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-warm"
+                    >
+                      <Sparkles className="h-4 w-4 text-text-muted" />
+                      Save prompt as skill
                     </button>
                   )}
                   <div className="border-t border-border-subtle px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">
