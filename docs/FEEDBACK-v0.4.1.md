@@ -75,9 +75,14 @@ T1/T2 (Telegram typing + HTML formatting), A1/A2/A3 (Gateway/Connectors merges +
 Council settings section), A4/A8/A9 (council shares thread; light/heavy drag
 context), A5 (Chat tab), A6 (auto domain-name keyword), A7 (footer bridge chips).
 UI: U3/U4 (list pickers), U6 (icon size), U7/U8 (already fine), U9 (back button),
-U10 (already domain-scoped). **Still open — subjective visual redesigns needing
-eyes-on:** U1 (Connectors layout), U2 (Gateway formatting/brand colors), U5
-(composer toolbar redesign).
+U10 (already domain-scoped). **Then U1/U2/U5 too** (2026-06-08): U1 Connectors
+grid de-noised (counts, no per-tile Soon badge); U2 Gateway rebuilt as a single
+self-contained section (also fixed an A1 regression that double-rendered the
+header + Telegram card) with brand-colored cards; U5 composer toolbar compacted
+(toggle pills drop the redundant ON/OFF badge, cycle pills drop the word label)
+so it no longer wraps to two rows. **All 49 items (B/I/T/A/U) now complete.**
+Verification: full `cargo test` (30) + `tsc` green on every batch; landing +
+composer visually confirmed in the running app.
 
 ---
 
