@@ -133,6 +133,7 @@ pub async fn ingestion_mcp_start(
     state: tauri::State<'_, OrchestratorState>,
     name: String,
 ) -> Result<(), String> {
+    crate::bunker::guard_cloud()?; // external MCP servers reach the network
     let mut reg = state.tier_a.lock().map_err(|e| e.to_string())?;
     reg.start(&name).map_err(|e| e.to_string())
 }
@@ -159,6 +160,7 @@ pub fn ingestion_composio_set_key(
 pub fn ingestion_composio_start(
     state: tauri::State<'_, OrchestratorState>,
 ) -> Result<(), String> {
+    crate::bunker::guard_cloud()?; // Composio is a cloud integration gateway
     let mut rt = state.tier_b.lock().map_err(|e| e.to_string())?;
     rt.start().map_err(|e| e.to_string())
 }
@@ -177,6 +179,7 @@ pub async fn ingestion_browser_run(
     state: tauri::State<'_, OrchestratorState>,
     req: BrowserRunRequest,
 ) -> Result<(), String> {
+    crate::bunker::guard_cloud()?; // browser automation hits external web portals
     let mut br = state.tier_c.lock().map_err(|e| e.to_string())?;
     br.run(app, req).map_err(|e| e.to_string())
 }

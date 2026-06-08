@@ -293,13 +293,21 @@ pub async fn run_engine_stream_stdin(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    // Provider keys for the engine's OpenAI-compatible gateways (OpenRouter,
-    // etc.). Read from the Keychain and injected here so the engine can make
-    // its in-process HTTP call. Named PREVAIL_OPENROUTER_KEY to avoid the
-    // engine's scrubbedEnv strip list (OPENAI_/ANTHROPIC_…).
-    if let Ok(key) = crate::ingestion::keychain::get("prevail.providers", "openrouter") {
-        if !key.is_empty() {
-            cmd.env("PREVAIL_OPENROUTER_KEY", key);
+    // Bunker Mode: tell the engine to self-enforce local-only (defense in depth
+    // alongside the --local-only flag), and CRUCIALLY do not hand it any cloud
+    // provider keys — with no key the engine physically cannot reach a cloud
+    // gateway even if some path tried to.
+    if crate::bunker::bunker_enabled() {
+        cmd.env("PREVAIL_BUNKER", "1");
+    } else {
+        // Provider keys for the engine's OpenAI-compatible gateways (OpenRouter,
+        // etc.). Read from the Keychain and injected here so the engine can make
+        // its in-process HTTP call. Named PREVAIL_OPENROUTER_KEY to avoid the
+        // engine's scrubbedEnv strip list (OPENAI_/ANTHROPIC_…).
+        if let Ok(key) = crate::ingestion::keychain::get("prevail.providers", "openrouter") {
+            if !key.is_empty() {
+                cmd.env("PREVAIL_OPENROUTER_KEY", key);
+            }
         }
     }
     let mut child = cmd
@@ -820,7 +828,11 @@ pub async fn engine_chat(
         "--domain".to_string(),
         domain,
     ];
+    // Bunker Mode: refuse cloud providers, and force the engine local-only
+    // regardless of the per-domain toggle so a cloud model can never run.
+    let bunker = crate::bunker::bunker_enabled();
     if let Some(c) = cli.filter(|s| !s.is_empty()) {
+        crate::bunker::guard_cli(&c)?;
         args.push("--cli".to_string());
         args.push(c);
     }
@@ -828,7 +840,7 @@ pub async fn engine_chat(
         args.push("--model".to_string());
         args.push(m);
     }
-    if localOnly.unwrap_or(false) {
+    if bunker || localOnly.unwrap_or(false) {
         args.push("--local-only".to_string());
     }
 
