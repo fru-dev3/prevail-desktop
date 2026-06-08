@@ -3402,6 +3402,81 @@ function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLoadSampl
 // ─────────────────────────────────────────────────────────────────────
 // FRAMEWORK + LENS CHIPS — shared above both Chat and Council composers
 
+// A composer pill that opens a popover listing every framework (or lens) with
+// a one-line description, so you pick directly instead of cycling blind.
+function PreamblePicker({
+  glyph,
+  label,
+  options,
+  selectedId,
+  onSelect,
+}: {
+  glyph: string;
+  label: string;
+  options: readonly { id: string; label: string; blurb: string }[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  const active = options.find((o) => o.id === selectedId);
+  const on = selectedId !== "none";
+  return (
+    <div ref={ref} className="relative inline-flex">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title={`${label}: ${active?.blurb ?? "off"}`}
+        className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] transition-colors ${
+          on || open
+            ? "border-accent-border bg-accent-soft text-accent"
+            : "border-border bg-surface text-text-muted hover:bg-surface-warm hover:text-text-secondary"
+        }`}
+      >
+        <span>{glyph}</span>
+        {on ? (
+          <span className="tracking-wider">
+            <span className="opacity-60">{label}:</span> <span className="uppercase">{active?.label}</span>
+          </span>
+        ) : (
+          <span className="uppercase tracking-wider">{label}</span>
+        )}
+        <ChevronDown className="h-3 w-3 opacity-60" />
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-50 mb-2 max-h-[60vh] w-80 overflow-y-auto rounded-xl border border-border bg-surface p-1.5 shadow-xl">
+          <div className="px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">
+            <span className="text-accent">{glyph}</span> {label}
+          </div>
+          {options.map((o) => {
+            const sel = o.id === selectedId;
+            return (
+              <button
+                key={o.id}
+                onClick={() => { onSelect(o.id); setOpen(false); }}
+                className={`flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${sel ? "bg-accent-soft" : "hover:bg-surface-warm"}`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className={`font-mono text-sm font-semibold ${sel ? "text-accent" : "text-text-primary"}`}>{o.label}</span>
+                    {sel && <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={3} />}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-snug text-text-secondary">{o.blurb}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DomainStatusBar({
   domain,
   fwLens,
@@ -3437,8 +3512,6 @@ function DomainStatusBar({
   }, [modesOpen]);
   const activeModes = [web, save, serendipity, auto].filter(Boolean).length;
 
-  const fw = FRAMEWORKS.find((f) => f.id === fwLens.framework);
-  const ln = LENSES.find((l) => l.id === fwLens.lens);
   const flip = (
     t: DomainToggle,
     cur: boolean,
@@ -3467,41 +3540,6 @@ function DomainStatusBar({
       </span>
     </button>
   );
-  // Cycle keeps its value (◆ STRATEGIST) since that's the useful part; the
-  // glyph + tooltip identify which control it is, so the word label is dropped.
-  // Framework/Lens pill. When OFF it shows what it IS (the label, e.g.
-  // "Framework"); when active it shows the chosen value (e.g. "Strategist") with
-  // a tiny label prefix so it's always obvious which control it is.
-  const Cycle = ({
-    glyph, label, value, active, onClick,
-  }: { glyph: string; label: string; value: string; active: boolean; onClick: () => void }) => (
-    <button
-      onClick={onClick}
-      title={`${label}: ${value} — click to cycle`}
-      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-1 font-mono text-[10px] transition-colors ${
-        active
-          ? "border-accent-border bg-accent-soft text-accent"
-          : "border-border bg-surface text-text-muted hover:bg-surface-warm hover:text-text-secondary"
-      }`}
-    >
-      <span>{glyph}</span>
-      {active ? (
-        <span className="tracking-wider">
-          <span className="opacity-60">{label}:</span> <span className="uppercase">{value}</span>
-        </span>
-      ) : (
-        <span className="uppercase tracking-wider">{label}</span>
-      )}
-    </button>
-  );
-  const cycleFramework = () => {
-    const idx = FRAMEWORKS.findIndex((f) => f.id === fwLens.framework);
-    fwLens.setFramework(FRAMEWORKS[(idx + 1) % FRAMEWORKS.length].id);
-  };
-  const cycleLens = () => {
-    const idx = LENSES.findIndex((l) => l.id === fwLens.lens);
-    fwLens.setLens(LENSES[(idx + 1) % LENSES.length].id);
-  };
   // The composer's "Council" pill is the action button — this strip is
   // for persistent per-domain settings only. Silence unused-var warnings.
   void council; void setCouncil;
@@ -3511,9 +3549,10 @@ function DomainStatusBar({
   // Auto are per-domain so they only render when a domain is selected.
   return (
     <>
-      {/* Per-prompt reasoning controls — change often, so they sit inline. */}
-      <Cycle glyph="◆" label="Framework" value={fw?.label ?? "OFF"} active={fwLens.framework !== "none"} onClick={cycleFramework} />
-      <Cycle glyph="◇" label="Lens" value={ln?.label ?? "OFF"} active={fwLens.lens !== "none"} onClick={cycleLens} />
+      {/* Per-prompt reasoning controls — change often, so they sit inline.
+          Each opens a labelled list so you pick directly. */}
+      <PreamblePicker glyph="◆" label="Framework" options={FRAMEWORKS} selectedId={fwLens.framework} onSelect={fwLens.setFramework} />
+      <PreamblePicker glyph="◇" label="Lens" options={LENSES} selectedId={fwLens.lens} onSelect={fwLens.setLens} />
       <div ref={modesRef} className="relative inline-flex items-center">
           <span className="mx-1 select-none text-text-muted/40">·</span>
           {/* Modes — set once, rarely changed, so they're tucked in a popover
