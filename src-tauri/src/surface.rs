@@ -158,11 +158,19 @@ pub async fn domain_surface(
 
     let context = gather_context(&dir);
     let prompt = build_prompt(&domain, &context);
-    // Bunker Mode: proactive surface generation runs a model — obey the app-wide
-    // local-only guarantee instead of silently calling a cloud provider.
-    crate::bunker::guard_cli(&provider)?;
-    let model_opt = if model.is_empty() { None } else { Some(model.as_str()) };
-    let out = crate::telegram_bridge::run_cli(&provider, model_opt, &prompt).await?;
+    // Bunker Mode: proactive surface generation still runs — but instead of
+    // refusing a cloud provider outright, transparently switch to an available
+    // local model (Ollama / LM Studio / MLX). Insights are useful offline too,
+    // so there's no reason to go dark. `resolve_cli` NEVER returns a cloud CLI
+    // under Bunker, so the local-only guarantee holds; it only hard-blocks when
+    // no local provider is up (so the UI can prompt the user to start one).
+    let effective = crate::bunker::resolve_cli(&provider)?;
+    // When Bunker swapped a cloud provider for a local one, the requested cloud
+    // model id (e.g. "claude-haiku-4-5") is meaningless to it — drop it and let
+    // the local provider use its default model.
+    let switched = effective != provider;
+    let model_opt = if switched || model.is_empty() { None } else { Some(model.as_str()) };
+    let out = crate::telegram_bridge::run_cli(&effective, model_opt, &prompt).await?;
     let mut res = parse_surface(&out);
     if res.questions.is_empty() && res.actions.is_empty() {
         return Err("could not parse a surface from the model output".into());

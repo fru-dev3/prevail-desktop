@@ -2254,7 +2254,17 @@ export default function App() {
                 onSeedConsumed={() => setCouncilSeed(null)}
               />
             )}
-            {tab === "benchmark" && <BenchmarkPanel vaultPath={vaultPath} initialDomain={benchScope} />}
+            {tab === "benchmark" && (
+              // Per-domain benchmark, full screen — scoped to whatever domain
+              // you're in. Remounts (via key) when you switch domains so it
+              // re-scopes cleanly. The global "benchmark everything" run lives
+              // separately in the configuration page.
+              <BenchmarkPanel
+                key={selectedDomain || benchScope || "all"}
+                vaultPath={vaultPath}
+                initialDomain={selectedDomain || benchScope}
+              />
+            )}
           </div>
         </main>
       </div>
@@ -3811,7 +3821,9 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
           {loading ? "thinking…" : "refresh"}
         </button>
       </div>
-      {err && <div className="text-xs text-text-muted">Couldn't surface insights ({err.slice(0, 80)}). Needs a working agent.</div>}
+      {err && <div className="text-xs text-text-muted">{/Bunker/i.test(err)
+        ? "Bunker Mode is on — start a local model (Ollama) and insights will surface on-device."
+        : `Couldn't surface insights (${err.slice(0, 80)}). Needs a working agent.`}</div>}
       {hasContent && (() => {
         const questions = data!.questions.filter((q) => !dismissed.has(q));
         const actions = data!.actions.filter((a) => !dismissed.has(a));
@@ -6570,13 +6582,6 @@ function ChatPanel({
                 <Lightbulb className="h-3.5 w-3.5" />
               </button>
               <button
-                onClick={() => window.dispatchEvent(new CustomEvent("prevail:benchmark-domain", { detail: domain }))}
-                title={`Benchmark models on the ${titleCase(domain)} questions`}
-                className="flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-              </button>
-              <button
                 onClick={() => setDomainTab(domainTab === "prefs" ? "chat" : "prefs")}
                 title={hasAnyDomainOverride ? "Domain preferences (overrides active)" : "Domain preferences"}
                 className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
@@ -7376,10 +7381,9 @@ function ChatPanel({
         <button
           onClick={() => setContextOpen(true)}
           title="Show context"
-          className="flex w-9 shrink-0 flex-col items-center gap-2 border-l border-border-subtle bg-surface py-3 text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+          className="flex w-9 shrink-0 items-center justify-center border-l border-border-subtle bg-surface py-3 text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
         >
           <PanelRightOpen className="h-4 w-4" />
-          <span className="font-mono text-[9px] uppercase tracking-[0.2em]" style={{ writingMode: "vertical-rl" }}>Context</span>
         </button>
       ))}
     </div>
@@ -8257,25 +8261,8 @@ function CouncilPanel({
           <span className="font-mono text-xs uppercase tracking-[0.2em] text-text-muted">Council</span>
         )}
         <div className="flex-1" />
-        {domain && (
-          <button
-            onClick={() => setContextOpen((v) => !v)}
-            title="Show domain state, decisions, journal, logs, skills"
-            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider ${
-              contextOpen
-                ? "border-accent-border bg-accent-soft text-accent"
-                : "border-border bg-surface text-text-muted hover:border-accent-border hover:bg-accent-soft hover:text-accent"
-            }`}
-          >
-            <BookOpen className="h-3 w-3" />
-            Context{(() => {
-              // Count only items the user actively added — auto-loaded
-              // state.md is implicit and shouldn't pad this badge.
-              const added = primedContext.filter((c) => !c.label.startsWith("auto:")).length;
-              return added > 0 ? ` · ${added}` : "";
-            })()}
-          </button>
-        )}
+        {/* Context is a collapse/expand sidebar (right edge), never a labeled
+            button — see the rail at the end of this panel. */}
         <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
           {panelistSlots.length} on panel
         </span>
@@ -8759,7 +8746,7 @@ function CouncilPanel({
         </div>
       </div>
       </div>
-      {contextOpen && domain && _vaultPath && (
+      {domain && _vaultPath && (contextOpen ? (
         <DomainContextDrawer
           domain={domain}
           vaultPath={_vaultPath}
@@ -8770,7 +8757,17 @@ function CouncilPanel({
           preferredSet={preferredSkillsSet}
           onTogglePreferred={togglePreferredSkill}
         />
-      )}
+      ) : (
+        // Collapsed: a thin chevron rail to expand the context sidebar — no
+        // labeled button, just the collapse/expand affordance.
+        <button
+          onClick={() => setContextOpen(true)}
+          title="Show context"
+          className="flex w-9 shrink-0 items-center justify-center border-l border-border-subtle bg-surface py-3 text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+        >
+          <PanelRightOpen className="h-4 w-4" />
+        </button>
+      ))}
     </div>
   );
 }
