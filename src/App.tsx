@@ -6308,12 +6308,26 @@ function ChatPanel({
     if (txt && txt.startsWith("prevail-domain:")) return txt.slice("prevail-domain:".length);
     return null;
   }, []);
-  const attachDomainAsContext = useCallback(async (name: string) => {
+  // A8: drag a domain in as context. Default is the LIGHT state summary
+  // (state.md only) to keep the window small; hold Shift to pull the FULL,
+  // heavy context (state + decisions + journal). Same behavior in chat & council.
+  const attachDomainAsContext = useCallback(async (name: string, mode: "light" | "full" = "light") => {
     if (!name || !vaultPath) return;
     try {
       const c = await invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain: name });
-      if (c.state) injectContext(c.state, `extra: ${titleCase(name)}/state.md`);
-      else injectContext(`(no state.md in ${name})`, `extra: ${titleCase(name)}/state.md`);
+      if (mode === "full") {
+        const parts = [
+          c.state && `## state.md\n${c.state}`,
+          c.decisions && `## decisions\n${c.decisions}`,
+          c.journal && `## journal\n${c.journal}`,
+        ].filter(Boolean);
+        const body = parts.length ? parts.join("\n\n") : `(no context files in ${name})`;
+        injectContext(body, `extra (full): ${titleCase(name)}`);
+      } else if (c.state) {
+        injectContext(c.state, `extra: ${titleCase(name)}/state.md`);
+      } else {
+        injectContext(`(no state.md in ${name})`, `extra: ${titleCase(name)}/state.md`);
+      }
     } catch (err) { console.error("attach domain", err); }
   }, [vaultPath, injectContext]);
   // Test hook — expose on window so we can verify the inject flow
@@ -6346,14 +6360,15 @@ function ChatPanel({
         const name = resolveDroppedDomain(e.dataTransfer);
         if (!name) return;
         e.preventDefault();
-        void attachDomainAsContext(name);
+        void attachDomainAsContext(name, e.shiftKey ? "full" : "light");
       }}
     >
       <div className="relative flex min-w-0 flex-1 flex-col">
       {dragOver && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-accent-soft/80 backdrop-blur-sm">
-          <div className="rounded-2xl border-2 border-dashed border-accent bg-surface px-8 py-6 font-mono text-sm uppercase tracking-wider text-accent shadow-xl">
+          <div className="rounded-2xl border-2 border-dashed border-accent bg-surface px-8 py-6 text-center font-mono text-sm uppercase tracking-wider text-accent shadow-xl">
             ⊕ drop to add as context
+            <div className="mt-1 text-[10px] normal-case tracking-normal text-accent/70">state summary · hold ⇧ for full context</div>
           </div>
         </div>
       )}
@@ -6780,7 +6795,7 @@ function ChatPanel({
               // parent attaches it once (avoid double-attach).
               e.preventDefault();
               e.stopPropagation();
-              void attachDomainAsContext(name);
+              void attachDomainAsContext(name, e.shiftKey ? "full" : "light");
             }}
             onPaste={async (e) => {
               if (lsGet("prevail.pref.autoConvertLongPaste") !== "1") return;
@@ -7990,17 +8005,30 @@ function CouncilPanel({
         }
         if (!name || !_vaultPath) return;
         e.preventDefault();
+        // A8: same light/heavy behavior as Chat — default state summary, hold
+        // Shift for the full context bundle.
+        const full = e.shiftKey;
         try {
           const c = await invoke<DomainContextBundle>("domain_context", { vault: _vaultPath, domain: name });
-          if (c.state) injectContext(c.state, `extra: ${titleCase(name)}/state.md`);
+          if (full) {
+            const parts = [
+              c.state && `## state.md\n${c.state}`,
+              c.decisions && `## decisions\n${c.decisions}`,
+              c.journal && `## journal\n${c.journal}`,
+            ].filter(Boolean);
+            injectContext(parts.length ? parts.join("\n\n") : `(no context files in ${name})`, `extra (full): ${titleCase(name)}`);
+          } else if (c.state) {
+            injectContext(c.state, `extra: ${titleCase(name)}/state.md`);
+          }
         } catch (err) { console.error("drop domain", err); }
       }}
     >
       <div className="relative flex min-w-0 flex-1 flex-col">
       {dragOver && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-accent-soft/80 backdrop-blur-sm">
-          <div className="rounded-2xl border-2 border-dashed border-accent bg-surface px-8 py-6 font-mono text-sm uppercase tracking-wider text-accent shadow-xl">
+          <div className="rounded-2xl border-2 border-dashed border-accent bg-surface px-8 py-6 text-center font-mono text-sm uppercase tracking-wider text-accent shadow-xl">
             ⊕ drop to add as context
+            <div className="mt-1 text-[10px] normal-case tracking-normal text-accent/70">state summary · hold ⇧ for full context</div>
           </div>
         </div>
       )}
