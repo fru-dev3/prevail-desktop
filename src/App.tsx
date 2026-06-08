@@ -4728,24 +4728,21 @@ function SkillsList({
         const open = expanded === s.path;
         return (
           <li key={s.path}>
-            <div className={`rounded-xl border bg-surface shadow-sm transition-all ${open ? "border-accent-border" : "border-border"}`}>
-              <div className="flex w-full items-start gap-2 rounded-t-xl">
+            <div className={`rounded-lg border bg-surface transition-colors ${open ? "border-accent-border" : "border-border-subtle"}`}>
+              {/* Single-line row — same dimensions as every other settings list. */}
+              <div className="flex w-full items-center gap-2">
                 <button
                   onClick={() => toggle(s.path)}
-                  className="flex min-w-0 flex-1 items-start gap-3 px-4 py-3 text-left hover:bg-surface-warm rounded-tl-xl"
+                  className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left hover:bg-surface-warm rounded-l-lg"
                 >
-                  <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-mono text-sm font-semibold text-accent">/{s.name}</div>
-                    {(() => {
-                      const cleaned = (s.description ?? "").replace(/^[>*\-\s]+/, "").trim();
-                      if (cleaned.length < 3) return null;
-                      return (
-                        <div className="mt-0.5 text-sm leading-snug text-text-secondary">{cleaned}</div>
-                      );
-                    })()}
-                  </div>
-                  <span className="ml-2 mt-1 text-xs text-text-muted">{open ? "▾" : "▸"}</span>
+                  <Sparkles className="h-4 w-4 shrink-0 text-accent" />
+                  <span className="shrink-0 font-mono text-sm font-semibold text-accent">/{s.name}</span>
+                  {(() => {
+                    const cleaned = (s.description ?? "").replace(/^[>*\-\s]+/, "").trim();
+                    if (cleaned.length < 3) return null;
+                    return <span className="truncate text-xs text-text-muted">{cleaned}</span>;
+                  })()}
+                  <span className="ml-auto shrink-0 text-xs text-text-muted">{open ? "▾" : "▸"}</span>
                 </button>
                 {onTogglePreferred && (
                   <button
@@ -10301,45 +10298,37 @@ function AgentCard({
   }
 
   return (
-    <div className={`rounded-xl border bg-surface shadow-sm transition-colors ${open ? "border-accent-border" : "border-border"}`}>
-      <div className="flex items-center gap-4 p-4">
-        <ProviderMark vendor={cli.id} size={44} />
+    <div className={`rounded-lg border bg-surface transition-colors ${open ? "border-accent-border" : "border-border-subtle"}`}>
+      {/* Single-line header — same row dimensions as every other settings list. */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <ProviderMark vendor={cli.id} size={30} />
         <button
           onClick={() => cli.available && setOpen((v) => !v)}
           disabled={!cli.available || models.length === 0}
-          className="flex min-w-0 flex-1 items-start gap-2 text-left disabled:cursor-default"
+          className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default"
         >
           {cli.available && models.length > 0 && (
-            <span className="mt-1.5 text-[11px] text-text-muted">{open ? "▾" : "▸"}</span>
+            <span className="shrink-0 text-[11px] text-text-muted">{open ? "▾" : "▸"}</span>
           )}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <div className="font-display text-lg font-semibold tracking-tight">{cli.label}</div>
-              <span className={`rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ${
-                cli.available
-                  ? "border border-accent-border bg-accent-soft text-accent"
-                  : "border border-border bg-background text-text-muted"
-              }`}>
-                {cli.available ? "Detected" : "Not installed"}
-              </span>
-              {isDefault && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-background">
-                  <Check className="h-2.5 w-2.5" strokeWidth={3} /> Default chat
-                </span>
-              )}
-              {cli.available && models.length > 0 && (
-                <span className="font-mono text-[10px] text-text-muted">
-                  · {models.filter((m) => status[m.id] === "ok").length}/{models.length} verified
-                </span>
-              )}
-            </div>
-            <div className="mt-0.5 truncate text-xs text-text-muted">
-              {cli.available
-                ? (cli.version ?? `\`${cli.bin}\` in PATH`)
-                : `Install \`${cli.bin}\` to enable`}
-              <span className="ml-2 text-text-muted/60">· {brand.name}</span>
-            </div>
-          </div>
+          <span className="shrink-0 font-display text-sm font-semibold tracking-tight">{cli.label}</span>
+          <span className={`shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ${
+            cli.available
+              ? "border border-accent-border bg-accent-soft text-accent"
+              : "border border-border bg-background text-text-muted"
+          }`}>
+            {cli.available ? "Detected" : "Not installed"}
+          </span>
+          {isDefault && (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-background">
+              <Check className="h-2.5 w-2.5" strokeWidth={3} /> Default
+            </span>
+          )}
+          {cli.available && models.length > 0 && (
+            <span className="shrink-0 font-mono text-[10px] text-text-muted">{models.filter((m) => status[m.id] === "ok").length}/{models.length} verified</span>
+          )}
+          <span className="truncate font-mono text-[10px] text-text-muted/70">
+            {cli.available ? (cli.version ?? `${cli.bin} in PATH`) : `install ${cli.bin}`} · {brand.name}
+          </span>
         </button>
         <button
           onClick={() => cli.available && onStartChat?.(cli.id)}
@@ -10944,27 +10933,36 @@ const OPENAI_PATH = "M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0
 // render the company logo on a white tile; `mono` is a fallback for brands with
 // no official simple-icon yet.
 type DirectProvider = { name: string; path?: string; hex?: string; mono?: string };
+// Safe accessor: if a simple-icon resolves undefined (e.g. stale dep cache),
+// fall back to the monogram instead of throwing and taking down the page.
+const brandIcon = (icon: { path?: string; hex?: string } | undefined, mono: string): Partial<DirectProvider> =>
+  icon && icon.path ? { path: icon.path, hex: `#${icon.hex ?? "111111"}` } : { mono };
 const DIRECT_PROVIDERS_SOON: DirectProvider[] = [
-  { name: "Anthropic", path: siAnthropic.path, hex: `#${siAnthropic.hex}` },
+  { name: "Anthropic", ...brandIcon(siAnthropic, "A") },
   { name: "OpenAI", path: OPENAI_PATH, hex: "#000000" },
-  { name: "xAI (Grok)", path: siXRaw.path, hex: "#000000" },
-  { name: "Google Gemini", path: siGooglegemini.path, hex: `#${siGooglegemini.hex}` },
-  { name: "DeepSeek", path: siDeepseek.path, hex: `#${siDeepseek.hex}` },
-  { name: "Qwen / DashScope", path: siQwen.path, hex: `#${siQwen.hex}` },
-  { name: "MiniMax", path: siMinimax.path, hex: `#${siMinimax.hex}` },
-  { name: "Hugging Face", path: siHuggingface.path, hex: `#${siHuggingface.hex}` },
+  { name: "xAI (Grok)", ...brandIcon(siXRaw, "x") },
+  { name: "Google Gemini", ...brandIcon(siGooglegemini, "G") },
+  { name: "DeepSeek", ...brandIcon(siDeepseek, "DS") },
+  { name: "Qwen / DashScope", ...brandIcon(siQwen, "Q") },
+  { name: "MiniMax", ...brandIcon(siMinimax, "M") },
+  { name: "Hugging Face", ...brandIcon(siHuggingface, "HF") },
   { name: "GLM / Z.AI", mono: "Z" },
   { name: "Kimi / Moonshot", mono: "K" },
   { name: "OpenCode Zen", mono: "OZ" },
 ];
 
+// Shared dimensions for every settings list row (providers, connectors,
+// gateways, …) so lists look identical across pages: single column, h-8 icon
+// tile, gap-3, px-4 py-3, subtle border. Containers wrap these in `space-y-2`.
+const SETTINGS_ROW = "flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-4 py-3 transition-colors";
+
 function DirectProviderMark({ p }: { p: DirectProvider }) {
   return (
-    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border-subtle bg-white">
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-white">
       {p.path ? (
-        <svg width={12} height={12} viewBox="0 0 24 24" fill={p.hex ?? "#111"} aria-hidden><path d={p.path} /></svg>
+        <svg width={17} height={17} viewBox="0 0 24 24" fill={p.hex ?? "#111"} aria-hidden><path d={p.path} /></svg>
       ) : (
-        <span className="font-mono text-[8px] font-semibold text-text-muted">{p.mono}</span>
+        <span className="font-mono text-[10px] font-semibold text-text-muted">{p.mono}</span>
       )}
     </span>
   );
@@ -11035,13 +11033,13 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
       </div>
       <div className="mt-4">
         <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Direct providers</div>
-        {/* Single column of thin divided rows — no chunky cards. */}
-        <div className="overflow-hidden rounded-lg border border-border-subtle">
-          {DIRECT_PROVIDERS_SOON.map((p, i) => (
-            <div key={p.name} className={`flex items-center gap-2.5 bg-surface px-3 py-1.5 ${i > 0 ? "border-t border-border-subtle" : ""}`}>
+        {/* Shared list-row spec (see SETTINGS_ROW): single column, comfortable. */}
+        <div className="space-y-2">
+          {DIRECT_PROVIDERS_SOON.map((p) => (
+            <div key={p.name} className={SETTINGS_ROW}>
               <DirectProviderMark p={p} />
               <span className="flex-1 text-sm text-text-secondary">{p.name}</span>
-              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted/70">Coming soon</span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
             </div>
           ))}
         </div>
@@ -11108,13 +11106,13 @@ const CONNECTOR_GROUPS: { category: string; items: Connector[] }[] = [
 
 function ConnectorIcon({ c }: { c: Connector }) {
   return (
-    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border-subtle bg-white">
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-white">
       {c.brand ? (
-        <svg width={13} height={13} viewBox="0 0 24 24" fill={`#${c.brand.hex}`} aria-hidden>
+        <svg width={16} height={16} viewBox="0 0 24 24" fill={`#${c.brand.hex}`} aria-hidden>
           <path d={c.brand.path} />
         </svg>
       ) : c.icon ? (
-        <c.icon className="h-[13px] w-[13px]" style={{ color: c.color }} />
+        <c.icon className="h-[16px] w-[16px]" style={{ color: c.color }} />
       ) : null}
     </span>
   );
@@ -11151,13 +11149,13 @@ function ConnectorsSection() {
             <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">{g.category}</span>
             <span className="font-mono text-[10px] text-text-muted/60">{g.items.length}</span>
           </div>
-          {/* Single column of thin divided rows; domain inline (not a 2nd line). */}
-          <div className="overflow-hidden rounded-lg border border-border-subtle">
-            {g.items.map((c, i) => (
-              <div key={c.name} className={`group flex items-center gap-2.5 bg-surface px-3 py-1.5 transition-colors hover:bg-surface-warm ${i > 0 ? "border-t border-border-subtle" : ""}`}>
+          {/* Shared list-row spec; domain inline (one line). */}
+          <div className="space-y-2">
+            {g.items.map((c) => (
+              <div key={c.name} className={`group ${SETTINGS_ROW} hover:border-accent-border hover:bg-surface-warm`}>
                 <ConnectorIcon c={c} />
                 <span className="flex-1 truncate text-sm font-medium text-text-primary">{c.name}</span>
-                <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">→ {titleCase(c.domain)}</span>
+                <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">→ {titleCase(c.domain)}</span>
               </div>
             ))}
           </div>
@@ -11221,13 +11219,13 @@ function GatewaySection() {
         <WhatsAppCard />
       </div>
 
-      {/* Planned surfaces — single column of thin divided rows. */}
+      {/* Planned surfaces — shared list-row spec. */}
       <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">More surfaces</div>
-      <div className="overflow-hidden rounded-lg border border-border-subtle">
-        {COMING_SOON_GATEWAYS.map((name, i) => (
-          <div key={name} className={`flex items-center justify-between bg-surface px-3 py-1.5 ${i > 0 ? "border-t border-border-subtle" : ""}`}>
-            <span className="text-sm text-text-secondary">{name}</span>
-            <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted/70">Coming soon</span>
+      <div className="space-y-2">
+        {COMING_SOON_GATEWAYS.map((name) => (
+          <div key={name} className={SETTINGS_ROW}>
+            <span className="flex-1 text-sm text-text-secondary">{name}</span>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
           </div>
         ))}
       </div>
