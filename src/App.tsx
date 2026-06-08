@@ -407,6 +407,7 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  Pencil,
   TrendingUp,
   Users,
   Wallet,
@@ -944,6 +945,11 @@ const LENSES: Lens[] = [
 // inside Chat. Tools is NOT its own tab — it's a section inside
 // Settings. Keeps the surface count low so each tab has a clear job.
 type TabId = "chat" | "council" | "benchmark" | "settings";
+// Which view the Chat surface shows for the active domain. Lifted to App so the
+// top bar can own the Insights / Preferences toggles (and the domain header
+// shrinks to just the title). "chat" = the conversation; the rest are domain
+// sub-views rendered in place of the transcript.
+type DomainTab = "chat" | "context" | "insights" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs";
 const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
   { id: "chat", label: "Chat", icon: MessageSquare },
   { id: "council", label: "Council", icon: Scale },
@@ -1481,7 +1487,7 @@ function OnboardingModal({
                   {rec.rationale}
                 </p>
               )}
-              <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+              <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
                 Recommended domains · {picks.size} selected
               </div>
               <ul className="flex flex-col gap-2">
@@ -1857,6 +1863,9 @@ export default function App() {
   useEffect(() => { void refreshThreads(); }, [refreshThreads]);
   const [clis, setClis] = useState<CliInfo[]>([]);
   const [tab, setTab] = useState<TabId>("chat");
+  // Lifted from ChatPanel so the top bar owns the domain Insights / Preferences
+  // toggles. ChatPanel receives these as props and renders the matching view.
+  const [domainTab, setDomainTab] = useState<DomainTab>("chat");
   // Bunker Mode: backend is the source of truth; mirror it into localStorage on
   // mount so synchronous reads (isBunkerOn) everywhere stay correct, and into
   // React state so the persistent ribbon re-renders on toggle.
@@ -2138,17 +2147,18 @@ export default function App() {
         <aside className="flex w-60 shrink-0 flex-col border-r border-border-subtle bg-surface" />
         )}
 
-        {/* Threads rail — visible on Chat and Council so the domain's
-            conversation history stays one click away regardless of mode.
-            Hidden on Benchmark which is its own evaluation surface. */}
-        {(tab === "chat" || tab === "council") && (
+        {/* Threads rail — visible on every tab so the domain's conversation
+            history stays one click away and the left chrome doesn't vanish
+            when you switch to Benchmark. Picking a thread on Benchmark jumps
+            back to Chat with that thread open. */}
+        {(
           <>
             <ThreadsRail
               threads={threads}
               activePath={activeThreadPath}
               selectedDomain={selectedDomain}
               vaultPath={vaultPath}
-              onPick={(p) => { setActiveThreadPath(p); setChatViewNonce((n) => n + 1); }}
+              onPick={(p) => { setActiveThreadPath(p); setChatViewNonce((n) => n + 1); if (tab === "benchmark") setTab("chat"); }}
               onNew={async () => {
                 // Create the thread file immediately so the user gets
                 // a renameable entry in the rail BEFORE typing the
@@ -2201,6 +2211,44 @@ export default function App() {
               );
             })}
             <div className="flex-1" />
+            {/* Domain actions — lifted up here so the domain header is just the
+                title. Insights / Preferences toggle the Chat sub-view (jumping
+                to Chat first if you're on Council/Benchmark); archive lives in
+                the overflow menu. Only shown when a real domain is active. */}
+            {selectedDomain && (
+              <div className="mr-1 flex items-center gap-0.5 border-r border-border-subtle pr-2">
+                <button
+                  onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "insights" ? "chat" : "insights"); }}
+                  title="Insights — what to work on, your tasks, and recent intents"
+                  className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                    tab === "chat" && domainTab === "insights"
+                      ? "bg-accent-soft text-accent"
+                      : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                  }`}
+                >
+                  <Lightbulb className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "prefs" ? "chat" : "prefs"); }}
+                  title="Domain preferences"
+                  className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                    tab === "chat" && domainTab === "prefs"
+                      ? "bg-accent-soft text-accent"
+                      : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                  }`}
+                >
+                  <SettingsIcon className="h-4 w-4" />
+                </button>
+                <DomainActionsMenu
+                  domain={selectedDomain}
+                  vaultPath={vaultPath}
+                  onArchived={(name) => {
+                    if (selectedDomain === name) setSelectedDomain("");
+                    void refreshDomains();
+                  }}
+                />
+              </div>
+            )}
             <a
               href="https://github.com/fru-dev3/prevail-desktop"
               target="_blank"
@@ -2232,10 +2280,8 @@ export default function App() {
                 runningDomains={runningDomains}
                 finishedDomains={finishedDomainSet}
                 onPickDomain={(name) => setSelectedDomain(name)}
-                onArchived={(name) => {
-                  if (selectedDomain === name) setSelectedDomain("");
-                  void refreshDomains();
-                }}
+                domainTab={domainTab}
+                setDomainTab={setDomainTab}
               />
             )}
             {tab === "council" && (
@@ -2993,7 +3039,7 @@ function ThreadsRail({
   return (
     <aside className="flex shrink-0 flex-col border-r border-border-subtle bg-surface" style={{ width: railWidth }}>
       <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-3 py-2.5">
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
           Threads · {selectedDomain ? titleCase(selectedDomain) : "General"}
         </span>
         <div className="flex items-center gap-0.5">
@@ -3704,7 +3750,7 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
   }
   return (
     <div className="mb-4 rounded-xl border border-border-subtle bg-surface px-4 py-3">
-      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Tasks · {titleCase(domain)}</div>
+      <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Tasks · {titleCase(domain)}</div>
       <div className="flex flex-col gap-1">
         {tasks.map((t, i) => (
           <label key={i} className="flex cursor-pointer items-center gap-2 text-sm">
@@ -3751,7 +3797,7 @@ function InsightsPanel({ vaultPath, domain, onSeed }: { vaultPath: string; domai
       <TasksPanel vaultPath={vaultPath} domain={domain} nonce={taskNonce} />
       {/* I6: the intents ledger, finally visible. */}
       <div>
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Recent intents</div>
+        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Recent intents</div>
         <p className="mb-2 text-xs leading-relaxed text-text-secondary">
           Every question you send is logged as an intent — the exact ask plus the settings in effect — so a future, better model can replay it. These stay on your machine. Click one to ask it again.
         </p>
@@ -4065,6 +4111,13 @@ function DomainHome({
 // insert the /skillname or open the folder in Finder.
 // Compact agent picker for the no-domain landing. Each available CLI
 // is a brand glyph that animates its label out on hover; the active
+// Shared emphasis for section headers ("CLI", "Model", "Framework", "Lens",
+// "Skills", "Behavior", …). Bigger, bolder, high-contrast so each section
+// reads as a clear divider instead of a faint murmur. Used everywhere a
+// settings/prefs section is titled, for one consistent treatment.
+const SECTION_LABEL =
+  "font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary";
+
 // agent stays expanded. Clicking sets the chat panel's primary CLI.
 // Full-canvas preferences panel for the currently-selected domain.
 // Replaces the popover. Every control writes to localStorage on
@@ -4247,7 +4300,7 @@ function DomainPrefsPanel({
       <section className="mb-6 rounded-xl border border-border bg-surface p-4">
         <div className="mb-3 flex items-center justify-between">
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">CLI</div>
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">CLI</div>
             <p className="mt-0.5 text-sm text-text-secondary">Which agent runs every prompt in {titleCase(domain)}.</p>
           </div>
           {pickedCli && (
@@ -4301,7 +4354,7 @@ function DomainPrefsPanel({
         <section className="mb-6 rounded-xl border border-border bg-surface p-4">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Model</div>
+              <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Model</div>
               <p className="mt-0.5 text-sm text-text-secondary">Locked to the CLI you picked above.</p>
             </div>
             {pickedModel && (
@@ -4320,26 +4373,17 @@ function DomainPrefsPanel({
                 <button
                   key={m.id}
                   onClick={() => setOverride(modelKey, m.id)}
-                  className={`flex items-center justify-between gap-3 rounded-md border-2 px-3 py-2 text-left transition-colors ${
+                  className={`flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
                     picked
-                      ? "border-accent bg-accent-soft ring-2 ring-accent/20"
+                      ? "border-accent bg-accent-soft"
                       : "border-border-subtle bg-background hover:border-accent-border"
                   }`}
                 >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className={`font-mono text-sm ${picked ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
-                      {picked && (
-                        <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[8px] uppercase tracking-wider text-background">
-                          selected
-                        </span>
-                      )}
-                    </div>
-                    {m.blurb && <div className="mt-0.5 text-[11px] text-text-muted">{m.blurb}</div>}
-                  </div>
+                  <span className={`shrink-0 font-mono text-sm ${picked ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
+                  {m.blurb && <span className="min-w-0 flex-1 truncate text-[11px] text-text-muted">{m.blurb}</span>}
                   {picked && (
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-background">
-                      <Check className="h-3 w-3" strokeWidth={3} />
+                    <span className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent text-background">
+                      <Check className="h-2.5 w-2.5" strokeWidth={3} />
                     </span>
                   )}
                 </button>
@@ -4373,7 +4417,7 @@ function DomainPrefsPanel({
       <section className="mb-6 rounded-xl border border-border bg-surface p-4">
         <div className="mb-3 flex items-center justify-between">
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Skills</div>
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Skills</div>
             <p className="mt-0.5 text-sm text-text-secondary">
               Pinned skills auto-attach to every new chat in {titleCase(domain)}.
               <span className="ml-2 font-mono text-[10px] text-text-muted">★ pinned · ☆ tap to pin</span>
@@ -4420,7 +4464,7 @@ function DomainPrefsPanel({
 
       {/* Behavior toggles */}
       <section className="mb-6 rounded-xl border border-border bg-surface p-4">
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Behavior</div>
+        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Behavior</div>
         <div className="flex items-center justify-between gap-3 py-2">
           <div>
             <div className="text-sm font-semibold text-text-primary">Auto-attach state.md</div>
@@ -4440,7 +4484,7 @@ function DomainPrefsPanel({
 
       {/* Privacy — local-only (Ollama) pin → manifest.privacy.localOnly */}
       <section className="mb-6 rounded-xl border border-border bg-surface p-4">
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Privacy</div>
+        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Privacy</div>
         <div className="flex items-center justify-between gap-3 py-2">
           <div>
             <div className="text-sm font-semibold text-text-primary">Local-only (Ollama)</div>
@@ -4466,7 +4510,7 @@ function DomainPrefsPanel({
       <section className="mb-6 rounded-xl border border-border bg-surface p-4">
         <div className="mb-3 flex items-center justify-between">
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Sandbox</div>
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Sandbox</div>
             <p className="mt-0.5 text-sm text-text-secondary">
               {sandboxMode === "locked"
                 ? "Locked — agents can read this domain but cannot write files or run shell side-effects."
@@ -4492,7 +4536,7 @@ function DomainPrefsPanel({
       {/* Channels / routing — domain name is always matched (A6); the input
           holds extra keywords → manifest.routing.keywords = [domain, ...extras] */}
       <section className="mb-6 rounded-xl border border-border bg-surface p-4">
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Channels &amp; routing</div>
+        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Channels &amp; routing</div>
         <p className="mb-3 text-sm text-text-secondary">
           When a bridge (e.g. Telegram) receives a message, these keywords route it to {titleCase(domain)}.
           The domain name always matches; add extras below. Saved to the domain manifest.
@@ -4551,7 +4595,7 @@ function PrefPickerColumn({
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
       <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+        <div className={`flex items-center gap-2 ${SECTION_LABEL}`}>
           <span className="text-accent">{glyph}</span> {title}
         </div>
         {selected && (
@@ -4570,26 +4614,17 @@ function PrefPickerColumn({
             <button
               key={o.id}
               onClick={() => onSelect(o.id)}
-              className={`flex items-start gap-2 rounded-md border-2 px-3 py-2 text-left transition-colors ${
+              className={`flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
                 picked
-                  ? "border-accent bg-accent-soft ring-2 ring-accent/20"
+                  ? "border-accent bg-accent-soft"
                   : "border-border-subtle bg-background hover:border-accent-border"
               }`}
             >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className={`font-mono text-sm ${picked ? "font-semibold text-accent" : "text-text-primary"}`}>{o.label}</span>
-                  {picked && (
-                    <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[8px] uppercase tracking-wider text-background">
-                      selected
-                    </span>
-                  )}
-                </div>
-                <div className="mt-0.5 line-clamp-2 text-[11px] text-text-muted">{o.blurb}</div>
-              </div>
+              <span className={`shrink-0 font-mono text-sm ${picked ? "font-semibold text-accent" : "text-text-primary"}`}>{o.label}</span>
+              <span className="min-w-0 flex-1 truncate text-[11px] text-text-muted">{o.blurb}</span>
               {picked && (
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-background">
-                  <Check className="h-3 w-3" strokeWidth={3} />
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent text-background">
+                  <Check className="h-2.5 w-2.5" strokeWidth={3} />
                 </span>
               )}
             </button>
@@ -4676,7 +4711,7 @@ function NewSkillForm({ vaultPath, domain, seed, onCreated }: { vaultPath: strin
   }
   return (
     <div className="mx-auto mb-3 max-w-2xl rounded-xl border border-accent-border bg-surface p-4">
-      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">New skill · {titleCase(domain)}</div>
+      <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">New skill · {titleCase(domain)}</div>
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -5278,7 +5313,7 @@ function UsageBreakdown({
   const max = Math.max(1, ...rows.map((r) => r.turns));
   return (
     <div className="rounded-xl border border-border-subtle bg-surface p-4">
-      <div className="mb-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+      <div className="mb-3 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
         <Icon className="h-3.5 w-3.5" />
         {title}
       </div>
@@ -5339,7 +5374,7 @@ function UsageDashboard({ vault, nonce }: { vault: string; nonce?: number }) {
 
   return (
     <div className="mt-10 w-full max-w-4xl">
-      <div className="mb-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+      <div className="mb-3 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
         <Activity className="h-3.5 w-3.5" />
         Usage
       </div>
@@ -5362,7 +5397,7 @@ function UsageDashboard({ vault, nonce }: { vault: string; nonce?: number }) {
       {/* per-day activity strip */}
       {days.length > 1 && (
         <div className="mt-3 rounded-xl border border-border-subtle bg-surface p-4">
-          <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+          <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
             Activity · last {days.length} day{days.length === 1 ? "" : "s"}
           </div>
           <div className="flex h-16 items-end gap-1">
@@ -5406,7 +5441,8 @@ function ChatPanel({
   runningDomains,
   finishedDomains,
   onPickDomain,
-  onArchived,
+  domainTab,
+  setDomainTab,
 }: {
   domain: string | null;
   domainPath: string | null;
@@ -5425,7 +5461,8 @@ function ChatPanel({
   runningDomains: Set<string>;
   finishedDomains: Set<string>;
   onPickDomain: (name: string) => void;
-  onArchived: (name: string) => void;
+  domainTab: DomainTab;
+  setDomainTab: (t: DomainTab) => void;
 }) {
   const available = useMemo(() => clis.filter((c) => c.available), [clis]);
 
@@ -5585,27 +5622,15 @@ function ChatPanel({
   // Per-domain preferences popover — explicit view of overrides saved
   // for this domain with reset controls. Implicit auto-save still
   // happens in pickers; this only surfaces + clears the result.
-  const hasAnyDomainOverride = useMemo(() => {
-    if (!domain) return false;
-    return Boolean(
-      lsGet(`prevail.domain.${domain}.cli`) ||
-      lsGet(`prevail.domain.${domain}.model`) ||
-      lsGet(`prevail.domain.${domain}.framework`) ||
-      lsGet(`prevail.domain.${domain}.lens`) ||
-      lsGet(`prevail.domain.${domain}.skills`)
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [domain, prefsTick]);
   // Skills attached to the next send. Decoupled from the textarea so
   // editing the prompt text doesn't affect them, and the user removes
   // them from the pills below — not by editing prompt text.
   const [attachedSkills, setAttachedSkills] = useState<string[]>(() => loadPreferredSkills(domain));
   const [preferredSkills, setPreferredSkills] = useState<string[]>(() => loadPreferredSkills(domain));
-  // Persistent domain tab. "chat" shows the transcript; the other
-  // tabs replace the transcript with the domain's reference content.
-  // Composer stays at the bottom regardless of tab.
-  type DomainTab = "chat" | "context" | "insights" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs";
-  const [domainTab, setDomainTab] = useState<DomainTab>("chat");
+  // domainTab is lifted to App (the top bar owns the Insights/Preferences
+  // toggles); it arrives as a prop. "chat" shows the transcript; the other
+  // tabs replace the transcript with the domain's reference content. The
+  // composer stays at the bottom regardless of tab.
   const [domainCtx, setDomainCtx] = useState<DomainContextBundle | null>(null);
   // Context score for the active domain. Cached in state per-domain; the
   // header badge and Context tab both read from here. Loaded (cheap,
@@ -6546,72 +6571,24 @@ function ChatPanel({
           </div>
         </div>
       )}
-      {/* Header — two clean rows. Row 1 is navigation + the persistent
-          action icons (one tidy strip, like the top tab bar). Row 2 is
-          just the domain identity, so the name reads big and clear. The
-          old single-row layout crammed name + blurb + icons together and
-          felt confusing. */}
-      <div className="shrink-0 border-b border-border-subtle">
-        {/* Row 1 — back-to-chat on the left (only inside a content view),
-            action icons on the right. */}
-        <div className="flex items-center gap-2 px-4 py-1.5">
-          {domain && domainTab !== "chat" ? (
-            <button
-              onClick={() => setDomainTab("chat")}
-              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" /> Chat
-            </button>
-          ) : (
-            <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-muted">
-              Chat
-            </span>
-          )}
-          <div className="flex-1" />
-          {domain && (
-            <>
-              <button
-                onClick={() => setDomainTab(domainTab === "insights" ? "chat" : "insights")}
-                title="Insights — what to work on, your tasks, and recent intents (domain-level)"
-                className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
-                  domainTab === "insights"
-                    ? "text-accent hover:bg-accent-soft"
-                    : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                }`}
-              >
-                <Lightbulb className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={() => setDomainTab(domainTab === "prefs" ? "chat" : "prefs")}
-                title={hasAnyDomainOverride ? "Domain preferences (overrides active)" : "Domain preferences"}
-                className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
-                  domainTab === "prefs" || hasAnyDomainOverride
-                    ? "text-accent hover:bg-accent-soft"
-                    : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                }`}
-              >
-                <SettingsIcon className="h-3.5 w-3.5" />
-              </button>
-              <DomainActionsMenu domain={domain} vaultPath={vaultPath} onArchived={onArchived} />
-            </>
-          )}
+      {/* Header — just the domain identity now. Insights / Preferences /
+          archive moved up to the top tab bar; the score badge opens the
+          context view. When no domain is active there's no header at all —
+          the empty state owns the canvas. */}
+      {domain && (
+        <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-4 py-2">
+          {(() => {
+            const I = domainIcon(domain);
+            return I ? <I className="h-5 w-5 shrink-0 text-accent" /> : <span className="text-accent">◆</span>;
+          })()}
+          <span className="shrink-0 font-display text-lg font-semibold">{titleCase(domain)}</span>
+          <ContextScoreBadge
+            score={ctxScore}
+            onClick={() => setDomainTab(domainTab === "context" ? "chat" : "context")}
+          />
+          <span className="hidden min-w-0 truncate text-sm text-text-muted md:inline">{domainBlurb(domain)}</span>
         </div>
-        {/* Row 2 — domain identity. Only shown once a domain is active. */}
-        {domain && (
-          <div className="flex items-center gap-3 px-4 pb-2">
-            {(() => {
-              const I = domainIcon(domain);
-              return I ? <I className="h-5 w-5 shrink-0 text-accent" /> : <span className="text-accent">◆</span>;
-            })()}
-            <span className="shrink-0 font-display text-lg font-semibold">{titleCase(domain)}</span>
-            <ContextScoreBadge
-              score={ctxScore}
-              onClick={() => setDomainTab(domainTab === "context" ? "chat" : "context")}
-            />
-            <span className="hidden min-w-0 truncate text-sm text-text-muted md:inline">{domainBlurb(domain)}</span>
-          </div>
-        )}
-      </div>
+      )}
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 && !domain && (
@@ -6629,7 +6606,7 @@ function ChatPanel({
                 style={{ borderColor: scoreColor(lifeReadiness.life_readiness) }}
                 title={`Life Readiness — average context score across ${lifeReadiness.domains.length} domain${lifeReadiness.domains.length === 1 ? "" : "s"}`}
               >
-                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+                <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
                   Life Readiness
                 </span>
                 <span
@@ -6670,7 +6647,7 @@ function ChatPanel({
               return (
               <div className="mt-8 w-full max-w-4xl">
                 <div className="mb-3 flex items-center justify-between">
-                  <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+                  <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
                     Jump to · {featured.length} of {domains.length}
                   </div>
                   <span className="font-mono text-[10px] text-text-muted">more in sidebar</span>
@@ -6791,6 +6768,14 @@ function ChatPanel({
         )}
         {domain && domainTab !== "chat" && (
           <div className="w-full px-6 py-6">
+            {/* Universal exit back to the conversation — the header is now just
+                the domain title, so this is the one consistent way back. */}
+            <button
+              onClick={() => setDomainTab("chat")}
+              className="mb-4 inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" /> Chat
+            </button>
             {domainTab === "context" && (
               <ContextScorePanel
                 score={ctxScore}
@@ -8836,16 +8821,18 @@ function ContextScoreBadge({
   const color = scoreColor(score.score);
   const tip = `Context score ${score.score}/100 · updated ${formatFreshness(
     score.freshness_secs,
-  )}${score.audited_at ? ` · audited ${formatAuditedAt(score.audited_at)}` : " · heuristic"}`;
+  )}${score.audited_at ? ` · audited ${formatAuditedAt(score.audited_at)}` : " · heuristic"} — click to review & rescan`;
   return (
     <button
       onClick={onClick}
       title={tip}
-      className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide transition-colors hover:opacity-80"
+      className="group inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide transition-all hover:shadow-sm"
       style={{ borderColor: color, color }}
     >
       <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
       {score.score}
+      {/* explicit edit affordance — makes it obvious the score is clickable */}
+      <Pencil className="h-2.5 w-2.5 opacity-60 transition-opacity group-hover:opacity-100" />
     </button>
   );
 }
@@ -8945,7 +8932,7 @@ function ContextScorePanel({
       {score.relevance && (
         <div>
           <div className="mb-2 flex items-baseline justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
               Domain fit
             </span>
             <span className="font-mono text-[10px] text-text-muted">{score.relevance.detail}</span>
@@ -8994,7 +8981,7 @@ function ContextScorePanel({
 
       {/* Six dimensions */}
       <div>
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
           Structural readiness
         </div>
         <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-5">
@@ -9021,7 +9008,7 @@ function ContextScorePanel({
       {/* What's missing, grouped by severity */}
       {score.missing.length > 0 && (
         <div>
-          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+          <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
             What's missing
           </div>
           <div className="flex flex-col gap-4 rounded-2xl border border-border bg-surface p-5">
@@ -9067,7 +9054,7 @@ function ContextScorePanel({
       {/* Assessment + last audited */}
       {score.assessment && (
         <div>
-          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+          <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
             Assessment
           </div>
           <div className="rounded-2xl border border-border bg-surface p-5">
@@ -9355,7 +9342,7 @@ function BenchRunConfig({
     <div className="mx-auto max-w-3xl space-y-7 px-6 py-6">
       {/* Mode */}
       <section>
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Mode</div>
+        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Mode</div>
         <div className="flex gap-2">
           <button
             onClick={() => setMode("single")}
@@ -9376,7 +9363,7 @@ function BenchRunConfig({
       {mode === "single" && (
         <section>
           <div className="mb-2 flex items-baseline justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Models</span>
+            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Models</span>
             <span className="font-mono text-[10px] text-text-muted">{selModels.size} selected — runs head-to-head</span>
           </div>
           <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
@@ -9411,7 +9398,7 @@ function BenchRunConfig({
       {/* Domain scope */}
       <section>
         <div className="mb-2 flex items-baseline justify-between">
-          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Domain scope</span>
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Domain scope</span>
           <span className="font-mono text-[10px] text-text-muted">{scope.size === 0 ? "all domains" : `${scope.size} selected`}</span>
         </div>
         {allDomains.length === 0 ? (
@@ -9960,7 +9947,7 @@ function SettingsPanel({
             Back to app
           </button>
         )}
-        <div className="mb-1 px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+        <div className="mb-1 px-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
           Settings
         </div>
         {navGroups.map((group) => (
@@ -10115,7 +10102,7 @@ function AgentsSection({
       )}
       {detected.length > 0 && (
         <section className="mb-8">
-          <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+          <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
             Detected · {detected.length}
           </div>
           <div className="flex flex-col gap-3">
@@ -10133,7 +10120,7 @@ function AgentsSection({
       )}
       {missing.length > 0 && (
         <section>
-          <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+          <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
             Not installed · {missing.length}
           </div>
           <div className="flex flex-col gap-3">
@@ -10305,7 +10292,7 @@ function AgentCard({
       {open && cli.available && models.length > 0 && (
         <div className="border-t border-border-subtle px-4 py-3">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
               Models · {models.length}
             </div>
             <button
@@ -10708,7 +10695,7 @@ function GeneralSection() {
       {/* Budget meter — display-only spend vs cap. */}
       <div className="mt-6 rounded-lg border border-border bg-surface px-5 py-4">
         <div className="mb-2 flex items-center justify-between">
-          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Budget this month</div>
+          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Budget this month</div>
           <div className="font-mono text-xs text-text-secondary">
             ${budgetSpent.toFixed(2)}{hasCap ? ` / $${capNum.toFixed(2)}` : " spent"}
           </div>
@@ -10845,7 +10832,7 @@ function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
       {/* Daemon status + manual trigger */}
       <div className="mt-6 rounded-lg border border-border bg-surface px-5 py-4">
         <div className="mb-2 flex items-center justify-between">
-          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Distillation</div>
+          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Distillation</div>
           <div className="flex items-center gap-2">
             <span className={`inline-block h-1.5 w-1.5 rounded-full ${status?.running ? "bg-ok" : "bg-text-muted/40"}`} />
             <span className="font-mono text-xs text-text-secondary">{status?.running ? "daemon running" : "idle"}</span>
@@ -10991,7 +10978,7 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
         )}
       </div>
       <div className="mt-4">
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Direct providers</div>
+        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Direct providers</div>
         {/* Shared list-row spec (see SETTINGS_ROW): single column, comfortable. */}
         <div className="space-y-2">
           {DIRECT_PROVIDERS_SOON.map((p) => (
@@ -11105,7 +11092,7 @@ function ConnectorsSection() {
       {CONNECTOR_GROUPS.map((g) => (
         <div key={g.category} className="mb-5">
           <div className="mb-2 flex items-baseline gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">{g.category}</span>
+            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">{g.category}</span>
             <span className="font-mono text-[10px] text-text-muted/60">{g.items.length}</span>
           </div>
           {/* Shared list-row spec; domain inline (one line). */}
@@ -11179,7 +11166,7 @@ function GatewaySection() {
       </div>
 
       {/* Planned surfaces — shared list-row spec. */}
-      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">More surfaces</div>
+      <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">More surfaces</div>
       <div className="space-y-2">
         {COMING_SOON_GATEWAYS.map((name) => (
           <div key={name} className={SETTINGS_ROW}>
@@ -11276,11 +11263,11 @@ function McpSection({ vaultPath }: { vaultPath: string }) {
     <>
       <SettingsHeader title="MCP" subtitle="Connect Model Context Protocol servers to Prevail, and expose Prevail as an MCP server to other tools." />
       <div className="mb-5">
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Connected servers (Prevail consumes)</div>
+        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Connected servers (Prevail consumes)</div>
         <McpCard />
       </div>
       <div className="rounded-lg border border-border bg-surface p-5">
-        <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Expose Prevail as an MCP server</div>
+        <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Expose Prevail as an MCP server</div>
         <div className="mb-3 text-xs text-text-secondary">Add this to another tool's MCP config (e.g. Claude Desktop) to let it use your Prevail vault as an MCP server.</div>
         {mcpPathUnstable && (
           <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-text-secondary">
@@ -11481,7 +11468,7 @@ function PreambleColumn({
   return (
     <div className="flex min-w-0 flex-col">
       {/* Column header */}
-      <div className="mb-3 flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+      <div className="mb-3 flex items-baseline gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
         <span className="text-accent">{glyph}</span> {title}
         <span>· {options.length}</span>
       </div>
@@ -12577,7 +12564,7 @@ function ShortcutsSection() {
       <div className="space-y-6">
         {groups.map((g) => (
           <section key={g.name} className="rounded-xl border border-border bg-surface p-5 shadow-sm">
-            <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+            <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
               {g.name}
             </div>
             <ul className="flex flex-col divide-y divide-border-subtle">
@@ -12798,7 +12785,7 @@ function AboutSection() {
 
       {/* Config — export / import / reset */}
       <div className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
-        <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Configuration</div>
+        <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Configuration</div>
         <div className="flex flex-wrap gap-2">
           <button onClick={exportConfig}
             className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent">Export config…</button>
@@ -12813,7 +12800,7 @@ function AboutSection() {
       {/* Diagnostics */}
       <div className="mt-4 rounded-2xl border border-border bg-surface p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
-          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Diagnostics</div>
+          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Diagnostics</div>
           <div className="flex gap-2">
             <button onClick={runDiagnosis}
               className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent">Run diagnosis</button>
@@ -13340,7 +13327,7 @@ function TelegramCard() {
 
         <div className="rounded-lg border border-border bg-background p-3">
           <div className="mb-2 flex items-center justify-between">
-            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
               Bidirectional bridge
             </div>
             <span className={`rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
@@ -13424,7 +13411,7 @@ function TelegramCard() {
         </div>
 
         <div className="rounded-lg border border-border-subtle bg-background px-3 py-2">
-          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Routing keywords</div>
+          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Routing keywords</div>
           <p className="mt-1 text-xs text-text-secondary">
             Inbound messages are matched against each domain's keywords to pick where they land.
             Set them per-domain under{" "}
