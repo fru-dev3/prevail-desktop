@@ -420,6 +420,7 @@ import {
   Cpu,
   Layers,
   Landmark,
+  Lightbulb,
   Plug,
   ThumbsUp,
   ThumbsDown,
@@ -3733,6 +3734,57 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
   );
 }
 
+// I8 + I6: domain-level Insights — aggregates the proactive "For You" surface
+// (questions + suggested next steps), the per-domain task list, and the recent
+// intents ledger in one place, independent of any single thread. This is where
+// "what should I work on?" and "what have I been asking?" live for a domain.
+function InsightsPanel({ vaultPath, domain, onSeed }: { vaultPath: string; domain: string; onSeed: (t: string) => void }) {
+  const [taskNonce, setTaskNonce] = useState(0);
+  const [intents, setIntents] = useState<{ message?: string; cli?: string; model?: string; ts?: number }[]>([]);
+  useEffect(() => {
+    invoke<{ message?: string; cli?: string; model?: string; ts?: number }[]>("intents_read", { vault: vaultPath, domain, limit: 15 })
+      .then(setIntents)
+      .catch(() => setIntents([]));
+  }, [vaultPath, domain, taskNonce]);
+  return (
+    <div className="flex flex-col gap-6">
+      <SurfacePanel
+        vaultPath={vaultPath}
+        domain={domain}
+        onPick={onSeed}
+        onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }}
+      />
+      <TasksPanel vaultPath={vaultPath} domain={domain} nonce={taskNonce} />
+      {/* I6: the intents ledger, finally visible. */}
+      <div>
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Recent intents</div>
+        <p className="mb-2 text-xs leading-relaxed text-text-secondary">
+          Every question you send is logged as an intent — the exact ask plus the settings in effect — so a future, better model can replay it. These stay on your machine. Click one to ask it again.
+        </p>
+        {intents.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-sm text-text-muted">No intents captured yet — ask something in chat.</div>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {intents.map((it, i) => (
+              <li key={i}>
+                <button
+                  onClick={() => onSeed(String(it.message ?? ""))}
+                  className="block w-full rounded-lg border border-border bg-surface px-3 py-2 text-left hover:-translate-y-px hover:border-accent-border hover:shadow-sm"
+                >
+                  <div className="line-clamp-2 text-sm text-text-primary">{String(it.message ?? "(no text)")}</div>
+                  <div className="mt-0.5 font-mono text-[10px] text-text-muted">
+                    {it.cli ?? ""}{it.model ? ` · ${it.model}` : ""}{it.ts ? ` · ${formatFreshness((Date.now() - it.ts) / 1000)}` : ""}
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: string; domain: string; onPick: (t: string) => void; onAddTask: (t: string) => void }) {
   const [data, setData] = useState<SurfaceResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -5472,7 +5524,7 @@ function ChatPanel({
   // Persistent domain tab. "chat" shows the transcript; the other
   // tabs replace the transcript with the domain's reference content.
   // Composer stays at the bottom regardless of tab.
-  type DomainTab = "chat" | "context" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs";
+  type DomainTab = "chat" | "context" | "insights" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs";
   const [domainTab, setDomainTab] = useState<DomainTab>("chat");
   const [domainCtx, setDomainCtx] = useState<DomainContextBundle | null>(null);
   // Context score for the active domain. Cached in state per-domain; the
@@ -6422,6 +6474,17 @@ function ChatPanel({
         {domain && (
           <>
             <button
+              onClick={() => setDomainTab(domainTab === "insights" ? "chat" : "insights")}
+              title="Insights — what to work on, your tasks, and recent intents (domain-level)"
+              className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                domainTab === "insights"
+                  ? "text-accent hover:bg-accent-soft"
+                  : "text-text-muted hover:bg-surface-warm hover:text-accent"
+              }`}
+            >
+              <Lightbulb className="h-3.5 w-3.5" />
+            </button>
+            <button
               onClick={() => window.dispatchEvent(new CustomEvent("prevail:benchmark-domain", { detail: domain }))}
               title={`Benchmark models on the ${titleCase(domain)} questions`}
               className="flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
@@ -6676,7 +6739,22 @@ function ChatPanel({
                 />
               </>
             )}
-            {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && <div className="text-sm text-text-muted">loading…</div>}
+            {domainTab === "insights" && domain && (
+              <>
+                <button
+                  onClick={() => setDomainTab("chat")}
+                  className="mb-4 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-accent"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" /> Chat
+                </button>
+                <InsightsPanel
+                  vaultPath={vaultPath}
+                  domain={domain}
+                  onSeed={(t) => { setInput(t); setDomainTab("chat"); }}
+                />
+              </>
+            )}
+            {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && domainTab !== "insights" && <div className="text-sm text-text-muted">loading…</div>}
             {domainCtx && domainTab === "state" && (domainCtx.state ? <Markdown source={domainCtx.state} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">state.md</code> in this domain.</div>)}
             {domainCtx && domainTab === "decisions" && (domainCtx.decisions ? <Markdown source={domainCtx.decisions} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">decisions.md</code> yet.</div>)}
             {domainCtx && domainTab === "journal" && (domainCtx.journal ? <Markdown source={domainCtx.journal} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no journal entries yet.</div>)}

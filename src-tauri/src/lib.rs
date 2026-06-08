@@ -933,6 +933,35 @@ fn intent_append(
     Ok(())
 }
 
+/// I6: read back the intents ledger so the desktop can surface it (newest
+/// first). Each line is an "intent" record written by `intent_append` the
+/// instant a chat is sent — what the user asked + the prefs in effect.
+#[tauri::command]
+fn intents_read(
+    vault: String,
+    domain: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let dir = domain_dir(&vault, &domain);
+    let file = dir.join("_intents.jsonl");
+    let text = match read_to_string_retry(&file) {
+        Ok(t) => t,
+        Err(_) => return Ok(vec![]),
+    };
+    let mut out: Vec<serde_json::Value> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str(l).ok())
+        // Only the "intent" kind (the ledger also carries other record kinds).
+        .filter(|v: &serde_json::Value| v.get("kind").and_then(|k| k.as_str()) == Some("intent"))
+        .collect();
+    out.reverse(); // newest first
+    if let Some(n) = limit {
+        out.truncate(n);
+    }
+    Ok(out)
+}
+
 /// Append a human-readable line to the domain journal so the journal is
 /// built automatically from every conversation — not only when the user
 /// manually clicks "New chat". Newest entries go directly under the header.
@@ -3002,6 +3031,7 @@ pub fn run() {
             usage_append,
             usage_summary,
             intent_append,
+            intents_read,
             journal_append,
             decision_append,
             decisions_read,
