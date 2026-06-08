@@ -936,6 +936,18 @@ pub(crate) fn domain_dir_pub(vault: &str, domain: &str) -> PathBuf {
     domain_dir(vault, &Some(domain.to_string()))
 }
 
+// Strict variant for WebUI-reachable WRITE commands (save_thread, save_session,
+// list_threads): an unsafe domain is REJECTED, not silently redirected to the
+// vault root (audit #3). `<vault>/<domain>/<sub>` for a safe domain, `<vault>/<sub>`
+// for the no-domain General space.
+fn safe_domain_subdir(vault: &str, domain: &Option<String>, sub: &str) -> Result<PathBuf, String> {
+    match domain {
+        Some(d) if is_safe_domain(d) => Ok(PathBuf::from(vault).join(d).join(sub)),
+        Some(d) => Err(format!("invalid domain: {d}")),
+        None => Ok(PathBuf::from(vault).join(sub)),
+    }
+}
+
 // Guard a frontend-supplied path before reading/writing it. Blocks traversal
 // and confines the operation to a Prevail-managed file shape (e.g. a thread
 // markdown under "/_threads/"). Critical now that some commands are reachable
@@ -944,8 +956,31 @@ fn guard_managed_path(path: &str, must_contain: &str, ext: &str) -> Result<(), S
     if path.contains("..") {
         return Err("invalid path".into());
     }
+    let p = std::path::Path::new(path);
+    if !p.is_absolute() {
+        return Err("path must be absolute".into());
+    }
     if !path.contains(must_contain) || !path.ends_with(ext) {
         return Err(format!("path must be a Prevail {must_contain} {ext} file"));
+    }
+    // Symlink-escape defense (audit #3): resolve the real path — or, for a target
+    // that doesn't exist yet, its real parent plus the final component — and
+    // re-assert the managed shape on the RESOLVED path. A symlink named `x.md`
+    // that points at /etc/passwd resolves to a path that no longer ends in `.md`
+    // or contains the managed segment, so it's rejected.
+    let resolved = match p.canonicalize() {
+        Ok(rp) => rp,
+        Err(_) => match (p.parent(), p.file_name()) {
+            (Some(par), Some(name)) => par
+                .canonicalize()
+                .map(|c| c.join(name))
+                .map_err(|e| format!("invalid path: {e}"))?,
+            _ => return Err("invalid path".into()),
+        },
+    };
+    let resolved_str = resolved.to_string_lossy();
+    if !resolved_str.contains(must_contain) || !resolved_str.ends_with(ext) {
+        return Err("path resolves outside a Prevail-managed location".into());
     }
     Ok(())
 }
@@ -1937,10 +1972,7 @@ fn save_session(
     if turns.is_empty() {
         return Err("session is empty".into());
     }
-    let log_dir = match domain.clone() {
-        Some(d) => PathBuf::from(&vault).join(&d).join("_log"),
-        None => PathBuf::from(&vault).join("_log"),
-    };
+    let log_dir = safe_domain_subdir(&vault, &domain, "_log")?;
     fs::create_dir_all(&log_dir).map_err(|e| format!("mkdir _log: {e}"))?;
     // Use chrono-free timestamp by formatting from std time.
     let now = std::time::SystemTime::now()
@@ -2271,10 +2303,7 @@ fn thread_meta_from(
 
 #[tauri::command]
 fn list_threads(vault: String, domain: Option<String>) -> Result<Vec<ThreadMeta>, String> {
-    let threads_dir = match &domain {
-        Some(d) => PathBuf::from(&vault).join(d).join("_threads"),
-        None => PathBuf::from(&vault).join("_threads"),
-    };
+    let threads_dir = safe_domain_subdir(&vault, &domain, "_threads")?;
     if !threads_dir.exists() {
         return Ok(vec![]);
     }
@@ -2368,10 +2397,7 @@ fn save_thread(
     // the user clicks "+ New thread" — they want the entry to appear
     // in the rail immediately and be renameable BEFORE typing the
     // first prompt. Subsequent auto-saves overwrite with real turns.
-    let threads_dir = match &domain {
-        Some(d) => PathBuf::from(&vault).join(d).join("_threads"),
-        None => PathBuf::from(&vault).join("_threads"),
-    };
+    let threads_dir = safe_domain_subdir(&vault, &domain, "_threads")?;
     fs::create_dir_all(&threads_dir).map_err(|e| format!("mkdir _threads: {e}"))?;
 
     let now = std::time::SystemTime::now()
@@ -3214,6 +3240,47 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod path_safety_tests {
+    use super::*;
+
+    #[test]
+    fn safe_domain_rejects_traversal_and_separators() {
+        assert!(is_safe_domain("wealth"));
+        assert!(is_safe_domain("real-estate"));
+        assert!(is_safe_domain("a_b"));
+        assert!(!is_safe_domain(".."));
+        assert!(!is_safe_domain("../etc"));
+        assert!(!is_safe_domain("a/b"));
+        assert!(!is_safe_domain(".hidden"));
+        assert!(!is_safe_domain(""));
+        assert!(!is_safe_domain(&"x".repeat(65)));
+    }
+
+    #[test]
+    fn safe_domain_subdir_rejects_unsafe_instead_of_root_fallback() {
+        // Safe domain → joined under the domain.
+        let ok = safe_domain_subdir("/v", &Some("wealth".into()), "_threads").unwrap();
+        assert!(ok.ends_with("wealth/_threads"));
+        // No domain → vault root sub (General space).
+        let none = safe_domain_subdir("/v", &None, "_threads").unwrap();
+        assert!(none.ends_with("_threads") && !none.to_string_lossy().contains("wealth"));
+        // Unsafe domain → ERROR, not a silent vault-root write.
+        assert!(safe_domain_subdir("/v", &Some("../escape".into()), "_threads").is_err());
+        assert!(safe_domain_subdir("/v", &Some("a/b".into()), "_log").is_err());
+    }
+
+    #[test]
+    fn guard_managed_path_basics() {
+        // Relative paths and traversal are rejected before any FS touch.
+        assert!(guard_managed_path("relative/_threads/x.md", "/_threads/", ".md").is_err());
+        assert!(guard_managed_path("/v/_threads/../../x.md", "/_threads/", ".md").is_err());
+        // Wrong shape rejected.
+        assert!(guard_managed_path("/v/_threads/x.txt", "/_threads/", ".md").is_err());
+        assert!(guard_managed_path("/v/notthreads/x.md", "/_threads/", ".md").is_err());
+    }
 }
 
 #[cfg(test)]
