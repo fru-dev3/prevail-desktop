@@ -8732,6 +8732,8 @@ function ContextScorePanel({
   const severities = Object.keys(grouped).sort(
     (a, b) => (SEVERITY_ORDER[a] ?? 99) - (SEVERITY_ORDER[b] ?? 99),
   );
+  // I3: surface what's out of date as an explicit, scannable summary.
+  const staleItems = score.relevance?.items.filter((it) => it.stale) ?? [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -8762,6 +8764,20 @@ function ContextScorePanel({
           </div>
         </div>
       </div>
+
+      {/* I3: explicit "what's out of date" summary, so staleness is obvious at
+          a glance rather than buried in the per-item list below. */}
+      {staleItems.length > 0 && (
+        <div className="flex items-start gap-2.5 rounded-2xl border border-warn/40 bg-warn/5 p-4">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
+          <div className="text-sm text-text-secondary">
+            <span className="font-semibold text-text-primary">
+              {staleItems.length} {staleItems.length === 1 ? "item is" : "items are"} out of date.
+            </span>{" "}
+            {staleItems.map((it) => it.label).join(", ")}. Refreshing these lifts the freshness score.
+          </div>
+        </div>
+      )}
 
       {/* Domain fit — the domain-intelligent relevance checklist. Only present
           when the CLI matched a rubric for this domain. */}
