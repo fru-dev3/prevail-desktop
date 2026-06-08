@@ -7955,10 +7955,31 @@ function CouncilPanel({
     () => panelistSlots.length > 0 && panelistSlots.every((s) => replies[s.key] && !replies[s.key].streaming),
     [panelistSlots, replies],
   );
+  // Panelists that have actually produced a usable answer (finished, with
+  // content). Drives the quorum / "summarize now" path so one stuck or
+  // slow panelist can't hold the whole council hostage.
+  const respondedSlots = useMemo(
+    () => panelistSlots.filter((s) => { const r = replies[s.key]; return r && !r.streaming && r.content.trim().length > 0; }),
+    [panelistSlots, replies],
+  );
+  const respondedCount = respondedSlots.length;
 
-  const triggerChair = useCallback(async () => {
+  // The set of panelists the chair will actually synthesize from. Tracked so
+  // that when we summarize early, the still-pending cards render as "skipped"
+  // rather than spinning forever.
+  const [synthesisSlots, setSynthesisSlots] = useState<PanelistSlot[] | null>(null);
+
+  const triggerChair = useCallback(async (slotsOverride?: PanelistSlot[]) => {
     if (!chairSlotObj) return;
-    const synthesisPrompt = buildSynthesisPrompt(prompt, replies, panelistSlots);
+    const slots = (slotsOverride && slotsOverride.length > 0) ? slotsOverride : panelistSlots;
+    setSynthesisSlots(slots);
+    const missing = panelistSlots.filter((s) => !slots.some((x) => x.key === s.key));
+    let synthesisPrompt = buildSynthesisPrompt(submittedPrompt || prompt, replies, slots);
+    if (missing.length > 0) {
+      synthesisPrompt += `\n\nNOTE: ${missing.length} panelist(s) did not respond in time (${missing
+        .map((s) => `${s.cliLabel} · ${s.modelLabel}`)
+        .join(", ")}). Synthesize a verdict from the ${slots.length} response(s) above; do not wait for the rest.`;
+    }
     setPhase("synthesizing");
     try {
       await invoke("chat_send", {
@@ -7973,11 +7994,31 @@ function CouncilPanel({
       setVerdict(`(chair error: ${e})`);
       setPhase("done");
     }
-  }, [chairSlotObj, prompt, replies, panelistSlots]);
+  }, [chairSlotObj, submittedPrompt, prompt, replies, panelistSlots]);
 
+  // Manually synthesize from whoever has answered so far (the flexible path).
+  const synthesizeNow = useCallback(() => {
+    if (respondedSlots.length === 0) return;
+    void triggerChair(respondedSlots);
+  }, [respondedSlots, triggerChair]);
+
+  // Everyone finished → synthesize from all.
   useEffect(() => {
-    if (phase === "panelists" && allPanelistsDone) triggerChair();
+    if (phase === "panelists" && allPanelistsDone) void triggerChair();
   }, [phase, allPanelistsDone, triggerChair]);
+
+  // Quorum fallback: if all-but-one have answered and nothing new has arrived
+  // for a grace window, auto-summarize so a stuck panelist doesn't block the
+  // verdict forever. The effect re-runs (resetting the timer) on every chunk,
+  // so the countdown only completes once the responsive panelists go quiet.
+  useEffect(() => {
+    if (phase !== "panelists") return;
+    const total = panelistSlots.length;
+    const quorumMet = total >= 3 && respondedCount >= total - 1 && respondedCount < total;
+    if (!quorumMet) return;
+    const t = setTimeout(() => { synthesizeNow(); }, 180_000); // 3 min after the last response
+    return () => clearTimeout(t);
+  }, [phase, respondedCount, panelistSlots.length, synthesizeNow]);
 
   // Persist the council session as a thread once the verdict lands.
   // Mirrors ChatPanel's auto-save but fires only on phase === "done"
@@ -8002,6 +8043,7 @@ function CouncilPanel({
     // thread, not the previous convene's question/replies/verdict.
     setReplies({});
     setVerdict("");
+    setSynthesisSlots(null);
     setSubmittedPrompt("");
     setPhase("idle");
     if (!activeThreadPath) { setCouncilTurns([]); return; }
@@ -8096,6 +8138,7 @@ function CouncilPanel({
     sessionRef.current = `council-${Date.now()}`;
     setReplies({});
     setVerdict("");
+    setSynthesisSlots(null);
     setPhase("panelists");
     const trimmed = prompt.trim();
     setSubmittedPrompt(trimmed);
@@ -8331,12 +8374,34 @@ function CouncilPanel({
               <span className="text-accent">$</span> {submittedPrompt || prompt}
             </div>
 
+            {/* Quorum control — once at least one panelist has answered but the
+                council isn't fully back, let the user synthesize from whoever
+                responded instead of waiting on a stuck panelist. */}
+            {phase === "panelists" && respondedCount >= 1 && !allPanelistsDone && (
+              <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-accent-border bg-accent-soft/50 px-4 py-2.5">
+                <span className="text-sm text-text-secondary">
+                  <span className="font-semibold text-accent">{respondedCount} of {panelistSlots.length}</span> panelists have answered.
+                  {panelistSlots.length >= 3 && respondedCount >= panelistSlots.length - 1
+                    ? " Auto-summarizing soon if the rest stay quiet."
+                    : " Don't wait on a slow one."}
+                </span>
+                <button
+                  onClick={synthesizeNow}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-background shadow-sm transition-colors hover:bg-accent-hover"
+                >
+                  <Crown className="h-3.5 w-3.5" /> Summarize now
+                </button>
+              </div>
+            )}
+
             <div className="space-y-4">
               {panelistSlots.map((s) => {
                 const r = replies[s.key];
                 const cardAccent = vendorAccent(s.cli);
                 const cardErrored = !!r && !r.streaming && !r.content;
                 const cardError = cardErrored ? extractCliError(r.stderr) : null;
+                // Synthesis ran without this panelist → it was skipped, not pending.
+                const skipped = !!synthesisSlots && !synthesisSlots.some((x) => x.key === s.key) && (!r || (!r.content && r.streaming));
                 return (
                   <div
                     key={s.key}
@@ -8350,15 +8415,21 @@ function CouncilPanel({
                         <span className="text-text-muted">· {s.modelLabel}</span>
                       </span>
                       <span className="text-text-muted">
-                        {!r && "queued"}
-                        {r?.streaming && <span className="pulse-soft text-accent">streaming</span>}
-                        {r && !r.streaming && !cardErrored && <span className="text-ok">✓ done</span>}
-                        {cardErrored && <span className="text-warn">⚠ no output</span>}
+                        {skipped ? <span className="text-text-muted">skipped</span> : (
+                          <>
+                            {!r && "queued"}
+                            {r?.streaming && <span className="pulse-soft text-accent">streaming</span>}
+                            {r && !r.streaming && !cardErrored && <span className="text-ok">✓ done</span>}
+                            {cardErrored && <span className="text-warn">⚠ no output</span>}
+                          </>
+                        )}
                       </span>
                     </div>
                     <div className="px-5 py-4">
                       {r?.content ? (
                         <Markdown source={r.content} />
+                      ) : skipped ? (
+                        <p className="text-sm text-text-muted">Didn't respond in time. Left out of the verdict.</p>
                       ) : cardErrored ? (
                         cardError ? (
                           <pre className="whitespace-pre-wrap rounded-md bg-warn/10 px-2 py-1.5 font-mono text-[11px] leading-snug text-warn">{cardError}</pre>
