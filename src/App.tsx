@@ -2521,7 +2521,7 @@ function Sidebar({
             <button
               onClick={() => setCollapsed(false)}
               title="Expand sidebar"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-text-primary"
+              className="flex h-7 w-7 items-center justify-center rounded-md bg-text-primary text-background shadow-sm transition-opacity hover:opacity-80"
             >
               <PanelLeftOpen className="h-[18px] w-[18px]" strokeWidth={1.75} />
             </button>
@@ -2532,7 +2532,7 @@ function Sidebar({
             <button
               onClick={() => setCollapsed(true)}
               title="Collapse sidebar"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-text-primary"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-text-primary text-background shadow-sm transition-opacity hover:opacity-80"
             >
               <PanelLeftClose className="h-[18px] w-[18px]" strokeWidth={1.75} />
             </button>
