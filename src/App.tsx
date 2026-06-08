@@ -2199,7 +2199,12 @@ export default function App() {
               return (
                 <button
                   key={t.id}
-                  onClick={() => setTab(t.id)}
+                  onClick={() => {
+                    setTab(t.id);
+                    // The Chat tab is also the way back from a domain sub-view
+                    // (Insights / Preferences / Context) to the conversation.
+                    if (t.id === "chat") setDomainTab("chat");
+                  }}
                   className={`relative -mb-px flex items-center gap-2 px-4 py-3 text-sm transition-colors ${
                     active ? "text-accent" : "text-text-muted hover:text-text-secondary"
                   }`}
@@ -6765,14 +6770,6 @@ function ChatPanel({
         )}
         {domain && domainTab !== "chat" && (
           <div className="w-full px-6 py-6">
-            {/* Universal exit back to the conversation — the header is now just
-                the domain title, so this is the one consistent way back. */}
-            <button
-              onClick={() => setDomainTab("chat")}
-              className="mb-4 inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" /> Chat
-            </button>
             {domainTab === "context" && (
               <ContextScorePanel
                 score={ctxScore}
