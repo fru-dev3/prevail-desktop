@@ -9,6 +9,7 @@
     <path d="M156 392 L256 296 L356 392" stroke="#6E5C32" stroke-width="34"/>
   </g>
 
-  <!-- Guiding star above the apex — solid electric cyan -->
-  <circle cx="256" cy="132" r="22" fill="#3CD8FF"/>
+  <!-- Guiding star above the apex — solid electric cyan. Lifted clear of the
+       chevron tip so it reads as a separate guiding star, not touching it. -->
+  <circle cx="256" cy="106" r="22" fill="#3CD8FF"/>
 </svg>

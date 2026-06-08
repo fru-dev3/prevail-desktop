@@ -1,25 +1,25 @@
 import { motion, MotionConfig } from "framer-motion";
 
 /**
- * PrevailLogo — the animated Prevail mark (ascending chevrons + guiding star).
+ * PrevailLogo — the Prevail mark (ascending chevrons + guiding star), drawn as
+ * inline SVG so it stays crisp at any size and the guiding star can animate on
+ * its own.
  *
- * The mark is original artwork (public/logo.svg → logo.png): two chevrons
- * climbing toward a cyan star, in the brand gold→cyan gradient. The motion
- * suits that shape — a slow "rise": a gentle vertical float, a soft 3D tilt,
- * and a breathing glow pulse. (No spin / no winking dots — those belonged to
- * the old circular mark and were retired with it.)
+ * The mark mirrors public/logo.svg exactly: a dark tile, two gold chevrons
+ * climbing toward a cyan star lifted clear of the apex. When animated, the
+ * whole mark does a slow "rise" (gentle float + soft 3D tilt + glow) and the
+ * star bounces above the chevrons like a guiding beacon.
  *
  * Drop-in usage:
- *   <PrevailLogo size={84} />              // animated, defaults to /logo.png
+ *   <PrevailLogo size={84} />                    // animated
  *   <PrevailLogo size={32} animated={false} />   // static mark
- *   <PrevailLogo size={120} src="/logo-512.png" />
  *
- * Requires: react + framer-motion (^12). The logo PNG must be reachable at
- * `src` (default "/logo.png").
+ * `src` is accepted for backwards compatibility but ignored — the mark is now
+ * vector, not a raster file.
  */
 export function PrevailLogo({
   size = 84,
-  src = "/logo.png",
+  src: _src,
   animated = true,
   /** Play even when the OS "Reduce Motion" setting is on (decorative mark). */
   forceMotion = true,
@@ -29,18 +29,42 @@ export function PrevailLogo({
   animated?: boolean;
   forceMotion?: boolean;
 }) {
-  const img = (
-    <img
-      src={src}
-      alt="Prevail"
+  void _src;
+
+  // The static artwork — tile + chevrons. The star is rendered separately so it
+  // can animate independently when `animated`.
+  const Star = animated ? (
+    <motion.circle
+      cx="256"
+      r="22"
+      fill="#3CD8FF"
+      animate={{ cy: [106, 90, 106], opacity: [1, 0.75, 1] }}
+      transition={{ duration: 1.9, ease: "easeInOut", repeat: Infinity }}
+      style={{ filter: "drop-shadow(0 0 6px rgba(60,216,255,0.55))" }}
+    />
+  ) : (
+    <circle cx="256" cy="106" r="22" fill="#3CD8FF" />
+  );
+
+  const svg = (
+    <svg
+      viewBox="0 0 512 512"
       width={size}
       height={size}
       style={{ width: size, height: size, display: "block" }}
-      draggable={false}
-    />
+      role="img"
+      aria-label="Prevail"
+    >
+      <rect x="0" y="0" width="512" height="512" rx="116" fill="#141416" />
+      <g fill="none" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M116 312 L256 176 L396 312" stroke="#C4A35A" strokeWidth="56" />
+        <path d="M156 392 L256 296 L356 392" stroke="#6E5C32" strokeWidth="34" />
+      </g>
+      {Star}
+    </svg>
   );
 
-  if (!animated) return img;
+  if (!animated) return svg;
 
   const T = 6; // gentle loop seconds
   const float = Math.max(2, size * 0.045); // vertical travel scales with size
@@ -75,7 +99,7 @@ export function PrevailLogo({
         transition={{ duration: T, ease: "easeInOut", repeat: Infinity }}
         whileHover={{ scale: 1.1 }}
       >
-        {img}
+        {svg}
       </motion.span>
     </span>
   );
