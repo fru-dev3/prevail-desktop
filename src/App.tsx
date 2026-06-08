@@ -1021,7 +1021,7 @@ function BunkerRibbon({ enabled }: { enabled: boolean }) {
   // text in dark mode. Legibility is non-negotiable for an always-on trust bar.
   return (
     <div
-      className={`flex shrink-0 items-center justify-center gap-2 border-t px-4 py-1 text-[11px] ${
+      className={`relative flex shrink-0 items-center justify-center gap-2 border-t px-4 py-1 text-[11px] ${
         enabled
           ? "border-emerald-300 bg-emerald-100 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
           : "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
@@ -1041,6 +1041,11 @@ function BunkerRibbon({ enabled }: { enabled: boolean }) {
         {enabled
           ? "Local models only • Network disabled"
           : "Cloud models and web access enabled"}
+      </span>
+      {/* Version — inside the ribbon so it inherits the high-contrast ribbon
+          text color (the old standalone pill was invisible over the dark bar). */}
+      <span className="pointer-events-none absolute right-3 select-none font-mono text-[10px] tracking-wider opacity-70">
+        v{APP_VERSION}
       </span>
     </div>
   );
@@ -2080,9 +2085,6 @@ export default function App() {
             setTab("chat");
           }}
         />
-        <span className="pointer-events-none absolute bottom-1.5 right-2 select-none font-mono text-[9px] tracking-wider text-text-muted/60">
-          v{APP_VERSION}
-        </span>
         <BunkerRibbon enabled={bunkerEnabled} />
       </div>
     );
@@ -2259,10 +2261,6 @@ export default function App() {
       <BunkerRibbon enabled={bunkerEnabled} />
       {/* A7: live bridge/WebUI chips — bottom-left, follow you across the app */}
       <BridgeStatusChips />
-      {/* Tiny version pill — bottom-right corner, low-prominence */}
-      <span className="pointer-events-none absolute bottom-1.5 right-2 select-none font-mono text-[9px] tracking-wider text-text-muted/60">
-        v{APP_VERSION}
-      </span>
       {quickSwitcherOpen && (
         <QuickSwitcher
           vaultPath={vaultPath}
@@ -4206,24 +4204,13 @@ function DomainPrefsPanel({
 
   const cliModels = pickedCli ? (MODELS[pickedCli] ?? []) : [];
 
+  void onBack;
   return (
-    <div className="mx-auto w-full max-w-4xl px-2 py-2">
-      {/* U9: explicit way back to the conversation from Preferences. */}
-      {onBack && (
-        <button
-          onClick={onBack}
-          className="mb-4 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-accent"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" /> Chat
-        </button>
-      )}
+    <div className="w-full">
       {/* Header */}
       <div className="mb-6 flex items-end justify-between gap-3">
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
-            ◆ {titleCase(domain)}
-          </div>
-          <h2 className="mt-1 font-display text-2xl font-semibold tracking-tight">Preferences</h2>
+          <h2 className="font-display text-2xl font-semibold tracking-tight">Preferences</h2>
           <p className="mt-1 text-sm text-text-secondary">
             Domain-only overrides. Pickers apply on the next reload of this domain; global defaults still apply when these are unset.
           </p>
@@ -6547,13 +6534,66 @@ function ChatPanel({
           </div>
         </div>
       )}
-      {/* Header — domain title + persistent tab strip + actions. The
-          tabs stay visible whether you're on the chat transcript or
-          a domain content view, so you can flip between them mid
-          conversation. */}
-      <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-6 py-2.5">
-        {domain ? (
-          <>
+      {/* Header — two clean rows. Row 1 is navigation + the persistent
+          action icons (one tidy strip, like the top tab bar). Row 2 is
+          just the domain identity, so the name reads big and clear. The
+          old single-row layout crammed name + blurb + icons together and
+          felt confusing. */}
+      <div className="shrink-0 border-b border-border-subtle">
+        {/* Row 1 — back-to-chat on the left (only inside a content view),
+            action icons on the right. */}
+        <div className="flex items-center gap-2 px-4 py-1.5">
+          {domain && domainTab !== "chat" ? (
+            <button
+              onClick={() => setDomainTab("chat")}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" /> Chat
+            </button>
+          ) : (
+            <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-muted">
+              Chat
+            </span>
+          )}
+          <div className="flex-1" />
+          {domain && (
+            <>
+              <button
+                onClick={() => setDomainTab(domainTab === "insights" ? "chat" : "insights")}
+                title="Insights — what to work on, your tasks, and recent intents (domain-level)"
+                className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                  domainTab === "insights"
+                    ? "text-accent hover:bg-accent-soft"
+                    : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                }`}
+              >
+                <Lightbulb className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent("prevail:benchmark-domain", { detail: domain }))}
+                title={`Benchmark models on the ${titleCase(domain)} questions`}
+                className="flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => setDomainTab(domainTab === "prefs" ? "chat" : "prefs")}
+                title={hasAnyDomainOverride ? "Domain preferences (overrides active)" : "Domain preferences"}
+                className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                  domainTab === "prefs" || hasAnyDomainOverride
+                    ? "text-accent hover:bg-accent-soft"
+                    : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                }`}
+              >
+                <SettingsIcon className="h-3.5 w-3.5" />
+              </button>
+              <DomainActionsMenu domain={domain} vaultPath={vaultPath} onArchived={onArchived} />
+            </>
+          )}
+        </div>
+        {/* Row 2 — domain identity. Only shown once a domain is active. */}
+        {domain && (
+          <div className="flex items-center gap-3 px-4 pb-2">
             {(() => {
               const I = domainIcon(domain);
               return I ? <I className="h-5 w-5 shrink-0 text-accent" /> : <span className="text-accent">◆</span>;
@@ -6564,49 +6604,8 @@ function ChatPanel({
               onClick={() => setDomainTab(domainTab === "context" ? "chat" : "context")}
             />
             <span className="hidden min-w-0 truncate text-sm text-text-muted md:inline">{domainBlurb(domain)}</span>
-          </>
-        ) : (
-          <span className="font-mono text-xs uppercase tracking-[0.2em] text-text-muted">
-            Chat
-          </span>
+          </div>
         )}
-        <div className="flex-1" />
-        {domain && (
-          <>
-            <button
-              onClick={() => setDomainTab(domainTab === "insights" ? "chat" : "insights")}
-              title="Insights — what to work on, your tasks, and recent intents (domain-level)"
-              className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
-                domainTab === "insights"
-                  ? "text-accent hover:bg-accent-soft"
-                  : "text-text-muted hover:bg-surface-warm hover:text-accent"
-              }`}
-            >
-              <Lightbulb className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent("prevail:benchmark-domain", { detail: domain }))}
-              title={`Benchmark models on the ${titleCase(domain)} questions`}
-              className="flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() => setDomainTab(domainTab === "prefs" ? "chat" : "prefs")}
-              title={hasAnyDomainOverride ? "Domain preferences (overrides active)" : "Domain preferences"}
-              className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
-                domainTab === "prefs" || hasAnyDomainOverride
-                  ? "text-accent hover:bg-accent-soft"
-                  : "text-text-muted hover:bg-surface-warm hover:text-accent"
-              }`}
-            >
-              <SettingsIcon className="h-3.5 w-3.5" />
-            </button>
-            <DomainActionsMenu domain={domain} vaultPath={vaultPath} onArchived={onArchived} />
-          </>
-        )}
-        {/* "New chat" removed from the header — the threads rail's + already
-            starts a new chat (and context lives in the right column now). */}
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
@@ -6786,38 +6785,22 @@ function ChatPanel({
           </div>
         )}
         {domain && domainTab !== "chat" && (
-          <div className="mx-auto w-full max-w-3xl px-6 py-6">
+          <div className="w-full px-6 py-6">
             {domainTab === "context" && (
-              <>
-                <button
-                  onClick={() => setDomainTab("chat")}
-                  className="mb-4 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-accent"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" /> Conversation
-                </button>
-                <ContextScorePanel
-                  score={ctxScore}
-                  loading={ctxScoreLoading}
-                  rescanning={ctxScoreRescanning}
-                  error={ctxScoreError}
-                  onRescan={rescanContextScore}
-                />
-              </>
+              <ContextScorePanel
+                score={ctxScore}
+                loading={ctxScoreLoading}
+                rescanning={ctxScoreRescanning}
+                error={ctxScoreError}
+                onRescan={rescanContextScore}
+              />
             )}
             {domainTab === "insights" && domain && (
-              <>
-                <button
-                  onClick={() => setDomainTab("chat")}
-                  className="mb-4 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-accent"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" /> Chat
-                </button>
-                <InsightsPanel
-                  vaultPath={vaultPath}
-                  domain={domain}
-                  onSeed={(t) => { setInput(t); setDomainTab("chat"); }}
-                />
-              </>
+              <InsightsPanel
+                vaultPath={vaultPath}
+                domain={domain}
+                onSeed={(t) => { setInput(t); setDomainTab("chat"); }}
+              />
             )}
             {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && domainTab !== "insights" && <div className="text-sm text-text-muted">loading…</div>}
             {domainCtx && domainTab === "state" && (domainCtx.state ? <Markdown source={domainCtx.state} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">state.md</code> in this domain.</div>)}
