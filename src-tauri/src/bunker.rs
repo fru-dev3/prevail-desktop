@@ -88,6 +88,18 @@ pub fn guard_cloud() -> Result<(), String> {
     }
 }
 
+/// Gate a model invocation by provider on a path that can't auto-switch (the
+/// provider is fixed by config: Telegram bridge, distillation, surface
+/// generation). Cloud providers are refused while Bunker Mode is active; local
+/// providers always pass. Unlike `resolve_cli`, this does not substitute a local
+/// provider — these background jobs simply don't run cloud under Bunker.
+pub fn guard_cli(cli: &str) -> Result<(), String> {
+    if bunker_enabled() && !is_local_cli(cli) {
+        return Err(BLOCKED.to_string());
+    }
+    Ok(())
+}
+
 /// TCP reachability probe with a short connect timeout — "is something
 /// listening on this host:port right now?". Used to detect whether a local
 /// model server is actually up.
@@ -213,6 +225,20 @@ mod tests {
         // And allow when disabled.
         *CACHE.lock().unwrap() = Some(false);
         assert_eq!(guard_cloud(), Ok(()));
+        *CACHE.lock().unwrap() = None; // reset cache for other tests
+    }
+
+    #[test]
+    fn guard_cli_blocks_cloud_allows_local_under_bunker() {
+        // The fixed-provider guard used by distill / surface / telegram run_cli.
+        *CACHE.lock().unwrap() = Some(true);
+        assert_eq!(guard_cli("claude"), Err(BLOCKED.to_string()));
+        assert_eq!(guard_cli("codex"), Err(BLOCKED.to_string()));
+        assert_eq!(guard_cli("ollama"), Ok(()));
+        assert_eq!(guard_cli("lmstudio"), Ok(()));
+        // Disabled → everything passes.
+        *CACHE.lock().unwrap() = Some(false);
+        assert_eq!(guard_cli("claude"), Ok(()));
         *CACHE.lock().unwrap() = None; // reset cache for other tests
     }
 

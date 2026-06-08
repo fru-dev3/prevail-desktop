@@ -451,6 +451,10 @@ fn format_for_telegram(md: &str) -> String {
 }
 
 pub(crate) async fn run_cli(cli: &str, model: Option<&str>, prompt: &str) -> Result<String, String> {
+    // Single guarded choke point: every model spawn that flows through run_cli
+    // (Telegram bridge, distillation, surface generation) is subject to Bunker
+    // Mode. Local providers pass; cloud providers are refused while Bunker is on.
+    crate::bunker::guard_cli(cli)?;
     let (bin, args) = match cli {
         "claude" => {
             let mut v = vec!["--dangerously-skip-permissions".to_string()];

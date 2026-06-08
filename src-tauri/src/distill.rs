@@ -210,6 +210,10 @@ async fn distill_dir(dir: &Path, cfg: &DistillConfig) -> Result<u64, String> {
         cfg.memory_budget_chars,
     );
 
+    // Bunker Mode: distillation runs a model on vault content — it must obey the
+    // app-wide local-only guarantee. Guarding at the actual spawn point means a
+    // daemon started before Bunker was enabled is still blocked on its next pass.
+    crate::bunker::guard_cli(&cfg.provider)?;
     let model = if cfg.model.is_empty() { None } else { Some(cfg.model.as_str()) };
     let out = crate::telegram_bridge::run_cli(&cfg.provider, model, &prompt).await?;
     if out.trim().is_empty() {
