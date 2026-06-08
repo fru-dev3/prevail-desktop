@@ -33,6 +33,18 @@ a single DMG via scripts/release.sh.
   - I1 (remaining): extend distill daemon to derive `_state.md` + extract chat
     decisions; I2/I3 coach-quality surface/score; I6 surface intents; I8 Insights
     tab; I9 message metadata; I10 OpenRouter activation feedback. ← next.
+- **Bunker Mode ✅ (separate feature, same release):** app-wide enforced
+  local-only trust mode, default ON. Centralized `bunker.rs` policy service
+  (single source of truth); execution-layer guards on chat_send/engine_chat
+  (force --local-only, refuse cloud → "Blocked by Bunker Mode"), no cloud-key
+  injection + PREVAIL_BUNKER=1 to the engine, MCP/Composio/browser/telegram
+  blocked; persistent ribbon; pickers hide cloud; Privacy & Connectivity section
+  with toggle + "Leave Bunker Mode?" dialog + Status Verification Card;
+  first-launch Ollama-missing banner. Rust tests green. **Deferred refinement:**
+  auto-switch the selected CLI to a local one when Bunker is on (today a stale
+  cloud default is hard-blocked with the canonical message rather than
+  auto-swapped); LM Studio / MLX detection (Ollama only for now, others
+  "coming soon" per spec).
 
 Fru's overall verdict: "very, very impressed… it is unbelievable." Good signal —
 this is refinement of a working product, not a rescue.
