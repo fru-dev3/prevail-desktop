@@ -2227,45 +2227,45 @@ export default function App() {
               );
             })}
             <div className="flex-1" />
-            {/* Domain actions — lifted up here so the domain header is just the
-                title. Insights / Preferences toggle the Chat sub-view (jumping
-                to Chat first if you're on Council/Benchmark); archive lives in
-                the overflow menu. Only shown when a real domain is active. */}
-            {selectedDomain && (
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "insights" ? "chat" : "insights"); }}
-                  title="Insights — what to work on, your tasks, and recent intents"
-                  className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
-                    tab === "chat" && domainTab === "insights"
-                      ? "bg-accent-soft text-accent"
-                      : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                  }`}
-                >
-                  <Lightbulb className="h-4 w-4" /> Insights
-                </button>
-                <button
-                  onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "prefs" ? "chat" : "prefs"); }}
-                  title="Domain preferences"
-                  className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
-                    tab === "chat" && domainTab === "prefs"
-                      ? "bg-accent-soft text-accent"
-                      : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                  }`}
-                >
-                  <SettingsIcon className="h-4 w-4" /> Preferences
-                </button>
-                <DomainActionsMenu
-                  domain={selectedDomain}
-                  vaultPath={vaultPath}
-                  label="Archive"
-                  onArchived={(name) => {
-                    if (selectedDomain === name) setSelectedDomain("");
-                    void refreshDomains();
-                  }}
-                />
-              </div>
-            )}
+            {/* Insights / Preferences / actions — available for General too,
+                not just domains. They toggle the Chat sub-view (jumping to Chat
+                first if you're on Council/Benchmark). The actions menu hides
+                "archive" for General (you can't archive your whole workspace),
+                keeping just back up / export. */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "insights" ? "chat" : "insights"); }}
+                title="Insights — what to work on, your tasks, and recent intents"
+                className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                  tab === "chat" && domainTab === "insights"
+                    ? "bg-accent-soft text-accent"
+                    : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                }`}
+              >
+                <Lightbulb className="h-4 w-4" /> Insights
+              </button>
+              <button
+                onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "prefs" ? "chat" : "prefs"); }}
+                title={selectedDomain ? "Domain preferences" : "General preferences"}
+                className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                  tab === "chat" && domainTab === "prefs"
+                    ? "bg-accent-soft text-accent"
+                    : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                }`}
+              >
+                <SettingsIcon className="h-4 w-4" /> Preferences
+              </button>
+              <DomainActionsMenu
+                domain={selectedDomain || "general"}
+                vaultPath={vaultPath}
+                label={selectedDomain ? "Archive" : "Back up"}
+                canArchive={!!selectedDomain}
+                onArchived={(name) => {
+                  if (selectedDomain === name) setSelectedDomain("");
+                  void refreshDomains();
+                }}
+              />
+            </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -5325,11 +5325,13 @@ function DomainActionsMenu({
   vaultPath,
   onArchived,
   label,
+  canArchive = true,
 }: {
   domain: string;
   vaultPath: string;
   onArchived: (name: string) => void;
   label?: string;
+  canArchive?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<null | "backup" | "archive">(null);
@@ -5404,9 +5406,9 @@ function DomainActionsMenu({
             className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-text-primary hover:bg-surface-warm disabled:opacity-50"
           >
             {busy === "backup" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            Back up this domain
+            {canArchive ? "Back up this domain" : "Back up the workspace"}
           </button>
-          {!confirmArchive ? (
+          {canArchive && (!confirmArchive ? (
             <button
               onClick={() => setConfirmArchive(true)}
               disabled={busy !== null}
@@ -5438,7 +5440,7 @@ function DomainActionsMenu({
                 </button>
               </div>
             </div>
-          )}
+          ))}
           {note && <div className="mt-1 px-2 py-1 text-[11px] text-text-muted">{note}</div>}
         </div>
       )}
@@ -6950,9 +6952,9 @@ function ChatPanel({
             ))}
           </div>
         )}
-        {domain && domainTab !== "chat" && (
+        {domainTab !== "chat" && (
           <div className="w-full px-6 py-6">
-            {domainTab === "context" && (
+            {domain && domainTab === "context" && (
               <ContextScorePanel
                 score={ctxScore}
                 loading={ctxScoreLoading}
@@ -6961,10 +6963,10 @@ function ChatPanel({
                 onRescan={rescanContextScore}
               />
             )}
-            {domainTab === "insights" && domain && (
+            {domainTab === "insights" && (
               <InsightsPanel
                 vaultPath={vaultPath}
-                domain={domain}
+                domain={domain ?? ""}
                 onSeed={(t) => { setInput(t); setDomainTab("chat"); }}
               />
             )}
@@ -7013,9 +7015,9 @@ function ChatPanel({
                 />
               </>
             )}
-            {domainTab === "prefs" && domain && (
+            {domainTab === "prefs" && (
               <DomainPrefsPanel
-                domain={domain}
+                domain={domain || "general"}
                 vaultPath={vaultPath}
                 clis={clis}
                 skills={domainCtx?.skills ?? []}
