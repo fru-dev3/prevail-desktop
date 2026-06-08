@@ -3,8 +3,9 @@
 //
 // This is the SINGLE SOURCE OF TRUTH for whether the application may touch the
 // network. It is NOT a UI preference: every network-capable command consults
-// `guard_cloud()` / `guard_cli()` before doing anything that could transmit
-// user data off the device. When Bunker Mode is on:
+// `guard_cloud()` (network actions) or `resolve_cli()` (model invocations)
+// before doing anything that could transmit user data off the device. When
+// Bunker Mode is on:
 //   • only local model providers (Ollama / LM Studio / MLX) may run,
 //   • cloud model invocations, web search, and external integrations are
 //     refused with the canonical error "Blocked by Bunker Mode",
@@ -30,6 +31,15 @@ pub const LOCAL_CLIS: &[&str] = &["ollama", "lmstudio", "mlx"];
 pub fn is_local_cli(cli: &str) -> bool {
     LOCAL_CLIS.contains(&cli.trim().to_lowercase().as_str())
 }
+
+// Default endpoints for the local OpenAI-compatible model servers. Ollama is the
+// engine's native default; LM Studio and MLX (mlx_lm.server) speak the same
+// /v1/chat/completions schema, so the engine reaches them by overriding its
+// PREVAIL_OLLAMA_URL to the right port (see `local_endpoint_url`). Ports are the
+// product defaults: Ollama 11434, LM Studio 1234, mlx_lm.server 8080.
+const OLLAMA_HOSTPORT: &str = "127.0.0.1:11434";
+const LMSTUDIO_HOSTPORT: &str = "127.0.0.1:1234";
+const MLX_HOSTPORT: &str = "127.0.0.1:8080";
 
 fn bunker_path() -> Option<PathBuf> {
     let home = std::env::var("HOME").ok()?;
@@ -78,38 +88,57 @@ pub fn guard_cloud() -> Result<(), String> {
     }
 }
 
-/// Gate a model invocation by provider. Cloud providers are refused while
-/// Bunker Mode is active; local providers always pass.
-pub fn guard_cli(cli: &str) -> Result<(), String> {
-    if bunker_enabled() && !is_local_cli(cli) {
-        return Err(BLOCKED.to_string());
-    }
-    Ok(())
-}
-
-/// Best-effort check that a local model provider is reachable, so the status
-/// card can report whether local models are actually available. Probes the
-/// Ollama daemon (127.0.0.1:11434) with a short connect timeout.
-fn local_provider_available() -> bool {
+/// TCP reachability probe with a short connect timeout — "is something
+/// listening on this host:port right now?". Used to detect whether a local
+/// model server is actually up.
+fn tcp_up(host_port: &str) -> bool {
     use std::net::{TcpStream, ToSocketAddrs};
     use std::time::Duration;
-    let addr = match "127.0.0.1:11434".to_socket_addrs().ok().and_then(|mut a| a.next()) {
+    let addr = match host_port.to_socket_addrs().ok().and_then(|mut a| a.next()) {
         Some(a) => a,
         None => return false,
     };
     TcpStream::connect_timeout(&addr, Duration::from_millis(250)).is_ok()
 }
 
+/// Is a specific local provider reachable right now? Each maps to the product's
+/// default port: Ollama → 11434, LM Studio → 1234, MLX (mlx_lm.server) → 8080.
+/// Anything not a known local provider is never "available" here.
+pub fn local_cli_available(cli: &str) -> bool {
+    match cli.trim().to_lowercase().as_str() {
+        "ollama" => tcp_up(OLLAMA_HOSTPORT),
+        "lmstudio" => tcp_up(LMSTUDIO_HOSTPORT),
+        "mlx" => tcp_up(MLX_HOSTPORT),
+        _ => false,
+    }
+}
+
+/// The base URL to point the engine's OpenAI-compatible client at for a local
+/// provider it doesn't natively distinguish. The engine reaches LM Studio / MLX
+/// through its `ollama` provider path by overriding PREVAIL_OLLAMA_URL — so this
+/// returns `Some(url)` for those, and `None` for Ollama (the engine's default)
+/// and anything else.
+pub fn local_endpoint_url(cli: &str) -> Option<&'static str> {
+    match cli.trim().to_lowercase().as_str() {
+        "lmstudio" => Some("http://127.0.0.1:1234"),
+        "mlx" => Some("http://127.0.0.1:8080"),
+        _ => None,
+    }
+}
+
+/// Best-effort check that *some* local model provider is reachable, so the
+/// status card / banner can report whether local models are actually available.
+fn local_provider_available() -> bool {
+    LOCAL_CLIS.iter().any(|c| local_cli_available(c))
+}
+
 /// The local provider to fall back to when Bunker Mode must serve a model
 /// request the caller aimed at a cloud CLI. Returns the first *available* local
-/// provider (probed for real), or `None` when nothing local can run. Today only
-/// Ollama is probed (daemon on 127.0.0.1:11434); LM Studio / MLX detection is a
-/// recorded deferred refinement, so they never report available yet.
+/// provider, probed for real, in `LOCAL_CLIS` order (Ollama first — it works on
+/// both the native and engine chat paths; LM Studio / MLX are engine-path only).
+/// `None` when nothing local is up.
 pub fn preferred_local_cli() -> Option<&'static str> {
-    LOCAL_CLIS.iter().copied().find(|c| match *c {
-        "ollama" => local_provider_available(),
-        _ => false, // lmstudio / mlx detection deferred — see FEEDBACK-v0.4.1
-    })
+    LOCAL_CLIS.iter().copied().find(|c| local_cli_available(c))
 }
 
 /// Resolve the CLI to actually run under Bunker Mode. This is the auto-switch
@@ -176,15 +205,13 @@ mod tests {
     }
 
     #[test]
-    fn guard_cli_blocks_cloud_when_enabled() {
-        // Force enabled in-process (don't touch the real flag file).
+    fn guard_cloud_blocks_network_when_enabled() {
+        // Force enabled in-process (don't touch the real flag file). Network
+        // actions with no local equivalent stay hard-blocked.
         *CACHE.lock().unwrap() = Some(true);
-        assert_eq!(guard_cli("claude"), Err(BLOCKED.to_string()));
-        assert_eq!(guard_cli("ollama"), Ok(()));
         assert_eq!(guard_cloud(), Err(BLOCKED.to_string()));
-        // And allows everything when disabled.
+        // And allow when disabled.
         *CACHE.lock().unwrap() = Some(false);
-        assert_eq!(guard_cli("claude"), Ok(()));
         assert_eq!(guard_cloud(), Ok(()));
         *CACHE.lock().unwrap() = None; // reset cache for other tests
     }
@@ -200,6 +227,19 @@ mod tests {
         assert_eq!(resolve_cli("ollama"), Ok("ollama".to_string()));
         assert_eq!(resolve_cli("MLX"), Ok("MLX".to_string()));
         *CACHE.lock().unwrap() = None; // reset cache for other tests
+    }
+
+    #[test]
+    fn local_endpoint_url_maps_only_redirected_providers() {
+        // Ollama is the engine's native local path → no redirect.
+        assert_eq!(local_endpoint_url("ollama"), None);
+        // LM Studio / MLX are reached by overriding the engine's local URL.
+        assert_eq!(local_endpoint_url("lmstudio"), Some("http://127.0.0.1:1234"));
+        assert_eq!(local_endpoint_url("MLX"), Some("http://127.0.0.1:8080"));
+        // Cloud / unknown providers never redirect.
+        assert_eq!(local_endpoint_url("claude"), None);
+        // Every redirected provider must classify as local (so guards pass it).
+        assert!(is_local_cli("lmstudio") && is_local_cli("mlx"));
     }
 
     #[test]

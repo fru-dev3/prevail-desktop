@@ -551,6 +551,8 @@ const VENDOR_BRAND: Record<string, { hex: string; accent: string; name: string }
   codex:       { hex: "#10a37f", accent: "#10a37f", name: "OpenAI Codex" },
   antigravity: { hex: "#ffffff", accent: "#4285f4", name: "Google Antigravity" },
   ollama:      { hex: "#0a0a0a", accent: "#6b7280", name: "Ollama (local)" },
+  lmstudio:    { hex: "#4f46e5", accent: "#6366f1", name: "LM Studio (local)" },
+  mlx:         { hex: "#1f2937", accent: "#9ca3af", name: "MLX (local)" },
   openrouter:  { hex: "#6566f1", accent: "#6566f1", name: "OpenRouter" },
   other:       { hex: "#6b7280", accent: "#6b7280", name: "—" },
 };
@@ -601,6 +603,13 @@ function ProviderMark({ vendor, size = 28 }: { vendor: string; size?: number }) 
           <path d={siOllama.path} />
         </svg>
       );
+      break;
+    case "lmstudio":
+      // No official simple-icons glyph; use a clean monogram on the brand tile.
+      inner = <span className="font-mono font-semibold text-white" style={{ fontSize: Math.round(size * 0.34) }}>LM</span>;
+      break;
+    case "mlx":
+      inner = <span className="font-mono font-semibold text-white" style={{ fontSize: Math.round(size * 0.3) }}>MLX</span>;
       break;
     default:
       inner = <span className="font-mono text-white">·</span>;
@@ -6146,11 +6155,14 @@ function ChatPanel({
     // native chat_send path when the CLI isn't present.
     const ENGINE_CHAT_ENABLED = true;
     const useEngine = ENGINE_CHAT_ENABLED && engineAvailable && !!domain;
-    // OpenRouter is engine-only (no subprocess). In the no-domain General space
-    // the engine path isn't used, so guide the user to pick a domain instead of
-    // failing on a non-existent "openrouter" binary.
-    if (chatCli === "openrouter" && !useEngine) {
-      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: "OpenRouter runs through the engine, which needs a domain. Pick a domain (left sidebar) to chat with OpenRouter models — or use an installed CLI here in General.", ts: Date.now() }]);
+    // Engine-only providers (no spawnable binary): OpenRouter is an HTTP gateway;
+    // LM Studio / MLX are local HTTP servers the engine reaches via the ollama
+    // provider path. In the no-domain General space the engine path isn't used,
+    // so guide the user to a domain rather than failing on a missing binary.
+    const ENGINE_ONLY = new Set(["openrouter", "lmstudio", "mlx"]);
+    if (chatCli && ENGINE_ONLY.has(chatCli) && !useEngine) {
+      const label = chatCli === "openrouter" ? "OpenRouter" : chatCli === "lmstudio" ? "LM Studio" : "MLX";
+      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which needs a domain. Pick a domain (left sidebar) to chat with ${label} — or use an installed CLI here in General.`, ts: Date.now() }]);
       onStreamEnd(sessionRef.current);
       return;
     }
@@ -6178,8 +6190,11 @@ function ChatPanel({
       }
     } catch (e) {
       // If the engine path failed to even spawn, fall back to the native
-      // path once so a transient engine issue doesn't drop the turn.
-      if (useEngine) {
+      // path once so a transient engine issue doesn't drop the turn — but only
+      // for providers with a real spawnable binary (engine-only providers like
+      // LM Studio / MLX / OpenRouter have none, so the native path can't serve
+      // them and would just echo "unknown cli").
+      if (useEngine && chatCli && !ENGINE_ONLY.has(chatCli)) {
         try {
           await invoke("chat_send", {
             args: {
@@ -7184,6 +7199,8 @@ function ChatBubble({
     : vendor === "codex" ? "Codex"
     : vendor === "antigravity" ? "Antigravity"
     : vendor === "ollama" ? "Ollama"
+    : vendor === "lmstudio" ? "LM Studio"
+    : vendor === "mlx" ? "MLX"
     : vendor;
   const empty = !msg.content && !msg.streaming;
   // Per-provider brand color for the name + bubble accent so each

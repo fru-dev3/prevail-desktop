@@ -50,10 +50,18 @@ a single DMG via scripts/release.sh.
     before invoking so the bubble/usage capture name the provider that actually
     ran. Canonical block remains ONLY when no local provider is installed (UI
     surfaces install/start guidance). Rust tests added + green.
-  - **Deferred:** LM Studio / MLX live detection — `resolve_cli` already treats
-    them as local, but `preferred_local_cli` probes Ollama only (daemon on
-    11434); the others report unavailable until detection lands ("coming soon"
-    per spec).
+  - **LM Studio / MLX ✅ (DONE):** now first-class local providers, not just
+    "coming soon". Detection probes their default ports (LM Studio 1234, MLX /
+    mlx_lm.server 8080) the same way Ollama's daemon is probed (`detect_clis` +
+    `bunker::local_cli_available`). They're OpenAI-compatible HTTP servers with
+    no spawnable binary, so the engine reaches them through its existing `ollama`
+    provider path: `engine_chat` passes `--cli ollama` and redirects
+    `PREVAIL_OLLAMA_URL` to the right port (`bunker::local_endpoint_url`) — no
+    engine rebuild needed (the installed engine already honors that env). UI:
+    brand tiles + monograms, vendor labels, and engine-only routing (like
+    OpenRouter — needs a domain; the native binary path can't serve them).
+    Ollama stays the auto-switch default since it works on both the native and
+    engine paths. Rust tests added + green.
 
 Fru's overall verdict: "very, very impressed… it is unbelievable." Good signal —
 this is refinement of a working product, not a rescue.
