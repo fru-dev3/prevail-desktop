@@ -2836,6 +2836,16 @@ async fn telegram_send(
     chat_id: String,
     text: String,
 ) -> Result<TelegramResult, String> {
+    // Audit #7: resolve an empty token from the Keychain (the token is stored
+    // there, not in localStorage) so "Test" works against the saved secret.
+    let token = if token.trim().is_empty() {
+        ingestion::keychain::get("prevail.providers", "telegram").unwrap_or_default()
+    } else {
+        token
+    };
+    if token.trim().is_empty() {
+        return Err("no Telegram token configured".into());
+    }
     let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
     let body = format!(
         "{{\"chat_id\":\"{}\",\"text\":{},\"parse_mode\":\"Markdown\"}}",

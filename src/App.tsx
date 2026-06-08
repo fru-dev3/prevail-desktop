@@ -13097,7 +13097,12 @@ interface TgBridgeStatus {
 }
 
 function TelegramCard() {
-  const [token, setToken] = useState(lsGet(LS.telegramToken));
+  // Audit #7: the bot token is a secret — it lives in the Keychain, never in
+  // localStorage. `token` is a transient input value only; `tokenSaved` reflects
+  // whether a token exists in the Keychain. chatId is just an identifier (not a
+  // secret), so it stays in localStorage.
+  const [token, setToken] = useState("");
+  const [tokenSaved, setTokenSaved] = useState(false);
   const [chatId, setChatId] = useState(lsGet(LS.telegramChatId));
   const [bridgeCli, setBridgeCli] = useState(lsGet("prevail.telegram.cli") || "claude");
   const [bridgeModel, setBridgeModel] = useState(lsGet("prevail.telegram.model"));
@@ -13105,7 +13110,21 @@ function TelegramCard() {
   const [bridge, setBridge] = useState<TgBridgeStatus | null>(null);
   const [feed, setFeed] = useState<Array<{ dir: "in" | "out"; text: string; ts: number }>>([]);
 
-  useEffect(() => { lsSet(LS.telegramToken, token); }, [token]);
+  // On mount: migrate any legacy localStorage token into the Keychain (then wipe
+  // it), and reflect whether a token is configured.
+  useEffect(() => {
+    (async () => {
+      try {
+        const legacy = lsGet(LS.telegramToken);
+        if (legacy && legacy.trim()) {
+          await invoke("provider_key_set", { provider: "telegram", key: legacy.trim() });
+          lsSet(LS.telegramToken, ""); // wipe the plaintext secret from localStorage
+        }
+        const ok = await invoke<boolean>("provider_key_exists", { provider: "telegram" });
+        setTokenSaved(!!ok);
+      } catch { /* keychain unavailable — leave unconfigured */ }
+    })();
+  }, []);
   useEffect(() => { lsSet(LS.telegramChatId, chatId); }, [chatId]);
   useEffect(() => { lsSet("prevail.telegram.cli", bridgeCli); }, [bridgeCli]);
   useEffect(() => { lsSet("prevail.telegram.model", bridgeModel); }, [bridgeModel]);
@@ -13133,14 +13152,21 @@ function TelegramCard() {
   }, []);
 
   async function startBridge() {
-    if (!token.trim() || !chatId.trim()) {
+    if (!chatId.trim() || (!token.trim() && !tokenSaved)) {
       setStatus({ kind: "err", msg: "fill in token + chat ID first" });
       return;
     }
     try {
+      // If a new token was typed, persist it to the Keychain (and clear the
+      // input); otherwise the bridge resolves the saved token server-side.
+      if (token.trim()) {
+        await invoke("provider_key_set", { provider: "telegram", key: token.trim() });
+        setTokenSaved(true);
+        setToken("");
+      }
       await invoke("telegram_bridge_start", {
         cfg: {
-          token: token.trim(),
+          token: "", // bridge reads the secret from the Keychain
           chat_id: chatId.trim(),
           cli: bridgeCli,
           model: bridgeModel || null,
@@ -13162,14 +13188,18 @@ function TelegramCard() {
   }
 
   async function testSend() {
-    if (!token || !chatId) {
+    if (!chatId || (!token.trim() && !tokenSaved)) {
       setStatus({ kind: "err", msg: "fill in token + chat ID first" });
       return;
+    }
+    // If a fresh token was typed, save it first so Test uses the same secret.
+    if (token.trim()) {
+      try { await invoke("provider_key_set", { provider: "telegram", key: token.trim() }); setTokenSaved(true); setToken(""); } catch { /* ignore */ }
     }
     setStatus({ kind: "idle", msg: "sending…" });
     try {
       const r = await invoke<{ ok: boolean; description?: string }>("telegram_send", {
-        token, chatId, text: "◆ Prevail desktop · test message ✓",
+        token: "", chatId, text: "◆ Prevail desktop · test message ✓",
       });
       if (r.ok) {
         setStatus({ kind: "ok", msg: "delivered ✓" });
@@ -13197,12 +13227,15 @@ function TelegramCard() {
 
       <div className="mt-4 space-y-3">
         <label className="block">
-          <div className="text-xs uppercase tracking-wider text-text-muted">Bot token</div>
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-text-muted">
+            Bot token
+            {tokenSaved && <span className="rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] tracking-wider text-accent">in keychain</span>}
+          </div>
           <input
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            placeholder="123456:ABC-XYZ…"
+            placeholder={tokenSaved ? "•••••••• (saved — type to replace)" : "123456:ABC-XYZ…"}
             className="mt-1 w-full rounded border border-border bg-background px-3 py-2 font-mono text-sm"
             spellCheck={false}
           />
@@ -13220,7 +13253,7 @@ function TelegramCard() {
         <div className="flex items-center justify-between pt-1">
           <button
             onClick={testSend}
-            disabled={!token || !chatId}
+            disabled={!chatId || (!token.trim() && !tokenSaved)}
             className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-background hover:bg-accent-hover disabled:bg-surface-strong disabled:text-text-muted"
           >
             <Send className="h-3.5 w-3.5" />
@@ -13278,7 +13311,7 @@ function TelegramCard() {
             {!bridge?.running ? (
               <button
                 onClick={startBridge}
-                disabled={!token.trim() || !chatId.trim()}
+                disabled={!chatId.trim() || (!token.trim() && !tokenSaved)}
                 className="rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
               >
                 start bridge
