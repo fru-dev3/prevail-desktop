@@ -423,6 +423,8 @@ import {
   Plug,
   ThumbsUp,
   ThumbsDown,
+  ShieldCheck,
+  Cloud,
   type LucideIcon,
 } from "lucide-react";
 
@@ -973,6 +975,52 @@ function lsGet(key: string, fallback: string = ""): string {
 function lsSet(key: string, value: string): void {
   if (value) localStorage.setItem(key, value);
   else localStorage.removeItem(key);
+}
+
+// ── Bunker Mode (app-wide local-only trust mode) ──
+// The backend (bunker.rs) is the source of truth and enforces at the execution
+// layer; this mirror lets deeply-nested components (the composer, model pickers,
+// send/convene) read the flag synchronously without prop-threading through the
+// 12k-line tree. Kept in sync from bunker_status on mount and on every toggle.
+// Default ON: absent flag ⇒ locked down. (matches bunker.rs default)
+const BUNKER_LS = "prevail.pref.bunkerMode";
+function isBunkerOn(): boolean {
+  return lsGet(BUNKER_LS, "1") !== "0";
+}
+// Providers that serve models from this machine only — mirror bunker.rs LOCAL_CLIS.
+const LOCAL_CLI_IDS = new Set(["ollama", "lmstudio", "mlx"]);
+function isLocalCli(id: string): boolean {
+  return LOCAL_CLI_IDS.has(id.toLowerCase());
+}
+
+// The always-visible Bunker Mode status bar. Never disappears while the app
+// runs, so the user always knows whether anything can leave their machine.
+function BunkerRibbon({ enabled }: { enabled: boolean }) {
+  return (
+    <div
+      className={`flex shrink-0 items-center justify-center gap-2 border-t px-4 py-1 text-[11px] ${
+        enabled
+          ? "border-emerald-700/30 bg-emerald-900/15 text-emerald-700 dark:text-emerald-300"
+          : "border-amber-700/30 bg-amber-900/10 text-amber-700 dark:text-amber-300"
+      }`}
+      title={
+        enabled
+          ? "Bunker Mode: your data stays on this device. No requests leave your machine."
+          : "Cloud Connected: cloud models, web search, and external services are enabled."
+      }
+    >
+      {enabled ? <ShieldCheck className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}
+      <span className="font-mono font-semibold uppercase tracking-[0.18em]">
+        {enabled ? "Bunker Mode" : "Cloud Connected"}
+      </span>
+      <span className="opacity-70">
+        ·{" "}
+        {enabled
+          ? "Local models only • Network disabled"
+          : "Cloud models and web access enabled"}
+      </span>
+    </div>
+  );
 }
 
 // Per-domain preferred skills — auto-attach on entering a domain.
@@ -1745,6 +1793,26 @@ export default function App() {
   useEffect(() => { void refreshThreads(); }, [refreshThreads]);
   const [clis, setClis] = useState<CliInfo[]>([]);
   const [tab, setTab] = useState<TabId>("chat");
+  // Bunker Mode: backend is the source of truth; mirror it into localStorage on
+  // mount so synchronous reads (isBunkerOn) everywhere stay correct, and into
+  // React state so the persistent ribbon re-renders on toggle.
+  const [bunkerEnabled, setBunkerEnabled] = useState<boolean>(isBunkerOn);
+  const [bunkerLocalOk, setBunkerLocalOk] = useState<boolean>(true); // assume ok until checked
+  useEffect(() => {
+    invoke<{ enabled: boolean; local_available: boolean }>("bunker_status")
+      .then((s) => {
+        const on = !!s.enabled;
+        lsSet(BUNKER_LS, on ? "1" : "0");
+        setBunkerEnabled(on);
+        setBunkerLocalOk(!!s.local_available);
+      })
+      .catch(() => {});
+  }, []);
+  // Called by the Privacy & Connectivity section after a confirmed toggle.
+  const applyBunker = useCallback((on: boolean) => {
+    lsSet(BUNKER_LS, on ? "1" : "0");
+    setBunkerEnabled(on);
+  }, []);
   // A domain can launch a scoped benchmark; it dispatches this event and we
   // jump to the Benchmark page pre-scoped to that domain.
   const [benchScope, setBenchScope] = useState<string | null>(null);
@@ -1915,6 +1983,8 @@ export default function App() {
           vaultPath={vaultPath}
           onChangeVault={pickVault}
           clis={clis}
+          bunkerEnabled={bunkerEnabled}
+          onBunkerChange={applyBunker}
           onBack={() => setTab("chat")}
           onStartChatWith={(cliId, modelId) => {
             lsSet(LS.defaultChatCli, cliId);
@@ -1926,12 +1996,20 @@ export default function App() {
         <span className="pointer-events-none absolute bottom-1.5 right-2 select-none font-mono text-[9px] tracking-wider text-text-muted/60">
           v{APP_VERSION}
         </span>
+        <BunkerRibbon enabled={bunkerEnabled} />
       </div>
     );
   }
 
   return (
     <div className="relative flex h-screen flex-col bg-background text-text-primary">
+      {bunkerEnabled && !bunkerLocalOk && (
+        <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-600/30 bg-amber-500/10 px-4 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          <span>Bunker Mode needs a local model provider, but none was detected.</span>
+          <a href="https://ollama.com/download" target="_blank" rel="noreferrer" className="font-medium underline">Install Ollama ›</a>
+        </div>
+      )}
       <div className="flex min-h-0 flex-1">
         <Sidebar
           collapsed={sidebarCollapsed}
@@ -2085,6 +2163,7 @@ export default function App() {
           </div>
         </main>
       </div>
+      <BunkerRibbon enabled={bunkerEnabled} />
       {/* Tiny version pill — bottom-right corner, low-prominence */}
       <span className="pointer-events-none absolute bottom-1.5 right-2 select-none font-mono text-[9px] tracking-wider text-text-muted/60">
         v{APP_VERSION}
@@ -4005,7 +4084,7 @@ function DomainPrefsPanel({
           )}
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {clis.map((c) => {
+          {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
             const picked = pickedCli === c.id;
             const disabled = !c.available;
             return (
@@ -4348,7 +4427,7 @@ function AgentPickerRail({
   if (clis.length === 0) return null;
   return (
     <div className="mt-6 flex items-center gap-1 rounded-full border border-border bg-surface px-1.5 py-1 shadow-sm">
-      {clis.map((c) => {
+      {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
         const active = c.id === selected;
         return (
           <button
@@ -5136,7 +5215,8 @@ function ChatPanel({
   // Bumped by the domain Preferences panel whenever a picker changes, so the
   // composer re-reads the domain's CLI/model/framework/lens overrides live.
   const [prefsTick, setPrefsTick] = useState(0);
-  const localOnly = domain ? lsGet(`prevail.domain.${domain}.localOnly`) === "1" : false;
+  // Bunker Mode forces local-only regardless of the per-domain pin.
+  const localOnly = isBunkerOn() || (domain ? lsGet(`prevail.domain.${domain}.localOnly`) === "1" : false);
 
   // Per-domain model preference. Keys: prevail.domain.<name>.cli and
   // prevail.domain.<name>.model. When set, override the global default
@@ -5992,8 +6072,8 @@ function ChatPanel({
     const prefs = {
       framework: fwLens.framework ?? null,
       lens: fwLens.lens ?? null,
-      localOnly: domain ? lsGet(`prevail.domain.${domain}.localOnly`) === "1" : false,
-      web: domain ? getDomainToggle(domain, "web", false) : false,
+      localOnly: localOnly,
+      web: isBunkerOn() ? false : (domain ? getDomainToggle(domain, "web", false) : false),
       serendipity: domain ? getDomainToggle(domain, "serendipity", false) : false,
       auto: domain ? getDomainToggle(domain, "auto", false) : false,
       council: domain ? getDomainToggle(domain, "council", false) : false,
@@ -6849,7 +6929,7 @@ function ChatPanel({
                     Model
                   </div>
                   <div className="max-h-80 overflow-y-auto">
-                    {clis.map((c) => {
+                    {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
                       const cliModels = MODELS[c.id] ?? [];
                       if (cliModels.length === 0) return null;
                       return (
@@ -8132,7 +8212,7 @@ function CouncilPanel({
                     Add panelist
                   </div>
                   <div className="max-h-80 overflow-y-auto">
-                    {clis.map((c) => {
+                    {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
                       const cliModels = MODELS[c.id] ?? [];
                       if (cliModels.length === 0) return null;
                       return (
@@ -8207,7 +8287,7 @@ function CouncilPanel({
                     Chair
                   </div>
                   <div className="max-h-80 overflow-y-auto">
-                    {clis.map((c) => {
+                    {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
                       const cliModels = MODELS[c.id] ?? [];
                       if (cliModels.length === 0) return null;
                       return (
@@ -9416,6 +9496,8 @@ function SettingsPanel({
   clis,
   onBack,
   onStartChatWith,
+  bunkerEnabled,
+  onBunkerChange,
 }: {
   appearance: ReturnType<typeof useAppearance>;
   vaultPath: string;
@@ -9423,12 +9505,15 @@ function SettingsPanel({
   clis: CliInfo[];
   onBack?: () => void;
   onStartChatWith?: (cliId: string, modelId?: string) => void;
+  bunkerEnabled: boolean;
+  onBunkerChange: (on: boolean) => void;
 }) {
-  type Section = "general" | "agents" | "providers" | "connectors" | "user" | "memory" | "safety" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "shortcuts" | "about";
+  type Section = "general" | "agents" | "providers" | "privacy" | "connectors" | "user" | "memory" | "safety" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "tools" | "ingestion" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>("general");
 
   const items: Array<{ id: Section; label: string; icon: typeof Folder }> = [
     { id: "general", label: "General", icon: SettingsIcon },
+    { id: "privacy", label: "Privacy & Connectivity", icon: ShieldCheck },
     { id: "agents", label: "Agents", icon: Sparkles },
     { id: "providers", label: "Providers", icon: Layers },
     { id: "user", label: "About me", icon: Users },
@@ -9518,6 +9603,7 @@ function SettingsPanel({
       <div className="min-w-0 flex-1 overflow-y-auto">
         <div className={`mx-auto ${section === "frameworks" ? "max-w-6xl" : "max-w-3xl"} px-8 py-10`}>
           {section === "general" && <GeneralSection />}
+          {section === "privacy" && <PrivacyConnectivitySection enabled={bunkerEnabled} onChange={onBunkerChange} />}
           {section === "agents" && <AgentsSection clis={clis} onStartChatWith={onStartChatWith} />}
           {section === "user" && <UserProfileSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
@@ -9828,6 +9914,115 @@ function SettingsHeader({ title, subtitle }: { title: string; subtitle?: string 
       <h2 className="font-display text-2xl font-semibold tracking-tight">{title}</h2>
       {subtitle && <p className="mt-1 max-w-2xl text-sm text-text-secondary">{subtitle}</p>}
     </div>
+  );
+}
+
+// Privacy & Connectivity — the Bunker Mode control surface. The toggle + status
+// card here reflect the BACKEND policy (bunker.rs), which is the real source of
+// truth and enforcer; this screen never decides anything on its own.
+function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; onChange: (on: boolean) => void }) {
+  type BunkerStatus = { enabled: boolean; network_blocked: boolean; web_blocked: boolean; cloud_blocked: boolean; local_available: boolean };
+  const [status, setStatus] = useState<BunkerStatus | null>(null);
+  const [confirmOff, setConfirmOff] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const refresh = useCallback(() => {
+    invoke<BunkerStatus>("bunker_status").then(setStatus).catch(() => {});
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  async function setBunker(on: boolean) {
+    setBusy(true);
+    try {
+      const s = await invoke<BunkerStatus>("bunker_set", { enabled: on });
+      setStatus(s);
+      onChange(!!s.enabled);
+    } catch (e) {
+      console.error("bunker_set", e);
+    } finally {
+      setBusy(false);
+      setConfirmOff(false);
+    }
+  }
+
+  // Turning OFF requires confirmation; turning ON is immediate.
+  function onToggle(next: boolean) {
+    if (!next) { setConfirmOff(true); return; }
+    void setBunker(true);
+  }
+
+  const blocked = (active: boolean) =>
+    active ? (
+      <Check className="h-4 w-4 shrink-0 text-emerald-600" />
+    ) : (
+      <X className="h-4 w-4 shrink-0 text-amber-600" />
+    );
+
+  return (
+    <>
+      <SettingsHeader
+        title="Privacy & Connectivity"
+        subtitle="Bunker Mode is a trust guarantee, not a preference: while it is on, nothing leaves this device — local models only, no network, no cloud AI, no web search."
+      />
+
+      {/* Master toggle */}
+      <div className="rounded-lg border border-border-subtle bg-surface p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 font-medium">
+              {enabled ? <ShieldCheck className="h-4 w-4 text-emerald-600" /> : <Cloud className="h-4 w-4 text-amber-600" />}
+              Bunker Mode
+              <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${enabled ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/15 text-amber-700 dark:text-amber-300"}`}>
+                {enabled ? "On" : "Off"}
+              </span>
+            </div>
+            <p className="mt-1 max-w-xl text-sm text-text-secondary">
+              Data stays on this device. Network access, cloud AI providers, and web search are disabled.
+            </p>
+          </div>
+          <Toggle on={enabled} disabled={busy} onChange={onToggle} label="Bunker Mode" />
+        </div>
+      </div>
+
+      {/* Status verification card — reflects actual runtime enforcement state */}
+      <div className="mt-4 rounded-lg border border-border-subtle bg-surface p-4">
+        <div className="mb-3 font-mono text-[11px] uppercase tracking-wider text-text-muted">Bunker Mode Status</div>
+        <ul className="space-y-2 text-sm">
+          <li className="flex items-center gap-2">{blocked(!!status?.network_blocked)}<span>{status?.network_blocked ? "Network blocked" : "Network allowed"}</span></li>
+          <li className="flex items-center gap-2">{blocked(!!status?.web_blocked)}<span>{status?.web_blocked ? "Web search blocked" : "Web search allowed"}</span></li>
+          <li className="flex items-center gap-2">{blocked(!!status?.cloud_blocked)}<span>{status?.cloud_blocked ? "Cloud models blocked" : "Cloud models allowed"}</span></li>
+          <li className="flex items-center gap-2">
+            {status?.local_available ? <Check className="h-4 w-4 shrink-0 text-emerald-600" /> : <X className="h-4 w-4 shrink-0 text-text-muted" />}
+            <span>Local model provider {status?.local_available ? "available" : "not detected (install Ollama)"}</span>
+          </li>
+        </ul>
+        <div className={`mt-3 text-xs ${enabled ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}>
+          {enabled
+            ? "Verified — your data remains on this device. No requests leave your machine while Bunker Mode is active."
+            : "Cloud Connected — cloud models, web search, and external services are available and may transmit data."}
+        </div>
+      </div>
+
+      {/* Leave-Bunker-Mode confirmation */}
+      {confirmOff && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmOff(false)}>
+          <div className="w-full max-w-md rounded-xl border border-border bg-background p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold">Leave Bunker Mode?</h3>
+            <p className="mt-2 text-sm text-text-secondary">Disabling Bunker Mode allows:</p>
+            <ul className="mt-2 space-y-1 text-sm text-text-secondary">
+              <li>• Cloud AI providers</li>
+              <li>• Internet access</li>
+              <li>• Web search</li>
+              <li>• External services</li>
+            </ul>
+            <p className="mt-3 text-sm text-text-secondary">Your data may be transmitted to third-party services depending on which features you use.</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setConfirmOff(false)} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-surface-strong">Cancel</button>
+              <button onClick={() => void setBunker(false)} disabled={busy} className="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50">Leave Bunker Mode</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -12316,7 +12511,7 @@ function CliPickerCard({
       <div className="text-xs uppercase tracking-wider text-text-muted">{label}</div>
       <p className="mt-0.5 text-xs text-text-muted/80">{hint}</p>
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {clis.map((c) => {
+        {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
           const picked = value === c.id;
           const disabled = !c.available;
           return (
