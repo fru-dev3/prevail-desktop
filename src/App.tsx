@@ -9913,7 +9913,7 @@ function SettingsPanel({
   bunkerEnabled: boolean;
   onBunkerChange: (on: boolean) => void;
 }) {
-  type Section = "general" | "agents" | "providers" | "privacy" | "connectors" | "user" | "memory" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "shortcuts" | "about";
+  type Section = "general" | "models" | "privacy" | "connectors" | "user" | "memory" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "defaults" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>("general");
 
   // Grouped settings nav — the flat 19-item list was hard to scan and mixed
@@ -9923,8 +9923,7 @@ function SettingsPanel({
   type NavItem = { id: Section; label: string; icon: typeof Folder };
   const navGroups: Array<{ heading: string; items: NavItem[] }> = [
     { heading: "Models & AI", items: [
-      { id: "agents", label: "Agents (CLIs)", icon: Sparkles },
-      { id: "providers", label: "Providers", icon: Layers },
+      { id: "models", label: "Models", icon: Layers },
       { id: "defaults", label: "Defaults", icon: SettingsIcon },
       { id: "council", label: "Council", icon: Scale },
       { id: "frameworks", label: "Frameworks", icon: Scale },
@@ -10030,10 +10029,9 @@ function SettingsPanel({
         <div className={`mx-auto ${section === "frameworks" ? "max-w-6xl" : "max-w-3xl"} px-8 py-10`}>
           {section === "general" && <GeneralSection />}
           {section === "privacy" && <PrivacyConnectivitySection enabled={bunkerEnabled} onChange={onBunkerChange} />}
-          {section === "agents" && <AgentsSection clis={clis} onStartChatWith={onStartChatWith} />}
+          {section === "models" && <ModelsSection clis={clis} onStartChatWith={onStartChatWith} onActivated={onRefreshClis} />}
           {section === "user" && <UserProfileSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
-          {section === "providers" && <ProvidersSection onActivated={onRefreshClis} />}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {section === "connectors" && (
             <>
@@ -10067,21 +10065,62 @@ function SettingsPanel({
   );
 }
 
-function AgentsSection({
+// Unified "Models" section — merges the former Agents (installed CLI binaries)
+// and Providers (bring-your-own-key API gateways) pages, since both answer the
+// same question: where your models come from. Two labeled subsections keep the
+// local-vs-hosted distinction obvious instead of being two cryptic nav items.
+function ModelsSection({
   clis,
   onStartChatWith,
+  onActivated,
 }: {
   clis: CliInfo[];
   onStartChatWith?: (cliId: string, modelId?: string) => void;
+  onActivated?: () => Promise<CliInfo[]>;
+}) {
+  return (
+    <>
+      <SettingsHeader
+        title="Models"
+        subtitle="Where your AI comes from. Installed command-line agents run locally; API providers unlock hosted models with one key."
+      />
+      <section className="mb-8">
+        <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-secondary">
+          <Sparkles className="h-3.5 w-3.5 text-accent" /> Installed CLIs
+        </div>
+        <p className="mb-4 text-xs text-text-muted">Detected from your machine — Prevail routes prompts to them but doesn&apos;t install or update them.</p>
+        <AgentsSection clis={clis} onStartChatWith={onStartChatWith} embedded />
+      </section>
+      <section className="border-t border-border-subtle pt-8">
+        <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-secondary">
+          <Layers className="h-3.5 w-3.5 text-accent" /> API providers
+        </div>
+        <p className="mb-4 text-xs text-text-muted">Bring your own key — no install. OpenRouter is one key for 200+ hosted models.</p>
+        <ProvidersSection onActivated={onActivated} embedded />
+      </section>
+    </>
+  );
+}
+
+function AgentsSection({
+  clis,
+  onStartChatWith,
+  embedded,
+}: {
+  clis: CliInfo[];
+  onStartChatWith?: (cliId: string, modelId?: string) => void;
+  embedded?: boolean;
 }) {
   const detected = clis.filter((c) => c.available);
   const missing = clis.filter((c) => !c.available);
   return (
     <>
-      <SettingsHeader
-        title="Agents"
-        subtitle="CLIs Prevail can route prompts to. Each agent is detected from your machine — Prevail doesn't install or update them."
-      />
+      {!embedded && (
+        <SettingsHeader
+          title="Agents"
+          subtitle="CLIs Prevail can route prompts to. Each agent is detected from your machine — Prevail doesn't install or update them."
+        />
+      )}
       {detected.length > 0 && (
         <section className="mb-8">
           <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
@@ -10829,7 +10868,7 @@ function SettingsRowLite({ title, desc, control }: { title: string; desc: string
 }
 
 const DIRECT_PROVIDERS_SOON = ["Anthropic", "OpenAI", "xAI (Grok)", "Google Gemini", "DeepSeek", "Qwen / DashScope", "GLM / Z.AI", "Kimi / Moonshot", "MiniMax", "Hugging Face", "OpenCode Zen"];
-function ProvidersSection({ onActivated }: { onActivated?: () => Promise<CliInfo[]> }) {
+function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promise<CliInfo[]>; embedded?: boolean }) {
   const [key, setKey] = useState("");
   const [configured, setConfigured] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -10866,7 +10905,7 @@ function ProvidersSection({ onActivated }: { onActivated?: () => Promise<CliInfo
   }
   return (
     <>
-      <SettingsHeader title="Providers" subtitle="Bring your own models. OpenRouter is one key for 200+ models (Claude, GPT, Gemini, Grok, DeepSeek, Qwen…). Direct providers are coming next." />
+      {!embedded && <SettingsHeader title="Providers" subtitle="Bring your own models. OpenRouter is one key for 200+ models (Claude, GPT, Gemini, Grok, DeepSeek, Qwen…). Direct providers are coming next." />}
       <div className="rounded-lg border border-border bg-surface p-5">
         <div className="mb-1 flex items-center gap-2">
           <span className="font-semibold text-text-primary">OpenRouter</span>
