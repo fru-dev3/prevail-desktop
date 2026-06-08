@@ -498,11 +498,17 @@ async fn chat_send(
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command as TokioCommand;
 
-    // Bunker Mode: refuse any cloud provider at the execution layer (not just
-    // the UI). Local providers (ollama/lmstudio/mlx) pass through.
-    bunker::guard_cli(&args.cli)?;
+    // Bunker Mode: instead of hard-blocking a stale cloud default, transparently
+    // fall back to an available local provider (auto-switch). Errors only when no
+    // local provider exists to run. Local requests pass through unchanged.
+    let cli_id = bunker::resolve_cli(&args.cli)?;
+    // When we switched providers the caller's model id belongs to the old (cloud)
+    // CLI and won't exist on the local one — drop it so the local provider uses
+    // its own default (e.g. ollama → llama3.2).
+    let switched = cli_id != args.cli;
+    let model = if switched { None } else { args.model.as_deref() };
 
-    let (bin_name, cli_args) = cli_args(&args.cli, &args.prompt, args.model.as_deref());
+    let (bin_name, cli_args) = cli_args(&cli_id, &args.prompt, model);
     let bin_abs = resolve_bin_abs(&bin_name);
 
     let (combined_path, user, logname) = build_cli_env();
@@ -531,7 +537,10 @@ async fn chat_send(
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let session = args.session_id.clone();
-    let cli = args.cli.clone();
+    // Report the CLI that ACTUALLY ran (post Bunker auto-switch), so the UI's
+    // streamed chunks and "done" event reflect the real provider, not the stale
+    // cloud selection the user may still have persisted.
+    let cli = cli_id.clone();
     let session_done = session.clone();
     let cli_done = cli.clone();
     if let Some(pid) = child.id() {

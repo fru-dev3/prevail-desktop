@@ -40,11 +40,20 @@ a single DMG via scripts/release.sh.
   injection + PREVAIL_BUNKER=1 to the engine, MCP/Composio/browser/telegram
   blocked; persistent ribbon; pickers hide cloud; Privacy & Connectivity section
   with toggle + "Leave Bunker Mode?" dialog + Status Verification Card;
-  first-launch Ollama-missing banner. Rust tests green. **Deferred refinement:**
-  auto-switch the selected CLI to a local one when Bunker is on (today a stale
-  cloud default is hard-blocked with the canonical message rather than
-  auto-swapped); LM Studio / MLX detection (Ollama only for now, others
-  "coming soon" per spec).
+  first-launch Ollama-missing banner. Rust tests green.
+  - **Auto-switch ✅ (DONE):** a stale cloud default is now transparently
+    swapped for an available local provider instead of hard-blocked.
+    `bunker.rs::resolve_cli` is the authoritative resolver (covers chat_send,
+    engine_chat, and therefore WebUI/Telegram too); the model id is dropped on
+    switch so the local provider uses its default. The desktop UI mirrors it:
+    the picker auto-selects a local CLI when Bunker is on, and `send()` resolves
+    before invoking so the bubble/usage capture name the provider that actually
+    ran. Canonical block remains ONLY when no local provider is installed (UI
+    surfaces install/start guidance). Rust tests added + green.
+  - **Deferred:** LM Studio / MLX live detection — `resolve_cli` already treats
+    them as local, but `preferred_local_cli` probes Ollama only (daemon on
+    11434); the others report unavailable until detection lands ("coming soon"
+    per spec).
 
 Fru's overall verdict: "very, very impressed… it is unbelievable." Good signal —
 this is refinement of a working product, not a rescue.
