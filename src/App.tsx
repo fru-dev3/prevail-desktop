@@ -10960,11 +10960,11 @@ const DIRECT_PROVIDERS_SOON: DirectProvider[] = [
 
 function DirectProviderMark({ p }: { p: DirectProvider }) {
   return (
-    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-white">
+    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border-subtle bg-white">
       {p.path ? (
-        <svg width={16} height={16} viewBox="0 0 24 24" fill={p.hex ?? "#111"} aria-hidden><path d={p.path} /></svg>
+        <svg width={12} height={12} viewBox="0 0 24 24" fill={p.hex ?? "#111"} aria-hidden><path d={p.path} /></svg>
       ) : (
-        <span className="font-mono text-[9px] font-semibold text-text-muted">{p.mono}</span>
+        <span className="font-mono text-[8px] font-semibold text-text-muted">{p.mono}</span>
       )}
     </span>
   );
@@ -11035,12 +11035,13 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
       </div>
       <div className="mt-4">
         <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Direct providers</div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {DIRECT_PROVIDERS_SOON.map((p) => (
-            <div key={p.name} className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-4 py-2.5">
+        {/* Single column of thin divided rows — no chunky cards. */}
+        <div className="overflow-hidden rounded-lg border border-border-subtle">
+          {DIRECT_PROVIDERS_SOON.map((p, i) => (
+            <div key={p.name} className={`flex items-center gap-2.5 bg-surface px-3 py-1.5 ${i > 0 ? "border-t border-border-subtle" : ""}`}>
               <DirectProviderMark p={p} />
               <span className="flex-1 text-sm text-text-secondary">{p.name}</span>
-              <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
+              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted/70">Coming soon</span>
             </div>
           ))}
         </div>
@@ -11107,13 +11108,13 @@ const CONNECTOR_GROUPS: { category: string; items: Connector[] }[] = [
 
 function ConnectorIcon({ c }: { c: Connector }) {
   return (
-    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-white">
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border-subtle bg-white">
       {c.brand ? (
-        <svg width={18} height={18} viewBox="0 0 24 24" fill={`#${c.brand.hex}`} aria-hidden>
+        <svg width={13} height={13} viewBox="0 0 24 24" fill={`#${c.brand.hex}`} aria-hidden>
           <path d={c.brand.path} />
         </svg>
       ) : c.icon ? (
-        <c.icon className="h-[18px] w-[18px]" style={{ color: c.color }} />
+        <c.icon className="h-[13px] w-[13px]" style={{ color: c.color }} />
       ) : null}
     </span>
   );
@@ -11150,14 +11151,13 @@ function ConnectorsSection() {
             <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">{g.category}</span>
             <span className="font-mono text-[10px] text-text-muted/60">{g.items.length}</span>
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {g.items.map((c) => (
-              <div key={c.name} className="group flex items-center gap-3 rounded-xl border border-border-subtle bg-surface px-3 py-2.5 transition-colors hover:border-accent-border hover:bg-surface-warm">
+          {/* Single column of thin divided rows; domain inline (not a 2nd line). */}
+          <div className="overflow-hidden rounded-lg border border-border-subtle">
+            {g.items.map((c, i) => (
+              <div key={c.name} className={`group flex items-center gap-2.5 bg-surface px-3 py-1.5 transition-colors hover:bg-surface-warm ${i > 0 ? "border-t border-border-subtle" : ""}`}>
                 <ConnectorIcon c={c} />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-text-primary">{c.name}</div>
-                  <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">→ {titleCase(c.domain)}</div>
-                </div>
+                <span className="flex-1 truncate text-sm font-medium text-text-primary">{c.name}</span>
+                <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">→ {titleCase(c.domain)}</span>
               </div>
             ))}
           </div>
@@ -11221,13 +11221,13 @@ function GatewaySection() {
         <WhatsAppCard />
       </div>
 
-      {/* Planned surfaces — uniform tiles, brand-neutral until wired. */}
+      {/* Planned surfaces — single column of thin divided rows. */}
       <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">More surfaces</div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {COMING_SOON_GATEWAYS.map((name) => (
-          <div key={name} className="flex items-center justify-between rounded-lg border border-border-subtle bg-surface px-4 py-3 opacity-70">
+      <div className="overflow-hidden rounded-lg border border-border-subtle">
+        {COMING_SOON_GATEWAYS.map((name, i) => (
+          <div key={name} className={`flex items-center justify-between bg-surface px-3 py-1.5 ${i > 0 ? "border-t border-border-subtle" : ""}`}>
             <span className="text-sm text-text-secondary">{name}</span>
-            <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
+            <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted/70">Coming soon</span>
           </div>
         ))}
       </div>
