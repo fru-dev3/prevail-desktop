@@ -3397,13 +3397,16 @@ function DomainStatusBar({
     set(next);
     if (domain) setDomainToggle(domain, t, next);
   };
+  // U5: compact pills so the composer toolbar stops wrapping to two rows. The
+  // accent fill already signals ON, so the separate ON/OFF badge was redundant
+  // width — dropped. State + full description stay in the tooltip.
   const Toggle = ({
     glyph, label, on, onClick, help,
   }: { glyph: string; label: string; on: boolean; onClick: () => void; help: string }) => (
     <button
       onClick={onClick}
       title={`${label}: ${on ? "ON" : "OFF"}\n${help}`}
-      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px] transition-colors ${
+      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-1 font-mono text-[10px] transition-colors ${
         on
           ? "border-accent-border bg-accent-soft text-accent"
           : "border-border bg-surface text-text-muted hover:bg-surface-warm hover:text-text-secondary"
@@ -3411,28 +3414,24 @@ function DomainStatusBar({
     >
       <span>{glyph}</span>
       <span className="uppercase tracking-wider">{label}</span>
-      <span className={`ml-0.5 rounded px-1 ${on ? "bg-accent text-background" : "bg-surface-strong text-text-muted"}`}>
-        {on ? "ON" : "OFF"}
-      </span>
     </button>
   );
+  // Cycle keeps its value (◆ STRATEGIST) since that's the useful part; the
+  // glyph + tooltip identify which control it is, so the word label is dropped.
   const Cycle = ({
     glyph, label, value, active, onClick,
   }: { glyph: string; label: string; value: string; active: boolean; onClick: () => void }) => (
     <button
       onClick={onClick}
-      title={`${label} — click to cycle`}
-      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px] transition-colors ${
+      title={`${label}: ${value} — click to cycle`}
+      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-1 font-mono text-[10px] transition-colors ${
         active
           ? "border-accent-border bg-accent-soft text-accent"
           : "border-border bg-surface text-text-muted hover:bg-surface-warm hover:text-text-secondary"
       }`}
     >
       <span>{glyph}</span>
-      <span className="uppercase tracking-wider">{label}</span>
-      <span className={`ml-0.5 rounded px-1 ${active ? "bg-accent text-background" : "bg-surface-strong text-text-muted"}`}>
-        {value}
-      </span>
+      <span className="uppercase tracking-wider">{value}</span>
     </button>
   );
   const cycleFramework = () => {
@@ -7217,7 +7216,7 @@ function ChatPanel({
                   </div>
                   {skillsCache.length === 0 && (
                     <div className="px-3 py-2 text-xs text-text-muted">
-                      no skills under <code className="text-accent">{titleCase(domain ?? "—")}/skills/</code>
+                      no skills under <code className="text-accent">{titleCase(domain ?? "—")}/_skills/</code>
                     </div>
                   )}
                   <div className="max-h-48 overflow-y-auto">
@@ -10022,18 +10021,7 @@ function SettingsPanel({
             </>
           )}
           {section === "safety" && <SafetySection />}
-          {section === "gateway" && (
-            <>
-              <SettingsHeader title="Gateway" subtitle="Reach your vault from elsewhere. Your data stays local; these bridges and routing rules let you talk to Prevail from Telegram, WhatsApp, and other surfaces." />
-              <GatewaySection />
-              {/* A1: Integrations folded into Gateway — bridges live with the
-                  routing that drives them. */}
-              <div className="mt-6 grid gap-4">
-                <TelegramCard />
-                <WhatsAppCard />
-              </div>
-            </>
-          )}
+          {section === "gateway" && <GatewaySection />}
           {section === "mcp" && <McpSection vaultPath={vaultPath} />}
           {section === "remote" && <RemoteSection />}
           {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} />}
@@ -10986,18 +10974,24 @@ function ConnectorsSection() {
           <div className="mt-1 text-xs text-text-secondary">Authenticate once to Composio and switch on any connector below. Pulled data lands in the matching domain's vault and feeds the intent ledger + memory. {total} integrations planned.</div>
         </div>
       </div>
+      {/* U1: cleaner grid — category counts, even 2/3-col tiles, and no
+          per-card "Soon" badge (the hub banner already says coming soon, so a
+          badge on every tile was just noise). Domain routing stays as the
+          subtle caption. */}
       {CONNECTOR_GROUPS.map((g) => (
         <div key={g.category} className="mb-5">
-          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">{g.category}</div>
+          <div className="mb-2 flex items-baseline gap-2">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">{g.category}</span>
+            <span className="font-mono text-[10px] text-text-muted/60">{g.items.length}</span>
+          </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {g.items.map((c) => (
-              <div key={c.name} className="group flex items-center gap-3 rounded-xl border border-border-subtle bg-surface px-3 py-2.5 transition-colors hover:border-border">
+              <div key={c.name} className="group flex items-center gap-3 rounded-xl border border-border-subtle bg-surface px-3 py-2.5 transition-colors hover:border-accent-border hover:bg-surface-warm">
                 <ConnectorIcon c={c} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium text-text-primary">{c.name}</div>
                   <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">→ {titleCase(c.domain)}</div>
                 </div>
-                <span className="shrink-0 rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">Soon</span>
               </div>
             ))}
           </div>
@@ -11044,18 +11038,25 @@ function SafetySection() {
   );
 }
 
-const COMING_SOON_GATEWAYS = ["Discord", "Slack", "WhatsApp", "Signal", "Matrix", "Mattermost", "Email (IMAP/SMTP)", "SMS (Twilio)"];
+// WhatsApp is rendered as its own (fuller) card below, so it's excluded here.
+const COMING_SOON_GATEWAYS = ["Discord", "Slack", "Signal", "Matrix", "Mattermost", "Email (IMAP/SMTP)", "SMS (Twilio)"];
+
+// U2: Gateway is the single, self-contained section (owns its header) — folds in
+// the former "Integrations" bridge cards (A1) without the earlier double header /
+// double Telegram-card bug. Live bridges first, then coming-soon, evenly gridded.
 function GatewaySection() {
   return (
     <>
-      <SettingsHeader title="Gateway" subtitle="Chat with your council from anywhere. Connect Prevail to messaging platforms." />
-      <div className="mb-4 rounded-lg border border-border bg-surface p-5">
-        <div className="mb-3 flex items-center gap-2">
-          <span className="font-semibold text-text-primary">Telegram</span>
-          <span className="rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">Live</span>
-        </div>
+      <SettingsHeader title="Gateway" subtitle="Chat with your council from anywhere. Your vault stays local — these bridges relay messages to your domains and back." />
+
+      {/* Live + in-progress bridges — each card carries its own brand mark/color. */}
+      <div className="mb-6 grid grid-cols-1 gap-4">
         <TelegramCard />
+        <WhatsAppCard />
       </div>
+
+      {/* Planned surfaces — uniform tiles, brand-neutral until wired. */}
+      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">More surfaces</div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {COMING_SOON_GATEWAYS.map((name) => (
           <div key={name} className="flex items-center justify-between rounded-lg border border-border-subtle bg-surface px-4 py-3 opacity-70">

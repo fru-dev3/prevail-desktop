@@ -186,11 +186,11 @@ eyes-on:** U1 (Connectors layout), U2 (Gateway formatting/brand colors), U5
 
 ## Wave 4 — UI / aesthetics (deferred per Fru, recorded)
 
-- [ ] U1. Connectors page layout. (p3)
-- [ ] U2. Gateway page formatting + brand logos/colors. (p6)
+- [x] U1. Connectors page layout. (p3)
+- [x] U2. Gateway page formatting + brand logos/colors. (p6)
 - [x] U3. Defaults page as lists (not big buttons), keep icons. (p13)
 - [x] U4. Per-domain Preferences as lists (not big icons). (p23)
-- [ ] U5. Bottom composer toolbar too cluttered, wraps to 2 rows on small
+- [x] U5. Bottom composer toolbar too cluttered, wraps to 2 rows on small
   screens — redesign, keep all functionality. (p21-22)
 - [x] U6. Threads collapse icon too tiny to see. (p16)
 - [x] U7. Sidebar collapse icon next to the PREVAIL logo looks like part of the
