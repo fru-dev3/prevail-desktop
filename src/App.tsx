@@ -409,6 +409,13 @@ import {
   PanelRightOpen,
   Pencil,
   Target,
+  ShieldOff,
+  CloudOff,
+  Wifi,
+  WifiOff,
+  Globe,
+  Search,
+  Server,
   TrendingUp,
   Users,
   Wallet,
@@ -6323,7 +6330,7 @@ function ChatPanel({
     if (isBunkerOn() && !isLocalCli(chatCli)) {
       const local = preferredLocalCli(clis);
       if (!local) {
-        setMessages((m) => [...m, { role: "user", content: input.trim(), ts: Date.now() }, { role: "assistant", content: "Bunker Mode is on, so replies stay on this device — but no local model provider (Ollama) was detected. Install or start Ollama, or leave Bunker Mode in Settings → Privacy & Connectivity.", ts: Date.now() }]);
+        setMessages((m) => [...m, { role: "user", content: input.trim(), ts: Date.now() }, { role: "assistant", content: "Bunker Mode is on, so replies stay on this device, but no local model provider (Ollama) was detected. Install or start Ollama, or leave Bunker Mode in Settings → Privacy.", ts: Date.now() }]);
         setInput("");
         return;
       }
@@ -9962,7 +9969,7 @@ function SettingsPanel({
       { id: "skills", label: "Skills", icon: Sparkles },
     ]},
     { heading: "Privacy & Safety", items: [
-      { id: "privacy", label: "Privacy & Connectivity", icon: ShieldCheck },
+      { id: "privacy", label: "Privacy", icon: ShieldCheck },
       { id: "safety", label: "Safety", icon: Shield },
     ]},
     { heading: "Connect", items: [
@@ -10484,74 +10491,153 @@ function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; o
     void setBunker(true);
   }
 
-  const blocked = (active: boolean) =>
-    active ? (
-      <Check className="h-4 w-4 shrink-0 text-emerald-600" />
-    ) : (
-      <X className="h-4 w-4 shrink-0 text-amber-600" />
-    );
+  // What's blocked vs open right now, as visual tiles. "good" = the
+  // privacy-protective state (blocked / available). Each maps an icon to its
+  // on/off variant so the page reads at a glance.
+  const tiles = [
+    {
+      good: !!status?.network_blocked,
+      Icon: status?.network_blocked ? WifiOff : Wifi,
+      label: "Network",
+      state: status?.network_blocked ? "Blocked" : "Allowed",
+    },
+    {
+      good: !!status?.web_blocked,
+      Icon: status?.web_blocked ? Search : Globe,
+      label: "Web search",
+      state: status?.web_blocked ? "Blocked" : "Allowed",
+    },
+    {
+      good: !!status?.cloud_blocked,
+      Icon: status?.cloud_blocked ? CloudOff : Cloud,
+      label: "Cloud AI",
+      state: status?.cloud_blocked ? "Blocked" : "Allowed",
+    },
+    {
+      good: !!status?.local_available,
+      Icon: Cpu,
+      label: "Local models",
+      state: status?.local_available ? "Available" : "Not detected",
+    },
+  ];
 
   return (
     <>
       <SettingsHeader
-        title="Privacy & Connectivity"
-        subtitle="Bunker Mode is a trust guarantee, not a preference: while it is on, nothing leaves this device — local models only, no network, no cloud AI, no web search."
+        title="Privacy"
+        subtitle="Bunker Mode is a trust guarantee, not a preference. While it's on, everything stays on this device: local models only, no network, no cloud AI, no web search."
       />
 
-      {/* Master toggle */}
-      <div className="rounded-lg border border-border-subtle bg-surface p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 font-medium">
-              {enabled ? <ShieldCheck className="h-4 w-4 text-emerald-600" /> : <Cloud className="h-4 w-4 text-amber-600" />}
-              Bunker Mode
-              <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${enabled ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/15 text-amber-700 dark:text-amber-300"}`}>
+      {/* Hero — the master control, color-coded to the live state. */}
+      <div className={`rounded-2xl border p-5 transition-colors ${
+        enabled
+          ? "border-emerald-300/70 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30"
+          : "border-amber-300/70 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/30"
+      }`}>
+        <div className="flex items-center gap-4">
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${enabled ? "bg-emerald-500/15" : "bg-amber-500/15"}`}>
+            {enabled ? <ShieldCheck className="h-6 w-6 text-emerald-600" /> : <ShieldOff className="h-6 w-6 text-amber-600" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="font-display text-lg font-semibold">Bunker Mode</span>
+              <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${enabled ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/20 text-amber-700 dark:text-amber-300"}`}>
                 {enabled ? "On" : "Off"}
               </span>
             </div>
-            <p className="mt-1 max-w-xl text-sm text-text-secondary">
-              Data stays on this device. Network access, cloud AI providers, and web search are disabled.
+            <p className="mt-1 text-sm text-text-secondary">
+              {enabled
+                ? "Everything stays on this device. Nothing leaves your machine."
+                : "Cloud AI, web search, and network access are available and may transmit data."}
             </p>
           </div>
           <Toggle on={enabled} disabled={busy} onChange={onToggle} label="Bunker Mode" />
         </div>
       </div>
 
-      {/* Status verification card — reflects actual runtime enforcement state */}
-      <div className="mt-4 rounded-lg border border-border-subtle bg-surface p-4">
-        <div className="mb-3 font-mono text-[11px] uppercase tracking-wider text-text-muted">Bunker Mode Status</div>
-        <ul className="space-y-2 text-sm">
-          <li className="flex items-center gap-2">{blocked(!!status?.network_blocked)}<span>{status?.network_blocked ? "Network blocked" : "Network allowed"}</span></li>
-          <li className="flex items-center gap-2">{blocked(!!status?.web_blocked)}<span>{status?.web_blocked ? "Web search blocked" : "Web search allowed"}</span></li>
-          <li className="flex items-center gap-2">{blocked(!!status?.cloud_blocked)}<span>{status?.cloud_blocked ? "Cloud models blocked" : "Cloud models allowed"}</span></li>
-          <li className="flex items-center gap-2">
-            {status?.local_available ? <Check className="h-4 w-4 shrink-0 text-emerald-600" /> : <X className="h-4 w-4 shrink-0 text-text-muted" />}
-            <span>Local model provider {status?.local_available ? "available" : "not detected (install Ollama)"}</span>
-          </li>
-        </ul>
-        <div className={`mt-3 text-xs ${enabled ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}>
-          {enabled
-            ? "Verified — your data remains on this device. No requests leave your machine while Bunker Mode is active."
-            : "Cloud Connected — cloud models, web search, and external services are available and may transmit data."}
+      {/* Live status — visual tiles for what's blocked vs open. */}
+      <div className="mt-5">
+        <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Live status</div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {tiles.map((t) => (
+            <div
+              key={t.label}
+              className={`rounded-xl border p-4 transition-colors ${
+                t.good
+                  ? "border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/60 dark:bg-emerald-950/20"
+                  : "border-amber-200 bg-amber-50/50 dark:border-amber-900/60 dark:bg-amber-950/20"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <t.Icon className={`h-5 w-5 ${t.good ? "text-emerald-600" : "text-amber-600"}`} />
+                {t.good
+                  ? <Check className="h-3.5 w-3.5 text-emerald-600" />
+                  : <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />}
+              </div>
+              <div className="mt-2.5 text-sm font-semibold text-text-primary">{t.label}</div>
+              <div className={`mt-0.5 font-mono text-[11px] uppercase tracking-wider ${t.good ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}>
+                {t.state}
+              </div>
+            </div>
+          ))}
         </div>
+
+        {/* Verdict strip */}
+        <div className={`mt-3 flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm ${
+          enabled
+            ? "border-emerald-200 bg-emerald-50/60 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
+            : "border-amber-200 bg-amber-50/60 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
+        }`}>
+          {enabled ? <ShieldCheck className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+          <span>
+            {enabled
+              ? "Verified. No requests leave your machine while Bunker Mode is active."
+              : "Cloud connected. Cloud models, web search, and external services can transmit data."}
+          </span>
+        </div>
+        {!status?.local_available && enabled && (
+          <a href="https://ollama.com/download" target="_blank" rel="noreferrer"
+            className="mt-2 inline-flex items-center gap-1.5 text-xs text-accent hover:underline">
+            <Cpu className="h-3.5 w-3.5" /> No local model detected. Install Ollama to run on-device.
+          </a>
+        )}
       </div>
 
       {/* Leave-Bunker-Mode confirmation */}
       {confirmOff && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmOff(false)}>
-          <div className="w-full max-w-md rounded-xl border border-border bg-background p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold">Leave Bunker Mode?</h3>
-            <p className="mt-2 text-sm text-text-secondary">Disabling Bunker Mode allows:</p>
-            <ul className="mt-2 space-y-1 text-sm text-text-secondary">
-              <li>• Cloud AI providers</li>
-              <li>• Internet access</li>
-              <li>• Web search</li>
-              <li>• External services</li>
-            </ul>
-            <p className="mt-3 text-sm text-text-secondary">Your data may be transmitted to third-party services depending on which features you use.</p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setConfirmOff(false)} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-surface-strong">Cancel</button>
-              <button onClick={() => void setBunker(false)} disabled={busy} className="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50">Leave Bunker Mode</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={() => setConfirmOff(false)}>
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 border-b border-border-subtle bg-amber-50/70 px-5 py-4 dark:bg-amber-950/30">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15">
+                <ShieldOff className="h-5 w-5 text-amber-600" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-display text-lg font-semibold">Leave Bunker Mode?</h3>
+                <p className="text-xs text-text-muted">This opens your machine to the network.</p>
+              </div>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-sm text-text-secondary">Turning this off enables:</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {([
+                  [Cloud, "Cloud AI providers"],
+                  [Globe, "Internet access"],
+                  [Search, "Web search"],
+                  [Server, "External services"],
+                ] as const).map(([Icon, label]) => (
+                  <div key={label} className="flex items-center gap-2.5 rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm text-text-secondary">
+                    <Icon className="h-4 w-4 shrink-0 text-amber-600" />
+                    {label}
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-text-muted">Your data may be transmitted to third-party services depending on which features you use.</p>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-border-subtle bg-surface-warm/40 px-5 py-3">
+              <button onClick={() => setConfirmOff(false)} className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-strong">Cancel</button>
+              <button onClick={() => void setBunker(false)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50">
+                <ShieldOff className="h-4 w-4" /> Leave Bunker Mode
+              </button>
             </div>
           </div>
         </div>
