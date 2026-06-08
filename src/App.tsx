@@ -2110,10 +2110,11 @@ export default function App() {
 
   return (
     <div className="relative flex h-screen flex-col bg-background text-text-primary">
-      {/* Full-width title bar — the macOS traffic lights live in the top-left
-          here, in a consistent strip that spans the whole window, so they never
-          overflow a collapsed sidebar rail. Draggable. */}
-      <div data-tauri-drag-region className="h-9 shrink-0" />
+      {/* Full-width title bar. The macOS traffic lights overlay this strip
+          (the title bar itself is transparent), so it's always a consistent
+          app-themed bar across the whole window, never a bare OS-chrome strip
+          and never overflowing a collapsed sidebar rail. Draggable. */}
+      <div data-tauri-drag-region className="h-9 shrink-0 bg-background" />
       {bunkerEnabled && !bunkerLocalOk && (
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-600/30 bg-amber-500/10 px-4 py-1.5 text-xs text-amber-800 dark:text-amber-300">
           <ShieldCheck className="h-3.5 w-3.5" />
