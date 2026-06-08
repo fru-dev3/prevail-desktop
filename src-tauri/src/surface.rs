@@ -31,12 +31,18 @@ fn now_ms() -> i64 {
 // Build the proactive prompt from a domain's vault context.
 fn build_prompt(domain: &str, context: &str) -> String {
     format!(
-        "You are a proactive life-OS assistant for the user's \"{domain}\" domain. \
-Based ONLY on the context below, surface what the user should notice and do next. \
-Return STRICT JSON, no prose, no code fence: \
-{{\"questions\": [3-5 short, specific questions worth asking or clarifying], \
-\"actions\": [3-5 concrete next steps or goals for this domain]}}. \
-Keep each item under ~100 chars. If context is thin, infer sensible starters for the domain.\n\n--- CONTEXT ---\n{context}"
+        "You are an expert {domain} coach reviewing this person's \"{domain}\" space. \
+Talk like a sharp, practical human advisor — never like a system reporting file \
+status. Based ONLY on the context below, return STRICT JSON (no prose, no code \
+fence): {{\"questions\": [3-5 sharp, specific questions worth resolving that \
+reference their actual situation], \"actions\": [3-5 concrete, high-leverage next \
+steps]}}.\n\
+RULES for actions: each must be specific and doable — name the exact document to \
+add, the data to gather, the decision to make, or the task to schedule. If \
+something important is MISSING, turn it into a concrete fetch/add step (e.g. \
+\"Add your latest bank statement to set a net-worth baseline\" — NOT \"add more \
+data\" or \"knowledge files are thin\"). Build on decisions already made; never \
+re-ask a settled question. Keep each item under ~110 chars.\n\n--- CONTEXT ---\n{context}"
     )
 }
 
@@ -56,6 +62,31 @@ fn gather_context(dir: &Path) -> String {
     read_head(dir.join("_memory.md"), "Long-term memory", 2000, &mut out);
     read_head(dir.join("state.md"), "State", 1500, &mut out);
     read_head(dir.join("_state.md"), "State", 1500, &mut out);
+    read_head(dir.join("goals.md"), "Goals", 1000, &mut out);
+    // Decisions already made — so the coach builds on them instead of re-asking
+    // settled questions (council verdicts + chat/distill-extracted decisions).
+    if let Ok(raw) = std::fs::read_to_string(dir.join("_decisions.jsonl")) {
+        let decs: Vec<String> = raw
+            .lines()
+            .rev()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .filter_map(|v| {
+                v.get("decision")
+                    .or_else(|| v.get("verdict"))
+                    .and_then(|d| d.as_str())
+                    .map(|s| s.trim().chars().take(160).collect::<String>())
+            })
+            .filter(|s| !s.is_empty())
+            .take(6)
+            .collect();
+        if !decs.is_empty() {
+            out.push_str("## Decisions already made\n");
+            for d in decs.iter().rev() {
+                out.push_str(&format!("- {d}\n"));
+            }
+            out.push('\n');
+        }
+    }
     // Last few intent messages from the ledger.
     if let Ok(raw) = std::fs::read_to_string(dir.join("_intents.jsonl")) {
         let msgs: Vec<String> = raw
