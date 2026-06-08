@@ -1,0 +1,14 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Prevail">
+  <!-- Flat dark tile -->
+  <rect x="0" y="0" width="512" height="512" rx="116" fill="#141416"/>
+
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Lead ascending chevron — solid brand gold -->
+    <path d="M116 312 L256 176 L396 312" stroke="#C4A35A" stroke-width="56"/>
+    <!-- Echo chevron beneath — solid, darker gold -->
+    <path d="M156 392 L256 296 L356 392" stroke="#6E5C32" stroke-width="34"/>
+  </g>
+
+  <!-- Guiding star above the apex — solid electric cyan -->
+  <circle cx="256" cy="132" r="22" fill="#3CD8FF"/>
+</svg>
