@@ -408,6 +408,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Pencil,
+  Target,
   TrendingUp,
   Users,
   Wallet,
@@ -9257,28 +9258,33 @@ function BenchmarkPanel({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Page header: sub-tabs */}
-      <div className="flex shrink-0 items-center gap-1 border-b border-border-subtle px-4 py-2.5">
-        {([
-          ["run", "Run", Sparkles],
-          ["results", "Results", TrendingUp],
-          ["questions", "Questions", FileText],
-        ] as const).map(([id, label, Icon]) => (
-          <button
-            key={id}
-            onClick={() => setView(id)}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
-              view === id ? "bg-accent-soft text-accent" : "text-text-secondary hover:bg-surface-warm"
-            }`}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
-          </button>
-        ))}
-        <div className="flex-1" />
+      {/* Sub-nav — a segmented control, deliberately a different shape from
+          the underline top tab bar so the two rows don't read as twins. */}
+      <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
+        <div className="inline-flex items-center gap-0.5 rounded-xl border border-border-subtle bg-surface-warm/60 p-1">
+          {([
+            ["run", "Run", Sparkles],
+            ["results", "Results", TrendingUp],
+            ["questions", "Questions", FileText],
+          ] as const).map(([id, label, Icon]) => (
+            <button
+              key={id}
+              onClick={() => setView(id)}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all ${
+                view === id
+                  ? "bg-surface text-accent shadow-sm ring-1 ring-black/5"
+                  : "text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
         {initialDomain && (
-          <span className="font-mono text-[11px] text-text-muted">
-            scoped to <span className="text-accent">{titleCase(initialDomain)}</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-3 py-1 font-mono text-[11px] text-text-muted">
+            <Target className="h-3 w-3 text-accent" />
+            scoped to <span className="font-semibold text-accent">{titleCase(initialDomain)}</span>
           </span>
         )}
       </div>
