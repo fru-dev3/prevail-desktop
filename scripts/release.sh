@@ -53,15 +53,23 @@ else
 fi
 
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
-  step "Build (sign + notarize + staple app; bundles self-contained engine sidecar)"
-  ( cd "$HERE" && npm run tauri build -- --bundles app dmg )
+  step "Build (Developer ID sign + bundle DMG; self-contained engine sidecar)"
+  # NOTE: tauri's INLINE notarization (during build) is unreliable — its
+  # status-poll intermittently hits Apple notary 401s and aborts with an empty
+  # error, even though the submission reaches Apple. So we deliberately DON'T
+  # give tauri the notary creds (APPLE_ID/APPLE_PASSWORD): it only signs +
+  # bundles the DMG here, and we notarize the DMG ourselves below with
+  # `notarytool submit --wait`, which polls resiliently. Stapling the DMG is
+  # sufficient for Gatekeeper (verified: the contained app reports
+  # "source=Notarized Developer ID").
+  ( cd "$HERE" && env -u APPLE_ID -u APPLE_PASSWORD npm run tauri build -- --bundles app dmg )
 else
   step "Skipping build (SKIP_BUILD=1)"
 fi
 [ -f "$DMG" ] || die "DMG not found at $DMG"
 
 step "Notarize + staple the DMG"
-xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --timeout 20m
 xcrun stapler staple "$DMG"
 xcrun stapler validate "$DMG"
 
