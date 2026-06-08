@@ -1,17 +1,13 @@
 import { motion, MotionConfig } from "framer-motion";
 
 /**
- * PrevailLogo — the animated 3D Prevail mark.
+ * PrevailLogo — the animated Prevail mark (ascending chevrons + guiding star).
  *
- * Choreographed loop (~28s): spin CW → settle TILTED → gold dot winks →
- * rotate to HORIZONTAL → cyan dot winks → spin CW → settle HORIZONTAL →
- * BOTH dots blink → 3D axis swivel → repeat.
- *
- * The eyelids live in SCREEN space (not children of the rotating mark) so a
- * blink always closes top→down like a real eyelid regardless of orientation.
- * Dot positions/size were measured from the logo pixels:
- *   tilted (home):  gold 55.5%/39%   cyan 43.7%/59%   (r≈7%)
- *   horizontal:     gold 62.3%/49.3% cyan 39.1%/49%   (mark rotated +60°)
+ * The mark is original artwork (public/logo.svg → logo.png): two chevrons
+ * climbing toward a cyan star, in the brand gold→cyan gradient. The motion
+ * suits that shape — a slow "rise": a gentle vertical float, a soft 3D tilt,
+ * and a breathing glow pulse. (No spin / no winking dots — those belonged to
+ * the old circular mark and were retired with it.)
  *
  * Drop-in usage:
  *   <PrevailLogo size={84} />              // animated, defaults to /logo.png
@@ -46,46 +42,15 @@ export function PrevailLogo({
 
   if (!animated) return img;
 
-  const T = 28; // full sequence seconds
-  const EYE = size * 0.16; // ~dot diameter (14%) + a hair of margin
-
-  const Lid = ({
-    left,
-    top,
-    times,
-    scaleY,
-  }: {
-    left: string;
-    top: string;
-    times: number[];
-    scaleY: number[];
-  }) => (
-    <motion.span
-      aria-hidden
-      style={{
-        position: "absolute",
-        left,
-        top,
-        width: EYE,
-        height: EYE,
-        marginLeft: -EYE / 2,
-        marginTop: -EYE / 2,
-        borderRadius: "9999px",
-        background: "#141416", // matches the logo's dark face around the dots
-        transformOrigin: "center top",
-        zIndex: 10,
-      }}
-      animate={{ scaleY }}
-      transition={{ duration: T, ease: "easeInOut", times, repeat: Infinity }}
-    />
-  );
+  const T = 6; // gentle loop seconds
+  const float = Math.max(2, size * 0.045); // vertical travel scales with size
 
   const content = (
     <span
       style={{
         position: "relative",
         display: "inline-block",
-        perspective: size * 5,
+        perspective: size * 6,
         width: size,
         height: size,
       }}
@@ -95,35 +60,23 @@ export function PrevailLogo({
           position: "relative",
           display: "inline-block",
           transformStyle: "preserve-3d",
-          filter: "drop-shadow(0 2px 8px rgba(196,163,90,0.55))",
+          willChange: "transform, filter",
         }}
         animate={{
-          rotateZ: [0, 360, 360, 420, 420, 780, 780, 720, 720, 720],
-          rotateY: [0, 0, 0, 0, 0, 0, 0, 0, 45, 0],
-          rotateX: [6, 0, 0, 0, 0, 0, 0, 0, 8, 6],
+          y: [0, -float, 0],
+          rotateX: [7, 2, 7],
+          rotateY: [-5, 5, -5],
+          filter: [
+            "drop-shadow(0 2px 6px rgba(196,163,90,0.35))",
+            "drop-shadow(0 8px 18px rgba(60,216,255,0.45))",
+            "drop-shadow(0 2px 6px rgba(196,163,90,0.35))",
+          ],
         }}
-        transition={{
-          duration: T,
-          ease: "easeInOut",
-          times: [0, 0.15, 0.22, 0.33, 0.42, 0.55, 0.64, 0.72, 0.86, 1],
-          repeat: Infinity,
-        }}
-        whileHover={{ scale: 1.12 }}
+        transition={{ duration: T, ease: "easeInOut", repeat: Infinity }}
+        whileHover={{ scale: 1.1 }}
       >
         {img}
       </motion.span>
-
-      {/* GOLD @ tilted home — single wink (~0.20) */}
-      <Lid left="55.5%" top="39%" times={[0, 0.18, 0.2, 0.22, 1]} scaleY={[0, 0, 1, 0, 0]} />
-      {/* CYAN @ horizontal — single wink (~0.40) + both-blink (~0.62) */}
-      <Lid
-        left="39.1%"
-        top="49%"
-        times={[0, 0.38, 0.4, 0.42, 0.6, 0.62, 0.64, 1]}
-        scaleY={[0, 0, 1, 0, 0, 1, 0, 0]}
-      />
-      {/* GOLD @ horizontal — both-blink (~0.62) */}
-      <Lid left="62.3%" top="49.3%" times={[0, 0.6, 0.62, 0.64, 1]} scaleY={[0, 0, 1, 0, 0]} />
     </span>
   );
 
