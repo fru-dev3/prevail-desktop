@@ -2370,7 +2370,7 @@ function Sidebar({
       return next;
     });
   };
-  const [railFilter, setRailFilter] = useState("");
+  const railFilter = ""; // domain filter input removed from the sidebar
   // App-wide aggregate score (mean of every domain's context score) — the
   // single "how ready is my whole life-OS" number, pinned bottom-left.
   const [lifeScore, setLifeScore] = useState<{ value: number; count: number } | null>(null);
@@ -2510,26 +2510,6 @@ function Sidebar({
             {!collapsed && "General"}
           </button>
         </div>
-        {!collapsed && domains.length >= 4 && (
-          <div className="px-2 pt-2">
-            <div className="relative">
-              <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-text-muted">⌕</span>
-              <input
-                value={railFilter}
-                onChange={(e) => setRailFilter(e.target.value)}
-                placeholder="filter domains…"
-                className="w-full rounded-md border border-border-subtle bg-background py-1 pl-6 pr-6 font-mono text-[11px] text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
-              />
-              {railFilter && (
-                <button
-                  onClick={() => setRailFilter("")}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 text-[12px] text-text-muted hover:text-warn"
-                  title="Clear filter"
-                >×</button>
-              )}
-            </div>
-          </div>
-        )}
         {!collapsed && (
           <div className="mb-1 px-3 pt-3 text-[10px] font-medium uppercase tracking-[0.18em] text-text-muted">
             Domains
