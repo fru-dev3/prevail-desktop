@@ -1541,6 +1541,36 @@ fn bootstrap_vault() -> Option<String> {
     Some(s.to_string())
 }
 
+fn ui_settings_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    Some(Path::new(&home).join("Library/Application Support/sh.prevail.desktop/ui-settings.json"))
+}
+
+/// Cross-device UI settings (theme, palette, …) persisted on the desktop as a
+/// JSON blob so the WebUI inherits the same look-and-feel instead of starting
+/// from a blank browser localStorage. Returns "{}" when nothing is saved yet.
+#[tauri::command]
+fn ui_settings_get() -> String {
+    ui_settings_path()
+        .and_then(|p| fs::read_to_string(&p).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "{}".to_string())
+}
+
+/// Persist cross-device UI settings. The frontend owns the schema; we only
+/// validate that it's well-formed JSON so we never write garbage to disk.
+#[tauri::command]
+fn ui_settings_set(json: String) -> Result<(), String> {
+    serde_json::from_str::<serde_json::Value>(&json)
+        .map_err(|e| format!("invalid ui settings json: {e}"))?;
+    let p = ui_settings_path().ok_or("no HOME directory")?;
+    if let Some(dir) = p.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    fs::write(&p, json).map_err(|e| e.to_string())
+}
+
 // Create a new domain folder under the vault root. Writes a minimal
 // state.md skeleton so scan_vault picks it up immediately.
 #[tauri::command]
@@ -3150,6 +3180,8 @@ pub fn run() {
             import_sample_vault,
             remember_vault,
             bootstrap_vault,
+            ui_settings_get,
+            ui_settings_set,
             chat_send,
             benchmark_runs,
             benchmark_run_detail,
