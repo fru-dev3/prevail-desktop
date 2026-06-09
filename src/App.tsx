@@ -958,7 +958,7 @@ type TabId = "chat" | "council" | "benchmark" | "settings";
 // top bar can own the Insights / Preferences toggles (and the domain header
 // shrinks to just the title). "chat" = the conversation; the rest are domain
 // sub-views rendered in place of the transcript.
-type DomainTab = "chat" | "context" | "insights" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs";
+type DomainTab = "chat" | "context" | "insights" | "usage" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs";
 const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
   { id: "chat", label: "Chat", icon: MessageSquare },
   { id: "council", label: "Council", icon: Scale },
@@ -2279,6 +2279,17 @@ export default function App() {
                 }`}
               >
                 <Lightbulb className="h-4 w-4" /> Insights
+              </button>
+              <button
+                onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "usage" ? "chat" : "usage"); }}
+                title={selectedDomain ? "Usage — queries, tokens, and cost for this domain" : "Usage — queries, tokens, and cost across everything"}
+                className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                  tab === "chat" && domainTab === "usage"
+                    ? "bg-accent-soft text-accent"
+                    : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                }`}
+              >
+                <Activity className="h-4 w-4" /> Usage
               </button>
               <button
                 onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "prefs" ? "chat" : "prefs"); }}
@@ -5581,22 +5592,50 @@ function UsageBreakdown({
   );
 }
 
-function UsageDashboard({ vault, nonce }: { vault: string; nonce?: number }) {
+// Fetches the engine-backed usage roll-up (whole-vault, or scoped to one domain
+// when `domain` is set) and renders it. On the no-domain landing we pass
+// hideWhenEmpty so a fresh vault stays clean; in the Usage tab we show a
+// friendly empty state instead.
+function UsageDashboard({
+  vault,
+  domain,
+  nonce,
+  hideWhenEmpty,
+}: {
+  vault: string;
+  domain?: string | null;
+  nonce?: number;
+  hideWhenEmpty?: boolean;
+}) {
   const [summary, setSummary] = useState<UsageSummary | null>(null);
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     let alive = true;
+    setLoaded(false);
     (async () => {
       try {
-        const s = await invoke<UsageSummary>("usage_summary", { vault });
+        const s = domain
+          ? await invoke<UsageSummary>("usage_summary_domain", { vault, domain })
+          : await invoke<UsageSummary>("usage_summary", { vault });
         if (alive) setSummary(s);
       } catch (e) {
         console.error("usage_summary failed", e);
+      } finally {
+        if (alive) setLoaded(true);
       }
     })();
     return () => { alive = false; };
-  }, [vault, nonce]);
+  }, [vault, domain, nonce]);
 
-  if (!summary || summary.total_turns === 0) return null;
+  if (!summary || summary.total_turns === 0) {
+    if (hideWhenEmpty || !loaded) return null;
+    return (
+      <div className="rounded-xl border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+        No usage recorded {domain ? `for ${titleCase(domain)} ` : ""}yet. Token and cost
+        stats appear here once you start chatting.
+      </div>
+    );
+  }
 
   const stats: { label: string; value: string; icon: LucideIcon }[] = [
     { label: "Turns", value: summary.total_turns.toLocaleString(), icon: MessagesSquare },
@@ -6980,7 +7019,7 @@ function ChatPanel({
               </div>
             )}
 
-            <UsageDashboard vault={vaultPath} nonce={chatViewNonce} />
+            <UsageDashboard vault={vaultPath} nonce={chatViewNonce} hideWhenEmpty />
           </div>
         )}
         {domain && domainTab === "chat" && messages.length === 0 && (
@@ -7025,7 +7064,10 @@ function ChatPanel({
                 onSeed={(t) => { setInput(t); setDomainTab("chat"); }}
               />
             )}
-            {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && domainTab !== "insights" && <div className="text-sm text-text-muted">loading…</div>}
+            {domainTab === "usage" && (
+              <UsageDashboard vault={vaultPath} domain={domain ?? null} nonce={chatViewNonce} />
+            )}
+            {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && domainTab !== "insights" && domainTab !== "usage" && <div className="text-sm text-text-muted">loading…</div>}
             {domainCtx && domainTab === "state" && (domainCtx.state ? <Markdown source={domainCtx.state} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">state.md</code> in this domain.</div>)}
             {domainCtx && domainTab === "decisions" && (domainCtx.decisions ? <Markdown source={domainCtx.decisions} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">decisions.md</code> yet.</div>)}
             {domainCtx && domainTab === "journal" && (domainCtx.journal ? <Markdown source={domainCtx.journal} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no journal entries yet.</div>)}
