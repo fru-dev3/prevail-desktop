@@ -576,6 +576,16 @@ pub fn engine_domains(vault: String) -> Result<serde_json::Value, String> {
     run_engine_json(&["--vault", &vault, "domains"])
 }
 
+/// `prevail --vault <vault> vault embed --from <vault> --json`
+/// Non-destructively copy the active vault into the app-owned location
+/// (~/.prevail/vault) and repoint config there. Returns the engine's
+/// MigrateResult { dest, alreadyEmbedded, copied, sourceFiles, ok }. The source
+/// is left intact; the desktop repoints its own vaultPath to `dest` on success.
+#[tauri::command]
+pub fn engine_vault_embed(vault: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["--vault", &vault, "vault", "embed", "--from", &vault])
+}
+
 /// `prevail --vault <vault> score <domain> [--audit] --json`
 /// Returns a fully typed ContextScore.
 #[tauri::command]
