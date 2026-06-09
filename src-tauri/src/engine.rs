@@ -29,12 +29,22 @@ use tauri::Emitter;
 // vault. Lives only in the desktop process memory, never on disk, never sent to
 // the JS layer. None = vault is plaintext / locked.
 static VAULT_KEY: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+// The encrypted vault's root path — injected as PREVAIL_VAULT_ROOT so the engine
+// only encrypts/decrypts files UNDER the vault (never an external path a skill
+// might write to).
+static VAULT_ROOT: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 pub fn set_vault_key(k: Option<String>) {
     *VAULT_KEY.lock().unwrap_or_else(|e| e.into_inner()) = k;
 }
 fn vault_key() -> Option<String> {
     VAULT_KEY.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+pub fn set_vault_root(r: Option<String>) {
+    *VAULT_ROOT.lock().unwrap_or_else(|e| e.into_inner()) = r;
+}
+fn vault_root() -> Option<String> {
+    VAULT_ROOT.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 // Binary resolution — mirror lib.rs resolve_prevail_bin() /
@@ -103,6 +113,9 @@ pub fn run_engine_json(args: &[&str]) -> Result<serde_json::Value, String> {
     if let Some(k) = vault_key() {
         cmd.env("PREVAIL_VAULT_KEY", k);
     }
+    if let Some(r) = vault_root() {
+        cmd.env("PREVAIL_VAULT_ROOT", r);
+    }
     let out = cmd.output().map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
     if !out.status.success() {
@@ -150,6 +163,9 @@ pub fn run_engine_json_stdin(
         .stderr(Stdio::piped());
     if let Some(k) = vault_key() {
         cmd.env("PREVAIL_VAULT_KEY", k);
+    }
+    if let Some(r) = vault_root() {
+        cmd.env("PREVAIL_VAULT_ROOT", r);
     }
     let mut child = cmd.spawn().map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
@@ -224,6 +240,9 @@ pub async fn run_engine_stream(
         .stderr(std::process::Stdio::piped());
     if let Some(k) = vault_key() {
         scmd.env("PREVAIL_VAULT_KEY", k);
+    }
+    if let Some(r) = vault_root() {
+        scmd.env("PREVAIL_VAULT_ROOT", r);
     }
     let mut child = scmd.spawn().map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
@@ -347,6 +366,9 @@ pub async fn run_engine_stream_stdin(
     }
     if let Some(k) = vault_key() {
         cmd.env("PREVAIL_VAULT_KEY", k);
+    }
+    if let Some(r) = vault_root() {
+        cmd.env("PREVAIL_VAULT_ROOT", r);
     }
     let mut child = cmd
         .spawn()
@@ -639,6 +661,7 @@ pub fn engine_vault_unlock(vault: String, passcode: String) -> Result<serde_json
     if r.get("ok").and_then(|v| v.as_bool()) == Some(true) {
         if let Some(k) = r.get("key").and_then(|v| v.as_str()) {
             set_vault_key(Some(k.to_string()));
+            set_vault_root(Some(vault.clone()));
         }
         return Ok(serde_json::json!({ "ok": true }));
     }
@@ -649,6 +672,7 @@ pub fn engine_vault_unlock(vault: String, passcode: String) -> Result<serde_json
 #[tauri::command]
 pub fn engine_vault_lock_session() -> Result<(), String> {
     set_vault_key(None);
+    set_vault_root(None);
     Ok(())
 }
 
@@ -666,6 +690,7 @@ pub fn engine_vault_decrypt(vault: String, passcode: String) -> Result<serde_jso
     let r = run_engine_json_stdin(&["--vault", &vault, "vault", "decrypt"], &passcode)?;
     if r.get("ok").and_then(|v| v.as_bool()) == Some(true) {
         set_vault_key(None);
+        set_vault_root(None);
     }
     Ok(r)
 }
