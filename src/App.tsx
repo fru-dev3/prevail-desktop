@@ -1336,13 +1336,34 @@ function useAppearance() {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
-  // Apply to <html>
+  // Cross-device hydrate: theme + palette are persisted on the desktop (see
+  // ui_settings_get), so the WebUI — and a re-installed desktop — inherit the
+  // same look instead of starting from an empty browser localStorage. Runs once
+  // and overrides the local defaults if the backend has a saved value.
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await invoke<string>("ui_settings_get");
+        const s = JSON.parse(raw || "{}") as { theme?: string; palette?: string };
+        if (s.theme === "light" || s.theme === "dark" || s.theme === "system") setMode(s.theme);
+        if (s.palette && PALETTES.some((p) => p.id === s.palette)) setPalette(s.palette as Palette);
+      } catch { /* offline / first run — keep localStorage values */ }
+      hydratedRef.current = true;
+    })();
+  }, []);
+  // Apply to <html>, cache locally, and write-through to the cross-device store.
   useEffect(() => {
     const effectiveDark = mode === "dark" || (mode === "system" && systemDark);
     document.documentElement.setAttribute("data-theme", effectiveDark ? "dark" : "light");
     document.documentElement.setAttribute("data-palette", palette);
     lsSet(LS.theme, mode);
     lsSet(LS.palette, palette);
+    // Only persist after the initial hydrate so we never clobber saved settings
+    // with the boot defaults before they've loaded.
+    if (hydratedRef.current) {
+      void invoke("ui_settings_set", { json: JSON.stringify({ theme: mode, palette }) }).catch(() => {});
+    }
   }, [mode, palette, systemDark]);
   return { mode, setMode, palette, setPalette };
 }
@@ -1644,8 +1665,12 @@ export default function App() {
   // WebUI login gate — in a browser tab the app must authenticate to the
   // bridge server before any invoke works. On the desktop this is always true.
   const [webAuthed, setWebAuthed] = useState(() => !isBrowser() || !!sessionStorage.getItem("prevail.web.token"));
+  // On the desktop, the chosen vault lives in localStorage. In the browser the
+  // vault physically lives on the desktop machine, so the browser's own
+  // localStorage path is meaningless — start empty and always inherit the
+  // desktop's authoritative vault from the backend (see the effect below).
   const [vaultPath, setVaultPath] = useState<string | null>(() =>
-    localStorage.getItem(LS.vault),
+    isBrowser() ? null : localStorage.getItem(LS.vault),
   );
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
@@ -1664,9 +1689,26 @@ export default function App() {
   useEffect(() => { domainsRef.current = domains; }, [domains]);
   // Heal stale/unsupported model picks (e.g. gpt-5-codex → gpt-5.5) once on launch.
   useEffect(() => { migrateModelPrefs(); }, []);
-  // If localStorage was wiped (e.g. webview cache clear) but we remembered a
-  // vault on disk, restore it so the user isn't bounced back to first-launch.
+  // Vault resolution.
+  // - Browser (WebUI): the desktop is the source of truth. Always pull the
+  //   desktop's current vault from the backend, and refresh on window focus so
+  //   a vault changed on the desktop propagates to the web view without a
+  //   reload (fixes the web view showing none of the desktop's domains).
+  // - Desktop: if localStorage was wiped (e.g. webview cache clear) but we
+  //   remembered a vault on disk, restore it so the user isn't bounced back to
+  //   first-launch.
   useEffect(() => {
+    if (isBrowser()) {
+      const pull = async () => {
+        try {
+          const bp = await invoke<string | null>("bootstrap_vault");
+          if (bp) setVaultPath((cur) => (cur === bp ? cur : bp));
+        } catch { /* ignore */ }
+      };
+      void pull();
+      window.addEventListener("focus", pull);
+      return () => window.removeEventListener("focus", pull);
+    }
     if (vaultPath) return;
     (async () => {
       try {
