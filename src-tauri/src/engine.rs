@@ -641,6 +641,27 @@ pub fn engine_lock_clear(passcode: String) -> Result<serde_json::Value, String> 
     run_engine_json_stdin(&["lock", "clear"], &passcode)
 }
 
+// ── Touch ID (biometric unlock for the app lock) ──
+// Prompts the OS biometric (Touch ID on macOS), falling back to the device
+// password. Returns whether the user authenticated. Used only as a convenience
+// gate for the Phase-0 app lock — it does NOT release any encryption key.
+#[tauri::command]
+pub fn engine_biometric_authenticate(reason: String) -> Result<bool, String> {
+    use robius_authentication::{AndroidText, BiometricStrength, Context, PolicyBuilder, Text, WindowsText};
+    let policy = PolicyBuilder::new()
+        .biometrics(Some(BiometricStrength::Strong))
+        .password(true)
+        .build()
+        .ok_or("could not build authentication policy")?;
+    let text = Text {
+        android: AndroidText { title: &reason, subtitle: None, description: None },
+        apple: &reason,
+        windows: WindowsText::new(&reason, &reason).ok_or("prompt text too long")?,
+    };
+    let context = Context::new(());
+    Ok(context.blocking_authenticate(text, &policy).is_ok())
+}
+
 // ── Vault encryption (F4 Phase 1) ──
 // Passcode is sent on the child's STDIN (never argv). Desktop-only; the unlocked
 // DEK is held in this process (set_vault_key) and injected into every engine

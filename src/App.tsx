@@ -1637,6 +1637,18 @@ function LockScreen({ vault, encrypted, onUnlock }: { vault: string | null; encr
   const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  // Touch ID is offered only for the plaintext app lock — it authenticates the
+  // user but doesn't release an encryption key, so an encrypted vault still
+  // needs the passcode to derive the DEK.
+  const touchIdOn = !encrypted && lsGet("prevail.pref.touchIdLock") === "1";
+  async function tryTouchId() {
+    setErr("");
+    try {
+      const ok = await invoke<boolean>("engine_biometric_authenticate", { reason: "unlock Prevail" });
+      if (ok) onUnlock();
+      else setErr("Touch ID didn't match.");
+    } catch (e) { setErr(`Touch ID unavailable: ${String(e)}`); }
+  }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -1678,6 +1690,15 @@ function LockScreen({ vault, encrypted, onUnlock }: { vault: string | null; encr
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           Unlock
         </button>
+        {touchIdOn && (
+          <button
+            type="button"
+            onClick={tryTouchId}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-warm"
+          >
+            <Shield className="h-4 w-4" /> Use Touch ID
+          </button>
+        )}
       </form>
     </div>
   );
@@ -11836,6 +11857,7 @@ function AppLockCard() {
       else setNote(r.error ?? "Wrong passcode.");
     } catch (e) { setNote(`Failed: ${String(e)}`); } finally { setBusy(false); }
   }
+  const [touchId, setTouchId] = useState(() => getPref("prevail.pref.touchIdLock", "0") === "1");
   if (lockSet === null) return null;
   return (
     <div className="mb-4 rounded-lg border border-border bg-surface p-5">
@@ -11863,6 +11885,16 @@ function AppLockCard() {
           </button>
         )}
       </div>
+      {lockSet && (
+        <label className="mt-3 flex items-center gap-2 text-xs text-text-secondary">
+          <input
+            type="checkbox"
+            checked={touchId}
+            onChange={(e) => { setTouchId(e.target.checked); setPref("prevail.pref.touchIdLock", e.target.checked ? "1" : "0"); }}
+          />
+          Offer Touch ID on the lock screen (passcode still works). Verify it once on this Mac.
+        </label>
+      )}
       {note && <div className="mt-2 text-xs text-text-secondary">{note}</div>}
     </div>
   );
