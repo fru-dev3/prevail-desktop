@@ -14,8 +14,23 @@
 > | 3 | Demo/Prod + packages | **Done** (mode flag, 6 packs, import UI, banner, switch, auto-demo, seeded usage + threads) | engine (8 pack tests), tsc, build | content is extensible; tone worth a review |
 > | 4 | Login + encryption | **Phase 0 done** + **Phase 1 mostly done** | engine (6 lock + 12 crypto + 5 ops + 6 session + 3 integration), tsc, build | only the live/runtime activation layer remains |
 >
-> **Engine: 271 tests pass (3 skip). Desktop: 39 Rust tests pass. Both typecheck + build clean.**
-> **(2026-06-09 update)** Fixed the recurring blank-screen for good — cargo was
+> **Engine: 276 tests pass (3 skip). Desktop: 39 Rust tests pass. Both typecheck + build clean.**
+>
+> **(2026-06-09, F3 polish from live testing)** Demo/Production reworked from
+> direct feedback: it's now its **own top-level Settings section** (sibling of
+> Vault), with a **prominent full-width "Demo Mode" ribbon** pinned to the very
+> bottom of the app (gone in production) carrying a "Switch to Production"
+> deep-link. The config page is **visual** (a Demo→Production stage diagram +
+> a horizontal 3-step flow with arrow visuals). "Switch to production" is the
+> **real** flow: pick your production vault folder → set it up (clear the demo
+> sandbox, marker-guarded so a real vault is never wiped) → domain onboarding.
+> Added a **"General" starter pack** (Money/Taxes/Health/Insurance/Travel/
+> Calendar), listed first; every pack domain imports a full template
+> (soul/goals/config/PROMPTS) so it's **chat-ready**, and a domain's starter
+> prompts now surface as **one-click "Start a conversation" chips**
+> (`read_domain_prompts`). +6 engine tests since the last line (271→276).
+>
+> **(2026-06-09 earlier)** Fixed the recurring blank-screen for good — cargo was
 > re-copying a stale 1.7.0 engine into `target/debug/prevail` from the bundled
 > sidecar; replaced the bundled sidecar with the current signed engine so dev
 > rebuilds stay self-consistent. Fixed a flaky desktop test (bunker CACHE race
