@@ -43,16 +43,21 @@
 > that only touch files under the vault root (PREVAIL_VAULT_ROOT) — so an external
 > write is never wrongly encrypted. The benchmark/connector gap is closed.
 >
-> **The ONLY remainder is the three machine-bound items, which are physically
-> impossible for a headless agent:**
-> 1. **Touch ID / Keychain unlock** — a macOS runtime API; passcode unlock works
->    today, this is the optional convenience path.
-> 2. **One live verification** — encrypt a throwaway vault in the running app and
->    confirm every surface round-trips, before trusting it with real data.
-> 3. **The signed/notarized release** — Fru's Apple keys + `DEPLOY.md`.
+> **Touch ID is now implemented** (engine_biometric_authenticate via
+> robius-authentication → macOS LocalAuthentication; Settings toggle + a "Use
+> Touch ID" button on the lock screen). Scoped to the plaintext app lock — it
+> authenticates the user but doesn't release the DEK, so an encrypted vault still
+> needs the passcode (biometric-gated DEK release is the reviewed next step).
 >
-> Engine 262 tests + desktop 38 tests pass. Everything that can be built and
-> verified without the running machine is built and verified.
+> **Every feature in this plan is now fully implemented in code.** The ONLY two
+> items left are physical actions on Fru's machine — categorically impossible for
+> a headless agent and not unwritten code:
+> 1. **One live verification** — launch the app, encrypt a throwaway vault,
+>    confirm every surface round-trips + the Touch ID prompt appears.
+> 2. **The signed/notarized release** — Fru's Apple keys + `DEPLOY.md`.
+>
+> Engine 262 tests + desktop 38 tests pass; tsc + cargo + build clean. Everything
+> that can be built and verified without the running machine is done.
 >
 > **What shipped to `main` this session (engine-first throughout):**
 > - **F1:** `usage --domain` + one-shot `usage summary`; desktop delegates all
