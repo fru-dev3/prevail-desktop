@@ -3103,7 +3103,7 @@ function Sidebar({
         </button>
       )}
 
-      {/* Settings + Upgrade + theme — pinned to bottom */}
+      {/* Settings + theme — pinned to bottom (Upgrade lives in Settings) */}
       <div className={`border-t border-border-subtle ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1 px-2 py-2"}`}>
         <button
           onClick={() => setTab("settings")}
@@ -3125,21 +3125,6 @@ function Sidebar({
           <SettingsIcon className="h-4 w-4" />
           {!collapsed && "Settings"}
         </button>
-        {!collapsed && (
-          <button
-            onClick={async () => {
-              try {
-                await invoke("open_in_finder", { path: "https://prevail.sh/Prevail.dmg" });
-              } catch {
-                window.open("https://prevail.sh/Prevail.dmg", "_blank");
-              }
-            }}
-            title="Download the latest Prevail DMG"
-            className="rounded-full border border-border bg-background px-3 py-1 font-mono text-[11px] text-text-muted hover:border-accent-border hover:bg-accent-soft hover:text-accent"
-          >
-            Upgrade
-          </button>
-        )}
         <button
           onClick={() => {
             const cycle: Mode[] = ["light", "dark", "system"];
