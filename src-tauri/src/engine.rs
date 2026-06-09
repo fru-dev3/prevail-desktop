@@ -1062,3 +1062,26 @@ pub async fn engine_chat(
 
     run_engine_stream_stdin(app, session, args, message, "engine-chat", extra_env).await
 }
+
+#[cfg(test)]
+mod vault_key_state_tests {
+    use super::*;
+
+    // Verifies the desktop's in-memory encryption key + vault-root holding logic
+    // (what gets injected as PREVAIL_VAULT_KEY / PREVAIL_VAULT_ROOT into the
+    // sidecar). This is the cross-process key-passing state at the heart of an
+    // unlocked encrypted-vault session.
+    #[test]
+    fn vault_key_and_root_round_trip() {
+        set_vault_key(Some("dGVzdC1rZXk=".into()));
+        set_vault_root(Some("/Users/x/vault".into()));
+        assert_eq!(vault_key().as_deref(), Some("dGVzdC1rZXk="));
+        assert_eq!(vault_root().as_deref(), Some("/Users/x/vault"));
+
+        // Re-locking clears both — a locked session injects nothing.
+        set_vault_key(None);
+        set_vault_root(None);
+        assert_eq!(vault_key(), None);
+        assert_eq!(vault_root(), None);
+    }
+}
