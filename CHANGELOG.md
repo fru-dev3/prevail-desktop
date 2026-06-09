@@ -17,7 +17,24 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 - **Providers** — OpenRouter gateway: one key, every model (Claude/GPT/Gemini/Grok/DeepSeek/Qwen…); keys in Keychain.
 - **WebUI** — serve the same app to a browser via an in-app bridge (no duplicate UI); reach it anywhere over Tailscale/Cloudflare.
 
-## [Unreleased]
+## [Unreleased] — next release (built + tested; pending live verification + release)
+
+### Added
+
+- **Usage analytics, unified on the engine** — the desktop now delegates all token/cost accounting to the engine (one ledger, one pricing table). A per-domain **Usage tab** and a global stats view show queries, tokens, cost, over-time, by provider, and by model. Old desktop ledger migrated automatically.
+- **Embedded vault** — an app-owned vault location (`~/.prevail/vault`) plus a non-destructive "Move vault into the app" migration; new installs can default here.
+- **Demo / Production mode** — fresh installs auto-enter a populated **demo** vault (no setup wizard); a Settings banner switches to **production** when ready. Seeded demo content (usage + sample threads) so it isn't empty.
+- **Starter packs** — importable persona bundles (`prevail.pack/v1`): Small Business Owner, Family, Student, High-Income, Freelancer, Creator — import a role's starter domains in one click (existing domains kept).
+- **App lock (passcode)** — optional Argon2id passcode gate for opening the app.
+- **Vault encryption at rest (opt-in)** — AES-256-GCM envelope encryption with a scrypt-derived key and a one-time **recovery code**. Encrypt/decrypt from Settings → Safety; the engine self-verifies and auto-rolls-back if anything is unreadable. Reads + writes across every vault module are transparently en/decrypted, path-aware so external files are never touched. *(Touch ID unlock + final live verification pending.)*
+
+### Changed / Fixed
+
+- **Bunker Mode** now visibly locks "Web access" off while active.
+- Settings: **"About me" → "Pro Profile"**; one-line self-learning homepage hook.
+- **Council**: a domain can be dragged onto the composer as context again.
+- **Cross-platform sync** — theme/palette and the desktop's vault are inherited by the WebUI (the web view no longer starts blank).
+- **Security**: removed the bundled benchmark sample data that leaked local paths + personal-scenario prompts into the shipped app.
 
 ---
 
