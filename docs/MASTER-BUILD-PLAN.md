@@ -24,6 +24,21 @@
 > ribbon AND a two-way toggle card in Settings → Vault (previously only a
 > demo-only banner, so production showed no indicator at all).
 >
+> **LIVE runtime now verified HEADLESSLY (2026-06-09)** via the built-in WebUI
+> auto-start (`PREVAIL_WEBUI_USER`/`PASS` → bridge on :8787, "for automated
+> validation"). Logged in and drove real `/api/invoke` round-trips through the
+> *running desktop process* — which proves the native webview has React mounted
+> and responsive (a blank window couldn't relay the event; the invoke would time
+> out). Confirmed live: **F3** `engine_appmode_get` → `{mode:production}` (the
+> badge's data source) + `engine_pack_list` → all 6 starter packs; **F2**
+> `scan_vault` → real domain list (calendar/health/tax/wealth/…), `bootstrap_vault`
+> → desktop's inherit-path returned; **F1** `usage_summary` → valid roll-up shape
+> (by_cli/day/domain/model + totals). Lock/vault/mode-switch correctly **denied**
+> over the WebUI (deny-by-default allowlist — unlock can't happen from a remote
+> browser, by design). So the cross-process invoke glue + live render are proven
+> without a human click. **Only the Touch ID biometric modal, the notarization
+> (1Password sign-in), and the publish step remain irreducibly human.**
+>
 > **F4 Phase 1 is now far past "primitives only":** crypto core (envelope, AES-256-GCM,
 > scrypt), **one-time recovery code**, keyring persistence, in-place vault
 > encrypt/decrypt **migration**, and the **read-site integration** — vault reads
