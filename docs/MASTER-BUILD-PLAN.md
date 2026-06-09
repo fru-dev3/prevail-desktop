@@ -1,5 +1,46 @@
 # Prevail — Master Build Plan
 
+> ## Build status (2026-06-09)
+>
+> | # | Feature | Implemented | Tested | Production-ready |
+> | --- | --- | --- | --- | --- |
+> | 1 | Usage analytics | **Yes** | Engine + desktop unit tests, typecheck, build | Pending one live smoke test (see below) |
+> | 2 | Embedded vault | Infra exists in engine (`~/.prevail/vault`); desktop default-flip + migration not done | — | No |
+> | 3 | Demo/Production + packages | Engine has demo vault + location model; mode flag, switch flow, packages, demo content not done | — | No |
+> | 4 | Login + encryption | Not started | — | No — see roadblock |
+>
+> **Feature 1 is built end-to-end and committed:** engine gained `usage --domain`
+> and a one-shot `usage summary` roll-up (15 tests); the desktop now *delegates*
+> all accounting to the engine (single ledger `_meta/usage.jsonl`, single pricing
+> table) with a one-time legacy migration; a per-domain **Usage tab** + the
+> engine-backed global stats render in the desktop and (free, via the proxy) the
+> WebUI. The one thing I cannot do headless is launch the Tauri app + sidecar to
+> confirm the cross-process record/summary path live — that needs a real run.
+>
+> **Roadblocks on 2-4 (why I stopped rather than ship blind):**
+> - **F4 (encryption) is a hard stop for unattended work.** It's security-critical
+>   crypto (Argon2id KDF, AES-GCM envelope, recovery codes, Touch ID, per-file
+>   migration, multi-surface unlock) for an app holding real personal-life data.
+>   Building and *shipping* that without live testing and a security review would
+>   be reckless — the opposite of production-ready. It needs to be done
+>   deliberately, in phases, with you in the loop.
+> - **F2 changes first-launch behavior** (default new installs to the app-owned
+>   vault). Landing that while you're actively testing with your own vault risks
+>   disrupting your setup. The safe, additive parts (engine `vault migrate` +
+>   a Settings "move into app" button) can land first, but the default-flip
+>   should be a deliberate, announced change — ideally bundled with F3.
+> - **F3 needs content + two confirmations.** The mode system and switch flow are
+>   buildable, but a *complete* demo (sample threads + lessons + decisions +
+>   seeded usage across ~10 domains, all PII-free) is real authoring work, and the
+>   persona list / hosting for role packages are open decisions (§6). The engine
+>   already ships a synthetic demo persona ("Alex Rivera") we can build on.
+>
+> **Recommended next step:** smoke-test F1 on the next desktop run, then build
+> F2+F3 together (embedded location + demo/production mode) as one milestone, and
+> schedule F4 as its own careful, reviewed effort. Detail unchanged below.
+
+
+
 One file, everything we've agreed to build, before you give the go-ahead.
 Deep per-feature detail lives in the linked docs; this is the canonical plan and
 the architecture discipline that ties it together.
