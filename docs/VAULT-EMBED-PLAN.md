@@ -13,12 +13,12 @@ physically lives. I have NOT moved your current vault.
 - Its path is remembered in two places: browser/desktop `localStorage`
   (`prevail.desktop.vaultPath`) and a server-side pointer file
   `Application Support/sh.prevail.desktop/bootstrap-vault.txt`.
-- Files are plaintext markdown/jsonl, openable by Finder, Obsidian, git, and
-  your `~/.ai` ecosystem (OpenClaw, Paperclip).
+- Files are plaintext markdown/jsonl, openable by Finder, Obsidian, git, and the
+  standalone `prevail-cli`/`prevail-tui` engine.
 
 ### Why it's currently external (the benefits we'd be trading away)
 - You can edit the vault in Obsidian / any editor.
-- It plays with git, iCloud/Dropbox, and your shared `~/.ai` knowledge system.
+- It plays with git and cloud sync (iCloud/Dropbox).
 - It's transparent — no lock-in, "just your files."
 
 ### Why you want it embedded
