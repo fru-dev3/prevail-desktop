@@ -3301,6 +3301,7 @@ pub fn run() {
             benchmark_start,
             benchmark_score,
             engine::engine_domains,
+            engine::engine_vault_embed,
             engine::engine_score,
             engine::engine_manifest_get,
             engine::engine_score_all,
