@@ -72,7 +72,7 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.4.2";
+const APP_VERSION = "0.6.0";
 
 // Canonical on/off toggle. Track 36×20px, thumb 16×16px, slides
 // 18px. Every switch in the app routes through this so we never
@@ -1827,6 +1827,14 @@ export default function App() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Keep the desktop's remembered vault (bootstrap-vault.txt) in lockstep with
+  // whatever vault is actually active, so the WebUI — which inherits via
+  // bootstrap_vault — always mirrors what's open on the desktop, not a stale
+  // earlier pick. Desktop only; the browser is a consumer, never the source.
+  useEffect(() => {
+    if (isBrowser() || !vaultPath) return;
+    void invoke("remember_vault", { path: vaultPath }).catch(() => {});
+  }, [vaultPath]);
   const refreshDomainStats = useCallback(async (names: string[]) => {
     const results = await Promise.all(
       names.map(async (n) => {
