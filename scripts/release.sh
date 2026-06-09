@@ -89,18 +89,22 @@ echo "$ASSESS" | grep -q "source=Notarized Developer ID" || die "Gatekeeper REJE
 echo "$ENGINE" | grep -qi "prevail" || die "bundled engine did not run — NOT publishing"
 echo "Gatekeeper + self-contained engine: PASS"
 
-step "Publish to website (stable URL, versioned save-name)"
-cp "$DMG" "$SITE/public/Prevail-mac-arm64.dmg"
+step "Stamp the website version (DMG is served from GitHub Releases, NOT here)"
+# IMPORTANT: do NOT copy the DMG into the site. Serving ~32 MB binaries from
+# Netlify burns the free-tier bandwidth quota and takes the whole site down
+# (503 usage_exceeded). The site links to the GitHub release asset instead
+# (unlimited bandwidth); here we only stamp the version string.
 cat > "$SITE/src/version.ts" <<TS
 // Current downloadable desktop version. Stamped automatically by the
 // desktop repo's scripts/release.sh from src-tauri/tauri.conf.json — do
-// not edit by hand. The download URL stays stable (/Prevail-mac-arm64.dmg);
-// this only sets the versioned filename the browser saves the file as.
+// not edit by hand. The DMG itself is served from GitHub Releases
+// (releases/latest/download/Prevail-mac-arm64.dmg); this only sets the
+// versioned filename the browser saves the file as.
 export const APP_VERSION = "$VERSION";
 TS
 ( cd "$SITE" && npm run build >/dev/null )   # sanity-build before pushing
-( cd "$SITE" && git add public/Prevail-mac-arm64.dmg src/version.ts \
-  && git commit -q -m "release: Prevail $VERSION (signed, notarized, self-contained)" \
+( cd "$SITE" && git add src/version.ts \
+  && git commit -q -m "release: Prevail $VERSION (version stamp; DMG on GitHub Releases)" \
   && git push )
 echo "site pushed — Netlify will deploy prevail.sh"
 
@@ -131,10 +135,14 @@ else
 fi
 
 step "Publish GitHub release $TAG"
+# Also publish a STABLE-named copy so the site can link to a fixed URL
+# (releases/latest/download/Prevail-mac-arm64.dmg) across every version.
+STABLE_DMG="$WORK/Prevail-mac-arm64.dmg"
+cp "$DMG" "$STABLE_DMG"
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-  gh release upload "$TAG" "$DMG" ${UPDATE_ASSETS[@]+"${UPDATE_ASSETS[@]}"} --repo "$REPO" --clobber
+  gh release upload "$TAG" "$DMG" "$STABLE_DMG" ${UPDATE_ASSETS[@]+"${UPDATE_ASSETS[@]}"} --repo "$REPO" --clobber
 else
-  gh release create "$TAG" --repo "$REPO" --target main --title "$TAG" --generate-notes "$DMG" ${UPDATE_ASSETS[@]+"${UPDATE_ASSETS[@]}"}
+  gh release create "$TAG" --repo "$REPO" --target main --title "$TAG" --generate-notes "$DMG" "$STABLE_DMG" ${UPDATE_ASSETS[@]+"${UPDATE_ASSETS[@]}"}
 fi
 
 step "Done — Prevail $VERSION released"
