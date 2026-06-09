@@ -1773,8 +1773,17 @@ export default function App() {
     (async () => {
       try {
         const bp = await invoke<string | null>("bootstrap_vault");
-        if (bp) { setVaultPath(bp); lsSet(LS.vault, bp); }
-      } catch { /* ignore */ }
+        if (bp) { setVaultPath(bp); lsSet(LS.vault, bp); return; }
+        // Truly fresh install (no remembered vault) — auto-enter DEMO mode with
+        // the bundled sample vault so the user lands in a populated app instead
+        // of an empty setup wizard. The Settings → Vault demo banner lets them
+        // switch to production when ready. (F3 auto-demo.)
+        const path = await invoke<string>("import_sample_vault");
+        await invoke("engine_appmode_set", { mode: "demo" }).catch(() => {});
+        setVaultPath(path);
+        lsSet(LS.vault, path);
+        setSelectedDomain(null);
+      } catch { /* fall through to the VaultWizard if seeding fails */ }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -2174,6 +2183,9 @@ export default function App() {
   async function loadSample() {
     try {
       const path = await invoke<string>("import_sample_vault");
+      // Loading the sample vault means you're exploring — mark demo mode so the
+      // Settings banner offers the switch to production. (F3)
+      await invoke("engine_appmode_set", { mode: "demo" }).catch(() => {});
       setVaultPath(path);
       lsSet(LS.vault, path);
       setSelectedDomain(null);
