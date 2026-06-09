@@ -66,7 +66,7 @@
 > 1. **Desktop GUI smoke** — launch the app, confirm the LockScreen / Settings
 >    encrypt card / Touch ID prompt behave (the engine round-trip is already
 >    verified above; this is the GUI-glue + biometric-prompt confirmation).
-> 2. **The signed/notarized release** — Fru's Apple keys + `DEPLOY.md`.
+> 2. **The signed/notarized release** — Fru's Apple keys + `DEPLOY.md`. (The release binary itself builds clean in release mode — 1m11s optimized — so only the *signing/notarization* step + publish remain.)
 >
 > Engine 262 tests + desktop 38 tests pass; tsc + cargo + build clean. Everything
 > that can be built and verified without the running machine is done.
