@@ -10830,24 +10830,25 @@ function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; o
         subtitle="Bunker Mode is a trust guarantee, not a preference. While it's on, everything stays on this device: local models only, no network, no cloud AI, no web search."
       />
 
-      {/* Hero — the master control, color-coded to the live state. */}
+      {/* Hero — the master control. Two states only: green when protected,
+          brand-dark (the logo tile) when off. No third color. */}
       <div className={`rounded-2xl border p-5 transition-colors ${
         enabled
           ? "border-emerald-300/70 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30"
-          : "border-amber-300/70 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/30"
+          : "border-black/30 bg-[#141416]"
       }`}>
         <div className="flex items-center gap-4">
-          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${enabled ? "bg-emerald-500/15" : "bg-amber-500/15"}`}>
-            {enabled ? <ShieldCheck className="h-6 w-6 text-emerald-600" /> : <ShieldOff className="h-6 w-6 text-amber-600" />}
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${enabled ? "bg-emerald-500/15" : "bg-white/10"}`}>
+            {enabled ? <ShieldCheck className="h-6 w-6 text-emerald-600" /> : <ShieldOff className="h-6 w-6 text-white" />}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="font-display text-lg font-semibold">Bunker Mode</span>
-              <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${enabled ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/20 text-amber-700 dark:text-amber-300"}`}>
+              <span className={`font-display text-lg font-semibold ${enabled ? "" : "text-white"}`}>Bunker Mode</span>
+              <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${enabled ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300" : "bg-white/15 text-white"}`}>
                 {enabled ? "On" : "Off"}
               </span>
             </div>
-            <p className="mt-1 text-sm text-text-secondary">
+            <p className={`mt-1 text-sm ${enabled ? "text-text-secondary" : "text-white/70"}`}>
               {enabled
                 ? "Everything stays on this device. Nothing leaves your machine."
                 : "Cloud AI, web search, and network access are available and may transmit data."}
@@ -10867,17 +10868,17 @@ function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; o
               className={`rounded-xl border p-4 transition-colors ${
                 t.good
                   ? "border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/60 dark:bg-emerald-950/20"
-                  : "border-amber-200 bg-amber-50/50 dark:border-amber-900/60 dark:bg-amber-950/20"
+                  : "border-border bg-surface"
               }`}
             >
               <div className="flex items-center justify-between">
-                <t.Icon className={`h-5 w-5 ${t.good ? "text-emerald-600" : "text-amber-600"}`} />
+                <t.Icon className={`h-5 w-5 ${t.good ? "text-emerald-600" : "text-text-muted"}`} />
                 {t.good
                   ? <Check className="h-3.5 w-3.5 text-emerald-600" />
-                  : <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />}
+                  : <span className="h-1.5 w-1.5 rounded-full bg-text-muted/50" />}
               </div>
               <div className="mt-2.5 text-sm font-semibold text-text-primary">{t.label}</div>
-              <div className={`mt-0.5 font-mono text-[11px] uppercase tracking-wider ${t.good ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}>
+              <div className={`mt-0.5 font-mono text-[11px] uppercase tracking-wider ${t.good ? "text-emerald-700 dark:text-emerald-400" : "text-text-muted"}`}>
                 {t.state}
               </div>
             </div>
@@ -10888,9 +10889,9 @@ function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; o
         <div className={`mt-3 flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm ${
           enabled
             ? "border-emerald-200 bg-emerald-50/60 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
-            : "border-amber-200 bg-amber-50/60 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
+            : "border-black/30 bg-[#141416] text-white"
         }`}>
-          {enabled ? <ShieldCheck className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+          {enabled ? <ShieldCheck className="h-4 w-4 shrink-0" /> : <ShieldOff className="h-4 w-4 shrink-0" />}
           <span>
             {enabled
               ? "Verified. No requests leave your machine while Bunker Mode is active."
@@ -10909,13 +10910,13 @@ function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; o
       {confirmOff && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={() => setConfirmOff(false)}>
           <div className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-3 border-b border-border-subtle bg-amber-50/70 px-5 py-4 dark:bg-amber-950/30">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15">
-                <ShieldOff className="h-5 w-5 text-amber-600" />
+            <div className="flex items-center gap-3 border-b border-black/20 bg-[#141416] px-5 py-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10">
+                <ShieldOff className="h-5 w-5 text-white" />
               </div>
               <div className="min-w-0">
-                <h3 className="font-display text-lg font-semibold">Leave Bunker Mode?</h3>
-                <p className="text-xs text-text-muted">This opens your machine to the network.</p>
+                <h3 className="font-display text-lg font-semibold text-white">Leave Bunker Mode?</h3>
+                <p className="text-xs text-white/60">This opens your machine to the network.</p>
               </div>
             </div>
             <div className="px-5 py-4">
@@ -10928,7 +10929,7 @@ function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; o
                   [Server, "External services"],
                 ] as const).map(([Icon, label]) => (
                   <div key={label} className="flex items-center gap-2.5 rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm text-text-secondary">
-                    <Icon className="h-4 w-4 shrink-0 text-amber-600" />
+                    <Icon className="h-4 w-4 shrink-0 text-text-muted" />
                     {label}
                   </div>
                 ))}
@@ -10937,7 +10938,7 @@ function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; o
             </div>
             <div className="flex justify-end gap-2 border-t border-border-subtle bg-surface-warm/40 px-5 py-3">
               <button onClick={() => setConfirmOff(false)} className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-strong">Cancel</button>
-              <button onClick={() => void setBunker(false)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50">
+              <button onClick={() => void setBunker(false)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-[#141416] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-50">
                 <ShieldOff className="h-4 w-4" /> Leave Bunker Mode
               </button>
             </div>
