@@ -2510,7 +2510,9 @@ function Sidebar({
           title bar above this whole layout, so the sidebar starts clean here. */}
       <div
         data-tauri-drag-region
-        className="flex shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-2.5"
+        className={`flex shrink-0 items-center gap-2 px-3 py-2.5 ${
+          collapsed ? "border-b border-border-subtle" : "border-b border-black/20 bg-[#141416]"
+        }`}
       >
         {collapsed ? (
           <div className="mx-auto flex flex-col items-center gap-2">
@@ -2525,11 +2527,11 @@ function Sidebar({
           </div>
         ) : (
           <>
-            <Brand fill className="min-w-0 flex-1 font-sans text-xl font-black text-text-primary" />
+            <Brand fill className="min-w-0 flex-1 font-display text-2xl font-bold text-white [text-shadow:0_2px_6px_rgba(0,0,0,0.5)]" />
             <button
               onClick={() => setCollapsed(true)}
               title="Collapse sidebar"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-text-primary text-background shadow-sm transition-opacity hover:opacity-80"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white/12 text-white transition-colors hover:bg-white/25"
             >
               <PanelLeftClose className="h-[18px] w-[18px]" strokeWidth={1.75} />
             </button>
