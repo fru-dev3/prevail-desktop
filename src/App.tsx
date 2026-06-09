@@ -8017,6 +8017,26 @@ function CouncilPanel({
       return [...cur, { label, body }];
     });
   }
+  // Resolve a dragged domain into a primed-context chip. Shared by the panel
+  // drop zone AND the composer textarea so a domain dropped directly onto the
+  // input still attaches (the textarea would otherwise eat the native drop).
+  // Default = light (state.md); hold Shift for the full context bundle.
+  async function attachCouncilDomain(name: string, full: boolean) {
+    if (!name || !_vaultPath) return;
+    try {
+      const c = await invoke<DomainContextBundle>("domain_context", { vault: _vaultPath, domain: name });
+      if (full) {
+        const parts = [
+          c.state && `## state.md\n${c.state}`,
+          c.decisions && `## decisions\n${c.decisions}`,
+          c.journal && `## journal\n${c.journal}`,
+        ].filter(Boolean);
+        injectContext(parts.length ? parts.join("\n\n") : `(no context files in ${name})`, `extra (full): ${titleCase(name)}`);
+      } else {
+        injectContext(c.state || `(no state.md in ${name})`, `extra: ${titleCase(name)}/state.md`);
+      }
+    } catch (err) { console.error("attach council domain", err); }
+  }
   // Skills attached to the next convene — same model as Chat.
   const [attachedSkills, setAttachedSkills] = useState<string[]>(() => loadPreferredSkills(domain));
   const [preferredSkills, setPreferredSkills] = useState<string[]>(() => loadPreferredSkills(domain));
@@ -8442,22 +8462,9 @@ function CouncilPanel({
         }
         if (!name || !_vaultPath) return;
         e.preventDefault();
-        // A8: same light/heavy behavior as Chat — default state summary, hold
+        // Same light/heavy behavior as Chat — default state summary, hold
         // Shift for the full context bundle.
-        const full = e.shiftKey;
-        try {
-          const c = await invoke<DomainContextBundle>("domain_context", { vault: _vaultPath, domain: name });
-          if (full) {
-            const parts = [
-              c.state && `## state.md\n${c.state}`,
-              c.decisions && `## decisions\n${c.decisions}`,
-              c.journal && `## journal\n${c.journal}`,
-            ].filter(Boolean);
-            injectContext(parts.length ? parts.join("\n\n") : `(no context files in ${name})`, `extra (full): ${titleCase(name)}`);
-          } else if (c.state) {
-            injectContext(c.state, `extra: ${titleCase(name)}/state.md`);
-          }
-        } catch (err) { console.error("drop domain", err); }
+        await attachCouncilDomain(name, e.shiftKey);
       }}
     >
       <div className="relative flex min-w-0 flex-1 flex-col">
@@ -8762,6 +8769,30 @@ function CouncilPanel({
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
+            onDragOver={(e) => {
+              const types = Array.from(e.dataTransfer.types);
+              if (types.includes("application/x-prevail-domain") || types.includes("text/plain")) {
+                // Suppress native text-insertion so the dropped domain becomes
+                // a context chip instead of inline text in the prompt.
+                const t = e.dataTransfer.getData("text/plain");
+                if (t && !t.startsWith("prevail-domain:") && !types.includes("application/x-prevail-domain")) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "copy";
+              }
+            }}
+            onDrop={(e) => {
+              let name = e.dataTransfer.getData("application/x-prevail-domain");
+              if (!name) {
+                const t = e.dataTransfer.getData("text/plain");
+                if (t && t.startsWith("prevail-domain:")) name = t.slice("prevail-domain:".length);
+              }
+              if (!name) return;
+              // Handle here and stop bubbling so the panel drop zone doesn't
+              // attach it a second time.
+              e.preventDefault();
+              e.stopPropagation();
+              void attachCouncilDomain(name, e.shiftKey);
+            }}
             onKeyDown={(e) => {
               const wantCmd = getPref(PREF.sendKey, "enter") === "cmd-enter";
               const cmd = e.metaKey || e.ctrlKey;
