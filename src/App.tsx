@@ -11943,6 +11943,45 @@ function UserProfileSection({ vaultPath }: { vaultPath: string }) {
 function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void }) {
   const [backingUp, setBackingUp] = useState(false);
   const [backupNote, setBackupNote] = useState<string | null>(null);
+  // Demo vs production mode + starter packs (F3). Mode lives in engine config;
+  // packs are bundled persona starter domains.
+  const [appMode, setAppMode] = useState<"demo" | "production" | null>(null);
+  const [switchingMode, setSwitchingMode] = useState(false);
+  const [packs, setPacks] = useState<{ file: string; name: string; version: string; description: string | null; domains: string[] }[]>([]);
+  const [importingPack, setImportingPack] = useState<string | null>(null);
+  const [packNote, setPackNote] = useState<string | null>(null);
+  useEffect(() => {
+    (async () => {
+      try { const m = await invoke<{ mode: "demo" | "production" }>("engine_appmode_get"); setAppMode(m.mode); } catch { /* engine not ready */ }
+      try { const ps = await invoke<typeof packs>("engine_pack_list"); setPacks(ps); } catch { /* ignore */ }
+    })();
+  }, []);
+  async function switchToProduction() {
+    setSwitchingMode(true);
+    try {
+      await invoke("engine_appmode_set", { mode: "production" });
+      setAppMode("production");
+    } catch (e) {
+      setPackNote(`Could not switch mode: ${String(e)}`);
+    } finally {
+      setSwitchingMode(false);
+    }
+  }
+  async function importPack(p: { name: string; domains: string[] }) {
+    setImportingPack(p.name);
+    setPackNote(null);
+    try {
+      const r = await invoke<{ created: string[]; skipped: string[] }>("engine_pack_import", { vault: vaultPath, pack: p.name, overwrite: false });
+      const parts: string[] = [];
+      if (r.created.length) parts.push(`added ${r.created.join(", ")}`);
+      if (r.skipped.length) parts.push(`kept your existing ${r.skipped.join(", ")}`);
+      setPackNote(`${p.name}: ${parts.join(" · ") || "nothing to do"}. New domains appear on the next vault scan.`);
+    } catch (e) {
+      setPackNote(`Import failed: ${String(e)}`);
+    } finally {
+      setImportingPack(null);
+    }
+  }
   // "Move vault into the app" — copy the current vault into the app-owned
   // location (~/.prevail/vault) via the engine, non-destructively, then repoint.
   const [moving, setMoving] = useState(false);
@@ -11993,6 +12032,25 @@ function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { 
   return (
     <>
       <SettingsHeader title="Vault" subtitle="Where Prevail reads + writes your domain folders. Each child folder with a state.md becomes a life domain." />
+      {appMode === "demo" && (
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-accent-border bg-accent-soft p-4">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+          <div className="min-w-0 flex-1">
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-accent">Demo mode</div>
+            <p className="mt-1 text-sm text-text-secondary">
+              You're exploring sample data. Nothing here is yours yet. Switch to production to start your own vault and keep the domains you like.
+            </p>
+            <button
+              onClick={switchToProduction}
+              disabled={switchingMode}
+              className="mt-2 inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent px-3 py-1.5 text-sm text-background hover:opacity-90 disabled:opacity-50"
+            >
+              {switchingMode ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {switchingMode ? "Switching…" : "Switch to production"}
+            </button>
+          </div>
+        </div>
+      )}
       <SettingRow label="Vault folder" desc="Currently selected workspace.">
         <button
           onClick={onChange}
@@ -12030,6 +12088,38 @@ function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { 
       )}
       {moveNote && (
         <div className="mt-1 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{moveNote}</div>
+      )}
+      {packs.length > 0 && (
+        <div className="mt-4">
+          <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">
+            <Sparkles className="h-3.5 w-3.5" /> Starter packs
+          </div>
+          <p className="mb-3 text-xs text-text-muted">
+            Import a persona's starter domains into this vault. Existing domains are kept, never overwritten.
+          </p>
+          <div className="flex flex-col gap-2">
+            {packs.map((p) => (
+              <div key={p.file} className="flex items-start gap-3 rounded-lg border border-border bg-surface p-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-text-primary">{p.name}</div>
+                  {p.description && <div className="mt-0.5 text-xs text-text-muted">{p.description}</div>}
+                  <div className="mt-1 font-mono text-[10px] text-text-secondary">{p.domains.join(" · ")}</div>
+                </div>
+                <button
+                  onClick={() => importPack(p)}
+                  disabled={importingPack !== null}
+                  className="shrink-0 inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50"
+                >
+                  {importingPack === p.name ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                  {importingPack === p.name ? "Importing…" : "Import"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {packNote && (
+        <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{packNote}</div>
       )}
       <SettingRow label="Back up vault" desc="Write a compressed archive of the entire vault. Nothing is deleted.">
         <button
