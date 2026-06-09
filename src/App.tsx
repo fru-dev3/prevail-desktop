@@ -1629,6 +1629,55 @@ function domainColor(name: string): string {
 }
 // Browser login screen for the WebUI. Authenticates against the bridge
 // server's /api/login, stores the token, then lets the real app mount.
+// Desktop passcode gate (F4 Phase 0). Verifies against the engine's Argon2id
+// verifier; on success the session is unlocked. No file decryption happens here
+// — Phase 0 locks the UI only.
+function LockScreen({ onUnlock }: { onUnlock: () => void }) {
+  const [pass, setPass] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setErr("");
+    try {
+      const r = await invoke<{ ok: boolean }>("engine_lock_verify", { passcode: pass });
+      if (r.ok) onUnlock();
+      else setErr("Incorrect passcode.");
+    } catch (e2) {
+      setErr(`Could not verify: ${String(e2)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex h-screen flex-col items-center justify-center bg-background text-text-primary">
+      <PrevailLogo size={64} src="/logo-512.png" />
+      <h1 className="mt-5 font-display text-2xl font-semibold">Locked</h1>
+      <p className="mt-1 text-sm text-text-muted">Enter your passcode to open Prevail.</p>
+      <form onSubmit={submit} className="mt-6 flex w-72 flex-col gap-3">
+        <input
+          type="password"
+          autoFocus
+          value={pass}
+          onChange={(e) => setPass(e.target.value)}
+          placeholder="Passcode"
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent-border focus:outline-none"
+        />
+        {err && <div className="text-xs text-err">{err}</div>}
+        <button
+          type="submit"
+          disabled={busy || !pass}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-background hover:opacity-90 disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Unlock
+        </button>
+      </form>
+    </div>
+  );
+}
+
 function WebLogin({ onAuthed }: { onAuthed: () => void }) {
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
@@ -1665,6 +1714,17 @@ export default function App() {
   // WebUI login gate — in a browser tab the app must authenticate to the
   // bridge server before any invoke works. On the desktop this is always true.
   const [webAuthed, setWebAuthed] = useState(() => !isBrowser() || !!sessionStorage.getItem("prevail.web.token"));
+  // Desktop app lock (F4 Phase 0). If a passcode is set we gate the whole app
+  // behind a lock screen until it's entered this session. Browser sessions use
+  // the WebUI login instead, so the lock only applies on the desktop.
+  const [lockSet, setLockSet] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
+  useEffect(() => {
+    if (isBrowser()) return;
+    (async () => {
+      try { const s = await invoke<{ set: boolean }>("engine_lock_status"); setLockSet(!!s.set); } catch { /* engine not ready */ }
+    })();
+  }, []);
   // On the desktop, the chosen vault lives in localStorage. In the browser the
   // vault physically lives on the desktop machine, so the browser's own
   // localStorage path is meaningless — start empty and always inherit the
@@ -2123,6 +2183,7 @@ export default function App() {
   }
 
   if (isBrowser() && !webAuthed) return <WebLogin onAuthed={() => setWebAuthed(true)} />;
+  if (!isBrowser() && lockSet && !unlocked) return <LockScreen onUnlock={() => setUnlocked(true)} />;
   if (!vaultPath) return <VaultWizard onPick={pickVault} onLoadSample={loadSample} />;
 
   if (tab === "settings") {
@@ -11714,6 +11775,68 @@ function ConnectorsSection() {
   );
 }
 
+// App lock (F4 Phase 0) — set/change/remove the passcode that gates opening the
+// desktop app. Honest about scope: it locks the UI, it does NOT yet encrypt the
+// vault files on disk.
+function AppLockCard() {
+  const [lockSet, setLockSet] = useState<boolean | null>(null);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    (async () => {
+      try { const s = await invoke<{ set: boolean }>("engine_lock_status"); setLockSet(!!s.set); } catch { setLockSet(false); }
+    })();
+  }, []);
+  async function setPasscode() {
+    if (value.length < 4) { setNote("Passcode must be at least 4 characters."); return; }
+    setBusy(true); setNote(null);
+    try {
+      const r = await invoke<{ ok: boolean; error?: string }>("engine_lock_set", { passcode: value });
+      if (r.ok) { setLockSet(true); setValue(""); setNote("Passcode set. You'll be asked for it next time you open Prevail."); }
+      else setNote(r.error ?? "Could not set passcode.");
+    } catch (e) { setNote(`Failed: ${String(e)}`); } finally { setBusy(false); }
+  }
+  async function removePasscode() {
+    setBusy(true); setNote(null);
+    try {
+      const r = await invoke<{ ok: boolean; error?: string }>("engine_lock_clear", { passcode: value });
+      if (r.ok) { setLockSet(false); setValue(""); setNote("Passcode removed."); }
+      else setNote(r.error ?? "Wrong passcode.");
+    } catch (e) { setNote(`Failed: ${String(e)}`); } finally { setBusy(false); }
+  }
+  if (lockSet === null) return null;
+  return (
+    <div className="mb-4 rounded-lg border border-border bg-surface p-5">
+      <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">
+        <Shield className="h-3.5 w-3.5" /> App lock {lockSet ? "· on" : "· off"}
+      </div>
+      <p className="mt-2 text-xs text-text-muted">
+        Require a passcode to open Prevail. This locks the app window. It does <span className="font-semibold">not</span> yet encrypt your vault files on disk — turn on FileVault for full at-rest protection. (Vault encryption is coming as a separate, reviewed update.)
+      </p>
+      <div className="mt-3 flex items-center gap-2">
+        <input
+          type="password"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={lockSet ? "Current passcode" : "New passcode (min 4 chars)"}
+          className="w-56 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none"
+        />
+        {lockSet ? (
+          <button onClick={removePasscode} disabled={busy || !value} className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50">
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Remove passcode
+          </button>
+        ) : (
+          <button onClick={setPasscode} disabled={busy || value.length < 4} className="inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent px-3 py-1.5 text-sm text-background hover:opacity-90 disabled:opacity-50">
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Set passcode
+          </button>
+        )}
+      </div>
+      {note && <div className="mt-2 text-xs text-text-secondary">{note}</div>}
+    </div>
+  );
+}
+
 function SafetySection() {
   const [approvalMode, setApprovalMode] = useState(() => getPref(PREF.approvalMode, "manual"));
   const [approvalTimeout, setApprovalTimeout] = useState(() => getPref(PREF.approvalTimeoutSec, "60"));
@@ -11725,6 +11848,7 @@ function SafetySection() {
   return (
     <>
       <SettingsHeader title="Safety" subtitle="Guardrails for what the agent can do and what gets stored. Redact secrets is enforced here; approval, allowlist, and checkpoints are honored by the engine." />
+      <AppLockCard />
       <div className="rounded-lg border border-border bg-surface px-5">
         <SettingsRowLite title="Approval mode" desc="How commands that need explicit approval are handled."
           control={

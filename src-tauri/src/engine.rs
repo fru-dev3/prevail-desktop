@@ -576,6 +576,26 @@ pub fn engine_domains(vault: String) -> Result<serde_json::Value, String> {
     run_engine_json(&["--vault", &vault, "domains"])
 }
 
+/// App lock (Phase 0 passcode). The passcode is sent on the child's STDIN so it
+/// never appears in argv/process list. Desktop-only — deliberately NOT in
+/// WEBUI_ALLOWED; the WebUI has its own login.
+#[tauri::command]
+pub fn engine_lock_status() -> Result<serde_json::Value, String> {
+    run_engine_json(&["lock", "status"])
+}
+#[tauri::command]
+pub fn engine_lock_set(passcode: String) -> Result<serde_json::Value, String> {
+    run_engine_json_stdin(&["lock", "set"], &passcode)
+}
+#[tauri::command]
+pub fn engine_lock_verify(passcode: String) -> Result<serde_json::Value, String> {
+    run_engine_json_stdin(&["lock", "verify"], &passcode)
+}
+#[tauri::command]
+pub fn engine_lock_clear(passcode: String) -> Result<serde_json::Value, String> {
+    run_engine_json_stdin(&["lock", "clear"], &passcode)
+}
+
 /// `prevail appmode get` — the demo vs production flag (engine config, global).
 #[tauri::command]
 pub fn engine_appmode_get() -> Result<serde_json::Value, String> {
