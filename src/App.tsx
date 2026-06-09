@@ -2137,6 +2137,12 @@ export default function App() {
           bunkerEnabled={bunkerEnabled}
           onBunkerChange={applyBunker}
           onSetupDomains={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
+          onVaultMoved={(p) => {
+            setVaultPath(p);
+            lsSet(LS.vault, p);
+            void invoke("remember_vault", { path: p }).catch(() => {});
+            setSelectedDomain(null);
+          }}
           onBack={() => setTab("chat")}
           onStartChatWith={(cliId, modelId) => {
             lsSet(LS.defaultChatCli, cliId);
@@ -10344,6 +10350,7 @@ function SettingsPanel({
   bunkerEnabled,
   onBunkerChange,
   onSetupDomains,
+  onVaultMoved,
 }: {
   appearance: ReturnType<typeof useAppearance>;
   vaultPath: string;
@@ -10355,6 +10362,7 @@ function SettingsPanel({
   bunkerEnabled: boolean;
   onBunkerChange: (on: boolean) => void;
   onSetupDomains?: () => void;
+  onVaultMoved?: (path: string) => void;
 }) {
   type Section = "general" | "models" | "privacy" | "connectors" | "user" | "memory" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>("general");
@@ -10492,7 +10500,7 @@ function SettingsPanel({
           {section === "gateway" && <GatewaySection />}
           {section === "mcp" && <McpSection vaultPath={vaultPath} />}
           {section === "remote" && <RemoteSection />}
-          {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} onSetupDomains={onSetupDomains} />}
+          {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} />}
           {section === "appearance" && <AppearanceSection appearance={appearance} />}
           {section === "frameworks" && <FrameworksSection />}
           {section === "skills" && <SkillsSection vaultPath={vaultPath} />}
@@ -11932,9 +11940,36 @@ function UserProfileSection({ vaultPath }: { vaultPath: string }) {
   );
 }
 
-function VaultSettings({ vaultPath, onChange, onSetupDomains }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void }) {
+function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void }) {
   const [backingUp, setBackingUp] = useState(false);
   const [backupNote, setBackupNote] = useState<string | null>(null);
+  // "Move vault into the app" — copy the current vault into the app-owned
+  // location (~/.prevail/vault) via the engine, non-destructively, then repoint.
+  const [moving, setMoving] = useState(false);
+  const [moveNote, setMoveNote] = useState<string | null>(null);
+  const embedded = vaultPath.replace(/\/+$/, "").endsWith("/.prevail/vault");
+  async function moveIntoApp() {
+    setMoving(true);
+    setMoveNote(null);
+    try {
+      const r = await invoke<{ dest: string; alreadyEmbedded: boolean; copied: number; sourceFiles: number; ok: boolean }>(
+        "engine_vault_embed",
+        { vault: vaultPath },
+      );
+      if (r.alreadyEmbedded) {
+        setMoveNote("Vault is already inside the app.");
+      } else if (r.ok) {
+        setMoveNote(`Moved ${r.copied} file${r.copied === 1 ? "" : "s"} into the app. Your original folder is left untouched.`);
+        onVaultMoved?.(r.dest);
+      } else {
+        setMoveNote(`Move incomplete (${r.copied}/${r.sourceFiles} files). Your original folder is untouched; nothing was changed.`);
+      }
+    } catch (e) {
+      setMoveNote(`Move failed: ${String(e)}`);
+    } finally {
+      setMoving(false);
+    }
+  }
   async function backupVault() {
     setBackingUp(true);
     setBackupNote(null);
@@ -11981,6 +12016,21 @@ function VaultSettings({ vaultPath, onChange, onSetupDomains }: { vaultPath: str
       <div className="mt-1 rounded-lg border border-border bg-surface p-4 font-mono text-xs text-text-primary">
         {vaultPath}
       </div>
+      {!embedded && (
+        <SettingRow label="Move vault into the app" desc="Copy this vault into the app-owned location so there's no loose folder to manage. Your original folder is copied, never moved or deleted.">
+          <button
+            onClick={moveIntoApp}
+            disabled={moving}
+            className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50"
+          >
+            {moving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Folder className="h-3.5 w-3.5" />}
+            {moving ? "Moving…" : "Move into app"}
+          </button>
+        </SettingRow>
+      )}
+      {moveNote && (
+        <div className="mt-1 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{moveNote}</div>
+      )}
       <SettingRow label="Back up vault" desc="Write a compressed archive of the entire vault. Nothing is deleted.">
         <button
           onClick={backupVault}
