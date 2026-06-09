@@ -2502,7 +2502,7 @@ function Sidebar({
 
   return (
     <aside
-      className="flex shrink-0 flex-col border-r border-border-subtle bg-surface"
+      className="flex shrink-0 flex-col border-r border-border-subtle bg-surface-strong"
       style={{ width: collapsed ? 56 : railWidth }}
     >
       {/* The Prevail mark on its own row, full width, with the sidebar toggle on
@@ -2982,7 +2982,7 @@ function ThreadsRail({
   const [renameInput, setRenameInput] = useState("");
   if (collapsed) {
     return (
-      <aside className="flex w-7 shrink-0 flex-col items-center gap-1 border-r border-border-subtle bg-surface py-2">
+      <aside className="flex w-7 shrink-0 flex-col items-center gap-1 border-r border-border-subtle bg-surface-warm py-2">
         <button
           onClick={() => setCollapsed(false)}
           title="Expand threads rail"
@@ -3039,7 +3039,7 @@ function ThreadsRail({
     return new Date(secs * 1000).toLocaleDateString();
   }
   return (
-    <aside className="flex shrink-0 flex-col border-r border-border-subtle bg-surface" style={{ width: railWidth }}>
+    <aside className="flex shrink-0 flex-col border-r border-border-subtle bg-surface-warm" style={{ width: railWidth }}>
       <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-3 py-2.5">
         <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
           Threads · {selectedDomain ? titleCase(selectedDomain) : "General"}
@@ -5024,7 +5024,7 @@ function DomainContextDrawer({
         ariaLabel="Resize context drawer"
         onChange={(dx) => setDrawerWidth((w) => Math.max(260, Math.min(640, w - dx)))}
       />
-      <aside className="flex shrink-0 flex-col border-l border-border-subtle bg-surface" style={{ width: drawerWidth }}>
+      <aside className="flex shrink-0 flex-col border-l border-border-subtle bg-surface-warm" style={{ width: drawerWidth }}>
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-4 py-3">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Context</div>
@@ -10282,7 +10282,7 @@ function SettingsPanel({
   return (
     <div className="flex h-full">
       {/* Sidebar nav — Codex-style with Back to app at top */}
-      <aside className="flex w-56 shrink-0 flex-col border-r border-border-subtle bg-surface px-2 py-3">
+      <aside className="flex w-56 shrink-0 flex-col border-r border-border-subtle bg-surface-warm px-2 py-3">
         {onBack && (
           <button
             onClick={onBack}
