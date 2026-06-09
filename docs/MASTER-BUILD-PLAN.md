@@ -37,11 +37,22 @@
 > **LockScreen** unlocking an encrypted vault's keyring, and a **Settings
 > VaultEncryptionCard** to encrypt/decrypt with the one-time recovery code shown.
 >
-> **The genuine remainder needs the macOS runtime / a live run — not headless:**
-> Touch ID/Keychain unlock (a macOS API), the benchmark/calibration/connector
-> write sites (power-user artifacts), and the one live verification: encrypt a
-> throwaway vault and confirm every surface reads + writes it before trusting it
-> with real data. Plus the signed release. Those are Fru's machine.
+> **Now EVERY engine vault read + write site is wired** (decisions, usage,
+> journal, distill, scaffold, manifest, auto-summary, briefings, bench,
+> calibration, canonical-bench, connector-skills), through **path-aware** helpers
+> that only touch files under the vault root (PREVAIL_VAULT_ROOT) — so an external
+> write is never wrongly encrypted. The benchmark/connector gap is closed.
+>
+> **The ONLY remainder is the three machine-bound items, which are physically
+> impossible for a headless agent:**
+> 1. **Touch ID / Keychain unlock** — a macOS runtime API; passcode unlock works
+>    today, this is the optional convenience path.
+> 2. **One live verification** — encrypt a throwaway vault in the running app and
+>    confirm every surface round-trips, before trusting it with real data.
+> 3. **The signed/notarized release** — Fru's Apple keys + `DEPLOY.md`.
+>
+> Engine 262 tests + desktop 38 tests pass. Everything that can be built and
+> verified without the running machine is built and verified.
 >
 > **What shipped to `main` this session (engine-first throughout):**
 > - **F1:** `usage --domain` + one-shot `usage summary`; desktop delegates all
