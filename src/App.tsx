@@ -1033,24 +1033,6 @@ function preferredLocalCli(clis: { id: string; available: boolean }[]): string |
 // The always-visible Bunker Mode status bar. Never disappears while the app
 // runs, so the user always knows whether anything can leave their machine.
 function BunkerRibbon({ enabled }: { enabled: boolean }) {
-  // Self-contained app-mode badge so the user always knows whether they're in the
-  // demo sandbox or their real (production) vault — visible from every screen.
-  const [appMode, setAppMode] = useState<"demo" | "production" | null>(null);
-  useEffect(() => {
-    let live = true;
-    const load = () =>
-      invoke<{ mode: "demo" | "production" }>("engine_appmode_get")
-        .then((m) => live && setAppMode(m.mode))
-        .catch(() => {});
-    load();
-    // re-read when the mode is toggled from Settings
-    const h = () => load();
-    window.addEventListener("prevail:appmode", h);
-    return () => {
-      live = false;
-      window.removeEventListener("prevail:appmode", h);
-    };
-  }, []);
   // High-contrast in BOTH modes: a clear tinted bar (not a translucent wash that
   // disappears over warm/cream themes) with dark text in light mode and light
   // text in dark mode. Legibility is non-negotiable for an always-on trust bar.
@@ -1077,21 +1059,6 @@ function BunkerRibbon({ enabled }: { enabled: boolean }) {
           ? "Local models only • Network disabled"
           : "Cloud models and web access enabled"}
       </span>
-      {/* App-mode badge — always tells the user if they're in the demo sandbox or
-          their real vault. Sits opposite the version chip. */}
-      {appMode && (
-        <span
-          className={`pointer-events-none absolute left-3 inline-flex select-none items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] ${
-            appMode === "demo"
-              ? "bg-black/15 ring-1 ring-current"
-              : "opacity-70"
-          }`}
-          title={appMode === "demo" ? "Demo sandbox — sample data. Switch to production in Settings → Vault." : "Production — your real vault."}
-        >
-          {appMode === "demo" ? <Sparkles className="h-2.5 w-2.5" /> : <ShieldCheck className="h-2.5 w-2.5" />}
-          {appMode === "demo" ? "Demo" : "Live"}
-        </span>
-      )}
       {/* Version — inside the ribbon so it inherits the high-contrast ribbon
           text color (the old standalone pill was invisible over the dark bar). */}
       <span className="pointer-events-none absolute right-3 select-none font-mono text-[10px] tracking-wider opacity-70">
@@ -1133,6 +1100,68 @@ function BridgeStatusChips() {
     <div className="pointer-events-none absolute bottom-1 left-2 z-20 flex items-center gap-1.5">
       {web && <Chip Icon={Monitor} label="WebUI" title="WebUI is live — reachable in your browser (Settings → Remote)" />}
       {tg && <Chip Icon={MessagesSquare} label="Telegram" title="Telegram bridge is live — messages route to your domains" />}
+    </div>
+  );
+}
+
+// A clear, unmissable strip across the top of the app whenever you're in the
+// demo sandbox — so you always know this is sample data, with a one-click path
+// to set up a clean workspace for real use. Hidden entirely in production.
+function DemoBanner({
+  vaultPath,
+  onSwitched,
+}: {
+  vaultPath: string | null;
+  onSwitched: (vault: string) => void;
+}) {
+  const [mode, setMode] = useState<"demo" | "production" | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      invoke<{ mode: "demo" | "production" }>("engine_appmode_get")
+        .then((m) => alive && setMode(m.mode))
+        .catch(() => {});
+    load();
+    const h = () => load();
+    window.addEventListener("prevail:appmode", h);
+    return () => {
+      alive = false;
+      window.removeEventListener("prevail:appmode", h);
+    };
+  }, []);
+  if (mode !== "demo") return null;
+  async function setup() {
+    const ok = await tauriConfirm(
+      "Set up Prevail for real use?\n\nThis starts a fresh, empty workspace and clears the demo sample data so it's ready for you. Your own notes and domains are never touched. This can't be undone.",
+      { title: "Switch to production", kind: "warning", okLabel: "Set up for real use", cancelLabel: "Stay in demo" },
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const res = await invoke<{ vault: string }>("engine_production_init", { vault: null, clearDemo: vaultPath });
+      await invoke("engine_appmode_set", { mode: "production" }).catch(() => {});
+      window.dispatchEvent(new Event("prevail:appmode"));
+      if (res?.vault) onSwitched(res.vault);
+    } catch (e) {
+      console.error("production init failed", e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex shrink-0 items-center justify-center gap-3 border-b border-accent-border bg-accent-soft px-4 py-1.5 text-xs">
+      <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
+      <span className="font-mono font-bold uppercase tracking-[0.16em] text-accent">Demo mode</span>
+      <span className="text-text-secondary">You're exploring sample data — nothing here is yours yet.</span>
+      <button
+        onClick={setup}
+        disabled={busy}
+        className="ml-1 inline-flex items-center gap-1.5 rounded-full border border-accent-border bg-accent px-3 py-0.5 font-medium text-background hover:opacity-90 disabled:opacity-50"
+      >
+        {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+        {busy ? "Setting up…" : "Set up for real use"}
+      </button>
     </div>
   );
 }
@@ -1853,6 +1882,7 @@ export default function App() {
         // switch to production when ready. (F3 auto-demo.)
         const path = await invoke<string>("import_sample_vault");
         await invoke("engine_appmode_set", { mode: "demo" }).catch(() => {});
+        await invoke("engine_appmode_mark_demo", { vault: path }).catch(() => {});
         setVaultPath(path);
         lsSet(LS.vault, path);
         setSelectedDomain(null);
@@ -2265,8 +2295,10 @@ export default function App() {
     try {
       const path = await invoke<string>("import_sample_vault");
       // Loading the sample vault means you're exploring — mark demo mode so the
-      // Settings banner offers the switch to production. (F3)
+      // Settings banner offers the switch to production. (F3) Tag the vault as a
+      // demo sandbox so the switch-to-production flow can safely clear it later.
       await invoke("engine_appmode_set", { mode: "demo" }).catch(() => {});
+      await invoke("engine_appmode_mark_demo", { vault: path }).catch(() => {});
       setVaultPath(path);
       lsSet(LS.vault, path);
       setSelectedDomain(null);
@@ -2312,6 +2344,15 @@ export default function App() {
 
   return (
     <div className="relative flex h-screen flex-col bg-background text-text-primary">
+      <DemoBanner
+        vaultPath={vaultPath}
+        onSwitched={(p) => {
+          setVaultPath(p);
+          lsSet(LS.vault, p);
+          void invoke("remember_vault", { path: p }).catch(() => {});
+          setSelectedDomain(null);
+        }}
+      />
       {bunkerEnabled && !bunkerLocalOk && (
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-600/30 bg-amber-500/10 px-4 py-1.5 text-xs text-amber-800 dark:text-amber-300">
           <ShieldCheck className="h-3.5 w-3.5" />
@@ -12250,11 +12291,39 @@ function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { 
     })();
   }, []);
   async function setMode(mode: "demo" | "production") {
+    // Switching to production is the real "set it up for a real user" action:
+    // it prepares a clean, empty workspace and clears the demo sample data
+    // (only if the current vault is actually a demo sandbox — a real vault is
+    // never wiped, enforced in the engine). Switching back to demo just flips
+    // the flag so you can explore the sandbox again.
+    if (mode === "production") {
+      const ok = await tauriConfirm(
+        "Set up Prevail for real use?\n\nThis starts a fresh, empty workspace and clears the demo sample data so it's ready for you. Your own notes and domains are never touched. This can't be undone.",
+        { title: "Switch to production", kind: "warning", okLabel: "Set up for real use", cancelLabel: "Stay in demo" },
+      );
+      if (!ok) return;
+    }
     setSwitchingMode(true);
     try {
-      await invoke("engine_appmode_set", { mode });
-      setAppMode(mode);
-      window.dispatchEvent(new Event("prevail:appmode"));
+      if (mode === "production") {
+        const res = await invoke<{ vault: string; demoCleared: boolean; refusedClear?: string }>(
+          "engine_production_init",
+          { vault: null, clearDemo: vaultPath },
+        );
+        await invoke("engine_appmode_set", { mode: "production" }).catch(() => {});
+        setAppMode("production");
+        window.dispatchEvent(new Event("prevail:appmode"));
+        if (res?.vault) onVaultMoved?.(res.vault); // point the app at the clean vault
+        setPackNote(
+          res?.demoCleared
+            ? "Done. You're in a clean production workspace and the demo data was cleared. Add your domains to get started."
+            : "Switched to production on a fresh workspace. Your previous vault was kept (it wasn't a demo sandbox).",
+        );
+      } else {
+        await invoke("engine_appmode_set", { mode: "demo" });
+        setAppMode("demo");
+        window.dispatchEvent(new Event("prevail:appmode"));
+      }
     } catch (e) {
       setPackNote(`Could not switch mode: ${String(e)}`);
     } finally {
