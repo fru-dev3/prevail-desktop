@@ -28,7 +28,7 @@ jobs:
       - name: Checkout engine (prevail-cli)
         uses: actions/checkout@v4
         with:
-          repository: fru-dev3/prevail
+          repository: fru-dev3/prevail-cli
           path: engine
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
