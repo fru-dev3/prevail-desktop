@@ -3310,6 +3310,7 @@ pub fn run() {
             engine::engine_lock_set,
             engine::engine_lock_verify,
             engine::engine_lock_clear,
+            engine::engine_biometric_authenticate,
             engine::engine_vault_status,
             engine::engine_vault_unlock,
             engine::engine_vault_lock_session,
