@@ -728,6 +728,35 @@ pub fn engine_appmode_set(mode: String) -> Result<serde_json::Value, String> {
     run_engine_json(&["appmode", "set", "--mode", &mode])
 }
 
+/// `prevail appmode init` — prepare a clean production workspace and switch to
+/// it. `vault` is the clean target (empty default: the embedded vault).
+/// `clear_demo`, when set, is emptied ONLY if it carries the demo marker — an
+/// unmarked (possibly real) vault is never deleted (engine-side guard).
+#[tauri::command]
+pub fn engine_production_init(
+    vault: Option<String>,
+    clear_demo: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let mut a: Vec<String> = vec!["appmode".into(), "init".into()];
+    if let Some(v) = vault.filter(|s| !s.is_empty()) {
+        a.push("--vault".into());
+        a.push(v);
+    }
+    if let Some(d) = clear_demo.filter(|s| !s.is_empty()) {
+        a.push("--clear-demo".into());
+        a.push(d);
+    }
+    let refs: Vec<&str> = a.iter().map(|s| s.as_str()).collect();
+    run_engine_json(&refs)
+}
+
+/// `prevail appmode mark-demo --vault <path>` — tag a seeded sandbox as demo so a
+/// later production switch may safely clear it.
+#[tauri::command]
+pub fn engine_appmode_mark_demo(vault: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["appmode", "mark-demo", "--vault", &vault])
+}
+
 /// `prevail pack list` — the bundled persona packs.
 #[tauri::command]
 pub fn engine_pack_list() -> Result<serde_json::Value, String> {
