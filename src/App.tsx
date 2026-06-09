@@ -13849,7 +13849,7 @@ function AboutSection() {
         <Row label="Help & documentation" href="https://github.com/fru-dev3/prevail-desktop#readme" />
         <Row label="Update log" href="https://github.com/fru-dev3/prevail-desktop/releases" />
         <Row label="Report an issue" href="https://github.com/fru-dev3/prevail-desktop/issues/new" />
-        <Row label="Prevail CLI" href="https://github.com/fru-dev3/prevail" />
+        <Row label="Prevail CLI" href="https://github.com/fru-dev3/prevail-cli" />
         <Row label="Official website" href="https://prevail.sh" />
       </div>
 

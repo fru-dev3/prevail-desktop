@@ -3,7 +3,7 @@
 A local-first **life-OS** for macOS — a native cockpit that runs AI per
 life-domain (wealth, health, tax, career…), grounded in a local markdown vault.
 Tauri 2 + React 19 + Tailwind 4, with a bundled engine (the
-[Prevail CLI](https://github.com/fru-dev3/prevail)) — same vault format, no
+[Prevail CLI](https://github.com/fru-dev3/prevail-cli)) — same vault format, no
 terminal required.
 
 > **Local-first.** Your vault, chats, and the durable *intent ledger* stay on
