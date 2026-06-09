@@ -45,6 +45,10 @@ const WEBUI_ALLOWED: &[&str] = &[
     "intent_append", "intents_read", "journal_append", "usage_append", "usage_summary",
     // usage analytics — domain-scoped roll-up for the per-domain Usage tab (read)
     "usage_summary_domain",
+    // demo/production mode + starter packs — read-only over the web so the
+    // browser shows the demo badge + can list packs. Switching mode and
+    // importing packs (writes) stay desktop-only.
+    "engine_appmode_get", "engine_pack_list",
     "decision_append", "decisions_read", "decision_feedback",
     // proactive surface + per-domain tasks/goals (read vault + model + checklist)
     "domain_surface", "tasks_read", "tasks_set", "tasks_add", "read_memory_md",
