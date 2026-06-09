@@ -14,7 +14,15 @@
 > | 3 | Demo/Prod + packages | **Done** (mode flag, 6 packs, import UI, banner, switch, auto-demo, seeded usage + threads) | engine (8 pack tests), tsc, build | content is extensible; tone worth a review |
 > | 4 | Login + encryption | **Phase 0 done** + **Phase 1 mostly done** | engine (6 lock + 12 crypto + 5 ops + 6 session + 3 integration), tsc, build | only the live/runtime activation layer remains |
 >
-> **Engine: 260 tests pass. Desktop: 38 Rust tests pass. Both typecheck + build clean.**
+> **Engine: 271 tests pass (3 skip). Desktop: 39 Rust tests pass. Both typecheck + build clean.**
+> **(2026-06-09 update)** Fixed the recurring blank-screen for good — cargo was
+> re-copying a stale 1.7.0 engine into `target/debug/prevail` from the bundled
+> sidecar; replaced the bundled sidecar with the current signed engine so dev
+> rebuilds stay self-consistent. Fixed a flaky desktop test (bunker CACHE race
+> under the parallel runner — now serialized). **F3 demo-mode visibility closed:**
+> the app-mode (demo/production) is now shown as an always-on badge in the status
+> ribbon AND a two-way toggle card in Settings → Vault (previously only a
+> demo-only banner, so production showed no indicator at all).
 >
 > **F4 Phase 1 is now far past "primitives only":** crypto core (envelope, AES-256-GCM,
 > scrypt), **one-time recovery code**, keyring persistence, in-place vault
