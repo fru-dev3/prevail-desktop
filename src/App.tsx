@@ -1033,6 +1033,24 @@ function preferredLocalCli(clis: { id: string; available: boolean }[]): string |
 // The always-visible Bunker Mode status bar. Never disappears while the app
 // runs, so the user always knows whether anything can leave their machine.
 function BunkerRibbon({ enabled }: { enabled: boolean }) {
+  // Self-contained app-mode badge so the user always knows whether they're in the
+  // demo sandbox or their real (production) vault — visible from every screen.
+  const [appMode, setAppMode] = useState<"demo" | "production" | null>(null);
+  useEffect(() => {
+    let live = true;
+    const load = () =>
+      invoke<{ mode: "demo" | "production" }>("engine_appmode_get")
+        .then((m) => live && setAppMode(m.mode))
+        .catch(() => {});
+    load();
+    // re-read when the mode is toggled from Settings
+    const h = () => load();
+    window.addEventListener("prevail:appmode", h);
+    return () => {
+      live = false;
+      window.removeEventListener("prevail:appmode", h);
+    };
+  }, []);
   // High-contrast in BOTH modes: a clear tinted bar (not a translucent wash that
   // disappears over warm/cream themes) with dark text in light mode and light
   // text in dark mode. Legibility is non-negotiable for an always-on trust bar.
@@ -1059,6 +1077,21 @@ function BunkerRibbon({ enabled }: { enabled: boolean }) {
           ? "Local models only • Network disabled"
           : "Cloud models and web access enabled"}
       </span>
+      {/* App-mode badge — always tells the user if they're in the demo sandbox or
+          their real vault. Sits opposite the version chip. */}
+      {appMode && (
+        <span
+          className={`pointer-events-none absolute left-3 inline-flex select-none items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] ${
+            appMode === "demo"
+              ? "bg-black/15 ring-1 ring-current"
+              : "opacity-70"
+          }`}
+          title={appMode === "demo" ? "Demo sandbox — sample data. Switch to production in Settings → Vault." : "Production — your real vault."}
+        >
+          {appMode === "demo" ? <Sparkles className="h-2.5 w-2.5" /> : <ShieldCheck className="h-2.5 w-2.5" />}
+          {appMode === "demo" ? "Demo" : "Live"}
+        </span>
+      )}
       {/* Version — inside the ribbon so it inherits the high-contrast ribbon
           text color (the old standalone pill was invisible over the dark bar). */}
       <span className="pointer-events-none absolute right-3 select-none font-mono text-[10px] tracking-wider opacity-70">
@@ -12231,11 +12264,12 @@ function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { 
       try { const ps = await invoke<typeof packs>("engine_pack_list"); setPacks(ps); } catch { /* ignore */ }
     })();
   }, []);
-  async function switchToProduction() {
+  async function setMode(mode: "demo" | "production") {
     setSwitchingMode(true);
     try {
-      await invoke("engine_appmode_set", { mode: "production" });
-      setAppMode("production");
+      await invoke("engine_appmode_set", { mode });
+      setAppMode(mode);
+      window.dispatchEvent(new Event("prevail:appmode"));
     } catch (e) {
       setPackNote(`Could not switch mode: ${String(e)}`);
     } finally {
@@ -12307,21 +12341,25 @@ function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { 
   return (
     <>
       <SettingsHeader title="Vault" subtitle="Where Prevail reads + writes your domain folders. Each child folder with a state.md becomes a life domain." />
-      {appMode === "demo" && (
-        <div className="mb-4 flex items-start gap-3 rounded-xl border border-accent-border bg-accent-soft p-4">
-          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+      {appMode && (
+        <div className={`mb-4 flex items-start gap-3 rounded-xl border p-4 ${appMode === "demo" ? "border-accent-border bg-accent-soft" : "border-border bg-surface-warm"}`}>
+          {appMode === "demo" ? <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-accent" /> : <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" />}
           <div className="min-w-0 flex-1">
-            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-accent">Demo mode</div>
+            <div className={`font-mono text-[11px] font-bold uppercase tracking-[0.18em] ${appMode === "demo" ? "text-accent" : "text-text-secondary"}`}>
+              {appMode === "demo" ? "Demo mode" : "Production mode"}
+            </div>
             <p className="mt-1 text-sm text-text-secondary">
-              You're exploring sample data. Nothing here is yours yet. Switch to production to start your own vault and keep the domains you like.
+              {appMode === "demo"
+                ? "You're exploring sample data. Nothing here is yours yet. Switch to production to start your own vault and keep the domains you like."
+                : "This is your real workspace. Everything you save here is yours. You can switch back to the demo sandbox any time to explore safely."}
             </p>
             <button
-              onClick={switchToProduction}
+              onClick={() => setMode(appMode === "demo" ? "production" : "demo")}
               disabled={switchingMode}
-              className="mt-2 inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent px-3 py-1.5 text-sm text-background hover:opacity-90 disabled:opacity-50"
+              className={`mt-2 inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm disabled:opacity-50 ${appMode === "demo" ? "border-accent-border bg-accent text-background hover:opacity-90" : "border-border bg-background hover:bg-surface-warm"}`}
             >
-              {switchingMode ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              {switchingMode ? "Switching…" : "Switch to production"}
+              {switchingMode ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : appMode === "demo" ? <Sparkles className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {switchingMode ? "Switching…" : appMode === "demo" ? "Switch to production" : "Switch to demo sandbox"}
             </button>
           </div>
         </div>

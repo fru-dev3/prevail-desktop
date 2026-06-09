@@ -204,6 +204,17 @@ pub fn bunker_set(enabled: bool) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex as StdMutex;
+
+    // These tests mutate the shared CACHE static, so they must not run
+    // concurrently. cargo's default parallel runner would otherwise race
+    // (one test sets the flag while another asserts on it). Serialize every
+    // CACHE-touching test on this guard; recover from poisoning so one
+    // panicking test doesn't cascade-fail the rest.
+    static SERIAL: StdMutex<()> = StdMutex::new(());
+    fn serial() -> std::sync::MutexGuard<'static, ()> {
+        SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     #[test]
     fn local_cli_classification() {
@@ -218,6 +229,7 @@ mod tests {
 
     #[test]
     fn guard_cloud_blocks_network_when_enabled() {
+        let _serial = serial();
         // Force enabled in-process (don't touch the real flag file). Network
         // actions with no local equivalent stay hard-blocked.
         *CACHE.lock().unwrap() = Some(true);
@@ -230,6 +242,7 @@ mod tests {
 
     #[test]
     fn guard_cli_blocks_cloud_allows_local_under_bunker() {
+        let _serial = serial();
         // The fixed-provider guard used by distill / surface / telegram run_cli.
         *CACHE.lock().unwrap() = Some(true);
         assert_eq!(guard_cli("claude"), Err(BLOCKED.to_string()));
@@ -244,6 +257,7 @@ mod tests {
 
     #[test]
     fn resolve_cli_passes_through_when_disabled_or_local() {
+        let _serial = serial();
         // Bunker off → requested CLI is returned verbatim, cloud or not.
         *CACHE.lock().unwrap() = Some(false);
         assert_eq!(resolve_cli("claude"), Ok("claude".to_string()));
@@ -270,6 +284,7 @@ mod tests {
 
     #[test]
     fn resolve_cli_cloud_under_bunker_switches_or_blocks() {
+        let _serial = serial();
         // Bunker on + cloud request: the result depends on whether a local
         // provider is actually reachable on this machine. Either way it must
         // NEVER return a cloud CLI — that is the whole guarantee.
