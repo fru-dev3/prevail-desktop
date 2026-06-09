@@ -2943,6 +2943,14 @@ function Sidebar({
           {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
         </button>
       </div>
+      {!collapsed && (
+        <div className="shrink-0 border-t border-border-subtle px-3 py-2">
+          <p className="text-[10px] leading-snug text-text-muted">
+            Alpha · experimental build for testing. Provided as-is, with no warranty; use at your own risk. Found something or have an idea?{" "}
+            <a href="https://github.com/fru-dev3/prevail-desktop/issues/new" target="_blank" rel="noreferrer" className="text-accent hover:underline">Share feedback</a>.
+          </p>
+        </div>
+      )}
     </aside>
   );
 }
@@ -13312,6 +13320,26 @@ function AboutSection() {
         <Row label="Report an issue" href="https://github.com/fru-dev3/prevail-desktop/issues/new" />
         <Row label="Prevail CLI" href="https://github.com/fru-dev3/prevail" />
         <Row label="Official website" href="https://prevail.sh" />
+      </div>
+
+      {/* Alpha / liability disclaimer */}
+      <div className="mt-4 rounded-2xl border border-border bg-surface px-5 py-4 shadow-sm">
+        <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Alpha software</div>
+        <p className="text-xs leading-relaxed text-text-secondary">
+          Prevail is an early, experimental alpha released for demonstration and testing. It is provided "as is",
+          without warranty of any kind, express or implied, and you use it at your own risk. The authors are not liable
+          for any data loss, costs, or damages arising from its use. It runs third-party AI tools and, unless Bunker
+          Mode is on, may send data to cloud providers. Always review anything important yourself. Feedback and bug
+          reports are very welcome, they directly shape what comes next.
+        </p>
+        <a
+          href="https://github.com/fru-dev3/prevail-desktop/issues/new"
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
+        >
+          <MessageSquare className="h-3.5 w-3.5" /> Share feedback
+        </a>
       </div>
 
       {/* Config — export / import / reset */}
