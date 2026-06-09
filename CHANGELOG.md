@@ -17,7 +17,7 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 - **Providers** — OpenRouter gateway: one key, every model (Claude/GPT/Gemini/Grok/DeepSeek/Qwen…); keys in Keychain.
 - **WebUI** — serve the same app to a browser via an in-app bridge (no duplicate UI); reach it anywhere over Tailscale/Cloudflare.
 
-## [Unreleased] — next release (built + tested; pending live verification + release)
+## [0.6.0] — 2026-06-09 · usage v2, embedded vault, demo mode, encryption (built + tested; pending live verification + signed release)
 
 ### Added
 
