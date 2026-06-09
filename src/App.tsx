@@ -1041,7 +1041,7 @@ function BunkerRibbon({ enabled }: { enabled: boolean }) {
       className={`relative flex shrink-0 items-center justify-center gap-2 border-t px-4 py-1 text-[11px] ${
         enabled
           ? "border-emerald-300 bg-emerald-100 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
-          : "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
+          : "border-black/30 bg-[#141416] text-white/90"
       }`}
       title={
         enabled
