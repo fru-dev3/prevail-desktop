@@ -30,7 +30,7 @@ use tauri::Emitter;
 // telegram_*), or the host→server callbacks (webui_resolve/event).
 const WEBUI_ALLOWED: &[&str] = &[
     // vault / domains / skills (read)
-    "scan_vault", "engine_domains", "domain_context", "scan_skills", "skill_create", "read_skill",
+    "scan_vault", "engine_domains", "domain_context", "read_domain_prompts", "scan_skills", "skill_create", "read_skill",
     // vault bootstrap — let the browser inherit the desktop's current vault
     // (skip onboarding) and seed the bundled sample if the user asks. These
     // read/return paths only; they don't expose arbitrary file I/O. (B5/B6)

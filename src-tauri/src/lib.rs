@@ -2704,6 +2704,28 @@ pub struct DomainContext {
     pub skills: Vec<SkillEntry>,
 }
 
+/// Read a domain's starter prompts from `<vault>/<domain>/PROMPTS.md` (written
+/// by pack import). Returns the bullet-list entries so the chat empty-state can
+/// offer one-click conversation starters. Empty vec if the file is absent.
+#[tauri::command]
+fn read_domain_prompts(vault: String, domain: String) -> Result<Vec<String>, String> {
+    let p = PathBuf::from(&vault).join(&domain).join("PROMPTS.md");
+    let body = match read_to_string_retry(&p) {
+        Ok(s) => s,
+        Err(_) => return Ok(Vec::new()),
+    };
+    let prompts: Vec<String> = body
+        .lines()
+        .filter_map(|l| {
+            let t = l.trim_start();
+            t.strip_prefix("- ").or_else(|| t.strip_prefix("* "))
+        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    Ok(prompts)
+}
+
 #[tauri::command]
 fn domain_context(vault: String, domain: String) -> Result<DomainContext, String> {
     let root = PathBuf::from(&vault).join(&domain);
@@ -3289,6 +3311,7 @@ pub fn run() {
             open_in_finder,
             create_domain,
             domain_context,
+            read_domain_prompts,
             scan_skills,
             skill_create,
             abort_sessions,

@@ -4265,6 +4265,9 @@ function DomainHome({
   const [ctx, setCtx] = useState<DomainContextBundle | null>(null);
   const [loading, setLoading] = useState(true);
   const [taskNonce, setTaskNonce] = useState(0); // bump to reload the tasks panel
+  // Starter prompts from the domain's PROMPTS.md (written by pack import) — the
+  // one-click conversation starters that make an imported pack chat-ready.
+  const [starterPrompts, setStarterPrompts] = useState<string[]>([]);
   useEffect(() => {
     let mounted = true;
     setLoading(true);
@@ -4272,6 +4275,9 @@ function DomainHome({
       .then((c) => { if (mounted) setCtx(c); })
       .catch(() => { if (mounted) setCtx(null); })
       .finally(() => { if (mounted) setLoading(false); });
+    invoke<string[]>("read_domain_prompts", { vault: vaultPath, domain })
+      .then((ps) => { if (mounted) setStarterPrompts(ps); })
+      .catch(() => { if (mounted) setStarterPrompts([]); });
     return () => { mounted = false; };
   }, [vaultPath, domain]);
 
@@ -4301,6 +4307,25 @@ function DomainHome({
           <div>
             {tab === "chat" && (
               <div className="w-full">
+                {starterPrompts.length > 0 && (
+                  <div className="mb-4 rounded-xl border border-accent-border bg-accent-soft p-4">
+                    <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-accent">
+                      <Sparkles className="h-3.5 w-3.5" /> Start a conversation
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      {starterPrompts.map((p, i) => (
+                        <button
+                          key={i}
+                          onClick={() => onPickPrompt(p)}
+                          className="group flex items-center gap-2 rounded-lg border border-accent-border/60 bg-background px-3 py-2 text-left text-sm text-text-secondary hover:border-accent hover:text-text-primary"
+                        >
+                          <ArrowRight className="h-3.5 w-3.5 shrink-0 text-accent opacity-60 group-hover:opacity-100" />
+                          <span>{p}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <SurfacePanel vaultPath={vaultPath} domain={domain} onPick={onPickPrompt}
                   onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }} />
                 <TasksPanel vaultPath={vaultPath} domain={domain} nonce={taskNonce} />
@@ -12350,12 +12375,26 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
       {/* Action: in demo, the 3-step switch; in production, a quiet way back. */}
       {isDemo ? (
         <div className="mb-4 rounded-xl border border-accent-border bg-accent-soft p-4">
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-text-primary">Switching to production takes three steps:</div>
-          <ol className="mb-4 space-y-2 text-sm text-text-secondary">
-            <li className="flex items-center gap-2"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-background">1</span> Choose a folder for your own vault</li>
-            <li className="flex items-center gap-2"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-background">2</span> Set up your life domains (onboarding)</li>
-            <li className="flex items-center gap-2"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-background">3</span> Start using Prevail for real — demo data is cleared</li>
-          </ol>
+          <div className="mb-3 text-sm font-semibold text-text-primary">Switching to production takes three steps:</div>
+          <div className="mb-4 flex items-stretch gap-2">
+            {[
+              { n: 1, label: "Choose your vault folder" },
+              { n: 2, label: "Set up your domains" },
+              { n: 3, label: "Start for real, demo data cleared" },
+            ].map((step, i) => (
+              <Fragment key={step.n}>
+                {i > 0 && (
+                  <div className="flex shrink-0 items-center text-accent">
+                    <ArrowRight className="h-4 w-4" />
+                  </div>
+                )}
+                <div className="flex flex-1 flex-col items-center gap-1.5 rounded-lg border border-accent-border bg-background/60 p-2.5 text-center">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-background">{step.n}</span>
+                  <span className="text-xs leading-tight text-text-secondary">{step.label}</span>
+                </div>
+              </Fragment>
+            ))}
+          </div>
           <button
             onClick={switchToProduction}
             disabled={switchingMode}
