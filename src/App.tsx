@@ -1104,63 +1104,29 @@ function BridgeStatusChips() {
   );
 }
 
-// A clear, unmissable strip across the top of the app whenever you're in the
-// demo sandbox — so you always know this is sample data, with a one-click path
-// to set up a clean workspace for real use. Hidden entirely in production.
-function DemoBanner({
-  vaultPath,
-  onSwitched,
-}: {
-  vaultPath: string | null;
-  onSwitched: (vault: string) => void;
-}) {
-  const [mode, setMode] = useState<"demo" | "production" | null>(null);
-  const [busy, setBusy] = useState(false);
+// A prominent, full-width ribbon pinned to the very bottom of the app whenever
+// you're in the demo sandbox — so you always know this is sample data. The
+// "Switch to Production" link takes you to the configuration page. Removed
+// entirely (no ribbon) the moment you're in production.
+function DemoRibbon({ onSwitch }: { onSwitch: () => void }) {
+  const [isDemo, setIsDemo] = useState(false);
   useEffect(() => {
-    let alive = true;
     const load = () =>
       invoke<{ mode: "demo" | "production" }>("engine_appmode_get")
-        .then((m) => alive && setMode(m.mode))
+        .then((m) => setIsDemo(m.mode === "demo"))
         .catch(() => {});
     load();
-    const h = () => load();
-    window.addEventListener("prevail:appmode", h);
-    return () => {
-      alive = false;
-      window.removeEventListener("prevail:appmode", h);
-    };
+    window.addEventListener("prevail:appmode", load);
+    return () => window.removeEventListener("prevail:appmode", load);
   }, []);
-  if (mode !== "demo") return null;
-  async function setup() {
-    const ok = await tauriConfirm(
-      "Set up Prevail for real use?\n\nThis starts a fresh, empty workspace and clears the demo sample data so it's ready for you. Your own notes and domains are never touched. This can't be undone.",
-      { title: "Switch to production", kind: "warning", okLabel: "Set up for real use", cancelLabel: "Stay in demo" },
-    );
-    if (!ok) return;
-    setBusy(true);
-    try {
-      const res = await invoke<{ vault: string }>("engine_production_init", { vault: null, clearDemo: vaultPath });
-      await invoke("engine_appmode_set", { mode: "production" }).catch(() => {});
-      window.dispatchEvent(new Event("prevail:appmode"));
-      if (res?.vault) onSwitched(res.vault);
-    } catch (e) {
-      console.error("production init failed", e);
-    } finally {
-      setBusy(false);
-    }
-  }
+  if (!isDemo) return null;
   return (
-    <div className="flex shrink-0 items-center justify-center gap-3 border-b border-accent-border bg-accent-soft px-4 py-1.5 text-xs">
-      <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
-      <span className="font-mono font-bold uppercase tracking-[0.16em] text-accent">Demo mode</span>
-      <span className="text-text-secondary">You're exploring sample data — nothing here is yours yet.</span>
-      <button
-        onClick={setup}
-        disabled={busy}
-        className="ml-1 inline-flex items-center gap-1.5 rounded-full border border-accent-border bg-accent px-3 py-0.5 font-medium text-background hover:opacity-90 disabled:opacity-50"
-      >
-        {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-        {busy ? "Setting up…" : "Set up for real use"}
+    <div className="flex shrink-0 items-center justify-center gap-2.5 border-t border-accent-border bg-accent px-4 py-1.5 text-xs text-background">
+      <Sparkles className="h-3.5 w-3.5 shrink-0" />
+      <span className="font-mono font-bold uppercase tracking-[0.2em]">Demo Mode</span>
+      <span className="opacity-90">You're exploring sample data</span>
+      <button onClick={onSwitch} className="font-semibold underline underline-offset-2 hover:opacity-80">
+        Switch to Production →
       </button>
     </div>
   );
@@ -2094,6 +2060,12 @@ export default function App() {
   useEffect(() => { void refreshThreads(); }, [refreshThreads]);
   const [clis, setClis] = useState<CliInfo[]>([]);
   const [tab, setTab] = useState<TabId>("chat");
+  // Lets in-app links (e.g. the Demo ribbon) open a specific Settings section.
+  const [settingsJump, setSettingsJump] = useState<{ section: string; n: number } | null>(null);
+  const openSettingsAt = (section: string) => {
+    setSettingsJump((j) => ({ section, n: (j?.n ?? 0) + 1 }));
+    setTab("settings");
+  };
   // Lifted from ChatPanel so the top bar owns the domain Insights / Preferences
   // toggles. ChatPanel receives these as props and renders the matching view.
   const [domainTab, setDomainTab] = useState<DomainTab>("chat");
@@ -2330,6 +2302,7 @@ export default function App() {
             setSelectedDomain(null);
           }}
           onBack={() => setTab("chat")}
+          jumpTo={settingsJump}
           onStartChatWith={(cliId, modelId) => {
             lsSet(LS.defaultChatCli, cliId);
             if (modelId) lsSet(`prevail.model.${cliId}`, modelId);
@@ -2338,21 +2311,13 @@ export default function App() {
           }}
         />
         <BunkerRibbon enabled={bunkerEnabled} />
+        <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
       </div>
     );
   }
 
   return (
     <div className="relative flex h-screen flex-col bg-background text-text-primary">
-      <DemoBanner
-        vaultPath={vaultPath}
-        onSwitched={(p) => {
-          setVaultPath(p);
-          lsSet(LS.vault, p);
-          void invoke("remember_vault", { path: p }).catch(() => {});
-          setSelectedDomain(null);
-        }}
-      />
       {bunkerEnabled && !bunkerLocalOk && (
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-600/30 bg-amber-500/10 px-4 py-1.5 text-xs text-amber-800 dark:text-amber-300">
           <ShieldCheck className="h-3.5 w-3.5" />
@@ -2571,6 +2536,7 @@ export default function App() {
         </main>
       </div>
       <BunkerRibbon enabled={bunkerEnabled} />
+      <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
       {/* A7: live bridge/WebUI chips — bottom-left, follow you across the app */}
       <BridgeStatusChips />
       {quickSwitcherOpen && (
@@ -10531,6 +10497,7 @@ function SettingsPanel({
   onBunkerChange,
   onSetupDomains,
   onVaultMoved,
+  jumpTo,
 }: {
   appearance: ReturnType<typeof useAppearance>;
   vaultPath: string;
@@ -10543,9 +10510,15 @@ function SettingsPanel({
   onBunkerChange: (on: boolean) => void;
   onSetupDomains?: () => void;
   onVaultMoved?: (path: string) => void;
+  jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "privacy" | "connectors" | "user" | "memory" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
-  const [section, setSection] = useState<Section>("general");
+  type Section = "general" | "models" | "privacy" | "connectors" | "user" | "memory" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
+  const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
+  // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
+  // straight to a section. The nonce makes repeat jumps to the same section fire.
+  useEffect(() => {
+    if (jumpTo?.section) setSection(jumpTo.section as Section);
+  }, [jumpTo?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Grouped settings nav — the flat 19-item list was hard to scan and mixed
   // unrelated concerns (e.g. General vs Defaults overlap). Organized into
@@ -10573,6 +10546,7 @@ function SettingsPanel({
       { id: "user", label: "Pro Profile", icon: Users },
       { id: "memory", label: "Memory & Context", icon: Brain },
       { id: "vault", label: "Vault", icon: Folder },
+      { id: "demo", label: "Demo & Production", icon: Sparkles },
     ]},
     { heading: "App", items: [
       { id: "general", label: "General", icon: SettingsIcon },
@@ -10681,6 +10655,7 @@ function SettingsPanel({
           {section === "mcp" && <McpSection vaultPath={vaultPath} />}
           {section === "remote" && <RemoteSection />}
           {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} />}
+          {section === "demo" && <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} />}
           {section === "appearance" && <AppearanceSection appearance={appearance} />}
           {section === "frameworks" && <FrameworksSection />}
           {section === "skills" && <SkillsSection vaultPath={vaultPath} />}
@@ -12274,77 +12249,174 @@ function UserProfileSection({ vaultPath }: { vaultPath: string }) {
   );
 }
 
-function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void }) {
-  const [backingUp, setBackingUp] = useState(false);
-  const [backupNote, setBackupNote] = useState<string | null>(null);
-  // Demo vs production mode + starter packs (F3). Mode lives in engine config;
-  // packs are bundled persona starter domains.
+// "Demo & Production" — its own top-level Settings section (sibling of Vault):
+// the demo/production mode toggle (with the real clean-slate production switch)
+// plus the importable starter packs. Kept separate from Vault so the mode
+// control is easy to find.
+function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPath: string; onVaultMoved?: (path: string) => void; onSetupDomains?: () => void }) {
   const [appMode, setAppMode] = useState<"demo" | "production" | null>(null);
   const [switchingMode, setSwitchingMode] = useState(false);
   const [packs, setPacks] = useState<{ file: string; name: string; version: string; description: string | null; domains: string[] }[]>([]);
   const [importingPack, setImportingPack] = useState<string | null>(null);
-  const [packNote, setPackNote] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   useEffect(() => {
-    (async () => {
-      try { const m = await invoke<{ mode: "demo" | "production" }>("engine_appmode_get"); setAppMode(m.mode); } catch { /* engine not ready */ }
-      try { const ps = await invoke<typeof packs>("engine_pack_list"); setPacks(ps); } catch { /* ignore */ }
-    })();
+    const loadMode = () =>
+      invoke<{ mode: "demo" | "production" }>("engine_appmode_get").then((m) => setAppMode(m.mode)).catch(() => {});
+    loadMode();
+    invoke<typeof packs>("engine_pack_list").then(setPacks).catch(() => {});
+    window.addEventListener("prevail:appmode", loadMode);
+    return () => window.removeEventListener("prevail:appmode", loadMode);
   }, []);
-  async function setMode(mode: "demo" | "production") {
-    // Switching to production is the real "set it up for a real user" action:
-    // it prepares a clean, empty workspace and clears the demo sample data
-    // (only if the current vault is actually a demo sandbox — a real vault is
-    // never wiped, enforced in the engine). Switching back to demo just flips
-    // the flag so you can explore the sandbox again.
-    if (mode === "production") {
-      const ok = await tauriConfirm(
-        "Set up Prevail for real use?\n\nThis starts a fresh, empty workspace and clears the demo sample data so it's ready for you. Your own notes and domains are never touched. This can't be undone.",
-        { title: "Switch to production", kind: "warning", okLabel: "Set up for real use", cancelLabel: "Stay in demo" },
-      );
-      if (!ok) return;
+  // Switch to production: the user picks the folder for their REAL vault, we set
+  // it up for production (clearing the demo sandbox — only if it's actually a
+  // marked demo vault, never a real one), point the app there, and drop them
+  // into the domain onboarding workflow for the new vault.
+  async function switchToProduction() {
+    const ok = await tauriConfirm(
+      "Ready for real use? You'll choose a folder for your own vault, then set up your domains. The demo sample data is cleared.",
+      { title: "Switch to production", kind: "info", okLabel: "Choose my vault folder", cancelLabel: "Stay in demo" },
+    );
+    if (!ok) return;
+    const picked = await open({ directory: true, multiple: false, title: "Choose a folder for your production vault" });
+    if (!picked || typeof picked !== "string") return;
+    setSwitchingMode(true);
+    setNote(null);
+    try {
+      // Target = the picked vault; clear the old demo vault (only if marked).
+      await invoke<{ vault: string; demoCleared: boolean }>("engine_production_init", { vault: picked, clearDemo: vaultPath });
+      await invoke("engine_appmode_set", { mode: "production" }).catch(() => {});
+      setAppMode("production");
+      window.dispatchEvent(new Event("prevail:appmode"));
+      onVaultMoved?.(picked); // point the app at the chosen vault
+      onSetupDomains?.(); // run the onboarding workflow for it
+    } catch (e) {
+      setNote(`Could not switch to production: ${String(e)}`);
+    } finally {
+      setSwitchingMode(false);
     }
+  }
+  // Switch back to the demo sandbox — just flips the flag (no data touched).
+  async function switchToDemo() {
     setSwitchingMode(true);
     try {
-      if (mode === "production") {
-        const res = await invoke<{ vault: string; demoCleared: boolean; refusedClear?: string }>(
-          "engine_production_init",
-          { vault: null, clearDemo: vaultPath },
-        );
-        await invoke("engine_appmode_set", { mode: "production" }).catch(() => {});
-        setAppMode("production");
-        window.dispatchEvent(new Event("prevail:appmode"));
-        if (res?.vault) onVaultMoved?.(res.vault); // point the app at the clean vault
-        setPackNote(
-          res?.demoCleared
-            ? "Done. You're in a clean production workspace and the demo data was cleared. Add your domains to get started."
-            : "Switched to production on a fresh workspace. Your previous vault was kept (it wasn't a demo sandbox).",
-        );
-      } else {
-        await invoke("engine_appmode_set", { mode: "demo" });
-        setAppMode("demo");
-        window.dispatchEvent(new Event("prevail:appmode"));
-      }
+      await invoke("engine_appmode_set", { mode: "demo" });
+      setAppMode("demo");
+      window.dispatchEvent(new Event("prevail:appmode"));
+      setNote("You're in the demo sandbox. Explore freely — switch to production when you're ready for real use.");
     } catch (e) {
-      setPackNote(`Could not switch mode: ${String(e)}`);
+      setNote(`Could not switch: ${String(e)}`);
     } finally {
       setSwitchingMode(false);
     }
   }
   async function importPack(p: { name: string; domains: string[] }) {
     setImportingPack(p.name);
-    setPackNote(null);
+    setNote(null);
     try {
       const r = await invoke<{ created: string[]; skipped: string[] }>("engine_pack_import", { vault: vaultPath, pack: p.name, overwrite: false });
       const parts: string[] = [];
       if (r.created.length) parts.push(`added ${r.created.join(", ")}`);
       if (r.skipped.length) parts.push(`kept your existing ${r.skipped.join(", ")}`);
-      setPackNote(`${p.name}: ${parts.join(" · ") || "nothing to do"}. New domains appear on the next vault scan.`);
+      setNote(`${p.name}: ${parts.join(" · ") || "nothing to do"}. New domains appear on the next vault scan.`);
     } catch (e) {
-      setPackNote(`Import failed: ${String(e)}`);
+      setNote(`Import failed: ${String(e)}`);
     } finally {
       setImportingPack(null);
     }
   }
+  const isDemo = appMode === "demo";
+  return (
+    <>
+      <SettingsHeader
+        title="Demo & Production"
+        subtitle="Explore with sample data, then switch to your own vault for real use."
+      />
+      {/* Visual demo -> production state. The current stage glows. */}
+      <div className="mb-5 flex items-stretch gap-3">
+        <div className={`flex-1 rounded-xl border p-4 text-center transition-colors ${isDemo ? "border-accent-border bg-accent-soft ring-2 ring-accent/30" : "border-border bg-surface opacity-60"}`}>
+          <Sparkles className={`mx-auto h-6 w-6 ${isDemo ? "text-accent" : "text-text-muted"}`} />
+          <div className={`mt-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] ${isDemo ? "text-accent" : "text-text-muted"}`}>Demo</div>
+          <div className="mt-0.5 text-xs text-text-secondary">Sample data to explore</div>
+          {isDemo && <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-wider text-accent">You are here</div>}
+        </div>
+        <div className="flex items-center text-text-muted"><ArrowRight className="h-5 w-5" /></div>
+        <div className={`flex-1 rounded-xl border p-4 text-center transition-colors ${!isDemo && appMode ? "border-border bg-surface-warm ring-2 ring-text-muted/20" : "border-border bg-surface opacity-60"}`}>
+          <ShieldCheck className={`mx-auto h-6 w-6 ${!isDemo && appMode ? "text-text-primary" : "text-text-muted"}`} />
+          <div className={`mt-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] ${!isDemo && appMode ? "text-text-primary" : "text-text-muted"}`}>Production</div>
+          <div className="mt-0.5 text-xs text-text-secondary">Your real vault</div>
+          {!isDemo && appMode && <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-wider text-text-secondary">You are here</div>}
+        </div>
+      </div>
+      {/* Action: in demo, the 3-step switch; in production, a quiet way back. */}
+      {isDemo ? (
+        <div className="mb-4 rounded-xl border border-accent-border bg-accent-soft p-4">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-text-primary">Switching to production takes three steps:</div>
+          <ol className="mb-4 space-y-2 text-sm text-text-secondary">
+            <li className="flex items-center gap-2"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-background">1</span> Choose a folder for your own vault</li>
+            <li className="flex items-center gap-2"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-background">2</span> Set up your life domains (onboarding)</li>
+            <li className="flex items-center gap-2"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-background">3</span> Start using Prevail for real — demo data is cleared</li>
+          </ol>
+          <button
+            onClick={switchToProduction}
+            disabled={switchingMode}
+            className="inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
+          >
+            {switchingMode ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+            {switchingMode ? "Setting up…" : "Switch to production"}
+          </button>
+        </div>
+      ) : appMode ? (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-warm p-4">
+          <p className="text-sm text-text-secondary">You're in your real workspace. You can explore the demo sandbox any time.</p>
+          <button
+            onClick={switchToDemo}
+            disabled={switchingMode}
+            className="shrink-0 inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50"
+          >
+            {switchingMode ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {switchingMode ? "Switching…" : "Explore demo sandbox"}
+          </button>
+        </div>
+      ) : null}
+      {packs.length > 0 && (
+        <div className="mt-4">
+          <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">
+            <Sparkles className="h-3.5 w-3.5" /> Starter packs
+          </div>
+          <p className="mb-3 text-xs text-text-muted">
+            Import a persona's starter domains into this vault. Existing domains are kept, never overwritten.
+          </p>
+          <div className="flex flex-col gap-2">
+            {packs.map((p) => (
+              <div key={p.file} className="flex items-start gap-3 rounded-lg border border-border bg-surface p-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-text-primary">{p.name}</div>
+                  {p.description && <div className="mt-0.5 text-xs text-text-muted">{p.description}</div>}
+                  <div className="mt-1 font-mono text-[10px] text-text-secondary">{p.domains.join(" · ")}</div>
+                </div>
+                <button
+                  onClick={() => importPack(p)}
+                  disabled={importingPack !== null}
+                  className="shrink-0 inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50"
+                >
+                  {importingPack === p.name ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                  {importingPack === p.name ? "Importing…" : "Import"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {note && (
+        <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{note}</div>
+      )}
+    </>
+  );
+}
+
+function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void }) {
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupNote, setBackupNote] = useState<string | null>(null);
   // "Move vault into the app" — copy the current vault into the app-owned
   // location (~/.prevail/vault) via the engine, non-destructively, then repoint.
   const [moving, setMoving] = useState(false);
@@ -12395,29 +12467,6 @@ function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { 
   return (
     <>
       <SettingsHeader title="Vault" subtitle="Where Prevail reads + writes your domain folders. Each child folder with a state.md becomes a life domain." />
-      {appMode && (
-        <div className={`mb-4 flex items-start gap-3 rounded-xl border p-4 ${appMode === "demo" ? "border-accent-border bg-accent-soft" : "border-border bg-surface-warm"}`}>
-          {appMode === "demo" ? <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-accent" /> : <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" />}
-          <div className="min-w-0 flex-1">
-            <div className={`font-mono text-[11px] font-bold uppercase tracking-[0.18em] ${appMode === "demo" ? "text-accent" : "text-text-secondary"}`}>
-              {appMode === "demo" ? "Demo mode" : "Production mode"}
-            </div>
-            <p className="mt-1 text-sm text-text-secondary">
-              {appMode === "demo"
-                ? "You're exploring sample data. Nothing here is yours yet. Switch to production to start your own vault and keep the domains you like."
-                : "This is your real workspace. Everything you save here is yours. You can switch back to the demo sandbox any time to explore safely."}
-            </p>
-            <button
-              onClick={() => setMode(appMode === "demo" ? "production" : "demo")}
-              disabled={switchingMode}
-              className={`mt-2 inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm disabled:opacity-50 ${appMode === "demo" ? "border-accent-border bg-accent text-background hover:opacity-90" : "border-border bg-background hover:bg-surface-warm"}`}
-            >
-              {switchingMode ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : appMode === "demo" ? <Sparkles className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
-              {switchingMode ? "Switching…" : appMode === "demo" ? "Switch to production" : "Switch to demo sandbox"}
-            </button>
-          </div>
-        </div>
-      )}
       <SettingRow label="Vault folder" desc="Currently selected workspace.">
         <button
           onClick={onChange}
@@ -12455,38 +12504,6 @@ function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { 
       )}
       {moveNote && (
         <div className="mt-1 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{moveNote}</div>
-      )}
-      {packs.length > 0 && (
-        <div className="mt-4">
-          <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">
-            <Sparkles className="h-3.5 w-3.5" /> Starter packs
-          </div>
-          <p className="mb-3 text-xs text-text-muted">
-            Import a persona's starter domains into this vault. Existing domains are kept, never overwritten.
-          </p>
-          <div className="flex flex-col gap-2">
-            {packs.map((p) => (
-              <div key={p.file} className="flex items-start gap-3 rounded-lg border border-border bg-surface p-3">
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-text-primary">{p.name}</div>
-                  {p.description && <div className="mt-0.5 text-xs text-text-muted">{p.description}</div>}
-                  <div className="mt-1 font-mono text-[10px] text-text-secondary">{p.domains.join(" · ")}</div>
-                </div>
-                <button
-                  onClick={() => importPack(p)}
-                  disabled={importingPack !== null}
-                  className="shrink-0 inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50"
-                >
-                  {importingPack === p.name ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                  {importingPack === p.name ? "Importing…" : "Import"}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {packNote && (
-        <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{packNote}</div>
       )}
       <SettingRow label="Back up vault" desc="Write a compressed archive of the entire vault. Nothing is deleted.">
         <button
