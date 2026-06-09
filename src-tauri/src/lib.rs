@@ -766,15 +766,16 @@ fn benchmark_run_detail(run_dir: String) -> Result<serde_json::Value, String> {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Usage — capture real chat usage to <vault>/usage/usage.ndjson, one
-// JSON line per completed turn. Mirrors the benchmark convention of
-// persisting under the vault so the data survives restarts and the CLI
-// / other frontends can read it interchangeably. The frontend appends a
-// record when a turn closes (engine-chat:done) and the dashboard reads
-// the aggregated summary back.
+// Usage — accounting is OWNED BY THE ENGINE (prevail-cli src/usage.ts), which
+// holds the one ledger (<vault>/_meta/usage.jsonl), the one pricing table, and
+// the aggregation. The desktop is a thin client: it records each turn through
+// `prevail usage record` and reads roll-ups through `prevail usage summary`, so
+// the CLI, TUI, Telegram, and desktop all report identical numbers from one
+// source. (Earlier the desktop kept a parallel <vault>/usage/usage.ndjson with
+// its own pricing — that duplication is gone; legacy data is migrated once.)
 //
-// `day` is a pre-formatted local YYYY-MM-DD supplied by the frontend so
-// the backend needs no timezone/date math (no chrono dependency).
+// `day` is a pre-formatted local YYYY-MM-DD supplied by the frontend so the
+// backend needs no timezone/date math.
 
 #[derive(Serialize, Deserialize)]
 pub struct UsageRecord {
@@ -796,19 +797,28 @@ pub struct UsageRecord {
     ok: bool,
 }
 
+// Translate a desktop UsageRecord into the engine's `usage record` stdin input
+// (camelCase RecordUsageInput). The engine computes day + cost from its own
+// pricing table, so we pass tokens, not cost.
+fn usage_record_payload(r: &UsageRecord) -> serde_json::Value {
+    serde_json::json!({
+        "session": r.thread.clone().unwrap_or_else(|| "desktop".into()),
+        "domain": r.domain,
+        "surface": "chat",
+        "cli": r.cli,
+        "model": r.model,
+        "inputTokens": r.input_tokens.unwrap_or(0),
+        "outputTokens": r.output_tokens.unwrap_or(0),
+        "billed": false,
+        "ts": r.ts,
+    })
+}
+
 #[tauri::command]
 fn usage_append(vault: String, record: UsageRecord) -> Result<(), String> {
-    use std::io::Write;
-    let dir = Path::new(&vault).join("usage");
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let file = dir.join("usage.ndjson");
-    let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
-    let mut f = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&file)
-        .map_err(|e| e.to_string())?;
-    writeln!(f, "{line}").map_err(|e| e.to_string())?;
+    migrate_legacy_usage(&vault);
+    let payload = usage_record_payload(&record).to_string();
+    engine::run_engine_json_stdin(&["--vault", &vault, "usage", "record"], &payload)?;
     Ok(())
 }
 
@@ -833,74 +843,126 @@ struct UsageSummary {
     by_day: Vec<UsageBucket>,
 }
 
-// Fold one record into the bucket keyed by `key`, creating it on first sight.
-fn bump(map: &mut HashMap<String, UsageBucket>, key: String, r: &UsageRecord) {
-    let b = map.entry(key.clone()).or_insert_with(|| UsageBucket {
-        key,
-        ..Default::default()
-    });
-    b.turns += 1;
-    b.input_tokens += r.input_tokens.unwrap_or(0);
-    b.output_tokens += r.output_tokens.unwrap_or(0);
-    b.cost_usd += r.cost_usd.unwrap_or(0.0);
+// The engine's bucket shape (calls/est_cost_usd) — mapped to the desktop's
+// (turns/cost_usd) so the existing frontend dashboard is untouched.
+#[derive(Deserialize, Default)]
+struct EngBucket {
+    key: String,
+    calls: u64,
+    input_tokens: u64,
+    output_tokens: u64,
+    est_cost_usd: f64,
+}
+#[derive(Deserialize, Default)]
+struct EngSummary {
+    total: EngBucket,
+    by_day: Vec<EngBucket>,
+    by_cli: Vec<EngBucket>,
+    by_model: Vec<EngBucket>,
+    by_domain: Vec<EngBucket>,
 }
 
-// Sort buckets by cost desc, then turns desc — most-expensive first.
-fn ranked(map: HashMap<String, UsageBucket>) -> Vec<UsageBucket> {
-    let mut v: Vec<UsageBucket> = map.into_values().collect();
-    v.sort_by(|a, b| {
-        b.cost_usd
-            .partial_cmp(&a.cost_usd)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then(b.turns.cmp(&a.turns))
-    });
-    v
+impl From<EngBucket> for UsageBucket {
+    fn from(e: EngBucket) -> Self {
+        UsageBucket {
+            key: e.key,
+            turns: e.calls,
+            input_tokens: e.input_tokens,
+            output_tokens: e.output_tokens,
+            cost_usd: e.est_cost_usd,
+        }
+    }
+}
+
+fn map_eng_summary(e: EngSummary) -> UsageSummary {
+    UsageSummary {
+        total_turns: e.total.calls,
+        total_input_tokens: e.total.input_tokens,
+        total_output_tokens: e.total.output_tokens,
+        total_cost_usd: e.total.est_cost_usd,
+        by_cli: e.by_cli.into_iter().map(Into::into).collect(),
+        by_model: e.by_model.into_iter().map(Into::into).collect(),
+        by_domain: e.by_domain.into_iter().map(Into::into).collect(),
+        by_day: e.by_day.into_iter().map(Into::into).collect(),
+    }
+}
+
+// Read a roll-up from the engine, optionally scoped to one domain.
+fn usage_summary_inner(vault: &str, domain: Option<&str>) -> Result<UsageSummary, String> {
+    migrate_legacy_usage(vault);
+    let mut args: Vec<&str> = vec!["--vault", vault, "usage", "summary"];
+    if let Some(d) = domain {
+        args.push("--domain");
+        args.push(d);
+    }
+    let v = engine::run_engine_json(&args)?;
+    let eng: EngSummary =
+        serde_json::from_value(v).map_err(|e| format!("parse usage summary: {e}"))?;
+    Ok(map_eng_summary(eng))
 }
 
 #[tauri::command]
 fn usage_summary(vault: String) -> Result<UsageSummary, String> {
-    let file = Path::new(&vault).join("usage").join("usage.ndjson");
-    let mut summary = UsageSummary::default();
-    let raw = match fs::read_to_string(&file) {
-        Ok(s) => s,
-        // No file yet → empty summary, not an error.
-        Err(_) => return Ok(summary),
-    };
-    let mut by_cli: HashMap<String, UsageBucket> = HashMap::new();
-    let mut by_model: HashMap<String, UsageBucket> = HashMap::new();
-    let mut by_domain: HashMap<String, UsageBucket> = HashMap::new();
-    let mut by_day: HashMap<String, UsageBucket> = HashMap::new();
+    usage_summary_inner(&vault, None)
+}
+
+/// Domain-scoped roll-up for the per-domain Usage tab.
+#[tauri::command]
+fn usage_summary_domain(vault: String, domain: String) -> Result<UsageSummary, String> {
+    usage_summary_inner(&vault, Some(&domain))
+}
+
+// One-time migration: fold a legacy desktop ledger (<vault>/usage/usage.ndjson)
+// into the engine ledger (<vault>/_meta/usage.jsonl) so existing users keep
+// their history. Guarded by a marker file; best-effort and idempotent. The two
+// ledgers were historically disjoint (desktop turns vs engine turns), so a
+// straight append cannot double-count.
+fn migrate_legacy_usage(vault: &str) {
+    let legacy = Path::new(vault).join("usage").join("usage.ndjson");
+    let marker = Path::new(vault).join("usage").join(".migrated-to-engine");
+    if marker.exists() || !legacy.exists() {
+        return;
+    }
+    let Ok(raw) = fs::read_to_string(&legacy) else { return };
+    let mut out = String::new();
     for line in raw.lines() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        // Tolerate corrupt/partial lines — skip rather than fail the page.
-        let r: UsageRecord = match serde_json::from_str(line) {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-        summary.total_turns += 1;
-        summary.total_input_tokens += r.input_tokens.unwrap_or(0);
-        summary.total_output_tokens += r.output_tokens.unwrap_or(0);
-        summary.total_cost_usd += r.cost_usd.unwrap_or(0.0);
-        bump(&mut by_cli, r.cli.clone(), &r);
-        bump(&mut by_model, r.model.clone().unwrap_or_else(|| "—".into()), &r);
-        bump(
-            &mut by_domain,
-            r.domain.clone().unwrap_or_else(|| "General".into()),
-            &r,
-        );
-        bump(&mut by_day, r.day.clone(), &r);
+        let Ok(r) = serde_json::from_str::<UsageRecord>(line) else { continue };
+        let entry = serde_json::json!({
+            "ts": r.ts,
+            "day": r.day,
+            "session": r.thread.clone().unwrap_or_else(|| "desktop".into()),
+            "domain": r.domain,
+            "surface": "chat",
+            "cli": r.cli,
+            "model": r.model.clone().unwrap_or_default(),
+            "input_tokens": r.input_tokens.unwrap_or(0),
+            "output_tokens": r.output_tokens.unwrap_or(0),
+            "token_source": "reported",
+            "est_cost_usd": r.cost_usd.unwrap_or(0.0),
+            "billed": false,
+        });
+        out.push_str(&entry.to_string());
+        out.push('\n');
     }
-    summary.by_cli = ranked(by_cli);
-    summary.by_model = ranked(by_model);
-    summary.by_domain = ranked(by_domain);
-    // Days read best chronologically (oldest → newest), not by cost.
-    let mut days = by_day.into_values().collect::<Vec<_>>();
-    days.sort_by(|a, b| a.key.cmp(&b.key));
-    summary.by_day = days;
-    Ok(summary)
+    let meta = Path::new(vault).join("_meta");
+    if fs::create_dir_all(&meta).is_err() {
+        return;
+    }
+    let engine_ledger = meta.join("usage.jsonl");
+    use std::io::Write;
+    if let Ok(mut f) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&engine_ledger)
+    {
+        let _ = f.write_all(out.as_bytes());
+        // Write the marker only after a successful append.
+        let _ = fs::write(&marker, "migrated\n");
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -3187,6 +3249,7 @@ pub fn run() {
             benchmark_run_detail,
             usage_append,
             usage_summary,
+            usage_summary_domain,
             intent_append,
             intents_read,
             journal_append,
@@ -3385,57 +3448,73 @@ mod usage_tests {
         }
     }
 
+    // Aggregation + pricing now live in the engine (prevail-cli usage.ts, tested
+    // there). The desktop only owns (1) translating a turn into the engine's
+    // record input, (2) mapping the engine's roll-up shape to the frontend's,
+    // and (3) the one-time legacy-ledger migration. Those are what we test here.
+
     #[test]
-    fn append_then_summarize_roundtrip() {
-        // Unique temp vault so concurrent test runs don't collide.
-        let vault = std::env::temp_dir().join(format!("prevail-usage-test-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&vault);
-        let vault_s = vault.to_string_lossy().to_string();
+    fn record_payload_maps_to_engine_camelcase() {
+        let r = rec("2026-06-06", "claude", Some("opus"), Some("wealth"), Some(100), Some(40), Some(0.12), true);
+        let p = usage_record_payload(&r);
+        // Engine RecordUsageInput is camelCase and takes tokens, not cost.
+        assert_eq!(p["cli"], "claude");
+        assert_eq!(p["model"], "opus");
+        assert_eq!(p["domain"], "wealth");
+        assert_eq!(p["inputTokens"], 100);
+        assert_eq!(p["outputTokens"], 40);
+        assert_eq!(p["surface"], "chat");
+        assert!(p.get("cost_usd").is_none(), "cost is the engine's job");
+        // No thread → a stable default session.
+        assert_eq!(p["session"], "desktop");
+    }
 
-        // Summary on a vault with no usage file → empty, not an error.
-        let empty = usage_summary(vault_s.clone()).expect("empty summary ok");
-        assert_eq!(empty.total_turns, 0);
-
-        // An engine turn (claude/opus, tokens+cost), a native turn (no tokens),
-        // and a second engine turn another day in another domain.
-        usage_append(vault_s.clone(), rec("2026-06-06", "claude", Some("opus"), Some("wealth"), Some(100), Some(40), Some(0.12), true)).unwrap();
-        usage_append(vault_s.clone(), rec("2026-06-06", "codex", None, Some("wealth"), None, None, None, true)).unwrap();
-        usage_append(vault_s.clone(), rec("2026-06-07", "claude", Some("opus"), Some("health"), Some(200), Some(60), Some(0.30), false)).unwrap();
-
-        // The file is real NDJSON — one line per turn.
-        let file = vault.join("usage").join("usage.ndjson");
-        let raw = fs::read_to_string(&file).expect("usage.ndjson written");
-        assert_eq!(raw.lines().filter(|l| !l.trim().is_empty()).count(), 3);
-
-        let s = usage_summary(vault_s.clone()).expect("summary ok");
+    #[test]
+    fn maps_engine_summary_shape_to_frontend() {
+        let eng = EngSummary {
+            total: EngBucket { key: "__total__".into(), calls: 3, input_tokens: 300, output_tokens: 100, est_cost_usd: 0.42 },
+            by_day: vec![EngBucket { key: "2026-06-06".into(), calls: 2, input_tokens: 200, output_tokens: 60, est_cost_usd: 0.30 }],
+            by_cli: vec![EngBucket { key: "claude".into(), calls: 2, input_tokens: 300, output_tokens: 100, est_cost_usd: 0.42 }],
+            by_model: vec![],
+            by_domain: vec![],
+        };
+        let s = map_eng_summary(eng);
         assert_eq!(s.total_turns, 3);
         assert_eq!(s.total_input_tokens, 300);
-        assert_eq!(s.total_output_tokens, 100);
         assert!((s.total_cost_usd - 0.42).abs() < 1e-9);
-
-        // by_cli ranks by cost desc → claude (0.42) before codex (0.0).
         assert_eq!(s.by_cli[0].key, "claude");
-        assert_eq!(s.by_cli[0].turns, 2);
-        let codex = s.by_cli.iter().find(|b| b.key == "codex").unwrap();
-        assert_eq!(codex.turns, 1);
-        assert_eq!(codex.input_tokens, 0);
-
-        // Missing model bucketed under the placeholder.
-        assert!(s.by_model.iter().any(|b| b.key == "—" && b.turns == 1));
-        assert!(s.by_model.iter().any(|b| b.key == "opus" && b.turns == 2));
-
-        // Two domains, two days; days sorted chronologically.
-        assert_eq!(s.by_domain.len(), 2);
-        assert_eq!(s.by_day.len(), 2);
+        assert_eq!(s.by_cli[0].turns, 2); // calls → turns
         assert_eq!(s.by_day[0].key, "2026-06-06");
-        assert_eq!(s.by_day[1].key, "2026-06-07");
+    }
 
-        // A corrupt line is skipped, not fatal.
-        use std::io::Write;
-        let mut f = fs::OpenOptions::new().append(true).open(&file).unwrap();
-        writeln!(f, "{{not valid json").unwrap();
-        let s2 = usage_summary(vault_s.clone()).expect("tolerates corrupt line");
-        assert_eq!(s2.total_turns, 3);
+    #[test]
+    fn migrates_legacy_ledger_once_into_engine_ledger() {
+        let vault = std::env::temp_dir().join(format!("prevail-usage-mig-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&vault);
+        let usage_dir = vault.join("usage");
+        fs::create_dir_all(&usage_dir).unwrap();
+        // Two legacy desktop records.
+        let l1 = serde_json::to_string(&rec("2026-06-06", "claude", Some("opus"), Some("wealth"), Some(100), Some(40), Some(0.12), true)).unwrap();
+        let l2 = serde_json::to_string(&rec("2026-06-07", "codex", None, None, None, None, None, true)).unwrap();
+        fs::write(usage_dir.join("usage.ndjson"), format!("{l1}\n{l2}\n")).unwrap();
+
+        migrate_legacy_usage(&vault.to_string_lossy());
+
+        // Engine ledger now has both lines, in the engine schema.
+        let engine_ledger = vault.join("_meta").join("usage.jsonl");
+        let raw = fs::read_to_string(&engine_ledger).expect("engine ledger written");
+        let lines: Vec<&str> = raw.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 2);
+        let first: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(first["est_cost_usd"], 0.12); // legacy cost preserved
+        assert_eq!(first["input_tokens"], 100);
+        assert_eq!(first["session"], "desktop");
+
+        // Marker prevents a second migration from double-appending.
+        assert!(vault.join("usage").join(".migrated-to-engine").exists());
+        migrate_legacy_usage(&vault.to_string_lossy());
+        let raw2 = fs::read_to_string(&engine_ledger).unwrap();
+        assert_eq!(raw2.lines().filter(|l| !l.trim().is_empty()).count(), 2, "idempotent");
 
         let _ = fs::remove_dir_all(&vault);
     }
