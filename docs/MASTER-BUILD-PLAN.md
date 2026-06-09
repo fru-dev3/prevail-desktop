@@ -49,11 +49,23 @@
 > authenticates the user but doesn't release the DEK, so an encrypted vault still
 > needs the passcode (biometric-gated DEK release is the reviewed next step).
 >
-> **Every feature in this plan is now fully implemented in code.** The ONLY two
-> items left are physical actions on Fru's machine — categorically impossible for
-> a headless agent and not unwritten code:
-> 1. **One live verification** — launch the app, encrypt a throwaway vault,
->    confirm every surface round-trips + the Touch ID prompt appears.
+> **Every feature in this plan is now fully implemented in code, and the
+> encryption ENGINE is verified end-to-end** (2026-06-09, via the real CLI on a
+> throwaway vault, since cleaned up):
+> - `vault encrypt` → self-verified 1/1 domains, files confirmed ciphertext on
+>   disk, recovery code returned.
+> - `vault unlock` → returned a 32-byte DEK; reading with `PREVAIL_VAULT_KEY`
+>   + `PREVAIL_VAULT_ROOT` set transparently **decrypted** the domain.
+> - wrong passcode → rejected; `vault decrypt` → restored plaintext byte-for-byte.
+>
+> So the part where data could actually be lost — the encrypt/decrypt/key-passing
+> pipeline — is now verified on a real vault, not just unit-tested.
+>
+> **The ONLY two items left are physical actions on Fru's machine — impossible
+> for a headless agent and not unwritten code:**
+> 1. **Desktop GUI smoke** — launch the app, confirm the LockScreen / Settings
+>    encrypt card / Touch ID prompt behave (the engine round-trip is already
+>    verified above; this is the GUI-glue + biometric-prompt confirmation).
 > 2. **The signed/notarized release** — Fru's Apple keys + `DEPLOY.md`.
 >
 > Engine 262 tests + desktop 38 tests pass; tsc + cargo + build clean. Everything
