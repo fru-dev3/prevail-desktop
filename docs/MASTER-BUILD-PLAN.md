@@ -26,13 +26,22 @@
 > for existing vaults (full suite stays green). Encryption is still **inert** — no
 > command activates it on a real vault.
 >
-> **The only F4 Phase 1 remainder is the live/runtime activation layer, which
-> cannot be built or verified headless:** swap the engine *write* sites to the
-> tested helpers, have the desktop hold the unlocked DEK and pass it to the
-> bundled engine sidecar (`PREVAIL_VAULT_KEY`), Touch ID/Keychain unlock (a macOS
-> runtime API), a gated "encrypt this vault" action, and a live run encrypting a
-> throwaway vault to confirm every surface reads + writes it. This is the part
-> that needs Fru's machine + live testing.
+> **F4 Phase 1 is now built end-to-end** (engine 261 + desktop 38 tests). Beyond
+> the crypto stack + read integration above, this session also added: the
+> **write-site integration** (decisions/usage/journal/distill/scaffold/manifest/
+> auto-summary/briefings now encrypt on write, verified by a write-path test), a
+> **gated activation command** (`vault encrypt|decrypt|unlock`) that
+> self-verifies and auto-rolls-back if anything is unreadable, **desktop
+> key-passing** (the unlocked DEK is held in the Rust process and injected as
+> `PREVAIL_VAULT_KEY` into every sidecar spawn, never reaching JS), the
+> **LockScreen** unlocking an encrypted vault's keyring, and a **Settings
+> VaultEncryptionCard** to encrypt/decrypt with the one-time recovery code shown.
+>
+> **The genuine remainder needs the macOS runtime / a live run — not headless:**
+> Touch ID/Keychain unlock (a macOS API), the benchmark/calibration/connector
+> write sites (power-user artifacts), and the one live verification: encrypt a
+> throwaway vault and confirm every surface reads + writes it before trusting it
+> with real data. Plus the signed release. Those are Fru's machine.
 >
 > **What shipped to `main` this session (engine-first throughout):**
 > - **F1:** `usage --domain` + one-shot `usage summary`; desktop delegates all
