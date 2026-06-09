@@ -23,6 +23,20 @@ use std::path::Path;
 use tauri::Emitter;
 
 // ─────────────────────────────────────────────────────────────────────
+// Held vault DEK (base64) for the current unlocked session. Set by
+// engine_vault_unlock after the user enters their passcode; injected into every
+// engine spawn as PREVAIL_VAULT_KEY so the sidecar can read/write the encrypted
+// vault. Lives only in the desktop process memory, never on disk, never sent to
+// the JS layer. None = vault is plaintext / locked.
+static VAULT_KEY: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub fn set_vault_key(k: Option<String>) {
+    *VAULT_KEY.lock().unwrap_or_else(|e| e.into_inner()) = k;
+}
+fn vault_key() -> Option<String> {
+    VAULT_KEY.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
 // Binary resolution — mirror lib.rs resolve_prevail_bin() /
 // resolve_bin_abs() style: check ~/.local/bin, /opt/homebrew/bin,
 // /usr/local/bin, then fall back to the bare name (PATH resolution).
@@ -78,16 +92,18 @@ pub fn run_engine_json(args: &[&str]) -> Result<serde_json::Value, String> {
     let mut full: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     full.push("--json".to_string());
 
-    let out = Command::new(&bin)
-        .args(&full)
+    let mut cmd = Command::new(&bin);
+    cmd.args(&full)
         .env_clear()
         .envs(crate::scrubbed_env_pairs())
         .env("PATH", combined_path)
         .env("USER", user)
         .env("LOGNAME", logname)
-        .stdin(std::process::Stdio::null())
-        .output()
-        .map_err(|e| format!("spawn {bin} failed: {e}"))?;
+        .stdin(std::process::Stdio::null());
+    if let Some(k) = vault_key() {
+        cmd.env("PREVAIL_VAULT_KEY", k);
+    }
+    let out = cmd.output().map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
     if !out.status.success() {
         let code = out.status.code().unwrap_or(-1);
@@ -122,8 +138,8 @@ pub fn run_engine_json_stdin(
     let mut full: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     full.push("--json".to_string());
 
-    let mut child = Command::new(&bin)
-        .args(&full)
+    let mut cmd = Command::new(&bin);
+    cmd.args(&full)
         .env_clear()
         .envs(crate::scrubbed_env_pairs())
         .env("PATH", combined_path)
@@ -131,9 +147,11 @@ pub fn run_engine_json_stdin(
         .env("LOGNAME", logname)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("spawn {bin} failed: {e}"))?;
+        .stderr(Stdio::piped());
+    if let Some(k) = vault_key() {
+        cmd.env("PREVAIL_VAULT_KEY", k);
+    }
+    let mut child = cmd.spawn().map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
     {
         let mut stdin = child
@@ -194,8 +212,8 @@ pub async fn run_engine_stream(
     let mut full = args;
     full.push("--json".to_string());
 
-    let mut child = TokioCommand::new(&bin)
-        .args(&full)
+    let mut scmd = TokioCommand::new(&bin);
+    scmd.args(&full)
         .env_clear()
         .envs(crate::scrubbed_env_pairs())
         .env("PATH", combined_path)
@@ -203,9 +221,11 @@ pub async fn run_engine_stream(
         .env("LOGNAME", logname)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("spawn {bin} failed: {e}"))?;
+        .stderr(std::process::Stdio::piped());
+    if let Some(k) = vault_key() {
+        scmd.env("PREVAIL_VAULT_KEY", k);
+    }
+    let mut child = scmd.spawn().map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -324,6 +344,9 @@ pub async fn run_engine_stream_stdin(
     // so safe under Bunker Mode.
     for (k, v) in &extra_env {
         cmd.env(k, v);
+    }
+    if let Some(k) = vault_key() {
+        cmd.env("PREVAIL_VAULT_KEY", k);
     }
     let mut child = cmd
         .spawn()
@@ -594,6 +617,57 @@ pub fn engine_lock_verify(passcode: String) -> Result<serde_json::Value, String>
 #[tauri::command]
 pub fn engine_lock_clear(passcode: String) -> Result<serde_json::Value, String> {
     run_engine_json_stdin(&["lock", "clear"], &passcode)
+}
+
+// ── Vault encryption (F4 Phase 1) ──
+// Passcode is sent on the child's STDIN (never argv). Desktop-only; the unlocked
+// DEK is held in this process (set_vault_key) and injected into every engine
+// spawn as PREVAIL_VAULT_KEY — it never crosses to the JS layer.
+
+/// Is this vault encrypted, and is the session currently unlocked?
+#[tauri::command]
+pub fn engine_vault_status(vault: String) -> Result<serde_json::Value, String> {
+    let encrypted = std::path::Path::new(&vault).join(".prevail-encrypted").exists();
+    Ok(serde_json::json!({ "encrypted": encrypted, "unlocked": vault_key().is_some() }))
+}
+
+/// Unlock the session: verify the passcode, hold the returned DEK in memory.
+/// Returns { ok } only — the key stays in Rust, never reaching JS.
+#[tauri::command]
+pub fn engine_vault_unlock(vault: String, passcode: String) -> Result<serde_json::Value, String> {
+    let r = run_engine_json_stdin(&["--vault", &vault, "vault", "unlock"], &passcode)?;
+    if r.get("ok").and_then(|v| v.as_bool()) == Some(true) {
+        if let Some(k) = r.get("key").and_then(|v| v.as_str()) {
+            set_vault_key(Some(k.to_string()));
+        }
+        return Ok(serde_json::json!({ "ok": true }));
+    }
+    Ok(r)
+}
+
+/// Clear the in-memory DEK (re-lock the session).
+#[tauri::command]
+pub fn engine_vault_lock_session() -> Result<(), String> {
+    set_vault_key(None);
+    Ok(())
+}
+
+/// Encrypt the vault in place (self-verifying + auto-rollback in the engine).
+/// Returns { ok, recoveryCode, ... }. Caller should then unlock to set the
+/// session DEK.
+#[tauri::command]
+pub fn engine_vault_encrypt(vault: String, passcode: String) -> Result<serde_json::Value, String> {
+    run_engine_json_stdin(&["--vault", &vault, "vault", "encrypt"], &passcode)
+}
+
+/// Decrypt the vault back to plaintext, then clear the session DEK.
+#[tauri::command]
+pub fn engine_vault_decrypt(vault: String, passcode: String) -> Result<serde_json::Value, String> {
+    let r = run_engine_json_stdin(&["--vault", &vault, "vault", "decrypt"], &passcode)?;
+    if r.get("ok").and_then(|v| v.as_bool()) == Some(true) {
+        set_vault_key(None);
+    }
+    Ok(r)
 }
 
 /// `prevail appmode get` — the demo vs production flag (engine config, global).
