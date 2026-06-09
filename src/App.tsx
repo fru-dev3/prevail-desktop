@@ -5770,8 +5770,8 @@ function UsageDashboard({
   const dayMax = Math.max(1, ...days.map((d) => d.turns));
 
   return (
-    <div className="mt-10 w-full max-w-4xl">
-      <div className="mb-3 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
+    <div className="mt-4 w-full max-w-4xl">
+      <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
         <Activity className="h-3.5 w-3.5" />
         Usage
       </div>
@@ -5779,12 +5779,12 @@ function UsageDashboard({
       {/* hero totals */}
       <div className="grid grid-cols-3 gap-3">
         {stats.map((s) => (
-          <div key={s.label} className="rounded-xl border border-border-subtle bg-surface p-4">
+          <div key={s.label} className="rounded-xl border border-border-subtle bg-surface p-3">
             <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
               <s.icon className="h-3.5 w-3.5" />
               {s.label}
             </div>
-            <div className="mt-1.5 font-display text-2xl font-semibold tabular-nums text-text-primary">
+            <div className="mt-1 font-display text-xl font-semibold tabular-nums text-text-primary">
               {s.value}
             </div>
           </div>
@@ -5793,11 +5793,11 @@ function UsageDashboard({
 
       {/* per-day activity strip */}
       {days.length > 1 && (
-        <div className="mt-3 rounded-xl border border-border-subtle bg-surface p-4">
-          <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
+        <div className="mt-2 rounded-xl border border-border-subtle bg-surface p-3">
+          <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
             Activity · last {days.length} day{days.length === 1 ? "" : "s"}
           </div>
-          <div className="flex h-16 items-end gap-1">
+          <div className="flex h-10 items-end gap-1">
             {days.map((d) => (
               <div
                 key={d.key}
@@ -5811,7 +5811,7 @@ function UsageDashboard({
       )}
 
       {/* breakdowns */}
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <UsageBreakdown title="By agent" icon={Cpu} rows={summary.by_cli} />
         <UsageBreakdown title="By model" icon={Layers} rows={summary.by_model} />
         <UsageBreakdown title="By domain" icon={Users} rows={summary.by_domain} />
@@ -6991,17 +6991,17 @@ function ChatPanel({
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 && !domain && (
-          <div className="flex h-full flex-col items-center px-6 py-10">
-            <PrevailLogo size={72} src="/logo-512.png" />
-            <h2 className="mt-5 font-display text-3xl font-semibold tracking-tight">
+          <div className="flex h-full flex-col items-center px-6 py-5">
+            <PrevailLogo size={44} src="/logo-512.png" />
+            <h2 className="mt-3 font-display text-2xl font-semibold tracking-tight">
               What should we work on?
             </h2>
-            <p className="mt-2 max-w-md text-center text-sm text-text-muted">
+            <p className="mt-1 max-w-md text-center text-sm text-text-muted">
               Your private AI that learns you and gets sharper every time you use it.
             </p>
             {lifeReadiness && lifeReadiness.life_readiness !== null && (
               <div
-                className="mt-6 flex items-center gap-3 rounded-full border px-4 py-2"
+                className="mt-3 flex items-center gap-3 rounded-full border px-4 py-1.5"
                 style={{ borderColor: scoreColor(lifeReadiness.life_readiness) }}
                 title={`Life Readiness · average context score across ${lifeReadiness.domains.length} domain${lifeReadiness.domains.length === 1 ? "" : "s"}`}
               >
@@ -7044,8 +7044,8 @@ function ChatPanel({
               });
               const featured = ranked.slice(0, 4);
               return (
-              <div className="mt-8 w-full max-w-4xl">
-                <div className="mb-3 flex items-center justify-between">
+              <div className="mt-4 w-full max-w-4xl">
+                <div className="mb-2 flex items-center justify-between">
                   <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
                     Jump to · {featured.length} of {domains.length}
                   </div>
@@ -7066,7 +7066,7 @@ function ChatPanel({
                         transition={{ delay: 0.04 * i, type: "spring", stiffness: 140, damping: 18 }}
                         whileHover={{ y: -3 }}
                         whileTap={{ scale: 0.99 }}
-                        className="group relative flex h-44 flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface p-5 text-left transition-all duration-200 hover:border-border hover:shadow-[0_10px_34px_-12px_rgba(0,0,0,0.18)]"
+                        className="group relative flex h-28 flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface p-3.5 text-left transition-all duration-200 hover:border-border hover:shadow-[0_10px_34px_-12px_rgba(0,0,0,0.18)]"
                       >
                         {/* oversized watermark glyph — editorial fill, no text clutter */}
                         {Icon && (
@@ -7109,13 +7109,13 @@ function ChatPanel({
 
                         {/* name anchored at the bottom with a growing accent hairline */}
                         <div className="relative mt-auto">
-                          <div className="font-display text-lg font-semibold leading-tight tracking-tight text-text-primary">
+                          <div className="font-display text-base font-semibold leading-tight tracking-tight text-text-primary">
                             {titleCase(d.name)}
                           </div>
-                          <p className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-text-secondary/85">
+                          <p className="mt-1 line-clamp-1 text-[11px] leading-snug text-text-secondary/85">
                             {domainBlurb(d.name)}
                           </p>
-                          <div className="mt-2.5 flex items-center gap-2.5">
+                          <div className="mt-1.5 flex items-center gap-2.5">
                             <span className="h-px w-7 rounded-full transition-all duration-300 group-hover:w-12" style={{ background: color }} />
                             <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
                               {importCount > 0 ? `${importCount} import${importCount === 1 ? "" : "s"}` : d.has_state ? "open" : "needs state"}
