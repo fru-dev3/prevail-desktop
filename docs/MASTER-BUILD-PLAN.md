@@ -10,9 +10,11 @@
 > | # | Feature | Implemented | Tested | Notes |
 > | --- | --- | --- | --- | --- |
 > | 1 | Usage analytics | **Done** | engine (15) + desktop unit tests, tsc, build | needs 1 live GUI smoke test |
-> | 2 | Embedded vault | **Done** (migration + button) | engine (6 tests), cargo, build | first-launch default-flip deferred to F3 |
-> | 3 | Demo/Prod + packages | **Mostly** (mode flag, 6 packs, import UI, demo banner, switch) | engine (8 pack tests), tsc, build | left: auto-demo-on-launch, demo *content* authoring |
-> | 4 | Login + encryption | **Phase 0 done** (app lock) | engine (6 lock tests), tsc, build | Phase 1 (file encryption) deferred for security review |
+> | 2 | Embedded vault | **Done** (migration + button) | engine (6 tests), cargo, build | first-launch default-flip lands via F3 auto-demo |
+> | 3 | Demo/Prod + packages | **Done** (mode flag, 6 packs, import UI, banner, switch, auto-demo, seeded usage + threads) | engine (8 pack tests), tsc, build | content is extensible; tone worth a review |
+> | 4 | Login + encryption | **Phase 0 done** (app lock) + **Phase 1 crypto core done** (9 tests) | engine (6 lock + 9 crypto), tsc, build | Phase 1 read/write integration remains (live-test + review) |
+>
+> **Engine: 243 tests pass. Desktop: 38 Rust tests pass. Both typecheck + build clean.**
 >
 > **What shipped to `main` this session (engine-first throughout):**
 > - **F1:** `usage --domain` + one-shot `usage summary`; desktop delegates all
