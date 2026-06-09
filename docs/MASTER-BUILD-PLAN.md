@@ -39,6 +39,15 @@
 > without a human click. **Only the Touch ID biometric modal, the notarization
 > (1Password sign-in), and the publish step remain irreducibly human.**
 >
+> **Release DMG pre-flighted for notarization (2026-06-09)** — `Prevail_0.6.0_aarch64.dmg`
+> (32MB). Inspected the signed app inside: deep `codesign --verify --deep --strict`
+> = "valid on disk / satisfies its Designated Requirement"; **hardened runtime ON**
+> (`flags=0x10000(runtime)`); **secure timestamp present** (not `none`); the
+> **embedded `prevail` engine sidecar is Developer-ID signed + hardened** (the most
+> common notarization rejection — clean here); TeamIdentifier TXN399AHT5. All
+> notarization prerequisites satisfied, so `SKIP_BUILD=1 bash scripts/release.sh`
+> (after `op signin`) should notarize on the first submission.
+>
 > **F4 Phase 1 is now far past "primitives only":** crypto core (envelope, AES-256-GCM,
 > scrypt), **one-time recovery code**, keyring persistence, in-place vault
 > encrypt/decrypt **migration**, and the **read-site integration** — vault reads
