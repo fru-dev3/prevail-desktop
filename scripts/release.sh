@@ -33,10 +33,12 @@ DMG="$HERE/src-tauri/target/release/bundle/dmg/Prevail_${VERSION}_${ARCH}.dmg"
 step "Releasing Prevail $VERSION ($TAG)"
 
 step "Apple credentials (1Password)"
-export APPLE_SIGNING_IDENTITY="$(op item get "$OP_ITEM" --fields label=signing-identity --reveal)"
-export APPLE_ID="$(op item get "$OP_ITEM" --fields label=apple-id --reveal)"
-export APPLE_PASSWORD="$(op item get "$OP_ITEM" --fields label=app-specific-password --reveal)"
-export APPLE_TEAM_ID="$(op item get "$OP_ITEM" --fields label=team-id --reveal)"
+# Honor pre-set env vars (so a caller can pre-fetch creds and skip the flaky
+# back-to-back op prompts); fall back to 1Password when unset.
+export APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:-$(op item get "$OP_ITEM" --fields label=signing-identity --reveal)}"
+export APPLE_ID="${APPLE_ID:-$(op item get "$OP_ITEM" --fields label=apple-id --reveal)}"
+export APPLE_PASSWORD="${APPLE_PASSWORD:-$(op item get "$OP_ITEM" --fields label=app-specific-password --reveal)}"
+export APPLE_TEAM_ID="${APPLE_TEAM_ID:-$(op item get "$OP_ITEM" --fields label=team-id --reveal)}"
 [ -n "$APPLE_SIGNING_IDENTITY" ] && [ -n "$APPLE_PASSWORD" ] || die "missing Apple creds in 1Password"
 echo "signing as: $APPLE_SIGNING_IDENTITY"
 
