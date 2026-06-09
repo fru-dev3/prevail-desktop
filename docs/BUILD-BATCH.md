@@ -22,10 +22,13 @@ can read it?** So they must be built in one coherent pass, not separately:
 - Encryption (D) only makes sense once the vault is app-owned (B) and only
   applies to production vaults (A), never the demo.
 
-**The single blocking decision** (same as before): your `~/.ai` ecosystem
-(OpenClaw / Paperclip) reads the vault as plaintext from a known path. B and D
-both break that unless we keep a plaintext mirror or give those tools a decrypt
-shim. I need your call on that before B/D land.
+**The one thing to confirm before B/D:** do you actively use the standalone
+`prevail-cli`/`prevail-tui` against the same vault as the desktop? They open it
+by a known path, so embedding (B) and encryption (D) affect them. If the desktop
+is your primary surface this is a non-issue — the desktop and its bundled engine
+sidecar always know the location/key. (This replaces the earlier `~/.ai` note,
+which was a mistaken cross-reference to the unrelated fru-monorepo knowledge
+base — it has nothing to do with the Prevail vault.)
 
 ## Recommended sequence
 
@@ -44,12 +47,14 @@ shim. I need your call on that before B/D land.
    the `prevail.pack/v1` role packages.
 
 4. **D — Login + encryption.** Phase-0 app lock first, then opt-in
-   Argon2id/AES-256-GCM on production vaults, with recovery code + Touch ID —
-   after the `~/.ai` access question is resolved.
+   Argon2id/AES-256-GCM on production vaults, with recovery code + Touch ID. The
+   desktop hands its in-memory key to the bundled engine sidecar so chat/council
+   keep working on an encrypted vault.
 
 ## What I need from you to start
-- The `~/.ai` plaintext-access decision (mirror vs decrypt shim vs scope
-  encryption to desktop-app vault only).
+- Whether the standalone CLI/TUI needs to read the encrypted/embedded vault, or
+  the desktop is your primary surface (decides how far the key/path plumbing
+  goes).
 - Confirm the role-package persona list (6-7) and where to host them (GitHub
   Releases recommended).
 - Answers to the per-doc "Open questions" sections (or a "use your

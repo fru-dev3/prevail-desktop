@@ -52,12 +52,15 @@ your request.
    Recommendation: embedded-by-default for new installs + opt-in non-destructive
    migration, keep an external-folder escape hatch, then layer encryption.
 
-## The one decision that gates 7 and 8
+## The one thing to confirm for 7 and 8
 
-Your `~/.ai` ecosystem (OpenClaw / Paperclip) reads the vault as plaintext from
-a known path. Embedding the vault inside the app and/or encrypting it breaks that
-unless we keep a plaintext mirror or give those tools a decrypt shim. Tell me how
-you want those to keep their access and I'll finalize the build plan.
+Whether you use the standalone `prevail-cli`/`prevail-tui` against the same vault
+as the desktop. They open it by a known path, so embedding/encrypting it affects
+them. If the desktop is your primary surface this is a non-issue — the desktop
+and its bundled engine sidecar always know the location and (later) the key.
+(An earlier draft referenced your `~/.ai` monorepo knowledge base here — that was
+a mistaken cross-reference; it's a separate system, unrelated to the Prevail
+vault.)
 
 ## To actually ship items 1-6 to users
 

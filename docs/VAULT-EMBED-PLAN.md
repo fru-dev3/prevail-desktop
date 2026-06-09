@@ -54,11 +54,12 @@ rely on plaintext-on-disk.
 - **Encryption (`SECURITY-LOCK-PLAN.md`):** embedding is what makes encryption
   coherent. Recommend shipping them as one milestone: embedded + opt-in
   encryption.
-- **The `~/.ai` ecosystem:** this is the real tension. OpenClaw/Paperclip read
-  the vault from a known path today. If we move the canonical vault into
-  Application Support and/or encrypt it, those consumers break unless we either
-  (a) keep a synced plaintext mirror at the old path, or (b) give them a read
-  shim. **This needs a decision before we relocate anything.**
+- **External vault consumers:** moving the canonical vault into Application
+  Support affects anything that opens it by a known path — the standalone
+  `prevail-cli`/`prevail-tui`, and a user editing in Obsidian/Finder/git. The
+  power-user "use an external folder" escape hatch (below) covers people who
+  rely on that; for the default embedded path, the desktop and its bundled
+  engine sidecar always know the location, so they're unaffected.
 
 ## Migration (must be non-destructive)
 
@@ -88,9 +89,10 @@ embedding/encryption decision below.
 
 ## Open questions for you
 
-1. **The `~/.ai` ecosystem:** do OpenClaw/Paperclip need continued plaintext
-   access to this vault? If yes, embedding + encryption requires a mirror or
-   shim — that's the biggest design fork.
+1. **Standalone CLI/TUI:** do you actively use `prevail-cli`/`prevail-tui`
+   against the same vault the desktop uses? If yes, they need to learn the
+   embedded path (and, later, the unlock key). If the desktop is your primary
+   surface, this is a non-issue.
 2. **Default for new installs:** embedded (recommended) or keep the folder
    picker?
 3. **Bundle as one milestone with encryption,** or ship embedding first
@@ -98,5 +100,4 @@ embedding/encryption decision below.
 
 My recommendation: ship **embedded-by-default for new installs + opt-in
 migration** first (plaintext, app-owned), keep the external-folder escape hatch,
-then layer encryption on top as Phase 1 of the security plan — *after* we settle
-how the `~/.ai` ecosystem keeps its access.
+then layer encryption on top as Phase 1 of the security plan.

@@ -89,11 +89,12 @@ read" stops being true.
 - **External editing (Obsidian, Finder, git):** gone for encrypted vaults. This
   is a real tradeoff — the markdown-on-disk openness is currently a feature.
   Make encryption **opt-in per vault**, not forced.
-- **The CLI / Telegram bridge / Paperclip / OpenClaw** (your shared `~/.ai`
-  ecosystem) read these files directly. Encryption breaks every external
-  consumer unless they also get the key. Phase 1 should scope encryption to the
-  *desktop-app-managed* vault only, and keep the shared `~/.ai` flows on
-  plaintext, or give them a decrypt shim.
+- **The Prevail engine reads the vault directly.** `prevail-cli` and
+  `prevail-tui` — and the engine sidecar the desktop bundles — open the same
+  vault files from disk. Encryption breaks those readers unless they also get
+  the key. The clean answer: when the engine runs *as the desktop's sidecar* it
+  can be handed the in-memory key; standalone CLI/TUI use of an encrypted vault
+  would need its own unlock prompt (or stays scoped to plaintext vaults).
 - **Search/indexing** must run on decrypted content in memory.
 - **Sync (#6) and WebUI:** the data key must be available wherever decryption
   happens. Since the WebUI proxies invokes to the desktop (which holds the key),
@@ -117,13 +118,13 @@ read" stops being true.
   - Touch ID unlock via Keychain (opt-in).
 - **Phase 2: Polish.**
   - Filename/path encryption, idle auto-lock, per-domain encryption,
-    plaintext export, decrypt shim for the `~/.ai` ecosystem.
+    plaintext export, standalone CLI/TUI unlock for encrypted vaults.
 
 ## Open questions for you
 
-1. **Scope:** encrypt only the desktop-app vault, or also the shared `~/.ai`
-   vault that OpenClaw/Paperclip read? (The latter is a much bigger blast
-   radius.)
+1. **Scope:** is encryption desktop-app-only at first (CLI/TUI keep working on
+   plaintext vaults), or do we want the standalone CLI/TUI to unlock encrypted
+   vaults from day one?
 2. **Recovery:** if the user forgets the password, are they OK losing the data,
    or do we want a recovery code / escrow?
 3. **Touch ID:** want the Keychain/Touch ID convenience path in phase 1, or
@@ -132,5 +133,6 @@ read" stops being true.
 
 My recommendation: ship **Phase 0** now (low risk, real UX value, sets up the
 Security page), then do **Phase 1 opt-in, desktop-vault-only, with a recovery
-code and Touch ID**. Don't touch the shared `~/.ai` plaintext flows until we've
-given OpenClaw/Paperclip a decrypt path.
+code and Touch ID** — the desktop hands its in-memory key to the bundled engine
+sidecar so chat/council keep working. Standalone CLI/TUI unlock for encrypted
+vaults can come in Phase 2.
