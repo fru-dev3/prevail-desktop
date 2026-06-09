@@ -3514,7 +3514,13 @@ function DomainStatusBar({
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [modesOpen]);
-  const activeModes = [web, save, serendipity, auto].filter(Boolean).length;
+  // Bunker Mode forbids any request leaving the device, so Web access can never
+  // be on while it's active. We show it off and locked regardless of the stored
+  // preference (which is preserved for when Bunker Mode is turned back off). The
+  // send path enforces the same coercion independently (see `web:` in prefs).
+  const bunker = isBunkerOn();
+  const webShown = bunker ? false : web;
+  const activeModes = [webShown, save, serendipity, auto].filter(Boolean).length;
 
   const flip = (
     t: DomainToggle,
@@ -3579,8 +3585,11 @@ function DomainStatusBar({
           {modesOpen && (
             <div className="absolute bottom-full left-0 z-50 mb-2 w-80 rounded-xl border border-border bg-surface p-1.5 shadow-xl">
               <div className="px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Modes</div>
-              <ModeRow glyph="○" label="Web access" on={web} onClick={() => flip("web", web, setWeb)}
-                desc="Let the model fetch URLs and web-search while replying. Off keeps the reply offline." />
+              <ModeRow glyph="○" label={bunker ? "Web access · locked" : "Web access"} on={webShown}
+                onClick={() => { if (bunker) return; flip("web", web, setWeb); }}
+                desc={bunker
+                  ? "Locked off by Bunker Mode — no request may leave this device. Turn off Bunker Mode to allow web access."
+                  : "Let the model fetch URLs and web-search while replying. Off keeps the reply offline."} />
               <ModeRow glyph="▣" label="Save history" on={save} onClick={() => flip("save", save, setSave)}
                 desc="Log every reply to history so you can re-read it later. Off makes the turn ephemeral." />
               <ModeRow glyph="◉" label="Serendipity" on={serendipity} onClick={() => flip("serendipity", serendipity, setSeren)}
@@ -6788,7 +6797,7 @@ function ChatPanel({
               What should we work on?
             </h2>
             <p className="mt-2 max-w-md text-center text-sm text-text-muted">
-              Start chatting, or pick a domain to ground the conversation in its state and history.
+              Your private AI that learns you and gets sharper every time you use it.
             </p>
             {lifeReadiness && lifeReadiness.life_readiness !== null && (
               <div
@@ -10258,7 +10267,7 @@ function SettingsPanel({
       { id: "remote", label: "Remote (WebUI)", icon: Monitor },
     ]},
     { heading: "You & Vault", items: [
-      { id: "user", label: "About me", icon: Users },
+      { id: "user", label: "Pro Profile", icon: Users },
       { id: "memory", label: "Memory & Context", icon: Brain },
       { id: "vault", label: "Vault", icon: Folder },
     ]},
@@ -11777,7 +11786,7 @@ function UserProfileSection({ vaultPath }: { vaultPath: string }) {
   return (
     <>
       <SettingsHeader
-        title="About me"
+        title="Pro Profile"
         subtitle="A persistent profile that gets prepended to every prompt. Captures who you are, your preferences, and recurring details so models don't have to re-ask. Lives at vault/user.md."
       />
       <div className="rounded-lg border border-border bg-surface">
