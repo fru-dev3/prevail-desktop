@@ -12,9 +12,27 @@
 > | 1 | Usage analytics | **Done** | engine (15) + desktop unit tests, tsc, build | needs 1 live GUI smoke test |
 > | 2 | Embedded vault | **Done** (migration + button) | engine (6 tests), cargo, build | first-launch default-flip lands via F3 auto-demo |
 > | 3 | Demo/Prod + packages | **Done** (mode flag, 6 packs, import UI, banner, switch, auto-demo, seeded usage + threads) | engine (8 pack tests), tsc, build | content is extensible; tone worth a review |
-> | 4 | Login + encryption | **Phase 0 done** (app lock) + **Phase 1 crypto core done** (9 tests) | engine (6 lock + 9 crypto), tsc, build | Phase 1 read/write integration remains (live-test + review) |
+> | 4 | Login + encryption | **Phase 0 done** + **Phase 1 mostly done** | engine (6 lock + 12 crypto + 5 ops + 6 session + 3 integration), tsc, build | only the live/runtime activation layer remains |
 >
-> **Engine: 243 tests pass. Desktop: 38 Rust tests pass. Both typecheck + build clean.**
+> **Engine: 260 tests pass. Desktop: 38 Rust tests pass. Both typecheck + build clean.**
+>
+> **F4 Phase 1 is now far past "primitives only":** crypto core (envelope, AES-256-GCM,
+> scrypt), **one-time recovery code**, keyring persistence, in-place vault
+> encrypt/decrypt **migration**, and the **read-site integration** — vault reads
+> across vault.ts/manifest/memory/decisions/usage now flow through a transparent
+> session decryptor (`vreadFile`), proven on a synthetic encrypted vault — plus
+> the **write helpers** (`vwriteFile`, `vappendLine` read-modify-write for
+> ledgers). All byte-identical passthrough when plaintext, so zero behavior change
+> for existing vaults (full suite stays green). Encryption is still **inert** — no
+> command activates it on a real vault.
+>
+> **The only F4 Phase 1 remainder is the live/runtime activation layer, which
+> cannot be built or verified headless:** swap the engine *write* sites to the
+> tested helpers, have the desktop hold the unlocked DEK and pass it to the
+> bundled engine sidecar (`PREVAIL_VAULT_KEY`), Touch ID/Keychain unlock (a macOS
+> runtime API), a gated "encrypt this vault" action, and a live run encrypting a
+> throwaway vault to confirm every surface reads + writes it. This is the part
+> that needs Fru's machine + live testing.
 >
 > **What shipped to `main` this session (engine-first throughout):**
 > - **F1:** `usage --domain` + one-shot `usage summary`; desktop delegates all
