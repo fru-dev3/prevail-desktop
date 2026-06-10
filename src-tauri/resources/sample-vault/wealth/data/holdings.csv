@@ -1,7 +1,11 @@
-account,asset,allocation_pct,value_usd
-401k,Total US Index,45,52000
-401k,Intl Index,15,17400
-Roth IRA,Total US Index,10,12000
-Brokerage,Total US Index,12,14200
-Brokerage,Bonds,8,9600
-HYSA,Cash,10,11800
+account,asset,ticker,allocation_pct,value_usd
+401k,Fidelity 500 Index,FXAIX,55,92400
+401k,Fidelity Total Intl Index,FTIHX,20,33600
+401k,Fidelity US Bond Index,FXNAX,15,25200
+401k,Fidelity Mid Cap Index,FSMDX,10,16800
+Roth IRA,Total Stock Market ETF,VTI,70,28700
+Roth IRA,Total Intl Stock ETF,VXUS,30,12300
+Brokerage,Total Stock Market ETF,VTI,60,34800
+Brokerage,Total Bond Market ETF,BND,25,14500
+Brokerage,Money Market,SPAXX,15,8700
+HSA,Fidelity 500 Index,FXAIX,100,7200

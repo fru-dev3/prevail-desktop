@@ -1,31 +1,19 @@
 {
   "currency": "USD",
   "monthly": [
-    {
-      "m": "2026-01",
-      "net_worth": 171200
-    },
-    {
-      "m": "2026-02",
-      "net_worth": 175800
-    },
-    {
-      "m": "2026-03",
-      "net_worth": 179100
-    },
-    {
-      "m": "2026-04",
-      "net_worth": 182600
-    },
-    {
-      "m": "2026-05",
-      "net_worth": 186400
-    },
-    {
-      "m": "2026-06",
-      "net_worth": 189400
-    }
+    { "m": "2025-07", "net_worth": 372400 },
+    { "m": "2025-08", "net_worth": 379100 },
+    { "m": "2025-09", "net_worth": 384800 },
+    { "m": "2025-10", "net_worth": 388200 },
+    { "m": "2025-11", "net_worth": 393600 },
+    { "m": "2025-12", "net_worth": 397900 },
+    { "m": "2026-01", "net_worth": 402300 },
+    { "m": "2026-02", "net_worth": 407500 },
+    { "m": "2026-03", "net_worth": 411800 },
+    { "m": "2026-04", "net_worth": 415900 },
+    { "m": "2026-05", "net_worth": 419600 },
+    { "m": "2026-06", "net_worth": 423000 }
   ],
-  "savings_rate_pct": 28,
-  "emergency_fund_months": 4.2
+  "savings_rate_pct": 24,
+  "emergency_fund_months": 5.0
 }

@@ -1,0 +1,11 @@
+task,season,frequency,due_date,est_cost_usd,contractor,status,notes
+HVAC service and diagnostic,summer,annual,2026-06-18,140,CoolBreeze Austin,scheduled,2016 Carrier unit, decide repair vs replace at this visit
+Air filter change (20x25x1),year-round,quarterly,2026-06-15,18,self,overdue,buy 4-pack
+Water heater flush,summer,annual,2026-06-25,0,self,due,sediment flush, 2019 unit
+Gutter cleaning,fall,annual,2026-09-20,180,Diego R.,upcoming,before fall rains
+Dryer vent cleaning,fall,annual,2026-10-05,120,Diego R.,upcoming,
+Smoke and CO detector batteries,fall,annual,2026-11-01,25,self,upcoming,
+Irrigation backflow test,spring,annual,2027-03-15,75,Hill Country Plumbing,upcoming,Austin requires annual test
+Roof and flashing inspection,spring,annual,2027-04-10,0,self,upcoming,2018 shingle, visual check
+HVAC service (spring tune-up),spring,annual,2027-04-20,140,CoolBreeze Austin,upcoming,
+Caulk and weatherstrip refresh,fall,annual,2026-10-15,40,self,upcoming,doors and windows before winter

@@ -695,6 +695,48 @@ pub struct BenchmarkRun {
     pub judge_avg: Option<f64>,
     pub keyword_avg: Option<f64>,
     pub questions: usize,
+    /// Run date parsed from the dir name (`YYYY-MM-DD_<label>`), so the UI
+    /// can group runs by when they happened.
+    pub date: String,
+    /// Distinct domains the run actually covered (from its question records),
+    /// so a domain-scoped view can show only the runs that touched it.
+    pub domains: Vec<String>,
+    /// False when the run has results but no score.json yet (scoring skipped
+    /// or interrupted). Previously such runs were silently invisible.
+    pub scored: bool,
+    /// Batch membership: model runs launched together share one batch, so the
+    /// UI can group a session of N models as a single unit (and rerun it).
+    pub batch_id: Option<String>,
+    pub batch_label: Option<String>,
+    /// Directory creation time (ms since epoch). Lets the UI cluster
+    /// pre-batch-era runs that were launched together into pseudo-batches.
+    pub created_ms: u64,
+}
+
+fn dir_created_ms(p: &Path) -> u64 {
+    fs::metadata(p)
+        .and_then(|m| m.created().or_else(|_| m.modified()))
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+#[derive(Deserialize)]
+struct BatchFile {
+    id: String,
+    label: Option<String>,
+}
+
+fn read_batch(run_dir: &Path) -> (Option<String>, Option<String>) {
+    let p = run_dir.join("batch.json");
+    if let Ok(raw) = fs::read_to_string(&p) {
+        if let Ok(b) = serde_json::from_str::<BatchFile>(&raw) {
+            let label = b.label.clone();
+            return (Some(b.id), label);
+        }
+    }
+    (None, None)
 }
 
 #[derive(Deserialize)]
@@ -710,6 +752,31 @@ struct ScoreFile {
     question_scores: Vec<serde_json::Value>,
 }
 
+/// Distinct `domain` fields from an array of question records.
+fn distinct_domains(records: &[serde_json::Value]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for r in records {
+        if let Some(d) = r.get("domain").and_then(|v| v.as_str()) {
+            if !d.is_empty() && !out.iter().any(|x| x == d) {
+                out.push(d.to_string());
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// `YYYY-MM-DD` prefix of a run directory name, if present.
+fn run_dir_date(dir_name: &str) -> String {
+    let head: String = dir_name.chars().take(10).collect();
+    let ok = head.len() == 10
+        && head.chars().enumerate().all(|(i, c)| match i {
+            4 | 7 => c == '-',
+            _ => c.is_ascii_digit(),
+        });
+    if ok { head } else { String::new() }
+}
+
 #[tauri::command]
 fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
     let runs_dir = Path::new(&vault).join("benchmark").join("runs");
@@ -723,26 +790,67 @@ fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
         if !p.is_dir() {
             continue;
         }
+        let dir_name = p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
+        let date = run_dir_date(&dir_name);
         let score_file = p.join("score.json");
-        if !score_file.exists() {
-            continue;
+        let (batch_id, batch_label) = read_batch(&p);
+        if score_file.exists() {
+            if let Ok(raw) = fs::read_to_string(&score_file) {
+                if let Ok(parsed) = serde_json::from_str::<ScoreFile>(&raw) {
+                    let domains = distinct_domains(&parsed.question_scores);
+                    out.push(BenchmarkRun {
+                        label: parsed.label,
+                        run_dir: parsed.run_dir,
+                        judge_avg: parsed.judge_avg,
+                        keyword_avg: parsed.keyword_avg,
+                        questions: parsed.question_scores.len(),
+                        date,
+                        domains,
+                        scored: true,
+                        batch_id,
+                        batch_label,
+                        created_ms: dir_created_ms(&p),
+                    });
+                    continue;
+                }
+            }
         }
-        if let Ok(raw) = fs::read_to_string(&score_file) {
-            if let Ok(parsed) = serde_json::from_str::<ScoreFile>(&raw) {
-                out.push(BenchmarkRun {
-                    label: parsed.label,
-                    run_dir: parsed.run_dir,
-                    judge_avg: parsed.judge_avg,
-                    keyword_avg: parsed.keyword_avg,
-                    questions: parsed.question_scores.len(),
-                });
+        // Unscored (or unparseable score) run: surface it from results.json
+        // instead of hiding it — the user must be able to SEE every run.
+        let results_file = p.join("results.json");
+        if results_file.exists() {
+            if let Ok(raw) = fs::read_to_string(&results_file) {
+                if let Ok(records) = serde_json::from_str::<Vec<serde_json::Value>>(&raw) {
+                    let domains = distinct_domains(&records);
+                    let label = dir_name
+                        .splitn(2, '_')
+                        .nth(1)
+                        .unwrap_or(&dir_name)
+                        .to_string();
+                    out.push(BenchmarkRun {
+                        label,
+                        run_dir: p.to_string_lossy().to_string(),
+                        judge_avg: None,
+                        keyword_avg: None,
+                        questions: records.len(),
+                        date,
+                        domains,
+                        scored: false,
+                        batch_id,
+                        batch_label,
+                        created_ms: dir_created_ms(&p),
+                    });
+                }
             }
         }
     }
+    // Newest first, scored or not; ties broken by judge score.
     out.sort_by(|a, b| {
-        let aj = a.judge_avg.unwrap_or(-1.0);
-        let bj = b.judge_avg.unwrap_or(-1.0);
-        bj.partial_cmp(&aj).unwrap_or(std::cmp::Ordering::Equal)
+        b.date.cmp(&a.date).then_with(|| {
+            let aj = a.judge_avg.unwrap_or(-1.0);
+            let bj = b.judge_avg.unwrap_or(-1.0);
+            bj.partial_cmp(&aj).unwrap_or(std::cmp::Ordering::Equal)
+        })
     });
     Ok(out)
 }
@@ -1423,6 +1531,83 @@ fn benchmark_delete_question(path: String) -> Result<(), String> {
     fs::remove_file(&path).map_err(|e| e.to_string())
 }
 
+// Export/import the question set as one portable JSON document, so a suite
+// can be shared, backed up, or moved between vaults. Format:
+//   { "schema": "prevail.bench/v1", "questions": [BenchQuestionInput…] }
+
+#[tauri::command]
+fn benchmark_export_questions(vault: String, dest: Option<String>) -> Result<String, String> {
+    let questions = benchmark_questions(vault)?;
+    let items: Vec<serde_json::Value> = questions
+        .iter()
+        .map(|q| {
+            serde_json::json!({
+                "id": q.id,
+                "domain": q.domain,
+                "prompt": q.prompt,
+                "context": q.context,
+                "notes": q.notes,
+                "council": q.council,
+                "expected_decision": q.expected_decision,
+                "expected_verdict_keywords": q.expected_verdict_keywords,
+            })
+        })
+        .collect();
+    let doc = serde_json::to_string_pretty(&serde_json::json!({
+        "schema": "prevail.bench/v1",
+        "questions": items,
+    }))
+    .map_err(|e| e.to_string())?;
+    if let Some(dest) = dest {
+        fs::write(&dest, &doc).map_err(|e| format!("write {dest}: {e}"))?;
+    }
+    Ok(doc)
+}
+
+#[derive(Serialize)]
+struct BenchImportReport {
+    created: Vec<String>,
+    skipped: Vec<String>,
+}
+
+#[tauri::command]
+fn benchmark_import_questions(vault: String, json: String) -> Result<BenchImportReport, String> {
+    let doc: serde_json::Value = serde_json::from_str(&json).map_err(|e| format!("invalid JSON: {e}"))?;
+    if doc.get("schema").and_then(|s| s.as_str()) != Some("prevail.bench/v1") {
+        return Err("not a prevail.bench/v1 file (missing/incorrect \"schema\")".into());
+    }
+    let items = doc
+        .get("questions")
+        .and_then(|q| q.as_array())
+        .ok_or("missing \"questions\" array")?;
+    let dir = Path::new(&vault).join("benchmark").join("questions");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let mut report = BenchImportReport { created: vec![], skipped: vec![] };
+    for item in items {
+        let q: BenchQuestionInput = match serde_json::from_value(item.clone()) {
+            Ok(q) => q,
+            Err(_) => {
+                report.skipped.push(
+                    item.get("id").and_then(|v| v.as_str()).unwrap_or("(malformed)").to_string(),
+                );
+                continue;
+            }
+        };
+        // Never overwrite an existing question on import — skip and report.
+        if let Some(id) = &q.id {
+            if !id.is_empty() && dir.join(format!("{id}.md")).exists() {
+                report.skipped.push(id.clone());
+                continue;
+            }
+        }
+        match benchmark_save_question(vault.clone(), q) {
+            Ok(saved) => report.created.push(saved.id),
+            Err(_) => report.skipped.push("(write failed)".into()),
+        }
+    }
+    Ok(report)
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Benchmark matrix — per-run, per-domain effectiveness, so the UI can pivot
 // "which model is best for which domain". Reads every run's score.json.
@@ -1575,11 +1760,27 @@ fn import_sample_vault(app: tauri::AppHandle) -> Result<String, String> {
         return Err(format!("bundled sample vault not found at {}", src.display()));
     }
     let home = std::env::var("HOME").map_err(|e| e.to_string())?;
-    let dest = Path::new(&home).join("Documents/Prevail Sample Vault");
-    if dest.exists() {
+    // App-managed demo sandbox (NOT ~/Documents): the switch-to-production flow
+    // and any re-seed only ever touch a folder WE own and have marked as demo,
+    // so real user data is never at risk. (DEMO-MODE-PLAN: demo lives in app
+    // storage, not dumped into the user's Documents.)
+    let dest = Path::new(&home).join(".prevail/demo-vault");
+    let marker = dest.join(".prevail-demo");
+    // Non-destructive refresh: only wipe a path that carries our own demo
+    // marker. Never remove a folder we didn't create (hard rule: never delete
+    // user data).
+    if dest.exists() && marker.exists() {
         let _ = fs::remove_dir_all(&dest);
     }
-    copy_dir_recursive(&src, &dest).map_err(|e| format!("copy sample vault: {e}"))?;
+    if !dest.exists() {
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("create demo dir: {e}"))?;
+        }
+        copy_dir_recursive(&src, &dest).map_err(|e| format!("copy sample vault: {e}"))?;
+    }
+    // Stamp the demo marker so future re-seeds and the switch-to-production flow
+    // can safely identify (and only then clear) this app-owned sandbox.
+    let _ = fs::write(&marker, "demo sandbox — safe to clear on switch-to-production\n");
     let dest_str = dest.to_string_lossy().to_string();
     write_bootstrap_vault(&dest_str);
     Ok(dest_str)
@@ -3013,6 +3214,8 @@ async fn telegram_send(
 
 #[derive(Deserialize)]
 pub struct BenchmarkRunArgs {
+    pub batch_id: Option<String>,
+    pub batch_label: Option<String>,
     pub session_id: String,
     pub vault: String,
     pub cli: String,         // claude | codex | antigravity | ollama
@@ -3132,6 +3335,14 @@ async fn benchmark_start(
         cli_args.push("--domain".into());
         cli_args.push(d.clone());
     }
+    if let Some(b) = &args.batch_id {
+        cli_args.push("--batch".into());
+        cli_args.push(b.clone());
+    }
+    if let Some(bl) = &args.batch_label {
+        cli_args.push("--batch-label".into());
+        cli_args.push(bl.clone());
+    }
     spawn_prevail_streaming(app, args.session_id, cli_args, "run").await
 }
 
@@ -3174,6 +3385,43 @@ async fn benchmark_score(
         }
     }
     spawn_prevail_streaming(app, args.session_id, cli_args, "score").await
+}
+
+#[derive(Deserialize)]
+pub struct BenchmarkSuggestArgs {
+    pub session_id: String,
+    pub vault: String,
+    pub domain: String,
+    pub count: Option<u32>,
+    pub cli: Option<String>,
+    pub model: Option<String>,
+}
+
+/// AI-draft canonical questions from a domain's recorded context, via the
+/// engine's `bench suggest` (one shared implementation across surfaces).
+#[tauri::command]
+async fn benchmark_suggest(
+    app: tauri::AppHandle,
+    args: BenchmarkSuggestArgs,
+) -> Result<(), String> {
+    let mut cli_args: Vec<String> = vec![
+        "--vault".into(), args.vault.clone(),
+        "bench".into(), "suggest".into(),
+        "--domain".into(), args.domain.clone(),
+    ];
+    if let Some(n) = args.count {
+        cli_args.push("--count".into());
+        cli_args.push(n.to_string());
+    }
+    if let Some(c) = &args.cli {
+        cli_args.push("--cli".into());
+        cli_args.push(c.clone());
+    }
+    if let Some(m) = &args.model {
+        cli_args.push("--model".into());
+        cli_args.push(m.clone());
+    }
+    spawn_prevail_streaming(app, args.session_id, cli_args, "suggest").await
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -3313,6 +3561,8 @@ pub fn run() {
             benchmark_questions,
             benchmark_save_question,
             benchmark_delete_question,
+            benchmark_export_questions,
+            benchmark_import_questions,
             benchmark_matrix,
             read_file,
             telegram_send,
@@ -3331,6 +3581,7 @@ pub fn run() {
             read_skill,
             benchmark_start,
             benchmark_score,
+            benchmark_suggest,
             engine::engine_domains,
             engine::engine_vault_embed,
             engine::engine_appmode_get,

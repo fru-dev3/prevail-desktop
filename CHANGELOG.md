@@ -17,6 +17,16 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 - **Providers** — OpenRouter gateway: one key, every model (Claude/GPT/Gemini/Grok/DeepSeek/Qwen…); keys in Keychain.
 - **WebUI** — serve the same app to a browser via an in-app bridge (no duplicate UI); reach it anywhere over Tailscale/Cloudflare.
 
+## [0.7.0] — 2026-06-09 · demo-first onboarding
+
+### Changed
+
+- **Demo mode is the real default.** A fresh launch lands straight in a populated demo vault, with the "Demo Mode" ribbon and the config page to switch to production. From there you import domain templates (health, tax, wealth, insurance, and more) so production starts with the domains already scaffolded.
+
+### Fixed
+
+- **Demo vault now lives in app storage** (`~/.prevail/demo-vault`) instead of being dumped into `~/Documents`. The re-seed is **marker-guarded** — it only ever refreshes a folder Prevail owns and tagged as demo, so it can never delete a real folder a user happened to put at that path. (Closes a destructive `remove_dir_all` on the old `~/Documents/Prevail Sample Vault` path.)
+
 ## [0.6.0] — 2026-06-09 · usage v2, embedded vault, demo mode, encryption (built + tested; pending live verification + signed release)
 
 ### Added

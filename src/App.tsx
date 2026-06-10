@@ -1,6 +1,6 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, listen, isBrowser, setWebToken, type UnlistenFn } from "./bridge";
-import { open, save, confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
+import { open, save, save as saveFileDialog, confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
 import { enable as autostartEnable, disable as autostartDisable, isEnabled as autostartIsEnabled } from "@tauri-apps/plugin-autostart";
 import { check as checkUpdate } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -72,7 +72,7 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.6.0";
+const APP_VERSION = "0.7.0";
 
 // Canonical on/off toggle. Track 36×20px, thumb 16×16px, slides
 // 18px. Every switch in the app routes through this so we never
@@ -283,6 +283,7 @@ const MODELS: Record<string, ModelPick[]> = {
     { id: "claude-opus-4-8",   label: "Opus 4.8",       blurb: "current flagship" },
     { id: "claude-opus-4-7",   label: "Opus 4.7",       blurb: "previous flagship" },
     { id: "claude-opus-4-6",   label: "Opus 4.6",       blurb: "legacy flagship" },
+    { id: "claude-fable-5",    label: "Fable 5",        blurb: "newest · most capable" },
     { id: "sonnet",            label: "Sonnet (latest)", blurb: "alias · balanced" },
     { id: "claude-sonnet-4-6", label: "Sonnet 4.6",     blurb: "balanced workhorse" },
     { id: "haiku",             label: "Haiku (latest)", blurb: "alias · fast + cheap" },
@@ -409,6 +410,8 @@ import {
   Compass,
   Crown,
   Download,
+  Upload,
+  RotateCw,
   Eye,
   FileText,
 
@@ -458,7 +461,6 @@ import {
   X,
   AlertTriangle,
   Circle,
-  ChevronLeft,
   Trash2,
   Activity,
   Coins,
@@ -907,6 +909,12 @@ interface BenchmarkRun {
   judge_avg: number | null;
   keyword_avg: number | null;
   questions: number;
+  date: string;
+  domains: string[];
+  scored: boolean;
+  batch_id?: string | null;
+  batch_label?: string | null;
+  created_ms: number;
 }
 
 interface QuestionScore {
@@ -1890,7 +1898,12 @@ export default function App() {
         if (vaultPath) {
           const ok = await invoke<boolean>("vault_exists", { path: vaultPath }).catch(() => false);
           if (ok) return;
-          lsSet(LS.vault, ""); // stale — fall through to re-seed
+          // Stale pointer (the remembered vault is gone). Clear it AND drop the
+          // React state to null so the re-seed below, which may land on the same
+          // path, still registers as a change and triggers a fresh scan instead
+          // of leaving the sidebar stuck on "vault path does not exist".
+          lsSet(LS.vault, "");
+          setVaultPath(null);
         }
         // 2) A vault remembered on disk (bootstrap) — same existence guard.
         const bp = await invoke<string | null>("bootstrap_vault");
@@ -2576,17 +2589,18 @@ export default function App() {
                 onSeedConsumed={() => setCouncilSeed(null)}
               />
             )}
-            {tab === "benchmark" && (
-              // Per-domain benchmark, full screen — scoped to whatever domain
-              // you're in. Remounts (via key) when you switch domains so it
-              // re-scopes cleanly. The global "benchmark everything" run lives
-              // separately in the configuration page.
+            {/* Per-domain benchmark, full screen — scoped to whatever domain
+                you're in. Remounts (via key) when you switch domains so it
+                re-scopes cleanly. STAYS MOUNTED (hidden) on other tabs so an
+                in-flight run keeps its live progress when you navigate away
+                and back. The global cockpit lives in the configuration page. */}
+            <div className={tab === "benchmark" ? "h-full" : "hidden"}>
               <BenchmarkPanel
                 key={selectedDomain || benchScope || "all"}
                 vaultPath={vaultPath}
                 initialDomain={selectedDomain || benchScope}
               />
-            )}
+            </div>
           </div>
         </main>
       </div>
@@ -5043,7 +5057,7 @@ function AgentPickerRail({
 }) {
   if (clis.length === 0) return null;
   return (
-    <div className="mt-6 flex items-center gap-1 rounded-full border border-border bg-surface px-1.5 py-1 shadow-sm">
+    <div className="mt-3 flex items-center gap-1 rounded-full border border-border bg-surface px-1.5 py-1 shadow-sm">
       {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
         const active = c.id === selected;
         return (
@@ -5794,13 +5808,13 @@ function UsageBreakdown({
   if (rows.length === 0) return null;
   const max = Math.max(1, ...rows.map((r) => r.turns));
   return (
-    <div className="rounded-xl border border-border-subtle bg-surface p-4">
-      <div className="mb-3 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
+    <div className="rounded-xl border border-border-subtle bg-surface p-3">
+      <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
         <Icon className="h-3.5 w-3.5" />
         {title}
       </div>
-      <div className="flex flex-col gap-2">
-        {rows.slice(0, 6).map((r) => (
+      <div className="flex flex-col gap-1.5">
+        {rows.slice(0, 5).map((r) => (
           <div key={r.key} className="flex items-center gap-3">
             <div className="w-24 shrink-0 truncate font-mono text-[11px] text-text-secondary" title={r.key}>
               {r.key}
@@ -5883,21 +5897,21 @@ function UsageDashboard({
   const dayMax = Math.max(1, ...days.map((d) => d.turns));
 
   return (
-    <div className="mt-4 w-full max-w-4xl">
-      <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
+    <div className="mt-3 w-full max-w-5xl">
+      <div className="mb-1.5 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
         <Activity className="h-3.5 w-3.5" />
         Usage
       </div>
 
       {/* hero totals */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2.5">
         {stats.map((s) => (
-          <div key={s.label} className="rounded-xl border border-border-subtle bg-surface p-3">
+          <div key={s.label} className="rounded-xl border border-border-subtle bg-surface px-3 py-2">
             <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
               <s.icon className="h-3.5 w-3.5" />
               {s.label}
             </div>
-            <div className="mt-1 font-display text-xl font-semibold tabular-nums text-text-primary">
+            <div className="mt-0.5 font-display text-lg font-semibold tabular-nums text-text-primary">
               {s.value}
             </div>
           </div>
@@ -5906,11 +5920,11 @@ function UsageDashboard({
 
       {/* per-day activity strip */}
       {days.length > 1 && (
-        <div className="mt-2 rounded-xl border border-border-subtle bg-surface p-3">
-          <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
+        <div className="mt-2 rounded-xl border border-border-subtle bg-surface px-3 py-2">
+          <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
             Activity · last {days.length} day{days.length === 1 ? "" : "s"}
           </div>
-          <div className="flex h-10 items-end gap-1">
+          <div className="flex h-8 items-end gap-1">
             {days.map((d) => (
               <div
                 key={d.key}
@@ -5924,7 +5938,7 @@ function UsageDashboard({
       )}
 
       {/* breakdowns */}
-      <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
         <UsageBreakdown title="By agent" icon={Cpu} rows={summary.by_cli} />
         <UsageBreakdown title="By model" icon={Layers} rows={summary.by_model} />
         <UsageBreakdown title="By domain" icon={Users} rows={summary.by_domain} />
@@ -7104,12 +7118,12 @@ function ChatPanel({
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 && !domain && (
-          <div className="flex h-full flex-col items-center px-6 py-5">
-            <PrevailLogo size={44} src="/logo-512.png" />
-            <h2 className="mt-3 font-display text-2xl font-semibold tracking-tight">
+          <div className="flex h-full flex-col items-center px-6 py-3">
+            <PrevailLogo size={34} src="/logo-512.png" />
+            <h2 className="mt-2 font-display text-xl font-semibold tracking-tight">
               What should we work on?
             </h2>
-            <p className="mt-1 max-w-md text-center text-sm text-text-muted">
+            <p className="mt-0.5 max-w-md text-center text-[13px] text-text-muted">
               Your private AI that learns you and gets sharper every time you use it.
             </p>
             {lifeReadiness && lifeReadiness.life_readiness !== null && (
@@ -7157,17 +7171,16 @@ function ChatPanel({
               });
               const featured = ranked.slice(0, 4);
               return (
-              <div className="mt-4 w-full max-w-4xl">
-                <div className="mb-2 flex items-center justify-between">
+              <div className="mt-3 w-full max-w-5xl">
+                <div className="mb-1.5 flex items-center justify-between">
                   <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
                     Jump to · {featured.length} of {domains.length}
                   </div>
                   <span className="font-mono text-[10px] text-text-muted">more in sidebar</span>
                 </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
                   {featured.map((d, i) => {
                     const Icon = DOMAIN_ICONS[d.name];
-                    const importCount = domainStats[d.name] ?? 0;
                     const running = runningDomains.has(d.name);
                     const color = domainColor(d.name);
                     return (
@@ -7179,7 +7192,7 @@ function ChatPanel({
                         transition={{ delay: 0.04 * i, type: "spring", stiffness: 140, damping: 18 }}
                         whileHover={{ y: -3 }}
                         whileTap={{ scale: 0.99 }}
-                        className="group relative flex h-28 flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface p-3.5 text-left transition-all duration-200 hover:border-border hover:shadow-[0_10px_34px_-12px_rgba(0,0,0,0.18)]"
+                        className="group relative flex h-[84px] flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface p-3 text-left transition-all duration-200 hover:border-border hover:shadow-[0_10px_34px_-12px_rgba(0,0,0,0.18)]"
                       >
                         {/* oversized watermark glyph — editorial fill, no text clutter */}
                         {Icon && (
@@ -7220,20 +7233,18 @@ function ChatPanel({
                           </span>
                         </div>
 
-                        {/* name anchored at the bottom with a growing accent hairline */}
+                        {/* name + blurb anchored at the bottom; status moved into
+                            the top row so the card stays short without clipping */}
                         <div className="relative mt-auto">
-                          <div className="font-display text-base font-semibold leading-tight tracking-tight text-text-primary">
-                            {titleCase(d.name)}
+                          <div className="flex items-baseline gap-2">
+                            <div className="font-display text-base font-semibold leading-tight tracking-tight text-text-primary">
+                              {titleCase(d.name)}
+                            </div>
+                            <span className="ml-auto h-px w-6 shrink-0 self-center rounded-full transition-all duration-300 group-hover:w-10" style={{ background: color }} />
                           </div>
-                          <p className="mt-1 line-clamp-1 text-[11px] leading-snug text-text-secondary/85">
+                          <p className="mt-0.5 line-clamp-1 text-xs leading-snug text-text-secondary">
                             {domainBlurb(d.name)}
                           </p>
-                          <div className="mt-1.5 flex items-center gap-2.5">
-                            <span className="h-px w-7 rounded-full transition-all duration-300 group-hover:w-12" style={{ background: color }} />
-                            <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
-                              {importCount > 0 ? `${importCount} import${importCount === 1 ? "" : "s"}` : d.has_state ? "open" : "needs state"}
-                            </span>
-                          </div>
                         </div>
                       </motion.button>
                     );
@@ -9422,17 +9433,29 @@ function buildSynthesisPrompt(
 // BENCHMARK PANEL — leaderboard + drill-down
 
 function parseRunLabel(label: string): { vendor: string; model: string; ts?: string } {
-  const l = label.toLowerCase();
-  let vendor = "other";
-  if (l.includes("claude") || l.includes("opus") || l.includes("sonnet") || l.includes("haiku")) vendor = "claude";
-  else if (l.includes("gpt") || l.includes("codex") || l.includes("o1") || l.includes("o3")) vendor = "codex";
-  else if (l.includes("gemini") || l.includes("antigravity") || l.includes("agy")) vendor = "antigravity";
-  else if (l.includes("ollama") || l.includes("llama") || l.includes("mistral") || l.includes("qwen")) vendor = "ollama";
-
-  const tsMatch = label.match(/\d{4}-\d{2}-\d{2}[T_]\d{2}[-:]?\d{2}/);
+  const tsMatch = label.match(/\d{4}-\d{2}-\d{2}([T_]\d{2}[-:]?\d{2})?/);
   const ts = tsMatch ? tsMatch[0] : undefined;
-  const model = label.replace(tsMatch?.[0] ?? "", "").replace(/[-_]+$/g, "").trim() || label;
-  return { vendor, model, ts };
+  // Run labels are `[<date>_]<cli>[-<modelId>]` (or `council`). Resolve the
+  // model id to its human label so raw ids like "claude-claude-opus-4-6"
+  // never leak into the UI.
+  const stripped = label.replace(/^\d{4}-\d{2}-\d{2}[_ ]/, "").trim();
+  if (/^council\b/i.test(stripped)) return { vendor: "other", model: "Council", ts };
+  const known = ["claude", "codex", "antigravity", "ollama", "openrouter", "lmstudio"];
+  for (const k of known) {
+    if (stripped === k) return { vendor: k, model: titleCase(k), ts };
+    if (stripped.toLowerCase().startsWith(k + "-")) {
+      const rest = stripped.slice(k.length + 1);
+      return { vendor: k, model: modelLabel(k, rest) || rest, ts };
+    }
+  }
+  // Unknown shape: fall back to keyword sniffing for the vendor mark.
+  const l = stripped.toLowerCase();
+  let vendor = "other";
+  if (l.includes("claude") || l.includes("opus") || l.includes("sonnet") || l.includes("haiku") || l.includes("fable")) vendor = "claude";
+  else if (l.includes("gpt") || l.includes("codex")) vendor = "codex";
+  else if (l.includes("gemini") || l.includes("antigravity")) vendor = "antigravity";
+  else if (l.includes("ollama") || l.includes("llama") || l.includes("mistral") || l.includes("qwen")) vendor = "ollama";
+  return { vendor, model: stripped || label, ts };
 }
 
 function ScoreBar({ value, max, color = "var(--color-accent)" }: { value: number | null; max: number; color?: string }) {
@@ -9782,6 +9805,15 @@ interface BenchJob {
   label: string;
   status: BenchJobStatus;
   note?: string;
+  /// Per-question progress, parsed live from the engine's output lines.
+  done: number;
+  total: number;
+  /// The scoped question ids this job will answer, in run order.
+  qids: string[];
+  /// id -> completion info ("Claude·opus", "council · 3 panelists", "✗ …").
+  qdone: Record<string, string>;
+  /// The question currently in flight, when detectable.
+  qcur?: string;
 }
 
 const MODEL_SEP = "::";
@@ -9793,9 +9825,27 @@ function BenchmarkPanel({
   vaultPath: string;
   initialDomain?: string | null;
 }) {
-  const [view, setView] = useState<"run" | "results" | "questions">(
-    initialDomain ? "run" : "results",
+  // A "runs" deep link from the Models page lands here with a model key to
+  // expand on the leaderboard. Consumed once.
+  const [initialModel] = useState<string | null>(() => {
+    const v = lsGet("prevail.bench.expandModel");
+    if (v) lsSet("prevail.bench.expandModel", "");
+    return v || null;
+  });
+  // ONE flat navigation level: every destination is a top-level tab. No
+  // "Results" grouping with a second pill bar underneath — that double
+  // hierarchy was genuinely confusing.
+  const [view, setView] = useState<"run" | "board" | "history" | "matrix" | "questions">(
+    initialModel ? "board" : initialDomain ? "run" : "board",
   );
+  // Domain filter shared by Leaderboard + History, shown in the same bar.
+  const [domainFilter, setDomainFilter] = useState<string>(initialDomain ? initialDomain.toLowerCase() : "all");
+  // Set when a batch just finished: the Leaderboard shows a "batch finished"
+  // banner linking to it in History (answer first, filing one click away).
+  const [finishedBatch, setFinishedBatch] = useState<string | null>(null);
+  // The batch currently running (or just run): label + human-readable scope,
+  // so the progress page always says WHAT is being benchmarked.
+  const [activeBatch, setActiveBatch] = useState<{ label: string; scope: string; domains: string[] } | null>(null);
 
   // Data
   const [runs, setRuns] = useState<BenchmarkRun[]>([]);
@@ -9803,20 +9853,33 @@ function BenchmarkPanel({
   const [questions, setQuestions] = useState<BenchQuestion[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
+  const [vaultDomains, setVaultDomains] = useState<string[]>([]);
   const refresh = useCallback(() => {
     invoke<BenchmarkRun[]>("benchmark_runs", { vault: vaultPath }).then(setRuns).catch((e) => setErr(String(e)));
     invoke<MatrixRow[]>("benchmark_matrix", { vault: vaultPath }).then(setMatrix).catch(() => {});
     invoke<BenchQuestion[]>("benchmark_questions", { vault: vaultPath }).then(setQuestions).catch(() => {});
+    invoke<Domain[]>("scan_vault", { path: vaultPath })
+      .then((ds) => setVaultDomains(ds.map((d) => d.name)))
+      .catch(() => {});
   }, [vaultPath]);
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Domains available to scope/filter by (union of question domains).
+  // Domains available to scope/filter by: the vault's REAL domains first,
+  // then any extra domains that exist only in question files or old runs
+  // (so nothing is hidden, but the list always matches the actual vault).
+  const questionCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const q of questions) m[q.domain] = (m[q.domain] ?? 0) + 1;
+    return m;
+  }, [questions]);
   const allDomains = useMemo(() => {
-    const s = new Set<string>();
-    for (const q of questions) s.add(q.domain);
-    for (const m of matrix) for (const d of Object.keys(m.per_domain)) s.add(d);
-    return Array.from(s).sort();
-  }, [questions, matrix]);
+    const vault = [...vaultDomains].sort();
+    const extra = new Set<string>();
+    for (const q of questions) extra.add(q.domain);
+    for (const m of matrix) for (const d of Object.keys(m.per_domain)) extra.add(d);
+    for (const v of vault) extra.delete(v);
+    return [...vault, ...Array.from(extra).sort()];
+  }, [vaultDomains, questions, matrix]);
 
   // ── Run config ──────────────────────────────────────────────────
   const [mode, setMode] = useState<"single" | "council">("single");
@@ -9865,26 +9928,123 @@ function BenchmarkPanel({
 
   async function runBenchmark() {
     const scopeStr = Array.from(scope).join(",");
+    const scoped = scope.size === 0
+      ? questions
+      : questions.filter((q) => scope.has(q.domain.toLowerCase()));
+    const qids = scoped.map((q) => q.id).sort();
+    const blankJob = { status: "queued" as BenchJobStatus, done: 0, total: qids.length, qids, qdone: {} };
     const plannedJobs: BenchJob[] =
       mode === "council"
-        ? [{ key: "council", cli: "", model: "", label: "Council", status: "queued" }]
+        ? [{ key: "council", cli: "", model: "", label: "Council", ...blankJob }]
         : Array.from(selModels).map((k) => {
             const [cli, model] = k.split(MODEL_SEP);
             const ml = MODELS[cli]?.find((m) => m.id === model)?.label ?? model;
-            return { key: k, cli, model, label: `${titleCase(cli)} · ${ml}`, status: "queued" as BenchJobStatus };
+            return { key: k, cli, model, label: `${titleCase(cli)} · ${ml}`, ...blankJob, qdone: {} };
           });
     if (plannedJobs.length === 0) { setErr("Pick at least one model to run."); return; }
+    await executeJobs(plannedJobs, mode === "council", scopeStr);
+  }
+
+  // Rebuild a runnable job from a stored run's label + domain scope.
+  function jobFromRun(r: BenchmarkRun, key: string): { job: BenchJob; council: boolean } | null {
+    const stripped = r.label.replace(/^\d{4}-\d{2}-\d{2}[_ ]/, "").trim();
+    const council = /^council\b/i.test(stripped);
+    let cli = "";
+    let modelId = "";
+    if (!council) {
+      const known = ["claude", "codex", "antigravity", "ollama", "openrouter", "lmstudio"];
+      for (const k of known) {
+        if (stripped === k) { cli = k; break; }
+        if (stripped.toLowerCase().startsWith(k + "-")) { cli = k; modelId = stripped.slice(k.length + 1); break; }
+      }
+      if (!cli) return null;
+    }
+    const label = council ? "Council" : `${titleCase(cli)} · ${modelLabel(cli, modelId) || modelId || "default"}`;
+    const domSet = new Set(r.domains.map((d) => d.toLowerCase()));
+    const qids = questions.filter((q) => domSet.size === 0 || domSet.has(q.domain.toLowerCase())).map((q) => q.id).sort();
+    return {
+      job: { key, cli, model: modelId, label, status: "queued", done: 0, total: qids.length || r.questions, qids, qdone: {} },
+      council,
+    };
+  }
+
+  // Rerun a past run as-is: the same model (or council) against the same
+  // domain scope, as a fresh dated run.
+  async function rerunRun(r: BenchmarkRun) {
+    const built = jobFromRun(r, `rerun-${Date.now()}`);
+    if (!built) { setErr(`Can't rerun: unrecognized run label "${r.label}"`); return; }
+    setView("run");
+    await executeJobs([built.job], built.council, r.domains.join(","));
+  }
+
+  // Rerun a whole BATCH: every model that ran together, together again.
+  async function rerunBatch(batchRuns: BenchmarkRun[]) {
+    const builds = batchRuns
+      .map((r, i) => ({ r, built: jobFromRun(r, `rerun-${Date.now()}-${i}`) }))
+      .filter((x): x is { r: BenchmarkRun; built: NonNullable<ReturnType<typeof jobFromRun>> } => x.built !== null);
+    if (builds.length === 0) { setErr("Can't rerun this batch: no recognizable runs."); return; }
+    // Dedup models (a batch should not double-run the same model).
+    const seen = new Set<string>();
+    const jobs = builds.filter(({ built }) => {
+      const k = `${built.job.cli}::${built.job.model}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    const council = jobs.some(({ built }) => built.council);
+    setView("run");
+    await executeJobs(jobs.map(({ built }) => built.job), council, batchRuns[0]?.domains.join(",") ?? "");
+  }
+
+  async function executeJobs(plannedJobs: BenchJob[], councilMode: boolean, scopeStr: string) {
+    // One BATCH per launch: the unit you see (and rerun) in History. Named so
+    // several batches a day stay distinguishable: time, scope, panel size.
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const batchId = `b${now.getTime()}`;
+    const scopeDomains = scopeStr ? scopeStr.split(",").map((d) => titleCase(d.trim())).filter(Boolean) : [];
+    const scopePart =
+      scopeDomains.length === 0 ? "All domains"
+      : scopeDomains.length <= 2 ? scopeDomains.join(", ")
+      : `${scopeDomains.length} domains`;
+    const modelPart = plannedJobs.length === 1 ? plannedJobs[0].label : `${plannedJobs.length} models`;
+    const batchLabel = `${hhmm} · ${scopePart} · ${modelPart}`;
+    setActiveBatch({ label: batchLabel, scope: scopePart, domains: scopeDomains });
     setErr(null);
+    setFinishedBatch(null);
     setRunning(true);
     setLog("");
     setJobs(plannedJobs);
     const setJob = (key: string, patch: Partial<BenchJob>) =>
       setJobs((cur) => cur.map((j) => (j.key === key ? { ...j, ...patch } : j)));
 
-    // Run one job: start the model, wait for it, mark scoring.
+    // Run one job: start the model, track per-question progress from its
+    // output stream, wait for it, mark scoring.
     const runOne = async (job: BenchJob) => {
       setJob(job.key, { status: "running" });
       const session = `bench-${job.key.replace(/[^a-z0-9]/gi, "")}-${Date.now()}`;
+      // The engine prints one "  <id>… <result>" line per finished question;
+      // recount completed lines on every chunk for a live progress bar.
+      let buf = "";
+      const chunkUnlisten = listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
+        if (e.payload.session !== session) return;
+        buf += e.payload.data;
+        // Completed questions are full "  <id>… <info>" lines; the question
+        // currently in flight is a trailing "  <id>…" with no info yet.
+        const qdone: Record<string, string> = {};
+        const lines = buf.split("\n");
+        for (const line of lines) {
+          const m = line.match(/^ {2}(\S+)…\s*(.+)$/);
+          if (m) qdone[m[1]] = m[2].trim();
+        }
+        const tail = lines[lines.length - 1] ?? "";
+        const cm = tail.match(/^ {2}(\S+)…\s*$/);
+        setJob(job.key, {
+          done: Math.min(Object.keys(qdone).length, job.total),
+          qdone,
+          qcur: cm?.[1],
+        });
+      });
       try {
         await invoke("benchmark_start", {
           args: {
@@ -9892,40 +10052,37 @@ function BenchmarkPanel({
             vault: vaultPath,
             cli: job.cli || "claude",
             model: job.model || null,
-            council: mode === "council",
+            council: councilMode,
             domain: scopeStr || null,
+            batch_id: batchId,
+            batch_label: batchLabel,
           },
         });
         const code = await waitForDone(session, "run");
         if (code !== 0 && code !== null) { setJob(job.key, { status: "error", note: `exit ${code}` }); return; }
-        setJob(job.key, { status: "scoring" });
+        setJob(job.key, { status: "scoring", done: job.total });
       } catch (e) {
         setJob(job.key, { status: "error", note: String(e) });
+      } finally {
+        void chunkUnlisten.then((u) => u());
       }
     };
 
     try {
-      // Different CLIs are independent processes → run them concurrently. A
-      // single CLI's models stay sequential so we don't fire two requests at
-      // the same subscription at once (rate limits / contention).
-      const byCli = new Map<string, BenchJob[]>();
-      for (const job of plannedJobs) {
-        const g = byCli.get(job.cli) ?? [];
-        g.push(job);
-        byCli.set(job.cli, g);
-      }
-      await Promise.all(
-        Array.from(byCli.values()).map(async (group) => {
-          for (const job of group) await runOne(job);
-        }),
-      );
+      // ALL jobs run in parallel — each is its own engine process, and
+      // waiting serially on a 24-question run per model is far worse than
+      // the occasional provider rate-limit (which surfaces as a per-job
+      // error you can rerun).
+      await Promise.all(plannedJobs.map(runOne));
       // Score every new (unscored) run in one robust pass.
       const scoreSession = `bench-score-${Date.now()}`;
       await invoke("benchmark_score", { args: { session_id: scoreSession, vault: vaultPath, all: true } });
       await waitForDone(scoreSession, "score");
       setJobs((cur) => cur.map((j) => (j.status === "scoring" || j.status === "running" ? { ...j, status: "done" } : j)));
       refresh();
-      setView("results");
+      // Land on the ANSWER (leaderboard); the banner links to the batch.
+      setFinishedBatch(batchLabel);
+      setView("board");
     } finally {
       setRunning(false);
     }
@@ -9935,17 +10092,20 @@ function BenchmarkPanel({
     <div className="flex h-full flex-col">
       {/* Sub-nav — a segmented control, deliberately a different shape from
           the underline top tab bar so the two rows don't read as twins. */}
-      <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-3">
+        {/* THE navigation — every destination, one level, one bar. */}
         <div className="inline-flex items-center gap-0.5 rounded-xl border border-border-subtle bg-surface-warm/60 p-1">
           {([
             ["run", "Run", Sparkles],
-            ["results", "Results", TrendingUp],
+            ["board", "Leaderboard", Crown],
+            ["history", "History", Activity],
+            ["matrix", "Model × domain", Layers],
             ["questions", "Questions", FileText],
           ] as const).map(([id, label, Icon]) => (
             <button
               key={id}
               onClick={() => setView(id)}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all ${
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
                 view === id
                   ? "bg-surface text-accent shadow-sm ring-1 ring-black/5"
                   : "text-text-muted hover:text-text-secondary"
@@ -9956,8 +10116,42 @@ function BenchmarkPanel({
             </button>
           ))}
         </div>
+        {/* Contextual, same bar: run mode while configuring; domain filter on
+            the score views. */}
+        {view === "run" && (
+          <div className="inline-flex items-center gap-0.5 rounded-xl border border-border-subtle bg-surface-warm/60 p-1">
+            {([
+              ["single", "Models", Layers],
+              ["council", "Council", Scale],
+            ] as const).map(([id, label, Icon]) => (
+              <button
+                key={id}
+                onClick={() => setMode(id)}
+                title={id === "single" ? "Compare models head-to-head" : "Run the multi-model Council"}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+                  mode === id
+                    ? "bg-surface text-accent shadow-sm ring-1 ring-black/5"
+                    : "text-text-muted hover:text-text-secondary"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {(view === "board" || view === "history") && allDomains.length > 0 && (
+          <select
+            value={domainFilter}
+            onChange={(e) => setDomainFilter(e.target.value)}
+            className="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] text-text-secondary"
+          >
+            <option value="all">all domains</option>
+            {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+          </select>
+        )}
         {initialDomain && (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-3 py-1 font-mono text-[11px] text-text-muted">
+          <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-3 py-1 font-mono text-[11px] text-text-muted">
             <Target className="h-3 w-3 text-accent" />
             scoped to <span className="font-semibold text-accent">{titleCase(initialDomain)}</span>
           </span>
@@ -9972,17 +10166,36 @@ function BenchmarkPanel({
             mode={mode} setMode={setMode}
             selModels={selModels} toggleModel={toggleModel}
             allDomains={allDomains} scope={scope} toggleScope={toggleScope}
-            questionCount={questions.length}
+            questionCounts={questionCounts}
+            questionCount={
+              scope.size === 0
+                ? questions.length
+                : questions.filter((q) => scope.has(q.domain.toLowerCase())).length
+            }
             running={running} jobs={jobs} log={log} logRef={logRef}
+            activeBatch={activeBatch}
             onRun={runBenchmark}
+            onViewResults={() => setView("board")}
+            onReset={() => { setJobs([]); setLog(""); }}
           />
         )}
-        {view === "results" && (
-          <BenchResults runs={runs} matrix={matrix} allDomains={allDomains} vaultPath={vaultPath} />
+        {(view === "board" || view === "history" || view === "matrix") && (
+          <BenchResults
+            view={view}
+            domainFilter={view === "matrix" ? "all" : domainFilter}
+            runs={runs} matrix={matrix} allDomains={allDomains} vaultPath={vaultPath}
+            initialModel={initialModel} onChanged={refresh}
+            onRerun={(r) => void rerunRun(r)}
+            onRerunBatch={(rs) => void rerunBatch(rs)}
+            finishedBatch={finishedBatch}
+            onViewBatch={() => { setView("history"); setFinishedBatch(null); }}
+            onDismissBanner={() => setFinishedBatch(null)}
+          />
         )}
         {view === "questions" && (
           <BenchQuestions
             vaultPath={vaultPath} questions={questions} allDomains={allDomains}
+            initialDomain={initialDomain}
             onChanged={refresh}
           />
         )}
@@ -9991,9 +10204,36 @@ function BenchmarkPanel({
   );
 }
 
+// The ONE breadcrumb used by every benchmark view: same place, same format,
+// every level of the tree clickable on every page. `meta` is the right-hand
+// counts slot so each page's numbers also live in a consistent spot.
+function BenchCrumbs({
+  items,
+  meta,
+}: {
+  items: { label: string; onClick?: () => void }[];
+  meta?: React.ReactNode;
+}) {
+  return (
+    <nav className="mb-4 flex items-center gap-1.5 font-mono text-[11px] text-text-muted">
+      {items.map((it, i) => (
+        <Fragment key={`${it.label}-${i}`}>
+          {i > 0 && <ChevronRight className="h-3 w-3 shrink-0" />}
+          {it.onClick ? (
+            <button onClick={it.onClick} className="max-w-[260px] truncate hover:text-accent">{it.label}</button>
+          ) : (
+            <span className={`max-w-[260px] truncate ${i === items.length - 1 ? "font-semibold text-text-primary" : ""}`}>{it.label}</span>
+          )}
+        </Fragment>
+      ))}
+      {meta != null && <span className="ml-auto shrink-0 text-text-muted">{meta}</span>}
+    </nav>
+  );
+}
+
 function BenchRunConfig({
   mode, setMode, selModels, toggleModel, allDomains, scope, toggleScope,
-  questionCount, running, jobs, log, logRef, onRun,
+  questionCounts, questionCount, running, jobs, log, logRef, activeBatch, onRun, onViewResults, onReset,
 }: {
   mode: "single" | "council";
   setMode: (m: "single" | "council") => void;
@@ -10002,23 +10242,24 @@ function BenchRunConfig({
   allDomains: string[];
   scope: Set<string>;
   toggleScope: (d: string) => void;
+  questionCounts: Record<string, number>;
   questionCount: number;
   running: boolean;
   jobs: BenchJob[];
   log: string;
   logRef: React.RefObject<HTMLPreElement | null>;
+  activeBatch?: { label: string; scope: string; domains: string[] } | null;
   onRun: () => void;
+  onViewResults: () => void;
+  onReset: () => void;
 }) {
   const selCount = mode === "council" ? 1 : selModels.size;
-  // Collapsible provider groups. Smart default: open the providers that
-  // already have a model on the panel, collapse the rest — so you land
-  // focused on what's selected, not a wall of every model.
+  void setMode; // mode toggle now lives in the header bar; prop kept for the call site
+  // Collapsible provider groups — ALL collapsed by default so the page never
+  // opens as a wall of models. Each provider row still shows its selected
+  // count, so what's on the panel stays visible while collapsed.
   const [collapsedProviders, setCollapsedProviders] = useState<Set<string>>(() =>
-    new Set(
-      BENCH_CLI_OPTIONS
-        .filter((c) => !(MODELS[c.id] ?? []).some((m) => selModels.has(`${c.id}${MODEL_SEP}${m.id}`)))
-        .map((c) => c.id),
-    ),
+    new Set(BENCH_CLI_OPTIONS.map((c) => c.id)),
   );
   const toggleProvider = (id: string) =>
     setCollapsedProviders((cur) => {
@@ -10026,39 +10267,170 @@ function BenchRunConfig({
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
-  return (
-    <div className="w-full space-y-7 px-6 py-6">
-      {/* Mode */}
-      <section>
-        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Mode</div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setMode("single")}
-            className={`rounded-md border px-3 py-1.5 text-sm ${mode === "single" ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-secondary hover:bg-surface-warm"}`}
-          >
-            Models (compare)
-          </button>
-          <button
-            onClick={() => setMode("council")}
-            className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm ${mode === "council" ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-secondary hover:bg-surface-warm"}`}
-          >
-            <Scale className="h-3.5 w-3.5" /> Council
-          </button>
-        </div>
-      </section>
 
-      {/* Models (multi-select) — hidden in council mode */}
+  // Which job card is expanded to its question-by-question detail.
+  const [expandedJob, setExpandedJob] = useState<string | null>(null);
+
+  // While a benchmark is in flight (or just finished with errors), the page
+  // IS the progress: the config disappears and each model gets a live
+  // question-by-question progress bar. No clutter, no guessing.
+  if (running || jobs.length > 0) {
+    const allDone = !running;
+    const doneCount = jobs.filter((j) => j.status === "done").length;
+    const errCount = jobs.filter((j) => j.status === "error").length;
+    return (
+      <div className="w-full space-y-4 px-8 py-5">
+        <BenchCrumbs
+          items={[
+            { label: "Benchmark" },
+            { label: "Run", onClick: allDone ? onReset : undefined },
+            { label: activeBatch?.label ?? (running ? "Running…" : "Finished") },
+          ]}
+          meta={`${jobs.length} model${jobs.length === 1 ? "" : "s"} · ${jobs[0]?.total ?? 0} questions each`}
+        />
+        <div className="text-center">
+          <div className="font-display text-xl font-semibold tracking-tight">
+            {running ? "Benchmarking…" : errCount > 0 ? "Finished with errors" : "Benchmark complete"}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-1">
+            {(activeBatch?.domains?.length ? activeBatch.domains : ["All domains"]).slice(0, 10).map((d) => (
+              <span key={d} className="rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] text-accent">{d}</span>
+            ))}
+            {(activeBatch?.domains?.length ?? 0) > 10 && (
+              <span className="font-mono text-[10px] text-text-muted">+{(activeBatch?.domains?.length ?? 0) - 10} more</span>
+            )}
+          </div>
+          <div className="mt-1.5 font-mono text-[11px] text-text-muted">
+            {jobs.length} model{jobs.length === 1 ? "" : "s"} · {jobs[0]?.total ?? 0} question{(jobs[0]?.total ?? 0) === 1 ? "" : "s"} each · running in parallel · auto-scored
+          </div>
+          {/* Overall batch progress — every question across every model. */}
+          {(() => {
+            const overallTotal = jobs.reduce((a, j) => a + j.total, 0);
+            const overallDone = jobs.reduce((a, j) => a + (j.status === "done" || j.status === "scoring" ? j.total : j.done), 0);
+            const pct = overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0;
+            return (
+              <div className="mx-auto mt-4 max-w-xl">
+                <div className="mb-1 flex items-baseline justify-between font-mono text-[11px]">
+                  <span className="text-text-muted">overall</span>
+                  <span className="tabular-nums text-text-primary">{overallDone}/{overallTotal} · <span className="font-semibold text-accent">{pct}%</span></span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-surface-warm">
+                  <div className="h-full rounded-full bg-accent transition-all duration-500" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+        <div className="space-y-2">
+          {jobs.map((j) => {
+            const pct = j.total > 0 ? Math.round((j.done / j.total) * 100) : 0;
+            const expanded = expandedJob === j.key;
+            return (
+              <div key={j.key} className="overflow-hidden rounded-xl border border-border bg-surface">
+                <button
+                  onClick={() => setExpandedJob(expanded ? null : j.key)}
+                  className="w-full px-4 py-3 text-left hover:bg-surface-warm/60"
+                  title="Click for question-by-question detail"
+                >
+                  <div className="flex items-center gap-3">
+                    <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${expanded ? "rotate-90" : ""}`} />
+                    {j.cli ? <ProviderMark vendor={j.cli} size={20} /> : <Scale className="h-5 w-5 text-accent" />}
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">{j.label}</span>
+                    {j.status === "running" && j.qcur && (
+                      <span className="hidden min-w-0 max-w-[220px] truncate font-mono text-[10px] text-text-muted md:inline">{j.qcur}…</span>
+                    )}
+                    <span className="font-mono text-[11px] tabular-nums text-text-muted">
+                      {j.status === "queued" ? "queued" : `${j.done}/${j.total}`}
+                    </span>
+                    <span className={`w-16 text-right font-mono text-[10px] uppercase tracking-wider ${
+                      j.status === "error" ? "text-danger" : j.status === "done" ? "text-ok" : "text-accent"
+                    }`}>
+                      {j.status === "error" ? "error" : j.status === "done" ? "done" : j.status === "scoring" ? "scoring" : j.status === "running" ? `${pct}%` : "queued"}
+                    </span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-warm">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        j.status === "error" ? "bg-danger/60" : j.status === "scoring" || j.status === "done" ? "bg-ok" : "bg-accent"
+                      } ${j.status === "scoring" ? "animate-pulse" : ""}`}
+                      style={{ width: `${j.status === "done" || j.status === "scoring" ? 100 : pct}%` }}
+                    />
+                  </div>
+                  {j.note && <div className="mt-1.5 font-mono text-[10px] text-danger">{j.note}</div>}
+                </button>
+                {expanded && j.qids.length > 0 && (
+                  <div className="max-h-64 overflow-y-auto border-t border-border-subtle bg-background/40 px-4 py-2">
+                    {j.qids.map((q) => {
+                      const info = j.qdone[q];
+                      const isCur = !info && j.qcur === q;
+                      const failed = info?.startsWith("✗");
+                      return (
+                        <div key={q} className="flex items-center gap-2.5 py-1">
+                          <span className="w-4 shrink-0 text-center">
+                            {info ? (
+                              failed
+                                ? <AlertTriangle className="h-3 w-3 text-danger" />
+                                : <Check className="h-3 w-3 text-ok" strokeWidth={3} />
+                            ) : isCur ? (
+                              <Loader2 className="h-3 w-3 animate-spin text-accent" />
+                            ) : (
+                              <Circle className="h-2.5 w-2.5 text-text-muted/40" />
+                            )}
+                          </span>
+                          <span className={`min-w-0 flex-1 truncate font-mono text-[11px] ${info ? "text-text-primary" : isCur ? "text-accent" : "text-text-muted/60"}`}>
+                            {q}
+                          </span>
+                          {info && !failed && <span className="max-w-[200px] truncate font-mono text-[9px] text-text-muted">{info}</span>}
+                          {failed && <span className="max-w-[260px] truncate font-mono text-[9px] text-danger" title={info}>{info}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {allDone && (
+          <div className="flex items-center justify-center gap-2 pt-1">
+            <button onClick={onViewResults} className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background hover:bg-accent-hover">
+              <TrendingUp className="h-4 w-4" /> View results
+            </button>
+            <button onClick={onReset} className="rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-warm">
+              New run
+            </button>
+          </div>
+        )}
+        {allDone && doneCount > 0 && errCount > 0 && (
+          <p className="text-center font-mono text-[10px] text-text-muted">Failed jobs can be rerun individually from a new run.</p>
+        )}
+        {log && (
+          <details className="rounded-lg border border-border-subtle bg-surface px-3 py-2">
+            <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-wider text-text-muted">engine log</summary>
+            <pre ref={logRef} className="mt-2 max-h-48 overflow-y-auto font-mono text-[10px] leading-relaxed text-text-muted">{log}</pre>
+          </details>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full space-y-7 px-8 py-5">
+      <BenchCrumbs
+        items={[{ label: "Benchmark" }, { label: "Run" }]}
+        meta={`${questionCount} question${questionCount === 1 ? "" : "s"}${scope.size > 0 ? " · scoped" : ""}`}
+      />
+      {/* Mode lives in the header bar now (one consistent control row). */}
+
+      {/* Models (multi-select) — hidden in council mode. Compact grid so the
+          whole panel of a provider scans in two or three rows instead of a
+          full-width row per model. */}
       {mode === "single" && (
         <section>
-          <div className="mb-2 flex items-baseline justify-between">
-            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Models</span>
-            <span className="font-mono text-[10px] text-text-muted">{selModels.size} selected — runs head-to-head</span>
-          </div>
-          {/* Provider groups, each a spaced stack of standalone model cards —
-              same gap-3 separated-card rhythm as the Installed CLIs page.
-              Multi-select: the circle fills with a check when a model is on
-              the panel. */}
-          <div className="space-y-4">
+          <SubsectionHeader icon={Layers} hint={`${selModels.size} selected · runs head-to-head`}>
+            Models
+          </SubsectionHeader>
+          <div className="space-y-3">
             {BENCH_CLI_OPTIONS.map((c) => {
               const models = MODELS[c.id] ?? [];
               const selectedHere = models.filter((m) => selModels.has(`${c.id}${MODEL_SEP}${m.id}`)).length;
@@ -10067,32 +10439,30 @@ function BenchRunConfig({
                 <div key={c.id}>
                   <button
                     onClick={() => toggleProvider(c.id)}
-                    className="mb-2 flex w-full items-center gap-2 rounded-md py-1 text-left transition-colors hover:text-accent"
+                    className="mb-1.5 flex w-full items-center gap-2 rounded-md py-0.5 text-left transition-colors hover:text-accent"
                   >
-                    {collapsed ? <ChevronRight className="h-4 w-4 text-text-muted" /> : <ChevronDown className="h-4 w-4 text-text-muted" />}
-                    <ProviderMark vendor={c.id} size={20} />
-                    <span className="font-display text-sm font-semibold tracking-tight">{c.label}</span>
+                    {collapsed ? <ChevronRight className="h-3.5 w-3.5 text-text-muted" /> : <ChevronDown className="h-3.5 w-3.5 text-text-muted" />}
+                    <ProviderMark vendor={c.id} size={16} />
+                    <span className="font-display text-[13px] font-semibold tracking-tight">{c.label}</span>
                     {selectedHere > 0 && (
-                      <span className="rounded-full bg-accent px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-background">
-                        {selectedHere} on panel
-                      </span>
+                      <span className="rounded-full bg-accent px-1.5 py-px font-mono text-[9px] font-semibold text-background">{selectedHere}</span>
                     )}
-                    <span className="ml-auto font-mono text-[10px] text-text-muted">{models.length} model{models.length === 1 ? "" : "s"}</span>
+                    <span className="ml-auto font-mono text-[10px] text-text-muted">{models.length}</span>
                   </button>
                   {!collapsed && (
-                    <div className="flex flex-col gap-2">
+                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
                       {models.map((m) => {
                         const on = selModels.has(`${c.id}${MODEL_SEP}${m.id}`);
                         return (
                           <button
                             key={m.id}
                             onClick={() => toggleModel(c.id, m.id)}
-                            className={`flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${on ? "border-accent bg-accent-soft" : "border-border-subtle bg-surface hover:border-accent-border"}`}
+                            title={m.blurb}
+                            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors ${on ? "border-accent bg-accent-soft" : "border-border-subtle bg-surface hover:border-accent-border"}`}
                           >
-                            <span className={`shrink-0 font-mono text-sm ${on ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
-                            {m.blurb && <span className="min-w-0 flex-1 truncate text-[11px] text-text-muted">{m.blurb}</span>}
-                            <span className={`ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${on ? "bg-accent text-background" : "border border-border"}`}>
-                              {on && <Check className="h-3 w-3" strokeWidth={3} />}
+                            <span className={`min-w-0 flex-1 truncate font-mono text-xs ${on ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
+                            <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${on ? "bg-accent text-background" : "border border-border"}`}>
+                              {on && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
                             </span>
                           </button>
                         );
@@ -10106,40 +10476,68 @@ function BenchRunConfig({
         </section>
       )}
 
-      {/* Domain scope */}
+      {/* Domain scope — domains that HAVE questions lead (sorted by how many);
+          the empty ones sit behind a disclosure so 20+ domains don't become a
+          wall of noise. */}
       <section>
-        <div className="mb-2 flex items-baseline justify-between">
-          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Domain scope</span>
-          <span className="font-mono text-[10px] text-text-muted">{scope.size === 0 ? "all domains" : `${scope.size} selected`}</span>
-        </div>
+        <SubsectionHeader icon={Target} hint={scope.size === 0 ? "all domains" : `${scope.size} selected`}>
+          Domain scope
+        </SubsectionHeader>
         {allDomains.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-xs text-text-muted">
             No questions yet — add some in the <span className="text-accent">Questions</span> tab first.
           </div>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              onClick={() => scope.forEach((d) => toggleScope(d))}
-              className={`rounded-md border px-2.5 py-1 font-mono text-[11px] ${scope.size === 0 ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:bg-surface-warm"}`}
-            >
-              All
-            </button>
-            {allDomains.map((d) => {
-              const on = scope.has(d);
-              const Icon = domainIcon(d);
-              return (
+        ) : (() => {
+          const withQ = allDomains.filter((d) => (questionCounts[d] ?? 0) > 0).sort((a, b) => (questionCounts[b] ?? 0) - (questionCounts[a] ?? 0));
+          const withoutQ = allDomains.filter((d) => (questionCounts[d] ?? 0) === 0);
+          const pill = (d: string) => {
+            const on = scope.has(d);
+            const Icon = domainIcon(d);
+            const count = questionCounts[d] ?? 0;
+            return (
+              <button
+                key={d}
+                onClick={() => toggleScope(d)}
+                title={count === 0 ? "No questions yet — add or AI-suggest some in Questions" : `${count} question${count === 1 ? "" : "s"}`}
+                className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] ${
+                  on
+                    ? "border-accent-border bg-accent-soft text-accent"
+                    : count === 0
+                      ? "border-border-subtle bg-background text-text-muted/60 hover:bg-surface-warm"
+                      : "border-border bg-background text-text-secondary hover:bg-surface-warm"
+                }`}
+              >
+                {Icon && <Icon className="h-3 w-3" />}
+                {titleCase(d)}
+                {count > 0 && (
+                  <span className={`ml-0.5 rounded-full px-1 text-[9px] ${on ? "bg-accent/15 text-accent" : "bg-surface-warm text-text-muted"}`}>{count}</span>
+                )}
+              </button>
+            );
+          };
+          return (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-1.5">
                 <button
-                  key={d}
-                  onClick={() => toggleScope(d)}
-                  className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] ${on ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:bg-surface-warm"}`}
+                  onClick={() => scope.forEach((d) => toggleScope(d))}
+                  className={`rounded-md border px-2.5 py-1 font-mono text-[11px] ${scope.size === 0 ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:bg-surface-warm"}`}
                 >
-                  {Icon && <Icon className="h-3 w-3" />}
-                  {titleCase(d)}
+                  All
                 </button>
-              );
-            })}
-          </div>
-        )}
+                {withQ.map(pill)}
+              </div>
+              {withoutQ.length > 0 && (
+                <details className="group">
+                  <summary className="cursor-pointer list-none font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-text-secondary">
+                    <ChevronRight className="mr-1 inline h-3 w-3 transition-transform group-open:rotate-90" />
+                    {withoutQ.length} domain{withoutQ.length === 1 ? "" : "s"} without questions
+                  </summary>
+                  <div className="mt-2 flex flex-wrap gap-1.5">{withoutQ.map(pill)}</div>
+                </details>
+              )}
+            </div>
+          );
+        })()}
       </section>
 
       {/* Run */}
@@ -10158,52 +10556,43 @@ function BenchRunConfig({
         </span>
       </section>
 
-      {/* Live job status */}
-      {jobs.length > 0 && (
-        <section className="space-y-2">
-          {jobs.map((j) => (
-            <div key={j.key} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
-              <BenchStatusDot status={j.status} />
-              <span className="flex-1 text-sm text-text-primary">{j.label}</span>
-              <span className="font-mono text-[11px] text-text-muted">{j.note ?? j.status}</span>
-            </div>
-          ))}
-          {log && (
-            <pre ref={logRef} className="max-h-40 overflow-y-auto rounded-lg border border-border bg-background p-3 font-mono text-[10px] leading-relaxed text-text-muted">
-              {log}
-            </pre>
-          )}
-        </section>
-      )}
     </div>
   );
 }
 
-function BenchStatusDot({ status }: { status: BenchJobStatus }) {
-  if (status === "running" || status === "scoring")
-    return <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />;
-  if (status === "done") return <Check className="h-3.5 w-3.5 text-ok" />;
-  if (status === "error") return <AlertTriangle className="h-3.5 w-3.5 text-danger" />;
-  return <Circle className="h-3.5 w-3.5 text-text-muted" />;
-}
-
 function BenchResults({
-  runs, matrix, allDomains, vaultPath,
+  view, domainFilter, runs, matrix, allDomains, vaultPath, initialModel, onChanged, onRerun, onRerunBatch,
+  finishedBatch, onViewBatch, onDismissBanner,
 }: {
+  view: "board" | "history" | "matrix";
+  domainFilter: string;
   runs: BenchmarkRun[];
   matrix: MatrixRow[];
   allDomains: string[];
   vaultPath: string;
+  initialModel?: string | null;
+  onChanged: () => void;
+  onRerun: (run: BenchmarkRun) => void;
+  onRerunBatch: (runs: BenchmarkRun[]) => void;
+  finishedBatch?: string | null;
+  onViewBatch?: () => void;
+  onDismissBanner?: () => void;
 }) {
-  const [resultsView, setResultsView] = useState<"model" | "matrix">("model");
-  const [domainFilter, setDomainFilter] = useState<string>("all");
+  const resultsView = view;
   const [selected, setSelected] = useState<RunDetail | null>(null);
+  // The run + breadcrumb context behind the open detail page, so the user can
+  // see where they are (view › batch › run) and walk back up the tree.
+  const [selectedRun, setSelectedRun] = useState<BenchmarkRun | null>(null);
+  const [selectedFrom, setSelectedFrom] = useState<{ view: string; batch?: string } | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [expandedQ, setExpandedQ] = useState<string | null>(null);
+  const [scoringRun, setScoringRun] = useState<string | null>(null);
 
-  async function loadRun(runDir: string) {
+  async function loadRun(runDir: string, from?: { view: string; batch?: string }) {
     setLoadingDetail(true);
     setExpandedQ(null);
+    setSelectedRun(runs.find((r) => r.run_dir === runDir) ?? null);
+    setSelectedFrom(from ?? { view: resultsView === "history" ? "History" : resultsView === "matrix" ? "Model × domain" : "Leaderboard" });
     try {
       setSelected(await invoke<RunDetail>("benchmark_run_detail", { runDir }));
     } catch { /* ignore */ } finally {
@@ -10211,37 +10600,177 @@ function BenchResults({
     }
   }
 
-  // By-model leaderboard, optionally showing a single domain's score.
-  const leaderboard = useMemo(() => {
-    const rows = runs.map((r) => {
+  // Score one unscored run on demand, then refresh the lists.
+  async function scoreNow(run: BenchmarkRun) {
+    const runName = run.run_dir.split("/").pop() ?? "";
+    if (!runName) return;
+    const session = `bench-score-one-${Date.now()}`;
+    setScoringRun(run.run_dir);
+    try {
+      const done = new Promise<void>((resolve) => {
+        let un: UnlistenFn | null = null;
+        listen<{ session: string; phase: string }>("benchmark:done", (e) => {
+          if (e.payload.session === session && e.payload.phase === "score") { un?.(); resolve(); }
+        }).then((u) => { un = u; });
+      });
+      await invoke("benchmark_score", { args: { session_id: session, vault: vaultPath, run: runName } });
+      await done;
+      onChanged();
+    } catch { /* surfaced via refresh */ } finally {
+      setScoringRun(null);
+    }
+  }
+
+  // Runs visible under the current domain filter (a run is "in" a domain
+  // when any of its questions came from it).
+  const visibleRuns = useMemo(() => {
+    if (domainFilter === "all") return runs;
+    return runs.filter((r) => r.domains.includes(domainFilter));
+  }, [runs, domainFilter]);
+
+  // Run history grouped by BATCH — the models you launched together are one
+  // unit, named by time + scope + panel size so several batches a day stay
+  // distinct. Runs from before batch-stamping are clustered into
+  // pseudo-batches by launch time (folders created within minutes of each
+  // other were one launch), so old history reads as real sessions too.
+  const runsByBatch = useMemo(() => {
+    type Group = { key: string; label: string; date: string; runs: BenchmarkRun[]; isBatch: boolean };
+    const groups = new Map<string, Group>();
+    const legacy: BenchmarkRun[] = [];
+    for (const r of visibleRuns) {
+      if (!r.batch_id) { legacy.push(r); continue; }
+      const g = groups.get(r.batch_id) ?? {
+        key: r.batch_id,
+        label: r.batch_label || r.batch_id,
+        date: r.date || "",
+        runs: [],
+        isBatch: true,
+      };
+      g.runs.push(r);
+      groups.set(r.batch_id, g);
+    }
+    // Cluster legacy runs: sorted by creation time, a gap over 10 minutes
+    // starts a new pseudo-batch.
+    const GAP = 10 * 60 * 1000;
+    const sortedLegacy = [...legacy].sort((a, b) => a.created_ms - b.created_ms);
+    let cluster: BenchmarkRun[] = [];
+    const flush = () => {
+      if (cluster.length === 0) return;
+      const first = cluster[0];
+      const t = first.created_ms ? new Date(first.created_ms) : null;
+      const hhmm = t ? `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}` : "";
+      const key = `legacy-${first.run_dir}`;
+      groups.set(key, {
+        key,
+        label: `${hhmm ? hhmm + " · " : ""}${cluster.length} model${cluster.length === 1 ? "" : "s"}`,
+        date: first.date || "",
+        runs: cluster,
+        isBatch: false,
+      });
+      cluster = [];
+    };
+    for (const r of sortedLegacy) {
+      if (cluster.length > 0 && r.created_ms - cluster[cluster.length - 1].created_ms > GAP) flush();
+      cluster.push(r);
+    }
+    flush();
+    return Array.from(groups.values()).sort((a, b) =>
+      b.date.localeCompare(a.date) || (b.runs[0]?.created_ms ?? 0) - (a.runs[0]?.created_ms ?? 0),
+    );
+  }, [visibleRuns]);
+
+  // By-model aggregation: every run of the same model folded into one row —
+  // best/latest scores, run count, and the domains it has been tested on.
+  const modelAgg = useMemo(() => {
+    const byModel = new Map<string, { parsed: ReturnType<typeof parseRunLabel>; runs: BenchmarkRun[] }>();
+    for (const r of visibleRuns) {
       const parsed = parseRunLabel(r.label);
-      const mrow = matrix.find((m) => m.run_dir === r.run_dir);
-      const cell = domainFilter !== "all" ? mrow?.per_domain[domainFilter] : null;
-      const judge = domainFilter === "all" ? r.judge_avg : cell?.judge_avg ?? null;
-      const kw = domainFilter === "all" ? r.keyword_avg : cell?.keyword_avg ?? null;
-      return { ...r, parsed, judge, kw, present: domainFilter === "all" || !!cell };
+      const key = `${parsed.vendor}::${parsed.model || r.label}`;
+      const e = byModel.get(key) ?? { parsed, runs: [] };
+      e.runs.push(r);
+      byModel.set(key, e);
+    }
+    const rows = Array.from(byModel.values()).map(({ parsed, runs: rr }) => {
+      const judgeFor = (r: BenchmarkRun) => {
+        if (domainFilter === "all") return r.judge_avg;
+        return matrix.find((m) => m.run_dir === r.run_dir)?.per_domain[domainFilter]?.judge_avg ?? null;
+      };
+      const kwFor = (r: BenchmarkRun) => {
+        if (domainFilter === "all") return r.keyword_avg;
+        return matrix.find((m) => m.run_dir === r.run_dir)?.per_domain[domainFilter]?.keyword_avg ?? null;
+      };
+      const scoredRuns = rr.filter((r) => judgeFor(r) !== null);
+      const best = scoredRuns.reduce<number | null>((acc, r) => {
+        const v = judgeFor(r);
+        return v === null ? acc : acc === null ? v : Math.max(acc, v);
+      }, null);
+      const latest = [...rr].sort((a, b) => b.date.localeCompare(a.date))[0];
+      const domains = Array.from(new Set(rr.flatMap((r) => r.domains))).sort();
+      return {
+        key: `${parsed.vendor}::${parsed.model}`,
+        parsed,
+        runs: [...rr].sort((a, b) => b.date.localeCompare(a.date)),
+        best,
+        latestJudge: latest ? judgeFor(latest) : null,
+        latestKw: latest ? kwFor(latest) : null,
+        latestDate: latest?.date ?? "",
+        domains,
+      };
     });
-    return rows
-      .filter((r) => r.present)
-      .sort((a, b) => (b.judge ?? -1) - (a.judge ?? -1));
-  }, [runs, matrix, domainFilter]);
+    return rows.sort((a, b) => (b.best ?? -1) - (a.best ?? -1));
+  }, [visibleRuns, matrix, domainFilter]);
+  const [expandedModel, setExpandedModel] = useState<string | null>(initialModel ?? null);
+
 
   if (selected) {
+    const p = parseRunLabel(selected.score.label);
+    const crumbBatch = selectedRun?.batch_label ?? selectedFrom?.batch ?? (selectedRun?.date || null);
+    // A section header inside an expanded question: big, bold, unmissable.
+    const SectionHead = ({ children, tone = "default" }: { children: React.ReactNode; tone?: "default" | "ok" | "accent" }) => (
+      <h4 className={`mb-1.5 flex items-center gap-2 font-display text-[15px] font-bold tracking-tight ${
+        tone === "ok" ? "text-ok" : tone === "accent" ? "text-accent" : "text-text-primary"
+      }`}>
+        {children}
+      </h4>
+    );
     return (
-      <div className="px-6 py-6">
-        <button
-          onClick={() => setSelected(null)}
-          className="mb-4 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-accent"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" /> Results
-        </button>
-        <h2 className="font-display text-2xl font-semibold">{selected.score.label}</h2>
-        <div className="mt-3 flex gap-6 font-mono text-sm">
-          <div><span className="text-text-muted">judge: </span><span className="text-accent">{selected.score.judge_avg?.toFixed(1) ?? "—"}</span><span className="text-text-muted"> / 10</span></div>
-          <div><span className="text-text-muted">keyword: </span><span className="text-text-primary">{selected.score.keyword_avg !== null ? Math.round(selected.score.keyword_avg) + "%" : "—"}</span></div>
-          <div><span className="text-text-muted">questions: </span><span className="text-text-primary">{selected.score.questionScores.length}</span></div>
+      <div className="w-full px-8 py-5">
+        <BenchCrumbs
+          items={[
+            { label: "Benchmark" },
+            { label: selectedFrom?.view ?? "Leaderboard", onClick: () => setSelected(null) },
+            ...(crumbBatch ? [{ label: crumbBatch, onClick: () => setSelected(null) }] : []),
+            { label: p.model },
+          ]}
+          meta={`${selected.score.questionScores.length} questions`}
+        />
+        {/* Dense header — model, when, where it ran, and the verdict, one row. */}
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3">
+          <ProviderMark vendor={p.vendor} size={28} />
+          <h2 className="font-display text-xl font-bold tracking-tight">{p.model}</h2>
+          {selectedRun?.date && <span className="rounded bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-muted">{selectedRun.date}</span>}
+          <span className="flex items-center gap-1">
+            {(selectedRun?.domains ?? []).slice(0, 6).map((d) => (
+              <span key={d} className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{d}</span>
+            ))}
+            {(selectedRun?.domains.length ?? 0) > 6 && <span className="font-mono text-[10px] text-text-muted">+{(selectedRun?.domains.length ?? 0) - 6}</span>}
+          </span>
+          <div className="ml-auto flex items-center gap-5 font-mono text-sm">
+            <span><span className="font-display text-2xl font-bold text-accent">{selected.score.judge_avg?.toFixed(1) ?? "—"}</span><span className="text-[11px] text-text-muted"> /10</span></span>
+            <span className="text-text-secondary">{selected.score.keyword_avg !== null ? Math.round(selected.score.keyword_avg) + "% kw" : ""}</span>
+            <span className="text-text-muted">{selected.score.questionScores.length} q</span>
+            {selectedRun && (
+              <button
+                onClick={() => onRerun(selectedRun)}
+                title="Rerun: same model, same domains, as a fresh run"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+              >
+                <RotateCw className="h-3 w-3" /> rerun
+              </button>
+            )}
+          </div>
         </div>
-        <div className="mt-8 space-y-2">
+        <div className="mt-4 space-y-2">
           {selected.score.questionScores.map((q) => {
             const expanded = expandedQ === q.id;
             const record = selected.records.find((r) => r.id === q.id);
@@ -10249,7 +10778,7 @@ function BenchResults({
               <div key={q.id} className="overflow-hidden rounded-lg border border-border bg-surface">
                 <button onClick={() => setExpandedQ(expanded ? null : q.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-warm">
                   <span className="text-text-muted">{expanded ? "▾" : "▸"}</span>
-                  <span className="w-28 shrink-0 truncate font-mono text-sm text-text-primary">{q.id}</span>
+                  <span className="w-44 shrink-0 truncate font-mono text-sm text-text-primary" title={q.id}>{q.id}</span>
                   <span className="rounded bg-surface-warm px-1.5 py-0 font-mono text-[10px] text-text-muted">{q.domain}</span>
                   <div className="min-w-0 flex-1"><ScoreBar value={q.judge_score} max={10} /></div>
                   <span className="flex shrink-0 items-center gap-3 font-mono text-xs">
@@ -10258,11 +10787,27 @@ function BenchResults({
                   </span>
                 </button>
                 {expanded && (
-                  <div className="space-y-3 border-t border-border-subtle px-6 py-4 text-sm">
-                    <div><div className="mb-1 font-mono text-xs uppercase tracking-wider text-text-muted">question</div><div className="whitespace-pre-wrap text-text-primary">{record?.prompt ?? "(n/a)"}</div></div>
-                    {record?.expected_decision && <div><div className="mb-1 font-mono text-xs uppercase tracking-wider text-text-muted">expected decision</div><div className="whitespace-pre-wrap text-ok">{record.expected_decision}</div></div>}
-                    <div><div className="mb-1 font-mono text-xs uppercase tracking-wider text-text-muted">model said</div><div className="whitespace-pre-wrap text-text-primary">{record?.reply ?? "(no reply)"}</div></div>
-                    {q.judge_rationale && <div><div className="mb-1 font-mono text-xs uppercase tracking-wider text-text-muted">judge ({q.judge_score}/10)</div><div className="whitespace-pre-wrap text-text-secondary">{q.judge_rationale}</div></div>}
+                  <div className="space-y-5 border-t border-border-subtle px-6 py-5 text-sm">
+                    <div>
+                      <SectionHead><FileText className="h-4 w-4" /> Question</SectionHead>
+                      <div className="max-w-[90ch] whitespace-pre-wrap leading-relaxed text-text-primary">{record?.prompt ?? "(n/a)"}</div>
+                    </div>
+                    {record?.expected_decision && (
+                      <div className="rounded-lg border border-ok/25 bg-ok/5 px-4 py-3">
+                        <SectionHead tone="ok"><Check className="h-4 w-4" strokeWidth={3} /> Expected decision</SectionHead>
+                        <div className="max-w-[90ch] whitespace-pre-wrap leading-relaxed text-text-primary">{record.expected_decision}</div>
+                      </div>
+                    )}
+                    <div>
+                      <SectionHead><MessagesSquare className="h-4 w-4" /> Model's answer</SectionHead>
+                      <div className="max-w-[90ch] whitespace-pre-wrap leading-relaxed text-text-primary">{record?.reply ?? "(no reply)"}</div>
+                    </div>
+                    {q.judge_rationale && (
+                      <div className="rounded-lg border border-accent-border bg-accent-soft/40 px-4 py-3">
+                        <SectionHead tone="accent"><Scale className="h-4 w-4" /> Judge verdict · {q.judge_score}/10</SectionHead>
+                        <div className="max-w-[90ch] whitespace-pre-wrap leading-relaxed text-text-secondary">{q.judge_rationale}</div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -10274,64 +10819,226 @@ function BenchResults({
   }
 
   return (
-    <div className="px-6 py-5">
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="inline-flex rounded-md border border-border p-0.5">
-          {([["model", "By model"], ["matrix", "Model × domain"]] as const).map(([id, label]) => (
-            <button
-              key={id}
-              onClick={() => setResultsView(id)}
-              className={`rounded px-2.5 py-1 text-xs ${resultsView === id ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {resultsView === "model" && allDomains.length > 0 && (
-          <select
-            value={domainFilter}
-            onChange={(e) => setDomainFilter(e.target.value)}
-            className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary"
-          >
-            <option value="all">all domains</option>
-            {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
-          </select>
-        )}
-        <div className="flex-1" />
-        <span className="font-mono text-[11px] text-text-muted">{runs.length} run{runs.length === 1 ? "" : "s"}</span>
-      </div>
+    <div className="w-full px-8 py-5">
+      <BenchCrumbs
+        items={[
+          { label: "Benchmark" },
+          { label: resultsView === "history" ? "History" : resultsView === "matrix" ? "Model × domain" : "Leaderboard" },
+          ...(domainFilter !== "all" ? [{ label: titleCase(domainFilter) }] : []),
+        ]}
+        meta={
+          resultsView === "history"
+            ? `${runsByBatch.length} batch${runsByBatch.length === 1 ? "" : "es"} · ${visibleRuns.length} model run${visibleRuns.length === 1 ? "" : "s"}`
+            : `${modelAgg.length} model${modelAgg.length === 1 ? "" : "s"} · ${visibleRuns.length} run${visibleRuns.length === 1 ? "" : "s"}`
+        }
+      />
 
-      {runs.length === 0 && (
+      {visibleRuns.length === 0 && (
         <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
-          No scored runs yet. Head to <span className="text-accent">Run</span> to kick one off.
+          {domainFilter === "all"
+            ? <>No runs yet. Head to <span className="text-accent">Run</span> to kick one off.</>
+            : <>No runs cover <span className="text-accent">{titleCase(domainFilter)}</span> yet. Run a benchmark scoped to it, or switch the filter to all domains.</>}
         </div>
       )}
 
-      {resultsView === "model" && runs.length > 0 && (
-        <div className="overflow-hidden rounded-2xl border border-border">
-          {loadingDetail && <div className="p-3 text-xs text-text-muted">loading…</div>}
-          {leaderboard.map((r, i) => (
-            <button
-              key={r.label}
-              onClick={() => loadRun(r.run_dir)}
-              className="flex w-full items-center gap-3 border-b border-border-subtle px-3 py-2.5 text-left last:border-0 hover:bg-surface-warm"
-            >
-              <span className="w-5 text-center font-mono text-[11px] text-text-muted">{i + 1}</span>
-              <ProviderMark vendor={r.parsed.vendor} size={22} />
-              <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-primary">{r.parsed.model || r.label}</span>
-              <div className="hidden w-40 sm:block"><ScoreBar value={r.judge} max={10} color={scoreColor((r.judge ?? 0) * 10)} /></div>
-              <span className="w-14 text-right font-mono text-sm font-semibold text-accent">{r.judge?.toFixed(1) ?? "—"}</span>
-              <span className="w-12 text-right font-mono text-[11px] text-text-muted">{r.kw !== null ? Math.round(r.kw) + "%" : "—"}</span>
-            </button>
-          ))}
+      {loadingDetail && <div className="mb-2 text-xs text-text-muted">loading…</div>}
+
+      {/* LEADERBOARD — the page leads with the ANSWER: which model wins.
+          Podium for the top three, then full standings, one row per model. */}
+      {resultsView === "board" && visibleRuns.length > 0 && (
+        <>
+          {finishedBatch && (
+            <div className="mb-4 flex items-center gap-3 rounded-xl border border-accent-border bg-accent-soft/50 px-4 py-2.5">
+              <Check className="h-4 w-4 shrink-0 text-accent" strokeWidth={3} />
+              <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
+                Batch <span className="font-semibold">{finishedBatch}</span> finished and is on the board.
+              </span>
+              <button onClick={onViewBatch} className="shrink-0 rounded-md border border-accent-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
+                View batch
+              </button>
+              <button onClick={onDismissBanner} title="Dismiss" className="shrink-0 rounded-md p-1 text-text-muted hover:text-text-primary">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+          {modelAgg.length > 1 && (
+            <div className={`mb-5 grid gap-3 ${modelAgg.length >= 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+              {modelAgg.slice(0, 3).map((m, i) => (
+                <button
+                  key={m.key}
+                  onClick={() => setExpandedModel(expandedModel === m.key ? null : m.key)}
+                  className={`rounded-2xl border p-4 text-left transition-colors ${
+                    i === 0 ? "border-accent bg-accent-soft/60 hover:bg-accent-soft" : "border-border-subtle bg-surface hover:border-border"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <ProviderMark vendor={m.parsed.vendor} size={24} />
+                    <span className="min-w-0 truncate font-display text-[15px] font-semibold tracking-tight">{m.parsed.model}</span>
+                    {i === 0 && <Crown className="ml-auto h-4 w-4 shrink-0 text-accent" />}
+                  </div>
+                  <div className="mt-3 flex items-baseline gap-1.5">
+                    <span className="font-display text-3xl font-bold leading-none text-accent">{m.best?.toFixed(1) ?? "—"}</span>
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">/ 10 best</span>
+                  </div>
+                  <div className="mt-1.5 font-mono text-[10px] text-text-muted">
+                    {m.runs.length} run{m.runs.length === 1 ? "" : "s"} · last {m.latestDate || "—"}
+                    {m.latestKw !== null ? ` · ${Math.round(m.latestKw)}% kw` : ""}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="overflow-hidden rounded-2xl border border-border">
+            <div className="flex items-center gap-3 border-b border-border bg-surface px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+              <span className="w-5 text-center">#</span>
+              <span className="w-[22px]" />
+              <span className="min-w-0 flex-1">Model</span>
+              <span className="hidden sm:inline">Runs · domains · last</span>
+              <span className="hidden w-36 lg:block" />
+              <span className="w-12 text-right">Best</span>
+            </div>
+            {modelAgg.map((m, i) => (
+              <div key={m.key} className="border-b border-border-subtle last:border-0">
+                <button
+                  onClick={() => setExpandedModel(expandedModel === m.key ? null : m.key)}
+                  className={`flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-warm ${i === 0 ? "bg-accent-soft/30" : ""}`}
+                >
+                  <span className="w-5 text-center font-mono text-[11px] text-text-muted">{i === 0 ? <Crown className="mx-auto h-3.5 w-3.5 text-accent" /> : i + 1}</span>
+                  <ProviderMark vendor={m.parsed.vendor} size={22} />
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-primary">{m.parsed.model}</span>
+                  <span className="hidden font-mono text-[10px] text-text-muted sm:inline">
+                    {m.runs.length} · {m.domains.length} · {m.latestDate || "—"}
+                  </span>
+                  <div className="hidden w-36 lg:block"><ScoreBar value={m.best} max={10} color={scoreColor((m.best ?? 0) * 10)} /></div>
+                  <span className="w-12 text-right font-mono text-sm font-semibold text-accent">{m.best?.toFixed(1) ?? "—"}</span>
+                </button>
+                {expandedModel === m.key && (
+                  <div className="border-t border-border-subtle bg-surface px-4 py-2">
+                    {m.runs.map((r) => (
+                      <div key={r.run_dir} className="flex w-full items-center gap-3 rounded px-2 py-1.5 hover:bg-surface-warm">
+                        <button
+                          onClick={() => r.scored && loadRun(r.run_dir)}
+                          disabled={!r.scored}
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
+                        >
+                          <span className="w-20 shrink-0 font-mono text-[10px] text-text-muted">{r.date || "undated"}</span>
+                          <span className="flex min-w-0 flex-1 items-center gap-1">
+                            {r.domains.slice(0, 6).map((d) => (
+                              <span key={d} className="rounded bg-surface-warm px-1.5 py-0 font-mono text-[9px] text-text-muted">{d}</span>
+                            ))}
+                            {r.domains.length > 6 && <span className="font-mono text-[9px] text-text-muted">+{r.domains.length - 6}</span>}
+                          </span>
+                          <span className="font-mono text-[10px] text-text-muted">{r.questions} q</span>
+                          {r.scored ? (
+                            <span className="w-12 text-right font-mono text-xs font-semibold text-accent">{r.judge_avg?.toFixed(1) ?? "—"}</span>
+                          ) : (
+                            <span className="font-mono text-[10px] text-warn">unscored</span>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => onRerun(r)}
+                          title="Rerun: same model, same domains, as a fresh run"
+                          className="shrink-0 rounded-md border border-border p-1 text-text-muted hover:border-accent-border hover:text-accent"
+                        >
+                          <RotateCw className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* HISTORY — one card per BATCH (the models launched together),
+          collapsed by default. The summary alone says when, what scope, how
+          many models, and the session's best score. */}
+      {resultsView === "history" && visibleRuns.length > 0 && (
+        <div className="space-y-2">
+          {runsByBatch.map((group) => {
+            const best = group.runs.reduce<number | null>((acc, r) => (r.judge_avg === null ? acc : acc === null ? r.judge_avg : Math.max(acc, r.judge_avg)), null);
+            const unscored = group.runs.filter((r) => !r.scored).length;
+            return (
+            <details key={group.key} className="group/date overflow-hidden rounded-2xl border border-border bg-surface">
+              <summary className="flex cursor-pointer list-none items-center gap-2.5 px-4 py-2.5 hover:bg-surface-warm">
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-muted transition-transform group-open/date:rotate-90" />
+                {group.isBatch && <span className="font-mono text-[12px] font-semibold text-text-primary">{group.date}</span>}
+                <span className={`min-w-0 truncate font-mono text-[12px] ${group.isBatch ? "text-text-secondary" : "font-semibold text-text-primary"}`}>{group.label}</span>
+                <span className="font-mono text-[10px] text-text-muted">{group.runs.length} model{group.runs.length === 1 ? "" : "s"}</span>
+                {unscored > 0 && <span className="rounded bg-warn/10 px-1.5 py-0 font-mono text-[9px] text-warn">{unscored} unscored</span>}
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => { e.preventDefault(); onRerunBatch(group.runs); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onRerunBatch(group.runs); } }}
+                  title="Rerun this whole batch: every model in it, same domains, fresh runs"
+                  className="ml-auto inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                >
+                  <RotateCw className="h-3 w-3" /> rerun batch
+                </span>
+                <span className="font-mono text-[10px] text-text-muted">best</span>
+                <span className="font-mono text-sm font-semibold text-accent">{best?.toFixed(1) ?? "—"}</span>
+              </summary>
+              <div className="space-y-1.5 border-t border-border-subtle px-3 py-2.5">
+                {group.runs.map((r) => {
+                  const parsed = parseRunLabel(r.label);
+                  return (
+                    <div
+                      key={r.run_dir}
+                      className="flex w-full items-center gap-3 rounded-lg border border-border-subtle bg-surface px-3 py-2 hover:bg-surface-warm"
+                    >
+                      <button
+                        onClick={() => r.scored && loadRun(r.run_dir, { view: "History", batch: group.label })}
+                        disabled={!r.scored}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
+                      >
+                        <ProviderMark vendor={parsed.vendor} size={22} />
+                        <span className="min-w-0 truncate font-mono text-xs text-text-primary">{parsed.model || r.label}</span>
+                        <span className="hidden items-center gap-1 md:flex">
+                          {r.domains.slice(0, 5).map((d) => (
+                            <span key={d} className="rounded bg-surface-warm px-1.5 py-0 font-mono text-[9px] text-text-muted">{d}</span>
+                          ))}
+                          {r.domains.length > 5 && <span className="font-mono text-[9px] text-text-muted">+{r.domains.length - 5}</span>}
+                        </span>
+                      </button>
+                      <span className="font-mono text-[10px] text-text-muted">{r.questions} q</span>
+                      {r.scored ? (
+                        <>
+                          <span className="w-12 text-right font-mono text-sm font-semibold text-accent">{r.judge_avg?.toFixed(1) ?? "—"}</span>
+                          <span className="w-10 text-right font-mono text-[11px] text-text-muted">{r.keyword_avg !== null ? Math.round(r.keyword_avg) + "%" : "—"}</span>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => scoreNow(r)}
+                          disabled={scoringRun !== null}
+                          className="inline-flex items-center gap-1 rounded-md border border-warn/50 bg-warn/10 px-2 py-0.5 font-mono text-[10px] text-warn hover:bg-warn/20 disabled:opacity-50"
+                        >
+                          {scoringRun === r.run_dir ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                          {scoringRun === r.run_dir ? "scoring…" : "unscored · score now"}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => onRerun(r)}
+                        title="Rerun: same model, same domains, as a fresh run"
+                        className="shrink-0 rounded-md border border-border p-1 text-text-muted hover:border-accent-border hover:text-accent"
+                      >
+                        <RotateCw className="h-3 w-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+            );
+          })}
         </div>
       )}
 
-      {resultsView === "matrix" && runs.length > 0 && (
+      {resultsView === "matrix" && visibleRuns.length > 0 && (
         <BenchMatrix matrix={matrix} allDomains={allDomains} onPick={loadRun} />
       )}
-      {/* vaultPath kept for future per-run actions */}
-      <span className="hidden">{vaultPath}</span>
     </div>
   );
 }
@@ -10419,20 +11126,90 @@ function BenchMatrix({
 }
 
 function BenchQuestions({
-  vaultPath, questions, allDomains, onChanged,
+  vaultPath, questions, allDomains, initialDomain, onChanged,
 }: {
   vaultPath: string;
   questions: BenchQuestion[];
   allDomains: string[];
+  initialDomain?: string | null;
   onChanged: () => void;
 }) {
-  const [filter, setFilter] = useState<string>("all");
+  // Domain-scoped panel: show that domain's questions, not the whole suite.
+  const [filter, setFilter] = useState<string>(initialDomain ? initialDomain.toLowerCase() : "all");
   const [editing, setEditing] = useState<BenchQuestion | "new" | null>(null);
   const blank: BenchQuestion = { id: "", domain: "", prompt: "", context: "", notes: "", council: false, expected_decision: "", expected_verdict_keywords: [], path: "" };
   const [draft, setDraft] = useState<BenchQuestion>(blank);
   const [saving, setSaving] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestDomain, setSuggestDomain] = useState<string>(initialDomain?.toLowerCase() ?? "");
+  const [suggestCount, setSuggestCount] = useState(3);
 
   const shown = filter === "all" ? questions : questions.filter((q) => q.domain === filter);
+
+  // Export the whole suite as one portable prevail.bench/v1 JSON file.
+  async function exportQuestions() {
+    try {
+      const dest = await saveFileDialog({
+        defaultPath: "prevail-bench-questions.json",
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!dest) return;
+      await invoke("benchmark_export_questions", { vault: vaultPath, dest });
+      setInfo(`Exported ${questions.length} question${questions.length === 1 ? "" : "s"} to ${dest.split("/").pop()}`);
+    } catch (e) {
+      setInfo(`Export failed: ${e}`);
+    }
+  }
+
+  // Import a prevail.bench/v1 file; existing ids are skipped, never overwritten.
+  async function importQuestions() {
+    try {
+      const picked = await open({ filters: [{ name: "JSON", extensions: ["json"] }], multiple: false });
+      const path = typeof picked === "string" ? picked : null;
+      if (!path) return;
+      const json = await invoke<string>("read_file", { path });
+      const report = await invoke<{ created: string[]; skipped: string[] }>("benchmark_import_questions", { vault: vaultPath, json });
+      setInfo(`Imported ${report.created.length} question${report.created.length === 1 ? "" : "s"}${report.skipped.length ? `, skipped ${report.skipped.length} (already exist or malformed)` : ""}`);
+      onChanged();
+    } catch (e) {
+      setInfo(`Import failed: ${e}`);
+    }
+  }
+
+  // AI-draft questions from the domain's own recorded context, via the
+  // engine's `bench suggest`. Drafts land in the list for review/editing.
+  async function suggestWithAi() {
+    const domain = suggestDomain.trim().toLowerCase();
+    if (!domain) return;
+    const session = `bench-suggest-${Date.now()}`;
+    setSuggesting(true);
+    setInfo(null);
+    try {
+      const done = new Promise<number | null>((resolve) => {
+        let un: UnlistenFn | null = null;
+        listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
+          if (e.payload.session === session && e.payload.phase === "suggest") { un?.(); resolve(e.payload.code); }
+        }).then((u) => { un = u; });
+      });
+      await invoke("benchmark_suggest", {
+        args: { session_id: session, vault: vaultPath, domain, count: suggestCount },
+      });
+      const code = await done;
+      if (code === 0 || code === null) {
+        setInfo(`Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} for ${titleCase(domain)}. Review the ground truth before trusting scores.`);
+        setSuggestOpen(false);
+        onChanged();
+      } else {
+        setInfo(`Suggest failed (exit ${code}). Does ${titleCase(domain)} have recorded context yet?`);
+      }
+    } catch (e) {
+      setInfo(`Suggest failed: ${e}`);
+    } finally {
+      setSuggesting(false);
+    }
+  }
 
   const openEditor = (q: BenchQuestion | "new") => {
     setEditing(q);
@@ -10472,11 +11249,16 @@ function BenchQuestions({
 
   if (editing) {
     return (
-      <div className="mx-auto max-w-2xl space-y-4 px-6 py-6">
-        <button onClick={() => setEditing(null)} className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-accent">
-          <ChevronLeft className="h-3.5 w-3.5" /> Questions
-        </button>
-        <h2 className="font-display text-xl font-semibold">{editing === "new" ? "New question" : draft.id}</h2>
+      <div className="w-full px-8 py-5">
+        <BenchCrumbs
+          items={[
+            { label: "Benchmark" },
+            { label: "Questions", onClick: () => setEditing(null) },
+            { label: editing === "new" ? "New question" : draft.id },
+          ]}
+        />
+        <div className="max-w-3xl space-y-4">
+        <h2 className="font-display text-xl font-bold tracking-tight">{editing === "new" ? "New question" : draft.id}</h2>
         <Field label="Domain">
           <input value={draft.domain} onChange={(e) => setDraft({ ...draft, domain: e.target.value })} list="bench-domains" placeholder="wealth" className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
           <datalist id="bench-domains">{allDomains.map((d) => <option key={d} value={d} />)}</datalist>
@@ -10515,25 +11297,63 @@ function BenchQuestions({
             </button>
           )}
         </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="px-6 py-5">
-      <div className="mb-4 flex items-center gap-3">
+    <div className="w-full px-8 py-5">
+      <BenchCrumbs
+        items={[
+          { label: "Benchmark" },
+          { label: "Questions" },
+          ...(filter !== "all" ? [{ label: titleCase(filter) }] : []),
+        ]}
+        meta={`${shown.length} of ${questions.length} question${questions.length === 1 ? "" : "s"}`}
+      />
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
           <option value="all">all domains</option>
           {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
         </select>
         <div className="flex-1" />
+        <button onClick={importQuestions} title="Import a prevail.bench/v1 JSON file (existing ids are skipped)" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
+          <Download className="h-3 w-3" /> Import
+        </button>
+        <button onClick={exportQuestions} disabled={questions.length === 0} title="Export every question as one portable JSON file" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-40">
+          <Upload className="h-3 w-3" /> Export
+        </button>
+        <button onClick={() => { setSuggestOpen((v) => !v); if (!suggestDomain && filter !== "all") setSuggestDomain(filter); }} title="AI-draft questions from a domain's recorded context" className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[11px] ${suggestOpen ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}>
+          <Sparkles className="h-3 w-3" /> Suggest with AI
+        </button>
         <button onClick={() => openEditor("new")} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background hover:bg-accent-hover">
           <Plus className="h-3 w-3" /> New question
         </button>
       </div>
+      {suggestOpen && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Draft from context:</span>
+          <select value={suggestDomain} onChange={(e) => setSuggestDomain(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
+            <option value="">pick a domain…</option>
+            {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+          </select>
+          <select value={suggestCount} onChange={(e) => setSuggestCount(Number(e.target.value))} className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
+            {[1, 2, 3, 5, 8].map((n) => <option key={n} value={n}>{n} question{n === 1 ? "" : "s"}</option>)}
+          </select>
+          <button onClick={suggestWithAi} disabled={suggesting || !suggestDomain} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background hover:bg-accent-hover disabled:opacity-40">
+            {suggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+            {suggesting ? "Drafting…" : "Draft"}
+          </button>
+          <span className="text-[10px] text-text-muted">Reads the domain's state, goals, and decisions. Drafts are marked for your review.</span>
+        </div>
+      )}
+      {info && (
+        <div className="mb-4 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-xs text-text-secondary">{info}</div>
+      )}
       {shown.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
-          No questions{filter !== "all" ? ` in ${titleCase(filter)}` : ""} yet. Hit <span className="text-accent">New question</span> to add one.
+          No questions{filter !== "all" ? ` in ${titleCase(filter)}` : ""} yet. Hit <span className="text-accent">New question</span>, <span className="text-accent">Suggest with AI</span>, or <span className="text-accent">Import</span> to add some.
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border">
@@ -10592,13 +11412,23 @@ function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "privacy" | "connectors" | "user" | "memory" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "user" | "memory" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
   useEffect(() => {
     if (jumpTo?.section) setSection(jumpTo.section as Section);
   }, [jumpTo?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  // In-settings deep links (e.g. a model row's "runs" button jumping to the
+  // Benchmark cockpit) dispatch this event rather than threading props.
+  useEffect(() => {
+    const onJump = (e: Event) => {
+      const s = (e as CustomEvent<string>).detail;
+      if (s) setSection(s as Section);
+    };
+    window.addEventListener("prevail:settings-section", onJump as EventListener);
+    return () => window.removeEventListener("prevail:settings-section", onJump as EventListener);
+  }, []);
 
   // Grouped settings nav — the flat 19-item list was hard to scan and mixed
   // unrelated concerns (e.g. General vs Defaults overlap). Organized into
@@ -10608,6 +11438,7 @@ function SettingsPanel({
   const navGroups: Array<{ heading: string; items: NavItem[] }> = [
     { heading: "Models & AI", items: [
       { id: "models", label: "Models", icon: Layers },
+      { id: "benchmark", label: "Benchmark", icon: Target },
       { id: "council", label: "Council", icon: Scale },
       { id: "frameworks", label: "Frameworks", icon: Scale },
       { id: "skills", label: "Skills", icon: Sparkles },
@@ -10717,6 +11548,20 @@ function SettingsPanel({
           {section === "general" && <GeneralSection />}
           {section === "privacy" && <PrivacyConnectivitySection enabled={bunkerEnabled} onChange={onBunkerChange} />}
           {section === "models" && <ModelsSection clis={clis} onStartChatWith={onStartChatWith} onActivated={onRefreshClis} />}
+          {section === "benchmark" && (
+            <>
+              <SettingsHeader
+                title="Benchmark"
+                icon={Target}
+                subtitle="Your personal eval suite. Run any model against your own questions across every domain, see who leads where, and manage the question set: write, AI-draft from your data, import, export."
+              />
+              {/* Full cockpit: unscoped, so runs/results/questions cover the
+                  whole vault. The same panel opens scoped from a domain. */}
+              <div className="-mx-4 min-h-[60vh]">
+                <BenchmarkPanel vaultPath={vaultPath} />
+              </div>
+            </>
+          )}
           {section === "user" && <UserProfileSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
@@ -10799,9 +11644,7 @@ function ModelsSection({
         </span>
       </div>
       <section className="mb-8">
-        <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-secondary">
-          <Sparkles className="h-3.5 w-3.5 text-accent" /> Installed CLIs
-        </div>
+        <SubsectionHeader icon={Sparkles}>Installed CLIs</SubsectionHeader>
         <AgentsSection
           clis={clis}
           onStartChatWith={onStartChatWith}
@@ -10811,10 +11654,8 @@ function ModelsSection({
         />
       </section>
       <section className="border-t border-border-subtle pt-8">
-        <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-secondary">
-          <Layers className="h-3.5 w-3.5 text-accent" /> API providers
-        </div>
-        <p className="mb-4 text-xs text-text-muted">Bring your own key — no install. OpenRouter is one key for 200+ hosted models.</p>
+        <SubsectionHeader icon={Layers}>API providers</SubsectionHeader>
+        <p className="mb-4 text-xs text-text-muted">Bring your own key, no install. OpenRouter is one key for 200+ hosted models.</p>
         <ProvidersSection onActivated={onActivated} embedded />
       </section>
     </>
@@ -10846,9 +11687,7 @@ function AgentsSection({
       )}
       {detected.length > 0 && (
         <section className="mb-8">
-          <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
-            Detected · {detected.length}
-          </div>
+          <GroupLabel>Detected · {detected.length}</GroupLabel>
           <div className="flex flex-col gap-3">
             {detected.map((c) => (
               <AgentCard
@@ -10864,9 +11703,7 @@ function AgentsSection({
       )}
       {missing.length > 0 && (
         <section>
-          <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
-            Not installed · {missing.length}
-          </div>
+          <GroupLabel>Not installed · {missing.length}</GroupLabel>
           <div className="flex flex-col gap-3">
             {missing.map((c) => (
               <AgentCard key={c.id} cli={c} onStartChat={onStartChatWith} />
@@ -11089,6 +11926,18 @@ function AgentCard({
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <button
+                      onClick={() => {
+                        // Jump to the Benchmark cockpit with this model's runs
+                        // expanded (key matches the leaderboard aggregation).
+                        lsSet("prevail.bench.expandModel", `${cli.id}::${m.label}`);
+                        window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: "benchmark" }));
+                      }}
+                      title={`Benchmark runs for ${m.label}: scores, domains, history`}
+                      className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                    >
+                      runs
+                    </button>
+                    <button
                       onClick={() => verifyModel(m.id)}
                       disabled={s === "verifying"}
                       className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40"
@@ -11163,6 +12012,43 @@ function SettingsHeader({ title, subtitle, icon }: { title: string; subtitle?: s
           {subtitle && <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-text-secondary">{subtitle}</p>}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Header hierarchy, level 2: a subsection within a settings page. Sits clearly
+// below the big SettingsHeader (level 1) and above the small mono group labels
+// (level 3), so the eye reads page -> subsection -> group without guessing.
+// Display-weight, sentence case, with a hairline rule underneath.
+function SubsectionHeader({
+  icon: Icon,
+  children,
+  hint,
+  className = "",
+}: {
+  icon?: LucideIcon;
+  children: React.ReactNode;
+  hint?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`mb-3 flex items-center gap-2 border-b border-border-subtle/70 pb-2 ${className}`}>
+      {Icon && <Icon className="h-4 w-4 shrink-0 text-accent" />}
+      <h3 className="font-display text-[15px] font-semibold leading-tight tracking-tight text-text-primary">
+        {children}
+      </h3>
+      {hint != null && <span className="ml-auto font-mono text-[11px] text-text-muted">{hint}</span>}
+    </div>
+  );
+}
+
+// Header hierarchy, level 3: a small group label inside a subsection (e.g.
+// "Detected · 2"). The quietest of the three so it never competes with a
+// level-2 SubsectionHeader.
+function GroupLabel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`mb-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-muted ${className}`}>
+      {children}
     </div>
   );
 }

@@ -1,24 +1,30 @@
 {
-  "updated": "2026-06-03",
-  "pipeline": [
+  "updated": "2026-06-09",
+  "growth_opportunities": [
     {
-      "company": "Stripe",
-      "role": "Staff Eng",
-      "stage": "recruiter call",
-      "interest": "medium",
-      "comp_est": "$240-280k"
+      "name": "Staff Engineer promotion",
+      "org": "TechFlow Inc",
+      "stage": "building the packet",
+      "interest": "high",
+      "due": "2026-Q4",
+      "comp_impact": "base lift plus larger RSU refresh",
+      "what_it_needs": "a design doc others reuse, cross-org influence, a defined ambiguous problem",
+      "notes": "tied to the system design course in learning/. Next RSU vest 2026-08-15 sets comp context."
     },
     {
-      "company": "Internal",
-      "role": "Staff (promo)",
-      "stage": "building case",
+      "name": "New recurring consulting client",
+      "org": "prospect: Northwind Analytics",
+      "stage": "intro call scheduled",
       "interest": "high",
-      "comp_est": "$210-240k"
+      "comp_est": "$2,000-3,000/mo retainer",
+      "what_it_needs": "scoping call, a fixed-fee pilot, then convert to retainer",
+      "notes": "would move MRR from ~$3,500 toward the $8,000/mo full-time threshold for the 2027 decision"
     }
   ],
   "skills_to_grow": [
-    "system design writeups",
-    "cross-org influence",
-    "public speaking"
+    "system design",
+    "technical leadership",
+    "writing design docs others reference",
+    "client scoping and pricing"
   ]
 }
