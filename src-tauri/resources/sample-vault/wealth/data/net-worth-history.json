@@ -1,0 +1,31 @@
+{
+  "currency": "USD",
+  "monthly": [
+    {
+      "m": "2026-01",
+      "net_worth": 171200
+    },
+    {
+      "m": "2026-02",
+      "net_worth": 175800
+    },
+    {
+      "m": "2026-03",
+      "net_worth": 179100
+    },
+    {
+      "m": "2026-04",
+      "net_worth": 182600
+    },
+    {
+      "m": "2026-05",
+      "net_worth": 186400
+    },
+    {
+      "m": "2026-06",
+      "net_worth": 189400
+    }
+  ],
+  "savings_rate_pct": 28,
+  "emergency_fund_months": 4.2
+}

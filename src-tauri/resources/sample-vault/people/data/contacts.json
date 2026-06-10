@@ -1,0 +1,28 @@
+{
+  "updated": "2026-05-28",
+  "close": [
+    {
+      "name": "Mom",
+      "last_contact": "2026-06-01",
+      "cadence": "weekly",
+      "notes": "Loves orchids, June 18 birthday"
+    },
+    {
+      "name": "Sam",
+      "last_contact": "2026-05-25",
+      "cadence": "monthly",
+      "notes": "Wedding in August, allergic to shellfish"
+    },
+    {
+      "name": "Jordan (college roommate)",
+      "last_contact": "2025-12-10",
+      "cadence": "quarterly",
+      "notes": "New baby, moved to Denver"
+    }
+  ],
+  "reconnect_queue": [
+    "Jordan",
+    "Priya from old job",
+    "Uncle Ray"
+  ]
+}

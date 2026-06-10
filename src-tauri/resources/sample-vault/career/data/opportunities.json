@@ -1,0 +1,24 @@
+{
+  "updated": "2026-06-03",
+  "pipeline": [
+    {
+      "company": "Stripe",
+      "role": "Staff Eng",
+      "stage": "recruiter call",
+      "interest": "medium",
+      "comp_est": "$240-280k"
+    },
+    {
+      "company": "Internal",
+      "role": "Staff (promo)",
+      "stage": "building case",
+      "interest": "high",
+      "comp_est": "$210-240k"
+    }
+  ],
+  "skills_to_grow": [
+    "system design writeups",
+    "cross-org influence",
+    "public speaking"
+  ]
+}
