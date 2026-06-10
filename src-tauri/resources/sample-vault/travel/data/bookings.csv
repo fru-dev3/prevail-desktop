@@ -1,0 +1,7 @@
+type,item,date,status,cost_usd,confirmation
+flight,SFO-KEF roundtrip,2026-09-09,booked,86,UA8842 (88k miles)
+hotel,Reykjavik Konsulat,2026-09-09,booked,612,MR-44821
+hotel,Vik guesthouse,2026-09-12,pending,0,
+car,4x4 rental 6d,2026-09-09,pending,620,
+activity,Glacier hike,2026-09-12,considering,189,
+insurance,Trip coverage,2026-09-01,todo,140,
