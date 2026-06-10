@@ -4,19 +4,6 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
-## [0.4.0] — Features v1: self-learning, providers, WebUI
-
-### Added
-
-- **Usage capture + dashboard** — every turn → `<vault>/usage/usage.ndjson`; no-domain landing shows totals + per-day strip + by agent/model/domain.
-- **Self-learning intent ledger** — every chat saved as an intent the instant you send (never lost): exact prompt + raw reply + model + all preferences → `<vault>/<domain>/_intents.jsonl`, with auto-journaling.
-- **Memory & Context** — background distillation daemon compresses the ledger into per-domain `_memory.md`, fed back into prompts; full settings section.
-- **Config & lifecycle** — start-on-boot, system tray + close-to-tray, export/import config, reset-to-defaults, diagnostics, uninstall tiers, and in-app auto-update.
-- **Safety** — approval mode, command allowlist, redact-secrets (enforced), file checkpoints.
-- **Gateway** — Telegram live + coming-soon platforms; **MCP** — consume servers + expose Prevail as an MCP server.
-- **Providers** — OpenRouter gateway: one key, every model (Claude/GPT/Gemini/Grok/DeepSeek/Qwen…); keys in Keychain.
-- **WebUI** — serve the same app to a browser via an in-app bridge (no duplicate UI); reach it anywhere over Tailscale/Cloudflare.
-
 ## [0.7.0] — 2026-06-09 · demo-first onboarding
 
 ### Changed
@@ -27,7 +14,7 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 - **Demo vault now lives in app storage** (`~/.prevail/demo-vault`) instead of being dumped into `~/Documents`. The re-seed is **marker-guarded** — it only ever refreshes a folder Prevail owns and tagged as demo, so it can never delete a real folder a user happened to put at that path. (Closes a destructive `remove_dir_all` on the old `~/Documents/Prevail Sample Vault` path.)
 
-## [0.6.0] — 2026-06-09 · usage v2, embedded vault, demo mode, encryption (built + tested; pending live verification + signed release)
+## [0.6.0] — 2026-06-09 · usage v2, embedded vault, demo mode, encryption
 
 ### Added
 
@@ -45,6 +32,19 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 - **Council**: a domain can be dragged onto the composer as context again.
 - **Cross-platform sync** — theme/palette and the desktop's vault are inherited by the WebUI (the web view no longer starts blank).
 - **Security**: removed the bundled benchmark sample data that leaked local paths + personal-scenario prompts into the shipped app.
+
+## [0.4.0] — Features v1: self-learning, providers, WebUI
+
+### Added
+
+- **Usage capture + dashboard** — every turn → `<vault>/usage/usage.ndjson`; no-domain landing shows totals + per-day strip + by agent/model/domain.
+- **Self-learning intent ledger** — every chat saved as an intent the instant you send (never lost): exact prompt + raw reply + model + all preferences → `<vault>/<domain>/_intents.jsonl`, with auto-journaling.
+- **Memory & Context** — background distillation daemon compresses the ledger into per-domain `_memory.md`, fed back into prompts; full settings section.
+- **Config & lifecycle** — start-on-boot, system tray + close-to-tray, export/import config, reset-to-defaults, diagnostics, uninstall tiers, and in-app auto-update.
+- **Safety** — approval mode, command allowlist, redact-secrets (enforced), file checkpoints.
+- **Gateway** — Telegram live + coming-soon platforms; **MCP** — consume servers + expose Prevail as an MCP server.
+- **Providers** — OpenRouter gateway: one key, every model (Claude/GPT/Gemini/Grok/DeepSeek/Qwen…); keys in Keychain.
+- **WebUI** — serve the same app to a browser via an in-app bridge (no duplicate UI); reach it anywhere over Tailscale/Cloudflare.
 
 ---
 
