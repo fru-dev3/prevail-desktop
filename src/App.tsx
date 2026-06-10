@@ -328,6 +328,40 @@ const MODELS: Record<string, ModelPick[]> = {
   ],
 };
 
+// Live-discovered models per provider (filled at runtime by the engine's
+// `models` command). Merged with the curated MODELS catalog so newly released
+// models surface without a code change. OpenRouter's catalog is huge (300+), so
+// its extras are exposed via search in the provider card, not merged into the
+// inline list. Module-level so every reader sees the latest; a
+// `prevail:models-refreshed` event tells components to re-render.
+const DISCOVERED_MODELS: Record<string, ModelPick[]> = {};
+
+/** Curated catalog for a provider, plus any live-discovered models not already
+ *  in it. OpenRouter stays curated inline (search surfaces the rest). */
+function modelsFor(cli: string): ModelPick[] {
+  const curated = MODELS[cli] ?? [];
+  if (cli === "openrouter") return curated;
+  const seen = new Set(curated.map((m) => m.id));
+  const extra = (DISCOVERED_MODELS[cli] ?? []).filter((d) => !seen.has(d.id));
+  return [...curated, ...extra];
+}
+
+/** Best-effort live discovery for the given providers; fills DISCOVERED_MODELS
+ *  and notifies listeners. Never throws. Returns the count discovered. */
+async function refreshDiscoveredModels(providers: string[]): Promise<number> {
+  let total = 0;
+  await Promise.all(
+    providers.map(async (id) => {
+      try {
+        const r = await invoke<{ models: ModelPick[] }>("engine_discover_models", { provider: id });
+        if (r?.models?.length) { DISCOVERED_MODELS[id] = r.models; total += r.models.length; }
+      } catch { /* best-effort; falls back to curated */ }
+    }),
+  );
+  window.dispatchEvent(new Event("prevail:models-refreshed"));
+  return total;
+}
+
 // Models a ChatGPT-login Codex account rejects (verified). A previously
 // saved pick like "gpt-5-codex" persists in localStorage and keeps
 // failing even after we trim the dropdown — so heal it on launch.
@@ -10733,12 +10767,37 @@ function ModelsSection({
     if (!defaultChatCli && firstAvailable) setDefaultChatCli(firstAvailable);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstAvailable]);
+  // Live model discovery: pull each provider's current models so newly released
+  // ones appear without a code change. Runs once on launch + a manual Refresh.
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
+  const discover = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshDiscoveredModels(["ollama", "lmstudio", "openrouter"]);
+      setRefreshedAt(Date.now());
+    } finally { setRefreshing(false); }
+  }, []);
+  useEffect(() => { void discover(); }, [discover]);
   return (
     <>
       <SettingsHeader
         title="Models"
         subtitle="Every provider Prevail can use. Expand one to test its models and set the default a new chat opens with. Installed CLIs run locally; API providers unlock hosted models with one key."
       />
+      <div className="mb-4 flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">
+        <button
+          onClick={() => void discover()}
+          disabled={refreshing}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50"
+        >
+          {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
+          {refreshing ? "Refreshing…" : "Refresh models"}
+        </button>
+        <span className="text-text-muted">
+          Local + OpenRouter models are detected live{refreshedAt ? ` · updated ${Math.max(1, Math.round((Date.now() - refreshedAt) / 1000))}s ago` : ""}. Claude/Codex use the latest via the opus/sonnet/haiku aliases.
+        </span>
+      </div>
       <section className="mb-8">
         <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-secondary">
           <Sparkles className="h-3.5 w-3.5 text-accent" /> Installed CLIs
@@ -10866,7 +10925,14 @@ function AgentCard({
   onMakeDefault?: () => void;
 }) {
   const brand = VENDOR_BRAND[cli.id] ?? VENDOR_BRAND.other;
-  const models = MODELS[cli.id] ?? [];
+  // Re-render when live discovery fills in new models.
+  const [, setModelsNonce] = useState(0);
+  useEffect(() => {
+    const h = () => setModelsNonce((n) => n + 1);
+    window.addEventListener("prevail:models-refreshed", h);
+    return () => window.removeEventListener("prevail:models-refreshed", h);
+  }, []);
+  const models = modelsFor(cli.id);
   const [open, setOpen] = useState(false);
   // The provider's default model (what a new chat uses). Set right here in
   // Models, so there's no separate Defaults page.
@@ -11724,9 +11790,20 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
   // I10: after a key save we re-detect providers and confirm OpenRouter is now
   // selectable, so the user gets real activation feedback instead of silence.
   const [activated, setActivated] = useState<boolean | null>(null);
+  // Live OpenRouter catalog browser (curated shown by default; search reveals all).
+  const [orQuery, setOrQuery] = useState("");
+  const [, setOrNonce] = useState(0);
   useEffect(() => {
     invoke<boolean>("provider_key_exists", { provider: "openrouter" }).then((ok) => setConfigured(!!ok)).catch(() => {});
+    const h = () => setOrNonce((n) => n + 1);
+    window.addEventListener("prevail:models-refreshed", h);
+    return () => window.removeEventListener("prevail:models-refreshed", h);
   }, []);
+  const orCurated = MODELS.openrouter ?? [];
+  const orLive = DISCOVERED_MODELS.openrouter ?? [];
+  const orResults = orQuery.trim()
+    ? orLive.filter((m) => `${m.id} ${m.label ?? ""}`.toLowerCase().includes(orQuery.trim().toLowerCase())).slice(0, 60)
+    : [];
   async function save() {
     try {
       await invoke("provider_key_set", { provider: "openrouter", key: key.trim() });
@@ -11780,6 +11857,43 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
             Key saved, but OpenRouter didn&apos;t come online. Double-check the key at openrouter.ai/keys.
           </div>
         )}
+        {/* Curated picks shown by default; search reveals the full live catalog. */}
+        <div className="mt-4 border-t border-border-subtle pt-3">
+          <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
+            <Layers className="h-3 w-3 text-accent" /> Models
+            {orLive.length > 0 && <span className="text-text-muted normal-case tracking-normal">· {orLive.length} live, refreshed automatically</span>}
+          </div>
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {orCurated.map((m) => (
+              <span key={m.id} className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary" title={m.id}>{m.label}</span>
+            ))}
+          </div>
+          <input
+            value={orQuery}
+            onChange={(e) => setOrQuery(e.target.value)}
+            placeholder={orLive.length > 0 ? `Search all ${orLive.length} live models (e.g. fable, grok, gemini)…` : "Refresh in Models to load the live catalog…"}
+            className="w-full rounded-md border border-border bg-background px-3 py-1.5 font-mono text-xs focus:border-accent-border focus:outline-none"
+          />
+          {orQuery.trim() && (
+            <div className="mt-2 max-h-56 overflow-auto rounded-md border border-border-subtle bg-background">
+              {orResults.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-text-muted">No models match "{orQuery}".</div>
+              ) : (
+                orResults.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => { navigator.clipboard.writeText(m.id).catch(() => {}); }}
+                    title="Click to copy the model id"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-warm"
+                  >
+                    <span className="font-mono text-[11px] text-text-primary">{m.id}</span>
+                    {m.label && m.label !== m.id && <span className="truncate text-[10px] text-text-muted">{m.label}</span>}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
       </div>
       <div className="mt-4">
         <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Direct providers</div>
