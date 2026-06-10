@@ -33,13 +33,27 @@ DMG="$HERE/src-tauri/target/release/bundle/dmg/Prevail_${VERSION}_${ARCH}.dmg"
 step "Releasing Prevail $VERSION ($TAG)"
 
 step "Apple credentials (1Password)"
-# Honor pre-set env vars (so a caller can pre-fetch creds and skip the flaky
-# back-to-back op prompts); fall back to 1Password when unset.
-export APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:-$(op item get "$OP_ITEM" --fields label=signing-identity --reveal)}"
-export APPLE_ID="${APPLE_ID:-$(op item get "$OP_ITEM" --fields label=apple-id --reveal)}"
-export APPLE_PASSWORD="${APPLE_PASSWORD:-$(op item get "$OP_ITEM" --fields label=app-specific-password --reveal)}"
-export APPLE_TEAM_ID="${APPLE_TEAM_ID:-$(op item get "$OP_ITEM" --fields label=team-id --reveal)}"
-[ -n "$APPLE_SIGNING_IDENTITY" ] && [ -n "$APPLE_PASSWORD" ] || die "missing Apple creds in 1Password"
+# Honor pre-set env vars (so a caller can pre-fetch creds and skip op);
+# otherwise fetch from 1Password. Back-to-back `op item get` calls intermittently
+# return "[ERROR] ... authorization timeout" (the desktop-app approval prompt
+# doesn't surface in time, especially in a detached/background process), so each
+# fetch retries until it gets a clean value rather than dying on the first blip.
+opget() {
+  local label="$1" val=""
+  for _ in 1 2 3 4 5; do
+    val="$(op item get "$OP_ITEM" --fields "label=$label" --reveal 2>/dev/null)"
+    case "$val" in
+      ""|\[ERROR\]*) sleep 2 ;;
+      *) printf '%s' "$val"; return 0 ;;
+    esac
+  done
+  return 1
+}
+export APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:-$(opget signing-identity)}"
+export APPLE_ID="${APPLE_ID:-$(opget apple-id)}"
+export APPLE_PASSWORD="${APPLE_PASSWORD:-$(opget app-specific-password)}"
+export APPLE_TEAM_ID="${APPLE_TEAM_ID:-$(opget team-id)}"
+[ -n "$APPLE_SIGNING_IDENTITY" ] && [ -n "$APPLE_PASSWORD" ] || die "missing Apple creds in 1Password (op authorization may have timed out)"
 echo "signing as: $APPLE_SIGNING_IDENTITY"
 
 # Updater signing key (for the in-app auto-updater feed). The build produces
@@ -102,8 +116,13 @@ cat > "$SITE/src/version.ts" <<TS
 // versioned filename the browser saves the file as.
 export const APP_VERSION = "$VERSION";
 TS
+# Also keep the desktop version current in llms.txt (read by AI crawlers).
+# Match "Current desktop version <X>." and rewrite just the number, leaving
+# the CLI version (owned by a different repo) untouched.
+LLMS="$SITE/public/llms.txt"
+[ -f "$LLMS" ] && perl -i -pe "s/(Current desktop version )[0-9]+\.[0-9]+\.[0-9]+/\${1}$VERSION/" "$LLMS"
 ( cd "$SITE" && npm run build >/dev/null )   # sanity-build before pushing
-( cd "$SITE" && git add src/version.ts \
+( cd "$SITE" && git add src/version.ts public/llms.txt \
   && git commit -q -m "release: Prevail $VERSION (version stamp; DMG on GitHub Releases)" \
   && git push )
 echo "site pushed — Netlify will deploy prevail.sh"
