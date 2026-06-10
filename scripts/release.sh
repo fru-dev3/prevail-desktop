@@ -116,11 +116,20 @@ cat > "$SITE/src/version.ts" <<TS
 // versioned filename the browser saves the file as.
 export const APP_VERSION = "$VERSION";
 TS
-# Also keep the desktop version current in llms.txt (read by AI crawlers).
-# Match "Current desktop version <X>." and rewrite just the number, leaving
-# the CLI version (owned by a different repo) untouched.
+# Also keep the version lines in llms.txt current (read by AI crawlers). Stamp
+# the desktop version from this repo, and the CLI version from the sibling
+# prevail-cli package.json (the CLI ships via its own GH Actions release, which
+# doesn't touch the site — so without this its line drifts). Both rewrites only
+# replace the number, and run only if the file / sibling exist.
 LLMS="$SITE/public/llms.txt"
-[ -f "$LLMS" ] && perl -i -pe "s/(Current desktop version )[0-9]+\.[0-9]+\.[0-9]+/\${1}$VERSION/" "$LLMS"
+if [ -f "$LLMS" ]; then
+  perl -i -pe "s/(Current desktop version )[0-9]+\.[0-9]+\.[0-9]+/\${1}$VERSION/" "$LLMS"
+  CLI_PKG="$HERE/../fd-apps-prevail-cli/package.json"
+  if [ -f "$CLI_PKG" ]; then
+    CLI_VERSION="$(python3 -c "import json;print(json.load(open('$CLI_PKG'))['version'])" 2>/dev/null || true)"
+    [ -n "$CLI_VERSION" ] && perl -i -pe "s/(Current CLI version )[0-9]+\.[0-9]+\.[0-9]+/\${1}$CLI_VERSION/" "$LLMS"
+  fi
+fi
 ( cd "$SITE" && npm run build >/dev/null )   # sanity-build before pushing
 ( cd "$SITE" && git add src/version.ts public/llms.txt \
   && git commit -q -m "release: Prevail $VERSION (version stamp; DMG on GitHub Releases)" \
