@@ -1,9 +1,40 @@
 date,description,category,amount_usd
-2026-06-01,Paycheck,income,6200.00
-2026-06-01,Rent,housing,-2150.00
-2026-06-02,Groceries,food,-94.30
-2026-06-03,Index fund auto-invest,investing,-1500.00
-2026-06-03,Utilities,housing,-120.45
-2026-06-04,Restaurant,food,-58.20
-2026-06-05,Gym membership,health,-45.00
-2026-06-06,Flight (points + fee),travel,-86.00
+2026-04-30,TechFlow payroll (Alex net),income,4180.00
+2026-04-30,Designify payroll (Jordan net),income,2720.00
+2026-05-01,Austin mortgage P&I,housing,-2510.00
+2026-05-01,Property tax escrow,housing,-520.00
+2026-05-01,Homeowners insurance escrow,housing,-150.00
+2026-05-01,Phoenix rent (Sun Valley PM payout),income,1242.00
+2026-05-02,Auto-invest to brokerage,investing,-1500.00
+2026-05-02,Maya 529 contribution,investing,-300.00
+2026-05-03,Groceries (HEB),food,-187.40
+2026-05-04,Austin Energy utilities,housing,-164.20
+2026-05-05,GEICO auto premium installment,insurance,-136.67
+2026-05-06,Gym membership,health,-45.00
+2026-05-08,Acme consulting deposit (1099),business income,1800.00
+2026-05-10,Groceries (HEB),food,-182.90
+2026-05-12,Honda CR-V auto loan,debt,-322.00
+2026-05-13,Maya 1st grade aftercare,family,-260.00
+2026-05-15,TechFlow payroll (Alex net),income,4180.00
+2026-05-15,Designify payroll (Jordan net),income,2720.00
+2026-05-16,Restaurant (date night),food,-72.40
+2026-05-17,Groceries (HEB),food,-191.10
+2026-05-18,Pepper vet + meds,pets,-128.00
+2026-05-20,Bluepeak consulting deposit (1099),business income,1400.00
+2026-05-21,Fuel (Shell),transport,-58.30
+2026-05-22,Internet (Google Fiber),housing,-70.00
+2026-05-24,Groceries (HEB),food,-178.60
+2026-05-27,Half-marathon training shoes,health,-142.00
+2026-05-29,Austin Water,housing,-61.40
+2026-05-31,TechFlow payroll (Alex net),income,4180.00
+2026-05-31,Designify payroll (Jordan net),income,2720.00
+2026-06-01,Austin mortgage P&I,housing,-2510.00
+2026-06-01,Property tax escrow,housing,-520.00
+2026-06-01,Homeowners insurance escrow,housing,-150.00
+2026-06-01,Phoenix rent (Sun Valley PM payout),income,1242.00
+2026-06-02,Auto-invest to brokerage,investing,-1500.00
+2026-06-02,Maya 529 contribution,investing,-300.00
+2026-06-03,Groceries (HEB),food,-184.20
+2026-06-05,Hopeline consulting deposit (1099),business income,1200.00
+2026-06-06,Gym membership,health,-45.00
+2026-06-07,Austin Energy utilities,housing,-158.70

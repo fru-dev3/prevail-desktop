@@ -1,26 +1,115 @@
 BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//Prevail demo//EN
+CALSCALE:GREGORIAN
+X-WR-CALNAME:Alex Rivera (sample)
 BEGIN:VEVENT
-UID:demo-1@prevail
-DTSTART:20260618T180000Z
+UID:cal-camp-1@prevail
+DTSTART;VALUE=DATE:20260608
+DTEND;VALUE=DATE:20260710
+RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;UNTIL=20260710
+SUMMARY:Maya - Camp Discovery (drop 8:30, pickup 15:30)
+LOCATION:Sunset Valley
+DESCRIPTION:Summer day camp, June to July
+END:VEVENT
+BEGIN:VEVENT
+UID:cal-swim-1@prevail
+DTSTART:20260609T210000Z
+DURATION:PT45M
+RRULE:FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20260814T235959Z
+SUMMARY:Maya swim lessons
+LOCATION:Sunset Valley pool
+DESCRIPTION:Tue and Thu 4:00pm local
+END:VEVENT
+BEGIN:VEVENT
+UID:cal-longrun-1@prevail
+DTSTART:20260613T120000Z
+DURATION:PT2H
+RRULE:FREQ=WEEKLY;BYDAY=SA;UNTIL=20261114T235959Z
+SUMMARY:Long run (half-marathon training)
+DESCRIPTION:Austin Distance Challenge build, race 2026-11-15
+END:VEVENT
+BEGIN:VEVENT
+UID:cal-deepwork-1@prevail
+DTSTART:20260608T140000Z
+DURATION:PT2H
+RRULE:FREQ=WEEKLY;BYDAY=MO,TU,TH;UNTIL=20261120T235959Z
+SUMMARY:Deep Work (protected)
+DESCRIPTION:Morning focus block, default no meetings
+END:VEVENT
+BEGIN:VEVENT
+UID:cal-hvac@prevail
+DTSTART:20260618T140000Z
+DURATION:PT2H
+SUMMARY:HVAC service - CoolBreeze Austin (repair vs replace decision)
+LOCATION:4412 Bluebonnet Ln
+DESCRIPTION:Diagnose 2016 Carrier unit, decide before Phoenix trip. Keep day light for Acme deliverable.
+END:VEVENT
+BEGIN:VEVENT
+UID:cal-mombday@prevail
+DTSTART:20260618T230000Z
 SUMMARY:Mom's birthday dinner
-DESCRIPTION:Order orchids, book table for 4
+DESCRIPTION:Book table for 4
 END:VEVENT
 BEGIN:VEVENT
-UID:demo-2@prevail
-DTSTART:20260822T160000Z
-SUMMARY:Sam's wedding
-LOCATION:Sonoma
+UID:cal-acme@prevail
+DTSTART;VALUE=DATE:20260620
+SUMMARY:Acme consulting deliverable DUE
+DESCRIPTION:Alex Rivera Consulting LLC, milestone handoff
 END:VEVENT
 BEGIN:VEVENT
-UID:demo-3@prevail
-DTSTART:20260909T133000Z
-SUMMARY:Flight SFO to KEF (Iceland)
+UID:cal-auto-renew@prevail
+DTSTART;VALUE=DATE:20260701
+SUMMARY:Auto insurance renewal (GEICO)
+DESCRIPTION:Review coverage before renewal
 END:VEVENT
 BEGIN:VEVENT
-UID:demo-4@prevail
-DTSTART:20260801T170000Z
-SUMMARY:Performance review prep
+UID:cal-phx-out@prevail
+DTSTART:20260716T130000Z
+SUMMARY:Flight AUS to PHX (rental turnover trip)
+DESCRIPTION:Check Phoenix condo, tenant turnover prep with Sun Valley PM
+END:VEVENT
+BEGIN:VEVENT
+UID:cal-phx-back@prevail
+DTSTART:20260718T233000Z
+SUMMARY:Flight PHX to AUS
+END:VEVENT
+BEGIN:VEVENT
+UID:cal-rsu@prevail
+DTSTART;VALUE=DATE:20260815
+SUMMARY:RSU vest (TechFlow) ~$12,500
+DESCRIPTION:Next vesting event, review sell vs hold with wealth
+END:VEVENT
+BEGIN:VEVENT
+UID:cal-ldl@prevail
+DTSTART:20260820T153000Z
+SUMMARY:LDL recheck - lab and follow-up
+DESCRIPTION:Health follow-up due August
+END:VEVENT
+BEGIN:VEVENT
+UID:cal-homeins@prevail
+DTSTART;VALUE=DATE:20260915
+SUMMARY:Homeowners insurance renewal (Allstate)
+DESCRIPTION:Confirm dwelling coverage; note new HVAC if replaced
+END:VEVENT
+BEGIN:VEVENT
+UID:cal-promo@prevail
+DTSTART:20261001T160000Z
+SUMMARY:Staff promo packet - start drafting
+DESCRIPTION:Q4 promotion materials for TechFlow
+END:VEVENT
+BEGIN:VEVENT
+UID:cal-halfmara@prevail
+DTSTART:20261115T130000Z
+DURATION:PT3H
+SUMMARY:Austin Distance Challenge half-marathon
+LOCATION:Austin TX
+END:VEVENT
+BEGIN:VEVENT
+UID:cal-thanksgiving@prevail
+DTSTART;VALUE=DATE:20261126
+DTEND;VALUE=DATE:20261130
+SUMMARY:Thanksgiving with family
+DESCRIPTION:Travel, see travel domain bookings
 END:VEVENT
 END:VCALENDAR

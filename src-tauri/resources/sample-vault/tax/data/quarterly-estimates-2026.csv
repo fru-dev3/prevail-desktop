@@ -1,0 +1,5 @@
+quarter,period_covered,due_date,federal_estimate_usd,state_estimate_usd,status,notes
+Q1,2026-01-01 to 2026-03-31,2026-04-15,950,0,paid,TX has no state income tax; covers 1099 + rental
+Q2,2026-04-01 to 2026-05-31,2026-06-15,950,0,due,consulting tracking to ~22k for 2026
+Q3,2026-06-01 to 2026-08-31,2026-09-15,950,0,scheduled,revisit after 2026-08-15 RSU vest
+Q4,2026-09-01 to 2026-12-31,2027-01-15,950,0,scheduled,true-up if consulting exceeds projection

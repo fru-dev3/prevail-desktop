@@ -1,7 +1,7 @@
 type,item,date,status,cost_usd,confirmation
-flight,SFO-KEF roundtrip,2026-09-09,booked,86,UA8842 (88k miles)
-hotel,Reykjavik Konsulat,2026-09-09,booked,612,MR-44821
-hotel,Vik guesthouse,2026-09-12,pending,0,
-car,4x4 rental 6d,2026-09-09,pending,620,
-activity,Glacier hike,2026-09-12,considering,189,
-insurance,Trip coverage,2026-09-01,todo,140,
+flight,AUS-PHX roundtrip (Southwest),2026-07-16,booked,178,WN-7741X (Rapid Rewards eligible)
+hotel,Phoenix - 2 nights near condo,2026-07-16,booked,212,BON-55903
+car,Compact rental 2d,2026-07-16,booked,84,EZ-22817
+meals,Per diem 3 days,2026-07-16,planned,46,
+activity,Walkthrough with Sun Valley PM,2026-07-17,confirmed,0,property visit, not paid
+flight,Thanksgiving travel (family),2026-11-26,considering,0,drive vs fly TBD
