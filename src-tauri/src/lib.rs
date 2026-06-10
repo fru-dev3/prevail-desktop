@@ -1585,6 +1585,13 @@ fn import_sample_vault(app: tauri::AppHandle) -> Result<String, String> {
     Ok(dest_str)
 }
 
+/// True if `path` is an existing directory — used on launch to detect a stale
+/// remembered vault (e.g. a demo vault the user deleted) so we can re-seed.
+#[tauri::command]
+fn vault_exists(path: String) -> bool {
+    !path.is_empty() && Path::new(&path).is_dir()
+}
+
 /// Persist the chosen vault path so it survives a cache wipe.
 #[tauri::command]
 fn remember_vault(path: String) {
@@ -3263,6 +3270,7 @@ pub fn run() {
             log_fatal,
             import_sample_vault,
             remember_vault,
+            vault_exists,
             bootstrap_vault,
             ui_settings_get,
             ui_settings_set,
