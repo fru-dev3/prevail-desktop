@@ -757,6 +757,14 @@ pub fn engine_appmode_mark_demo(vault: String) -> Result<serde_json::Value, Stri
     run_engine_json(&["appmode", "mark-demo", "--vault", &vault])
 }
 
+/// `prevail models <provider> --json` — live model discovery so newly released
+/// models surface without a code change (ollama/lmstudio/openrouter query a real
+/// catalog; subscription CLIs return []). Returns { provider, models: [...] }.
+#[tauri::command]
+pub fn engine_discover_models(provider: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["models", &provider])
+}
+
 /// `prevail pack list` — the bundled persona packs.
 #[tauri::command]
 pub fn engine_pack_list() -> Result<serde_json::Value, String> {
