@@ -1,7 +1,10 @@
 # Config
 
-home_airport: SFO
-next_trip: Iceland, Sept 2026
-annual_travel_budget: $9,000
+name: Alex Rivera
+home_airport: AUS (Austin-Bergstrom)
+next_trip: Phoenix rental turnover, Jul 2026
+annual_travel_budget: $4,000
 passport_expiry: 2029-04
-loyalty: United, Marriott, Chase UR
+loyalty: Southwest Rapid Rewards, Marriott Bonvoy, Chase UR
+preferred_airline: Southwest (AUS hub)
+notes: Phoenix trips are property expenses (rental), tracked separately from personal travel budget.

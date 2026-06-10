@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "identity": {
+    "name": "homestead",
+    "label": "Homestead",
+    "emoji": "",
+    "summary": "",
+    "created": "2026-06-06T18:21:15.281Z"
+  },
+  "config": {
+    "cli": "claude",
+    "model": "",
+    "framework": null,
+    "lens": null,
+    "skills": [],
+    "autoState": false
+  },
+  "context_score": {
+    "domain": "homestead",
+    "score": 47,
+    "breakdown": {
+      "coverage": {
+        "score": 40,
+        "detail": "2 of 5 canonical files present; missing decisions.md, _journal, _log/*.md"
+      },
+      "density": {
+        "score": 40,
+        "detail": "320 words across state/decisions/config (target 800 for full marks)"
+      },
+      "freshness": {
+        "score": 100,
+        "detail": "newest knowledge file updated 6 days ago"
+      },
+      "structure": {
+        "score": 60,
+        "detail": "6 of 10 artifact kinds present (state, config, skills, briefs, prior, current)"
+      },
+      "activity": {
+        "score": 0,
+        "detail": "0 log sessions, 0 threads (saturate at 10 each)"
+      },
+      "config_completeness": {
+        "score": 0,
+        "detail": "0 of 34 config.md fields filled in"
+      }
+    },
+    "missing": [
+      {
+        "label": "No decisions.md \u2014 decisions aren't being logged",
+        "severity": "warn",
+        "kind": "file"
+      },
+      {
+        "label": "No _journal \u2014 distilled facts have nowhere to land",
+        "severity": "info",
+        "kind": "file"
+      },
+      {
+        "label": "No _log/*.md \u2014 no operational history recorded",
+        "severity": "info",
+        "kind": "file"
+      },
+      {
+        "label": "No _threads \u2014 no recorded chat activity yet",
+        "severity": "info",
+        "kind": "structure"
+      },
+      {
+        "label": "config.md is mostly unfilled \u2014 0 of 34 config.md fields filled in",
+        "severity": "info",
+        "kind": "config"
+      }
+    ],
+    "freshness_secs": 535985,
+    "assessment": null,
+    "audit_source": null,
+    "computed_at": "2026-06-07T01:38:29.789Z",
+    "audited_at": null
+  },
+  "goals": [],
+  "heartbeat": {
+    "enabled": false,
+    "routines": []
+  },
+  "routing": {
+    "keywords": [],
+    "channels": [],
+    "default": false
+  },
+  "sandbox": {
+    "mode": "open"
+  },
+  "privacy": {
+    "localOnly": false
+  },
+  "archived": false,
+  "archived_at": null
+}

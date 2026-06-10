@@ -1,33 +1,58 @@
 {
-  "updated": "2026-06-01",
+  "updated": "2026-06-09",
   "columns": {
     "todo": [
       {
-        "task": "Write homepage copy",
-        "project": "site",
+        "task": "Get HVAC repair-vs-replace quote",
+        "project": "Decide HVAC repair vs replace",
+        "area": "homestead",
         "blocked": true,
-        "reason": "unclear audience"
+        "reason": "no quote yet; ~$9,000 replace estimate, decision waits on real numbers"
       },
       {
-        "task": "Cut boards to length",
-        "project": "shelving"
+        "task": "Automate Maya 529 monthly contribution",
+        "project": "Ramp Maya 529",
+        "area": "wealth"
+      },
+      {
+        "task": "Schedule Phoenix condo clean and re-list",
+        "project": "Phoenix rental turnover",
+        "area": "real-estate"
+      },
+      {
+        "task": "Draft Staff promo packet outline",
+        "project": "Staff promo packet",
+        "area": "career",
+        "blocked": true,
+        "reason": "waiting on system design course modules 7-10 (learning/)"
       }
     ],
     "doing": [
       {
-        "task": "Rebuild project pages",
-        "project": "site",
-        "pct": 70
+        "task": "Acme dashboard Phase 2 deliverable",
+        "project": "Acme dashboard deliverable",
+        "area": "career",
+        "due": "2026-06-20",
+        "pct": 80
+      },
+      {
+        "task": "Weekly long runs + base build",
+        "project": "Half-marathon training block",
+        "area": "fitness",
+        "due": "2026-11-15",
+        "pct": 35
       }
     ],
     "done": [
       {
-        "task": "Buy lumber + brackets",
-        "project": "shelving"
+        "task": "Draft Acme Phase 2 invoice",
+        "project": "Acme dashboard deliverable",
+        "area": "career"
       },
       {
-        "task": "Pick site framework",
-        "project": "site"
+        "task": "Sign up for the half-marathon",
+        "project": "Half-marathon training block",
+        "area": "fitness"
       }
     ]
   },

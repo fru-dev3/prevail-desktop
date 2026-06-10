@@ -1,0 +1,7 @@
+source,type,taxpayer,gross_usd,withholding_usd,notes
+TechFlow Inc,W2,Alex,145000,21800,base salary; box 1 incl RSU vest
+Designify,W2,Jordan,95000,12100,base salary
+Alex Rivera Consulting LLC,1099 Schedule C,Alex,20400,0,clients Acme/Bluepeak/Hopeline; net after expenses ~16100
+Phoenix condo,Schedule E rental,Alex,16200,0,gross rent; net taxable ~2050 after depreciation
+TechFlow RSU vest,W2 (in box 1),Alex,12500,3100,2025 vest tranche
+Brokerage,1099-DIV / 1099-INT,joint,1480,0,qualified dividends + interest

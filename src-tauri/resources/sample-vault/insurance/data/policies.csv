@@ -1,0 +1,7 @@
+type,carrier,policy_number,coverage,deductible,premium_annual_usd,renewal_date
+Homeowners,Allstate,AO-TX-4412-88231,Dwelling $485000; separate wind/hail rider,$2500 (wind/hail $4850),2150,2026-09-15
+Landlord (rental),Allstate,DP3-AZ-198-44017,Phoenix condo dwelling $210000; loss of rent,$2500,780,2026-09-20
+Auto,GEICO,GC-7741-22Q,2022 Honda CR-V + 2018 Subaru Outback full coverage,$500 collision/comp,1640,2026-07-01
+Term life (Alex),Principal,PL-LIFE-30441-A,$750000 face; 20-yr level term (2021),n/a,420,2041-04-01
+Term life (Jordan),Principal,PL-LIFE-30441-J,$500000 face; 20-yr level term (2021),n/a,300,2041-04-01
+Health PPO,Blue Cross Blue Shield,BCBS-TF-552901,PPO via TechFlow; $1500 ind/$3000 fam deductible; $4000/$8000 OOP max; HSA-eligible,$1500 individual / $3000 family,0,2027-01-01

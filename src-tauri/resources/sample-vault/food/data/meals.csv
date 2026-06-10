@@ -1,10 +1,29 @@
-date,meal,description,protein_g,training_day
-2026-05-29,breakfast,Oatmeal + berries,8,yes
-2026-05-29,lunch,Chicken salad,32,yes
-2026-05-29,dinner,Sheet-pan salmon,42,yes
-2026-05-30,breakfast,Greek yogurt + granola,22,no
-2026-05-30,lunch,Burrito bowl,38,no
-2026-05-30,dinner,Lentil curry,24,no
-2026-05-31,breakfast,Eggs + toast,20,yes
-2026-05-31,lunch,Leftover curry,24,yes
-2026-05-31,dinner,Chicken stir-fry,40,yes
+date,day,meal,description,alex_protein_g,training_day,family_notes
+2026-06-08,Sun,breakfast,Greek yogurt + berries + oats,30,no,Maya plain yogurt with honey; soluble fiber from oats
+2026-06-08,Sun,lunch,Turkey and hummus wraps,35,no,Jordan hummus and veggie wrap; Maya turkey roll-up
+2026-06-08,Sun,dinner,Sheet-pan salmon + roasted veg + rice,42,no,Maya plain salmon and rice; low saturated fat
+2026-06-08,Sun,snack,Cottage cheese + apple,18,no,soluble fiber from apple
+2026-06-09,Mon,breakfast,Eggs + whole-grain toast + banana,28,yes,Maya scrambled eggs; toast soldiers
+2026-06-09,Mon,lunch,Chicken burrito bowl (beans, brown rice),40,yes,Jordan black bean bowl; Maya cheese quesadilla
+2026-06-09,Mon,dinner,Turkey chili + cornbread,45,yes,Jordan veggie chili; Maya plain pasta with butter
+2026-06-09,Mon,snack,Protein shake,30,yes,post-strength refuel toward 150g
+2026-06-10,Tue,breakfast,Overnight oats + peanut butter,26,no,swim night, simple prep; soluble fiber
+2026-06-10,Tue,lunch,Lentil and veggie soup + bread,22,no,Jordan loves it; Maya bread and cheese
+2026-06-10,Tue,dinner,Tofu and veggie stir-fry + rice,30,no,Maya plain noodles and edamame; light night before camp
+2026-06-10,Tue,snack,Greek yogurt + walnuts,20,no,
+2026-06-11,Wed,breakfast,Veggie omelet + toast,28,yes,Maya cheese omelet
+2026-06-11,Wed,lunch,Chicken and quinoa salad,38,yes,Jordan chickpea quinoa salad; Maya plain chicken and crackers
+2026-06-11,Wed,dinner,Pasta night, turkey meatballs + marinara,40,yes,Maya plain pasta with a meatball; Jordan lentil meatballs
+2026-06-11,Wed,snack,Cottage cheese + pineapple,18,yes,
+2026-06-12,Thu,breakfast,Smoothie (protein, oats, berries),32,no,swim night; soluble fiber from oats and berries
+2026-06-12,Thu,lunch,Hummus and chicken bowl,34,no,Jordan falafel bowl; Maya pita and hummus
+2026-06-12,Thu,dinner,Black bean and sweet potato tacos,26,no,Maya plain bean and cheese taco; vegetarian friendly
+2026-06-12,Thu,snack,Edamame,17,no,
+2026-06-13,Fri,breakfast,Eggs + oatmeal,26,no,
+2026-06-13,Fri,lunch,Tuna and white bean salad,36,no,Jordan white bean only; Maya crackers and cheese; soluble fiber from beans
+2026-06-13,Fri,dinner,Eat out, grilled chicken bowls,40,no,family pizza-and-salad spot; Maya cheese pizza
+2026-06-13,Fri,snack,Greek yogurt,15,no,
+2026-06-14,Sat,breakfast,Oatmeal + banana + eggs (pre long run),30,yes,light carbs before long run; Maya banana pancakes
+2026-06-14,Sat,lunch,Chicken and rice bowl (post-run refuel),45,yes,within an hour post long run; Jordan tofu bowl
+2026-06-14,Sat,dinner,Bean and beef chili (lean) + salad,35,yes,Maya plain pasta; Jordan all-bean chili
+2026-06-14,Sat,snack,Recovery shake + apple,28,yes,post long run refuel
