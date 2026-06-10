@@ -1,0 +1,7 @@
+date,marker,value,unit,reference,flag
+2026-05-20,LDL,131,mg/dL,<100,high
+2026-05-20,HDL,58,mg/dL,>40,ok
+2026-05-20,Triglycerides,98,mg/dL,<150,ok
+2026-05-20,A1C,5.4,%,<5.7,ok
+2026-05-20,Vitamin D,28,ng/mL,30-100,low
+2026-05-20,Ferritin,95,ng/mL,30-400,ok

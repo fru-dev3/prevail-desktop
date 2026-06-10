@@ -1,0 +1,16 @@
+{
+  "updated": "2026-06-02",
+  "running": {
+    "5k": "25:48",
+    "10k": "54:12",
+    "half": "2:01:30"
+  },
+  "strength_kg": {
+    "squat": 105,
+    "bench": 80,
+    "deadlift": 140
+  },
+  "bodyweight_kg": 74,
+  "resting_hr": 58,
+  "vo2max_est": 47
+}

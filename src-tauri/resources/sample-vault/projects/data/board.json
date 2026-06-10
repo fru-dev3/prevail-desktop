@@ -1,0 +1,40 @@
+{
+  "updated": "2026-06-01",
+  "columns": {
+    "todo": [
+      {
+        "task": "Write homepage copy",
+        "project": "site",
+        "blocked": true,
+        "reason": "unclear audience"
+      },
+      {
+        "task": "Cut boards to length",
+        "project": "shelving"
+      }
+    ],
+    "doing": [
+      {
+        "task": "Rebuild project pages",
+        "project": "site",
+        "pct": 70
+      }
+    ],
+    "done": [
+      {
+        "task": "Buy lumber + brackets",
+        "project": "shelving"
+      },
+      {
+        "task": "Pick site framework",
+        "project": "site"
+      }
+    ]
+  },
+  "parked": [
+    {
+      "task": "Budgeting script",
+      "revisit": "2026-Q4"
+    }
+  ]
+}

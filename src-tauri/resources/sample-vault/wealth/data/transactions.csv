@@ -1,0 +1,9 @@
+date,description,category,amount_usd
+2026-06-01,Paycheck,income,6200.00
+2026-06-01,Rent,housing,-2150.00
+2026-06-02,Groceries,food,-94.30
+2026-06-03,Index fund auto-invest,investing,-1500.00
+2026-06-03,Utilities,housing,-120.45
+2026-06-04,Restaurant,food,-58.20
+2026-06-05,Gym membership,health,-45.00
+2026-06-06,Flight (points + fee),travel,-86.00
