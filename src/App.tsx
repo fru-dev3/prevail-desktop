@@ -72,7 +72,7 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.7.1";
+const APP_VERSION = "0.7.2";
 
 // Canonical on/off toggle. Track 36×20px, thumb 16×16px, slides
 // 18px. Every switch in the app routes through this so we never
@@ -13388,6 +13388,42 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
     }
   }
   async function importPack(p: { name: string; domains: string[] }) {
+    // In demo mode, importing is an intent to keep something — trigger vault setup first,
+    // then import the pack into the new vault once it's ready.
+    if (appMode === "demo") {
+      const ok = await tauriConfirm(
+        `Starter packs are saved to your own vault. You're in demo — set up your vault now and "${p.name}" will be imported there.`,
+        { title: "Set up your own vault first", kind: "info", okLabel: "Set up my vault", cancelLabel: "Keep exploring" },
+      );
+      if (!ok) return;
+      const picked = await open({ directory: true, multiple: false, title: "Choose a folder for your own vault" });
+      if (!picked || typeof picked !== "string") return;
+      setSwitchingMode(true);
+      setImportingPack(p.name);
+      setNote(null);
+      try {
+        await invoke<{ vault: string; demoCleared: boolean }>("engine_production_init", { vault: picked, clearDemo: vaultPath });
+        await invoke("engine_appmode_set", { mode: "production" }).catch(() => {});
+        setAppMode("production");
+        window.dispatchEvent(new Event("prevail:appmode"));
+        onVaultMoved?.(picked);
+        onSetupDomains?.();
+        const r = await invoke<{ created: string[]; skipped: string[] }>("engine_pack_import", { vault: picked, pack: p.name, overwrite: false });
+        const parts: string[] = [];
+        if (r.created.length) parts.push(`added ${r.created.join(", ")}`);
+        if (r.skipped.length) parts.push(`kept ${r.skipped.join(", ")}`);
+        setImportedPacks((s) => new Set(s).add(p.name));
+        setNote(`Vault set up and ${p.name} imported — ${parts.join(" · ") || "no new domains"}.`);
+        window.dispatchEvent(new Event("prevail:domains-changed"));
+      } catch (e) {
+        setNote(`Could not set up vault: ${String(e)}`);
+      } finally {
+        setSwitchingMode(false);
+        setImportingPack(null);
+      }
+      return;
+    }
+    // Production mode — import directly into the current vault.
     setImportingPack(p.name);
     setNote(null);
     try {
@@ -13397,7 +13433,6 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
       if (r.skipped.length) parts.push(`kept ${r.skipped.join(", ")}`);
       setImportedPacks((s) => new Set(s).add(p.name));
       setNote(`Imported ${p.name} — ${parts.join(" · ") || "no new domains"}. Find them in your sidebar.`);
-      // Tell the app to rescan the vault so the new domains appear immediately.
       window.dispatchEvent(new Event("prevail:domains-changed"));
     } catch (e) {
       setNote(`Import failed: ${String(e)}`);
@@ -13521,7 +13556,7 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-text-muted" />
         <span>
           {isDemo
-            ? "You're in demo mode with sample data. Import a starter pack above to explore, or set up your own vault when you're ready."
+            ? "You're in demo mode. Importing a pack sets up your own vault and moves you out of demo — or use the button above to set up your vault first."
             : "You're in your own vault. Import a starter pack any time to add ready-made domains."}
         </span>
       </div>
