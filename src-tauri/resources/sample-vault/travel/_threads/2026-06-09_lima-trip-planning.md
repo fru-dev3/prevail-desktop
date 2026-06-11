@@ -1,0 +1,38 @@
+---
+
+title: Book the Lima flights before holiday prices go up
+
+domain: travel
+
+created: 2026-06-09T21:00:00Z
+
+updated: 2026-06-09T21:15:00Z
+
+turns: 2
+
+---
+
+
+
+## You
+
+We want to go to Lima for the holidays — December 20 to January 3. That's Jordan, Sam, and Maya. What should I be doing now to not get burned on flights?
+
+## claude · opus-4
+
+Book the flights now — seriously, don't wait another 2–3 weeks.
+
+**Why the urgency:** Austin–Lima (AUS → LIM) for the December 20–January 3 window is a high-demand international route. Lima is a hub for South American holiday travel, and fares for this period typically peak 3–4 months in advance (August–September for December travel). You're in the last window where you can still get reasonable fares.
+
+**What to expect:**
+- **Direct or 1-stop via Miami/Houston/Bogotá** — LATAM, American, and United are the main carriers from AUS. A 1-stop via Lima's hub through Miami (about 8–9 hours total travel) is the most common.
+- **Price range:** For 3 passengers (Austin to Lima, December 20 return January 3), expect $1,400–1,900 total if you book this week, vs. $2,200–2,800 if you wait until August.
+- **Maya's fare:** At 3, she needs her own seat on an international flight — no lap child for flights over 12 hours. Factor that in.
+
+**Document check (important):**
+- Maya's US passport — check the expiration date right now. International travel generally requires 6 months of validity beyond return date; for Peru that means valid through at least July 2027.
+- If Maya's passport is expiring soon, US passport renewal for a minor takes 6–8 weeks standard, 3–5 weeks expedited. Don't let this slip.
+- Jordan's Peruvian connections shouldn't affect entry — naturalized citizens can enter Peru on either passport; just be consistent about which you use for entry/exit.
+
+Check Google Flights tonight with flexible dates around Dec 19–22. Lock it in this week.
+

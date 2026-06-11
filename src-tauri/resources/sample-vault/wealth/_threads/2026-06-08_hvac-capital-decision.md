@@ -1,50 +1,55 @@
 ---
+
 title: Can we afford to replace the HVAC this summer?
+
 domain: wealth
-created: 2026-06-08T19:20:00Z
-updated: 2026-06-08T19:31:00Z
+
+created: 2026-06-08T14:00:00Z
+
+updated: 2026-06-08T14:22:00Z
+
 turns: 4
+
 ---
 
-## You
 
-The Carrier HVAC at the Austin house is from 2016 and the tech says it's near end of life. A full replacement is quoted around $9,000. Can we afford to do it this summer without wrecking the rest of the plan?
-
-## claude · opus-4
-
-Short answer: yes, comfortably, and this is the move I'd make.
-
-Here is the picture from your numbers:
-
-- Emergency fund: $32,000 (about 5 months of expenses). Paying $9,000 from it drops you to $23,000, roughly 3.5 months. Still a real cushion.
-- Monthly cash flow is positive: $240k household W2 plus about $22k of 1099 consulting, against PITI of $3,180 on the Austin home and the Phoenix rental running a small surplus.
-- You auto-invest $1,500/mo to the brokerage and $300/mo to the 529.
-
-You have two clean ways to fund it without touching investments:
-
-1. Pay from the emergency fund and refill it over 4 to 6 months from cash flow.
-2. Pause the $1,500/mo brokerage auto-invest for two months (the 529 keeps running). That alone covers $3,000, and the rest comes from cash flow.
-
-I would not raid the brokerage or pause the 529 for this.
 
 ## You
 
-Why not just wait a year and keep the $9k invested?
+The HVAC at the house is a 2016 Carrier and the tech says it's near end of life. Got a quote for $6,850. Can we replace it this summer without wrecking the rest of the plan?
 
 ## claude · opus-4
 
-Because the expected value favors replacing now:
+Short answer: yes, and I'd do it now rather than wait.
 
-- It is a 2016 unit, single Carrier, already flagged near end of life. A July or August failure in Austin is the worst time to be without cooling, and emergency replacements run a premium plus you lose negotiating leverage.
-- There is a cross-domain reason too. Your homeowners policy with Allstate renews 2026-09. The HVAC age (2016) and roof age (2018) are exactly the kind of components that affect home renewals and inspections. Replacing the HVAC removes one aging-system risk before that renewal. I have flagged this in the insurance domain as well.
-- The $9k staying invested for one year might earn roughly $600 to $900 expected. That is small next to the downside of a peak-summer emergency.
+Here's the picture from your numbers:
 
-Net: replace it now, fund it from the emergency fund or a two-month auto-invest pause, and keep the 529 and umbrella plans on track.
+- Emergency fund (Ally): **$10,240** — about 3 months of expenses. Paying $6,850 drops you to ~$3,400, which is thin. That's the main tension.
+- Monthly savings: **$850/mo** ($650 brokerage auto-invest + $200 to Maya's 529). Pausing the brokerage invest for 10 months refills the fund completely without touching anything else.
+- Household income: $168k W2 — the cash flow is there; this is a timing question, not an affordability question.
+
+Two clean ways to fund it:
+
+1. **Pay from the emergency fund + refill over 10 months** by pausing the $650/mo brokerage auto-invest. The 529 keeps running. The fund is back to $10k by April.
+2. **Keep the emergency fund intact and use the next two paychecks** — both Jordan and Sam get paid mid-June and end-of-June; combined net is ~$10,760, enough to cover $6,850 and replenish checking.
+
+I'd lean toward option 2 — keeps the emergency fund as a true emergency cushion and uses predictable payroll timing.
+
+What I wouldn't do: raid the Roth IRAs or the 529.
 
 ## You
 
-Got it. And the umbrella policy, does that come out of this same $9k?
+Why not just wait a year and keep the $6,850 in the emergency fund?
 
 ## claude · opus-4
 
-No, keep them separate. The $1M umbrella is only a few hundred dollars a year, not a capital outlay, so it does not compete with the HVAC. Add the umbrella regardless. The real $9k decision is just HVAC now versus prepaying the 6.25% Austin mortgage or bumping the 529, and the HVAC wins on timing and risk. I'd settle umbrella and HVAC first, then revisit a 529 bump once the emergency fund is back to $32k.
+The expected value tilts toward replacing now for three reasons:
+
+**1. Peak-summer failure risk is real.** It's a 10-year-old unit already flagged near end of life, in Austin, TX. A July or August failure means emergency replacement pricing (often 20–30% premium) and days without cooling with Maya at home. That scenario costs more and happens at the worst time.
+
+**2. There's a cross-domain reason.** Your Texas Farm Bureau homeowner's policy renews in September. The HVAC age (2016) and its condition are exactly what carriers ask about at renewal. Replacing the unit before that renewal removes a red flag and may actually help rather than hurt the premium.
+
+**3. The opportunity cost is small.** $6,850 in the emergency fund earns ~$280 in a year at 4.1% APY. That's the "upside" of waiting. It doesn't move the needle against the downside scenarios above.
+
+Verdict: replace before July. Finance it with option 2 (use the June paychecks). Get a second quote first — $6,850 is reasonable but worth confirming.
+

@@ -2,4 +2,4 @@
 
 > Why this domain exists — your north star here.
 
-Protect time for what counts — deep work, the people you love, and rest. Time-block the week, default to saying no, and avoid back-to-back meetings.
+Protect time for what counts — the people we love, focused work, and rest. Plan the week, and keep the immovable dates visible early.

@@ -2,4 +2,4 @@
 
 > Why this domain exists — your north star here.
 
-Keep growing — skills, ideas, and curiosity compounding over a lifetime. Learn in public, choose depth over breadth, and apply what you learn.
+Keep growing — the credential that opens the next role, and the small daily things, like reading in Spanish with Maya.

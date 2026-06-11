@@ -1,6 +1,5 @@
-course,platform,status,hours_per_week,progress_pct,why
-System Design for Senior Engineers,Educative,in progress,4,60,Highest-leverage skill for the Staff Engineer promo packet (Q4 2026). Directly fills the system design gap.
-Engineering Leadership and Influence,Coursera,in progress,2,25,Builds the cross-org influence and technical-leadership story the Staff packet needs.
-Spanish for Families,Duolingo,in progress,1,30,Alex, Jordan, and Maya learning together. Light and consistent, no streak pressure.
-Foundations of UX Design,Coursera,in progress,1,40,Shared course with Jordan (UX Designer at Designify). Doubles as a consulting skill for Hopeline site work.
-Effective Technical Writing,LinkedIn Learning,completed,0,100,Prework for writing the design doc the promo packet hinges on. Finished 2026-02-20.
+course,provider,progress_pct,target_date,cost_usd,employer_sponsored,notes
+Certified Branch Manager (CBM),ABA (American Bankers Association),62,2026-10-31,1200,yes,Employer covers 50%; Jordan covers 50%
+Leadership Book Club,Frontera Bank internal,100,,0,yes,Monthly; currently reading Never Split the Difference
+Duolingo Spanish maintenance,Duolingo,100,,0,no,Daily streak — keeping native fluency current
+Half-Marathon Training Plan (Hal Higdon),Self-directed,40,2026-11-15,0,no,Week 7 of 18

@@ -3,5 +3,5 @@
 > Objectives and the metric each one is measured by.
 
 - [ ] Carry no coverage gaps — metric: `coverage_gaps`, target: 0
-- [ ] Review every policy once a year
-- [ ] Handle renewals 30 days early
+- [ ] Add the umbrella policy this quarter — metric: `umbrella_added`, target: yes
+- [ ] Handle every renewal 30 days early
