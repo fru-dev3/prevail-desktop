@@ -722,10 +722,22 @@ pub fn engine_appmode_get() -> Result<serde_json::Value, String> {
     run_engine_json(&["appmode", "get"])
 }
 
-/// `prevail appmode set --mode demo|production`.
+/// `prevail appmode set --mode demo|production [--vault <path>]`. The optional
+/// `vault` is forwarded so a first-launch `set --mode demo` (before any engine
+/// config exists) seeds the config pointed at the seeded sandbox rather than the
+/// bundled demo default.
 #[tauri::command]
-pub fn engine_appmode_set(mode: String) -> Result<serde_json::Value, String> {
-    run_engine_json(&["appmode", "set", "--mode", &mode])
+pub fn engine_appmode_set(
+    mode: String,
+    vault: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let mut a: Vec<String> = vec!["appmode".into(), "set".into(), "--mode".into(), mode];
+    if let Some(v) = vault.filter(|s| !s.is_empty()) {
+        a.push("--vault".into());
+        a.push(v);
+    }
+    let refs: Vec<&str> = a.iter().map(|s| s.as_str()).collect();
+    run_engine_json(&refs)
 }
 
 /// `prevail appmode init` — prepare a clean production workspace and switch to
