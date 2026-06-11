@@ -1,7 +1,8 @@
-type,carrier,policy_number,coverage,deductible,premium_annual_usd,renewal_date
-Homeowners,Allstate,AO-TX-4412-88231,Dwelling $485000; separate wind/hail rider,$2500 (wind/hail $4850),2150,2026-09-15
-Landlord (rental),Allstate,DP3-AZ-198-44017,Phoenix condo dwelling $210000; loss of rent,$2500,780,2026-09-20
-Auto,GEICO,GC-7741-22Q,2022 Honda CR-V + 2018 Subaru Outback full coverage,$500 collision/comp,1640,2026-07-01
-Term life (Alex),Principal,PL-LIFE-30441-A,$750000 face; 20-yr level term (2021),n/a,420,2041-04-01
-Term life (Jordan),Principal,PL-LIFE-30441-J,$500000 face; 20-yr level term (2021),n/a,300,2041-04-01
-Health PPO,Blue Cross Blue Shield,BCBS-TF-552901,PPO via TechFlow; $1500 ind/$3000 fam deductible; $4000/$8000 OOP max; HSA-eligible,$1500 individual / $3000 family,0,2027-01-01
+type,carrier,policy_number,coverage_usd,premium_amount,premium_period,renewal_date,notes
+Homeowner's,Texas Farm Bureau,HO-2024-8841,322000,2180,annual,2026-09-01,Aging HVAC may affect renewal quote
+Auto (2 vehicles),Geico,GA-44-8872901,300000,1140,semi-annual,2026-07-02,22 days away
+Health (HDHP + HSA),Frontera Bank plan (BCBS),EMP-FRB-22041,,0,employer-sponsored,,Jordan employee; Sam on own plan
+Term life — Jordan,Haven Life,TL-JOR-20240318,500000,31,monthly,2044-03-18,20-yr term; Maya + Sam as beneficiaries
+Term life — Sam,Haven Life,TL-SAM-20240318,350000,24,monthly,2044-03-18,20-yr term; Jordan + Maya as beneficiaries
+LTD — Jordan,Frontera Bank (employer),LTD-FRB-2024,54000,0,employer-sponsored,,60% of salary; 90-day elimination
+Umbrella,NONE,,0,0,,,GAP — $1M umbrella not yet added (~$180/yr)
