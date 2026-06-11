@@ -1,62 +1,31 @@
-# AI Ready Life: Wealth — Config
+# Wealth — Config
 
-> Fill in your details. Skills read this file to personalize their output.
-> Leave a field blank rather than guessing — the agent will flag it.
+> Skills read this file to personalize their output.
 
 ## Identity
-name: Alex Rivera
-net_worth_as_of: 2026-06-09
+name: Jordan Smith
+household_income_w2: $168,000 (Jordan $90,000 + Sam $78,000)
+monthly_savings: $850
 
-## Bank Accounts
-bank_checking_institution: Chase
-bank_checking_last4: 4471
-bank_savings_institution: Ally
-bank_savings_last4: 8820
-bank_savings_apy: 4.10%
+## Accounts
+checking: Frontera Bank — $4,820
+emergency_fund: Ally (4.10% APY) — $10,240
+taxable_brokerage: Fidelity — $6,180
+roth_ira: $9,840 (Jordan) + $6,420 (Sam)
+retirement: 401k $22,300 (4% match (Jordan contributes 6%)) + 403b $13,100
+hsa: $2,460
+college_529: $4,120 (Maya)
 
-## Brokerage Accounts
-# One per line: institution | type (taxable/Roth IRA/trad IRA/401k) | approx balance
-brokerage_accounts:
-  - Fidelity | taxable | $58,000
-  - Fidelity | Roth IRA | $41,000
-  - Fidelity | HSA | $7,200
+## Property & debt
+home: $322,000 (mortgage $311,200 @ 6.25%, Rocket Mortgage)
+auto_loan: 2021 Honda CR-V — $10,800 @ 5.9%
 
-## Retirement Accounts
-# One per line: institution | type | balance | employer_match
-retirement_accounts:
-  - Fidelity | 401k | $168,000 | 3% match (Alex contributes 6%)
+## International
+peru_account: BCP (Banco de Crédito del Perú) — $11,000 (FBAR-reportable)
+peru_property: 1/3 share of the family home in Lima (inherited 2019) — ~$35,000
+remittances: $400/mo to Jordan's parents (Rosa & Miguel)
 
-## Real Estate
-home_address: 4412 Bluebonnet Ln, Austin, TX 78745
-home_market_value: $485,000
-home_mortgage_balance: $451,800
-home_mortgage_rate: 6.25%
-home_mortgage_monthly: $3,180 PITI (P&I $2,510)
-home_mortgage_lender: Rocket Mortgage
-
-## Vehicle Loans
-# One per line: vehicle | balance | rate | monthly
-vehicle_loans:
-  - 2022 Honda CR-V | $14,200 | 5.9% | $322
-
-## Other Liabilities
-# One per line: type | balance | rate | monthly
-other_liabilities:
-  - Phoenix rental mortgage | $198,500 | 4.25% | $1,180 PITI
-
-## Investment Strategy
-investment_allocation_target: 75% equities / 20% bonds / 5% cash
-rebalance_frequency: quarterly, 5% band
-taxable_account_tax_lots_method: specific identification (lowest-gain / loss-harvest first)
-
-## Estate Documents
-estate_docs_location: home safe + Fidelity beneficiary portal
-will_exists: yes (2021, needs Maya guardianship update)
-trust_exists: no
-poa_exists: yes
-beneficiary_designations_reviewed: 2024
-
-## Goals
-monthly_savings_target: $1,800 ($1,500 brokerage + $300 529)
-emergency_fund_target_months: 6
-fire_target_number: $2,500,000
+## Strategy
+allocation_current: 80% equities / 13% bonds / 7% cash
+allocation_target: 75% equities / 20% bonds / 5% cash
+fire_number: $1,500,000

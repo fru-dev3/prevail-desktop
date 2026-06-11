@@ -4,4 +4,4 @@
 
 - [ ] Run a weekly review every Sunday — metric: `weekly_reviews_done`, target: 4/month
 - [ ] Keep the top 3 priorities visible every day
-- [ ] Zero dropped commitments
+- [ ] Zero dropped commitments across domains

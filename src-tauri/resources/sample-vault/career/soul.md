@@ -2,4 +2,4 @@
 
 > Why this domain exists — your north star here.
 
-Do work that compounds: skills that stay valuable, relationships that outlast any one job, and a trajectory you choose on purpose rather than drift into.
+Grow into leadership without losing the human touch — serve customers well, develop the team, and turn being bilingual and bicultural into a durable professional edge.

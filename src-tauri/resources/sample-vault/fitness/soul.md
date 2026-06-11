@@ -2,4 +2,4 @@
 
 > Why this domain exists — your north star here.
 
-Capability and longevity over aesthetics. Strength to carry your own life, cardio to enjoy it, and recovery treated as part of the training, not an afterthought.
+Train for capability and a long runway — consistency over intensity, and a goal on the calendar to keep it honest.

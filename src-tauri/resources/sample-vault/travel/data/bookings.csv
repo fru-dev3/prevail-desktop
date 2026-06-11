@@ -1,7 +1,0 @@
-type,item,date,status,cost_usd,confirmation
-flight,AUS-PHX roundtrip (Southwest),2026-07-16,booked,178,WN-7741X (Rapid Rewards eligible)
-hotel,Phoenix - 2 nights near condo,2026-07-16,booked,212,BON-55903
-car,Compact rental 2d,2026-07-16,booked,84,EZ-22817
-meals,Per diem 3 days,2026-07-16,planned,46,
-activity,Walkthrough with Sun Valley PM,2026-07-17,confirmed,0,property visit, not paid
-flight,Thanksgiving travel (family),2026-11-26,considering,0,drive vs fly TBD

@@ -2,4 +2,4 @@
 
 > Why this domain exists — your north star here.
 
-Stay ahead of every tax obligation, keep more of what you earn, and never scramble at the deadline. Track deductions year-round and keep clean records.
+Stay ahead of every obligation — federal and the cross-border pieces — keep clean records all year, and never scramble at the deadline.
