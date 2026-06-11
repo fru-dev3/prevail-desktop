@@ -4,6 +4,25 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.2] — 2026-06-10 · pack import flow + demo-first launch
+
+### Added
+
+- **Starter pack import triggers vault setup in demo mode.** Clicking Import on any starter pack while in demo mode now prompts you to set up your own vault — you pick a folder, the vault is initialized, and the pack is imported there in one flow. Importing has always been a signal of intent to keep something; now the UX matches that.
+
+### Changed
+
+- **Always starts in demo mode.** A fresh launch always enters demo, regardless of prior app state, unless you have previously switched to production with a real vault. This ensures every session begins with a consistent, working experience.
+- **`home` domain renamed to `homestead`.** The domain slug and display name for the household/property domain is now `homestead` everywhere: sample vault, starter packs, generators, and rubrics.
+- **Demo vault rebuilt with consistent Jordan Smith household.** The bundled sample vault now contains exactly 11 domains (chief, career, wealth, tax, health, fitness, insurance, homestead, travel, calendar, learning) all grounded in a single Jordan Smith persona — 29-year-old Senior Branch Manager, Frontera Bank, Austin TX. Net worth $133,980. Every domain has realistic data files, multi-turn chat threads, and cross-domain open items.
+- **All 7 starter packs now include `chief`, `fitness`, and `career`.** These domains were missing from every pack; they are now present so any imported pack gives a complete foundation.
+
+### Fixed
+
+- Domains imported via a starter pack in demo mode no longer silently disappear on relaunch (they are now always imported into a real production vault).
+
+---
+
 ## [0.7.0] — 2026-06-09 · demo-first onboarding
 
 ### Changed
