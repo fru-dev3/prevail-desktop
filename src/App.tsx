@@ -1961,6 +1961,21 @@ export default function App() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [vaultPath, checkReminders]);
+  // Refresh sidebar badge counts silently after any task write (no new
+  // notifications — just update the counts so checking a box clears the badge).
+  useEffect(() => {
+    if (isBrowser() || !vaultPath) return;
+    const refresh = async () => {
+      try {
+        const due = await invoke<{ domain: string }[]>("reminders_due_today", { vault: vaultPath });
+        const counts: Record<string, number> = {};
+        for (const t of due) counts[t.domain] = (counts[t.domain] ?? 0) + 1;
+        setDueTasks(counts);
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("prevail:tasks-changed", refresh);
+    return () => window.removeEventListener("prevail:tasks-changed", refresh);
+  }, [vaultPath]);
   // Onboarding flow — opt-in only, opened manually via "Set up domains".
   // It never auto-appears (the old auto-open raced the scan and popped over
   // a populated vault). The dismissed flag is retained so manual closes are
@@ -4179,7 +4194,10 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
   }, [vaultPath, domain, nonce]);
   async function persist(next: DomainTask[]) {
     setTasks(next);
-    try { await invoke("tasks_set", { vault: vaultPath, domain, tasks: next }); } catch (e) { console.error("tasks_set", e); }
+    try {
+      await invoke("tasks_set", { vault: vaultPath, domain, tasks: next });
+      window.dispatchEvent(new Event("prevail:tasks-changed"));
+    } catch (e) { console.error("tasks_set", e); }
   }
   if (tasks.length === 0 && !adding) {
     return (
