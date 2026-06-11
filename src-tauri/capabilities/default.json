@@ -18,6 +18,7 @@
     "autostart:allow-disable",
     "autostart:allow-is-enabled",
     "updater:default",
+    "notification:default",
     "process:allow-restart",
     "shell:default",
     {

@@ -1855,6 +1855,21 @@ export default function App() {
   // Refreshed when ingestion:artifact fires (any tier writes a file)
   // or when the domain list changes.
   const [domainStats, setDomainStats] = useState<Record<string, number>>({});
+  // Per-domain due-task counts for sidebar badges. Populated by
+  // reminders_check (fires notifications + returns list) on startup and
+  // every time the window gains focus. Desktop-only — no-op in browser.
+  const [dueTasks, setDueTasks] = useState<Record<string, number>>({});
+  const checkReminders = useCallback(async (vault: string) => {
+    if (isBrowser()) return;
+    try {
+      const due = await invoke<{ domain: string; text: string; due: string; overdue: boolean }[]>(
+        "reminders_check", { vault }
+      );
+      const counts: Record<string, number> = {};
+      for (const t of due) counts[t.domain] = (counts[t.domain] ?? 0) + 1;
+      setDueTasks(counts);
+    } catch { /* notification permission denied or vault not ready */ }
+  }, []);
   const domainsRef = useRef<Domain[]>([]);
   useEffect(() => { domainsRef.current = domains; }, [domains]);
   // Heal stale/unsupported model picks (e.g. gpt-5-codex → gpt-5.5) once on launch.
@@ -1937,6 +1952,15 @@ export default function App() {
     );
     setDomainStats(Object.fromEntries(results));
   }, []);
+  // Fire reminders_check once when the vault becomes known, then again on
+  // every window focus (catches a new day without a relaunch).
+  useEffect(() => {
+    if (isBrowser() || !vaultPath) return;
+    void checkReminders(vaultPath);
+    const onFocus = () => void checkReminders(vaultPath);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [vaultPath, checkReminders]);
   // Onboarding flow — opt-in only, opened manually via "Set up domains".
   // It never auto-appears (the old auto-open raced the scan and popped over
   // a populated vault). The dismissed flag is retained so manual closes are
@@ -2414,6 +2438,7 @@ export default function App() {
           runningDomains={runningDomains}
           finishedDomains={finishedDomainSet}
           domainStats={domainStats}
+          dueTasks={dueTasks}
           railWidth={domainRailWidth}
           onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
           onDomainsChanged={() => void refreshDomains()}
@@ -2669,6 +2694,7 @@ function Sidebar({
   runningDomains,
   finishedDomains,
   domainStats,
+  dueTasks,
   railWidth,
   onOpenOnboarding,
   onDomainsChanged,
@@ -2688,6 +2714,7 @@ function Sidebar({
   runningDomains: Set<string>;
   finishedDomains: Set<string>;
   domainStats: Record<string, number>;
+  dueTasks: Record<string, number>;
   railWidth: number;
   onOpenOnboarding: () => void;
   onDomainsChanged: () => void;
@@ -2916,8 +2943,8 @@ function Sidebar({
                       setSelectedDomain(d.name);
                       if (tab === "settings") setTab("chat");
                     }}
-                    title={titleCase(d.name)}
-                    className={`flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
+                    title={`${titleCase(d.name)}${(dueTasks[d.name] ?? 0) > 0 ? ` · ${dueTasks[d.name]} task${dueTasks[d.name] > 1 ? "s" : ""} due` : ""}`}
+                    className={`relative flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
                       active
                         ? "bg-accent-soft text-accent"
                         : "text-text-muted hover:bg-surface-warm hover:text-text-primary"
@@ -2927,6 +2954,9 @@ function Sidebar({
                       <span className="font-mono text-xs font-semibold">
                         {titleCase(d.name).charAt(0)}
                       </span>
+                    )}
+                    {(dueTasks[d.name] ?? 0) > 0 && (
+                      <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-warn" />
                     )}
                   </button>
                 </li>
@@ -3013,6 +3043,14 @@ function Sidebar({
                       title={`${domainStats[d.name]} imports`}
                     >
                       {domainStats[d.name]}
+                    </span>
+                  )}
+                  {(dueTasks[d.name] ?? 0) > 0 && (
+                    <span
+                      className="shrink-0 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-warn px-1 font-mono text-[9px] font-bold text-background"
+                      title={`${dueTasks[d.name]} task${dueTasks[d.name] > 1 ? "s" : ""} due`}
+                    >
+                      {dueTasks[d.name]}
                     </span>
                   )}
                   {runningDomains.has(d.name) ? (
