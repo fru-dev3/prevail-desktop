@@ -1886,7 +1886,7 @@ export default function App() {
         // the bundled resources/sample-vault and marks it demo. (F3 auto-demo.)
         const seedDemo = async () => {
           const path = await invoke<string>("import_sample_vault");
-          await invoke("engine_appmode_set", { mode: "demo" }).catch(() => {});
+          await invoke("engine_appmode_set", { mode: "demo", vault: path }).catch(() => {});
           await invoke("engine_appmode_mark_demo", { vault: path }).catch(() => {});
           setVaultPath(path);
           lsSet(LS.vault, path);
@@ -2337,7 +2337,7 @@ export default function App() {
       // Loading the sample vault means you're exploring — mark demo mode so the
       // Settings banner offers the switch to production. (F3) Tag the vault as a
       // demo sandbox so the switch-to-production flow can safely clear it later.
-      await invoke("engine_appmode_set", { mode: "demo" }).catch(() => {});
+      await invoke("engine_appmode_set", { mode: "demo", vault: path }).catch(() => {});
       await invoke("engine_appmode_mark_demo", { vault: path }).catch(() => {});
       setVaultPath(path);
       lsSet(LS.vault, path);
