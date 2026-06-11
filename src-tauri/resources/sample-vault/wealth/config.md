@@ -17,7 +17,7 @@ hsa: $2,460
 college_529: $4,120 (Maya)
 
 ## Property & debt
-home: $322,000 (mortgage $311,200 @ 6.25%, Rocket Mortgage)
+homestead: $322,000 (mortgage $311,200 @ 6.25%, Rocket Mortgage)
 auto_loan: 2021 Honda CR-V — $10,800 @ 5.9%
 
 ## International
