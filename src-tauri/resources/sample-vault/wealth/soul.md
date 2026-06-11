@@ -2,4 +2,4 @@
 
 > Why this domain exists — your north star here.
 
-Build durable, generational financial freedom — freedom over status, sleep-at-night risk, never forced to sell. Live below your means, invest consistently, and resist lifestyle creep.
+Build durable financial freedom for the family — live below our means, invest steadily, support the people we love (here and in Lima), and never be forced to sell.
