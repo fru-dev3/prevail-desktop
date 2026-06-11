@@ -15,7 +15,6 @@ mod bunker;
 mod distill;
 mod engine;
 mod ingestion;
-mod reminders;
 mod surface;
 mod tasks;
 mod telegram_bridge;
@@ -3430,7 +3429,6 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_notification::init())
         // Start-on-boot (LaunchAgent). The frontend toggles it via the
         // autostart plugin's enable/disable in Settings → General.
         .plugin(tauri_plugin_autostart::init(
@@ -3553,8 +3551,6 @@ pub fn run() {
             tasks::tasks_read,
             tasks::tasks_set,
             tasks::tasks_add,
-            reminders::reminders_check,
-            reminders::reminders_due_today,
             benchmark_questions,
             benchmark_save_question,
             benchmark_delete_question,
