@@ -72,7 +72,7 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.7.0";
+const APP_VERSION = "0.7.1";
 
 // Canonical on/off toggle. Track 36×20px, thumb 16×16px, slides
 // 18px. Every switch in the app routes through this so we never
@@ -3218,11 +3218,26 @@ function Sidebar({
         </button>
       </div>
       {!collapsed && (
-        <div className="shrink-0 border-t border-border-subtle px-3 py-2">
-          <p className="text-[10px] leading-snug text-text-muted">
-            Alpha · experimental build for testing. Provided as-is, with no warranty; use at your own risk. Found something or have an idea?{" "}
-            <a href="https://github.com/fru-dev3/prevail-desktop/issues/new" target="_blank" rel="noreferrer" className="text-accent hover:underline">Share feedback</a>.
-          </p>
+        <div className="shrink-0 border-t border-border-subtle p-2.5">
+          <div className="rounded-lg border border-border-subtle/70 bg-surface-warm/40 p-2.5">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-accent ring-1 ring-accent-border/40">
+                <span className="text-[7px] leading-none">◆</span>Alpha
+              </span>
+              <span className="font-mono text-[10px] text-text-muted">experimental build</span>
+            </div>
+            <p className="mt-1.5 text-[10px] leading-snug text-text-muted">
+              Provided as-is, no warranty — use at your own risk.
+            </p>
+            <a
+              href="https://github.com/fru-dev3/prevail-desktop/issues/new"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border-subtle bg-surface px-2 py-1.5 font-mono text-[10px] font-medium text-text-secondary transition-colors hover:border-accent-border hover:bg-accent-soft hover:text-accent"
+            >
+              <MessageSquare className="h-3 w-3" /> Share feedback
+            </a>
+          </div>
         </div>
       )}
     </aside>
@@ -4496,7 +4511,7 @@ function DomainHome({
           UI above now hosts them under the Chat tab. Keep an empty
           render for backward compat. */}
       <div className="hidden">
-        <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-2">
+        <div className="grid w-full grid-cols-1 gap-2">
           {buildQuickActions(domain).map((q) => (
             <button
               key={q.label}
@@ -4804,8 +4819,8 @@ function DomainPrefsPanel({
         </section>
       )}
 
-      {/* Framework + Lens — two columns side-by-side */}
-      <section className="mb-6 grid gap-4 sm:grid-cols-2">
+      {/* Framework + Lens — stacked full-width, one per row */}
+      <section className="mb-6 grid grid-cols-1 gap-4">
         <PrefPickerColumn
           glyph="◆"
           title="Framework"
@@ -5897,7 +5912,7 @@ function UsageDashboard({
   const dayMax = Math.max(1, ...days.map((d) => d.turns));
 
   return (
-    <div className="mt-3 w-full max-w-5xl">
+    <div className="mt-2.5 w-full max-w-5xl">
       <div className="mb-1.5 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
         <Activity className="h-3.5 w-3.5" />
         Usage
@@ -5906,7 +5921,7 @@ function UsageDashboard({
       {/* hero totals */}
       <div className="grid grid-cols-3 gap-2.5">
         {stats.map((s) => (
-          <div key={s.label} className="rounded-xl border border-border-subtle bg-surface px-3 py-2">
+          <div key={s.label} className="rounded-xl border border-border-subtle bg-surface px-3 py-1.5">
             <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
               <s.icon className="h-3.5 w-3.5" />
               {s.label}
@@ -5920,11 +5935,11 @@ function UsageDashboard({
 
       {/* per-day activity strip */}
       {days.length > 1 && (
-        <div className="mt-2 rounded-xl border border-border-subtle bg-surface px-3 py-2">
-          <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
+        <div className="mt-2 rounded-xl border border-border-subtle bg-surface px-3 py-1.5">
+          <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
             Activity · last {days.length} day{days.length === 1 ? "" : "s"}
           </div>
-          <div className="flex h-8 items-end gap-1">
+          <div className="flex h-7 items-end gap-1">
             {days.map((d) => (
               <div
                 key={d.key}
@@ -7118,9 +7133,9 @@ function ChatPanel({
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 && !domain && (
-          <div className="flex h-full flex-col items-center px-6 py-3">
-            <PrevailLogo size={34} src="/logo-512.png" />
-            <h2 className="mt-2 font-display text-xl font-semibold tracking-tight">
+          <div className="flex h-full flex-col items-center px-6 py-2">
+            <PrevailLogo size={28} src="/logo-512.png" />
+            <h2 className="mt-1.5 font-display text-lg font-semibold tracking-tight">
               What should we work on?
             </h2>
             <p className="mt-0.5 max-w-md text-center text-[13px] text-text-muted">
@@ -7171,7 +7186,7 @@ function ChatPanel({
               });
               const featured = ranked.slice(0, 4);
               return (
-              <div className="mt-3 w-full max-w-5xl">
+              <div className="mt-2.5 w-full max-w-5xl">
                 <div className="mb-1.5 flex items-center justify-between">
                   <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
                     Jump to · {featured.length} of {domains.length}
@@ -10092,7 +10107,7 @@ function BenchmarkPanel({
     <div className="flex h-full flex-col">
       {/* Sub-nav — a segmented control, deliberately a different shape from
           the underline top tab bar so the two rows don't read as twins. */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-3">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pb-3 pt-1">
         {/* THE navigation — every destination, one level, one bar. */}
         <div className="inline-flex items-center gap-0.5 rounded-xl border border-border-subtle bg-surface-warm/60 p-1">
           {([
@@ -10105,13 +10120,13 @@ function BenchmarkPanel({
             <button
               key={id}
               onClick={() => setView(id)}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
                 view === id
                   ? "bg-surface text-accent shadow-sm ring-1 ring-black/5"
                   : "text-text-muted hover:text-text-secondary"
               }`}
             >
-              <Icon className="h-3.5 w-3.5" />
+              <Icon className="h-3 w-3" />
               {label}
             </button>
           ))}
@@ -10128,13 +10143,13 @@ function BenchmarkPanel({
                 key={id}
                 onClick={() => setMode(id)}
                 title={id === "single" ? "Compare models head-to-head" : "Run the multi-model Council"}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
                   mode === id
                     ? "bg-surface text-accent shadow-sm ring-1 ring-black/5"
                     : "text-text-muted hover:text-text-secondary"
                 }`}
               >
-                <Icon className="h-3.5 w-3.5" />
+                <Icon className="h-3 w-3" />
                 {label}
               </button>
             ))}
@@ -10144,7 +10159,7 @@ function BenchmarkPanel({
           <select
             value={domainFilter}
             onChange={(e) => setDomainFilter(e.target.value)}
-            className="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] text-text-secondary"
+            className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary"
           >
             <option value="all">all domains</option>
             {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
@@ -10190,6 +10205,8 @@ function BenchmarkPanel({
             finishedBatch={finishedBatch}
             onViewBatch={() => { setView("history"); setFinishedBatch(null); }}
             onDismissBanner={() => setFinishedBatch(null)}
+            onCrumbHome={() => setView("run")}
+            onClearDomain={() => setDomainFilter("all")}
           />
         )}
         {view === "questions" && (
@@ -10215,18 +10232,18 @@ function BenchCrumbs({
   meta?: React.ReactNode;
 }) {
   return (
-    <nav className="mb-4 flex items-center gap-1.5 font-mono text-[11px] text-text-muted">
+    <nav className="mb-4 flex items-center gap-2 font-mono text-[17px] text-text-muted">
       {items.map((it, i) => (
         <Fragment key={`${it.label}-${i}`}>
-          {i > 0 && <ChevronRight className="h-3 w-3 shrink-0" />}
+          {i > 0 && <ChevronRight className="h-4 w-4 shrink-0" />}
           {it.onClick ? (
-            <button onClick={it.onClick} className="max-w-[260px] truncate hover:text-accent">{it.label}</button>
+            <button onClick={it.onClick} className="max-w-[320px] truncate hover:text-accent">{it.label}</button>
           ) : (
-            <span className={`max-w-[260px] truncate ${i === items.length - 1 ? "font-semibold text-text-primary" : ""}`}>{it.label}</span>
+            <span className={`max-w-[320px] truncate ${i === items.length - 1 ? "font-semibold text-text-primary" : ""}`}>{it.label}</span>
           )}
         </Fragment>
       ))}
-      {meta != null && <span className="ml-auto shrink-0 text-text-muted">{meta}</span>}
+      {meta != null && <span className="ml-auto shrink-0 text-xs text-text-muted">{meta}</span>}
     </nav>
   );
 }
@@ -10450,7 +10467,7 @@ function BenchRunConfig({
                     <span className="ml-auto font-mono text-[10px] text-text-muted">{models.length}</span>
                   </button>
                   {!collapsed && (
-                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="ml-[7px] grid grid-cols-1 gap-1.5 border-l border-border-subtle/70 pl-4">
                       {models.map((m) => {
                         const on = selModels.has(`${c.id}${MODEL_SEP}${m.id}`);
                         return (
@@ -10515,27 +10532,39 @@ function BenchRunConfig({
               </button>
             );
           };
+          const selectedLabel = scope.size === 0
+            ? "All domains"
+            : (withQ.filter((d) => scope.has(d)).map(titleCase).join(", ") || `${scope.size} selected`);
           return (
-            <div className="space-y-2">
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  onClick={() => scope.forEach((d) => toggleScope(d))}
-                  className={`rounded-md border px-2.5 py-1 font-mono text-[11px] ${scope.size === 0 ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:bg-surface-warm"}`}
-                >
-                  All
-                </button>
-                {withQ.map(pill)}
+            // One collapsible list (collapsed by default) so the scope reads as a
+            // single quiet line — the full domain set only appears on expand, so
+            // the page isn't a wall of chips.
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md py-0.5 font-mono text-[11px] text-text-secondary transition-colors hover:text-accent">
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-muted transition-transform group-open:rotate-90" />
+                <span className="truncate">{selectedLabel}</span>
+              </summary>
+              <div className="ml-[7px] mt-2 space-y-2 border-l border-border-subtle/70 pl-4">
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => scope.forEach((d) => toggleScope(d))}
+                    className={`rounded-md border px-2.5 py-1 font-mono text-[11px] ${scope.size === 0 ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:bg-surface-warm"}`}
+                  >
+                    All
+                  </button>
+                  {withQ.map(pill)}
+                </div>
+                {withoutQ.length > 0 && (
+                  <details className="group/sub">
+                    <summary className="cursor-pointer list-none font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-text-secondary">
+                      <ChevronRight className="mr-1 inline h-3 w-3 transition-transform group-open/sub:rotate-90" />
+                      {withoutQ.length} domain{withoutQ.length === 1 ? "" : "s"} without questions
+                    </summary>
+                    <div className="mt-2 flex flex-wrap gap-1.5">{withoutQ.map(pill)}</div>
+                  </details>
+                )}
               </div>
-              {withoutQ.length > 0 && (
-                <details className="group">
-                  <summary className="cursor-pointer list-none font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-text-secondary">
-                    <ChevronRight className="mr-1 inline h-3 w-3 transition-transform group-open:rotate-90" />
-                    {withoutQ.length} domain{withoutQ.length === 1 ? "" : "s"} without questions
-                  </summary>
-                  <div className="mt-2 flex flex-wrap gap-1.5">{withoutQ.map(pill)}</div>
-                </details>
-              )}
-            </div>
+            </details>
           );
         })()}
       </section>
@@ -10562,7 +10591,7 @@ function BenchRunConfig({
 
 function BenchResults({
   view, domainFilter, runs, matrix, allDomains, vaultPath, initialModel, onChanged, onRerun, onRerunBatch,
-  finishedBatch, onViewBatch, onDismissBanner,
+  finishedBatch, onViewBatch, onDismissBanner, onCrumbHome, onClearDomain,
 }: {
   view: "board" | "history" | "matrix";
   domainFilter: string;
@@ -10577,6 +10606,8 @@ function BenchResults({
   finishedBatch?: string | null;
   onViewBatch?: () => void;
   onDismissBanner?: () => void;
+  onCrumbHome?: () => void;
+  onClearDomain?: () => void;
 }) {
   const resultsView = view;
   const [selected, setSelected] = useState<RunDetail | null>(null);
@@ -10822,8 +10853,13 @@ function BenchResults({
     <div className="w-full px-8 py-5">
       <BenchCrumbs
         items={[
-          { label: "Benchmark" },
-          { label: resultsView === "history" ? "History" : resultsView === "matrix" ? "Model × domain" : "Leaderboard" },
+          { label: "Benchmark", onClick: onCrumbHome },
+          {
+            label: resultsView === "history" ? "History" : resultsView === "matrix" ? "Model × domain" : "Leaderboard",
+            // Clickable only when a domain filter pushes it off the tail — then
+            // it walks back to the same view across all domains.
+            onClick: domainFilter !== "all" ? onClearDomain : undefined,
+          },
           ...(domainFilter !== "all" ? [{ label: titleCase(domainFilter) }] : []),
         ]}
         meta={
@@ -10862,7 +10898,7 @@ function BenchResults({
             </div>
           )}
           {modelAgg.length > 1 && (
-            <div className={`mb-5 grid gap-3 ${modelAgg.length >= 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+            <div className="mb-5 grid grid-cols-1 gap-3">
               {modelAgg.slice(0, 3).map((m, i) => (
                 <button
                   key={m.key}
@@ -12002,7 +12038,7 @@ function settingsHeaderIcon(title: string): typeof Folder {
 function SettingsHeader({ title, subtitle, icon }: { title: string; subtitle?: string; icon?: typeof Folder }) {
   const Icon = icon ?? settingsHeaderIcon(title);
   return (
-    <div className="mb-8 border-b border-border-subtle pb-5">
+    <div className="mb-4 border-b border-border-subtle pb-4">
       <div className="flex items-start gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent ring-1 ring-accent-border/50">
           <Icon className="h-5 w-5" />
@@ -12155,7 +12191,7 @@ function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; o
       {/* Live status — visual tiles for what's blocked vs open. */}
       <div className="mt-5">
         <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Live status</div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3">
           {tiles.map((t) => (
             <div
               key={t.label}
@@ -12215,7 +12251,7 @@ function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; o
             </div>
             <div className="px-5 py-4">
               <p className="text-sm text-text-secondary">Turning this off enables:</p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="mt-3 grid grid-cols-1 gap-2">
                 {([
                   [Cloud, "Cloud AI providers"],
                   [Globe, "Internet access"],
@@ -13646,7 +13682,7 @@ function FrameworksSection() {
         </div>
 
         {/* What each control does. */}
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="mt-3 grid grid-cols-1 gap-3">
           <div className="rounded-xl border border-border-subtle bg-background p-3.5">
             <div className="flex items-center gap-2"><span className="text-accent">◆</span><span className="text-sm font-semibold text-text-primary">Framework</span></div>
             <p className="mt-1 text-[13px] leading-snug text-text-secondary">Shapes the structure. BLUF leads with the answer; SCQA walks situation to recommendation.</p>
@@ -14686,7 +14722,7 @@ function IngestionBrowserRunner() {
           })()}
         </>
       )}
-      <div className="mt-4 grid grid-cols-2 gap-3">
+      <div className="mt-4 grid grid-cols-1 gap-3">
         <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="domain (e.g. wealth)" className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none" />
         <input value={portal} onChange={(e) => setPortal(e.target.value)} placeholder="portal slug (e.g. fidelity)" className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none" />
         <input value={startUrl} onChange={(e) => setStartUrl(e.target.value)} placeholder="https://login.example.com" className="col-span-2 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-xs focus:border-accent-border focus:outline-none" />
@@ -15220,7 +15256,7 @@ function AppearanceSection({ appearance }: { appearance: ReturnType<typeof useAp
         <p className="mb-4 text-sm text-text-secondary">
           Desktop palettes. The selected mode is applied on top.
         </p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3">
           {PALETTES.map((p) => (
             <PaletteCard
               key={p.id}
@@ -15631,7 +15667,7 @@ function TelegramCard() {
           <p className="mb-3 text-[11px] text-text-muted">
             Messages you send to the bot from Telegram get routed to the CLI below and the reply is pushed back to the same chat.
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <label className="block">
               <div className="text-[10px] uppercase tracking-wider text-text-muted">Route to CLI</div>
               <select
