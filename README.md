@@ -9,8 +9,14 @@ terminal required.
 > **Local-first.** Your vault, chats, and the durable *intent ledger* stay on
 > your machine. Nothing leaves unless you turn on an integration.
 
-## What it does (v0.4)
+## What it does (v0.7)
 
+- **Demo-first.** Every launch starts in demo mode with a pre-populated Jordan Smith
+  household vault (11 domains, realistic data and chat history). Explore freely, then
+  switch to your own vault when you're ready — one click in Settings → Demo Mode.
+- **Starter packs.** Import a ready-made domain set for your situation (Family, General,
+  High-Income, Freelancer, Creator, Small Business Owner, Student). In demo mode,
+  importing a pack walks you through vault setup first so nothing gets lost.
 - **Domains** — each folder with `soul.md`/`state.md` becomes a life-domain; chat
   is grounded in that domain's real state and history.
 - **Self-learning** — every chat is captured as an *intent* the moment you send
@@ -32,7 +38,7 @@ terminal required.
 - macOS 13+ (Apple Silicon).
 - Optional: `claude` / `codex` / `agy` / `ollama` on `$PATH`, and/or an OpenRouter
   key (Settings → Providers). The bundled engine handles the rest.
-- A vault folder, or load the bundled sample on first launch.
+- No setup needed — launch and explore the demo, then pick a folder for your own vault.
 
 ## Install
 Download the signed, **notarized** `.dmg` from
