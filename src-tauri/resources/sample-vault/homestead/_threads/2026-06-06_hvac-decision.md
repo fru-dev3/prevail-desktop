@@ -2,7 +2,7 @@
 
 title: Replace the HVAC now or wait?
 
-domain: home
+domain: homestead
 
 created: 2026-06-06T19:00:00Z
 
