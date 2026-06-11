@@ -1892,26 +1892,27 @@ export default function App() {
           lsSet(LS.vault, path);
           setSelectedDomain(null);
         };
-        // 1) A vault remembered in localStorage — but ONLY trust it if it still
-        //    exists on disk (a deleted demo/real vault must not strand the app
-        //    on a "path does not exist" screen).
-        if (vaultPath) {
-          const ok = await invoke<boolean>("vault_exists", { path: vaultPath }).catch(() => false);
-          if (ok) return;
-          // Stale pointer (the remembered vault is gone). Clear it AND drop the
-          // React state to null so the re-seed below, which may land on the same
-          // path, still registers as a change and triggers a fresh scan instead
-          // of leaving the sidebar stuck on "vault path does not exist".
-          lsSet(LS.vault, "");
-          setVaultPath(null);
+        // Check the persisted app mode. Production mode with a live vault is
+        // the only case where we skip demo — the user explicitly set it up.
+        // Demo mode (or no mode yet) always re-seeds so the user always lands
+        // in the populated sandbox with the latest bundled sample data.
+        const mode = await invoke<{ mode: "demo" | "production" }>("engine_appmode_get").catch(() => null);
+        if (mode?.mode === "production") {
+          // User has switched to their own vault — respect it.
+          if (vaultPath) {
+            const ok = await invoke<boolean>("vault_exists", { path: vaultPath }).catch(() => false);
+            if (ok) return;
+            lsSet(LS.vault, "");
+            setVaultPath(null);
+          }
+          const bp = await invoke<string | null>("bootstrap_vault");
+          if (bp) {
+            const ok = await invoke<boolean>("vault_exists", { path: bp }).catch(() => false);
+            if (ok) { setVaultPath(bp); lsSet(LS.vault, bp); return; }
+          }
         }
-        // 2) A vault remembered on disk (bootstrap) — same existence guard.
-        const bp = await invoke<string | null>("bootstrap_vault");
-        if (bp) {
-          const ok = await invoke<boolean>("vault_exists", { path: bp }).catch(() => false);
-          if (ok) { setVaultPath(bp); lsSet(LS.vault, bp); return; }
-        }
-        // 3) Nothing valid — seed the demo sandbox so the app is never empty.
+        // Demo mode (default) — always re-seed from the bundled sample vault
+        // so every launch starts with fresh, up-to-date sample data.
         await seedDemo();
       } catch { /* fall through to the VaultWizard if seeding fails */ }
     })();
@@ -5912,7 +5913,7 @@ function UsageDashboard({
   const dayMax = Math.max(1, ...days.map((d) => d.turns));
 
   return (
-    <div className="mt-2.5 w-full max-w-5xl">
+    <div className="mt-3 w-full max-w-5xl">
       <div className="mb-1.5 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
         <Activity className="h-3.5 w-3.5" />
         Usage
@@ -5921,7 +5922,7 @@ function UsageDashboard({
       {/* hero totals */}
       <div className="grid grid-cols-3 gap-2.5">
         {stats.map((s) => (
-          <div key={s.label} className="rounded-xl border border-border-subtle bg-surface px-3 py-1.5">
+          <div key={s.label} className="rounded-xl border border-border-subtle bg-surface px-3 py-2">
             <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
               <s.icon className="h-3.5 w-3.5" />
               {s.label}
@@ -5935,11 +5936,11 @@ function UsageDashboard({
 
       {/* per-day activity strip */}
       {days.length > 1 && (
-        <div className="mt-2 rounded-xl border border-border-subtle bg-surface px-3 py-1.5">
-          <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
+        <div className="mt-2 rounded-xl border border-border-subtle bg-surface px-3 py-2">
+          <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
             Activity · last {days.length} day{days.length === 1 ? "" : "s"}
           </div>
-          <div className="flex h-7 items-end gap-1">
+          <div className="flex h-8 items-end gap-1">
             {days.map((d) => (
               <div
                 key={d.key}
@@ -7133,12 +7134,12 @@ function ChatPanel({
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 && !domain && (
-          <div className="flex h-full flex-col items-center px-6 py-2">
-            <PrevailLogo size={28} src="/logo-512.png" />
-            <h2 className="mt-1.5 font-display text-lg font-semibold tracking-tight">
+          <div className="flex h-full flex-col items-center justify-center px-6 py-8">
+            <PrevailLogo size={64} src="/logo-512.png" />
+            <h2 className="mt-6 font-display text-5xl font-bold tracking-tight">
               What should we work on?
             </h2>
-            <p className="mt-0.5 max-w-md text-center text-[13px] text-text-muted">
+            <p className="mt-3 max-w-lg text-center text-lg text-text-muted">
               Your private AI that learns you and gets sharper every time you use it.
             </p>
             {lifeReadiness && lifeReadiness.life_readiness !== null && (
@@ -7186,14 +7187,14 @@ function ChatPanel({
               });
               const featured = ranked.slice(0, 4);
               return (
-              <div className="mt-2.5 w-full max-w-5xl">
+              <div className="mt-10 w-full max-w-5xl">
                 <div className="mb-1.5 flex items-center justify-between">
                   <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
                     Jump to · {featured.length} of {domains.length}
                   </div>
                   <span className="font-mono text-[10px] text-text-muted">more in sidebar</span>
                 </div>
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {featured.map((d, i) => {
                     const Icon = DOMAIN_ICONS[d.name];
                     const running = runningDomains.has(d.name);
@@ -7207,7 +7208,7 @@ function ChatPanel({
                         transition={{ delay: 0.04 * i, type: "spring", stiffness: 140, damping: 18 }}
                         whileHover={{ y: -3 }}
                         whileTap={{ scale: 0.99 }}
-                        className="group relative flex h-[84px] flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface p-3 text-left transition-all duration-200 hover:border-border hover:shadow-[0_10px_34px_-12px_rgba(0,0,0,0.18)]"
+                        className="group relative flex h-[60px] flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface p-3 text-left transition-all duration-200 hover:border-border hover:shadow-[0_10px_34px_-12px_rgba(0,0,0,0.18)]"
                       >
                         {/* oversized watermark glyph — editorial fill, no text clutter */}
                         {Icon && (
@@ -7257,9 +7258,6 @@ function ChatPanel({
                             </div>
                             <span className="ml-auto h-px w-6 shrink-0 self-center rounded-full transition-all duration-300 group-hover:w-10" style={{ background: color }} />
                           </div>
-                          <p className="mt-0.5 line-clamp-1 text-xs leading-snug text-text-secondary">
-                            {domainBlurb(d.name)}
-                          </p>
                         </div>
                       </motion.button>
                     );
@@ -7276,8 +7274,6 @@ function ChatPanel({
                 </p>
               </div>
             )}
-
-            <UsageDashboard vault={vaultPath} nonce={chatViewNonce} hideWhenEmpty />
           </div>
         )}
         {domain && domainTab === "chat" && messages.length === 0 && (
