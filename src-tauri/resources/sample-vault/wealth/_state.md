@@ -22,7 +22,7 @@ Two incomes ($168,000 W2), a starter house in Austin, and the early innings of i
 The summer's main decision is the HVAC ($6,850). The emergency fund ($10,240) can float it without touching investments, so it's replace-now versus wait — not whether it's affordable. Replacing the 2016 unit before peak Texas summer beats an emergency failure in July.
 
 ## Open Items
-- [ ] Replace the 2016 HVAC ($6,850) before summer _(also: home, insurance)_
+- [ ] Replace the 2016 HVAC ($6,850) before summer _(also: homestead, insurance)_
 - [ ] RSU vest 2026-08-15 ($6,180 gross) _(also: career, tax)_
 - [ ] BCP foreign account ($11,000) → FBAR filing required _(also: tax)_
 - [ ] Maya (3): 529, child tax credit, term-life beneficiary, preschool recital Sat _(also: tax, insurance, calendar)_
