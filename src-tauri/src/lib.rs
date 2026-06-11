@@ -3224,18 +3224,6 @@ pub struct BenchmarkRunArgs {
     pub council: Option<bool>,
 }
 
-fn resolve_prevail_bin() -> String {
-    // Prefer ~/.local/bin/prevail (the install script's target),
-    // fall back to whatever's first on PATH.
-    if let Ok(home) = std::env::var("HOME") {
-        let local = format!("{home}/.local/bin/prevail");
-        if Path::new(&local).exists() {
-            return local;
-        }
-    }
-    "prevail".to_string()
-}
-
 async fn spawn_prevail_streaming(
     app: tauri::AppHandle,
     session: String,
@@ -3245,7 +3233,12 @@ async fn spawn_prevail_streaming(
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command as TokioCommand;
 
-    let bin = resolve_prevail_bin();
+    // Use the canonical sidecar-aware resolver (engine::resolve_prevail_bin):
+    // bundled `Contents/MacOS/prevail` first, so a fresh DMG install works
+    // with no separately-installed CLI. The old local duplicate only checked
+    // ~/.local/bin and fell back to a bare PATH lookup, which is why the
+    // benchmark failed with `spawn prevail failed` on a clean install.
+    let bin = engine::resolve_prevail_bin();
     let (combined_path, user, logname) = build_cli_env();
 
     let mut child = TokioCommand::new(&bin)
