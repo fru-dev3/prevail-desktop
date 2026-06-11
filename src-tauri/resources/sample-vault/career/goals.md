@@ -1,6 +1,7 @@
-# Goals
+# Career — Goals
 
-- Ship one portfolio-worthy project per quarter
-- Have 2 mentoring conversations per month
-- Keep a running brag doc for reviews
-- Stay interview-ready even when not looking
+> Objectives and the metric each one is measured by.
+
+- [ ] Earn the Certified Branch Manager (CBM) credential this year — metric: `cbm_done`, target: yes
+- [ ] Hit the branch's deposit-growth target — metric: `deposit_growth`, target: 0.08
+- [ ] Be ready for the Area Manager conversation by the July review

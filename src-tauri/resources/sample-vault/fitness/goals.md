@@ -1,6 +1,7 @@
-# Goals
+# Fitness — Goals
 
-- Run a sub-50 10K by fall
-- Strength train 3x/week, no streak-chasing
-- Sleep 7.5h+ on training nights
-- Protect knees: mobility before every run
+> Objectives and the metric each one is measured by.
+
+- [ ] Run the Austin half-marathon in November — metric: `half_marathon_done`, target: yes
+- [ ] Train 4 sessions a week — metric: `sessions_per_week`, target: 4
+- [ ] Bring resting HR under 55

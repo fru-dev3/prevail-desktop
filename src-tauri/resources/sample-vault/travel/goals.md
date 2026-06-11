@@ -1,6 +1,7 @@
-# Goals
+# Travel — Goals
 
-- Take 3 meaningful trips this year, at least one international
-- Plan every trip against a real budget, not a guess
-- Keep a running someday list so inspiration is never lost
-- Use points deliberately for flights and hotels
+> Objectives and the metric each one is measured by.
+
+- [ ] Take the December Lima trip — metric: `lima_trip_done`, target: yes
+- [ ] Keep travel inside the annual budget — metric: `travel_on_budget`, target: yes
+- [ ] Try one new place a year
