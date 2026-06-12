@@ -4,6 +4,23 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.11] — 2026-06-12 · agent-first, backups, public benchmark
+
+### Added
+
+- **Scheduled vault backups + restore points.** A backup daemon (daily/weekly/monthly, pruned) plus automatic pre-event snapshots before encryption, decryption, and the demo->production switch; a Restore points list with one-click revert (snapshots current state first). Fixes a real backup/restore round-trip bug in the engine.
+- **Agent-first MCP.** The MCP page hands copy-paste configs per client (Claude Code, Claude Desktop, Codex, Gemini CLI) with the engine path baked in, plus a Test handshake. MCP chats now append intents, so driving Prevail headlessly feeds the same self-learning loop as the desktop.
+- **Telegram voice notes** are transcribed (local whisper, else OpenRouter) and processed like text, replying with "Heard: …".
+- **WebUI mirrors the desktop**: pinned domains, model picks, and per-domain toggles sync via a backend prefs blob; real favicon.
+- **Public Prevail Benchmark foundation**: 33 grounded questions across all 11 domains, a `bench export-results` matrix command, and a live website board (leaderboard + domains×models heatmap).
+
+### Changed / Fixed
+
+- **Demo↔production round-trip** with remembered vault paths (no folder re-pick, no re-onboarding after a starter-pack import); the Vault page shows both locations with a production danger zone.
+- **About page** compacted; one-click in-app updater; the confusing prerelease toggle removed.
+- **Run diagnostics** is now a real health check (Engine, Vault, Agents, Network, Updates, External access) with pass/fail verdicts and a copyable report.
+- **Memory & Daemons** pages cross-link to resolve their overlap.
+
 ## [0.7.10] — 2026-06-12 · the big testing sweep: 30+ fixes from live use
 
 ### Fixed
