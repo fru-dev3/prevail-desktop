@@ -1,13 +1,48 @@
-# Prevail Desktop
+<div align="center">
+
+<img src="docs/screenshots/icon.png" alt="Prevail" width="84" />
+
+# Prevail
+
+**Your private AI that learns you and gets sharper every time you use it.**
 
 A local-first **life-OS** for macOS — a native cockpit that runs AI per
 life-domain (wealth, health, tax, career…), grounded in a local markdown vault.
-Tauri 2 + React 19 + Tailwind 4, with a bundled engine (the
-[Prevail CLI](https://github.com/fru-dev3/prevail-cli)) — same vault format, no
-terminal required.
+No terminal required.
+
+<p>
+  <a href="https://github.com/fru-dev3/prevail-desktop/releases/latest/download/Prevail-mac-arm64.dmg"><img src="https://img.shields.io/badge/Download-Prevail%20for%20macOS-1f6f5c?style=for-the-badge&logo=apple&logoColor=white" alt="Download Prevail for macOS" /></a>
+</p>
+
+<p>
+  <a href="https://github.com/fru-dev3/prevail-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/fru-dev3/prevail-desktop?label=latest&color=1f6f5c" alt="Latest release" /></a>
+  <img src="https://img.shields.io/badge/macOS-13%2B%20·%20Apple%20Silicon-111111?logo=apple&logoColor=white" alt="macOS 13+ Apple Silicon" />
+  <img src="https://img.shields.io/badge/signed%20%26%20notarized-✓-1f6f5c" alt="Signed & notarized" />
+  <img src="https://img.shields.io/badge/license-MIT-555" alt="MIT License" />
+</p>
+
+**[⤓ Download the latest `.dmg`](https://github.com/fru-dev3/prevail-desktop/releases/latest/download/Prevail-mac-arm64.dmg)** &nbsp;·&nbsp; [prevail.sh](https://prevail.sh) &nbsp;·&nbsp; [all releases](https://github.com/fru-dev3/prevail-desktop/releases)
+
+<br />
+
+<img src="docs/screenshots/home.png" alt="Prevail — domain-grounded AI cockpit" width="900" />
+
+</div>
 
 > **Local-first.** Your vault, chats, and the durable *intent ledger* stay on
-> your machine. Nothing leaves unless you turn on an integration.
+> your machine. Nothing leaves unless you turn on an integration. Tauri 2 +
+> React 19 + Tailwind 4, with a bundled engine (the
+> [Prevail CLI](https://github.com/fru-dev3/prevail-cli)) — same vault format.
+
+## Screenshots
+
+<div align="center">
+
+| Domain-grounded chat | Every model, one cockpit |
+| :---: | :---: |
+| <img src="docs/screenshots/home.png" alt="Home — what should we work on" width="430" /> | <img src="docs/screenshots/models.png" alt="Models — installed CLIs and API providers" width="430" /> |
+
+</div>
 
 ## What it does (v0.7)
 
