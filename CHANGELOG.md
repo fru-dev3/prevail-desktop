@@ -13,6 +13,8 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 - **Telegram voice notes** are transcribed (local whisper, else OpenRouter) and processed like text, replying with "Heard: …".
 - **WebUI mirrors the desktop**: pinned domains, model picks, and per-domain toggles sync via a backend prefs blob; real favicon.
 - **Public Prevail Benchmark foundation**: 33 grounded questions across all 11 domains, a `bench export-results` matrix command, and a live website board (leaderboard + domains×models heatmap).
+- **OpenRouter is now a first-class benchmark target** and its 300+ model catalog browses visually with per-vendor icons (Anthropic, Gemini, xAI/Grok, DeepSeek, Qwen, Meta, Mistral, Kimi…).
+- **Settings → Tasks**: a cross-domain task triage view (open/overdue counts, domain filter, inline check-off) alongside the per-domain Insights lists.
 
 ### Changed / Fixed
 
