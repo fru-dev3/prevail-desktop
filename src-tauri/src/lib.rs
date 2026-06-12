@@ -2453,7 +2453,7 @@ fn save_session(
 }
 
 // Days-since-epoch → date. Good enough for log filenames, no chrono.
-fn secs_to_ymdhms(secs: i64) -> (i32, u32, u32, u32, u32, u32) {
+pub(crate) fn secs_to_ymdhms(secs: i64) -> (i32, u32, u32, u32, u32, u32) {
     let day_secs = 86_400i64;
     let mut days = secs.div_euclid(day_secs);
     let mut rem = secs.rem_euclid(day_secs);
