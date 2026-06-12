@@ -4332,6 +4332,23 @@ function buildQuickActions(domain: string | null): { glyph: string; label: strin
 // actions, generated from the vault (cached). Click one to seed the composer.
 interface SurfaceResult { questions: string[]; actions: string[]; generated_at: number; stale: boolean }
 
+// Tiny inline trend line: a model's judge scores over time, on a fixed 0-10
+// scale so two models' lines are visually comparable.
+function Sparkline({ values, width = 72, height = 20 }: { values: number[]; width?: number; height?: number }) {
+  if (values.length < 2) return null;
+  const pts = values
+    .map((v, i) => `${((i / (values.length - 1)) * (width - 4) + 2).toFixed(1)},${(height - 2 - (Math.max(0, Math.min(10, v)) / 10) * (height - 4)).toFixed(1)}`)
+    .join(" ");
+  const up = values[values.length - 1] >= values[0];
+  const [lx, ly] = pts.split(" ").pop()!.split(",");
+  return (
+    <svg width={width} height={height} className="shrink-0" aria-hidden>
+      <polyline points={pts} fill="none" strokeWidth="1.5" className={up ? "stroke-ok" : "stroke-warn"} />
+      <circle cx={lx} cy={ly} r="2" className={up ? "fill-ok" : "fill-warn"} />
+    </svg>
+  );
+}
+
 // Settings > Benchmark: scheduled re-runs of the latest batch, for tracking
 // model drift over time without manual runs.
 function BenchScheduleCard({ vault }: { vault: string }) {
@@ -11483,6 +11500,13 @@ function BenchResults({
       }, null);
       const latest = [...rr].sort((a, b) => b.date.localeCompare(a.date))[0];
       const domains = Array.from(new Set(rr.flatMap((r) => r.domains))).sort();
+      // Chronological judge scores — the drift line. Delta = latest vs the
+      // run before it.
+      const history = [...scoredRuns]
+        .sort((a, b) => a.created_ms - b.created_ms)
+        .map((r) => judgeFor(r))
+        .filter((v): v is number => v !== null);
+      const delta = history.length >= 2 ? history[history.length - 1] - history[history.length - 2] : null;
       return {
         key: `${parsed.vendor}::${parsed.model}`,
         parsed,
@@ -11492,6 +11516,8 @@ function BenchResults({
         latestKw: latest ? kwFor(latest) : null,
         latestDate: latest?.date ?? "",
         domains,
+        history,
+        delta,
       };
     });
     return rows.sort((a, b) => (b.best ?? -1) - (a.best ?? -1));
@@ -11643,51 +11669,59 @@ function BenchResults({
               </button>
             </div>
           )}
-          {modelAgg.length > 1 && (
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              {modelAgg.slice(0, 3).map((m, i) => (
-                <button
-                  key={m.key}
-                  onClick={() => setExpandedModel(expandedModel === m.key ? null : m.key)}
-                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-left transition-colors ${
-                    i === 0 ? "border-accent bg-accent-soft/60 hover:bg-accent-soft" : "border-border-subtle bg-surface hover:border-border"
-                  }`}
-                >
-                  {i === 0 ? (
-                    <Crown className="h-3.5 w-3.5 shrink-0 text-accent" />
-                  ) : (
-                    <span className="w-3 text-center font-mono text-[10px] text-text-muted">{i + 1}</span>
-                  )}
-                  <ProviderMark vendor={m.parsed.vendor} size={16} />
-                  <span className="max-w-[14rem] truncate font-display text-[13px] font-semibold tracking-tight">{m.parsed.model}</span>
-                  <span className="font-mono text-sm font-bold text-accent">{m.best?.toFixed(1) ?? "-"}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="overflow-hidden rounded-2xl border border-border">
-            <div className="flex items-center gap-3 border-b border-border bg-surface px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-              <span className="w-5 text-center">#</span>
-              <span className="w-[22px]" />
-              <span className="min-w-0 flex-1">Model</span>
-              <span className="hidden sm:inline">Runs · domains · last</span>
-              <span className="hidden w-36 lg:block" />
-              <span className="w-12 text-right">Best</span>
-            </div>
-            {modelAgg.map((m, i) => (
-              <div key={m.key} className="border-b border-border-subtle last:border-0">
+          <div className="flex flex-col gap-2">
+            {modelAgg.map((m, i) => {
+              const leader = i === 0 && modelAgg.length > 1;
+              const podium = i < 3 && modelAgg.length > 1;
+              return (
+              <div
+                key={m.key}
+                className={`overflow-hidden rounded-xl border transition-colors ${
+                  leader
+                    ? "border-accent bg-gradient-to-r from-accent-soft/70 to-surface"
+                    : podium
+                      ? "border-accent-border/50 bg-surface"
+                      : "border-border-subtle bg-surface"
+                }`}
+              >
                 <button
                   onClick={() => setExpandedModel(expandedModel === m.key ? null : m.key)}
-                  className={`flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-warm ${i === 0 ? "bg-accent-soft/30" : ""}`}
+                  className={`flex w-full items-center gap-3 text-left hover:bg-surface-warm/60 ${leader ? "px-4 py-3" : "px-4 py-2"}`}
                 >
-                  <span className="w-5 text-center font-mono text-[11px] text-text-muted">{i === 0 ? <Crown className="mx-auto h-3.5 w-3.5 text-accent" /> : i + 1}</span>
-                  <ProviderMark vendor={m.parsed.vendor} size={22} />
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-primary">{m.parsed.model}</span>
-                  <span className="hidden font-mono text-[10px] text-text-muted sm:inline">
-                    {m.runs.length} · {m.domains.length} · {m.latestDate || "-"}
+                  {/* Rank */}
+                  <span className={`flex shrink-0 items-center justify-center rounded-full font-mono font-bold ${
+                    leader
+                      ? "h-8 w-8 bg-accent text-background"
+                      : podium
+                        ? "h-6 w-6 border border-accent-border bg-accent-soft text-[11px] text-accent"
+                        : "h-6 w-6 text-[11px] text-text-muted"
+                  }`}>
+                    {leader ? <Crown className="h-4 w-4" /> : i + 1}
                   </span>
-                  <div className="hidden w-36 lg:block"><ScoreBar value={m.best} max={10} color={scoreColor((m.best ?? 0) * 10)} /></div>
-                  <span className="w-12 text-right font-mono text-sm font-semibold text-accent">{m.best?.toFixed(1) ?? "-"}</span>
+                  <ProviderMark vendor={m.parsed.vendor} size={leader ? 28 : 22} />
+                  <span className="min-w-0 flex-1">
+                    <span className={`block truncate font-display tracking-tight ${leader ? "text-base font-bold" : "text-sm font-semibold"}`}>
+                      {m.parsed.model}
+                    </span>
+                    <span className="block font-mono text-[10px] text-text-muted">
+                      {m.runs.length} run{m.runs.length === 1 ? "" : "s"} · {m.domains.length} domain{m.domains.length === 1 ? "" : "s"} · last {m.latestDate || "-"}
+                    </span>
+                  </span>
+                  {/* Drift: score history + latest delta */}
+                  {m.history.length >= 2 && (
+                    <span className="hidden items-center gap-1.5 md:flex" title={`Judge scores over time: ${m.history.map((v) => v.toFixed(1)).join(" → ")}`}>
+                      <Sparkline values={m.history} />
+                      {m.delta !== null && Math.abs(m.delta) >= 0.05 && (
+                        <span className={`font-mono text-[10px] font-semibold ${m.delta > 0 ? "text-ok" : "text-warn"}`}>
+                          {m.delta > 0 ? "▲" : "▼"}{Math.abs(m.delta).toFixed(1)}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  <div className="hidden w-32 lg:block"><ScoreBar value={m.best} max={10} color={scoreColor((m.best ?? 0) * 10)} /></div>
+                  <span className={`shrink-0 text-right font-mono font-bold text-accent ${leader ? "w-16 text-2xl" : "w-12 text-sm"}`}>
+                    {m.best?.toFixed(1) ?? "-"}
+                  </span>
                 </button>
                 {expandedModel === m.key && (
                   <div className="border-t border-border-subtle bg-surface px-4 py-2">
@@ -11724,7 +11758,8 @@ function BenchResults({
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
