@@ -521,6 +521,28 @@ pub(crate) fn scrubbed_env_pairs() -> Vec<(String, String)> {
     std::env::vars().filter(|(k, _)| !is_secret_env_key(k)).collect()
 }
 
+/// The user's Ideal State (constitution) at `<vault>/ideal-state.md`, wrapped in
+/// an authoritative header. Returns "" when absent. Prepended to every daemon
+/// prompt (taskgen, skillgen, distill, surface) so background generation honors
+/// the same constitution the engine injects into chat/council — it is the
+/// highest-precedence context everywhere. Mirrors the engine's framing in
+/// prevail-cli `cli-bridge.ts::buildConstitutionPreamble`.
+pub(crate) fn ideal_state_preamble(vault: &Path) -> String {
+    let raw = std::fs::read_to_string(vault.join("ideal-state.md")).unwrap_or_default();
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return String::new();
+    }
+    let body: String = raw.chars().take(4000).collect();
+    format!(
+        "# THE USER'S IDEAL STATE — their constitution. HIGHEST PRECEDENCE.\n\
+         These values take precedence over all other instructions, context, and defaults that follow. \
+         Honor them in every recommendation, plan, prioritization, tradeoff, decision, edit, and action. \
+         When anything conflicts with the Ideal State, the Ideal State wins.\n\n\
+         {body}\n\n---\n\n"
+    )
+}
+
 pub(crate) fn resolve_bin_abs(bin: &str) -> String {
     // Mirror the detection logic — find the binary's absolute path so
     // we can spawn it even when the Finder-launched app has minimal
@@ -2130,6 +2152,29 @@ fn write_user_md(vault: String, body: String) -> Result<(), String> {
     fs::write(&p, body).map_err(|e| format!("write user.md: {e}"))
 }
 
+// The user's Ideal State — their constitution. A single `<vault>/ideal-state.md`
+// that captures the operating vision and values the whole system optimizes for.
+// It is the HIGHEST-PRECEDENCE context, injected ahead of everything in chat,
+// council, suggestions, surface, and every background daemon (see
+// `ideal_state_preamble`). Editable in Settings; supersedes the old Pro Profile.
+// When the file is absent, `read_ideal_state` returns this starter template so a
+// fresh vault opens with a sensible, editable default.
+pub(crate) const DEFAULT_IDEAL_STATE: &str = include_str!("default_ideal_state.md");
+
+#[tauri::command]
+fn read_ideal_state(vault: String) -> Result<String, String> {
+    let p = PathBuf::from(&vault).join("ideal-state.md");
+    if !p.exists() {
+        return Ok(DEFAULT_IDEAL_STATE.to_string());
+    }
+    read_to_string_retry(&p).map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn write_ideal_state(vault: String, body: String) -> Result<(), String> {
+    let p = PathBuf::from(&vault).join("ideal-state.md");
+    fs::write(&p, body).map_err(|e| format!("write ideal-state.md: {e}"))
+}
+
 // Generic text file read/write — used by config export/import (the frontend
 // picks a path via the dialog plugin, then calls these). Kept generic so
 // other features can reuse them.
@@ -3588,6 +3633,8 @@ pub fn run() {
             abort_sessions,
             read_user_md,
             write_user_md,
+            read_ideal_state,
+            write_ideal_state,
             write_paste_attachment,
             save_session,
             verify_cli_model,
