@@ -13951,6 +13951,8 @@ function DirectProviderMark({ p }: { p: DirectProvider }) {
 function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promise<CliInfo[]>; embedded?: boolean }) {
   const [key, setKey] = useState("");
   const [configured, setConfigured] = useState(false);
+  const [last4, setLast4] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
   const [saved, setSaved] = useState(false);
   // I10: after a key save we re-detect providers and confirm OpenRouter is now
   // selectable, so the user gets real activation feedback instead of silence.
@@ -13960,6 +13962,7 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
   const [, setOrNonce] = useState(0);
   useEffect(() => {
     invoke<boolean>("provider_key_exists", { provider: "openrouter" }).then((ok) => setConfigured(!!ok)).catch(() => {});
+    invoke<string | null>("provider_key_last4", { provider: "openrouter" }).then((v) => setLast4(v ?? null)).catch(() => {});
     const h = () => setOrNonce((n) => n + 1);
     window.addEventListener("prevail:models-refreshed", h);
     return () => window.removeEventListener("prevail:models-refreshed", h);
@@ -14001,19 +14004,43 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
         <div className="mb-1 flex items-center gap-2">
           <span className="font-semibold text-text-primary">OpenRouter</span>
           <span className="rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">Recommended</span>
-          {configured && <span className="ml-auto rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary">Configured</span>}
+          {configured && (
+            <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
+              <Check className="h-3 w-3" strokeWidth={3} /> Configured{last4 ? ` · ····${last4}` : ""}
+            </span>
+          )}
         </div>
         <div className="mb-3 text-xs text-text-secondary">One API key unlocks every model. Used by the engine inside any domain. <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="text-accent hover:underline">Get a key ›</a></div>
         <div className="flex items-center gap-2">
           <input type="password" value={key} placeholder={configured ? "•••••••• (replace)" : "sk-or-v1-…"} onChange={(e) => setKey(e.target.value)}
             className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-sm focus:border-accent-border focus:outline-none" />
           <button onClick={save} disabled={!key.trim()} className="rounded-md bg-text-primary px-3 py-1.5 text-sm font-medium text-background hover:opacity-90 disabled:opacity-40">{saved ? "Saved" : "Save"}</button>
+          {configured && (
+            <button
+              onClick={async () => {
+                setTesting(true); setActivated(null);
+                try {
+                  await invoke<string>("verify_cli_model", { args: { cli: "openrouter", model: lsGet("prevail.model.openrouter") || null } });
+                  setActivated(true);
+                  setCliVerify("openrouter", { status: "ok" });
+                } catch (e) {
+                  setActivated(false);
+                  setCliVerify("openrouter", { status: "failed", error: String(e).slice(0, 200) });
+                } finally { setTesting(false); }
+              }}
+              disabled={testing}
+              className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-sm text-accent hover:bg-accent hover:text-background disabled:opacity-50"
+            >
+              {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+              {testing ? "Testing…" : "Test live"}
+            </button>
+          )}
           {configured && <button onClick={remove} className="rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-sm text-warn hover:bg-warn/20">Remove</button>}
         </div>
         {activated === true && (
           <div className="mt-3 flex items-center gap-2 rounded-md border border-accent-border bg-accent-soft px-3 py-2 text-xs text-accent">
             <Check className="h-4 w-4" />
-            OpenRouter activated: now selectable in every model picker (Chat &amp; Council).
+            Live call succeeded: OpenRouter answered with this key. Selectable in Chat, Council, and Benchmark pickers.
           </div>
         )}
         {activated === false && (

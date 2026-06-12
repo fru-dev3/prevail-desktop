@@ -129,6 +129,9 @@ pub fn run_engine_json(args: &[&str]) -> Result<serde_json::Value, String> {
     if let Some(k) = vault_key() {
         cmd.env("PREVAIL_VAULT_KEY", k);
     }
+    for (k, v) in provider_env_pairs() {
+        cmd.env(k, v);
+    }
     if let Some(r) = vault_root() {
         cmd.env("PREVAIL_VAULT_ROOT", r);
     }
@@ -179,6 +182,9 @@ pub fn run_engine_json_stdin(
         .stderr(Stdio::piped());
     if let Some(k) = vault_key() {
         cmd.env("PREVAIL_VAULT_KEY", k);
+    }
+    for (k, v) in provider_env_pairs() {
+        cmd.env(k, v);
     }
     if let Some(r) = vault_root() {
         cmd.env("PREVAIL_VAULT_ROOT", r);
@@ -256,6 +262,9 @@ pub async fn run_engine_stream(
         .stderr(std::process::Stdio::piped());
     if let Some(k) = vault_key() {
         scmd.env("PREVAIL_VAULT_KEY", k);
+    }
+    for (k, v) in provider_env_pairs() {
+        scmd.env(k, v);
     }
     if let Some(r) = vault_root() {
         scmd.env("PREVAIL_VAULT_ROOT", r);
@@ -695,6 +704,23 @@ struct SealedBlob {
     iv: String,
     ct: String,
     tag: String,
+}
+
+/// Env pairs every engine spawn needs: the Bunker flag when locked down,
+/// else gateway provider keys (OpenRouter). Previously only run_engine
+/// injected the OpenRouter key, so streaming chat and benchmark spawns hit
+/// 401 "missing authentication header" despite a configured key.
+pub(crate) fn provider_env_pairs() -> Vec<(String, String)> {
+    if crate::bunker::bunker_enabled() {
+        return vec![("PREVAIL_BUNKER".to_string(), "1".to_string())];
+    }
+    let mut out = Vec::new();
+    if let Ok(key) = crate::ingestion::keychain::get("prevail.providers", "openrouter") {
+        if !key.is_empty() {
+            out.push(("PREVAIL_OPENROUTER_KEY".to_string(), key));
+        }
+    }
+    out
 }
 
 /// The session DEK, iff `path` is inside the unlocked, encrypted vault.
