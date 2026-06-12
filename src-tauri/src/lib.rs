@@ -2333,7 +2333,43 @@ fn read_ideal_state(vault: String) -> Result<String, String> {
 #[tauri::command]
 fn write_ideal_state(vault: String, body: String) -> Result<(), String> {
     let p = PathBuf::from(&vault).join("ideal-state.md");
-    fs::write(&p, body).map_err(|e| format!("write ideal-state.md: {e}"))
+    // The constitution is never silently overwritten: every save that changes
+    // it first snapshots the prior text into _meta/ideal-state-versions/, so
+    // edits always leave a dated trace and nothing is ever lost.
+    if let Ok(existing) = read_to_string_retry(&p) {
+        if existing.trim() != body.trim() && !existing.trim().is_empty() {
+            let vdir = PathBuf::from(&vault).join("_meta").join("ideal-state-versions");
+            let _ = fs::create_dir_all(&vdir);
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+            let vp = vdir.join(format!("{y:04}-{mo:02}-{d:02}_{h:02}{mi:02}{s:02}.md"));
+            let _ = fs::write(&vp, engine::maybe_encrypt(&vp, &existing));
+        }
+    }
+    fs::write(&p, engine::maybe_encrypt(&p, &body)).map_err(|e| format!("write ideal-state.md: {e}"))
+}
+
+/// Dated snapshots of the constitution, newest first.
+#[tauri::command]
+fn ideal_state_versions(vault: String) -> Result<Vec<serde_json::Value>, String> {
+    let vdir = PathBuf::from(&vault).join("_meta").join("ideal-state-versions");
+    let mut out = Vec::new();
+    if let Ok(it) = read_dir_retry(&vdir) {
+        for e in it.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("md") {
+                out.push(serde_json::json!({
+                    "name": p.file_stem().and_then(|s| s.to_str()).unwrap_or(""),
+                    "path": p.to_string_lossy(),
+                }));
+            }
+        }
+    }
+    out.sort_by(|a, b| b["name"].as_str().cmp(&a["name"].as_str()));
+    Ok(out)
 }
 
 // Generic text file read/write — used by config export/import (the frontend
@@ -3947,6 +3983,7 @@ pub fn run() {
             engine::engine_lock_verify,
             engine::engine_lock_clear,
             engine::engine_biometric_authenticate,
+            ideal_state_versions,
             engine::engine_vault_status,
             engine::engine_vault_unlock,
             engine::engine_vault_lock_session,
