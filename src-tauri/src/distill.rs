@@ -201,13 +201,24 @@ async fn distill_dir(dir: &Path, cfg: &DistillConfig) -> Result<u64, String> {
         .and_then(|s| s.to_str())
         .unwrap_or("General")
         .to_string();
-    let prompt = build_distill_prompt(
-        &domain_label,
-        &existing_memory,
-        &existing_state,
-        &activity,
-        (cfg.target * cfg.memory_budget_chars as f64) as usize,
-        cfg.memory_budget_chars,
+    // Prepend the user's Ideal State (constitution) so distilled memory/state
+    // is shaped by the same values that govern chat. Vault root is the domain
+    // dir's parent.
+    let ideal = dir
+        .parent()
+        .map(crate::ideal_state_preamble)
+        .unwrap_or_default();
+    let prompt = format!(
+        "{}{}",
+        ideal,
+        build_distill_prompt(
+            &domain_label,
+            &existing_memory,
+            &existing_state,
+            &activity,
+            (cfg.target * cfg.memory_budget_chars as f64) as usize,
+            cfg.memory_budget_chars,
+        ),
     );
 
     // Bunker Mode: distillation runs a model on vault content — it must obey the
