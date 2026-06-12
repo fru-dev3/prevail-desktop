@@ -17174,6 +17174,22 @@ function TelegramCard() {
         setTokenSaved(true);
         setToken("");
       }
+      // Routing table: every vault domain plus its stored/derived keywords,
+      // so a "wealth" question from Telegram lands in the wealth domain with
+      // a recorded thread.
+      let routes: { domain: string; keywords: string[] }[] = [];
+      let vault: string | null = null;
+      try {
+        vault = lsGet(LS.vault) || null;
+        if (vault) {
+          const ds = await invoke<{ name: string }[]>("scan_vault", { path: vault });
+          routes = ds.map((d) => ({
+            domain: d.name,
+            keywords: (lsGet(`prevail.domain.${d.name}.routing.keywords`) || "")
+              .split(",").map((s) => s.trim()).filter(Boolean),
+          }));
+        }
+      } catch { /* routing is best-effort; bridge works without it */ }
       await invoke("telegram_bridge_start", {
         cfg: {
           token: "", // bridge reads the secret from the Keychain
@@ -17181,6 +17197,8 @@ function TelegramCard() {
           cli: bridgeCli,
           model: bridgeModel || null,
           domain: null,
+          vault,
+          routes,
         },
       });
       await refreshStatus();
