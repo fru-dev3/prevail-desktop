@@ -2074,6 +2074,7 @@ export default function App() {
     startedAt: number;
   };
   const [runningStreams, setRunningStreams] = useState<RunningStream[]>([]);
+  const [activeBenchmark, setActiveBenchmark] = useState<{ label: string; done: number; total: number } | null>(null);
   // Domains whose background run finished while you were looking elsewhere.
   // The live amber pulse vanishes the instant a stream ends; this keeps a
   // steady "ready" marker on the domain until you actually open it, so a
@@ -2417,6 +2418,7 @@ export default function App() {
           }}
           onBack={() => setTab("chat")}
           jumpTo={settingsJump}
+          onBenchmarkActive={setActiveBenchmark}
           onStartChatWith={(cliId, modelId) => {
             lsSet(LS.defaultChatCli, cliId);
             if (modelId) lsSet(`prevail.model.${cliId}`, modelId);
@@ -2463,6 +2465,7 @@ export default function App() {
           railWidth={domainRailWidth}
           onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
           onDomainsChanged={() => void refreshDomains()}
+          activeBenchmark={activeBenchmark}
         />
         {!sidebarCollapsed && (
           <ResizeHandle
@@ -2646,6 +2649,7 @@ export default function App() {
                 key={selectedDomain || benchScope || "all"}
                 vaultPath={vaultPath}
                 initialDomain={selectedDomain || benchScope}
+                onBenchmarkActive={setActiveBenchmark}
               />
             </div>
           </div>
@@ -2719,6 +2723,7 @@ function Sidebar({
   railWidth,
   onOpenOnboarding,
   onDomainsChanged,
+  activeBenchmark,
 }: {
   collapsed: boolean;
   setCollapsed: (v: boolean | ((cur: boolean) => boolean)) => void;
@@ -2739,6 +2744,7 @@ function Sidebar({
   railWidth: number;
   onOpenOnboarding: () => void;
   onDomainsChanged: () => void;
+  activeBenchmark?: { label: string; done: number; total: number } | null;
 }) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -3239,27 +3245,56 @@ function Sidebar({
         </button>
       )}
 
+      {/* Active benchmark indicator — visible while navigating away */}
+      {activeBenchmark && (
+        collapsed ? (
+          <div className="flex justify-center border-t border-border-subtle px-2 py-2" title={`Benchmarking: ${activeBenchmark.done}/${activeBenchmark.total}`}>
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+            </span>
+          </div>
+        ) : (
+          <div className="border-t border-border-subtle px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-1.5 w-1.5 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
+              </span>
+              <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-accent">Benchmarking</span>
+              <span className="font-mono text-[10px] text-text-muted">{activeBenchmark.done}/{activeBenchmark.total}</span>
+            </div>
+            <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-surface-strong">
+              <div
+                className="h-full rounded-full bg-accent transition-all duration-500"
+                style={{ width: activeBenchmark.total > 0 ? `${Math.round((activeBenchmark.done / activeBenchmark.total) * 100)}%` : "0%" }}
+              />
+            </div>
+          </div>
+        )
+      )}
+
       {/* Settings + theme — pinned to bottom (Upgrade lives in Settings) */}
-      <div className={`border-t border-border-subtle ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1 px-2 py-2"}`}>
+      <div className={`border-t border-border-subtle bg-surface-warm/30 ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1 px-2 py-1.5"}`}>
         <button
           onClick={() => setTab("settings")}
           title="Settings"
           className={
             collapsed
-              ? `flex h-9 w-9 items-center justify-center rounded-md transition-colors ${
+              ? `flex h-8 w-8 items-center justify-center rounded transition-colors ${
                   tab === "settings"
                     ? "bg-accent-soft text-accent"
-                    : "text-text-muted hover:bg-surface-warm hover:text-text-primary"
+                    : "text-text-muted hover:text-text-primary"
                 }`
-              : `flex flex-1 items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
+              : `flex flex-1 items-center gap-2 rounded px-2 py-1.5 text-left transition-colors ${
                   tab === "settings"
-                    ? "bg-accent-soft text-accent"
-                    : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+                    ? "text-accent"
+                    : "text-text-muted hover:text-text-secondary"
                 }`
           }
         >
-          <SettingsIcon className="h-4 w-4" />
-          {!collapsed && "Settings"}
+          <SettingsIcon className="h-3.5 w-3.5 shrink-0" />
+          {!collapsed && <span className="font-mono text-[11px] tracking-wide uppercase">Settings</span>}
         </button>
         <button
           onClick={() => {
@@ -3267,11 +3302,7 @@ function Sidebar({
             const i = cycle.indexOf(appearance.mode);
             appearance.setMode(cycle[(i + 1) % cycle.length]);
           }}
-          className={
-            collapsed
-              ? "flex h-9 w-9 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-text-primary"
-              : "flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-text-primary"
-          }
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:text-text-secondary transition-colors"
           title={`Theme: ${appearance.mode} — click to cycle`}
         >
           {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
@@ -9936,9 +9967,11 @@ const MODEL_SEP = "::";
 function BenchmarkPanel({
   vaultPath,
   initialDomain,
+  onBenchmarkActive,
 }: {
   vaultPath: string;
   initialDomain?: string | null;
+  onBenchmarkActive?: (info: { label: string; done: number; total: number } | null) => void;
 }) {
   // A "runs" deep link from the Models page lands here with a model key to
   // expand on the leaderboard. Consumed once.
@@ -10007,6 +10040,15 @@ function BenchmarkPanel({
   const [log, setLog] = useState("");
   const logRef = useRef<HTMLPreElement>(null);
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log]);
+
+  // Propagate running state up so the sidebar can show a persistent indicator.
+  useEffect(() => {
+    if (!onBenchmarkActive) return;
+    if (!running) { onBenchmarkActive(null); return; }
+    const done = jobs.reduce((a, j) => a + j.done, 0);
+    const total = jobs.reduce((a, j) => a + j.total, 0);
+    onBenchmarkActive({ label: activeBatch?.label ?? "Benchmarking", done, total });
+  }, [running, jobs, activeBatch, onBenchmarkActive]);
 
   const toggleModel = (cli: string, model: string) => {
     const k = `${cli}${MODEL_SEP}${model}`;
@@ -11534,6 +11576,7 @@ function SettingsPanel({
   onSetupDomains,
   onVaultMoved,
   jumpTo,
+  onBenchmarkActive,
 }: {
   appearance: ReturnType<typeof useAppearance>;
   vaultPath: string;
@@ -11547,6 +11590,7 @@ function SettingsPanel({
   onSetupDomains?: () => void;
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
+  onBenchmarkActive?: (info: { label: string; done: number; total: number } | null) => void;
 }) {
   type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "user" | "memory" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
@@ -11695,7 +11739,7 @@ function SettingsPanel({
               {/* Full cockpit: unscoped, so runs/results/questions cover the
                   whole vault. The same panel opens scoped from a domain. */}
               <div className="-mx-4 min-h-[60vh]">
-                <BenchmarkPanel vaultPath={vaultPath} />
+                <BenchmarkPanel vaultPath={vaultPath} onBenchmarkActive={onBenchmarkActive} />
               </div>
             </>
           )}
