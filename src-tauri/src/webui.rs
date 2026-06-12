@@ -227,8 +227,9 @@ fn handle(
         let mut body = String::new();
         let _ = req.as_reader().read_to_string(&mut body);
         let creds: serde_json::Value = serde_json::from_str(&body).unwrap_or(serde_json::json!({}));
-        let ok = creds.get("user").and_then(|v| v.as_str()) == Some(user)
-            && creds.get("pass").and_then(|v| v.as_str()) == Some(pass);
+        // Constant-time on both fields so login can't be probed via timing.
+        let ok = ct_eq(creds.get("user").and_then(|v| v.as_str()).unwrap_or(""), user)
+            && ct_eq(creds.get("pass").and_then(|v| v.as_str()).unwrap_or(""), pass);
         let (code, payload) = if ok {
             (200, serde_json::json!({ "token": token }))
         } else {

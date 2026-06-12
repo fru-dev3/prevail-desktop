@@ -57,31 +57,47 @@ pub(crate) fn resolve_prevail_bin() -> String {
     //    and never depends on a separately-installed CLI. Tauri places the
     //    sidecar next to the app's main executable (Contents/MacOS/prevail,
     //    target-triple stripped at bundle time).
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let sidecar = dir.join("prevail");
-            if sidecar.exists() {
-                return sidecar.to_string_lossy().to_string();
+    let bundled = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|d| d.join("prevail")));
+    if let Some(sidecar) = &bundled {
+        if sidecar.exists() {
+            return sidecar.to_string_lossy().to_string();
+        }
+    }
+    // SECURITY — fail closed in release builds. The sidecar is handed the
+    // decrypted vault key (PREVAIL_VAULT_KEY). A packaged build ALWAYS ships the
+    // sidecar next to the app binary (step 1), so if that missed we must NOT
+    // fall through to user-writable dirs (~/.local/bin, ~/.bun/bin) or a bare
+    // $PATH lookup: a `prevail` planted there would capture the vault key.
+    // Return the expected bundled path so the spawn fails loudly at the right
+    // location rather than silently running an attacker binary.
+    #[cfg(not(debug_assertions))]
+    {
+        return bundled
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "prevail".to_string());
+    }
+    // 2. Dev only (`tauri dev`, debug build): no bundled sidecar sits next to
+    //    the debug binary, so fall back to a locally installed CLI.
+    #[cfg(debug_assertions)]
+    {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let candidates = [
+            format!("{home}/.local/bin/prevail"),
+            format!("{home}/.bun/bin/prevail"),
+            format!("/opt/homebrew/bin/prevail"),
+            format!("/usr/local/bin/prevail"),
+            format!("/usr/bin/prevail"),
+        ];
+        for c in &candidates {
+            if Path::new(c).exists() {
+                return c.clone();
             }
         }
+        // 3. Fall back to the bare name; tokio/std will resolve via PATH.
+        "prevail".to_string()
     }
-    // 2. A developer-installed CLI on common paths (covers `tauri dev`,
-    //    where there's no bundled sidecar next to the debug binary).
-    let home = std::env::var("HOME").unwrap_or_default();
-    let candidates = [
-        format!("{home}/.local/bin/prevail"),
-        format!("{home}/.bun/bin/prevail"),
-        format!("/opt/homebrew/bin/prevail"),
-        format!("/usr/local/bin/prevail"),
-        format!("/usr/bin/prevail"),
-    ];
-    for c in &candidates {
-        if Path::new(c).exists() {
-            return c.clone();
-        }
-    }
-    // 3. Fall back to the bare name; tokio/std will resolve via PATH.
-    "prevail".to_string()
 }
 
 // ─────────────────────────────────────────────────────────────────────

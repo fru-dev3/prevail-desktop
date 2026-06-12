@@ -193,13 +193,12 @@ pub fn ingestion_keychain_set(
     keychain::set(&service, &account, &secret).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub fn ingestion_keychain_get(
-    service: String,
-    account: String,
-) -> Result<String, String> {
-    keychain::get(&service, &account).map_err(|e| e.to_string())
-}
+// SECURITY: there is intentionally NO `ingestion_keychain_get` Tauri command.
+// Exposing a generic "read any Keychain secret by service+account" to the JS
+// layer would be a broad exfiltration primitive if the renderer were ever
+// compromised. Rust-internal callers use `keychain::get(...)` directly; the
+// frontend only ever learns whether a secret EXISTS (see `provider_key_exists`),
+// never its value.
 
 #[tauri::command]
 pub fn ingestion_keychain_del(
@@ -222,7 +221,9 @@ pub fn ingestion_mcp_config_path() -> Result<String, String> {
 #[tauri::command]
 pub fn ingestion_mcp_config_init() -> Result<String, String> {
     let root = storage::app_support_root()?;
-    std::fs::create_dir_all(&root).map_err(|e| format!("mkdir app support: {e}"))?;
+    // 0700 the app-support tree: it holds decrypted vault imports, this MCP
+    // config (which the user fills with integration tokens), and ingestion logs.
+    storage::create_private_dir(&root)?;
     let p = root.join("mcp_config.json");
     if !p.exists() {
         let blank = serde_json::json!({
@@ -230,7 +231,9 @@ pub fn ingestion_mcp_config_init() -> Result<String, String> {
         });
         let text = serde_json::to_string_pretty(&blank)
             .map_err(|e| format!("serialize blank: {e}"))?;
-        std::fs::write(&p, text).map_err(|e| format!("write blank config: {e}"))?;
+        // 0600: the user will paste tokens (GITHUB_TOKEN, etc.) into this file;
+        // pre-clamp perms so they're never world-readable even after editing.
+        storage::write_private(&p, &text)?;
     }
     Ok(p.to_string_lossy().to_string())
 }
