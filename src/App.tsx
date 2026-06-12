@@ -11859,7 +11859,7 @@ function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "ideal-state" | "memory" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "ideal-state" | "memory" | "intents" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
@@ -11903,6 +11903,7 @@ function SettingsPanel({
     { heading: "You & Vault", items: [
       { id: "ideal-state", label: "Ideal State", icon: Compass },
       { id: "memory", label: "Memory & Context", icon: Brain },
+      { id: "intents", label: "Intents", icon: Lightbulb },
       { id: "daemons", label: "Daemons", icon: Zap },
       { id: "vault", label: "Vault", icon: Folder },
       { id: "demo", label: "Demo Mode", icon: Sparkles },
@@ -12012,6 +12013,7 @@ function SettingsPanel({
           )}
           {section === "ideal-state" && <IdealStateSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
+          {section === "intents" && <IntentsSection vaultPath={vaultPath} />}
           {section === "daemons" && <DaemonsSection vaultPath={vaultPath} />}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {section === "connectors" && (
@@ -13979,6 +13981,93 @@ function McpSection({ vaultPath }: { vaultPath: string }) {
           {copied ? "Copied" : "Copy config"}
         </button>
       </div>
+    </>
+  );
+}
+
+// Settings > Intents: every question ever asked, across every domain, in one
+// searchable browser. Each row is the exact ask plus the model settings in
+// effect (replayable provenance, kept on-device).
+function IntentsSection({ vaultPath }: { vaultPath: string }) {
+  type IntentRow = { message?: string; cli?: string; model?: string; ts?: number; domain?: string };
+  const [intents, setIntents] = useState<IntentRow[]>([]);
+  const [q, setQ] = useState("");
+  const [domainFilter, setDomainFilter] = useState("all");
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  useEffect(() => {
+    invoke<IntentRow[]>("intents_read_all", { vault: vaultPath, limit: 500 })
+      .then((r) => setIntents(Array.isArray(r) ? r : []))
+      .catch(() => setIntents([]));
+  }, [vaultPath]);
+  const domains = useMemo(
+    () => [...new Set(intents.map((i) => i.domain ?? "general"))].sort(),
+    [intents],
+  );
+  const shown = intents.filter(
+    (i) =>
+      (domainFilter === "all" || (i.domain ?? "general") === domainFilter) &&
+      (!q.trim() || String(i.message ?? "").toLowerCase().includes(q.trim().toLowerCase())),
+  );
+  return (
+    <>
+      <SettingsHeader
+        title="Intents"
+        icon={Lightbulb}
+        subtitle="Every question you've asked, across every domain: the exact ask plus the model settings in effect, kept on your machine as replayable provenance. Per-domain views live in each domain's Insights tab."
+      />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="search intents…"
+          className="min-w-[200px] flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+        />
+        <select
+          value={domainFilter}
+          onChange={(e) => setDomainFilter(e.target.value)}
+          className="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] text-text-secondary"
+        >
+          <option value="all">All domains</option>
+          {domains.map((d) => (
+            <option key={d} value={d}>{titleCase(d)}</option>
+          ))}
+        </select>
+        <span className="font-mono text-[10px] text-text-muted">{shown.length} of {intents.length}</span>
+      </div>
+      {shown.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+          {intents.length === 0
+            ? "No intents captured yet. Every chat question is logged here as you work."
+            : "Nothing matches that filter."}
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border border-border">
+          {shown.map((it, i) => (
+            <div key={i} className="flex items-start gap-3 border-b border-border-subtle px-4 py-2.5 last:border-0 hover:bg-surface-warm">
+              <span className="mt-0.5 shrink-0 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">
+                {titleCase(it.domain ?? "general")}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="line-clamp-2 text-sm text-text-primary">{String(it.message ?? "(no text)")}</div>
+                <div className="mt-0.5 font-mono text-[10px] text-text-muted">
+                  {it.cli ?? ""}{it.model ? ` · ${it.model}` : ""}{it.ts ? ` · ${formatFreshness(Math.max(0, (Date.now() - it.ts) / 1000))}` : ""}
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  void navigator.clipboard.writeText(String(it.message ?? ""));
+                  setCopiedIdx(i);
+                  setTimeout(() => setCopiedIdx((c) => (c === i ? null : c)), 1500);
+                }}
+                title="Copy the question to re-ask it anywhere"
+                className="shrink-0 rounded-md border border-border px-2 py-1 font-mono text-[10px] text-text-secondary hover:border-accent-border hover:text-accent"
+              >
+                {copiedIdx === i ? "copied" : "copy"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
