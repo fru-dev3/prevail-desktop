@@ -157,7 +157,11 @@ pub async fn domain_surface(
     }
 
     let context = gather_context(&dir);
-    let prompt = build_prompt(&domain, &context);
+    let prompt = format!(
+        "{}{}",
+        crate::ideal_state_preamble(Path::new(&vault)),
+        build_prompt(&domain, &context),
+    );
     // Bunker Mode: proactive surface generation still runs — but instead of
     // refusing a cloud provider outright, transparently switch to an available
     // local model (Ollama / LM Studio / MLX). Insights are useful offline too,
