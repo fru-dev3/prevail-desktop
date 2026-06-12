@@ -3,8 +3,11 @@
 <plist version="1.0">
 <dict>
   <!-- Hardened runtime is mandatory for notarization; Tauri enables it.
-       These allow the WKWebView JS engine's JIT to run. -->
+       allow-jit is required for the WKWebView JS engine's JIT. We deliberately
+       do NOT grant allow-unsigned-executable-memory: on Apple Silicon WKWebView
+       allow-jit alone suffices, and dropping the unsigned-W^X exemption keeps
+       full hardened-runtime memory protection (smaller blast radius if a
+       memory-corruption bug is ever found). Verify the webview renders. -->
   <key>com.apple.security.cs.allow-jit</key><true/>
-  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>
 </dict>
 </plist>

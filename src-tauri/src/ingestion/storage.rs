@@ -20,6 +20,33 @@ use std::path::{Path, PathBuf};
 
 pub const APP_NAME: &str = "Prevail";
 
+/// Tighten a file/dir to owner-only perms (0600 for files, 0700 for dirs).
+/// The app-support tree holds decrypted vault imports, the MCP config (which
+/// the user populates with integration tokens), and ingestion logs — none of
+/// it should be world- or group-readable. Best-effort: a failure here must not
+/// break the operation, only weaken the (defense-in-depth) perm hardening.
+#[cfg(unix)]
+pub fn restrict_perms(path: &Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = fs::set_permissions(path, fs::Permissions::from_mode(mode));
+}
+#[cfg(not(unix))]
+pub fn restrict_perms(_path: &Path, _mode: u32) {}
+
+/// `create_dir_all` + clamp the leaf dir to 0700.
+pub fn create_private_dir(p: &Path) -> Result<(), String> {
+    fs::create_dir_all(p).map_err(|e| format!("mkdir {}: {e}", p.display()))?;
+    restrict_perms(p, 0o700);
+    Ok(())
+}
+
+/// Write a file, then clamp it to 0600. For anything secret-adjacent.
+pub fn write_private(path: &Path, contents: &str) -> Result<(), String> {
+    fs::write(path, contents).map_err(|e| format!("write {}: {e}", path.display()))?;
+    restrict_perms(path, 0o600);
+    Ok(())
+}
+
 /// `~/Library/Application Support/Prevail/`
 pub fn app_support_root() -> Result<PathBuf, String> {
     let home = std::env::var("HOME").map_err(|e| format!("$HOME unset: {e}"))?;

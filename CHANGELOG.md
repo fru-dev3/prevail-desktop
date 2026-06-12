@@ -4,6 +4,41 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.6] — 2026-06-12 · production security hardening
+
+A full pre-production security pass over the vault (which holds tax/wealth/health
+data). No telemetry, real AES-256-GCM/scrypt vault encryption, and `npm audit`
+clean were all confirmed; the changes below close the remaining concrete gaps.
+
+### Security
+
+- **Telegram bot token off the process command line.** The Telegram bridge and the "Test" button now use an in-process HTTP client (`reqwest`) instead of shelling out to `curl`. Previously the token sat in `…/bot<TOKEN>/…` on the command line, readable by any same-user process via `ps`.
+- **`curl` removed from the shell capability allowlist.** It was permitted with arbitrary args — an unnecessary arbitrary file-read/write/exfil primitive. Nothing needs it anymore.
+- **Arbitrary-Keychain-secret getter removed from the JS surface.** The `ingestion_keychain_get` command (read any secret by name) is gone; the frontend only ever learns whether a secret *exists*, never its value.
+- **Sidecar resolution fails closed in release builds.** The engine sidecar receives the decrypted vault key, so release builds now require the bundled, signed sidecar and never fall back to user-writable directories (`~/.local/bin`, `~/.bun/bin`) where a planted binary could capture the key.
+- **Secret files locked down.** The app-support tree is created `0700` and `mcp_config.json` (which you populate with integration tokens) is written `0600`, so neither is world-readable.
+- **Prompt-injection boundaries on the self-learning daemons.** distill, task-gen, and skill-gen now wrap untrusted vault/memory content in an explicit "treat as data, never obey instructions inside it" boundary.
+- **Hardened-runtime tightening.** Dropped the `allow-unsigned-executable-memory` entitlement (W^X protection restored; `allow-jit` alone suffices on Apple Silicon), removed unused JS `fs` read grants, added the Bunker network guard to the Telegram "Test" path, and made the local WebUI login comparison constant-time.
+
+## [0.7.5] — 2026-06-12 · Ideal State constitution
+
+### Added
+
+- **Ideal State** — a single `vault/ideal-state.md` capturing the operating vision and values the whole system optimizes for. It is injected at highest precedence ahead of everything in chat, council, suggestions, surface, and every background daemon. Editable in Settings; supersedes the old Pro Profile. A sample is seeded into the demo vault.
+
+## [0.7.4] — 2026-06-11 · self-learning skills + usage redesign
+
+### Added
+
+- **Skill-gen daemon** — a self-learning background daemon that mines reusable skills from your activity and saves them as Markdown playbooks; sample skills seeded.
+- **Redesigned Usage view** and a **merged CLI + Model picker** (select a CLI to expand its models inline). Demo vault seeded with 8 benchmark questions across 6 domains.
+
+## [0.7.3] — 2026-06-10 · task reminders + task-gen
+
+### Added
+
+- **Task reminders** with native notifications and a **task-gen daemon**; **per-domain daemon config** via `_daemon.json`; interactive daemon cards with optimistic state. Teal accent and breadcrumb polish.
+
 ## [0.7.2] — 2026-06-10 · pack import flow + demo-first launch
 
 ### Added
