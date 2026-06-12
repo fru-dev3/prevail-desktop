@@ -1,11 +1,18 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { version } from "./package.json";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
+  // package.json is the canonical version (bumped each release alongside
+  // tauri.conf.json/Cargo.toml); injecting it here keeps the UI chip and
+  // update check from drifting the way a hand-stamped constant did.
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+  },
   plugins: [
     react(),
     // Tauri's custom asset protocol can refuse to execute `crossorigin`

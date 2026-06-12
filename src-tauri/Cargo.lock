@@ -3043,7 +3043,7 @@ dependencies = [
 
 [[package]]
 name = "prevail-desktop"
-version = "0.7.7"
+version = "0.7.8"
 dependencies = [
  "libc",
  "reqwest",

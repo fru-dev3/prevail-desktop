@@ -4,6 +4,12 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.8] — 2026-06-12 · accurate in-app version
+
+### Fixed
+
+- **The title-bar version chip and update check no longer lie.** The UI showed a hand-stamped "v0.7.3" regardless of the installed version (and the updater compared against it). The version is now injected at build time from `package.json`, so it always matches the app.
+
 ## [0.7.7] — 2026-06-12 · signed & notarized releases
 
 ### Fixed
