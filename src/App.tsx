@@ -14778,10 +14778,17 @@ function IdealStateSection({ vaultPath }: { vaultPath: string }) {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
+  const [versions, setVersions] = useState<{ name: string; path: string }[]>([]);
+  const loadVersions = () =>
+    invoke<{ name: string; path: string }[]>("ideal_state_versions", { vault: vaultPath })
+      .then((v) => setVersions(Array.isArray(v) ? v : []))
+      .catch(() => {});
   useEffect(() => {
     invoke<string>("read_ideal_state", { vault: vaultPath })
       .then((s) => { setBody(s); setLoaded(true); })
       .catch(() => setLoaded(true));
+    void loadVersions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultPath]);
   async function save() {
     setSaving(true);
@@ -14789,6 +14796,7 @@ function IdealStateSection({ vaultPath }: { vaultPath: string }) {
       await invoke("write_ideal_state", { vault: vaultPath, body });
       setSavedAt(Date.now());
       setEditing(false);
+      void loadVersions();
     } finally {
       setSaving(false);
     }
@@ -14892,6 +14900,36 @@ function IdealStateSection({ vaultPath }: { vaultPath: string }) {
             <div className="mt-2 rounded-xl border border-accent-border bg-accent-soft/40 p-4 text-sm leading-relaxed text-text-primary">
               <Markdown source={parsed.intro} compact />
             </div>
+          )}
+          {versions.length > 0 && (
+            <details className="mb-3 rounded-lg border border-border-subtle bg-surface px-3 py-2">
+              <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
+                History · {versions.length} version{versions.length === 1 ? "" : "s"} · every edit is snapshotted, nothing is ever lost
+              </summary>
+              <div className="mt-2 flex flex-col gap-1">
+                {versions.map((v) => (
+                  <div key={v.path} className="flex items-center gap-2 px-1 py-1">
+                    <span className="flex-1 font-mono text-[11px] text-text-secondary">{v.name.replace("_", " · ")}</span>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const old = await invoke<string>("read_text_file", { path: v.path });
+                          if (window.confirm("Restore this version? The current text is snapshotted first.")) {
+                            setBody(old);
+                            await invoke("write_ideal_state", { vault: vaultPath, body: old });
+                            setSavedAt(Date.now());
+                            void loadVersions();
+                          }
+                        } catch (e) { console.error("restore ideal state", e); }
+                      }}
+                      className="rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                    >
+                      Restore
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </details>
           )}
           {parsed.sections.length > 0 ? (
             <div className="relative mt-4">
