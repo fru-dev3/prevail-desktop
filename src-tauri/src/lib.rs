@@ -16,6 +16,7 @@ mod distill;
 mod engine;
 mod ingestion;
 mod surface;
+mod taskgen;
 mod tasks;
 mod telegram_bridge;
 mod webui;
@@ -3504,6 +3505,8 @@ pub fn run() {
         .manage(ingestion::OrchestratorState::default())
         .manage(telegram_bridge::BridgeState::new())
         .manage(distill::DistillState::new())
+        .manage(reminders::RemindersState::new())
+        .manage(taskgen::TaskGenState::new())
         .manage(webui::WebuiState::default())
         .invoke_handler(tauri::generate_handler![
             scan_vault,
@@ -3551,6 +3554,15 @@ pub fn run() {
             tasks::tasks_read,
             tasks::tasks_set,
             tasks::tasks_add,
+            reminders::reminders_check,
+            reminders::reminders_due_today,
+            reminders::reminders_daemon_start,
+            reminders::reminders_daemon_stop,
+            reminders::reminders_daemon_status,
+            taskgen::taskgen_start,
+            taskgen::taskgen_stop,
+            taskgen::taskgen_status,
+            taskgen::taskgen_run_once,
             benchmark_questions,
             benchmark_save_question,
             benchmark_delete_question,
