@@ -56,25 +56,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Where prepare-sidecar.sh finds the engine repo (checked out above).
           PREVAIL_CLI_DIR: ${{ github.workspace }}/engine
-          # --- Developer ID signing + notarization — TEMPORARILY DISABLED ---
-          # The APPLE_CERTIFICATE secret fails to import ("SecKeychainItemImport:
-          # parameters not valid" / "failed to import keychain certificate"),
-          # which aborted the whole bundle step and blocked every tagged release
-          # (v0.7.2, v0.7.4, v0.7.6). The env keys are OMITTED (not blanked — an
-          # empty-but-defined APPLE_CERTIFICATE still makes tauri-action attempt
-          # the import and fail). With them absent, tauri-action SKIPS Apple
-          # signing and the build publishes a working unsigned-for-Gatekeeper DMG
-          # plus the signed updater feed below.
-          #
-          # TO RE-ENABLE full signing + notarization: fix the cert secret (see the
-          # tauri-mac-sign-notarize skill), then uncomment these seven lines:
-          #   APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          #   APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          #   APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          #   KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          #   APPLE_ID: ${{ secrets.APPLE_ID }}
-          #   APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          #   APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # --- Developer ID signing + notarization ---
+          # APPLE_CERTIFICATE is a base64 legacy-format p12 holding only the
+          # "Developer ID Application" identity plus the Apple G2 intermediate;
+          # OpenSSL-3 default p12s fail `security import` on the runner.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           # --- Updater artifact signing (in-app auto-update feed) ---
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
