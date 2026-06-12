@@ -10391,8 +10391,16 @@ function BenchmarkPanel({
             const ml = MODELS[cli]?.find((m) => m.id === model)?.label ?? model;
             return { key: k, cli, model, label: `${titleCase(cli)} · ${ml}`, ...blankJob, qdone: {} };
           });
-    if (plannedJobs.length === 0) { setErr("Pick at least one model to run."); return; }
-    void executeBenchBatch(vaultPath, plannedJobs, mode === "council", scopeStr);
+    const runnable = isBunkerOn() ? plannedJobs.filter((j) => j.cli && isLocalCli(j.cli)) : plannedJobs;
+    if (isBunkerOn() && mode === "council") { setErr("Blocked by Bunker Mode: the Council convenes cloud models."); return; }
+    if (isBunkerOn() && runnable.length < plannedJobs.length) {
+      setErr(runnable.length === 0
+        ? "Blocked by Bunker Mode: pick a local model (Ollama, LM Studio, MLX)."
+        : "Cloud models were skipped (Blocked by Bunker Mode).");
+      if (runnable.length === 0) return;
+    }
+    if (runnable.length === 0) { setErr("Pick at least one model to run."); return; }
+    void executeBenchBatch(vaultPath, runnable, mode === "council", scopeStr);
   }
 
   // Rebuild a runnable job from a stored run's label + domain scope.
@@ -10485,8 +10493,15 @@ function BenchmarkPanel({
               <button
                 key={id}
                 onClick={() => setMode(id)}
-                title={id === "single" ? "Compare models head-to-head" : "Run the multi-model Council"}
-                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                disabled={id === "council" && isBunkerOn()}
+                title={
+                  id === "single"
+                    ? "Compare models head-to-head"
+                    : isBunkerOn()
+                      ? "Blocked by Bunker Mode: the Council convenes cloud models"
+                      : "Run the multi-model Council"
+                }
+                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
                   mode === id
                     ? "bg-surface text-accent shadow-sm ring-1 ring-black/5"
                     : "text-text-muted hover:text-text-secondary"
@@ -10812,11 +10827,18 @@ function BenchRunConfig({
           <SubsectionHeader icon={Layers} hint={`${selModels.size} selected · runs head-to-head`}>
             Models
           </SubsectionHeader>
+          {isBunkerOn() && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-border bg-surface-warm/60 px-3 py-2">
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-accent" />
+              <span className="font-mono text-[11px] text-text-secondary">Bunker Mode is on: only local models (Ollama, LM Studio, MLX) can run.</span>
+            </div>
+          )}
           <div className="space-y-3">
             {BENCH_CLI_OPTIONS.map((c) => {
               const models = MODELS[c.id] ?? [];
               const selectedHere = models.filter((m) => selModels.has(`${c.id}${MODEL_SEP}${m.id}`)).length;
               const collapsed = collapsedProviders.has(c.id);
+              const bunkerBlocked = isBunkerOn() && !isLocalCli(c.id);
               return (
                 <div key={c.id}>
                   <button
@@ -10839,8 +10861,9 @@ function BenchRunConfig({
                           <button
                             key={m.id}
                             onClick={() => toggleModel(c.id, m.id)}
-                            title={m.blurb}
-                            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors ${on ? "border-accent bg-accent-soft" : "border-border-subtle bg-surface hover:border-accent-border"}`}
+                            disabled={bunkerBlocked}
+                            title={bunkerBlocked ? "Blocked by Bunker Mode" : m.blurb}
+                            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${on ? "border-accent bg-accent-soft" : "border-border-subtle bg-surface hover:border-accent-border"}`}
                           >
                             <span className={`min-w-0 flex-1 truncate font-mono text-xs ${on ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
                             <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${on ? "bg-accent text-background" : "border border-border"}`}>
@@ -11541,7 +11564,12 @@ function BenchQuestions({
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestDomain, setSuggestDomain] = useState<string>(initialDomain?.toLowerCase() ?? "");
   const [suggestCount, setSuggestCount] = useState(3);
-  const [suggestModel, setSuggestModel] = useState(`claude${MODEL_SEP}opus`);
+  const [suggestModel, setSuggestModel] = useState(() => {
+    if (!isBunkerOn()) return `claude${MODEL_SEP}opus`;
+    // Bunker Mode: default to the first local provider's first model.
+    const [cli, models] = Object.entries(MODELS).find(([c, ms]) => isLocalCli(c) && ms.length > 0) ?? [];
+    return cli && models ? `${cli}${MODEL_SEP}${models[0].id}` : `claude${MODEL_SEP}opus`;
+  });
 
   const shown = filter === "all" ? questions : questions.filter((q) => q.domain === filter);
 
@@ -11752,11 +11780,13 @@ function BenchQuestions({
             {[1, 2, 3, 5, 8].map((n) => <option key={n} value={n}>{n} question{n === 1 ? "" : "s"}{suggestDomain === "all" ? " per domain" : ""}</option>)}
           </select>
           <select value={suggestModel} onChange={(e) => setSuggestModel(e.target.value)} title="Model that drafts the questions" className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
-            {Object.entries(MODELS).flatMap(([cli, models]) =>
-              models.map((m) => (
-                <option key={`${cli}${MODEL_SEP}${m.id}`} value={`${cli}${MODEL_SEP}${m.id}`}>{titleCase(cli)} · {m.label}</option>
-              )),
-            )}
+            {Object.entries(MODELS)
+              .filter(([cli]) => !isBunkerOn() || isLocalCli(cli))
+              .flatMap(([cli, models]) =>
+                models.map((m) => (
+                  <option key={`${cli}${MODEL_SEP}${m.id}`} value={`${cli}${MODEL_SEP}${m.id}`}>{titleCase(cli)} · {m.label}</option>
+                )),
+              )}
           </select>
           <button onClick={suggestWithAi} disabled={suggesting || !suggestDomain} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background hover:bg-accent-hover disabled:opacity-40">
             {suggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
