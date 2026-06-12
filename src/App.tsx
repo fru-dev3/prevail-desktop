@@ -12767,9 +12767,110 @@ function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
   );
 }
 
+// ── Daemon card ───────────────────────────────────────────────────────────────
+type DaemonStatus = { running?: boolean; last_run_ts?: number | null; last_error?: string | null; lines_distilled?: number; tasks_generated?: number; domains_processed?: number; last_due_count?: number };
+
+function DaemonCard({
+  name,
+  status,
+  extra,
+  onStart,
+  onStop,
+}: {
+  name: string;
+  status: DaemonStatus | null;
+  extra?: string | null;
+  onStart?: () => Promise<void>;
+  onStop?: () => Promise<void>;
+}) {
+  const [phase, setPhase] = useState<"idle" | "starting" | "stopping">("idle");
+
+  // Sync: as soon as the poll confirms the expected state, clear the transition.
+  useEffect(() => {
+    if (phase === "starting" && status?.running) setPhase("idle");
+    if (phase === "stopping" && status?.running === false) setPhase("idle");
+  }, [status?.running]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isRunning = phase === "starting" || (!!status?.running && phase !== "stopping");
+  const busy = phase !== "idle";
+
+  const fmtTs = (ts: number | null | undefined) =>
+    ts ? new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
+
+  const statusLine = phase === "starting"
+    ? "starting…"
+    : phase === "stopping"
+    ? "stopping…"
+    : isRunning
+    ? `running${status?.last_run_ts ? ` · checked ${fmtTs(status.last_run_ts)}` : ""}`
+    : `idle${status?.last_run_ts ? ` · last ran ${fmtTs(status.last_run_ts)}` : ""}`;
+
+  async function handleStart() {
+    setPhase("starting");
+    try { await onStart?.(); } catch {}
+    setTimeout(() => setPhase((p) => p === "starting" ? "idle" : p), 4000);
+  }
+  async function handleStop() {
+    setPhase("stopping");
+    try { await onStop?.(); } catch {}
+    setTimeout(() => setPhase((p) => p === "stopping" ? "idle" : p), 4000);
+  }
+
+  return (
+    <div className={`rounded-lg border px-4 py-3 transition-all duration-300 ${
+      isRunning
+        ? "border-ok/30 bg-ok/5"
+        : busy
+        ? "border-accent-border bg-accent-soft/50"
+        : "border-border bg-surface"
+    }`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span className="relative inline-flex h-2.5 w-2.5 items-center justify-center">
+            {isRunning && (
+              <span className="pulse-soft absolute inset-0 rounded-full bg-ok/40" />
+            )}
+            <span className={`relative inline-block h-2 w-2 rounded-full transition-colors duration-300 ${
+              isRunning ? "bg-ok" : busy ? "bg-accent" : "bg-text-muted/30"
+            }`} />
+          </span>
+          <span className={`font-mono text-[11px] font-bold uppercase tracking-[0.15em] ${
+            isRunning ? "text-ok" : "text-text-primary"
+          }`}>{name}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {busy ? (
+            <span className="font-mono text-[10px] text-text-muted opacity-60">
+              {phase === "starting" ? "starting…" : "stopping…"}
+            </span>
+          ) : isRunning ? (
+            onStop && (
+              <button onClick={handleStop}
+                className="rounded border border-border px-2 py-0.5 font-mono text-[10px] text-text-muted transition-colors hover:border-err/60 hover:bg-err/5 hover:text-err">
+                stop
+              </button>
+            )
+          ) : (
+            onStart && (
+              <button onClick={handleStart}
+                className="rounded border border-border px-2 py-0.5 font-mono text-[10px] text-text-muted transition-colors hover:border-ok/50 hover:bg-ok/5 hover:text-ok">
+                start
+              </button>
+            )
+          )}
+        </div>
+      </div>
+      <div className={`mt-1.5 font-mono text-[10px] ${isRunning ? "text-ok/70" : "text-text-muted"}`}>
+        {statusLine}
+        {!busy && extra ? <span className="text-text-muted"> · {extra}</span> : null}
+        {!busy && status?.last_error ? <span className="text-err"> · {status.last_error}</span> : null}
+      </div>
+    </div>
+  );
+}
+
 // ── Daemons settings panel ────────────────────────────────────────────────────
 function DaemonsSection({ vaultPath }: { vaultPath: string }) {
-  type DaemonStatus = { running?: boolean; last_run_ts?: number | null; last_error?: string | null; lines_distilled?: number; tasks_generated?: number; domains_processed?: number; last_due_count?: number };
   const [distillSt, setDistillSt] = useState<DaemonStatus | null>(null);
   const [remindersSt, setRemindersSt] = useState<DaemonStatus | null>(null);
   const [taskgenSt, setTaskgenSt] = useState<DaemonStatus | null>(null);
@@ -12789,15 +12890,9 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
       try { const s = await invoke<DaemonStatus>("taskgen_status"); if (alive) setTaskgenSt(s); } catch {}
     };
     poll();
-    const id = window.setInterval(poll, 4000);
+    const id = window.setInterval(poll, 2000);
     return () => { alive = false; window.clearInterval(id); };
   }, []);
-
-  const fmtTs = (ts: number | null | undefined) => {
-    if (!ts) return "never";
-    const d = new Date(ts * 1000);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  };
 
   const Row = ({ title, desc, control }: { title: string; desc: string; control: React.ReactNode }) => (
     <div className="flex items-start justify-between gap-6 border-b border-border-subtle py-4 last:border-0">
@@ -12806,30 +12901,6 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         <div className="mt-0.5 text-xs text-text-secondary">{desc}</div>
       </div>
       <div className="shrink-0">{control}</div>
-    </div>
-  );
-
-  const DaemonCard = ({ name, status, onStop, onStart, startLabel }: { name: string; status: DaemonStatus | null; onStop?: () => void; onStart?: () => void; startLabel?: string }) => (
-    <div className="rounded-lg border border-border bg-surface px-4 py-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className={`inline-block h-2 w-2 rounded-full ${status?.running ? "bg-ok" : "bg-text-muted/30"}`} />
-          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-text-primary">{name}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {status?.running && onStop && (
-            <button onClick={onStop} className="rounded border border-border px-2 py-0.5 font-mono text-[10px] text-text-muted hover:border-err/50 hover:text-err">stop</button>
-          )}
-          {!status?.running && onStart && (
-            <button onClick={onStart} className="rounded border border-border px-2 py-0.5 font-mono text-[10px] text-text-muted hover:border-accent-border hover:text-accent">{startLabel ?? "start"}</button>
-          )}
-        </div>
-      </div>
-      <div className="mt-1 font-mono text-[10px] text-text-muted">
-        {status?.running ? "running" : "idle"}
-        {status?.last_run_ts ? ` · last run ${fmtTs(status.last_run_ts)}` : ""}
-        {status?.last_error ? <span className="text-err"> · {status.last_error}</span> : null}
-      </div>
     </div>
   );
 
@@ -12850,21 +12921,33 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
       />
 
       <div className="mb-4 flex flex-col gap-2">
-        <DaemonCard name="Distill" status={distillSt}
-          onStop={() => invoke("distill_stop").catch(() => {})}
-          onStart={() => invoke("distill_start", { cfg: distillCfgFromPrefs(vaultPath) }).catch(() => {})}
+        <DaemonCard
+          name="Distill"
+          status={distillSt}
+          extra={distillSt?.lines_distilled ? `${distillSt.lines_distilled} lines distilled` : null}
+          onStop={async () => { await invoke("distill_stop"); }}
+          onStart={async () => { await invoke("distill_start", { cfg: distillCfgFromPrefs(vaultPath) }); }}
         />
-        <DaemonCard name="Reminders" status={remindersSt}
-          onStop={() => invoke("reminders_daemon_stop").catch(() => {})}
-          onStart={() => {
+        <DaemonCard
+          name="Reminders"
+          status={remindersSt}
+          extra={remindersSt?.last_due_count != null
+            ? remindersSt.last_due_count > 0
+              ? `${remindersSt.last_due_count} task${remindersSt.last_due_count === 1 ? "" : "s"} due`
+              : "no due tasks"
+            : null}
+          onStop={async () => { await invoke("reminders_daemon_stop"); }}
+          onStart={async () => {
             const sec = Number(getPref(PREF.remindersIntervalSec, "900")) || 900;
-            invoke("reminders_daemon_start", { vault: vaultPath, interval_sec: sec }).catch(() => {});
+            await invoke("reminders_daemon_start", { vault: vaultPath, interval_sec: sec });
           }}
         />
-        <DaemonCard name="Task Gen" status={taskgenSt}
-          onStop={() => invoke("taskgen_stop").catch(() => {})}
-          onStart={() => invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch(() => {})}
-          startLabel="start"
+        <DaemonCard
+          name="Task Gen"
+          status={taskgenSt}
+          extra={taskgenSt?.tasks_generated ? `${taskgenSt.tasks_generated} tasks generated` : null}
+          onStop={async () => { await invoke("taskgen_stop"); }}
+          onStart={async () => { await invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }); }}
         />
       </div>
 
