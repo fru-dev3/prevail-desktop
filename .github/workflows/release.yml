@@ -56,15 +56,22 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Where prepare-sidecar.sh finds the engine repo (checked out above).
           PREVAIL_CLI_DIR: ${{ github.workspace }}/engine
-          # --- Developer ID signing ---
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          # --- Notarization ---
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # --- Developer ID signing + notarization ---
+          # GATED on the `SIGNING_READY` repo variable. The APPLE_CERTIFICATE
+          # secret was failing to import ("failed to import keychain certificate"),
+          # which aborted the whole bundle step and blocked every release. Until
+          # the cert is fixed (set repo variable SIGNING_READY=true once it is —
+          # see the tauri-mac-sign-notarize skill), these resolve to empty and
+          # tauri-action SKIPS Apple signing: the build still produces a working
+          # (unsigned-for-Gatekeeper) DMG plus the signed updater feed below, so
+          # releases publish instead of failing. Re-enabling needs no code change.
+          APPLE_CERTIFICATE: ${{ vars.SIGNING_READY == 'true' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ vars.SIGNING_READY == 'true' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.SIGNING_READY == 'true' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          KEYCHAIN_PASSWORD: ${{ vars.SIGNING_READY == 'true' && secrets.KEYCHAIN_PASSWORD || '' }}
+          APPLE_ID: ${{ vars.SIGNING_READY == 'true' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ vars.SIGNING_READY == 'true' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ vars.SIGNING_READY == 'true' && secrets.APPLE_TEAM_ID || '' }}
           # --- Updater artifact signing (in-app auto-update feed) ---
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
