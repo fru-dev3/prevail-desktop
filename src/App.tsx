@@ -5499,6 +5499,9 @@ function DomainContextDrawer({
       invoke<string>("read_memory_md", { vault: vaultPath, domain: domain || null })
         .then((m) => { if (mounted) setMemory(m || ""); })
         .catch(() => { if (mounted) setMemory(""); });
+      invoke<string>("read_ideal_state", { vault: vaultPath })
+        .then((s) => { if (mounted) setIdealState(s || ""); })
+        .catch(() => { if (mounted) setIdealState(""); });
     };
     load();
     // Refresh the instant a decision/verdict is saved anywhere in the app.
@@ -5507,6 +5510,8 @@ function DomainContextDrawer({
     return () => { mounted = false; window.removeEventListener("prevail:context-changed", onChanged); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultPath, domain]);
+
+  const [idealState, setIdealState] = useState<string>("");
 
   const Section = ({
     keyName, title, count, body,
@@ -5592,6 +5597,24 @@ function DomainContextDrawer({
               })}
             </ul>
           )
+        } />
+        <Section keyName="ideal" title="Ideal state" body={
+          idealState.trim() ? (
+            <>
+              <p className="mb-2 text-[11px] leading-relaxed text-text-muted">
+                Your constitution. It is already injected at highest precedence into every chat and council turn; pull it in explicitly when you want the model to reason against it at length.
+              </p>
+              <button
+                onClick={() => onInjectContext(idealState, "Ideal State · constitution")}
+                className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+              >
+                → use in chat
+              </button>
+              <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
+                {idealState.length > 1200 ? idealState.slice(0, 1200) + "\n…" : idealState}
+              </pre>
+            </>
+          ) : <div className="text-xs text-text-muted">No Ideal State written yet. Settings → Ideal State.</div>
         } />
         <Section keyName="memory" title="Long-term memory" body={
           memory.trim() ? (
