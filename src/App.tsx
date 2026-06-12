@@ -16926,7 +16926,7 @@ function AppearanceSection({ appearance }: { appearance: ReturnType<typeof useAp
         <p className="mb-4 text-sm text-text-secondary">
           Desktop palettes. The selected mode is applied on top.
         </p>
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {PALETTES.map((p) => (
             <PaletteCard
               key={p.id}
