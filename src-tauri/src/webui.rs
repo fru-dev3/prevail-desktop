@@ -61,6 +61,8 @@ const WEBUI_ALLOWED: &[&str] = &[
     // cross-device UI settings (theme/palette) — read + write so the browser
     // both inherits the desktop look and can change it. Not secrets.
     "ui_settings_get", "ui_settings_set",
+    // cross-device UI prefs (pins, model picks, per-domain toggles)
+    "ui_prefs_get", "ui_prefs_set",
     // Bunker Mode: read-only status for the ribbon/card. bunker_set is
     // deliberately NOT exposed — a remote browser must never be able to
     // disable the local-only trust guarantee.
