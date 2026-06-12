@@ -1075,6 +1075,59 @@ function preferredLocalCli(clis: { id: string; available: boolean }[]): string |
   return clis.find((c) => isLocalCli(c.id) && c.available)?.id ?? null;
 }
 
+// ── CLI validation (app-wide) ───────────────────────────────────────────────
+// One live validity status per provider, auto-checked at launch so every
+// surface (Models page, chat picker) can show valid / not-valid immediately
+// instead of waiting for a card to be expanded. Module scope + window event,
+// same pattern as the bunker mirror above.
+type CliVerifyInfo = { status: "unknown" | "verifying" | "ok" | "failed"; error?: string };
+const cliVerifyLive = new Map<string, CliVerifyInfo>();
+function setCliVerify(cliId: string, info: CliVerifyInfo) {
+  cliVerifyLive.set(cliId, info);
+  window.dispatchEvent(new Event("prevail:verify-changed"));
+}
+function useCliVerifyLive(): Map<string, CliVerifyInfo> {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const f = () => force((n) => n + 1);
+    window.addEventListener("prevail:verify-changed", f);
+    return () => window.removeEventListener("prevail:verify-changed", f);
+  }, []);
+  return cliVerifyLive;
+}
+// Verify a provider by running its default model once (a real end-to-end
+// call: binary + auth + model all have to work).
+async function verifyCliDefaultModel(cliId: string): Promise<void> {
+  const def = lsGet(`prevail.model.${cliId}`) || modelsFor(cliId)[0]?.id || "";
+  setCliVerify(cliId, { status: "verifying" });
+  try {
+    await invoke<string>("verify_cli_model", { args: { cli: cliId, model: def || null } });
+    setCliVerify(cliId, { status: "ok" });
+    const map = loadVerifyMap();
+    map[`${cliId}:${def}`] = "ok";
+    saveVerifyMap(map);
+  } catch (e) {
+    setCliVerify(cliId, { status: "failed", error: String(e).slice(0, 200) });
+  }
+}
+let cliAutoVerifyStarted = false;
+function autoVerifyClis(clis: { id: string; available: boolean }[], force = false) {
+  if (cliAutoVerifyStarted && !force) return;
+  cliAutoVerifyStarted = true;
+  const cached = loadVerifyMap();
+  for (const c of clis) {
+    if (!c.available) continue;
+    // Bunker Mode: verifying a cloud provider would call the cloud; leave it
+    // unknown rather than break the no-network guarantee.
+    if (isBunkerOn() && !isLocalCli(c.id)) continue;
+    if (!force && Object.keys(cached).some((k) => k.startsWith(`${c.id}:`))) {
+      setCliVerify(c.id, { status: "ok" }); // a model of this CLI verified before
+      continue;
+    }
+    void verifyCliDefaultModel(c.id);
+  }
+}
+
 // The always-visible Bunker Mode status bar. Never disappears while the app
 // runs, so the user always knows whether anything can leave their machine.
 function BunkerRibbon({ enabled }: { enabled: boolean }) {
@@ -2313,6 +2366,9 @@ export default function App() {
     try {
       const list = await invoke<CliInfo[]>("detect_clis");
       setClis(list);
+      // Validate every detected provider right away (once per session), so
+      // valid / not-valid marks are visible without expanding anything.
+      autoVerifyClis(list);
       return list;
     } catch {
       return [];
@@ -5285,21 +5341,37 @@ function AgentPickerRail({
   selected: string | null;
   onSelect: (cliId: string) => void;
 }) {
+  const verify = useCliVerifyLive();
   if (clis.length === 0) return null;
   return (
     <div className="mt-3 flex items-center gap-1 rounded-full border border-border bg-surface px-1.5 py-1 shadow-sm">
-      {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
+      {clis
+        .filter((c) => !isBunkerOn() || isLocalCli(c.id))
+        // A provider that failed validation is not offered for chat: pick a
+        // dead provider and the send just errors. It stays on the Models page
+        // with the reason and a login hint.
+        .filter((c) => verify.get(c.id)?.status !== "failed")
+        .map((c) => {
         const active = c.id === selected;
+        const v = verify.get(c.id)?.status;
         return (
           <button
             key={c.id}
             onClick={() => onSelect(c.id)}
-            title={c.label}
-            className={`group flex items-center gap-2 rounded-full px-2 py-1 transition-all ${
+            title={`${c.label}${v === "ok" ? " · validated" : v === "verifying" ? " · validating…" : " · not validated yet"}`}
+            className={`group relative flex items-center gap-2 rounded-full px-2 py-1 transition-all ${
               active ? "bg-surface-warm" : "hover:bg-surface-warm"
             }`}
           >
-            <ProviderMark vendor={c.id} size={24} />
+            <span className="relative">
+              <ProviderMark vendor={c.id} size={24} />
+              {v === "ok" && (
+                <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-ok text-[8px] font-bold leading-none text-background">✓</span>
+              )}
+              {v === "verifying" && (
+                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-text-muted" />
+              )}
+            </span>
             <span
               className={`overflow-hidden whitespace-nowrap font-display text-sm font-semibold tracking-tight transition-all duration-200 ease-out ${
                 active
@@ -12172,6 +12244,7 @@ function ModelsSection({
   // ones appear without a code change. Runs once on launch + a manual Refresh.
   const [refreshing, setRefreshing] = useState(false);
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
+  const verify = useCliVerifyLive();
   const discover = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -12180,24 +12253,58 @@ function ModelsSection({
     } finally { setRefreshing(false); }
   }, []);
   useEffect(() => { void discover(); }, [discover]);
+  // Re-check = re-discover model lists AND re-validate every detected
+  // provider; the status badges flip to "checking" live, so the click
+  // visibly does something.
+  const recheck = useCallback(async () => {
+    autoVerifyClis(clis, true);
+    await discover();
+  }, [clis, discover]);
+  const detectedClis = clis.filter((c) => c.available);
+  const okCount = detectedClis.filter((c) => verify.get(c.id)?.status === "ok").length;
   return (
     <>
       <SettingsHeader
         title="Models"
-        subtitle="Every provider Prevail can use. Expand one to test its models and set the default a new chat opens with. Installed CLIs run locally; API providers unlock hosted models with one key."
+        icon={Layers}
+        subtitle="Every provider Prevail can use. Each one is validated automatically at launch with a real call: binary, login, and model all have to work. Expand a provider to test individual models and set the default a new chat opens with."
       />
-      <div className="mb-4 flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">
-        <button
-          onClick={() => void discover()}
-          disabled={refreshing}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50"
-        >
-          {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
-          {refreshing ? "Refreshing…" : "Refresh models"}
-        </button>
-        <span className="text-text-muted">
-          Local + OpenRouter models are detected live{refreshedAt ? ` · updated ${Math.max(1, Math.round((Date.now() - refreshedAt) / 1000))}s ago` : ""}. Claude/Codex use the latest via the opus/sonnet/haiku aliases.
+      {/* Validity at a glance: one badged mark per detected provider. */}
+      <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-border-subtle bg-surface px-4 py-2.5">
+        <div className="flex items-center gap-3.5">
+          {detectedClis.map((c) => {
+            const v = verify.get(c.id)?.status;
+            return (
+              <span
+                key={c.id}
+                className="relative"
+                title={`${c.label}: ${v === "ok" ? "valid" : v === "failed" ? "not valid" : v === "verifying" ? "checking…" : "not checked"}`}
+              >
+                <ProviderMark vendor={c.id} size={22} />
+                <span className={`absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] font-bold leading-none ${
+                  v === "ok" ? "bg-ok text-background"
+                  : v === "failed" ? "bg-warn text-background"
+                  : v === "verifying" ? "animate-pulse bg-text-muted text-background"
+                  : "bg-surface-strong text-text-muted"
+                }`}>
+                  {v === "ok" ? "✓" : v === "failed" ? "✗" : v === "verifying" ? "·" : "○"}
+                </span>
+              </span>
+            );
+          })}
+        </div>
+        <span className="font-mono text-[10px] text-text-muted">
+          {okCount}/{detectedClis.length} providers valid
+          {refreshedAt ? ` · model lists updated ${Math.max(1, Math.round((Date.now() - refreshedAt) / 1000))}s ago` : ""}
         </span>
+        <button
+          onClick={() => void recheck()}
+          disabled={refreshing}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50"
+        >
+          <RotateCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+          Re-check all
+        </button>
       </div>
       <section className="mb-8">
         <SubsectionHeader icon={Sparkles}>Installed CLIs</SubsectionHeader>
@@ -12318,6 +12425,7 @@ function AgentCard({
   onMakeDefault?: () => void;
 }) {
   const brand = VENDOR_BRAND[cli.id] ?? VENDOR_BRAND.other;
+  const liveVerify = useCliVerifyLive();
   // Re-render when live discovery fills in new models.
   const [, setModelsNonce] = useState(0);
   useEffect(() => {
@@ -12358,9 +12466,14 @@ function AgentCard({
         return next;
       });
       setErrors((e) => { const { [modelId]: _, ...rest } = e; return rest; });
+      setCliVerify(cli.id, { status: "ok" }); // any working model = usable provider
     } catch (e) {
       setStatus((s) => ({ ...s, [modelId]: "failed" }));
       setErrors((er) => ({ ...er, [modelId]: String(e).slice(0, 200) }));
+      // Only demote the provider when nothing of it has verified ok.
+      if (cliVerifyLive.get(cli.id)?.status !== "ok") {
+        setCliVerify(cli.id, { status: "failed", error: String(e).slice(0, 200) });
+      }
     }
   }
 
@@ -12387,6 +12500,7 @@ function AgentCard({
     return <span className="text-text-muted/60" title="Not yet verified">○</span>;
   }
 
+  const cliErr = liveVerify.get(cli.id);
   return (
     <div className={`rounded-lg border bg-surface transition-colors ${open ? "border-accent-border" : "border-border-subtle"}`}>
       {/* Single-line header — same row dimensions as every other settings list. */}
@@ -12401,13 +12515,23 @@ function AgentCard({
             <span className="shrink-0 text-[11px] text-text-muted">{open ? "▾" : "▸"}</span>
           )}
           <span className="shrink-0 font-display text-sm font-semibold tracking-tight">{cli.label}</span>
-          <span className={`shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ${
-            cli.available
-              ? "border border-accent-border bg-accent-soft text-accent"
-              : "border border-border bg-background text-text-muted"
-          }`}>
-            {cli.available ? "Detected" : "Not installed"}
-          </span>
+          {(() => {
+            const v = cli.available ? cliVerifyLive.get(cli.id) : undefined;
+            const chip = !cli.available
+              ? { cls: "border-border bg-background text-text-muted", label: "Not installed" }
+              : v?.status === "ok"
+                ? { cls: "border-accent-border bg-accent-soft text-accent", label: "✓ Valid" }
+                : v?.status === "failed"
+                  ? { cls: "border-warn/40 bg-warn/10 text-warn", label: "✗ Not valid" }
+                  : v?.status === "verifying"
+                    ? { cls: "border-border bg-background text-text-muted animate-pulse", label: "◐ Checking" }
+                    : { cls: "border-border bg-background text-text-muted", label: "Detected" };
+            return (
+              <span className={`shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ${chip.cls}`}>
+                {chip.label}
+              </span>
+            );
+          })()}
           {isDefault && (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-background">
               <Check className="h-2.5 w-2.5" strokeWidth={3} /> Default
@@ -12432,6 +12556,32 @@ function AgentCard({
           Start chat
         </button>
       </div>
+
+      {/* Why it's not valid, on the card face: usually an auth/token problem,
+          so lead with the fix (the login command) rather than the stack. */}
+      {cli.available && cliErr?.status === "failed" && cliErr.error && (
+        <div className="flex items-start gap-2 border-t border-border-subtle bg-warn/5 px-4 py-2">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn" />
+          <div className="min-w-0 flex-1">
+            {(() => {
+              const loginCmd = authLoginCmd(cli.id, cliErr.error ?? "");
+              return loginCmd ? (
+                <span className="text-xs text-text-secondary">
+                  Not signed in. Run <code className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[11px] text-accent">{loginCmd}</code> in a terminal, then hit Re-check.
+                </span>
+              ) : (
+                <span className="line-clamp-2 text-xs text-text-secondary">{cliErr.error}</span>
+              );
+            })()}
+          </div>
+          <button
+            onClick={() => void verifyCliDefaultModel(cli.id)}
+            className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+          >
+            Re-check
+          </button>
+        </div>
+      )}
 
       {open && cli.available && models.length > 0 && (
         <div className="border-t border-border-subtle px-4 py-3">
