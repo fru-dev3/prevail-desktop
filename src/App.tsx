@@ -11263,28 +11263,23 @@ function BenchResults({
             </div>
           )}
           {modelAgg.length > 1 && (
-            <div className="mb-5 grid grid-cols-1 gap-3">
+            <div className="mb-4 flex flex-wrap items-center gap-2">
               {modelAgg.slice(0, 3).map((m, i) => (
                 <button
                   key={m.key}
                   onClick={() => setExpandedModel(expandedModel === m.key ? null : m.key)}
-                  className={`rounded-2xl border p-4 text-left transition-colors ${
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-left transition-colors ${
                     i === 0 ? "border-accent bg-accent-soft/60 hover:bg-accent-soft" : "border-border-subtle bg-surface hover:border-border"
                   }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <ProviderMark vendor={m.parsed.vendor} size={24} />
-                    <span className="min-w-0 truncate font-display text-[15px] font-semibold tracking-tight">{m.parsed.model}</span>
-                    {i === 0 && <Crown className="ml-auto h-4 w-4 shrink-0 text-accent" />}
-                  </div>
-                  <div className="mt-3 flex items-baseline gap-1.5">
-                    <span className="font-display text-3xl font-bold leading-none text-accent">{m.best?.toFixed(1) ?? "—"}</span>
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">/ 10 best</span>
-                  </div>
-                  <div className="mt-1.5 font-mono text-[10px] text-text-muted">
-                    {m.runs.length} run{m.runs.length === 1 ? "" : "s"} · last {m.latestDate || "—"}
-                    {m.latestKw !== null ? ` · ${Math.round(m.latestKw)}% kw` : ""}
-                  </div>
+                  {i === 0 ? (
+                    <Crown className="h-3.5 w-3.5 shrink-0 text-accent" />
+                  ) : (
+                    <span className="w-3 text-center font-mono text-[10px] text-text-muted">{i + 1}</span>
+                  )}
+                  <ProviderMark vendor={m.parsed.vendor} size={16} />
+                  <span className="max-w-[14rem] truncate font-display text-[13px] font-semibold tracking-tight">{m.parsed.model}</span>
+                  <span className="font-mono text-sm font-bold text-accent">{m.best?.toFixed(1) ?? "-"}</span>
                 </button>
               ))}
             </div>
