@@ -1938,6 +1938,15 @@ export default function App() {
     );
     setDomainStats(Object.fromEntries(results));
   }, []);
+  const [, setDueTasks] = useState<Record<string, number>>({});
+  const checkReminders = useCallback(async (vault: string) => {
+    try {
+      const due = await invoke<{ domain: string }[]>("reminders_check", { vault });
+      const counts: Record<string, number> = {};
+      for (const t of due) counts[t.domain] = (counts[t.domain] ?? 0) + 1;
+      setDueTasks(counts);
+    } catch { /* ignore */ }
+  }, []);
   // Fire reminders_check once when the vault becomes known, then again on
   // every window focus (catches a new day without a relaunch).
   useEffect(() => {
