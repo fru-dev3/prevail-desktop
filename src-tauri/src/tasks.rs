@@ -145,6 +145,43 @@ pub fn tasks_add(vault: String, domain: String, text: String, source: Option<Str
     Ok(tasks)
 }
 
+/// Every task across every domain, tagged with its domain — powers the
+/// Settings > Tasks cross-domain view. Open tasks first, then done.
+#[tauri::command]
+pub fn tasks_read_all(vault: String) -> Result<Vec<serde_json::Value>, String> {
+    let root = std::path::PathBuf::from(&vault);
+    let mut out: Vec<serde_json::Value> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&root) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if !p.is_dir() { continue; }
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || name.starts_with('_') { continue; }
+            for t in tasks_read(vault.clone(), name.clone()).unwrap_or_default() {
+                out.push(serde_json::json!({
+                    "domain": name,
+                    "text": t.text,
+                    "done": t.done,
+                    "due": t.due,
+                    "added": t.added,
+                    "source": t.source,
+                }));
+            }
+        }
+    }
+    // Open first; then by due date (soonest first, undated last).
+    out.sort_by(|a, b| {
+        let ad = a["done"].as_bool().unwrap_or(false);
+        let bd = b["done"].as_bool().unwrap_or(false);
+        ad.cmp(&bd).then_with(|| {
+            let au = a["due"].as_str().unwrap_or("9999");
+            let bu = b["due"].as_str().unwrap_or("9999");
+            au.cmp(bu)
+        })
+    });
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
