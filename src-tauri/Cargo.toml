@@ -1,6 +1,6 @@
 [package]
 name = "prevail-desktop"
-version = "0.7.5"
+version = "0.7.6"
 description = "Prevail desktop — native macOS cockpit for AI council deliberation"
 authors = ["example.com"]
 edition = "2021"
@@ -23,6 +23,10 @@ tauri-plugin-updater = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
 tiny_http = "0.12"
+# In-process HTTP (Telegram bot API) so the bot token never lands on a process
+# command line. default-features off keeps http2/h2 out of the tree (HTTP/1.1 is
+# all the Telegram API needs); default-tls = macOS Secure Transport, no OpenSSL.
+reqwest = { version = "0.13", default-features = false, features = ["json", "default-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 walkdir = "2"
