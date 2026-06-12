@@ -1250,6 +1250,43 @@ fn journal_append(vault: String, domain: Option<String>, entry: String) -> Resul
 /// or a user-stated preference ("make Mayo my favorite hospital") is a decision
 /// — durable, provenance-tagged, and fed into state derivation + scoring so the
 /// domain actually learns. Mirrors `intent_append`. (feedback v0.4.1 I1/I5)
+/// Every intent across the whole vault (each domain's _intents.jsonl plus the
+/// vault-root general ledger), tagged with its domain, newest first. Powers the
+/// Settings > Intents browser.
+#[tauri::command]
+fn intents_read_all(vault: String, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
+    let root = PathBuf::from(&vault);
+    let mut dirs: Vec<(String, PathBuf)> = vec![("general".into(), root.clone())];
+    if let Ok(it) = read_dir_retry(&root) {
+        for e in it.flatten() {
+            let p = e.path();
+            let name = e.file_name().to_string_lossy().to_string();
+            if p.is_dir() && !name.starts_with('.') && !name.starts_with('_') {
+                dirs.push((name, p));
+            }
+        }
+    }
+    let mut out: Vec<serde_json::Value> = Vec::new();
+    for (dom, dir) in dirs {
+        let Ok(text) = read_to_string_retry(&dir.join("_intents.jsonl")) else { continue };
+        for l in text.lines().filter(|l| !l.trim().is_empty()) {
+            let Ok(mut v) = serde_json::from_str::<serde_json::Value>(l) else { continue };
+            if v.get("kind").and_then(|k| k.as_str()) != Some("intent") {
+                continue;
+            }
+            if let Some(obj) = v.as_object_mut() {
+                obj.insert("domain".into(), serde_json::json!(dom));
+            }
+            out.push(v);
+        }
+    }
+    out.sort_by_key(|v| std::cmp::Reverse(v.get("ts").and_then(|t| t.as_i64()).unwrap_or(0)));
+    if let Some(n) = limit {
+        out.truncate(n);
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 fn decision_append(
     vault: String,
@@ -3664,6 +3701,7 @@ pub fn run() {
             usage_summary_domain,
             intent_append,
             intents_read,
+            intents_read_all,
             journal_append,
             decision_append,
             decisions_read,
