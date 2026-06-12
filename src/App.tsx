@@ -2114,11 +2114,20 @@ export default function App() {
     })();
     return () => { if (unl) unl(); };
   }, [refreshDomainStats]);
-  // Switching domains starts a fresh chat in the new domain instead of
-  // dragging the previous domain's thread pointer along — which would
-  // cause the next auto-save to try writing into a path that lives
-  // under the wrong domain folder.
-  useEffect(() => { setActiveThreadPath(null); }, [selectedDomain]);
+  // Switching domains never drags the previous domain's thread pointer
+  // along (the next auto-save would write into the wrong domain folder),
+  // but returning to a domain lands on what you were working on: a stream
+  // that's still running there first, else the thread you last had open.
+  useEffect(() => {
+    if (!selectedDomain) { setActiveThreadPath(null); return; }
+    const running = runningStreams.find((s) => s.domain === selectedDomain && s.threadPath);
+    const remembered = lsGet(`prevail.domain.${selectedDomain}.lastThread`);
+    setActiveThreadPath(
+      running?.threadPath
+        ?? (remembered && remembered.includes(`/${selectedDomain}/`) ? remembered : null),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDomain]);
   // Cross-domain streaming awareness — App-level map of in-flight
   // streams. Sidebar + ThreadsRail read this to pulse domains/threads
   // that have work happening in the background.
@@ -6792,6 +6801,11 @@ function ChatPanel({
   // file — hence the duplicates the user reported.
   const activeThreadRef = useRef<string | null>(activeThreadPath);
   useEffect(() => { activeThreadRef.current = activeThreadPath; }, [activeThreadPath]);
+  useEffect(() => {
+    if (domain && activeThreadPath && activeThreadPath.includes(`/${domain}/`)) {
+      lsSet(`prevail.domain.${domain}.lastThread`, activeThreadPath);
+    }
+  }, [domain, activeThreadPath]);
   // When the auto-save effect adopts a new path mid-stream we stamp
   // the path here. The load-on-change effect below uses this to skip
   // reloading from disk — the in-memory messages are already ahead of
@@ -7065,6 +7079,14 @@ function ChatPanel({
           setMessages((m) => {
             const last = m[m.length - 1];
             if (last && last.streaming) return [...m.slice(0, -1), { ...last, streaming: false }];
+            // No live bubble: the view lost this stream (navigated away and
+            // back mid-run). Catch up from the thread file on disk.
+            const p = activeThreadRef.current;
+            if (p) {
+              void invoke<{ meta: ThreadMeta; turns: ThreadTurn[] }>("load_thread", { path: p })
+                .then((t) => setMessages(t.turns.map((tn) => ({ role: tn.role, cli: tn.cli ?? undefined, content: tn.content, ts: Date.now() }))))
+                .catch(() => {});
+            }
             return m;
           });
         },
@@ -7178,6 +7200,14 @@ function ChatPanel({
               return [...m.slice(0, -1), { ...last, streaming: false }];
             }
             persistUsage(e.payload.session, e.payload.code === 0);
+            // No live bubble: the view lost this stream (navigated away and
+            // back mid-run). The engine persisted the thread; reload it.
+            const p = activeThreadRef.current;
+            if (p) {
+              void invoke<{ meta: ThreadMeta; turns: ThreadTurn[] }>("load_thread", { path: p })
+                .then((t) => setMessages(t.turns.map((tn) => ({ role: tn.role, cli: tn.cli ?? undefined, content: tn.content, ts: Date.now() }))))
+                .catch(() => {});
+            }
             return m;
           });
         },
