@@ -12497,7 +12497,7 @@ function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "ideal-state" | "memory" | "intents" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "ideal-state" | "memory" | "intents" | "tasks" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
@@ -12542,6 +12542,7 @@ function SettingsPanel({
       { id: "ideal-state", label: "Ideal State", icon: Compass },
       { id: "memory", label: "Memory & Context", icon: Brain },
       { id: "intents", label: "Intents", icon: Lightbulb },
+      { id: "tasks", label: "Tasks", icon: Check },
       { id: "daemons", label: "Daemons", icon: Zap },
       { id: "vault", label: "Vault", icon: Folder },
       { id: "demo", label: "Demo Mode", icon: Sparkles },
@@ -12653,6 +12654,7 @@ function SettingsPanel({
           {section === "ideal-state" && <IdealStateSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
           {section === "intents" && <IntentsSection vaultPath={vaultPath} />}
+          {section === "tasks" && <TasksCrossDomainSection vaultPath={vaultPath} />}
           {section === "daemons" && <DaemonsSection vaultPath={vaultPath} />}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {section === "connectors" && (
@@ -14881,6 +14883,62 @@ function McpSection({ vaultPath }: { vaultPath: string }) {
           )}
         </div>
       </div>
+    </>
+  );
+}
+
+// Settings > Tasks: every task across every domain in one place, so you can
+// triage what is accumulating where (the cross-domain view, vs per-domain
+// Insights). Grouped by status; shows due, source, and added date.
+function TasksCrossDomainSection({ vaultPath }: { vaultPath: string }) {
+  type TaskRow = { domain: string; text: string; done: boolean; due?: string | null; added?: string | null; source?: string | null };
+  const [rows, setRows] = useState<TaskRow[]>([]);
+  const [domainFilter, setDomainFilter] = useState("all");
+  const [showDone, setShowDone] = useState(false);
+  const refresh = () => invoke<TaskRow[]>("tasks_read_all", { vault: vaultPath }).then((r) => setRows(Array.isArray(r) ? r : [])).catch(() => {});
+  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, [vaultPath]);
+  const domains = useMemo(() => [...new Set(rows.map((r) => r.domain))].sort(), [rows]);
+  const today = new Date().toISOString().slice(0, 10);
+  const shown = rows.filter((r) => (domainFilter === "all" || r.domain === domainFilter) && (showDone || !r.done));
+  const openCount = rows.filter((r) => !r.done).length;
+  const overdue = rows.filter((r) => !r.done && r.due && r.due < today).length;
+  async function toggle(r: TaskRow) {
+    try {
+      const cur = await invoke<TaskRow[]>("tasks_read", { vault: vaultPath, domain: r.domain });
+      const next = cur.map((t) => (t.text === r.text ? { ...t, done: !t.done } : t));
+      await invoke("tasks_set", { vault: vaultPath, domain: r.domain, tasks: next });
+      refresh();
+    } catch (e) { console.error("toggle task", e); }
+  }
+  return (
+    <>
+      <SettingsHeader title="Tasks" icon={Check} subtitle="Every task across every domain, in one place — triage what is piling up where. Per-domain lists live in each domain's Insights tab." />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="font-mono text-[11px] text-text-secondary">{openCount} open{overdue > 0 ? ` · ${overdue} overdue` : ""}</span>
+        <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] text-text-secondary">
+          <option value="all">All domains</option>
+          {domains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+        </select>
+        <button onClick={() => setShowDone((s) => !s)} className={`rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider ${showDone ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
+          {showDone ? "Hiding done off" : "Show done"}
+        </button>
+      </div>
+      {shown.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">No {showDone ? "" : "open "}tasks{domainFilter !== "all" ? ` in ${titleCase(domainFilter)}` : ""}.</div>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border border-border">
+          {shown.map((r, i) => (
+            <label key={`${r.domain}-${r.text}-${i}`} className="flex items-start gap-3 border-b border-border-subtle px-4 py-2.5 last:border-0 hover:bg-surface-warm">
+              <input type="checkbox" checked={r.done} onChange={() => toggle(r)} className="mt-0.5" />
+              <span className="mt-0.5 shrink-0 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{titleCase(r.domain)}</span>
+              <span className={`min-w-0 flex-1 text-sm ${r.done ? "text-text-muted line-through" : "text-text-primary"}`}>{r.text}</span>
+              {r.source && r.source !== "user" && <span className="shrink-0 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] text-text-muted">{r.source === "daemon" ? "auto" : "suggested"}</span>}
+              {r.due && !r.done && (() => { const od = r.due < today, du = r.due === today; return <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] ${od ? "bg-warn/15 text-warn" : du ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>{od ? "overdue" : du ? "today" : r.due}</span>; })()}
+              <span className="shrink-0 font-mono text-[9px] text-text-muted/60">{r.added ?? ""}</span>
+            </label>
+          ))}
+        </div>
+      )}
     </>
   );
 }

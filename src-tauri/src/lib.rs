@@ -3958,6 +3958,7 @@ pub fn run() {
             tasks::tasks_read,
             tasks::tasks_set,
             tasks::tasks_add,
+            tasks::tasks_read_all,
             reminders::reminders_check,
             reminders::reminders_due_today,
             reminders::reminders_daemon_start,
