@@ -5556,7 +5556,7 @@ function DomainContextDrawer({
             verdict or saved decision appears here the instant it's written. */}
         <Section keyName="recent" title="Recent decisions" count={decisionLog.length} body={
           decisionLog.length === 0 ? (
-            <div className="text-xs text-text-muted">No decisions yet. Council verdicts and saved decisions appear here instantly.</div>
+            <div className="text-xs text-text-muted">No decisions yet. Council verdicts and saved decisions land here the moment they happen; the distiller also extracts decisions from your chats on its next pass.</div>
           ) : (
             <ul className="flex flex-col gap-2">
               {decisionLog.map((d, i) => {
@@ -5598,7 +5598,7 @@ function DomainContextDrawer({
                 {memory.length > 1200 ? memory.slice(0, 1200) + "\n…" : memory}
               </pre>
             </>
-          ) : <div className="text-xs text-text-muted">No distilled memory yet. It builds up as you use this {domain ? "domain" : "workspace"}.</div>
+          ) : <div className="text-xs text-text-muted">No distilled memory yet. The background distiller (Settings → Daemons) compacts your activity into memory once enough new material accumulates, usually within a few sessions.</div>
         } />
         {ctx && (
           <>
@@ -5615,7 +5615,7 @@ function DomainContextDrawer({
                     {ctx.state.length > 1200 ? ctx.state.slice(0, 1200) + "\n…" : ctx.state}
                   </pre>
                 </>
-              ) : <div className="text-xs text-text-muted">no state.md found</div>
+              ) : <div className="text-xs text-text-muted">No state yet. The distiller derives a state snapshot from your activity in this domain; it appears after your first few chats here.</div>
             } />
             <Section keyName="decisions" title="Decisions" body={
               ctx.decisions ? (
@@ -5630,7 +5630,7 @@ function DomainContextDrawer({
                     {ctx.decisions.length > 1200 ? ctx.decisions.slice(0, 1200) + "\n…" : ctx.decisions}
                   </pre>
                 </>
-              ) : <div className="text-xs text-text-muted">no decisions.md found</div>
+              ) : <div className="text-xs text-text-muted">No decision history yet. This is the full ledger; "Recent decisions" above shows the latest 15 of the same ledger as they happen.</div>
             } />
             <Section keyName="journal" title="Journal" body={
               ctx.journal ? (
@@ -5645,11 +5645,11 @@ function DomainContextDrawer({
                     {ctx.journal.length > 1500 ? ctx.journal.slice(0, 1500) + "\n…" : ctx.journal}
                   </pre>
                 </>
-              ) : <div className="text-xs text-text-muted">no _journal.md or _journal/ found</div>
+              ) : <div className="text-xs text-text-muted">No journal yet. Journal entries are curated from chat turns run through the engine; desktop chats feed State and Decisions via the distiller instead.</div>
             } />
             <Section keyName="logs" title="Session logs" count={ctx.recent_logs.length} body={
               ctx.recent_logs.length === 0 ? (
-                <div className="text-xs text-text-muted">no entries in _log/ yet</div>
+                <div className="text-xs text-text-muted">No session logs yet. Engine sessions write daily logs here; your desktop chat history lives under Insights and the thread list.</div>
               ) : (
                 <ul className="space-y-1">
                   {ctx.recent_logs.map((l) => (

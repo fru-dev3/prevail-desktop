@@ -3022,8 +3022,40 @@ fn domain_context(vault: String, domain: String) -> Result<DomainContext, String
         if !p.exists() { return None; }
         read_to_string_retry(&p).ok()
     };
-    let state = read(root.join("state.md"));
-    let decisions = read(root.join("decisions.md"));
+    // v2 layout first (_state.md, written by the distill daemon), v1 fallback
+    // (state.md). The panel showed "no state.md found" forever because it only
+    // knew the v1 name while everything else wrote v2.
+    let state = read(root.join("_state.md")).or_else(|| read(root.join("state.md")));
+    // Curated decisions: the journal distiller's file when present, else the
+    // v1 root file, else the full _decisions.jsonl ledger rendered readable
+    // (the same ledger "Recent decisions" tails, but complete).
+    let decisions = read(root.join("_journal").join("decisions.md"))
+        .or_else(|| read(root.join("decisions.md")))
+        .or_else(|| {
+            let ledger = read(root.join("_decisions.jsonl"))?;
+            let lines: Vec<String> = ledger
+                .lines()
+                .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+                .map(|v| {
+                    let txt = ["decision", "verdict", "text", "prompt"]
+                        .iter()
+                        .find_map(|k| v.get(k).and_then(|x| x.as_str()).map(str::to_string))
+                        .unwrap_or_default();
+                    let kind = v.get("kind").and_then(|x| x.as_str()).unwrap_or("decision");
+                    let day = v
+                        .get("ts")
+                        .and_then(|x| x.as_i64())
+                        .map(|ms| {
+                            let (y, mo, d, _, _, _) = secs_to_ymdhms(ms / 1000);
+                            format!("{y:04}-{mo:02}-{d:02}")
+                        })
+                        .unwrap_or_default();
+                    format!("- {}{}{}", if day.is_empty() { String::new() } else { format!("{day} · ") }, format!("{kind}: "), txt)
+                })
+                .filter(|l| l.len() > 4)
+                .collect();
+            if lines.is_empty() { None } else { Some(lines.join("\n")) }
+        });
     // Journal can live as a single _journal.md or a _journal/ folder
     // of dated entries — concat the latter into newest-first order.
     let journal = read(root.join("_journal.md")).or_else(|| {
