@@ -177,7 +177,9 @@ async fn distill_dir(dir: &Path, cfg: &DistillConfig) -> Result<u64, String> {
         return Ok(0);
     }
     let cursor = read_cursor(dir);
-    let raw = std::fs::read(&ledger).map_err(|e| format!("read ledger: {e}"))?;
+    let raw = crate::read_to_string_retry(&ledger)
+        .map_err(|e| format!("read ledger: {e}"))?
+        .into_bytes();
     if (cursor.byte_offset as usize) >= raw.len() {
         return Ok(0); // nothing new
     }
@@ -413,13 +415,9 @@ fn parse_distill_output(out: &str) -> Distilled {
 // kind:"chat" + source:"distill" so the Insights surface can show it and so the
 // learning loop can tell auto-extracted decisions from council verdicts.
 fn append_decisions(dir: &Path, decisions: &[serde_json::Value]) {
-    use std::io::Write;
     let path = dir.join("_decisions.jsonl");
-    let mut f = match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-        Ok(f) => f,
-        Err(_) => return,
-    };
     let base_ms = now_secs() * 1000;
+    let mut out = String::new();
     for (i, d) in decisions.iter().enumerate() {
         let decision = d.get("decision").and_then(|v| v.as_str()).unwrap_or("").trim();
         if decision.is_empty() {
@@ -436,8 +434,12 @@ fn append_decisions(dir: &Path, decisions: &[serde_json::Value]) {
             "rationale": rationale,
         });
         if let Ok(line) = serde_json::to_string(&rec) {
-            let _ = writeln!(f, "{line}");
+            out.push_str(&line);
+            out.push('\n');
         }
+    }
+    if !out.is_empty() {
+        let _ = crate::engine::vault_append_line(&path, &out);
     }
 }
 
@@ -489,7 +491,7 @@ fn write_cursor(dir: &Path, c: &Cursor) {
 // Write via temp + rename so concurrent readers never see a half-written file.
 fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
     let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, contents)?;
+    std::fs::write(&tmp, crate::engine::maybe_encrypt(path, contents))?;
     std::fs::rename(&tmp, path)
 }
 

@@ -148,7 +148,7 @@ function QuickSwitcher({
         try {
           const rows = await invoke<ThreadMeta[]>("list_threads", { vault: vaultPath, domain: name });
           for (const r of rows) collected.push({ domain: name, meta: r });
-        } catch { /* ignore — empty dir is fine */ }
+        } catch { /* ignore: empty dir is fine */ }
       };
       tasks.push(fetchOne(null));
       for (const d of domains) tasks.push(fetchOne(d.name));
@@ -281,15 +281,15 @@ interface ModelPick {
 }
 const MODELS: Record<string, ModelPick[]> = {
   claude: [
-    { id: "opus",              label: "Opus (latest)",  blurb: "alias · auto-upgrades" },
-    { id: "claude-opus-4-8",   label: "Opus 4.8",       blurb: "current flagship" },
-    { id: "claude-opus-4-7",   label: "Opus 4.7",       blurb: "previous flagship" },
-    { id: "claude-opus-4-6",   label: "Opus 4.6",       blurb: "legacy flagship" },
-    { id: "claude-fable-5",    label: "Fable 5",        blurb: "newest · most capable" },
-    { id: "sonnet",            label: "Sonnet (latest)", blurb: "alias · balanced" },
-    { id: "claude-sonnet-4-6", label: "Sonnet 4.6",     blurb: "balanced workhorse" },
-    { id: "haiku",             label: "Haiku (latest)", blurb: "alias · fast + cheap" },
-    { id: "claude-haiku-4-5",  label: "Haiku 4.5",      blurb: "fastest, cheapest" },
+    // One entry per model: the alias id (auto-upgrades) carries the resolved
+    // version in its label, so "Opus 4.8 (latest)" and a separate "Opus 4.8"
+    // never coexist. Bump these labels when Anthropic ships a new version.
+    { id: "opus",            label: "Opus 4.8 (latest)",   blurb: "auto-upgrades to the newest Opus" },
+    { id: "claude-opus-4-7", label: "Opus 4.7",            blurb: "pinned · previous flagship" },
+    { id: "claude-opus-4-6", label: "Opus 4.6",            blurb: "pinned · legacy flagship" },
+    { id: "claude-fable-5",  label: "Fable 5",             blurb: "newest · most capable" },
+    { id: "sonnet",          label: "Sonnet 4.6 (latest)", blurb: "auto-upgrades · balanced" },
+    { id: "haiku",           label: "Haiku 4.5 (latest)",  blurb: "auto-upgrades · fast + cheap" },
   ],
   codex: [
     // gpt-5.5 is the ONLY model Codex accepts on a ChatGPT-login
@@ -388,9 +388,17 @@ function migrateModelPrefs() {
       const cur = lsGet(`prevail.model.${cli}`);
       if (cur && !ids.has(cur)) lsSet(`prevail.model.${cli}`, MODELS[cli][0].id);
     }
+    const ALIAS_REMAP: Record<string, string> = {
+      // Concrete ids folded into their auto-upgrading aliases (one entry per
+      // model in the picker).
+      "claude-opus-4-8": "opus",
+      "claude-sonnet-4-6": "sonnet",
+      "claude-haiku-4-5": "haiku",
+    };
     for (const k of keys) {
       const v = lsGet(k);
       if (v && DEAD_MODELS.has(v)) lsSet(k, "gpt-5.5");
+      else if (v && ALIAS_REMAP[v]) lsSet(k, ALIAS_REMAP[v]);
     }
   } catch {
     /* localStorage unavailable — ignore */
@@ -584,6 +592,7 @@ import {
   siGmail, siGooglecalendar, siGoogledrive, siGooglesheets, siDropbox, siNotion,
   siDiscord, siGithub, siGitlab, siLinear, siStripe, siShopify, siCoinbase,
   siTelegram, siWhatsapp, siReddit, siYoutube, siSpotify, siZoom, siAirtable,
+  siSignal, siMatrix, siMattermost,
   siTrello, siAsana, siTodoist, siHubspot, siQuickbooks, siCalendly, siObsidian,
   siWise, siRobinhood, siStrava, siFitbit,
   // Model-provider brand marks (Settings → Models, direct-provider roadmap).
@@ -605,9 +614,9 @@ const VENDOR_BRAND: Record<string, { hex: string; accent: string; name: string }
   antigravity: { hex: "#ffffff", accent: "#4285f4", name: "Google Antigravity" },
   ollama:      { hex: "#0a0a0a", accent: "#6b7280", name: "Ollama (local)" },
   lmstudio:    { hex: "#4f46e5", accent: "#6366f1", name: "LM Studio (local)" },
-  mlx:         { hex: "#1f2937", accent: "#9ca3af", name: "MLX (local)" },
+  mlx:         { hex: "#1f2937", accent: "#9ca3af", name: "oMLX (local)" },
   openrouter:  { hex: "#6566f1", accent: "#6566f1", name: "OpenRouter" },
-  other:       { hex: "#6b7280", accent: "#6b7280", name: "—" },
+  other:       { hex: "#6b7280", accent: "#6b7280", name: "-" },
 };
 
 // Brand accent for a vendor, safe for text/border use. Returns the hex
@@ -918,6 +927,9 @@ interface BenchmarkRun {
   batch_id?: string | null;
   batch_label?: string | null;
   created_ms: number;
+  cli?: string | null;
+  model?: string | null;
+  council?: boolean | null;
 }
 
 interface QuestionScore {
@@ -965,13 +977,13 @@ interface Framework {
 }
 const FRAMEWORKS: Framework[] = [
   { id: "none", label: "OFF", blurb: "No framework, model's default response shape", instruction: "" },
-  { id: "bluf", label: "BLUF", blurb: "Bottom Line Up Front, lead with the answer", instruction: "Apply the BLUF framework. Your first sentence MUST be the bottom line — the single most important conclusion or recommendation. Then provide supporting context in 1-3 short paragraphs. Never bury the conclusion under context." },
+  { id: "bluf", label: "BLUF", blurb: "Bottom Line Up Front, lead with the answer", instruction: "Apply the BLUF framework. Your first sentence MUST be the bottom line: the single most important conclusion or recommendation. Then provide supporting context in 1-3 short paragraphs. Never bury the conclusion under context." },
   { id: "win", label: "WIN", blurb: "What's Important Now, name the ONE next move", instruction: "Apply the WIN (What's Important Now) framework. Identify the ONE most important next move the user should make. State that move in the first sentence. Drop everything that doesn't directly serve that next step." },
   { id: "scqa", label: "SCQA", blurb: "Situation → Complication → Question → Answer", instruction: "Structure your response as SCQA: a one-line Situation, a one-line Complication, a one-line Question, then a decisive Answer." },
   { id: "sbar", label: "SBAR", blurb: "Situation · Background · Assessment · Recommendation", instruction: "Structure your response as SBAR: Situation, Background, Assessment, Recommendation. Each in 1-2 lines max." },
   { id: "ooda", label: "OODA", blurb: "Observe → Orient → Decide → Act", instruction: "Structure your response as an OODA loop: Observe, Orient, Decide, Act. Each step labelled and one line." },
   { id: "proscons", label: "PROS/CONS", blurb: "Structured trade-off with weight", instruction: "Structure your response as a PROS/CONS analysis. Two columns. End with a one-line Weight verdict naming the winner." },
-  { id: "steelman", label: "STEELMAN", blurb: "Strongest version of the other side first", instruction: "Steelman the opposing position first — give it the strongest framing you can. Then give your verdict." },
+  { id: "steelman", label: "STEELMAN", blurb: "Strongest version of the other side first", instruction: "Steelman the opposing position first: give it the strongest framing you can. Then give your verdict." },
 ];
 
 interface Lens {
@@ -984,12 +996,12 @@ const LENSES: Lens[] = [
   { id: "none", label: "OFF", blurb: "No lens, single response, default angle", instruction: "" },
   { id: "first-principles", label: "FIRST PRINCIPLES", blurb: "Strip the problem to fundamentals", instruction: "Approach this problem from first principles. Forget conventional wisdom, prior advice, industry best practice, or what 'most people do.' Strip the problem to its fundamental mechanics and rebuild the answer from there." },
   { id: "outsider", label: "OUTSIDER", blurb: "Challenge the thinking; ignore prior context", instruction: "Approach this as a complete outsider with no prior context. Challenge every assumption that the question seems to bake in." },
-  { id: "contrarian", label: "CONTRARIAN", blurb: "Argue the strongest case against the obvious answer", instruction: "Argue the strongest possible case against the obvious or expected answer. Don't be devil's advocate — actually pressure-test the consensus until something cracks." },
+  { id: "contrarian", label: "CONTRARIAN", blurb: "Argue the strongest case against the obvious answer", instruction: "Argue the strongest possible case against the obvious or expected answer. Don't be devil's advocate: actually pressure-test the consensus until something cracks." },
   { id: "expansionist", label: "EXPANSIONIST", blurb: "What's the bigger version of this question?", instruction: "Don't answer the question as asked. First ask: what's the bigger version of this question? Then answer THAT." },
   { id: "executor", label: "EXECUTOR", blurb: "Skip the framing, literal next step today", instruction: "Skip all framing. The user wants the literal next step they should take today. State the action in one imperative sentence, then list 2-3 concrete tasks." },
   { id: "alien", label: "ALIEN", blurb: "An outsider notices what's obvious to you", instruction: "You are an alien observer with no familiarity with this user's biases. State what is plainly obvious about their situation that they themselves are too close to see." },
-  { id: "mom", label: "MOM", blurb: "Plain English, what would she actually do?", instruction: "Answer as a wise mom would — plain English, no jargon, sentimentally honest, practical. What would she actually tell her child to do?" },
-  { id: "dad", label: "DAD", blurb: "Hard-nosed, what's the trap you're not seeing?", instruction: "Answer as a hard-nosed dad would — direct, no coddling. Name the trap the user is not seeing. Tell them what they will regret in 10 years if they get this wrong." },
+  { id: "mom", label: "MOM", blurb: "Plain English, what would she actually do?", instruction: "Answer as a wise mom would: plain English, no jargon, sentimentally honest, practical. What would she actually tell her child to do?" },
+  { id: "dad", label: "DAD", blurb: "Hard-nosed, what's the trap you're not seeing?", instruction: "Answer as a hard-nosed dad would: direct, no coddling. Name the trap the user is not seeing. Tell them what they will regret in 10 years if they get this wrong." },
 ];
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1075,6 +1087,59 @@ function preferredLocalCli(clis: { id: string; available: boolean }[]): string |
   return clis.find((c) => isLocalCli(c.id) && c.available)?.id ?? null;
 }
 
+// ── CLI validation (app-wide) ───────────────────────────────────────────────
+// One live validity status per provider, auto-checked at launch so every
+// surface (Models page, chat picker) can show valid / not-valid immediately
+// instead of waiting for a card to be expanded. Module scope + window event,
+// same pattern as the bunker mirror above.
+type CliVerifyInfo = { status: "unknown" | "verifying" | "ok" | "failed"; error?: string };
+const cliVerifyLive = new Map<string, CliVerifyInfo>();
+function setCliVerify(cliId: string, info: CliVerifyInfo) {
+  cliVerifyLive.set(cliId, info);
+  window.dispatchEvent(new Event("prevail:verify-changed"));
+}
+function useCliVerifyLive(): Map<string, CliVerifyInfo> {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const f = () => force((n) => n + 1);
+    window.addEventListener("prevail:verify-changed", f);
+    return () => window.removeEventListener("prevail:verify-changed", f);
+  }, []);
+  return cliVerifyLive;
+}
+// Verify a provider by running its default model once (a real end-to-end
+// call: binary + auth + model all have to work).
+async function verifyCliDefaultModel(cliId: string): Promise<void> {
+  const def = lsGet(`prevail.model.${cliId}`) || modelsFor(cliId)[0]?.id || "";
+  setCliVerify(cliId, { status: "verifying" });
+  try {
+    await invoke<string>("verify_cli_model", { args: { cli: cliId, model: def || null } });
+    setCliVerify(cliId, { status: "ok" });
+    const map = loadVerifyMap();
+    map[`${cliId}:${def}`] = "ok";
+    saveVerifyMap(map);
+  } catch (e) {
+    setCliVerify(cliId, { status: "failed", error: String(e).slice(0, 200) });
+  }
+}
+let cliAutoVerifyStarted = false;
+function autoVerifyClis(clis: { id: string; available: boolean }[], force = false) {
+  if (cliAutoVerifyStarted && !force) return;
+  cliAutoVerifyStarted = true;
+  const cached = loadVerifyMap();
+  for (const c of clis) {
+    if (!c.available) continue;
+    // Bunker Mode: verifying a cloud provider would call the cloud; leave it
+    // unknown rather than break the no-network guarantee.
+    if (isBunkerOn() && !isLocalCli(c.id)) continue;
+    if (!force && Object.keys(cached).some((k) => k.startsWith(`${c.id}:`))) {
+      setCliVerify(c.id, { status: "ok" }); // a model of this CLI verified before
+      continue;
+    }
+    void verifyCliDefaultModel(c.id);
+  }
+}
+
 // The always-visible Bunker Mode status bar. Never disappears while the app
 // runs, so the user always knows whether anything can leave their machine.
 function BunkerRibbon({ enabled }: { enabled: boolean }) {
@@ -1143,8 +1208,8 @@ function BridgeStatusChips() {
   );
   return (
     <div className="pointer-events-none absolute bottom-1 left-2 z-20 flex items-center gap-1.5">
-      {web && <Chip Icon={Monitor} label="WebUI" title="WebUI is live — reachable in your browser (Settings → Remote)" />}
-      {tg && <Chip Icon={MessagesSquare} label="Telegram" title="Telegram bridge is live — messages route to your domains" />}
+      {web && <Chip Icon={Monitor} label="WebUI" title="WebUI is live: reachable in your browser (Settings → Remote)" />}
+      {tg && <Chip Icon={MessagesSquare} label="Telegram" title="Telegram bridge is live: messages route to your domains" />}
     </div>
   );
 }
@@ -1421,7 +1486,7 @@ function useAppearance() {
         const s = JSON.parse(raw || "{}") as { theme?: string; palette?: string };
         if (s.theme === "light" || s.theme === "dark" || s.theme === "system") setMode(s.theme);
         if (s.palette && PALETTES.some((p) => p.id === s.palette)) setPalette(s.palette as Palette);
-      } catch { /* offline / first run — keep localStorage values */ }
+      } catch { /* offline / first run: keep localStorage values */ }
       hydratedRef.current = true;
     })();
   }, []);
@@ -1564,7 +1629,7 @@ function OnboardingModal({
             <>
               <p className="mb-4 text-sm text-text-secondary">
                 A few quick questions. Prevail proposes a starter set of life domains
-                from your answers — you pick what to keep. Leave any blank to skip.
+                from your answers: you pick what to keep. Leave any blank to skip.
               </p>
               <div className="flex flex-col gap-4">
                 {ONBOARDING_QUESTIONS.map((q) => (
@@ -1796,7 +1861,7 @@ function WebLogin({ onAuthed }: { onAuthed: () => void }) {
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-background px-6">
       <PrevailLogo size={64} src="/logo-512.png" animated={false} />
-      <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">Prevail — Web</h1>
+      <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">Prevail Web</h1>
       <p className="mt-1 text-sm text-text-muted">Sign in to your remote agent.</p>
       <div className="mt-6 w-full max-w-xs space-y-2">
         <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="Username" className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus:border-accent-border focus:outline-none" />
@@ -2044,6 +2109,9 @@ export default function App() {
     if (getPref(PREF.taskgenEnabled, "0") === "1") {
       invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch((e) => console.error("taskgen_start", e));
     }
+    // Scheduled benchmark re-runs (drift tracking) — module-level timer; the
+    // tick itself checks the enabled pref, so toggling needs no restart.
+    startBenchScheduler(vaultPath);
     // Skill generation (self-learning) — on by default so the app learns
     // skills from conversations out of the box; togglable in Settings.
     if (getPref(PREF.skillgenEnabled, "1") === "1") {
@@ -2061,11 +2129,20 @@ export default function App() {
     })();
     return () => { if (unl) unl(); };
   }, [refreshDomainStats]);
-  // Switching domains starts a fresh chat in the new domain instead of
-  // dragging the previous domain's thread pointer along — which would
-  // cause the next auto-save to try writing into a path that lives
-  // under the wrong domain folder.
-  useEffect(() => { setActiveThreadPath(null); }, [selectedDomain]);
+  // Switching domains never drags the previous domain's thread pointer
+  // along (the next auto-save would write into the wrong domain folder),
+  // but returning to a domain lands on what you were working on: a stream
+  // that's still running there first, else the thread you last had open.
+  useEffect(() => {
+    if (!selectedDomain) { setActiveThreadPath(null); return; }
+    const running = runningStreams.find((s) => s.domain === selectedDomain && s.threadPath);
+    const remembered = lsGet(`prevail.domain.${selectedDomain}.lastThread`);
+    setActiveThreadPath(
+      running?.threadPath
+        ?? (remembered && remembered.includes(`/${selectedDomain}/`) ? remembered : null),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDomain]);
   // Cross-domain streaming awareness — App-level map of in-flight
   // streams. Sidebar + ThreadsRail read this to pulse domains/threads
   // that have work happening in the background.
@@ -2077,7 +2154,6 @@ export default function App() {
     startedAt: number;
   };
   const [runningStreams, setRunningStreams] = useState<RunningStream[]>([]);
-  const [activeBenchmark, setActiveBenchmark] = useState<{ label: string; done: number; total: number } | null>(null);
   // Domains whose background run finished while you were looking elsewhere.
   // The live amber pulse vanishes the instant a stream ends; this keeps a
   // steady "ready" marker on the domain until you actually open it, so a
@@ -2184,6 +2260,17 @@ export default function App() {
     setSettingsJump((j) => ({ section, n: (j?.n ?? 0) + 1 }));
     setTab("settings");
   };
+  // Window-event form of the same jump, for module-scope UI (sidebar
+  // indicators) that has no prop line to the App.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const s = (e as CustomEvent<string>).detail;
+      if (s) openSettingsAt(s);
+    };
+    window.addEventListener("prevail:open-settings", onOpen as EventListener);
+    return () => window.removeEventListener("prevail:open-settings", onOpen as EventListener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Lifted from ChatPanel so the top bar owns the domain Insights / Preferences
   // toggles. ChatPanel receives these as props and renders the matching view.
   const [domainTab, setDomainTab] = useState<DomainTab>("chat");
@@ -2223,6 +2310,20 @@ export default function App() {
   // card dispatches this event; we switch the domain + Council tab and seed the
   // question so the user just picks panelists and convenes.
   const [councilSeed, setCouncilSeed] = useState<string | null>(null);
+  const [councilAutoConvene, setCouncilAutoConvene] = useState(false);
+  // Auto-council: a chat send in a domain with the toggle on routes its
+  // question here: seed the Council tab and convene without another click.
+  useEffect(() => {
+    const onAuto = (e: Event) => {
+      const q = (e as CustomEvent<{ prompt?: string }>).detail?.prompt;
+      if (!q) return;
+      setCouncilSeed(q);
+      setCouncilAutoConvene(true);
+      setTab("council");
+    };
+    window.addEventListener("prevail:auto-council", onAuto as EventListener);
+    return () => window.removeEventListener("prevail:auto-council", onAuto as EventListener);
+  }, []);
   useEffect(() => {
     const onSeed = (e: Event) => {
       const detail = (e as CustomEvent<{ domain?: string; prompt: string }>).detail;
@@ -2300,6 +2401,9 @@ export default function App() {
     try {
       const list = await invoke<CliInfo[]>("detect_clis");
       setClis(list);
+      // Validate every detected provider right away (once per session), so
+      // valid / not-valid marks are visible without expanding anything.
+      autoVerifyClis(list);
       return list;
     } catch {
       return [];
@@ -2346,7 +2450,7 @@ export default function App() {
         }
       }
       if (!cancelled) {
-        setVaultError("vault scan failed after retries — try toggling vault in Settings");
+        setVaultError("vault scan failed after retries: try toggling vault in Settings");
       }
     };
     tryScan();
@@ -2366,7 +2470,7 @@ export default function App() {
     // fallback — guide the user to the desktop instead of crashing. (B4)
     if (isBrowser()) {
       window.alert(
-        "Pick your vault from the Prevail desktop app on this Mac — a browser can't open a native folder picker. The web view then syncs to it automatically.",
+        "Pick your vault from the Prevail desktop app on this Mac: a browser can't open a native folder picker. The web view then syncs to it automatically.",
       );
       return;
     }
@@ -2421,7 +2525,6 @@ export default function App() {
           }}
           onBack={() => setTab("chat")}
           jumpTo={settingsJump}
-          onBenchmarkActive={setActiveBenchmark}
           onStartChatWith={(cliId, modelId) => {
             lsSet(LS.defaultChatCli, cliId);
             if (modelId) lsSet(`prevail.model.${cliId}`, modelId);
@@ -2467,7 +2570,6 @@ export default function App() {
           railWidth={domainRailWidth}
           onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
           onDomainsChanged={() => void refreshDomains()}
-          activeBenchmark={activeBenchmark}
         />
         {!sidebarCollapsed && (
           <ResizeHandle
@@ -2557,7 +2659,7 @@ export default function App() {
             <div className="flex items-center gap-1">
               <button
                 onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "insights" ? "chat" : "insights"); }}
-                title="Insights — what to work on, your tasks, and recent intents"
+                title="Insights: what to work on, your tasks, and recent intents"
                 className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
                   tab === "chat" && domainTab === "insights"
                     ? "bg-accent-soft text-accent"
@@ -2568,7 +2670,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "usage" ? "chat" : "usage"); }}
-                title={selectedDomain ? "Usage — queries, tokens, and cost for this domain" : "Usage — queries, tokens, and cost across everything"}
+                title={selectedDomain ? "Usage: queries, tokens, and cost for this domain" : "Usage: queries, tokens, and cost across everything"}
                 className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
                   tab === "chat" && domainTab === "usage"
                     ? "bg-accent-soft text-accent"
@@ -2638,7 +2740,8 @@ export default function App() {
                 onSwitchToChat={() => setTab("chat")}
                 onThreadsChanged={() => void refreshThreads()}
                 seedPrompt={councilSeed}
-                onSeedConsumed={() => setCouncilSeed(null)}
+                seedAutoConvene={councilAutoConvene}
+                onSeedConsumed={() => { setCouncilSeed(null); setCouncilAutoConvene(false); }}
               />
             )}
             {/* Per-domain benchmark, full screen — scoped to whatever domain
@@ -2651,7 +2754,6 @@ export default function App() {
                 key={selectedDomain || benchScope || "all"}
                 vaultPath={vaultPath}
                 initialDomain={selectedDomain || benchScope}
-                onBenchmarkActive={setActiveBenchmark}
               />
             </div>
           </div>
@@ -2705,6 +2807,118 @@ function titleCase(slug: string): string {
 // ─────────────────────────────────────────────────────────────────────
 // Vault wizard
 
+// Always-visible "the gateway is live" indicator: external messages can
+// reach this app right now. Polls the bridge every 30s; click jumps to the
+// Gateway settings.
+function SidebarGatewayLive({ collapsed }: { collapsed: boolean }) {
+  const [live, setLive] = useState(false);
+  const [webLive, setWebLive] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      try {
+        const t = await invoke<{ running: boolean }>("telegram_bridge_status");
+        if (alive) setLive(!!t.running);
+      } catch { if (alive) setLive(false); }
+      try {
+        const w = await invoke<{ running: boolean }>("webui_status");
+        if (alive) setWebLive(!!w.running);
+      } catch { if (alive) setWebLive(false); }
+    };
+    void check();
+    const id = window.setInterval(() => void check(), 30_000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, []);
+  if (!live && !webLive) return null;
+  const goGateway = () => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: live ? "gateway" : "remote" }));
+  const label = [live ? "Telegram" : null, webLive ? "WebUI" : null].filter(Boolean).join(" + ");
+  const dot = (
+    <span className="relative flex h-2 w-2 shrink-0">
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ai opacity-60" />
+      <span className="relative inline-flex h-2 w-2 rounded-full bg-ai" />
+    </span>
+  );
+  if (collapsed) {
+    return (
+      <button onClick={goGateway} title={`LIVE: ${label} can reach this app externally. Click for settings.`} className="flex w-full justify-center border-t border-border-subtle px-2 py-2">
+        {dot}
+      </button>
+    );
+  }
+  return (
+    <button onClick={goGateway} className="flex w-full items-center gap-2 border-t border-border-subtle px-3 py-2 text-left hover:bg-surface-warm" title="External messages can reach this app right now. Click for Gateway settings.">
+      {dot}
+      <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-ai">Live · {label}</span>
+      <MessagesSquare className="h-3 w-3 shrink-0 text-text-muted" />
+    </button>
+  );
+}
+
+// One row per live benchmark run, pinned above the Settings strip. The data
+// lives in the module-scope registry, so the rows persist (and progress)
+// across every navigation; each row can cancel its run.
+function SidebarBenchmarkRuns({ collapsed }: { collapsed: boolean }) {
+  const runningBatches = useBenchBatches().filter((b) => b.running);
+  if (runningBatches.length === 0) return null;
+  if (collapsed) {
+    return (
+      <div
+        className="flex items-center justify-center gap-1 border-t border-border-subtle px-2 py-2"
+        title={runningBatches.map((b) => `Benchmarking ${b.scopeLabel}`).join("\n")}
+      >
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+        </span>
+        {runningBatches.length > 1 && (
+          <span className="font-mono text-[10px] text-accent">{runningBatches.length}</span>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="border-t border-border-subtle">
+      {runningBatches.map((b) => {
+        const done = b.jobs.reduce(
+          (a, j) => a + (j.status === "done" || j.status === "scoring" ? j.total : j.done),
+          0,
+        );
+        const total = b.jobs.reduce((a, j) => a + j.total, 0);
+        return (
+          <div key={b.id} className="px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-1.5 w-1.5 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
+              </span>
+              <span
+                className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-accent"
+                title={b.label}
+              >
+                {b.scopeLabel}
+              </span>
+              <span className="font-mono text-[10px] text-text-muted">{done}/{total}</span>
+              <button
+                onClick={() => void cancelBenchBatch(b.id)}
+                title="Cancel this benchmark run"
+                className="shrink-0 rounded px-1 font-mono text-[10px] text-text-muted hover:bg-surface-strong hover:text-danger"
+              >
+                ✗
+              </button>
+            </div>
+            <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-surface-strong">
+              <div
+                className="h-full rounded-full bg-accent transition-all duration-500"
+                style={{ width: total > 0 ? `${Math.round((done / total) * 100)}%` : "0%" }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Sidebar({
   collapsed,
   setCollapsed,
@@ -2724,7 +2938,6 @@ function Sidebar({
   railWidth,
   onOpenOnboarding,
   onDomainsChanged,
-  activeBenchmark,
 }: {
   collapsed: boolean;
   setCollapsed: (v: boolean | ((cur: boolean) => boolean)) => void;
@@ -2744,7 +2957,6 @@ function Sidebar({
   railWidth: number;
   onOpenOnboarding: () => void;
   onDomainsChanged: () => void;
-  activeBenchmark?: { label: string; done: number; total: number } | null;
 }) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -2894,7 +3106,7 @@ function Sidebar({
               setSelectedDomain("");
               if (tab === "settings") setTab("chat");
             }}
-            title="General — chats not tied to any domain"
+            title="General: chats not tied to any domain"
             className={
               collapsed
                 ? `flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
@@ -3037,9 +3249,9 @@ function Sidebar({
                       // Don't let onClick fire after a drag ended
                       ev.preventDefault();
                       ev.stopPropagation();
-                      const hook = (window as unknown as { __prevailAttach?: (n: string) => void }).__prevailAttach;
-                      if (hook) hook(d.name);
-                      else console.warn("[prevail/drag] no attach hook registered — drop fell outside chat panel");
+                      const hook = (window as unknown as { __prevailAttach?: (n: string, mode?: "light" | "full" | "folder") => void }).__prevailAttach;
+                      if (hook) hook(d.name, ev.altKey ? "folder" : ev.shiftKey ? "full" : "light");
+                      else console.warn("[prevail/drag] no attach hook registered: drop fell outside chat panel");
                     };
                     window.addEventListener("mousemove", onMove);
                     window.addEventListener("mouseup", onUp);
@@ -3048,7 +3260,7 @@ function Sidebar({
                     setSelectedDomain(d.name);
                     if (tab === "settings") setTab("chat");
                   }}
-                  title="Click to enter · drag to add as context to current chat"
+                  title="Click to enter · drag to chat as context (plain: state · ⇧ full · ⌥ entire folder)"
                   className={`flex flex-1 cursor-grab items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors active:cursor-grabbing ${
                     active
                       ? "bg-surface-strong text-text-primary font-medium"
@@ -3078,7 +3290,7 @@ function Sidebar({
                         background: "var(--color-ok, #2e9e5b)",
                         boxShadow: "0 0 0 3px color-mix(in srgb, var(--color-ok, #2e9e5b) 28%, transparent)",
                       }}
-                      title="Just finished — open to view"
+                      title="Just finished: open to view"
                     />
                   ) : null}
                 </button>
@@ -3207,7 +3419,7 @@ function Sidebar({
       {lifeScore && (
         <button
           onClick={() => setTab("settings")}
-          title={`Life readiness — mean context score across ${lifeScore.count} domain${lifeScore.count === 1 ? "" : "s"}. Click for settings.`}
+          title={`Life readiness: mean context score across ${lifeScore.count} domain${lifeScore.count === 1 ? "" : "s"}. Click for settings.`}
           className={`flex items-center border-t border-border-subtle transition-colors hover:bg-surface-warm ${
             collapsed ? "justify-center px-2 py-2" : "gap-2.5 px-3 py-2"
           }`}
@@ -3234,34 +3446,12 @@ function Sidebar({
         </button>
       )}
 
-      {/* Active benchmark indicator — visible while navigating away */}
-      {activeBenchmark && (
-        collapsed ? (
-          <div className="flex justify-center border-t border-border-subtle px-2 py-2" title={`Benchmarking: ${activeBenchmark.done}/${activeBenchmark.total}`}>
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
-            </span>
-          </div>
-        ) : (
-          <div className="border-t border-border-subtle px-3 py-2">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-1.5 w-1.5 shrink-0">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
-              </span>
-              <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-accent">Benchmarking</span>
-              <span className="font-mono text-[10px] text-text-muted">{activeBenchmark.done}/{activeBenchmark.total}</span>
-            </div>
-            <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-surface-strong">
-              <div
-                className="h-full rounded-full bg-accent transition-all duration-500"
-                style={{ width: activeBenchmark.total > 0 ? `${Math.round((activeBenchmark.done / activeBenchmark.total) * 100)}%` : "0%" }}
-              />
-            </div>
-          </div>
-        )
-      )}
+      {/* External connectivity: a live gateway is something you should never
+          forget is on. Pulsing indicator whenever the Telegram bridge runs. */}
+      <SidebarGatewayLive collapsed={collapsed} />
+      {/* Live benchmark runs (from the global registry) — one row per batch,
+          visible wherever you navigate, each cancellable. */}
+      <SidebarBenchmarkRuns collapsed={collapsed} />
 
       {/* Settings + theme — pinned to bottom (Upgrade lives in Settings) */}
       <div className={`border-t border-border-subtle bg-surface-warm/30 ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1 px-2 py-1.5"}`}>
@@ -3292,7 +3482,7 @@ function Sidebar({
             appearance.setMode(cycle[(i + 1) % cycle.length]);
           }}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:text-text-secondary transition-colors"
-          title={`Theme: ${appearance.mode} — click to cycle`}
+          title={`Theme: ${appearance.mode}: click to cycle`}
         >
           {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
         </button>
@@ -3307,7 +3497,7 @@ function Sidebar({
               <span className="font-mono text-[10px] text-text-muted">experimental build</span>
             </div>
             <p className="mt-1.5 text-[10px] leading-snug text-text-muted">
-              Provided as-is, no warranty — use at your own risk.
+              Provided as-is, no warranty: use at your own risk.
             </p>
             <a
               href="https://github.com/fru-dev3/prevail-desktop/issues/new"
@@ -3718,7 +3908,7 @@ function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLoadSampl
         </motion.div>
 
         <motion.p variants={item} className="mx-auto mt-5 max-w-2xl whitespace-nowrap text-[15px] text-text-secondary">
-          Your life in <span className="font-medium text-text-primary">domains</span> — scored, private, <span className="font-medium text-accent">local-first</span>.
+          Your life in <span className="font-medium text-text-primary">domains</span>: scored, private, <span className="font-medium text-accent">local-first</span>.
         </motion.p>
 
         {/* feature pills */}
@@ -3957,14 +4147,14 @@ function DomainStatusBar({
               <ModeRow glyph="○" label={bunker ? "Web access · locked" : "Web access"} on={webShown}
                 onClick={() => { if (bunker) return; flip("web", web, setWeb); }}
                 desc={bunker
-                  ? "Locked off by Bunker Mode — no request may leave this device. Turn off Bunker Mode to allow web access."
+                  ? "Locked off by Bunker Mode: no request may leave this device. Turn off Bunker Mode to allow web access."
                   : "Let the model fetch URLs and web-search while replying. Off keeps the reply offline."} />
               <ModeRow glyph="▣" label="Save history" on={save} onClick={() => flip("save", save, setSave)}
                 desc="Log every reply to history so you can re-read it later. Off makes the turn ephemeral." />
               <ModeRow glyph="◉" label="Serendipity" on={serendipity} onClick={() => flip("serendipity", serendipity, setSeren)}
                 desc="Invite lateral, off-topic angles. Off stays strictly on-topic." />
               <ModeRow glyph="◐" label="Auto-council" on={auto} onClick={() => flip("auto", auto, setAuto)}
-                desc="Auto-convene the full council on every send instead of one model." />
+                desc="Every send in this domain convenes the full council instead of one model. (Off in Bunker Mode: panelists are cloud models.)" />
             </div>
           )}
         </div>
@@ -4168,13 +4358,13 @@ function buildCouncilQuickActions(domain: string | null): { glyph: string; label
       glyph: "✗",
       label: "Steelman",
       blurb: "Where am I wrong?",
-      prompt: `Steelman the strongest case AGAINST my current ${d} plan. Don't be polite — name the specific failure modes, who would tell me I'm wrong and why, and the one assumption that would invalidate the whole approach.`,
+      prompt: `Steelman the strongest case AGAINST my current ${d} plan. Don't be polite: name the specific failure modes, who would tell me I'm wrong and why, and the one assumption that would invalidate the whole approach.`,
     },
     {
       glyph: "▸",
       label: "Reframe",
       blurb: "Bigger question?",
-      prompt: `Is this even the right question to be asking about ${d}? What's a larger or different framing that would dissolve the dilemma — or expose a question I should be asking instead?`,
+      prompt: `Is this even the right question to be asking about ${d}? What's a larger or different framing that would dissolve the dilemma: or expose a question I should be asking instead?`,
     },
     {
       glyph: "◆",
@@ -4186,7 +4376,7 @@ function buildCouncilQuickActions(domain: string | null): { glyph: string; label
       glyph: "●",
       label: "Stakes",
       blurb: "What's at risk?",
-      prompt: `If I'm wrong about ${d}, what's the cost? Rank the failure scenarios by impact and reversibility — which mistakes are recoverable, and which are not?`,
+      prompt: `If I'm wrong about ${d}, what's the cost? Rank the failure scenarios by impact and reversibility: which mistakes are recoverable, and which are not?`,
     },
   ];
 }
@@ -4199,7 +4389,7 @@ function buildQuickActions(domain: string | null): { glyph: string; label: strin
   return [
     { glyph: "◆", label: "Status", prompt: `Read state.md for ${d} and summarize where I am right now in 5 bullets.` },
     { glyph: "◇", label: "Next action", prompt: `Given the current ${d} state, what's the single highest-leverage next action I should take this week? Be specific.` },
-    { glyph: "▸", label: "Decision", prompt: `Walk me through the most important open decision in ${d} right now — options, trade-offs, and your recommendation.`, council: true },
+    { glyph: "▸", label: "Decision", prompt: `Walk me through the most important open decision in ${d} right now: options, trade-offs, and your recommendation.`, council: true },
     { glyph: "●", label: "Risks", prompt: `What are the top 3 risks or blind spots in my ${d} plan? Rank by severity.`, council: true },
   ];
 }
@@ -4211,7 +4401,99 @@ function buildQuickActions(domain: string | null): { glyph: string; label: strin
 // Proactive surfacing for a domain — questions worth asking + suggested next
 // actions, generated from the vault (cached). Click one to seed the composer.
 interface SurfaceResult { questions: string[]; actions: string[]; generated_at: number; stale: boolean }
-interface DomainTask { text: string; done: boolean; due?: string | null }
+
+// Tiny inline trend line: a model's judge scores over time, on a fixed 0-10
+// scale so two models' lines are visually comparable.
+function Sparkline({ values, width = 72, height = 20 }: { values: number[]; width?: number; height?: number }) {
+  if (values.length < 2) return null;
+  const pts = values
+    .map((v, i) => `${((i / (values.length - 1)) * (width - 4) + 2).toFixed(1)},${(height - 2 - (Math.max(0, Math.min(10, v)) / 10) * (height - 4)).toFixed(1)}`)
+    .join(" ");
+  const up = values[values.length - 1] >= values[0];
+  const [lx, ly] = pts.split(" ").pop()!.split(",");
+  return (
+    <svg width={width} height={height} className="shrink-0" aria-hidden>
+      <polyline points={pts} fill="none" strokeWidth="1.5" className={up ? "stroke-ok" : "stroke-warn"} />
+      <circle cx={lx} cy={ly} r="2" className={up ? "fill-ok" : "fill-warn"} />
+    </svg>
+  );
+}
+
+// Settings > Benchmark: scheduled re-runs of the latest batch, for tracking
+// model drift over time without manual runs.
+function BenchScheduleCard({ vault }: { vault: string }) {
+  const [enabled, setEnabled] = useState(() => lsGet(BENCH_SCHED.enabled, "0") === "1");
+  const [freq, setFreq] = useState(() => lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
+  const [, force] = useState(0);
+  useEffect(() => {
+    const f = () => force((n) => n + 1);
+    window.addEventListener("prevail:bench-sched", f);
+    return () => window.removeEventListener("prevail:bench-sched", f);
+  }, []);
+  const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
+  const freqMs = BENCH_FREQ_MS[freq] ?? BENCH_FREQ_MS.weekly;
+  const next = last ? last + freqMs : Date.now();
+  return (
+    <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+      <RotateCw className="h-4 w-4 shrink-0 text-accent" />
+      <div className="min-w-0 flex-1">
+        <div className="font-display text-sm font-semibold tracking-tight">Scheduled runs</div>
+        <div className="text-xs text-text-secondary">
+          Re-runs your most recent batch (same models, same scope) so drift shows up in the leaderboard and History without manual runs. Runs while the app is open.
+          {enabled && last > 0 && ` Last ran ${formatFreshness(Math.max(0, (Date.now() - last) / 1000))} ago.`}
+          {enabled && ` Next ${next <= Date.now() ? "within 30 minutes" : `in ~${formatFreshness(Math.max(0, (next - Date.now()) / 1000))}`}.`}
+        </div>
+      </div>
+      <select
+        value={freq}
+        onChange={(e) => { setFreq(e.target.value); lsSet(BENCH_SCHED.freq, e.target.value); }}
+        disabled={!enabled}
+        className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary disabled:opacity-40"
+      >
+        <option value="daily">daily</option>
+        <option value="weekly">weekly</option>
+        <option value="monthly">monthly</option>
+      </select>
+      <button
+        onClick={() => { const v = !enabled; setEnabled(v); lsSet(BENCH_SCHED.enabled, v ? "1" : "0"); }}
+        className={`rounded-md border px-3 py-1 font-mono text-[11px] uppercase tracking-wider ${
+          enabled ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"
+        }`}
+      >
+        {enabled ? "On" : "Off"}
+      </button>
+      <button
+        onClick={async () => { if (await rerunLatestBatch(vault)) { lsSet(BENCH_SCHED.lastRun, String(Date.now())); window.dispatchEvent(new Event("prevail:bench-sched")); } }}
+        title="Re-run the latest batch right now"
+        className="rounded-md border border-border px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+      >
+        Run now
+      </button>
+    </div>
+  );
+}
+
+// Collapsed-by-default section row for the Insights page: the summary line
+// carries the count (and optional meta) so a collapsed page still reads as a
+// dashboard; expanding indents the body.
+function InsightsDisclosure({
+  title, icon: Icon, count, meta, children,
+}: { title: string; icon: typeof Lightbulb; count: number; meta?: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-xl border border-border-subtle bg-surface px-3 py-2">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 text-left">
+        <span className="text-accent">{open ? "▾" : "▸"}</span>
+        <Icon className="h-3 w-3 text-text-muted" />
+        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-text-secondary">{title}</span>
+        <span className="font-mono text-[10px] text-text-muted">· {count}</span>
+        {meta && <span className="ml-auto font-mono text-[9px] text-text-muted">{meta}</span>}
+      </button>
+      {open && <div className="mt-2 border-l border-border-subtle/70 pl-4">{children}</div>}
+    </div>
+  );
+}
+interface DomainTask { text: string; done: boolean; due?: string | null; added?: string | null; source?: string | null }
 function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: string; nonce: number }) {
   const [tasks, setTasks] = useState<DomainTask[]>([]);
   const [adding, setAdding] = useState("");
@@ -4232,28 +4514,43 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
       </div>
     );
   }
+  const openCount = tasks.filter((t) => !t.done).length;
   return (
-    <div className="mb-4 rounded-xl border border-border-subtle bg-surface px-4 py-3">
-      <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Tasks · {titleCase(domain)}</div>
+    <div className="mb-4">
+      <InsightsDisclosure
+        title={`Tasks · ${titleCase(domain)}`}
+        icon={Check}
+        count={openCount}
+        meta={tasks.length > openCount ? `${tasks.length - openCount} done` : undefined}
+      >
       <div className="flex flex-col gap-1">
         {tasks.map((t, i) => (
-          <label key={i} className="flex cursor-pointer items-center gap-2 text-sm">
+          <label
+            key={i}
+            title={`${t.added ? `added ${t.added}` : "added before tracking"} · by ${t.source === "daemon" ? "the task daemon" : t.source === "surface" ? "an accepted suggestion" : "you"}${t.due ? ` · due ${t.due}` : ""}`}
+            className="flex cursor-pointer items-center gap-2 text-sm"
+          >
             <input type="checkbox" checked={t.done} onChange={() => persist(tasks.map((x, j) => j === i ? { ...x, done: !x.done } : x))} />
             <span className={t.done ? "text-text-muted line-through" : "text-text-primary"}>{t.text}</span>
+            {t.source && t.source !== "user" && (
+              <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] text-text-muted">{t.source === "daemon" ? "auto" : "suggested"}</span>
+            )}
             {t.due && !t.done && (() => {
               const today = new Date().toISOString().slice(0, 10);
               const overdue = t.due < today, due = t.due === today;
               return <span className={`rounded px-1.5 py-0.5 font-mono text-[9px] ${overdue ? "bg-warn/15 text-warn" : due ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>{overdue ? "overdue" : due ? "today" : t.due}</span>;
             })()}
-            <button onClick={() => persist(tasks.filter((_, j) => j !== i))} className="ml-auto text-text-muted/50 hover:text-warn">✕</button>
+            <span className="ml-auto shrink-0 font-mono text-[9px] text-text-muted/60">{t.added ?? ""}</span>
+            <button onClick={() => persist(tasks.filter((_, j) => j !== i))} className="shrink-0 text-text-muted/50 hover:text-warn">✕</button>
           </label>
         ))}
       </div>
       <div className="mt-2 flex gap-2">
         <input value={adding} placeholder="add a task…  (optional due: @2026-04-15)" onChange={(e) => setAdding(e.target.value)}
-          onKeyDown={async (e) => { if (e.key === "Enter" && adding.trim()) { const txt = adding.trim(); setAdding(""); try { const next = await invoke<DomainTask[]>("tasks_add", { vault: vaultPath, domain, text: txt }); setTasks(next); } catch (err) { console.error("tasks_add", err); } } }}
+          onKeyDown={async (e) => { if (e.key === "Enter" && adding.trim()) { const txt = adding.trim(); setAdding(""); try { const next = await invoke<DomainTask[]>("tasks_add", { vault: vaultPath, domain, text: txt, source: "user" }); setTasks(next); } catch (err) { console.error("tasks_add", err); } } }}
           className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm focus:border-accent-border focus:outline-none" />
       </div>
+      </InsightsDisclosure>
     </div>
   );
 }
@@ -4276,17 +4573,16 @@ function InsightsPanel({ vaultPath, domain, onSeed }: { vaultPath: string; domai
         vaultPath={vaultPath}
         domain={domain}
         onPick={onSeed}
-        onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }}
+        onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t, source: "surface" }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }}
       />
       <TasksPanel vaultPath={vaultPath} domain={domain} nonce={taskNonce} />
-      {/* I6: the intents ledger, finally visible. */}
-      <div>
-        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Recent intents</div>
+      {/* I6: the intents ledger, collapsed like everything else on this page. */}
+      <InsightsDisclosure title="Recent intents" icon={MessageSquare} count={intents.length}>
         <p className="mb-2 text-xs leading-relaxed text-text-secondary">
-          Every question you send is logged as an intent — the exact ask plus the settings in effect — so a future, better model can replay it. These stay on your machine. Click one to ask it again.
+          Every question you send is logged as an intent: the exact ask plus the settings in effect, so a future, better model can replay it. These stay on your machine. Click one to ask it again. The full cross-domain ledger lives in Settings → Intents.
         </p>
         {intents.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-sm text-text-muted">No intents captured yet — ask something in chat.</div>
+          <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-sm text-text-muted">No intents captured yet: ask something in chat.</div>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {intents.map((it, i) => (
@@ -4304,7 +4600,7 @@ function InsightsPanel({ vaultPath, domain, onSeed }: { vaultPath: string; domai
             ))}
           </ul>
         )}
-      </div>
+      </InsightsDisclosure>
     </div>
   );
 }
@@ -4341,11 +4637,15 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
   const hasContent = data && (data.questions.length > 0 || data.actions.length > 0);
   if (!hasContent && !loading && !err) return null;
 
+  const freshMeta = data?.generated_at
+    ? `refreshed ${formatFreshness(Math.max(0, (Date.now() - data.generated_at) / 1000))} ago · auto every 6h`
+    : "";
   return (
     <div className="mb-4 rounded-xl border border-accent-border/40 bg-accent-soft/40 px-4 py-3">
-      <div className="mb-2 flex items-center gap-2">
-        <Sparkles className="h-3.5 w-3.5 text-accent" />
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">For you · {titleCase(domain)}</span>
+      <div className="mb-2 flex items-baseline gap-2.5">
+        <Sparkles className="h-4 w-4 shrink-0 self-center text-accent" />
+        <span className="font-display text-lg font-bold tracking-tight text-text-primary">For you · {titleCase(domain)}</span>
+        {freshMeta && <span className="font-mono text-[9px] text-text-muted">{freshMeta}</span>}
         <button onClick={() => void load(true)} disabled={loading}
           className="ml-auto font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-accent disabled:opacity-40">
           {loading ? "thinking…" : "refresh"}
@@ -4358,15 +4658,12 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
         const questions = data!.questions.filter((q) => !dismissed.has(q));
         const actions = data!.actions.filter((a) => !dismissed.has(a));
         if (questions.length === 0 && actions.length === 0) {
-          return <div className="py-2 text-xs text-text-muted">All caught up — nothing surfaced right now. <button onClick={() => void load(true)} className="text-accent hover:underline">Refresh</button> for more.</div>;
+          return <div className="py-2 text-xs text-text-muted">All caught up: nothing surfaced right now. <button onClick={() => void load(true)} className="text-accent hover:underline">Refresh</button> for more.</div>;
         }
         return (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
             {questions.length > 0 && (
-              <div>
-                <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
-                  <Lightbulb className="h-3 w-3" /> Questions worth asking
-                </div>
+              <InsightsDisclosure title="Questions worth asking" icon={Lightbulb} count={questions.length}>
                 <div className="flex flex-col gap-2">
                   {questions.map((q, i) => (
                     <div key={i} className="group flex items-start gap-3 rounded-lg border border-border-subtle bg-surface p-3 transition-colors hover:border-accent-border">
@@ -4378,13 +4675,10 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
                     </div>
                   ))}
                 </div>
-              </div>
+              </InsightsDisclosure>
             )}
             {actions.length > 0 && (
-              <div>
-                <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
-                  <ArrowRight className="h-3 w-3" /> Suggested next steps
-                </div>
+              <InsightsDisclosure title="Suggested next steps" icon={ArrowRight} count={actions.length}>
                 <div className="flex flex-col gap-2">
                   {actions.map((a, i) => (
                     <div key={i} className="group flex items-start gap-3 rounded-lg border border-border-subtle bg-surface p-3 transition-colors hover:border-accent-border">
@@ -4399,7 +4693,7 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
                     </div>
                   ))}
                 </div>
-              </div>
+              </InsightsDisclosure>
             )}
           </div>
         );
@@ -4494,7 +4788,7 @@ function DomainHome({
                   </div>
                 )}
                 <SurfacePanel vaultPath={vaultPath} domain={domain} onPick={onPickPrompt}
-                  onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }} />
+                  onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t, source: "surface" }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }} />
                 <TasksPanel vaultPath={vaultPath} domain={domain} nonce={taskNonce} />
                 <ul className="flex flex-col gap-2">
                 {buildQuickActions(domain).map((q) => (
@@ -4541,14 +4835,14 @@ function DomainHome({
                 <Markdown source={ctx.journal} />
               ) : (
                 <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
-                  no journal entries yet — they accumulate as you save sessions.
+                  no journal entries yet: they accumulate as you save sessions.
                 </div>
               )
             )}
             {tab === "logs" && (
               ctx.recent_logs.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
-                  no past sessions. Start chatting — each "New chat" saves a session to _log/.
+                  no past sessions. Start chatting: each "New chat" saves a session to _log/.
                 </div>
               ) : (
                 <ul className="space-y-2">
@@ -4732,6 +5026,26 @@ function DomainPrefsPanel({
             (k) => k.trim().toLowerCase() !== domain.toLowerCase(),
           );
           lsSet(keywordsKey, extras.join(", "));
+        }
+        // Nothing stored and nothing in the manifest: derive routing keywords
+        // from the domain's own goals/soul so routing works without manual
+        // setup. Frequency-ranked distinctive words, top six.
+        if (!lsGet(keywordsKey)) {
+          try {
+            const texts = await Promise.all(
+              ["goals.md", "soul.md", "config.md"].map((f) =>
+                invoke<string>("read_text_file", { path: `${vaultPath}/${domain}/${f}` }).catch(() => ""),
+              ),
+            );
+            const STOP = new Set("the and for with that this from your you are was have has not but they them then than when what where which while will would could should about into over under each every some most more very just also like been being our their his her its only own same can may might must a an of to in on at by it is as or be do if no so we i me my".split(" "));
+            const freq = new Map<string, number>();
+            for (const w of texts.join(" ").toLowerCase().split(/[^a-z][^a-z]*/)) {
+              if (w.length < 4 || STOP.has(w) || w === domain.toLowerCase()) continue;
+              freq.set(w, (freq.get(w) ?? 0) + 1);
+            }
+            const top = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([w]) => w);
+            if (top.length > 0) lsSet(keywordsKey, top.join(", "));
+          } catch { /* derivation is best-effort */ }
         }
       } catch {
         // Engine/manifest unavailable — localStorage remains the source.
@@ -5003,7 +5317,7 @@ function DomainPrefsPanel({
             <div className="mt-0.5 text-xs text-text-secondary">
               {autoState
                 ? "Each new chat starts with state.md as a context chip you can remove."
-                : "Manual — drag the domain in or use the Context drawer to attach state.md."}
+                : "Manual: drag the domain in or use the Context drawer to attach state.md."}
             </div>
           </div>
           <Toggle
@@ -5022,8 +5336,8 @@ function DomainPrefsPanel({
             <div className="text-sm font-semibold text-text-primary">Local-only (Ollama)</div>
             <div className="mt-0.5 text-xs text-text-secondary">
               {localOnly
-                ? "Every prompt in this domain is forced through a local model — nothing leaves your machine."
-                : "Off — prompts use the domain's configured CLI, which may call a cloud model."}
+                ? "Every prompt in this domain is forced through a local model: nothing leaves your machine."
+                : "Off: prompts use the domain's configured CLI, which may call a cloud model."}
             </div>
           </div>
           <Toggle
@@ -5045,8 +5359,8 @@ function DomainPrefsPanel({
             <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Sandbox</div>
             <p className="mt-0.5 text-sm text-text-secondary">
               {sandboxMode === "locked"
-                ? "Locked — agents can read this domain but cannot write files or run shell side-effects."
-                : "Open — agents can read and write within this domain's folder."}
+                ? "Locked: agents can read this domain but cannot write files or run shell side-effects."
+                : "Open: agents can read and write within this domain's folder."}
             </p>
           </div>
           <select
@@ -5074,7 +5388,7 @@ function DomainPrefsPanel({
           The domain name always matches; add extras below. Saved to the domain manifest.
         </p>
         <div className="mb-2 flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-xs text-accent" title="Always matched — the domain name is a built-in keyword">
+          <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-xs text-accent" title="Always matched: the domain name is a built-in keyword">
             <Pin className="h-3 w-3" /> {domain.toLowerCase()}
           </span>
           <span className="font-mono text-[10px] text-text-muted">always on</span>
@@ -5203,21 +5517,37 @@ function AgentPickerRail({
   selected: string | null;
   onSelect: (cliId: string) => void;
 }) {
+  const verify = useCliVerifyLive();
   if (clis.length === 0) return null;
   return (
     <div className="mt-3 flex items-center gap-1 rounded-full border border-border bg-surface px-1.5 py-1 shadow-sm">
-      {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
+      {clis
+        .filter((c) => !isBunkerOn() || isLocalCli(c.id))
+        // A provider that failed validation is not offered for chat: pick a
+        // dead provider and the send just errors. It stays on the Models page
+        // with the reason and a login hint.
+        .filter((c) => verify.get(c.id)?.status !== "failed")
+        .map((c) => {
         const active = c.id === selected;
+        const v = verify.get(c.id)?.status;
         return (
           <button
             key={c.id}
             onClick={() => onSelect(c.id)}
-            title={c.label}
-            className={`group flex items-center gap-2 rounded-full px-2 py-1 transition-all ${
+            title={`${c.label}${v === "ok" ? " · validated" : v === "verifying" ? " · validating…" : " · not validated yet"}`}
+            className={`group relative flex items-center gap-2 rounded-full px-2 py-1 transition-all ${
               active ? "bg-surface-warm" : "hover:bg-surface-warm"
             }`}
           >
-            <ProviderMark vendor={c.id} size={24} />
+            <span className="relative">
+              <ProviderMark vendor={c.id} size={24} />
+              {v === "ok" && (
+                <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-ok text-[8px] font-bold leading-none text-background">✓</span>
+              )}
+              {v === "verifying" && (
+                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-text-muted" />
+              )}
+            </span>
             <span
               className={`overflow-hidden whitespace-nowrap font-display text-sm font-semibold tracking-tight transition-all duration-200 ease-out ${
                 active
@@ -5352,7 +5682,7 @@ function SkillsList({
                 {onTogglePreferred && (
                   <button
                     onClick={() => onTogglePreferred(s.name)}
-                    title={preferredSet?.has(s.name) ? "Unpin — won't auto-attach to new chats" : "Pin — auto-attach to new chats in this domain"}
+                    title={preferredSet?.has(s.name) ? "Unpin: won't auto-attach to new chats" : "Pin: auto-attach to new chats in this domain"}
                     className={`mr-2 mt-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
                       preferredSet?.has(s.name)
                         ? "border-accent-border bg-accent-soft text-accent"
@@ -5457,6 +5787,9 @@ function DomainContextDrawer({
       invoke<string>("read_memory_md", { vault: vaultPath, domain: domain || null })
         .then((m) => { if (mounted) setMemory(m || ""); })
         .catch(() => { if (mounted) setMemory(""); });
+      invoke<string>("read_ideal_state", { vault: vaultPath })
+        .then((s) => { if (mounted) setIdealState(s || ""); })
+        .catch(() => { if (mounted) setIdealState(""); });
     };
     load();
     // Refresh the instant a decision/verdict is saved anywhere in the app.
@@ -5465,6 +5798,8 @@ function DomainContextDrawer({
     return () => { mounted = false; window.removeEventListener("prevail:context-changed", onChanged); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultPath, domain]);
+
+  const [idealState, setIdealState] = useState<string>("");
 
   const Section = ({
     keyName, title, count, body,
@@ -5522,7 +5857,7 @@ function DomainContextDrawer({
             verdict or saved decision appears here the instant it's written. */}
         <Section keyName="recent" title="Recent decisions" count={decisionLog.length} body={
           decisionLog.length === 0 ? (
-            <div className="text-xs text-text-muted">No decisions yet. Council verdicts and saved decisions appear here instantly.</div>
+            <div className="text-xs text-text-muted">No decisions yet. Council verdicts and saved decisions land here the moment they happen; the distiller also extracts decisions from your chats on its next pass.</div>
           ) : (
             <ul className="flex flex-col gap-2">
               {decisionLog.map((d, i) => {
@@ -5551,6 +5886,24 @@ function DomainContextDrawer({
             </ul>
           )
         } />
+        <Section keyName="ideal" title="Ideal state" body={
+          idealState.trim() ? (
+            <>
+              <p className="mb-2 text-[11px] leading-relaxed text-text-muted">
+                Your constitution. It is already injected at highest precedence into every chat and council turn; pull it in explicitly when you want the model to reason against it at length.
+              </p>
+              <button
+                onClick={() => onInjectContext(idealState, "Ideal State · constitution")}
+                className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+              >
+                → use in chat
+              </button>
+              <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
+                {idealState.length > 1200 ? idealState.slice(0, 1200) + "\n…" : idealState}
+              </pre>
+            </>
+          ) : <div className="text-xs text-text-muted">No Ideal State written yet. Settings → Ideal State.</div>
+        } />
         <Section keyName="memory" title="Long-term memory" body={
           memory.trim() ? (
             <>
@@ -5564,7 +5917,7 @@ function DomainContextDrawer({
                 {memory.length > 1200 ? memory.slice(0, 1200) + "\n…" : memory}
               </pre>
             </>
-          ) : <div className="text-xs text-text-muted">No distilled memory yet. It builds up as you use this {domain ? "domain" : "workspace"}.</div>
+          ) : <div className="text-xs text-text-muted">No distilled memory yet. The background distiller (Settings → Daemons) compacts your activity into memory once enough new material accumulates, usually within a few sessions.</div>
         } />
         {ctx && (
           <>
@@ -5581,7 +5934,7 @@ function DomainContextDrawer({
                     {ctx.state.length > 1200 ? ctx.state.slice(0, 1200) + "\n…" : ctx.state}
                   </pre>
                 </>
-              ) : <div className="text-xs text-text-muted">no state.md found</div>
+              ) : <div className="text-xs text-text-muted">No state yet. The distiller derives a state snapshot from your activity in this domain; it appears after your first few chats here.</div>
             } />
             <Section keyName="decisions" title="Decisions" body={
               ctx.decisions ? (
@@ -5596,7 +5949,7 @@ function DomainContextDrawer({
                     {ctx.decisions.length > 1200 ? ctx.decisions.slice(0, 1200) + "\n…" : ctx.decisions}
                   </pre>
                 </>
-              ) : <div className="text-xs text-text-muted">no decisions.md found</div>
+              ) : <div className="text-xs text-text-muted">No decision history yet. This is the full ledger; "Recent decisions" above shows the latest 15 of the same ledger as they happen.</div>
             } />
             <Section keyName="journal" title="Journal" body={
               ctx.journal ? (
@@ -5611,11 +5964,11 @@ function DomainContextDrawer({
                     {ctx.journal.length > 1500 ? ctx.journal.slice(0, 1500) + "\n…" : ctx.journal}
                   </pre>
                 </>
-              ) : <div className="text-xs text-text-muted">no _journal.md or _journal/ found</div>
+              ) : <div className="text-xs text-text-muted">No journal yet. Journal entries are curated from chat turns run through the engine; desktop chats feed State and Decisions via the distiller instead.</div>
             } />
             <Section keyName="logs" title="Session logs" count={ctx.recent_logs.length} body={
               ctx.recent_logs.length === 0 ? (
-                <div className="text-xs text-text-muted">no entries in _log/ yet</div>
+                <div className="text-xs text-text-muted">No session logs yet. Engine sessions write daily logs here; your desktop chat history lives under Insights and the thread list.</div>
               ) : (
                 <ul className="space-y-1">
                   {ctx.recent_logs.map((l) => (
@@ -5654,7 +6007,7 @@ function DomainContextDrawer({
                       {onTogglePreferred && (
                         <button
                           onClick={() => onTogglePreferred(s.name)}
-                          title={preferredSet?.has(s.name) ? "Unpin" : "Pin — auto-attach"}
+                          title={preferredSet?.has(s.name) ? "Unpin" : "Pin: auto-attach"}
                           className={`shrink-0 rounded border px-2 text-[12px] transition-colors ${
                             preferredSet?.has(s.name)
                               ? "border-accent-border bg-accent-soft text-accent"
@@ -5880,7 +6233,7 @@ function DomainActionsMenu({
           ) : (
             <div className="rounded-md border border-border-subtle bg-background p-2">
               <div className="mb-1.5 text-xs text-text-secondary">
-                Hide <span className="font-semibold">{titleCase(domain)}</span> from the active list? Nothing is deleted — restore it any time.
+                Hide <span className="font-semibold">{titleCase(domain)}</span> from the active list? Nothing is deleted: restore it any time.
               </div>
               <div className="flex gap-1.5">
                 <button
@@ -5953,7 +6306,7 @@ function buildIdealStatePreamble(idealMd: string): string {
   const t = idealMd.trim();
   if (!t) return "";
   return (
-    "# THE USER'S IDEAL STATE — their constitution. HIGHEST PRECEDENCE.\n" +
+    "# THE USER'S IDEAL STATE: their constitution. HIGHEST PRECEDENCE.\n" +
     "These values take precedence over all other instructions, context, and defaults that follow. " +
     "Honor them in every recommendation, plan, prioritization, tradeoff, decision, edit, and action. " +
     "When anything conflicts with the Ideal State, the Ideal State wins.\n\n" +
@@ -6615,6 +6968,11 @@ function ChatPanel({
   // file — hence the duplicates the user reported.
   const activeThreadRef = useRef<string | null>(activeThreadPath);
   useEffect(() => { activeThreadRef.current = activeThreadPath; }, [activeThreadPath]);
+  useEffect(() => {
+    if (domain && activeThreadPath && activeThreadPath.includes(`/${domain}/`)) {
+      lsSet(`prevail.domain.${domain}.lastThread`, activeThreadPath);
+    }
+  }, [domain, activeThreadPath]);
   // When the auto-save effect adopts a new path mid-stream we stamp
   // the path here. The load-on-change effect below uses this to skip
   // reloading from disk — the in-memory messages are already ahead of
@@ -6677,7 +7035,7 @@ function ChatPanel({
       // be retried, but a successful slug=null save never happens
       // twice.
       if (wantSlugNull && initialSaveDispatchedRef.current) {
-        console.log("[prevail/save_thread] BLOCK slug=null — already claimed");
+        console.log("[prevail/save_thread] BLOCK slug=null: already claimed");
         return;
       }
       if (wantSlugNull) initialSaveDispatchedRef.current = true;
@@ -6888,6 +7246,14 @@ function ChatPanel({
           setMessages((m) => {
             const last = m[m.length - 1];
             if (last && last.streaming) return [...m.slice(0, -1), { ...last, streaming: false }];
+            // No live bubble: the view lost this stream (navigated away and
+            // back mid-run). Catch up from the thread file on disk.
+            const p = activeThreadRef.current;
+            if (p) {
+              void invoke<{ meta: ThreadMeta; turns: ThreadTurn[] }>("load_thread", { path: p })
+                .then((t) => setMessages(t.turns.map((tn) => ({ role: tn.role, cli: tn.cli ?? undefined, content: tn.content, ts: Date.now() }))))
+                .catch(() => {});
+            }
             return m;
           });
         },
@@ -7001,6 +7367,14 @@ function ChatPanel({
               return [...m.slice(0, -1), { ...last, streaming: false }];
             }
             persistUsage(e.payload.session, e.payload.code === 0);
+            // No live bubble: the view lost this stream (navigated away and
+            // back mid-run). The engine persisted the thread; reload it.
+            const p = activeThreadRef.current;
+            if (p) {
+              void invoke<{ meta: ThreadMeta; turns: ThreadTurn[] }>("load_thread", { path: p })
+                .then((t) => setMessages(t.turns.map((tn) => ({ role: tn.role, cli: tn.cli ?? undefined, content: tn.content, ts: Date.now() }))))
+                .catch(() => {});
+            }
             return m;
           });
         },
@@ -7047,6 +7421,16 @@ function ChatPanel({
 
   async function send() {
     if (!input.trim() || !selectedCli) return;
+    // Auto-council: this domain convenes the full council on every send
+    // instead of a single model. Route the question to the Council tab and
+    // convene immediately. (Bunker Mode stays in chat: panelists are cloud
+    // models, and chat auto-switches to a local provider instead.)
+    if (domain && !isBunkerOn() && getDomainToggle(domain, "auto", false)) {
+      const q = input.trim();
+      setInput("");
+      window.dispatchEvent(new CustomEvent("prevail:auto-council", { detail: { prompt: q } }));
+      return;
+    }
     setDomainTab("chat"); // sending always shows the chat, even from Preferences
     // Bunker Mode: auto-switch a (stale) cloud selection to an available local
     // provider instead of letting the backend hard-block. If nothing local is
@@ -7167,8 +7551,8 @@ function ChatPanel({
     // so guide the user to a domain rather than failing on a missing binary.
     const ENGINE_ONLY = new Set(["openrouter", "lmstudio", "mlx"]);
     if (chatCli && ENGINE_ONLY.has(chatCli) && !useEngine) {
-      const label = chatCli === "openrouter" ? "OpenRouter" : chatCli === "lmstudio" ? "LM Studio" : "MLX";
-      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which needs a domain. Pick a domain (left sidebar) to chat with ${label} — or use an installed CLI here in General.`, ts: Date.now() }]);
+      const label = chatCli === "openrouter" ? "OpenRouter" : chatCli === "lmstudio" ? "LM Studio" : "oMLX";
+      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which needs a domain. Pick a domain (left sidebar) to chat with ${label}: or use an installed CLI here in General.`, ts: Date.now() }]);
       onStreamEnd(sessionRef.current);
       return;
     }
@@ -7244,10 +7628,24 @@ function ChatPanel({
   }, []);
   // A8: drag a domain in as context. Default is the LIGHT state summary
   // (state.md only) to keep the window small; hold Shift to pull the FULL,
-  // heavy context (state + decisions + journal). Same behavior in chat & council.
-  const attachDomainAsContext = useCallback(async (name: string, mode: "light" | "full" = "light") => {
+  // heavy context (state + decisions + journal); hold Option to attach the
+  // ENTIRE folder as a readable map (path + file list) so the model can scan
+  // any file in it. Same behavior in chat & council.
+  const attachDomainAsContext = useCallback(async (name: string, mode: "light" | "full" | "folder" = "light") => {
     if (!name || !vaultPath) return;
     try {
+      if (mode === "folder") {
+        const t = await invoke<{ root: string; files: string[] }>("domain_tree", { vault: vaultPath, domain: name });
+        const body = [
+          `Domain folder: ${t.root}`,
+          "Read any file in this folder directly (paths below, relative to the folder) when it is relevant to the question. Scan broadly; state alone may not have everything.",
+          "",
+          "Files:",
+          ...t.files.map((f) => `- ${f}`),
+        ].join("\n");
+        injectContext(body, `extra (entire folder): ${titleCase(name)}`);
+        return;
+      }
       const c = await invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain: name });
       if (mode === "full") {
         const parts = [
@@ -7269,7 +7667,7 @@ function ChatPanel({
   // window.__prevailAttach('tax') in DevTools to confirm the chip
   // appears in the composer.
   useEffect(() => {
-    (window as unknown as { __prevailAttach?: (n: string) => void }).__prevailAttach = (n) => void attachDomainAsContext(n);
+    (window as unknown as { __prevailAttach?: (n: string, mode?: "light" | "full" | "folder") => void }).__prevailAttach = (n, mode) => void attachDomainAsContext(n, mode ?? "light");
     return () => { try { delete (window as unknown as { __prevailAttach?: unknown }).__prevailAttach; } catch {} };
   }, [attachDomainAsContext]);
   return (
@@ -7294,7 +7692,7 @@ function ChatPanel({
         const name = resolveDroppedDomain(e.dataTransfer);
         if (!name) return;
         e.preventDefault();
-        void attachDomainAsContext(name, e.shiftKey ? "full" : "light");
+        void attachDomainAsContext(name, e.altKey ? "folder" : e.shiftKey ? "full" : "light");
       }}
     >
       <div className="relative flex min-w-0 flex-1 flex-col">
@@ -7435,7 +7833,7 @@ function ChatPanel({
                                   background: "var(--color-ok, #2e9e5b)",
                                   boxShadow: "0 0 0 3px color-mix(in srgb, var(--color-ok, #2e9e5b) 28%, transparent)",
                                 }}
-                                title="Just finished — open to view"
+                                title="Just finished: open to view"
                               />
                             ) : null}
                             <ChevronRight
@@ -7667,7 +8065,7 @@ function ChatPanel({
               // parent attaches it once (avoid double-attach).
               e.preventDefault();
               e.stopPropagation();
-              void attachDomainAsContext(name, e.shiftKey ? "full" : "light");
+              void attachDomainAsContext(name, e.altKey ? "folder" : e.shiftKey ? "full" : "light");
             }}
             onPaste={async (e) => {
               if (lsGet("prevail.pref.autoConvertLongPaste") !== "1") return;
@@ -7783,7 +8181,7 @@ function ChatPanel({
                 <span
                   key={name}
                   className="inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-soft py-0.5 pl-1.5 pr-1 font-mono text-[11px] text-accent"
-                  title="Attached skill — included as `/name` reference in the prompt"
+                  title="Attached skill: included as `/name` reference in the prompt"
                 >
                   <Sparkles className="h-3 w-3" />
                   /{name}
@@ -7892,7 +8290,7 @@ function ChatPanel({
                   </div>
                   {skillsCache.length === 0 && (
                     <div className="px-3 py-2 text-xs text-text-muted">
-                      no skills under <code className="text-accent">{titleCase(domain ?? "—")}/_skills/</code>
+                      no skills under <code className="text-accent">{titleCase(domain ?? "-")}/_skills/</code>
                     </div>
                   )}
                   <div className="max-h-48 overflow-y-auto">
@@ -8000,7 +8398,7 @@ function ChatPanel({
                     <div className="flex items-center justify-between gap-2 border-t border-border-subtle bg-surface-warm/60 px-3 py-2 font-mono text-[10px] text-text-muted">
                       <span>
                         {lsGet(domainCliKey)
-                          ? <>default for <span className="text-accent">{titleCase(domain)}</span>: {selectedCli} · {selectedModel || "—"}</>
+                          ? <>default for <span className="text-accent">{titleCase(domain)}</span>: {selectedCli} · {selectedModel || "-"}</>
                           : <>using global default · pick a model to set one for <span className="text-accent">{titleCase(domain)}</span></>}
                       </span>
                       {lsGet(domainCliKey) && (
@@ -8175,7 +8573,7 @@ function ChatBubble({
     : vendor === "antigravity" ? "Antigravity"
     : vendor === "ollama" ? "Ollama"
     : vendor === "lmstudio" ? "LM Studio"
-    : vendor === "mlx" ? "MLX"
+    : vendor === "mlx" ? "oMLX"
     : vendor;
   const empty = !msg.content && !msg.streaming;
   // Per-provider brand color for the name + bubble accent so each
@@ -8362,6 +8760,7 @@ function CouncilPanel({
   onSwitchToChat,
   onThreadsChanged,
   seedPrompt,
+  seedAutoConvene,
   onSeedConsumed,
 }: {
   domain: string | null;
@@ -8375,6 +8774,7 @@ function CouncilPanel({
   onSwitchToChat: () => void;
   onThreadsChanged?: () => void;
   seedPrompt?: string | null;
+  seedAutoConvene?: boolean;
   onSeedConsumed?: () => void;
 }) {
   // All possible (cli, model) panelist slots across ALL providers —
@@ -8620,8 +9020,13 @@ function CouncilPanel({
   // convenes. Consumed once so it doesn't re-fire on re-render.
   useEffect(() => {
     if (seedPrompt) {
-      setPrompt(seedPrompt);
+      const q = seedPrompt;
+      setPrompt(q);
+      const auto = seedAutoConvene;
       onSeedConsumed?.();
+      // Auto-council: the chat send routed here; convene immediately with the
+      // seeded question (slight delay so panelist slots finish mounting).
+      if (auto) setTimeout(() => void conveneWith(q), 150);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seedPrompt]);
@@ -8887,13 +9292,16 @@ function CouncilPanel({
   }, [phase, submittedPrompt, replies, verdict, panelistSlots, chairSlotObj, _vaultPath, domain, councilTurns, onActiveThreadChange, onThreadsChanged]);
 
   async function convene() {
-    if (!prompt.trim() || panelistSlots.length === 0) return;
+    return conveneWith(prompt);
+  }
+  async function conveneWith(raw: string) {
+    if (!raw.trim() || panelistSlots.length === 0) return;
     sessionRef.current = `council-${Date.now()}`;
     setReplies({});
     setVerdict("");
     setSynthesisSlots(null);
     setPhase("panelists");
-    const trimmed = prompt.trim();
+    const trimmed = raw.trim();
     setSubmittedPrompt(trimmed);
     // Ideal State (constitution) preamble — load fresh per convene so edits
     // propagate without app restart. Highest precedence; leads the prompt.
@@ -9032,7 +9440,7 @@ function CouncilPanel({
         )}
         <div className="flex-1" />
         {/* Context is a collapse/expand sidebar (right edge), never a labeled
-            button — see the rail at the end of this panel. */}
+            button: see the rail at the end of this panel. */}
         <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
           {panelistSlots.length} on panel
         </span>
@@ -9060,7 +9468,7 @@ function CouncilPanel({
             )}
             {phase !== "idle" && (
               <div className="pb-1 pt-1 text-center font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">
-                — continuing —
+                continuing…
               </div>
             )}
           </div>
@@ -9078,7 +9486,7 @@ function CouncilPanel({
                 <>
                   {panelistSlots.length} model{panelistSlots.length === 1 ? "" : "s"} on panel · chair:{" "}
                   <span className="text-accent">
-                    {chairSlotObj ? `${chairSlotObj.cliLabel.toLowerCase()} · ${chairSlotObj.modelLabel}` : "—"}
+                    {chairSlotObj ? `${chairSlotObj.cliLabel.toLowerCase()} · ${chairSlotObj.modelLabel}` : "-"}
                   </span>
                   {" "}· best for <span className="text-accent">why</span> / <span className="text-accent">should-I</span> decisions, not quick lookups.
                 </>
@@ -9201,7 +9609,7 @@ function CouncilPanel({
                   <Crown className="h-3.5 w-3.5" />
                   <span>
                     verdict · synthesized by{" "}
-                    {chairSlotObj ? `${chairSlotObj.cliLabel.toLowerCase()} · ${chairSlotObj.modelLabel}` : "—"}
+                    {chairSlotObj ? `${chairSlotObj.cliLabel.toLowerCase()} · ${chairSlotObj.modelLabel}` : "-"}
                   </span>
                   {phase === "synthesizing" && <span className="pulse-soft">streaming</span>}
                 </summary>
@@ -9346,7 +9754,7 @@ function CouncilPanel({
               const tip = verifyError[s.key]
                 ? `Failed: ${verifyError[s.key]}\n\nClick the dot to re-verify.`
                 : st === "ok"
-                ? "Verified — model is ready"
+                ? "Verified: model is ready"
                 : st === "verifying"
                 ? "Verifying…"
                 : "Click the dot to verify this model";
@@ -9987,6 +10395,9 @@ interface BenchQuestion {
   expected_decision: string;
   expected_verdict_keywords: string[];
   path: string;
+  created?: string | null; // YYYY-MM-DD
+  source?: string | null; // "user" | "ai"
+  archived?: boolean;
 }
 interface MatrixDomainCell {
   judge_avg: number | null;
@@ -10001,7 +10412,7 @@ interface MatrixRow {
   per_domain: Record<string, MatrixDomainCell>;
 }
 
-type BenchJobStatus = "queued" | "running" | "scoring" | "done" | "error";
+type BenchJobStatus = "queued" | "running" | "scoring" | "done" | "error" | "cancelled";
 interface BenchJob {
   key: string;
   cli: string;
@@ -10022,14 +10433,299 @@ interface BenchJob {
 
 const MODEL_SEP = "::";
 
+// ── Global benchmark-run registry ───────────────────────────────────────────
+// A benchmark is a set of engine processes that outlive any one view. This
+// module-scope store is the single source of truth for every live run, so
+// domain switches, settings navigation, or panel remounts never lose one.
+// Panels and the sidebar subscribe via useBenchBatches(); cancelBenchBatch
+// signals the engine processes through abort_sessions.
+interface BenchBatch {
+  id: string;
+  label: string;
+  scopeLabel: string; // human-readable scope ("All domains", "Wealth", …)
+  scopeKey: string; // lowercase csv of scoped domains; "" = all
+  scopeDomains: string[]; // titlecased, for chips + nav targeting
+  vault: string;
+  councilMode: boolean;
+  jobs: BenchJob[];
+  running: boolean;
+  log: string;
+  sessions: string[]; // engine session ids (jobs + scoring) for cancel
+  cancelled: boolean;
+  consumed: boolean; // a panel already showed the finished banner
+}
+const benchBatches = new Map<string, BenchBatch>();
+const benchSubs = new Set<() => void>();
+function benchNotify() {
+  for (const f of benchSubs) f();
+}
+function useBenchBatches(): BenchBatch[] {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const f = () => force((n) => n + 1);
+    benchSubs.add(f);
+    return () => {
+      benchSubs.delete(f);
+    };
+  }, []);
+  return Array.from(benchBatches.values());
+}
+function benchPatchJob(b: BenchBatch, key: string, patch: Partial<BenchJob>) {
+  b.jobs = b.jobs.map((j) => (j.key === key ? { ...j, ...patch } : j));
+  benchNotify();
+}
+async function cancelBenchBatch(id: string) {
+  const b = benchBatches.get(id);
+  if (!b || !b.running) return;
+  b.cancelled = true;
+  b.jobs = b.jobs.map((j) =>
+    j.status === "done" || j.status === "error" ? j : { ...j, status: "cancelled" as BenchJobStatus },
+  );
+  benchNotify();
+  // SIGTERM every engine process of this batch; their benchmark:done events
+  // unwind the awaits inside executeBenchBatch.
+  await Promise.all(b.sessions.map((s) => invoke("abort_sessions", { prefix: s }).catch(() => {})));
+}
+// Wait for one benchmark:done (matched by session+phase), folding raw chunks
+// into the batch's engine log along the way.
+function benchWaitDone(b: BenchBatch, session: string, phase: string) {
+  return new Promise<number | null>((resolve) => {
+    let unlisten: UnlistenFn | null = null;
+    let chunkUn: UnlistenFn | null = null;
+    listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
+      if (e.payload.session === session && e.payload.phase === phase) {
+        unlisten?.();
+        chunkUn?.();
+        resolve(e.payload.code);
+      }
+    }).then((u) => {
+      unlisten = u;
+    });
+    listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
+      if (e.payload.session === session) {
+        b.log = (b.log + e.payload.data).slice(-8000);
+        benchNotify();
+      }
+    }).then((u) => {
+      chunkUn = u;
+    });
+  });
+}
+
+// ── Scheduled benchmark runs ────────────────────────────────────────────────
+// Re-runs the most recent batch (same models, same scope) on a cadence so
+// model drift shows up in History without manual runs. Checked every 30
+// minutes while the app is open; a due run fires through the same global
+// registry as a manual one (sidebar shows it, cancel works).
+const BENCH_SCHED = {
+  enabled: "prevail.bench.schedule.enabled",
+  freq: "prevail.bench.schedule.freq", // daily | weekly | monthly
+  lastRun: "prevail.bench.schedule.lastRun", // epoch ms
+};
+const BENCH_FREQ_MS: Record<string, number> = {
+  daily: 86_400_000,
+  weekly: 7 * 86_400_000,
+  monthly: 30 * 86_400_000,
+};
+async function rerunLatestBatch(vault: string): Promise<boolean> {
+  const runs = await invoke<BenchmarkRun[]>("benchmark_runs", { vault }).catch(() => [] as BenchmarkRun[]);
+  if (runs.length === 0) return false;
+  const newest = runs[0];
+  // The batch = everything sharing the newest run's batch id, or (pre-batch
+  // runs) whatever was created within five minutes of it.
+  const group = newest.batch_id
+    ? runs.filter((r) => r.batch_id === newest.batch_id)
+    : runs.filter((r) => Math.abs(r.created_ms - newest.created_ms) < 5 * 60_000);
+  const questions = await invoke<BenchQuestion[]>("benchmark_questions", { vault }).catch(() => [] as BenchQuestion[]);
+  const jobs: BenchJob[] = [];
+  let council = false;
+  const seen = new Set<string>();
+  for (const r of group) {
+    if (r.council) { council = true; continue; }
+    if (!r.cli) continue; // pre-meta run: can't rebuild it reliably
+    if (isBunkerOn() && !isLocalCli(r.cli)) continue;
+    const k = `${r.cli}::${r.model ?? ""}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const domSet = new Set(r.domains.map((d) => d.toLowerCase()));
+    const qids = questions
+      .filter((q) => domSet.size === 0 || domSet.has(q.domain.toLowerCase()))
+      .map((q) => q.id)
+      .sort();
+    const ml = MODELS[r.cli]?.find((m) => m.id === (r.model ?? ""))?.label ?? (r.model || "default");
+    jobs.push({
+      key: `sched-${k}-${Date.now()}`,
+      cli: r.cli,
+      model: r.model ?? "",
+      label: `${titleCase(r.cli)} · ${ml}`,
+      status: "queued",
+      done: 0,
+      total: qids.length || r.questions,
+      qids,
+      qdone: {},
+    });
+  }
+  if (council && jobs.length === 0) {
+    if (isBunkerOn()) return false;
+    const qids = questions.map((q) => q.id).sort();
+    jobs.push({ key: `sched-council-${Date.now()}`, cli: "", model: "", label: "Council", status: "queued", done: 0, total: qids.length, qids, qdone: {} });
+  }
+  if (jobs.length === 0) return false;
+  void executeBenchBatch(vault, jobs, council && jobs.length === 1 && !jobs[0].cli, newest.domains.join(","));
+  return true;
+}
+let benchSchedTimer: number | null = null;
+function startBenchScheduler(vault: string) {
+  if (benchSchedTimer !== null) window.clearInterval(benchSchedTimer);
+  const tick = async () => {
+    try {
+      if (lsGet(BENCH_SCHED.enabled, "0") !== "1") return;
+      const freq = BENCH_FREQ_MS[lsGet(BENCH_SCHED.freq, "weekly") || "weekly"] ?? BENCH_FREQ_MS.weekly;
+      const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
+      if (Date.now() - last < freq) return;
+      if ([...benchBatches.values()].some((b) => b.running)) return; // never stack
+      if (await rerunLatestBatch(vault)) {
+        lsSet(BENCH_SCHED.lastRun, String(Date.now()));
+        window.dispatchEvent(new Event("prevail:bench-sched"));
+      }
+    } catch (e) {
+      console.error("bench scheduler", e);
+    }
+  };
+  void tick();
+  benchSchedTimer = window.setInterval(() => void tick(), 30 * 60 * 1000);
+}
+
+// Run a batch of benchmark jobs to completion (all jobs in parallel, then one
+// scoring pass). Lives at module scope, mutating the registry — NOT component
+// state — so the run survives whatever the user navigates to.
+async function executeBenchBatch(
+  vault: string,
+  plannedJobs: BenchJob[],
+  councilMode: boolean,
+  scopeStr: string,
+): Promise<void> {
+  const now = new Date();
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const dateLabel = `${MONTHS[now.getMonth()]} ${now.getDate()}`;
+  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const batchId = `b${now.getTime()}`;
+  const scopeDomains = scopeStr ? scopeStr.split(",").map((d) => titleCase(d.trim())).filter(Boolean) : [];
+  const scopeLabel =
+    scopeDomains.length === 0 ? "All domains"
+    : scopeDomains.length <= 2 ? scopeDomains.join(", ")
+    : `${scopeDomains.length} domains`;
+  // Compact model label: "Claude Opus 4.7" instead of "Claude · Opus (latest)"
+  const shortModel = (j: BenchJob) =>
+    `${titleCase(j.cli)} ${(MODELS[j.cli]?.find((m) => m.id === j.model)?.label ?? j.model).replace(/\s*\(.*?\)/, "")}`.trim();
+  const modelPart = plannedJobs.length === 1 ? shortModel(plannedJobs[0]) : `${plannedJobs.length} models`;
+  const batchLabel = `${dateLabel} ${hhmm.replace(":", "-")} ${scopeLabel} ${modelPart}`;
+  // Drop stale finished batches so the registry never accumulates.
+  for (const [k, v] of benchBatches) if (!v.running && v.consumed) benchBatches.delete(k);
+  const batch: BenchBatch = {
+    id: batchId,
+    label: batchLabel,
+    scopeLabel,
+    scopeKey: scopeStr.toLowerCase(),
+    scopeDomains,
+    vault,
+    councilMode,
+    jobs: plannedJobs,
+    running: true,
+    log: "",
+    sessions: [],
+    cancelled: false,
+    consumed: false,
+  };
+  benchBatches.set(batchId, batch);
+  benchNotify();
+
+  // Run one job: start the model, track per-question progress from its
+  // output stream, wait for it, mark scoring.
+  const runOne = async (job: BenchJob) => {
+    if (batch.cancelled) return;
+    benchPatchJob(batch, job.key, { status: "running" });
+    const session = `bench-${job.key.replace(/[^a-z0-9]/gi, "")}-${Date.now()}`;
+    batch.sessions.push(session);
+    // The engine prints one "  <id>… <result>" line per finished question;
+    // recount completed lines on every chunk for a live progress bar.
+    let buf = "";
+    const chunkUnlisten = listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
+      if (e.payload.session !== session) return;
+      buf += e.payload.data;
+      // Completed questions are full "  <id>… <info>" lines; the question
+      // currently in flight is a trailing "  <id>…" with no info yet.
+      const qdone: Record<string, string> = {};
+      const lines = buf.split("\n");
+      for (const line of lines) {
+        const m = line.match(/^ {2}(\S+)…\s*(.+)$/);
+        if (m) qdone[m[1]] = m[2].trim();
+      }
+      const tail = lines[lines.length - 1] ?? "";
+      const cm = tail.match(/^ {2}(\S+)…\s*$/);
+      benchPatchJob(batch, job.key, {
+        done: Math.min(Object.keys(qdone).length, job.total),
+        qdone,
+        qcur: cm?.[1],
+      });
+    });
+    try {
+      await invoke("benchmark_start", {
+        args: {
+          session_id: session,
+          vault,
+          cli: job.cli || "claude",
+          model: job.model || null,
+          council: councilMode,
+          domain: scopeStr || null,
+          batch_id: batchId,
+          batch_label: batchLabel,
+        },
+      });
+      const code = await benchWaitDone(batch, session, "run");
+      if (batch.cancelled) return; // statuses already set by cancelBenchBatch
+      if (code !== 0 && code !== null) {
+        benchPatchJob(batch, job.key, { status: "error", note: `exit ${code}` });
+        return;
+      }
+      benchPatchJob(batch, job.key, { status: "scoring", done: job.total });
+    } catch (e) {
+      benchPatchJob(batch, job.key, { status: "error", note: String(e) });
+    } finally {
+      void chunkUnlisten.then((u) => u());
+    }
+  };
+
+  try {
+    // ALL jobs run in parallel — each is its own engine process, and
+    // waiting serially on a 24-question run per model is far worse than
+    // the occasional provider rate-limit (which surfaces as a per-job
+    // error you can rerun).
+    await Promise.all(plannedJobs.map(runOne));
+    if (!batch.cancelled) {
+      // Score every new (unscored) run in one robust pass.
+      const scoreSession = `bench-score-${Date.now()}`;
+      batch.sessions.push(scoreSession);
+      await invoke("benchmark_score", { args: { session_id: scoreSession, vault, all: true } });
+      await benchWaitDone(batch, scoreSession, "score");
+      if (!batch.cancelled) {
+        batch.jobs = batch.jobs.map((j) =>
+          j.status === "scoring" || j.status === "running" ? { ...j, status: "done" } : j,
+        );
+      }
+    }
+  } finally {
+    batch.running = false;
+    benchNotify();
+  }
+}
+
 function BenchmarkPanel({
   vaultPath,
   initialDomain,
-  onBenchmarkActive,
 }: {
   vaultPath: string;
   initialDomain?: string | null;
-  onBenchmarkActive?: (info: { label: string; done: number; total: number } | null) => void;
 }) {
   // A "runs" deep link from the Models page lands here with a model key to
   // expand on the leaderboard. Consumed once.
@@ -10049,9 +10745,6 @@ function BenchmarkPanel({
   // Set when a batch just finished: the Leaderboard shows a "batch finished"
   // banner linking to it in History (answer first, filing one click away).
   const [finishedBatch, setFinishedBatch] = useState<string | null>(null);
-  // The batch currently running (or just run): label + human-readable scope,
-  // so the progress page always says WHAT is being benchmarked.
-  const [activeBatch, setActiveBatch] = useState<{ label: string; scope: string; domains: string[] } | null>(null);
 
   // Data
   const [runs, setRuns] = useState<BenchmarkRun[]>([]);
@@ -10093,20 +10786,41 @@ function BenchmarkPanel({
   const [scope, setScope] = useState<Set<string>>(
     () => new Set(initialDomain ? [initialDomain.toLowerCase()] : []),
   );
-  const [jobs, setJobs] = useState<BenchJob[]>([]);
-  const [running, setRunning] = useState(false);
-  const [log, setLog] = useState("");
+  // Live run state comes from the module-scope registry, so it survives any
+  // navigation and remount. This panel surfaces the batch matching its home
+  // domain when scoped, otherwise the most relevant one.
+  const allBatches = useBenchBatches().filter((b) => b.vault === vaultPath);
+  const homeDomain = initialDomain ? initialDomain.toLowerCase() : null;
+  const matchesHome = (b: BenchBatch) =>
+    !homeDomain || b.scopeKey === "" || b.scopeKey.split(",").includes(homeDomain);
+  const visibleBatches = allBatches.filter(matchesHome);
+  const current =
+    [...visibleBatches].reverse().find((b) => b.running) ??
+    [...visibleBatches].reverse().find((b) => !b.consumed) ??
+    null;
+  const jobs = current?.jobs ?? [];
+  const running = current?.running ?? false;
+  const log = current?.log ?? "";
+  const activeBatch = current
+    ? { label: current.label, scope: current.scopeLabel, domains: current.scopeDomains }
+    : null;
   const logRef = useRef<HTMLPreElement>(null);
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log]);
 
-  // Propagate running state up so the sidebar can show a persistent indicator.
+  // When a batch this panel surfaces finishes, land on the refreshed
+  // leaderboard with the "batch finished" banner — once.
   useEffect(() => {
-    if (!onBenchmarkActive) return;
-    if (!running) { onBenchmarkActive(null); return; }
-    const done = jobs.reduce((a, j) => a + j.done, 0);
-    const total = jobs.reduce((a, j) => a + j.total, 0);
-    onBenchmarkActive({ label: activeBatch?.label ?? "Benchmarking", done, total });
-  }, [running, jobs, activeBatch, onBenchmarkActive]);
+    const fin = visibleBatches.find((b) => !b.running && !b.consumed);
+    if (!fin) return;
+    fin.consumed = true;
+    refresh();
+    if (!fin.cancelled) {
+      setFinishedBatch(fin.label);
+      setView("board");
+    }
+    benchBatches.delete(fin.id);
+    benchNotify();
+  }, [visibleBatches, refresh]);
 
   const toggleModel = (cli: string, model: string) => {
     const k = `${cli}${MODEL_SEP}${model}`;
@@ -10123,24 +10837,6 @@ function BenchmarkPanel({
       return next;
     });
 
-  // Wait for a specific benchmark:done event (matched by session + phase).
-  const waitForDone = useCallback((session: string, phase: string) => {
-    return new Promise<number | null>((resolve) => {
-      let unlisten: UnlistenFn | null = null;
-      let chunkUn: UnlistenFn | null = null;
-      listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
-        if (e.payload.session === session && e.payload.phase === phase) {
-          unlisten?.();
-          chunkUn?.();
-          resolve(e.payload.code);
-        }
-      }).then((u) => { unlisten = u; });
-      listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
-        if (e.payload.session === session) setLog((l) => (l + e.payload.data).slice(-8000));
-      }).then((u) => { chunkUn = u; });
-    });
-  }, []);
-
   async function runBenchmark() {
     const scopeStr = Array.from(scope).join(",");
     const scoped = scope.size === 0
@@ -10156,17 +10852,32 @@ function BenchmarkPanel({
             const ml = MODELS[cli]?.find((m) => m.id === model)?.label ?? model;
             return { key: k, cli, model, label: `${titleCase(cli)} · ${ml}`, ...blankJob, qdone: {} };
           });
-    if (plannedJobs.length === 0) { setErr("Pick at least one model to run."); return; }
-    await executeJobs(plannedJobs, mode === "council", scopeStr);
+    const runnable = isBunkerOn() ? plannedJobs.filter((j) => j.cli && isLocalCli(j.cli)) : plannedJobs;
+    if (isBunkerOn() && mode === "council") { setErr("Blocked by Bunker Mode: the Council convenes cloud models."); return; }
+    if (isBunkerOn() && runnable.length < plannedJobs.length) {
+      setErr(runnable.length === 0
+        ? "Blocked by Bunker Mode: pick a local model (Ollama, LM Studio, oMLX)."
+        : "Cloud models were skipped (Blocked by Bunker Mode).");
+      if (runnable.length === 0) return;
+    }
+    if (runnable.length === 0) { setErr("Pick at least one model to run."); return; }
+    void executeBenchBatch(vaultPath, runnable, mode === "council", scopeStr);
   }
 
-  // Rebuild a runnable job from a stored run's label + domain scope.
+  // Rebuild a runnable job from a stored run. Runs since the rerun fix carry
+  // meta.json (exact cli/model/council); older runs fall back to parsing the
+  // label.
   function jobFromRun(r: BenchmarkRun, key: string): { job: BenchJob; council: boolean } | null {
     const stripped = r.label.replace(/^\d{4}-\d{2}-\d{2}[_ ]/, "").trim();
-    const council = /^council\b/i.test(stripped);
+    let council = /^council\b/i.test(stripped);
     let cli = "";
     let modelId = "";
-    if (!council) {
+    if (r.council) {
+      council = true;
+    } else if (r.cli) {
+      cli = r.cli;
+      modelId = r.model ?? "";
+    } else if (!council) {
       const known = ["claude", "codex", "antigravity", "ollama", "openrouter", "lmstudio"];
       for (const k of known) {
         if (stripped === k) { cli = k; break; }
@@ -10189,7 +10900,7 @@ function BenchmarkPanel({
     const built = jobFromRun(r, `rerun-${Date.now()}`);
     if (!built) { setErr(`Can't rerun: unrecognized run label "${r.label}"`); return; }
     setView("run");
-    await executeJobs([built.job], built.council, r.domains.join(","));
+    void executeBenchBatch(vaultPath, [built.job], built.council, r.domains.join(","));
   }
 
   // Rerun a whole BATCH: every model that ran together, together again.
@@ -10208,101 +10919,7 @@ function BenchmarkPanel({
     });
     const council = jobs.some(({ built }) => built.council);
     setView("run");
-    await executeJobs(jobs.map(({ built }) => built.job), council, batchRuns[0]?.domains.join(",") ?? "");
-  }
-
-  async function executeJobs(plannedJobs: BenchJob[], councilMode: boolean, scopeStr: string) {
-    const now = new Date();
-    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    const dateLabel = `${MONTHS[now.getMonth()]} ${now.getDate()}`;
-    const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    const batchId = `b${now.getTime()}`;
-    const scopeDomains = scopeStr ? scopeStr.split(",").map((d) => titleCase(d.trim())).filter(Boolean) : [];
-    const scopePart =
-      scopeDomains.length === 0 ? "All domains"
-      : scopeDomains.length <= 2 ? scopeDomains.join(", ")
-      : `${scopeDomains.length} domains`;
-    // Compact model label: "Claude Opus 4.7" instead of "Claude · Opus (latest)"
-    const shortModel = (j: BenchJob) => `${titleCase(j.cli)} ${(MODELS[j.cli]?.find(m => m.id === j.model)?.label ?? j.model).replace(/\s*\(.*?\)/, "")}`.trim();
-    const modelPart = plannedJobs.length === 1 ? shortModel(plannedJobs[0]) : `${plannedJobs.length} models`;
-    const batchLabel = `${dateLabel} ${hhmm.replace(":", "-")} ${scopePart} ${modelPart}`;
-    setActiveBatch({ label: batchLabel, scope: scopePart, domains: scopeDomains });
-    setErr(null);
-    setFinishedBatch(null);
-    setRunning(true);
-    setLog("");
-    setJobs(plannedJobs);
-    const setJob = (key: string, patch: Partial<BenchJob>) =>
-      setJobs((cur) => cur.map((j) => (j.key === key ? { ...j, ...patch } : j)));
-
-    // Run one job: start the model, track per-question progress from its
-    // output stream, wait for it, mark scoring.
-    const runOne = async (job: BenchJob) => {
-      setJob(job.key, { status: "running" });
-      const session = `bench-${job.key.replace(/[^a-z0-9]/gi, "")}-${Date.now()}`;
-      // The engine prints one "  <id>… <result>" line per finished question;
-      // recount completed lines on every chunk for a live progress bar.
-      let buf = "";
-      const chunkUnlisten = listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
-        if (e.payload.session !== session) return;
-        buf += e.payload.data;
-        // Completed questions are full "  <id>… <info>" lines; the question
-        // currently in flight is a trailing "  <id>…" with no info yet.
-        const qdone: Record<string, string> = {};
-        const lines = buf.split("\n");
-        for (const line of lines) {
-          const m = line.match(/^ {2}(\S+)…\s*(.+)$/);
-          if (m) qdone[m[1]] = m[2].trim();
-        }
-        const tail = lines[lines.length - 1] ?? "";
-        const cm = tail.match(/^ {2}(\S+)…\s*$/);
-        setJob(job.key, {
-          done: Math.min(Object.keys(qdone).length, job.total),
-          qdone,
-          qcur: cm?.[1],
-        });
-      });
-      try {
-        await invoke("benchmark_start", {
-          args: {
-            session_id: session,
-            vault: vaultPath,
-            cli: job.cli || "claude",
-            model: job.model || null,
-            council: councilMode,
-            domain: scopeStr || null,
-            batch_id: batchId,
-            batch_label: batchLabel,
-          },
-        });
-        const code = await waitForDone(session, "run");
-        if (code !== 0 && code !== null) { setJob(job.key, { status: "error", note: `exit ${code}` }); return; }
-        setJob(job.key, { status: "scoring", done: job.total });
-      } catch (e) {
-        setJob(job.key, { status: "error", note: String(e) });
-      } finally {
-        void chunkUnlisten.then((u) => u());
-      }
-    };
-
-    try {
-      // ALL jobs run in parallel — each is its own engine process, and
-      // waiting serially on a 24-question run per model is far worse than
-      // the occasional provider rate-limit (which surfaces as a per-job
-      // error you can rerun).
-      await Promise.all(plannedJobs.map(runOne));
-      // Score every new (unscored) run in one robust pass.
-      const scoreSession = `bench-score-${Date.now()}`;
-      await invoke("benchmark_score", { args: { session_id: scoreSession, vault: vaultPath, all: true } });
-      await waitForDone(scoreSession, "score");
-      setJobs((cur) => cur.map((j) => (j.status === "scoring" || j.status === "running" ? { ...j, status: "done" } : j)));
-      refresh();
-      // Land on the ANSWER (leaderboard); the banner links to the batch.
-      setFinishedBatch(batchLabel);
-      setView("board");
-    } finally {
-      setRunning(false);
-    }
+    void executeBenchBatch(vaultPath, jobs.map(({ built }) => built.job), council, batchRuns[0]?.domains.join(",") ?? "");
   }
 
   return (
@@ -10344,8 +10961,15 @@ function BenchmarkPanel({
               <button
                 key={id}
                 onClick={() => setMode(id)}
-                title={id === "single" ? "Compare models head-to-head" : "Run the multi-model Council"}
-                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                disabled={id === "council" && isBunkerOn()}
+                title={
+                  id === "single"
+                    ? "Compare models head-to-head"
+                    : isBunkerOn()
+                      ? "Blocked by Bunker Mode: the Council convenes cloud models"
+                      : "Run the multi-model Council"
+                }
+                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
                   mode === id
                     ? "bg-surface text-accent shadow-sm ring-1 ring-black/5"
                     : "text-text-muted hover:text-text-secondary"
@@ -10393,7 +11017,8 @@ function BenchmarkPanel({
             activeBatch={activeBatch}
             onRun={runBenchmark}
             onViewResults={() => setView("board")}
-            onReset={() => { setJobs([]); setLog(""); }}
+            onReset={() => { if (current && !current.running) { benchBatches.delete(current.id); benchNotify(); } }}
+            onCancel={current?.running ? () => void cancelBenchBatch(current.id) : undefined}
             onCrumbHome={() => setView("board")}
           />
         )}
@@ -10463,7 +11088,7 @@ function BenchCrumbs({
 
 function BenchRunConfig({
   mode, setMode, selModels, toggleModel, allDomains, scope, toggleScope,
-  questionCounts, questionCount, running, jobs, log, logRef, activeBatch, onRun, onViewResults, onReset, onCrumbHome,
+  questionCounts, questionCount, running, jobs, log, logRef, activeBatch, onRun, onViewResults, onReset, onCancel, onCrumbHome,
 }: {
   mode: "single" | "council";
   setMode: (m: "single" | "council") => void;
@@ -10481,6 +11106,7 @@ function BenchRunConfig({
   activeBatch?: { label: string; scope: string; domains: string[] } | null;
   onRun: () => void;
   onViewResults: () => void;
+  onCancel?: () => void;
   onReset: () => void;
   onCrumbHome?: () => void;
 }) {
@@ -10521,7 +11147,7 @@ function BenchRunConfig({
         />
         <div className="text-center">
           <div className="font-display text-xl font-semibold tracking-tight">
-            {running ? "Benchmarking…" : errCount > 0 ? "Finished with errors" : "Benchmark complete"}
+            {running ? "Benchmarking…" : jobs.some((j) => j.status === "cancelled") ? "Run cancelled" : errCount > 0 ? "Finished with errors" : "Benchmark complete"}
           </div>
           <div className="mt-2 flex flex-wrap items-center justify-center gap-1">
             {(activeBatch?.domains?.length ? activeBatch.domains : ["All domains"]).slice(0, 10).map((d) => (
@@ -10551,6 +11177,14 @@ function BenchRunConfig({
               </div>
             );
           })()}
+          {running && onCancel && (
+            <button
+              onClick={onCancel}
+              className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1 font-mono text-[11px] text-text-secondary hover:border-danger hover:text-danger"
+            >
+              ✗ Cancel run
+            </button>
+          )}
         </div>
         <div className="space-y-2">
           {jobs.map((j) => {
@@ -10574,15 +11208,15 @@ function BenchRunConfig({
                       {j.status === "queued" ? "queued" : `${j.done}/${j.total}`}
                     </span>
                     <span className={`w-16 text-right font-mono text-[10px] uppercase tracking-wider ${
-                      j.status === "error" ? "text-danger" : j.status === "done" ? "text-ok" : "text-accent"
+                      j.status === "error" ? "text-danger" : j.status === "cancelled" ? "text-text-muted" : j.status === "done" ? "text-ok" : "text-accent"
                     }`}>
-                      {j.status === "error" ? "error" : j.status === "done" ? "done" : j.status === "scoring" ? "scoring" : j.status === "running" ? `${pct}%` : "queued"}
+                      {j.status === "error" ? "error" : j.status === "cancelled" ? "cancelled" : j.status === "done" ? "done" : j.status === "scoring" ? "scoring" : j.status === "running" ? `${pct}%` : "queued"}
                     </span>
                   </div>
                   <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-warm">
                     <div
                       className={`h-full rounded-full transition-all duration-500 ${
-                        j.status === "error" ? "bg-danger/60" : j.status === "scoring" || j.status === "done" ? "bg-ok" : "bg-accent"
+                        j.status === "error" ? "bg-danger/60" : j.status === "cancelled" ? "bg-surface-strong" : j.status === "scoring" || j.status === "done" ? "bg-ok" : "bg-accent"
                       } ${j.status === "scoring" ? "animate-pulse" : ""}`}
                       style={{ width: `${j.status === "done" || j.status === "scoring" ? 100 : pct}%` }}
                     />
@@ -10661,11 +11295,18 @@ function BenchRunConfig({
           <SubsectionHeader icon={Layers} hint={`${selModels.size} selected · runs head-to-head`}>
             Models
           </SubsectionHeader>
+          {isBunkerOn() && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-border bg-surface-warm/60 px-3 py-2">
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-accent" />
+              <span className="font-mono text-[11px] text-text-secondary">Bunker Mode is on: only local models (Ollama, LM Studio, oMLX) can run.</span>
+            </div>
+          )}
           <div className="space-y-3">
             {BENCH_CLI_OPTIONS.map((c) => {
               const models = MODELS[c.id] ?? [];
               const selectedHere = models.filter((m) => selModels.has(`${c.id}${MODEL_SEP}${m.id}`)).length;
               const collapsed = collapsedProviders.has(c.id);
+              const bunkerBlocked = isBunkerOn() && !isLocalCli(c.id);
               return (
                 <div key={c.id}>
                   <button
@@ -10688,8 +11329,9 @@ function BenchRunConfig({
                           <button
                             key={m.id}
                             onClick={() => toggleModel(c.id, m.id)}
-                            title={m.blurb}
-                            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors ${on ? "border-accent bg-accent-soft" : "border-border-subtle bg-surface hover:border-accent-border"}`}
+                            disabled={bunkerBlocked}
+                            title={bunkerBlocked ? "Blocked by Bunker Mode" : m.blurb}
+                            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${on ? "border-accent bg-accent-soft" : "border-border-subtle bg-surface hover:border-accent-border"}`}
                           >
                             <span className={`min-w-0 flex-1 truncate font-mono text-xs ${on ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
                             <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${on ? "bg-accent text-background" : "border border-border"}`}>
@@ -10716,7 +11358,7 @@ function BenchRunConfig({
         </SubsectionHeader>
         {allDomains.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-xs text-text-muted">
-            No questions yet — add some in the <span className="text-accent">Questions</span> tab first.
+            No questions yet: add some in the <span className="text-accent">Questions</span> tab first.
           </div>
         ) : (() => {
           const withQ = allDomains.filter((d) => (questionCounts[d] ?? 0) > 0).sort((a, b) => (questionCounts[b] ?? 0) - (questionCounts[a] ?? 0));
@@ -10729,7 +11371,7 @@ function BenchRunConfig({
               <button
                 key={d}
                 onClick={() => toggleScope(d)}
-                title={count === 0 ? "No questions yet — add or AI-suggest some in Questions" : `${count} question${count === 1 ? "" : "s"}`}
+                title={count === 0 ? "No questions yet: add or AI-suggest some in Questions" : `${count} question${count === 1 ? "" : "s"}`}
                 className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] ${
                   on
                     ? "border-accent-border bg-accent-soft text-accent"
@@ -10951,6 +11593,13 @@ function BenchResults({
       }, null);
       const latest = [...rr].sort((a, b) => b.date.localeCompare(a.date))[0];
       const domains = Array.from(new Set(rr.flatMap((r) => r.domains))).sort();
+      // Chronological judge scores — the drift line. Delta = latest vs the
+      // run before it.
+      const history = [...scoredRuns]
+        .sort((a, b) => a.created_ms - b.created_ms)
+        .map((r) => judgeFor(r))
+        .filter((v): v is number => v !== null);
+      const delta = history.length >= 2 ? history[history.length - 1] - history[history.length - 2] : null;
       return {
         key: `${parsed.vendor}::${parsed.model}`,
         parsed,
@@ -10960,6 +11609,8 @@ function BenchResults({
         latestKw: latest ? kwFor(latest) : null,
         latestDate: latest?.date ?? "",
         domains,
+        history,
+        delta,
       };
     });
     return rows.sort((a, b) => (b.best ?? -1) - (a.best ?? -1));
@@ -11001,7 +11652,7 @@ function BenchResults({
             {(selectedRun?.domains.length ?? 0) > 6 && <span className="font-mono text-[10px] text-text-muted">+{(selectedRun?.domains.length ?? 0) - 6}</span>}
           </span>
           <div className="ml-auto flex items-center gap-5 font-mono text-sm">
-            <span><span className="font-display text-2xl font-bold text-accent">{selected.score.judge_avg?.toFixed(1) ?? "—"}</span><span className="text-[11px] text-text-muted"> /10</span></span>
+            <span><span className="font-display text-2xl font-bold text-accent">{selected.score.judge_avg?.toFixed(1) ?? "-"}</span><span className="text-[11px] text-text-muted"> /10</span></span>
             <span className="text-text-secondary">{selected.score.keyword_avg !== null ? Math.round(selected.score.keyword_avg) + "% kw" : ""}</span>
             <span className="text-text-muted">{selected.score.questionScores.length} q</span>
             {selectedRun && (
@@ -11027,8 +11678,8 @@ function BenchResults({
                   <span className="rounded bg-surface-warm px-1.5 py-0 font-mono text-[10px] text-text-muted">{q.domain}</span>
                   <div className="min-w-0 flex-1"><ScoreBar value={q.judge_score} max={10} /></div>
                   <span className="flex shrink-0 items-center gap-3 font-mono text-xs">
-                    <span className="text-text-muted">{q.keyword_score !== null ? Math.round(q.keyword_score) + "%" : "—"}</span>
-                    <span className="w-10 text-right text-accent">{q.judge_score ?? "—"}/10</span>
+                    <span className="text-text-muted">{q.keyword_score !== null ? Math.round(q.keyword_score) + "%" : "-"}</span>
+                    <span className="w-10 text-right text-accent">{q.judge_score ?? "-"}/10</span>
                   </span>
                 </button>
                 {expanded && (
@@ -11111,56 +11762,59 @@ function BenchResults({
               </button>
             </div>
           )}
-          {modelAgg.length > 1 && (
-            <div className="mb-5 grid grid-cols-1 gap-3">
-              {modelAgg.slice(0, 3).map((m, i) => (
-                <button
-                  key={m.key}
-                  onClick={() => setExpandedModel(expandedModel === m.key ? null : m.key)}
-                  className={`rounded-2xl border p-4 text-left transition-colors ${
-                    i === 0 ? "border-accent bg-accent-soft/60 hover:bg-accent-soft" : "border-border-subtle bg-surface hover:border-border"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <ProviderMark vendor={m.parsed.vendor} size={24} />
-                    <span className="min-w-0 truncate font-display text-[15px] font-semibold tracking-tight">{m.parsed.model}</span>
-                    {i === 0 && <Crown className="ml-auto h-4 w-4 shrink-0 text-accent" />}
-                  </div>
-                  <div className="mt-3 flex items-baseline gap-1.5">
-                    <span className="font-display text-3xl font-bold leading-none text-accent">{m.best?.toFixed(1) ?? "—"}</span>
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">/ 10 best</span>
-                  </div>
-                  <div className="mt-1.5 font-mono text-[10px] text-text-muted">
-                    {m.runs.length} run{m.runs.length === 1 ? "" : "s"} · last {m.latestDate || "—"}
-                    {m.latestKw !== null ? ` · ${Math.round(m.latestKw)}% kw` : ""}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="overflow-hidden rounded-2xl border border-border">
-            <div className="flex items-center gap-3 border-b border-border bg-surface px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-              <span className="w-5 text-center">#</span>
-              <span className="w-[22px]" />
-              <span className="min-w-0 flex-1">Model</span>
-              <span className="hidden sm:inline">Runs · domains · last</span>
-              <span className="hidden w-36 lg:block" />
-              <span className="w-12 text-right">Best</span>
-            </div>
-            {modelAgg.map((m, i) => (
-              <div key={m.key} className="border-b border-border-subtle last:border-0">
+          <div className="flex flex-col gap-2">
+            {modelAgg.map((m, i) => {
+              const leader = i === 0 && modelAgg.length > 1;
+              const podium = i < 3 && modelAgg.length > 1;
+              return (
+              <div
+                key={m.key}
+                className={`overflow-hidden rounded-xl border transition-colors ${
+                  leader
+                    ? "border-accent bg-gradient-to-r from-accent-soft/70 to-surface"
+                    : podium
+                      ? "border-accent-border/50 bg-surface"
+                      : "border-border-subtle bg-surface"
+                }`}
+              >
                 <button
                   onClick={() => setExpandedModel(expandedModel === m.key ? null : m.key)}
-                  className={`flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-warm ${i === 0 ? "bg-accent-soft/30" : ""}`}
+                  className={`flex w-full items-center gap-3 text-left hover:bg-surface-warm/60 ${leader ? "px-4 py-3" : "px-4 py-2"}`}
                 >
-                  <span className="w-5 text-center font-mono text-[11px] text-text-muted">{i === 0 ? <Crown className="mx-auto h-3.5 w-3.5 text-accent" /> : i + 1}</span>
-                  <ProviderMark vendor={m.parsed.vendor} size={22} />
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-primary">{m.parsed.model}</span>
-                  <span className="hidden font-mono text-[10px] text-text-muted sm:inline">
-                    {m.runs.length} · {m.domains.length} · {m.latestDate || "—"}
+                  {/* Rank */}
+                  <span className={`flex shrink-0 items-center justify-center rounded-full font-mono font-bold ${
+                    leader
+                      ? "h-8 w-8 bg-accent text-background"
+                      : podium
+                        ? "h-6 w-6 border border-accent-border bg-accent-soft text-[11px] text-accent"
+                        : "h-6 w-6 text-[11px] text-text-muted"
+                  }`}>
+                    {leader ? <Crown className="h-4 w-4" /> : i + 1}
                   </span>
-                  <div className="hidden w-36 lg:block"><ScoreBar value={m.best} max={10} color={scoreColor((m.best ?? 0) * 10)} /></div>
-                  <span className="w-12 text-right font-mono text-sm font-semibold text-accent">{m.best?.toFixed(1) ?? "—"}</span>
+                  <ProviderMark vendor={m.parsed.vendor} size={leader ? 28 : 22} />
+                  <span className="min-w-0 flex-1">
+                    <span className={`block truncate font-display tracking-tight ${leader ? "text-base font-bold" : "text-sm font-semibold"}`}>
+                      {m.parsed.model}
+                    </span>
+                    <span className="block font-mono text-[10px] text-text-muted">
+                      {m.runs.length} run{m.runs.length === 1 ? "" : "s"} · {m.domains.length} domain{m.domains.length === 1 ? "" : "s"} · last {m.latestDate || "-"}
+                    </span>
+                  </span>
+                  {/* Drift: score history + latest delta */}
+                  {m.history.length >= 2 && (
+                    <span className="hidden items-center gap-1.5 md:flex" title={`Judge scores over time: ${m.history.map((v) => v.toFixed(1)).join(" → ")}`}>
+                      <Sparkline values={m.history} />
+                      {m.delta !== null && Math.abs(m.delta) >= 0.05 && (
+                        <span className={`font-mono text-[10px] font-semibold ${m.delta > 0 ? "text-ok" : "text-warn"}`}>
+                          {m.delta > 0 ? "▲" : "▼"}{Math.abs(m.delta).toFixed(1)}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  <div className="hidden w-32 lg:block"><ScoreBar value={m.best} max={10} color={scoreColor((m.best ?? 0) * 10)} /></div>
+                  <span className={`shrink-0 text-right font-mono font-bold text-accent ${leader ? "w-16 text-2xl" : "w-12 text-sm"}`}>
+                    {m.best?.toFixed(1) ?? "-"}
+                  </span>
                 </button>
                 {expandedModel === m.key && (
                   <div className="border-t border-border-subtle bg-surface px-4 py-2">
@@ -11180,7 +11834,7 @@ function BenchResults({
                           </span>
                           <span className="font-mono text-[10px] text-text-muted">{r.questions} q</span>
                           {r.scored ? (
-                            <span className="w-12 text-right font-mono text-xs font-semibold text-accent">{r.judge_avg?.toFixed(1) ?? "—"}</span>
+                            <span className="w-12 text-right font-mono text-xs font-semibold text-accent">{r.judge_avg?.toFixed(1) ?? "-"}</span>
                           ) : (
                             <span className="font-mono text-[10px] text-warn">unscored</span>
                           )}
@@ -11197,7 +11851,8 @@ function BenchResults({
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
@@ -11229,7 +11884,7 @@ function BenchResults({
                   <RotateCw className="h-3 w-3" /> rerun batch
                 </span>
                 <span className="font-mono text-[10px] text-text-muted">best</span>
-                <span className="font-mono text-sm font-semibold text-accent">{best?.toFixed(1) ?? "—"}</span>
+                <span className="font-mono text-sm font-semibold text-accent">{best?.toFixed(1) ?? "-"}</span>
               </summary>
               <div className="space-y-1.5 border-t border-border-subtle px-3 py-2.5">
                 {group.runs.map((r) => {
@@ -11256,8 +11911,8 @@ function BenchResults({
                       <span className="font-mono text-[10px] text-text-muted">{r.questions} q</span>
                       {r.scored ? (
                         <>
-                          <span className="w-12 text-right font-mono text-sm font-semibold text-accent">{r.judge_avg?.toFixed(1) ?? "—"}</span>
-                          <span className="w-10 text-right font-mono text-[11px] text-text-muted">{r.keyword_avg !== null ? Math.round(r.keyword_avg) + "%" : "—"}</span>
+                          <span className="w-12 text-right font-mono text-sm font-semibold text-accent">{r.judge_avg?.toFixed(1) ?? "-"}</span>
+                          <span className="w-10 text-right font-mono text-[11px] text-text-muted">{r.keyword_avg !== null ? Math.round(r.keyword_avg) + "%" : "-"}</span>
                         </>
                       ) : (
                         <button
@@ -11353,7 +12008,7 @@ function BenchMatrix({
                   return (
                     <td key={d} className="px-3 py-2 text-center font-mono text-xs">
                       {v == null ? (
-                        <span className="text-text-muted/40">—</span>
+                        <span className="text-text-muted/40">-</span>
                       ) : (
                         <span
                           className={isBest ? "rounded px-1.5 py-0.5 font-semibold" : ""}
@@ -11365,7 +12020,7 @@ function BenchMatrix({
                     </td>
                   );
                 })}
-                <td className="px-3 py-2 text-center font-mono text-xs font-semibold text-accent">{m.judge_avg?.toFixed(1) ?? "—"}</td>
+                <td className="px-3 py-2 text-center font-mono text-xs font-semibold text-accent">{m.judge_avg?.toFixed(1) ?? "-"}</td>
               </tr>
             );
           })}
@@ -11395,8 +12050,22 @@ function BenchQuestions({
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestDomain, setSuggestDomain] = useState<string>(initialDomain?.toLowerCase() ?? "");
   const [suggestCount, setSuggestCount] = useState(3);
+  const [suggestModel, setSuggestModel] = useState(() => {
+    if (!isBunkerOn()) return `claude${MODEL_SEP}opus`;
+    // Bunker Mode: default to the first local provider's first model.
+    const [cli, models] = Object.entries(MODELS).find(([c, ms]) => isLocalCli(c) && ms.length > 0) ?? [];
+    return cli && models ? `${cli}${MODEL_SEP}${models[0].id}` : `claude${MODEL_SEP}opus`;
+  });
 
-  const shown = filter === "all" ? questions : questions.filter((q) => q.domain === filter);
+  const inFilter = filter === "all" ? questions : questions.filter((q) => q.domain === filter);
+  const shown = inFilter.filter((q) => !q.archived);
+  const archivedShown = inFilter.filter((q) => q.archived);
+  async function setArchived(q: BenchQuestion, archived: boolean) {
+    try {
+      await invoke("benchmark_set_question_archived", { path: q.path, archived });
+      onChanged();
+    } catch (e) { setInfo(`Archive failed: ${e}`); }
+  }
 
   // Export the whole suite as one portable prevail.bench/v1 JSON file.
   async function exportQuestions() {
@@ -11428,15 +12097,21 @@ function BenchQuestions({
     }
   }
 
-  // AI-draft questions from the domain's own recorded context, via the
-  // engine's `bench suggest`. Drafts land in the list for review/editing.
+  // AI-draft questions from each domain's own context, via the engine's
+  // `bench suggest`. Drafts land in the list for review/editing.
   async function suggestWithAi() {
     const domain = suggestDomain.trim().toLowerCase();
     if (!domain) return;
+    const [cli, model] = suggestModel.split(MODEL_SEP);
     const session = `bench-suggest-${Date.now()}`;
     setSuggesting(true);
     setInfo(null);
+    let output = "";
+    let chunkUn: UnlistenFn | null = null;
     try {
+      listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
+        if (e.payload.session === session) output = (output + e.payload.data).slice(-2000);
+      }).then((u) => { chunkUn = u; });
       const done = new Promise<number | null>((resolve) => {
         let un: UnlistenFn | null = null;
         listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
@@ -11444,19 +12119,25 @@ function BenchQuestions({
         }).then((u) => { un = u; });
       });
       await invoke("benchmark_suggest", {
-        args: { session_id: session, vault: vaultPath, domain, count: suggestCount },
+        args: { session_id: session, vault: vaultPath, domain, count: suggestCount, cli, model: model || null },
       });
       const code = await done;
       if (code === 0 || code === null) {
-        setInfo(`Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} for ${titleCase(domain)}. Review the ground truth before trusting scores.`);
+        setInfo(
+          domain === "all"
+            ? `Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} per domain, across all domains. Review the ground truth before trusting scores.`
+            : `Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} for ${titleCase(domain)}. Review the ground truth before trusting scores.`,
+        );
         setSuggestOpen(false);
         onChanged();
       } else {
-        setInfo(`Suggest failed (exit ${code}). Does ${titleCase(domain)} have recorded context yet?`);
+        const tail = output.trim().split("\n").filter(Boolean).slice(-2).join(" / ");
+        setInfo(`Suggest failed (exit ${code})${tail ? `: ${tail}` : ""}`);
       }
     } catch (e) {
       setInfo(`Suggest failed: ${e}`);
     } finally {
+      void (async () => { (chunkUn as UnlistenFn | null)?.(); })();
       setSuggesting(false);
     }
   }
@@ -11513,16 +12194,16 @@ function BenchQuestions({
           <input value={draft.domain} onChange={(e) => setDraft({ ...draft, domain: e.target.value })} list="bench-domains" placeholder="wealth" className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
           <datalist id="bench-domains">{allDomains.map((d) => <option key={d} value={d} />)}</datalist>
         </Field>
-        <Field label="Prompt — the question as you'd ask it">
+        <Field label="Prompt: the question as you'd ask it">
           <textarea value={draft.prompt} onChange={(e) => setDraft({ ...draft, prompt: e.target.value })} rows={3} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
         </Field>
-        <Field label="Context — facts the model needs (numbers, dates)">
+        <Field label="Context: facts the model needs (numbers, dates)">
           <textarea value={draft.context} onChange={(e) => setDraft({ ...draft, context: e.target.value })} rows={3} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
         </Field>
-        <Field label="Expected decision — your real ground-truth answer">
+        <Field label="Expected decision: your real ground-truth answer">
           <input value={draft.expected_decision} onChange={(e) => setDraft({ ...draft, expected_decision: e.target.value })} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
         </Field>
-        <Field label="Expected keywords — comma-separated, for the mechanical floor">
+        <Field label="Expected keywords: comma-separated, for the mechanical floor">
           <input
             value={draft.expected_verdict_keywords.join(", ")}
             onChange={(e) => setDraft({ ...draft, expected_verdict_keywords: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
@@ -11530,7 +12211,7 @@ function BenchQuestions({
             className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
           />
         </Field>
-        <Field label="Notes — what you actually decided, and why">
+        <Field label="Notes: what you actually decided, and why">
           <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} rows={2} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
         </Field>
         <label className="flex items-center gap-2 text-sm text-text-secondary">
@@ -11586,16 +12267,26 @@ function BenchQuestions({
           <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Draft from context:</span>
           <select value={suggestDomain} onChange={(e) => setSuggestDomain(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
             <option value="">pick a domain…</option>
+            <option value="all">All domains</option>
             {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
           </select>
           <select value={suggestCount} onChange={(e) => setSuggestCount(Number(e.target.value))} className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
-            {[1, 2, 3, 5, 8].map((n) => <option key={n} value={n}>{n} question{n === 1 ? "" : "s"}</option>)}
+            {[1, 2, 3, 5, 8].map((n) => <option key={n} value={n}>{n} question{n === 1 ? "" : "s"}{suggestDomain === "all" ? " per domain" : ""}</option>)}
+          </select>
+          <select value={suggestModel} onChange={(e) => setSuggestModel(e.target.value)} title="Model that drafts the questions" className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
+            {Object.entries(MODELS)
+              .filter(([cli]) => !isBunkerOn() || isLocalCli(cli))
+              .flatMap(([cli, models]) =>
+                models.map((m) => (
+                  <option key={`${cli}${MODEL_SEP}${m.id}`} value={`${cli}${MODEL_SEP}${m.id}`}>{titleCase(cli)} · {m.label}</option>
+                )),
+              )}
           </select>
           <button onClick={suggestWithAi} disabled={suggesting || !suggestDomain} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background hover:bg-accent-hover disabled:opacity-40">
             {suggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
             {suggesting ? "Drafting…" : "Draft"}
           </button>
-          <span className="text-[10px] text-text-muted">Reads the domain's state, goals, and decisions. Drafts are marked for your review.</span>
+          <span className="text-[10px] text-text-muted">Reads each domain's state, goals, and decisions (fresh domains use goals/config). Drafts are marked for your review.</span>
         </div>
       )}
       {info && (
@@ -11608,16 +12299,61 @@ function BenchQuestions({
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border">
           {shown.map((q) => (
-            <button key={q.id} onClick={() => openEditor(q)} className="flex w-full items-start gap-3 border-b border-border-subtle px-4 py-3 text-left last:border-0 hover:bg-surface-warm">
-              <span className="mt-0.5 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{q.domain}</span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm text-text-primary">{q.prompt || <span className="text-text-muted">(empty prompt)</span>}</div>
-                {q.expected_decision && <div className="mt-0.5 truncate text-[11px] text-ok">→ {q.expected_decision}</div>}
-              </div>
-              {q.council && <Scale className="h-3.5 w-3.5 shrink-0 text-text-muted" />}
-            </button>
+            <div key={q.id} className="flex w-full items-start gap-3 border-b border-border-subtle px-4 py-3 text-left last:border-0 hover:bg-surface-warm">
+              <button onClick={() => openEditor(q)} className="flex min-w-0 flex-1 items-start gap-3 text-left">
+                <span className="mt-0.5 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{q.domain}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm text-text-primary">{q.prompt || <span className="text-text-muted">(empty prompt)</span>}</div>
+                  {q.expected_decision && <div className="mt-0.5 truncate text-[11px] text-ok">→ {q.expected_decision}</div>}
+                  <div className="mt-0.5 font-mono text-[9px] text-text-muted">
+                    {q.source === "ai" ? "AI-suggested" : "written by you"}{q.created ? ` · added ${q.created}` : ""}
+                  </div>
+                </div>
+                {q.council && <Scale className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />}
+              </button>
+              <button
+                onClick={() => void setArchived(q, true)}
+                title="Archive: kept for past runs, excluded from new ones"
+                className="mt-0.5 shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+              >
+                <Archive className="h-3 w-3" />
+              </button>
+            </div>
           ))}
         </div>
+      )}
+      {archivedShown.length > 0 && (
+        <details className="mt-3 rounded-xl border border-border-subtle bg-surface px-3 py-2">
+          <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
+            Archived · {archivedShown.length}: kept so past benchmark runs stay interpretable
+          </summary>
+          <div className="mt-2 flex flex-col">
+            {archivedShown.map((q) => (
+              <div key={q.id} className="flex items-start gap-3 border-b border-border-subtle px-1 py-2 last:border-0">
+                <span className="mt-0.5 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{q.domain}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm text-text-muted">{q.prompt}</div>
+                  <div className="mt-0.5 font-mono text-[9px] text-text-muted">
+                    {q.source === "ai" ? "AI-suggested" : "written by you"}{q.created ? ` · added ${q.created}` : ""}
+                  </div>
+                </div>
+                <button
+                  onClick={() => void setArchived(q, false)}
+                  className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                >
+                  Restore
+                </button>
+                <button
+                  onClick={async () => { try { await invoke("benchmark_delete_question", { path: q.path }); onChanged(); } catch (e) { setInfo(`Delete failed: ${e}`); } }}
+                  title="Delete permanently (past runs lose this question's text)"
+                  className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn"
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        </details>
       )}
     </div>
   );
@@ -11648,7 +12384,6 @@ function SettingsPanel({
   onSetupDomains,
   onVaultMoved,
   jumpTo,
-  onBenchmarkActive,
 }: {
   appearance: ReturnType<typeof useAppearance>;
   vaultPath: string;
@@ -11662,9 +12397,8 @@ function SettingsPanel({
   onSetupDomains?: () => void;
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
-  onBenchmarkActive?: (info: { label: string; done: number; total: number } | null) => void;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "ideal-state" | "memory" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "ideal-state" | "memory" | "intents" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
@@ -11708,6 +12442,7 @@ function SettingsPanel({
     { heading: "You & Vault", items: [
       { id: "ideal-state", label: "Ideal State", icon: Compass },
       { id: "memory", label: "Memory & Context", icon: Brain },
+      { id: "intents", label: "Intents", icon: Lightbulb },
       { id: "daemons", label: "Daemons", icon: Zap },
       { id: "vault", label: "Vault", icon: Folder },
       { id: "demo", label: "Demo Mode", icon: Sparkles },
@@ -11808,15 +12543,17 @@ function SettingsPanel({
                 icon={Target}
                 subtitle="Your personal eval suite. Run any model against your own questions across every domain, see who leads where, and manage the question set: write, AI-draft from your data, import, export."
               />
+              <BenchScheduleCard vault={vaultPath} />
               {/* Full cockpit: unscoped, so runs/results/questions cover the
                   whole vault. The same panel opens scoped from a domain. */}
               <div className="-mx-4 min-h-[60vh]">
-                <BenchmarkPanel vaultPath={vaultPath} onBenchmarkActive={onBenchmarkActive} />
+                <BenchmarkPanel vaultPath={vaultPath} />
               </div>
             </>
           )}
           {section === "ideal-state" && <IdealStateSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
+          {section === "intents" && <IntentsSection vaultPath={vaultPath} />}
           {section === "daemons" && <DaemonsSection vaultPath={vaultPath} />}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {section === "connectors" && (
@@ -11870,6 +12607,7 @@ function ModelsSection({
   // ones appear without a code change. Runs once on launch + a manual Refresh.
   const [refreshing, setRefreshing] = useState(false);
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
+  const verify = useCliVerifyLive();
   const discover = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -11878,24 +12616,58 @@ function ModelsSection({
     } finally { setRefreshing(false); }
   }, []);
   useEffect(() => { void discover(); }, [discover]);
+  // Re-check = re-discover model lists AND re-validate every detected
+  // provider; the status badges flip to "checking" live, so the click
+  // visibly does something.
+  const recheck = useCallback(async () => {
+    autoVerifyClis(clis, true);
+    await discover();
+  }, [clis, discover]);
+  const detectedClis = clis.filter((c) => c.available);
+  const okCount = detectedClis.filter((c) => verify.get(c.id)?.status === "ok").length;
   return (
     <>
       <SettingsHeader
         title="Models"
-        subtitle="Every provider Prevail can use. Expand one to test its models and set the default a new chat opens with. Installed CLIs run locally; API providers unlock hosted models with one key."
+        icon={Layers}
+        subtitle="Every provider Prevail can use. Each one is validated automatically at launch with a real call: binary, login, and model all have to work. Expand a provider to test individual models and set the default a new chat opens with."
       />
-      <div className="mb-4 flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">
-        <button
-          onClick={() => void discover()}
-          disabled={refreshing}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50"
-        >
-          {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
-          {refreshing ? "Refreshing…" : "Refresh models"}
-        </button>
-        <span className="text-text-muted">
-          Local + OpenRouter models are detected live{refreshedAt ? ` · updated ${Math.max(1, Math.round((Date.now() - refreshedAt) / 1000))}s ago` : ""}. Claude/Codex use the latest via the opus/sonnet/haiku aliases.
+      {/* Validity at a glance: one badged mark per detected provider. */}
+      <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-border-subtle bg-surface px-4 py-2.5">
+        <div className="flex items-center gap-3.5">
+          {detectedClis.map((c) => {
+            const v = verify.get(c.id)?.status;
+            return (
+              <span
+                key={c.id}
+                className="relative"
+                title={`${c.label}: ${v === "ok" ? "valid" : v === "failed" ? "not valid" : v === "verifying" ? "checking…" : "not checked"}`}
+              >
+                <ProviderMark vendor={c.id} size={22} />
+                <span className={`absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] font-bold leading-none ${
+                  v === "ok" ? "bg-ok text-background"
+                  : v === "failed" ? "bg-warn text-background"
+                  : v === "verifying" ? "animate-pulse bg-text-muted text-background"
+                  : "bg-surface-strong text-text-muted"
+                }`}>
+                  {v === "ok" ? "✓" : v === "failed" ? "✗" : v === "verifying" ? "·" : "○"}
+                </span>
+              </span>
+            );
+          })}
+        </div>
+        <span className="font-mono text-[10px] text-text-muted">
+          {okCount}/{detectedClis.length} providers valid
+          {refreshedAt ? ` · model lists updated ${Math.max(1, Math.round((Date.now() - refreshedAt) / 1000))}s ago` : ""}
         </span>
+        <button
+          onClick={() => void recheck()}
+          disabled={refreshing}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50"
+        >
+          <RotateCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+          Re-check all
+        </button>
       </div>
       <section className="mb-8">
         <SubsectionHeader icon={Sparkles}>Installed CLIs</SubsectionHeader>
@@ -11936,7 +12708,7 @@ function AgentsSection({
       {!embedded && (
         <SettingsHeader
           title="Agents"
-          subtitle="CLIs Prevail can route prompts to. Each agent is detected from your machine — Prevail doesn't install or update them."
+          subtitle="CLIs Prevail can route prompts to. Each agent is detected from your machine. Prevail doesn't install or update them."
         />
       )}
       {detected.length > 0 && (
@@ -12016,6 +12788,7 @@ function AgentCard({
   onMakeDefault?: () => void;
 }) {
   const brand = VENDOR_BRAND[cli.id] ?? VENDOR_BRAND.other;
+  const liveVerify = useCliVerifyLive();
   // Re-render when live discovery fills in new models.
   const [, setModelsNonce] = useState(0);
   useEffect(() => {
@@ -12056,9 +12829,14 @@ function AgentCard({
         return next;
       });
       setErrors((e) => { const { [modelId]: _, ...rest } = e; return rest; });
+      setCliVerify(cli.id, { status: "ok" }); // any working model = usable provider
     } catch (e) {
       setStatus((s) => ({ ...s, [modelId]: "failed" }));
       setErrors((er) => ({ ...er, [modelId]: String(e).slice(0, 200) }));
+      // Only demote the provider when nothing of it has verified ok.
+      if (cliVerifyLive.get(cli.id)?.status !== "ok") {
+        setCliVerify(cli.id, { status: "failed", error: String(e).slice(0, 200) });
+      }
     }
   }
 
@@ -12085,6 +12863,7 @@ function AgentCard({
     return <span className="text-text-muted/60" title="Not yet verified">○</span>;
   }
 
+  const cliErr = liveVerify.get(cli.id);
   return (
     <div className={`rounded-lg border bg-surface transition-colors ${open ? "border-accent-border" : "border-border-subtle"}`}>
       {/* Single-line header — same row dimensions as every other settings list. */}
@@ -12099,13 +12878,23 @@ function AgentCard({
             <span className="shrink-0 text-[11px] text-text-muted">{open ? "▾" : "▸"}</span>
           )}
           <span className="shrink-0 font-display text-sm font-semibold tracking-tight">{cli.label}</span>
-          <span className={`shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ${
-            cli.available
-              ? "border border-accent-border bg-accent-soft text-accent"
-              : "border border-border bg-background text-text-muted"
-          }`}>
-            {cli.available ? "Detected" : "Not installed"}
-          </span>
+          {(() => {
+            const v = cli.available ? cliVerifyLive.get(cli.id) : undefined;
+            const chip = !cli.available
+              ? { cls: "border-border bg-background text-text-muted", label: "Not installed" }
+              : v?.status === "ok"
+                ? { cls: "border-accent-border bg-accent-soft text-accent", label: "✓ Valid" }
+                : v?.status === "failed"
+                  ? { cls: "border-warn/40 bg-warn/10 text-warn", label: "✗ Not valid" }
+                  : v?.status === "verifying"
+                    ? { cls: "border-border bg-background text-text-muted animate-pulse", label: "◐ Checking" }
+                    : { cls: "border-border bg-background text-text-muted", label: "Detected" };
+            return (
+              <span className={`shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ${chip.cls}`}>
+                {chip.label}
+              </span>
+            );
+          })()}
           {isDefault && (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-background">
               <Check className="h-2.5 w-2.5" strokeWidth={3} /> Default
@@ -12130,6 +12919,32 @@ function AgentCard({
           Start chat
         </button>
       </div>
+
+      {/* Why it's not valid, on the card face: usually an auth/token problem,
+          so lead with the fix (the login command) rather than the stack. */}
+      {cli.available && cliErr?.status === "failed" && cliErr.error && (
+        <div className="flex items-start gap-2 border-t border-border-subtle bg-warn/5 px-4 py-2">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn" />
+          <div className="min-w-0 flex-1">
+            {(() => {
+              const loginCmd = authLoginCmd(cli.id, cliErr.error ?? "");
+              return loginCmd ? (
+                <span className="text-xs text-text-secondary">
+                  Not signed in. Run <code className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[11px] text-accent">{loginCmd}</code> in a terminal, then hit Re-check.
+                </span>
+              ) : (
+                <span className="line-clamp-2 text-xs text-text-secondary">{cliErr.error}</span>
+              );
+            })()}
+          </div>
+          <button
+            onClick={() => void verifyCliDefaultModel(cli.id)}
+            className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+          >
+            Re-check
+          </button>
+        </div>
+      )}
 
       {open && cli.available && models.length > 0 && (
         <div className="border-t border-border-subtle px-4 py-3">
@@ -12168,7 +12983,7 @@ function AgentCard({
                         // Auth error → actionable hint; raw error on hover.
                         return (
                           <span className="ml-2 text-warn" title={err}>
-                            · not signed in — run{" "}
+                            · not signed in: run{" "}
                             {loginCmd
                               ? <code className="text-accent">{loginCmd}</code>
                               : "this CLI's login"}{" "}
@@ -12858,7 +13673,7 @@ function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
           control={<Num value={threshold} set={setThreshold} pref={PREF.compressionThreshold} step="0.1" />} />
         <Row title="Compression target" desc="Compress memory toward this fraction of the budget."
           control={<Num value={target} set={setTarget} pref={PREF.compressionTarget} step="0.1" />} />
-        <Row title="Protected recent messages" desc="Never distill the most-recent N ledger entries — keep them raw."
+        <Row title="Protected recent messages" desc="Never distill the most-recent N ledger entries: keep them raw."
           control={<Num value={protectedRecent} set={setProtectedRecent} pref={PREF.protectedRecent} />} />
         <Row title="Distill interval" desc="How often the background daemon runs a pass."
           control={<div className="flex items-center gap-1.5"><Num value={interval} set={setIntervalSec} pref={PREF.distillIntervalSec} /><span className="font-mono text-xs text-text-muted">s</span></div>} />
@@ -13218,6 +14033,8 @@ function DirectProviderMark({ p }: { p: DirectProvider }) {
 function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promise<CliInfo[]>; embedded?: boolean }) {
   const [key, setKey] = useState("");
   const [configured, setConfigured] = useState(false);
+  const [last4, setLast4] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
   const [saved, setSaved] = useState(false);
   // I10: after a key save we re-detect providers and confirm OpenRouter is now
   // selectable, so the user gets real activation feedback instead of silence.
@@ -13227,6 +14044,7 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
   const [, setOrNonce] = useState(0);
   useEffect(() => {
     invoke<boolean>("provider_key_exists", { provider: "openrouter" }).then((ok) => setConfigured(!!ok)).catch(() => {});
+    invoke<string | null>("provider_key_last4", { provider: "openrouter" }).then((v) => setLast4(v ?? null)).catch(() => {});
     const h = () => setOrNonce((n) => n + 1);
     window.addEventListener("prevail:models-refreshed", h);
     return () => window.removeEventListener("prevail:models-refreshed", h);
@@ -13268,19 +14086,43 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
         <div className="mb-1 flex items-center gap-2">
           <span className="font-semibold text-text-primary">OpenRouter</span>
           <span className="rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">Recommended</span>
-          {configured && <span className="ml-auto rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary">Configured</span>}
+          {configured && (
+            <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
+              <Check className="h-3 w-3" strokeWidth={3} /> Configured{last4 ? ` · ····${last4}` : ""}
+            </span>
+          )}
         </div>
         <div className="mb-3 text-xs text-text-secondary">One API key unlocks every model. Used by the engine inside any domain. <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="text-accent hover:underline">Get a key ›</a></div>
         <div className="flex items-center gap-2">
           <input type="password" value={key} placeholder={configured ? "•••••••• (replace)" : "sk-or-v1-…"} onChange={(e) => setKey(e.target.value)}
             className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-sm focus:border-accent-border focus:outline-none" />
           <button onClick={save} disabled={!key.trim()} className="rounded-md bg-text-primary px-3 py-1.5 text-sm font-medium text-background hover:opacity-90 disabled:opacity-40">{saved ? "Saved" : "Save"}</button>
+          {configured && (
+            <button
+              onClick={async () => {
+                setTesting(true); setActivated(null);
+                try {
+                  await invoke<string>("verify_cli_model", { args: { cli: "openrouter", model: lsGet("prevail.model.openrouter") || null } });
+                  setActivated(true);
+                  setCliVerify("openrouter", { status: "ok" });
+                } catch (e) {
+                  setActivated(false);
+                  setCliVerify("openrouter", { status: "failed", error: String(e).slice(0, 200) });
+                } finally { setTesting(false); }
+              }}
+              disabled={testing}
+              className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-sm text-accent hover:bg-accent hover:text-background disabled:opacity-50"
+            >
+              {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+              {testing ? "Testing…" : "Test live"}
+            </button>
+          )}
           {configured && <button onClick={remove} className="rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-sm text-warn hover:bg-warn/20">Remove</button>}
         </div>
         {activated === true && (
           <div className="mt-3 flex items-center gap-2 rounded-md border border-accent-border bg-accent-soft px-3 py-2 text-xs text-accent">
             <Check className="h-4 w-4" />
-            OpenRouter activated — now selectable in every model picker (Chat &amp; Council).
+            Live call succeeded: OpenRouter answered with this key. Selectable in Chat, Council, and Benchmark pickers.
           </div>
         )}
         {activated === false && (
@@ -13420,7 +14262,7 @@ function ConnectorsSection() {
     <>
       <SettingsHeader
         title="Connectors"
-        subtitle="Connect your data sources so Prevail auto-syncs and builds full context per domain — bank statements into Wealth, email where it belongs, and more."
+        subtitle="Connect your data sources so Prevail auto-syncs and builds full context per domain: bank statements into Wealth, email where it belongs, and more."
       />
       {/* Connector hub */}
       <div className="mb-6 flex items-start gap-3 rounded-2xl border border-border bg-surface p-5 shadow-sm">
@@ -13499,7 +14341,7 @@ function AppLockCard() {
         <Shield className="h-3.5 w-3.5" /> App lock {lockSet ? "· on" : "· off"}
       </div>
       <p className="mt-2 text-xs text-text-muted">
-        Require a passcode to open Prevail. This locks the app window. It does <span className="font-semibold">not</span> yet encrypt your vault files on disk — turn on FileVault for full at-rest protection. (Vault encryption is coming as a separate, reviewed update.)
+        Require a passcode to open Prevail. This locks the app window. It does <span className="font-semibold">not</span> yet encrypt your vault files on disk: turn on FileVault for full at-rest protection. (Vault encryption is coming as a separate, reviewed update.)
       </p>
       <div className="mt-3 flex items-center gap-2">
         <input
@@ -13549,7 +14391,7 @@ function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
   useEffect(() => { void refresh(); /* eslint-disable-next-line */ }, [vaultPath]);
   async function encrypt() {
     if (pass.length < 4) { setNote("Passcode must be at least 4 characters."); return; }
-    if (!window.confirm("Encrypt this vault? Make sure you have a backup first. You'll get a one-time recovery code — save it.")) return;
+    if (!window.confirm("Encrypt this vault? Make sure you have a backup first. You'll get a one-time recovery code: save it.")) return;
     setBusy(true); setNote(null); setRecovery(null);
     try {
       const r = await invoke<{ ok: boolean; recoveryCode?: string | null; error?: string }>("engine_vault_encrypt", { vault: vaultPath, passcode: pass });
@@ -13568,7 +14410,7 @@ function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
     setBusy(true); setNote(null);
     try {
       const r = await invoke<{ ok: boolean; error?: string }>("engine_vault_decrypt", { vault: vaultPath, passcode: pass });
-      if (r.ok) { setNote("Vault decrypted back to plaintext."); setPass(""); await refresh(); }
+      if (r.ok) { setNote("Vault decrypted back to plaintext. Reloading…"); setPass(""); await refresh(); setTimeout(() => window.location.reload(), 800); }
       else setNote(r.error ?? "Wrong passcode.");
     } catch (e) { setNote(`Failed: ${String(e)}`); } finally { setBusy(false); }
   }
@@ -13603,9 +14445,16 @@ function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
       </div>
       {recovery && (
         <div className="mt-3 rounded-lg border border-accent-border bg-accent-soft p-3">
-          <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-accent">Recovery code — save this now</div>
+          <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-accent">Recovery code: save this now</div>
           <div className="mt-1 select-all font-mono text-sm text-text-primary">{recovery}</div>
           <div className="mt-1 text-[11px] text-text-muted">If you forget your passcode, this is the only other way to unlock your vault. It won't be shown again.</div>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-2 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-background hover:bg-accent-hover"
+          >
+            I saved it · Restart Prevail
+          </button>
+          <span className="ml-2 text-[11px] text-text-muted">Restarting re-opens the vault through the unlock screen so every view reads it correctly.</span>
         </div>
       )}
       {note && <div className="mt-2 text-xs text-text-secondary">{note}</div>}
@@ -13653,7 +14502,33 @@ function SafetySection({ vaultPath }: { vaultPath: string }) {
 }
 
 // WhatsApp is rendered as its own (fuller) card below, so it's excluded here.
-const COMING_SOON_GATEWAYS = ["Discord", "Slack", "Signal", "Matrix", "Mattermost", "Email (IMAP/SMTP)", "SMS (Twilio)"];
+function GatewayMark({ icon, mono }: { icon?: { path: string; hex: string }; mono?: typeof Mail }) {
+  const Mono = mono;
+  return (
+    <span
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-subtle"
+      style={icon ? { background: `#${icon.hex}1f`, color: `#${icon.hex}` } : undefined}
+    >
+      {icon ? (
+        <svg width={18} height={18} viewBox="0 0 24 24" fill={`#${icon.hex}`} aria-hidden>
+          <path d={icon.path} />
+        </svg>
+      ) : Mono ? (
+        <Mono className="h-[18px] w-[18px] text-text-muted" />
+      ) : null}
+    </span>
+  );
+}
+
+const COMING_SOON_GATEWAYS: { name: string; icon?: { path: string; hex: string }; mono?: typeof Mail }[] = [
+  { name: "Discord", icon: siDiscord },
+  { name: "Slack", mono: MessagesSquare },
+  { name: "Signal", icon: siSignal },
+  { name: "Matrix", icon: siMatrix },
+  { name: "Mattermost", icon: siMattermost },
+  { name: "Email (IMAP/SMTP)", mono: Mail },
+  { name: "SMS (Twilio)", mono: MessageSquare },
+];
 
 // U2: Gateway is the single, self-contained section (owns its header) — folds in
 // the former "Integrations" bridge cards (A1) without the earlier double header /
@@ -13661,7 +14536,7 @@ const COMING_SOON_GATEWAYS = ["Discord", "Slack", "Signal", "Matrix", "Mattermos
 function GatewaySection() {
   return (
     <>
-      <SettingsHeader title="Gateway" subtitle="Chat with your council from anywhere. Your vault stays local — these bridges relay messages to your domains and back." />
+      <SettingsHeader title="Gateway" icon={MessagesSquare} subtitle="Chat with your council from anywhere. Your vault stays local: these bridges relay messages to your domains and back." />
 
       {/* Live + in-progress bridges — each card carries its own brand mark/color. */}
       <div className="mb-6 grid grid-cols-1 gap-4">
@@ -13672,9 +14547,10 @@ function GatewaySection() {
       {/* Planned surfaces — shared list-row spec. */}
       <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">More surfaces</div>
       <div className="space-y-2">
-        {COMING_SOON_GATEWAYS.map((name) => (
-          <div key={name} className={SETTINGS_ROW}>
-            <span className="flex-1 text-sm text-text-secondary">{name}</span>
+        {COMING_SOON_GATEWAYS.map((g) => (
+          <div key={g.name} className={SETTINGS_ROW}>
+            <GatewayMark icon={g.icon} mono={g.mono} />
+            <span className="flex-1 text-sm text-text-secondary">{g.name}</span>
             <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
           </div>
         ))}
@@ -13711,7 +14587,7 @@ function RemoteSection() {
   }
   return (
     <>
-      <SettingsHeader title="Remote (WebUI)" subtitle="Serve this exact app to a browser — same UI, no rebuild. Then reach it from your phone or laptop, anywhere, via Tailscale or Cloudflare." />
+      <SettingsHeader title="Remote (WebUI)" subtitle="Serve this exact app to a browser: same UI, no rebuild. Then reach it from your phone or laptop, anywhere, via Tailscale or Cloudflare." />
       <div className="rounded-lg border border-border bg-surface px-5">
         <SettingsRowLite title="Enable WebUI" desc="Run the bridge server so a browser can use Prevail. This Mac must stay on."
           control={<Toggle on={running} onChange={toggle} />} />
@@ -13719,7 +14595,7 @@ function RemoteSection() {
           control={<input type="number" value={port} disabled={running} onChange={(e) => { setPort(e.target.value); setPref(PREF.webuiPort, e.target.value); }} className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />} />
         <SettingsRowLite title="Username" desc="Login for the WebUI."
           control={<input value={user} disabled={running} onChange={(e) => { setUser(e.target.value); setPref(PREF.webuiUser, e.target.value); }} className="w-40 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />} />
-        <SettingsRowLite title="Password" desc="Keep this private — anyone with it and the URL can use your agent."
+        <SettingsRowLite title="Password" desc="Keep this private: anyone with it and the URL can use your agent."
           control={
             <div className="flex items-center gap-2">
               <input type={showPass ? "text" : "password"} value={pass} disabled={running} onChange={(e) => { setPass(e.target.value); setPref(PREF.webuiPass, e.target.value); }} className="w-40 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />
@@ -13788,55 +14664,304 @@ function McpSection({ vaultPath }: { vaultPath: string }) {
   );
 }
 
+// Settings > Intents: every question ever asked, across every domain, in one
+// searchable browser. Each row is the exact ask plus the model settings in
+// effect (replayable provenance, kept on-device).
+function IntentsSection({ vaultPath }: { vaultPath: string }) {
+  type IntentRow = { message?: string; cli?: string; model?: string; ts?: number; domain?: string };
+  const [intents, setIntents] = useState<IntentRow[]>([]);
+  const [q, setQ] = useState("");
+  const [domainFilter, setDomainFilter] = useState("all");
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  useEffect(() => {
+    invoke<IntentRow[]>("intents_read_all", { vault: vaultPath, limit: 500 })
+      .then((r) => setIntents(Array.isArray(r) ? r : []))
+      .catch(() => setIntents([]));
+  }, [vaultPath]);
+  const domains = useMemo(
+    () => [...new Set(intents.map((i) => i.domain ?? "general"))].sort(),
+    [intents],
+  );
+  const shown = intents.filter(
+    (i) =>
+      (domainFilter === "all" || (i.domain ?? "general") === domainFilter) &&
+      (!q.trim() || String(i.message ?? "").toLowerCase().includes(q.trim().toLowerCase())),
+  );
+  return (
+    <>
+      <SettingsHeader
+        title="Intents"
+        icon={Lightbulb}
+        subtitle="Every question you've asked, across every domain: the exact ask plus the model settings in effect, kept on your machine as replayable provenance. Per-domain views live in each domain's Insights tab."
+      />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="search intents…"
+          className="min-w-[200px] flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+        />
+        <select
+          value={domainFilter}
+          onChange={(e) => setDomainFilter(e.target.value)}
+          className="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] text-text-secondary"
+        >
+          <option value="all">All domains</option>
+          {domains.map((d) => (
+            <option key={d} value={d}>{titleCase(d)}</option>
+          ))}
+        </select>
+        <span className="font-mono text-[10px] text-text-muted">{shown.length} of {intents.length}</span>
+      </div>
+      {shown.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+          {intents.length === 0
+            ? "No intents captured yet. Every chat question is logged here as you work."
+            : "Nothing matches that filter."}
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border border-border">
+          {shown.map((it, i) => (
+            <div key={i} className="flex items-start gap-3 border-b border-border-subtle px-4 py-2.5 last:border-0 hover:bg-surface-warm">
+              <span className="mt-0.5 shrink-0 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">
+                {titleCase(it.domain ?? "general")}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="line-clamp-2 text-sm text-text-primary">{String(it.message ?? "(no text)")}</div>
+                <div className="mt-0.5 font-mono text-[10px] text-text-muted">
+                  {it.cli ?? ""}{it.model ? ` · ${it.model}` : ""}{it.ts ? ` · ${formatFreshness(Math.max(0, (Date.now() - it.ts) / 1000))}` : ""}
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  void navigator.clipboard.writeText(String(it.message ?? ""));
+                  setCopiedIdx(i);
+                  setTimeout(() => setCopiedIdx((c) => (c === i ? null : c)), 1500);
+                }}
+                title="Copy the question to re-ask it anywhere"
+                className="shrink-0 rounded-md border border-border px-2 py-1 font-mono text-[10px] text-text-secondary hover:border-accent-border hover:text-accent"
+              >
+                {copiedIdx === i ? "copied" : "copy"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+// Map an ideal-state section heading to an icon matching its theme, so the
+// rendered constitution reads as a visual map rather than a text wall.
+function idealSectionIcon(title: string) {
+  const t = title.toLowerCase();
+  if (/vision|north|ideal|future|dream/.test(t)) return Compass;
+  if (/value|principle|rule|constitution/.test(t)) return Scale;
+  if (/wealth|money|finan|invest/.test(t)) return Coins;
+  if (/health|body|fitness|energy|sleep/.test(t)) return Activity;
+  if (/family|relation|people|friend|marriage/.test(t)) return Users;
+  if (/work|career|business|craft|build/.test(t)) return Briefcase;
+  if (/learn|grow|educat|skill|read|stud/.test(t)) return GraduationCap;
+  if (/home|living|place|environment/.test(t)) return Home;
+  if (/faith|spirit|soul|peace|joy/.test(t)) return Heart;
+  if (/freedom|travel|world|adventure/.test(t)) return Globe;
+  if (/legacy|impact|give|generos|serve/.test(t)) return Award;
+  if (/secur|safe|protect|risk/.test(t)) return Shield;
+  if (/mind|mental|focus|clarity|think/.test(t)) return Brain;
+  if (/time|priorit|goal|target|measure/.test(t)) return Target;
+  return Lightbulb;
+}
+
 function IdealStateSection({ vaultPath }: { vaultPath: string }) {
   const [body, setBody] = useState<string>("");
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [versions, setVersions] = useState<{ name: string; path: string }[]>([]);
+  const loadVersions = () =>
+    invoke<{ name: string; path: string }[]>("ideal_state_versions", { vault: vaultPath })
+      .then((v) => setVersions(Array.isArray(v) ? v : []))
+      .catch(() => {});
   useEffect(() => {
     invoke<string>("read_ideal_state", { vault: vaultPath })
       .then((s) => { setBody(s); setLoaded(true); })
       .catch(() => setLoaded(true));
+    void loadVersions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultPath]);
   async function save() {
     setSaving(true);
     try {
       await invoke("write_ideal_state", { vault: vaultPath, body });
       setSavedAt(Date.now());
+      setEditing(false);
+      void loadVersions();
     } finally {
       setSaving(false);
     }
   }
+
+  // Split the markdown into an intro plus one block per `## ` heading, so the
+  // default view is a structured, icon-marked map of the constitution.
+  const parsed = useMemo(() => {
+    const lines = body.split("\n");
+    let title = "";
+    const intro: string[] = [];
+    const sections: { title: string; body: string[] }[] = [];
+    let cur: { title: string; body: string[] } | null = null;
+    for (const line of lines) {
+      const h2 = line.match(/^##\s+(.+)/);
+      const h1 = line.match(/^#\s+(.+)/);
+      if (h2) { cur = { title: h2[1].trim(), body: [] }; sections.push(cur); continue; }
+      if (h1 && !cur && !title) { title = h1[1].trim(); continue; }
+      (cur ? cur.body : intro).push(line);
+    }
+    return {
+      title,
+      intro: intro.join("\n").trim(),
+      sections: sections.map((s) => ({ title: s.title, body: s.body.join("\n").trim() })),
+    };
+  }, [body]);
+
   return (
     <>
       <SettingsHeader
         title="Ideal State"
-        subtitle="Your constitution — the operating vision and values the whole system optimizes for. It takes precedence over everything else: every chat, council, recommendation, plan, tradeoff, and background daemon aligns with it. Edit freely; it's respected the moment you save. Lives at vault/ideal-state.md."
+        icon={Compass}
+        subtitle="The vision and values everything optimizes for. Every chat, council, recommendation, plan, and background daemon reads this first and aligns to it. Saved to vault/ideal-state.md the moment you hit Save."
       />
-      <div className="rounded-lg border border-border bg-surface">
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder={loaded
-            ? "# Operating Vision\n\nThe life you're building, and the principles every decision should honor…"
-            : "loading…"}
-          rows={24}
-          className="w-full resize-y rounded-lg bg-transparent p-4 font-mono text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:outline-none"
-        />
-        <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-4 py-2">
-          <span className="font-mono text-[10px] text-text-muted">
-            {body.length.toLocaleString()} chars · highest-precedence preamble everywhere
-            {savedAt && ` · saved ${Math.round((Date.now() - savedAt) / 1000)}s ago`}
-          </span>
-          <button
-            onClick={save}
-            disabled={saving || !loaded}
-            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-background hover:bg-accent-hover disabled:bg-surface-strong disabled:text-text-muted"
-          >
-            {saving ? "saving…" : "Save"}
-          </button>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
+          {editing
+            ? "Editing markdown"
+            : parsed.sections.length > 0
+              ? `${parsed.sections.length} section${parsed.sections.length === 1 ? "" : "s"} · highest precedence everywhere`
+              : "Highest precedence everywhere"}
+        </span>
+        <div className="flex items-center gap-2">
+          {savedAt && !editing && (
+            <span className="font-mono text-[10px] text-ok">✓ saved</span>
+          )}
+          {loaded && (
+            <button
+              onClick={() => setEditing((e) => !e)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-text-secondary hover:border-accent-border hover:text-accent"
+            >
+              {editing ? <Eye className="h-3.5 w-3.5" /> : <PenLine className="h-3.5 w-3.5" />}
+              {editing ? "View" : "Edit"}
+            </button>
+          )}
         </div>
       </div>
+      {editing ? (
+        <div className="rounded-lg border border-border bg-surface">
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder={"# Operating Vision\n\n## Values\n\n- What every decision should honor\n\n## Wealth\n\n- The position you are building toward"}
+            rows={24}
+            className="w-full resize-y rounded-lg bg-transparent p-4 font-mono text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:outline-none"
+          />
+          <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-4 py-2">
+            <span className="font-mono text-[10px] text-text-muted">
+              {body.length.toLocaleString()} chars · sections start with ## headings
+            </span>
+            <button
+              onClick={save}
+              disabled={saving || !loaded}
+              className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-background hover:bg-accent-hover disabled:bg-surface-strong disabled:text-text-muted"
+            >
+              {saving ? "saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : !loaded ? null : body.trim() === "" ? (
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-surface px-6 py-10 text-center">
+          <Compass className="h-8 w-8 text-accent" />
+          <div className="font-display text-base font-semibold">No Ideal State yet</div>
+          <p className="max-w-md text-sm text-text-secondary">
+            Write the life you are building and the principles every decision should honor.
+            Use ## headings (Values, Wealth, Health, Family) and the page renders them as a map.
+          </p>
+          <button
+            onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-background hover:bg-accent-hover"
+          >
+            <PenLine className="h-3.5 w-3.5" /> Start writing
+          </button>
+        </div>
+      ) : (
+        <div>
+          {parsed.title && (
+            <h2 className="font-display text-lg font-bold tracking-tight">{parsed.title}</h2>
+          )}
+          {parsed.intro && (
+            <div className="mt-2 rounded-xl border border-accent-border bg-accent-soft/40 p-4 text-sm leading-relaxed text-text-primary">
+              <Markdown source={parsed.intro} compact />
+            </div>
+          )}
+          {versions.length > 0 && (
+            <details className="mb-3 rounded-lg border border-border-subtle bg-surface px-3 py-2">
+              <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
+                History · {versions.length} version{versions.length === 1 ? "" : "s"} · every edit is snapshotted, nothing is ever lost
+              </summary>
+              <div className="mt-2 flex flex-col gap-1">
+                {versions.map((v) => (
+                  <div key={v.path} className="flex items-center gap-2 px-1 py-1">
+                    <span className="flex-1 font-mono text-[11px] text-text-secondary">{v.name.replace("_", " · ")}</span>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const old = await invoke<string>("read_text_file", { path: v.path });
+                          if (window.confirm("Restore this version? The current text is snapshotted first.")) {
+                            setBody(old);
+                            await invoke("write_ideal_state", { vault: vaultPath, body: old });
+                            setSavedAt(Date.now());
+                            void loadVersions();
+                          }
+                        } catch (e) { console.error("restore ideal state", e); }
+                      }}
+                      className="rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                    >
+                      Restore
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+          {parsed.sections.length > 0 ? (
+            <div className="relative mt-4">
+              <div className="absolute bottom-4 left-[17px] top-4 w-px bg-border" aria-hidden />
+              <div className="space-y-3">
+                {parsed.sections.map((s) => {
+                  const Icon = idealSectionIcon(s.title);
+                  return (
+                    <div key={s.title} className="relative flex gap-3.5">
+                      <div className="relative z-10 mt-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent-border bg-accent-soft">
+                        <Icon className="h-4 w-4 text-accent" />
+                      </div>
+                      <div className="min-w-0 flex-1 rounded-xl border border-border bg-surface p-4">
+                        <div className="font-display text-sm font-semibold tracking-tight">{s.title}</div>
+                        {s.body && (
+                          <div className="mt-2 text-sm leading-relaxed text-text-secondary">
+                            <Markdown source={s.body} compact />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-xl border border-border bg-surface p-4 text-sm leading-relaxed text-text-secondary">
+              <Markdown source={body} compact />
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
@@ -13906,7 +15031,7 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
     // then import the pack into the new vault once it's ready.
     if (appMode === "demo") {
       const ok = await tauriConfirm(
-        `Starter packs are saved to your own vault. You're in demo — set up your vault now and "${p.name}" will be imported there.`,
+        `Starter packs are saved to your own vault. You're in demo: set up your vault now and "${p.name}" will be imported there.`,
         { title: "Set up your own vault first", kind: "info", okLabel: "Set up my vault", cancelLabel: "Keep exploring" },
       );
       if (!ok) return;
@@ -13927,7 +15052,7 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
         if (r.created.length) parts.push(`added ${r.created.join(", ")}`);
         if (r.skipped.length) parts.push(`kept ${r.skipped.join(", ")}`);
         setImportedPacks((s) => new Set(s).add(p.name));
-        setNote(`Vault set up and ${p.name} imported — ${parts.join(" · ") || "no new domains"}.`);
+        setNote(`Vault set up and ${p.name} imported: ${parts.join(" · ") || "no new domains"}.`);
         window.dispatchEvent(new Event("prevail:domains-changed"));
       } catch (e) {
         setNote(`Could not set up vault: ${String(e)}`);
@@ -13946,7 +15071,7 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
       if (r.created.length) parts.push(`added ${r.created.join(", ")}`);
       if (r.skipped.length) parts.push(`kept ${r.skipped.join(", ")}`);
       setImportedPacks((s) => new Set(s).add(p.name));
-      setNote(`Imported ${p.name} — ${parts.join(" · ") || "no new domains"}. Find them in your sidebar.`);
+      setNote(`Imported ${p.name}: ${parts.join(" · ") || "no new domains"}. Find them in your sidebar.`);
       window.dispatchEvent(new Event("prevail:domains-changed"));
     } catch (e) {
       setNote(`Import failed: ${String(e)}`);
@@ -14070,7 +15195,7 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-text-muted" />
         <span>
           {isDemo
-            ? "You're in demo mode. Importing a pack sets up your own vault and moves you out of demo — or use the button above to set up your vault first."
+            ? "You're in demo mode. Importing a pack sets up your own vault and moves you out of demo: or use the button above to set up your vault first."
             : "You're in your own vault. Import a starter pack any time to add ready-made domains."}
         </span>
       </div>
@@ -14317,7 +15442,7 @@ function PreambleColumn({
   return (
     <div className="flex min-w-0 flex-col">
       {/* Prominent section header. The current selection is a small badge on
-          the right, not a giant card — the header is the focus. */}
+          the right, not a giant card: the header is the focus. */}
       <div className="mb-3 border-b border-border-subtle pb-3">
         <div className="flex items-center gap-2.5">
           <span className="text-lg text-accent">{glyph}</span>
@@ -14396,7 +15521,7 @@ function PreambleCard({
               {option.instruction}
             </pre>
           ) : (
-            <p className="text-xs italic text-text-muted">no preamble — uses the model's default response shape</p>
+            <p className="text-xs italic text-text-muted">no preamble: uses the model's default response shape</p>
           )}
         </div>
       )}
@@ -14653,7 +15778,7 @@ function IngestionSection() {
     <>
       <SettingsHeader
         title="Ingestion"
-        subtitle="Triple-tier data engine. Pull artifacts from MCP servers, the Composio gateway, or a headed browser into the right domain folder — without leaving the app."
+        subtitle="Triple-tier data engine. Pull artifacts from MCP servers, the Composio gateway, or a headed browser into the right domain folder: without leaving the app."
       />
       {err && (
         <div className="mb-4 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{err}</div>
@@ -14976,7 +16101,7 @@ function IngestionAuditPanel() {
       {open && (
         <ul className="mt-4 max-h-72 overflow-y-auto flex flex-col gap-1">
           {entries.length === 0 && (
-            <li className="text-xs text-text-muted">No entries yet — captured ingests will appear here.</li>
+            <li className="text-xs text-text-muted">No entries yet: captured ingests will appear here.</li>
           )}
           {entries.map((e, i) => {
             const t = e.ts ? new Date(e.ts * 1000).toLocaleString() : "";
@@ -15252,7 +16377,7 @@ function IngestionBrowserRunner() {
               onChange={(e) => applyRecipe(e.target.value)}
               className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm focus:border-accent-border focus:outline-none"
             >
-              <option value="">— start from blank —</option>
+              <option value="">start from blank</option>
               {recipes.map((r) => (
                 <option key={r.id} value={r.id}>{r.label} · {r.domain_hint}</option>
               ))}
@@ -15398,7 +16523,7 @@ function ShortcutsSection() {
       name: "Thread rail",
       entries: [
         { keys: ["double-click"], label: "Rename", desc: "Edit the thread's title inline. ↵ to confirm." },
-        { keys: ["+"], label: "New thread", desc: "Creates an empty thread file immediately — rename it before typing." },
+        { keys: ["+"], label: "New thread", desc: "Creates an empty thread file immediately: rename it before typing." },
       ],
     },
   ];
@@ -15411,7 +16536,7 @@ function ShortcutsSection() {
 
   return (
     <>
-      <SettingsHeader title="Shortcuts" subtitle="Keyboard surface for common actions. Most are global — they work even while you're typing." />
+      <SettingsHeader title="Shortcuts" subtitle="Keyboard surface for common actions. Most are global: they work even while you're typing." />
       <div className="space-y-6">
         {groups.map((g) => (
           <section key={g.name} className="rounded-xl border border-border bg-surface p-5 shadow-sm">
@@ -15801,7 +16926,7 @@ function AppearanceSection({ appearance }: { appearance: ReturnType<typeof useAp
         <p className="mb-4 text-sm text-text-secondary">
           Desktop palettes. The selected mode is applied on top.
         </p>
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {PALETTES.map((p) => (
             <PaletteCard
               key={p.id}
@@ -15929,7 +17054,7 @@ function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   const toggle = (key: string) => setMembers((m) => { const n = new Set(m); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   // Resolve a readable chair label from its slot key.
   const chairLabel = (() => {
-    if (!chair) return "—";
+    if (!chair) return "-";
     const [cli, model] = chair.split("::");
     const c = clis.find((x) => x.id === cli);
     const m = councilModelsFor(cli).find((x) => x.id === model);
@@ -15938,7 +17063,7 @@ function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
 
   return (
     <>
-      <SettingsHeader title="Council" subtitle="Convene several models on one question — each answers independently, then a chair writes the verdict. Pick the exact models on your default panel (you can add several from the same provider)." />
+      <SettingsHeader title="Council" subtitle="Convene several models on one question: each answers independently, then a chair writes the verdict. Pick the exact models on your default panel (you can add several from the same provider)." />
       {/* Compact summary bar — what the panel is right now. */}
       <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-accent-border bg-accent-soft px-4 py-3 text-sm">
         <span className="font-semibold text-text-primary">{members.size} model{members.size === 1 ? "" : "s"} on the panel</span>
@@ -15997,7 +17122,7 @@ function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
         })}
       </div>
       <p className="mt-4 text-xs leading-relaxed text-text-muted">
-        Convene a council from the <span className="text-accent">Council</span> tab in any domain — it starts with this panel. Each model answers in parallel; the <Crown className="inline h-3 w-3" /> chair synthesizes a consensus + disagreements + recommended action. <span className="text-accent">Defaults</span> sets your single-model chat; this sets the panel.
+        Convene a council from the <span className="text-accent">Council</span> tab in any domain: it starts with this panel. Each model answers in parallel; the <Crown className="inline h-3 w-3" /> chair synthesizes a consensus + disagreements + recommended action. <span className="text-accent">Defaults</span> sets your single-model chat; this sets the panel.
       </p>
     </>
   );
@@ -16051,7 +17176,7 @@ function TelegramCard() {
         }
         const ok = await invoke<boolean>("provider_key_exists", { provider: "telegram" });
         setTokenSaved(!!ok);
-      } catch { /* keychain unavailable — leave unconfigured */ }
+      } catch { /* keychain unavailable: leave unconfigured */ }
     })();
   }, []);
   useEffect(() => { lsSet(LS.telegramChatId, chatId); }, [chatId]);
@@ -16093,6 +17218,22 @@ function TelegramCard() {
         setTokenSaved(true);
         setToken("");
       }
+      // Routing table: every vault domain plus its stored/derived keywords,
+      // so a "wealth" question from Telegram lands in the wealth domain with
+      // a recorded thread.
+      let routes: { domain: string; keywords: string[] }[] = [];
+      let vault: string | null = null;
+      try {
+        vault = lsGet(LS.vault) || null;
+        if (vault) {
+          const ds = await invoke<{ name: string }[]>("scan_vault", { path: vault });
+          routes = ds.map((d) => ({
+            domain: d.name,
+            keywords: (lsGet(`prevail.domain.${d.name}.routing.keywords`) || "")
+              .split(",").map((s) => s.trim()).filter(Boolean),
+          }));
+        }
+      } catch { /* routing is best-effort; bridge works without it */ }
       await invoke("telegram_bridge_start", {
         cfg: {
           token: "", // bridge reads the secret from the Keychain
@@ -16100,6 +17241,8 @@ function TelegramCard() {
           cli: bridgeCli,
           model: bridgeModel || null,
           domain: null,
+          vault,
+          routes,
         },
       });
       await refreshStatus();
@@ -16143,8 +17286,8 @@ function TelegramCard() {
   return (
     <div className="rounded-xl border border-border bg-surface p-5">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#229ED9]/15 text-[#229ED9]">
-          <Send className="h-5 w-5" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#229ED9]/15">
+          <svg width={20} height={20} viewBox="0 0 24 24" fill="#229ED9" aria-hidden><path d={siTelegram.path} /></svg>
         </div>
         <div>
           <h3 className="font-semibold">Telegram bridge</h3>
@@ -16164,7 +17307,7 @@ function TelegramCard() {
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            placeholder={tokenSaved ? "•••••••• (saved — type to replace)" : "123456:ABC-XYZ…"}
+            placeholder={tokenSaved ? "•••••••• (saved: type to replace)" : "123456:ABC-XYZ…"}
             className="mt-1 w-full rounded border border-border bg-background px-3 py-2 font-mono text-sm"
             spellCheck={false}
           />
@@ -16227,13 +17370,17 @@ function TelegramCard() {
               </select>
             </label>
             <label className="block">
-              <div className="text-[10px] uppercase tracking-wider text-text-muted">Model (optional)</div>
-              <input
+              <div className="text-[10px] uppercase tracking-wider text-text-muted">Model</div>
+              <select
                 value={bridgeModel}
                 onChange={(e) => setBridgeModel(e.target.value)}
-                placeholder={MODELS[bridgeCli]?.[0]?.id ?? "default"}
-                className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-xs focus:border-accent-border focus:outline-none"
-              />
+                className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none"
+              >
+                <option value="">{`Provider default (${modelsFor(bridgeCli)[0]?.label ?? "default"})`}</option>
+                {modelsFor(bridgeCli).map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
             </label>
           </div>
           <div className="mt-3 flex items-center gap-2">
@@ -16312,8 +17459,8 @@ function WhatsAppCard() {
   return (
     <div className="rounded-xl border border-border bg-surface p-5">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#25D366]/15 text-[#25D366]">
-          <MessageSquare className="h-5 w-5" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#25D366]/15">
+          <svg width={20} height={20} viewBox="0 0 24 24" fill="#25D366" aria-hidden><path d={siWhatsapp.path} /></svg>
         </div>
         <div>
           <h3 className="font-semibold">
@@ -16367,7 +17514,7 @@ function McpCard() {
         <Toggle on={enabled} onChange={setEnabled} label="Enable MCP server" />
       </div>
       <p className="mt-3 text-xs text-text-muted">
-        For full MCP coverage right now, run the <Brand /> CLI's <code className="text-accent">mcp-server</code> command — it ships read-only by default and is parent-process verified.
+        For full MCP coverage right now, run the <Brand /> CLI's <code className="text-accent">mcp-server</code> command: it ships read-only by default and is parent-process verified.
       </p>
     </div>
   );
