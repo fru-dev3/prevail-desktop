@@ -2100,6 +2100,9 @@ export default function App() {
     if (getPref(PREF.taskgenEnabled, "0") === "1") {
       invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch((e) => console.error("taskgen_start", e));
     }
+    // Scheduled benchmark re-runs (drift tracking) — module-level timer; the
+    // tick itself checks the enabled pref, so toggling needs no restart.
+    startBenchScheduler(vaultPath);
     // Skill generation (self-learning) — on by default so the app learns
     // skills from conversations out of the box; togglable in Settings.
     if (getPref(PREF.skillgenEnabled, "1") === "1") {
@@ -4328,6 +4331,60 @@ function buildQuickActions(domain: string | null): { glyph: string; label: strin
 // Proactive surfacing for a domain — questions worth asking + suggested next
 // actions, generated from the vault (cached). Click one to seed the composer.
 interface SurfaceResult { questions: string[]; actions: string[]; generated_at: number; stale: boolean }
+
+// Settings > Benchmark: scheduled re-runs of the latest batch, for tracking
+// model drift over time without manual runs.
+function BenchScheduleCard({ vault }: { vault: string }) {
+  const [enabled, setEnabled] = useState(() => lsGet(BENCH_SCHED.enabled, "0") === "1");
+  const [freq, setFreq] = useState(() => lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
+  const [, force] = useState(0);
+  useEffect(() => {
+    const f = () => force((n) => n + 1);
+    window.addEventListener("prevail:bench-sched", f);
+    return () => window.removeEventListener("prevail:bench-sched", f);
+  }, []);
+  const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
+  const freqMs = BENCH_FREQ_MS[freq] ?? BENCH_FREQ_MS.weekly;
+  const next = last ? last + freqMs : Date.now();
+  return (
+    <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+      <RotateCw className="h-4 w-4 shrink-0 text-accent" />
+      <div className="min-w-0 flex-1">
+        <div className="font-display text-sm font-semibold tracking-tight">Scheduled runs</div>
+        <div className="text-xs text-text-secondary">
+          Re-runs your most recent batch (same models, same scope) so drift shows up in the leaderboard and History without manual runs. Runs while the app is open.
+          {enabled && last > 0 && ` Last ran ${formatFreshness(Math.max(0, (Date.now() - last) / 1000))} ago.`}
+          {enabled && ` Next ${next <= Date.now() ? "within 30 minutes" : `in ~${formatFreshness(Math.max(0, (next - Date.now()) / 1000))}`}.`}
+        </div>
+      </div>
+      <select
+        value={freq}
+        onChange={(e) => { setFreq(e.target.value); lsSet(BENCH_SCHED.freq, e.target.value); }}
+        disabled={!enabled}
+        className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary disabled:opacity-40"
+      >
+        <option value="daily">daily</option>
+        <option value="weekly">weekly</option>
+        <option value="monthly">monthly</option>
+      </select>
+      <button
+        onClick={() => { const v = !enabled; setEnabled(v); lsSet(BENCH_SCHED.enabled, v ? "1" : "0"); }}
+        className={`rounded-md border px-3 py-1 font-mono text-[11px] uppercase tracking-wider ${
+          enabled ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"
+        }`}
+      >
+        {enabled ? "On" : "Off"}
+      </button>
+      <button
+        onClick={async () => { if (await rerunLatestBatch(vault)) { lsSet(BENCH_SCHED.lastRun, String(Date.now())); window.dispatchEvent(new Event("prevail:bench-sched")); } }}
+        title="Re-run the latest batch right now"
+        className="rounded-md border border-border px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+      >
+        Run now
+      </button>
+    </div>
+  );
+}
 
 // Collapsed-by-default section row for the Insights page: the summary line
 // carries the count (and optional meta) so a collapsed page still reads as a
@@ -10345,6 +10402,90 @@ function benchWaitDone(b: BenchBatch, session: string, phase: string) {
   });
 }
 
+// ── Scheduled benchmark runs ────────────────────────────────────────────────
+// Re-runs the most recent batch (same models, same scope) on a cadence so
+// model drift shows up in History without manual runs. Checked every 30
+// minutes while the app is open; a due run fires through the same global
+// registry as a manual one (sidebar shows it, cancel works).
+const BENCH_SCHED = {
+  enabled: "prevail.bench.schedule.enabled",
+  freq: "prevail.bench.schedule.freq", // daily | weekly | monthly
+  lastRun: "prevail.bench.schedule.lastRun", // epoch ms
+};
+const BENCH_FREQ_MS: Record<string, number> = {
+  daily: 86_400_000,
+  weekly: 7 * 86_400_000,
+  monthly: 30 * 86_400_000,
+};
+async function rerunLatestBatch(vault: string): Promise<boolean> {
+  const runs = await invoke<BenchmarkRun[]>("benchmark_runs", { vault }).catch(() => [] as BenchmarkRun[]);
+  if (runs.length === 0) return false;
+  const newest = runs[0];
+  // The batch = everything sharing the newest run's batch id, or (pre-batch
+  // runs) whatever was created within five minutes of it.
+  const group = newest.batch_id
+    ? runs.filter((r) => r.batch_id === newest.batch_id)
+    : runs.filter((r) => Math.abs(r.created_ms - newest.created_ms) < 5 * 60_000);
+  const questions = await invoke<BenchQuestion[]>("benchmark_questions", { vault }).catch(() => [] as BenchQuestion[]);
+  const jobs: BenchJob[] = [];
+  let council = false;
+  const seen = new Set<string>();
+  for (const r of group) {
+    if (r.council) { council = true; continue; }
+    if (!r.cli) continue; // pre-meta run: can't rebuild it reliably
+    if (isBunkerOn() && !isLocalCli(r.cli)) continue;
+    const k = `${r.cli}::${r.model ?? ""}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const domSet = new Set(r.domains.map((d) => d.toLowerCase()));
+    const qids = questions
+      .filter((q) => domSet.size === 0 || domSet.has(q.domain.toLowerCase()))
+      .map((q) => q.id)
+      .sort();
+    const ml = MODELS[r.cli]?.find((m) => m.id === (r.model ?? ""))?.label ?? (r.model || "default");
+    jobs.push({
+      key: `sched-${k}-${Date.now()}`,
+      cli: r.cli,
+      model: r.model ?? "",
+      label: `${titleCase(r.cli)} · ${ml}`,
+      status: "queued",
+      done: 0,
+      total: qids.length || r.questions,
+      qids,
+      qdone: {},
+    });
+  }
+  if (council && jobs.length === 0) {
+    if (isBunkerOn()) return false;
+    const qids = questions.map((q) => q.id).sort();
+    jobs.push({ key: `sched-council-${Date.now()}`, cli: "", model: "", label: "Council", status: "queued", done: 0, total: qids.length, qids, qdone: {} });
+  }
+  if (jobs.length === 0) return false;
+  void executeBenchBatch(vault, jobs, council && jobs.length === 1 && !jobs[0].cli, newest.domains.join(","));
+  return true;
+}
+let benchSchedTimer: number | null = null;
+function startBenchScheduler(vault: string) {
+  if (benchSchedTimer !== null) window.clearInterval(benchSchedTimer);
+  const tick = async () => {
+    try {
+      if (lsGet(BENCH_SCHED.enabled, "0") !== "1") return;
+      const freq = BENCH_FREQ_MS[lsGet(BENCH_SCHED.freq, "weekly") || "weekly"] ?? BENCH_FREQ_MS.weekly;
+      const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
+      if (Date.now() - last < freq) return;
+      if ([...benchBatches.values()].some((b) => b.running)) return; // never stack
+      if (await rerunLatestBatch(vault)) {
+        lsSet(BENCH_SCHED.lastRun, String(Date.now()));
+        window.dispatchEvent(new Event("prevail:bench-sched"));
+      }
+    } catch (e) {
+      console.error("bench scheduler", e);
+    }
+  };
+  void tick();
+  benchSchedTimer = window.setInterval(() => void tick(), 30 * 60 * 1000);
+}
+
 // Run a batch of benchmark jobs to completion (all jobs in parallel, then one
 // scoring pass). Lives at module scope, mutating the registry — NOT component
 // state — so the run survives whatever the user navigates to.
@@ -12221,6 +12362,7 @@ function SettingsPanel({
                 icon={Target}
                 subtitle="Your personal eval suite. Run any model against your own questions across every domain, see who leads where, and manage the question set: write, AI-draft from your data, import, export."
               />
+              <BenchScheduleCard vault={vaultPath} />
               {/* Full cockpit: unscoped, so runs/results/questions cover the
                   whole vault. The same panel opens scoped from a domain. */}
               <div className="-mx-4 min-h-[60vh]">
