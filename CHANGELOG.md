@@ -4,6 +4,12 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.7] — 2026-06-12 · signed & notarized releases
+
+### Fixed
+
+- **Downloads are now Developer ID signed and notarized by Apple.** CI signing was restored (the certificate secret had been corrupt since v0.7.2, shipping DMGs that Gatekeeper flagged as "damaged"). Fresh downloads now open normally — no right-click → Open workaround.
+
 ## [0.7.6] — 2026-06-12 · production security hardening
 
 A full pre-production security pass over the vault (which holds tax/wealth/health
