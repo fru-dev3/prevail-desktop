@@ -197,7 +197,32 @@ impl BridgeState {
                                     if msg.chat.id.to_string() != cfg.chat_id {
                                         continue;
                                     }
-                                    let text = msg.text.unwrap_or_default();
+                                    // Voice/audio note? Download + transcribe, then treat
+                                    // the transcript as the message text.
+                                    let mut heard_via_voice = false;
+                                    let mut text = msg.text.unwrap_or_default();
+                                    if text.trim().is_empty() {
+                                        if let Some(file) = msg.voice.as_ref().or(msg.audio.as_ref()) {
+                                            let _ = send_chat_action(&cfg.token, &cfg.chat_id, "typing").await;
+                                            match download_tg_file(&cfg.token, &file.file_id).await {
+                                                Ok(p) => {
+                                                    match transcribe_audio(&p, crate::bunker::bunker_enabled()).await {
+                                                        Ok(t) => { text = t; heard_via_voice = true; }
+                                                        Err(e) => {
+                                                            let _ = send_message(&cfg.token, &cfg.chat_id, &e, false).await;
+                                                            let _ = std::fs::remove_file(&p);
+                                                            continue;
+                                                        }
+                                                    }
+                                                    let _ = std::fs::remove_file(&p);
+                                                }
+                                                Err(e) => {
+                                                    let _ = send_message(&cfg.token, &cfg.chat_id, &format!("Could not fetch the voice note: {e}"), false).await;
+                                                    continue;
+                                                }
+                                            }
+                                        }
+                                    }
                                     if text.trim().is_empty() {
                                         continue;
                                     }
@@ -233,11 +258,14 @@ impl BridgeState {
                                     typing_task.abort();
                                     match cli_result {
                                         Ok(reply) => {
-                                            let reply = if reply.trim().is_empty() {
+                                            let mut reply = if reply.trim().is_empty() {
                                                 "(no output)".to_string()
                                             } else {
                                                 reply
                                             };
+                                            if heard_via_voice {
+                                                reply = format!("Heard: \"{}\"\n\n{reply}", text.trim());
+                                            }
                                             // Telegram caps message length at 4096 chars. Chunk the
                                             // RAW reply (so HTML tags never split across a boundary),
                                             // then format each chunk. T2: send as HTML; on a parse
@@ -321,6 +349,20 @@ struct TgMessage {
     from: Option<TgUser>,
     #[serde(default)]
     text: Option<String>,
+    #[serde(default)]
+    voice: Option<TgFile>,
+    #[serde(default)]
+    audio: Option<TgFile>,
+}
+
+#[derive(Deserialize)]
+struct TgFile {
+    file_id: String,
+}
+
+#[derive(Deserialize)]
+struct TgFilePath {
+    file_path: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -339,6 +381,110 @@ struct TgUser {
 // secret and must NOT appear on a process command line. The previous `curl`
 // implementation put `…/bot<TOKEN>/…` in argv, where any same-user process
 // could read it via `ps`. reqwest keeps the token in-process.
+
+/// Download a Telegram file (voice note) to a temp .ogg and return its path.
+async fn download_tg_file(token: &str, file_id: &str) -> Result<std::path::PathBuf, String> {
+    let info_url = format!("https://api.telegram.org/bot{token}/getFile?file_id={file_id}");
+    let resp = reqwest::Client::new()
+        .get(&info_url)
+        .timeout(std::time::Duration::from_secs(30))
+        .send().await.map_err(|e| format!("getFile: {e}"))?;
+    let body = resp.text().await.map_err(|e| format!("getFile body: {e}"))?;
+    let v: serde_json::Value = serde_json::from_str(&body).map_err(|e| format!("getFile json: {e}"))?;
+    let file_path = v.get("result").and_then(|r| serde_json::from_value::<TgFilePath>(r.clone()).ok())
+        .and_then(|f| f.file_path)
+        .ok_or("getFile: no file_path")?;
+    let dl_url = format!("https://api.telegram.org/file/bot{token}/{file_path}");
+    let bytes = reqwest::Client::new()
+        .get(&dl_url)
+        .timeout(std::time::Duration::from_secs(60))
+        .send().await.map_err(|e| format!("download: {e}"))?
+        .bytes().await.map_err(|e| format!("download body: {e}"))?;
+    let ext = std::path::Path::new(&file_path).extension().and_then(|s| s.to_str()).unwrap_or("ogg");
+    let secs = now_secs();
+    let out = std::env::temp_dir().join(format!("prevail-tg-voice-{secs}.{ext}"));
+    std::fs::write(&out, &bytes).map_err(|e| format!("write voice: {e}"))?;
+    Ok(out)
+}
+
+/// Transcribe an audio file to text. Tries, in order: a local `whisper` /
+/// `whisper-cpp` / `whisper-cli` on PATH (fully on-device, the only option
+/// honored under Bunker Mode), then the OpenAI/OpenRouter transcription API
+/// when a key is configured. Returns Err with guidance when none is available.
+async fn transcribe_audio(path: &std::path::Path, bunker: bool) -> Result<String, String> {
+    // 1. Local whisper CLI (on-device).
+    for bin in ["whisper-cli", "whisper-cpp", "whisper"] {
+        if which_on_path(bin).is_some() {
+            if let Ok(t) = run_whisper(bin, path).await {
+                if !t.trim().is_empty() { return Ok(t.trim().to_string()); }
+            }
+        }
+    }
+    if bunker {
+        return Err("Bunker Mode is on, so voice can only be transcribed locally. Install whisper (e.g. `brew install whisper-cpp`) to use voice notes offline.".into());
+    }
+    // 2. Cloud transcription via OpenAI-compatible endpoint (OpenRouter key).
+    if let Ok(key) = crate::ingestion::keychain::get("prevail.providers", "openrouter") {
+        if !key.is_empty() {
+            return transcribe_cloud(path, &key).await;
+        }
+    }
+    Err("No transcriber available. Install whisper locally, or add an OpenRouter key in Settings → Models to transcribe voice notes.".into())
+}
+
+fn which_on_path(bin: &str) -> Option<std::path::PathBuf> {
+    let path = std::env::var("PATH").ok()?;
+    for dir in path.split(':') {
+        let p = std::path::Path::new(dir).join(bin);
+        if p.is_file() { return Some(p); }
+    }
+    // Common Homebrew location not always in a GUI app's PATH.
+    for p in ["/opt/homebrew/bin", "/usr/local/bin"] {
+        let cand = std::path::Path::new(p).join(bin);
+        if cand.is_file() { return Some(cand); }
+    }
+    None
+}
+
+async fn run_whisper(bin: &str, path: &std::path::Path) -> Result<String, String> {
+    let binp = which_on_path(bin).unwrap_or_else(|| std::path::PathBuf::from(bin));
+    let out_txt = path.with_extension("txt");
+    let output = tokio::process::Command::new(&binp)
+        .arg(path)
+        .args(["--output_format", "txt", "--output_dir"])
+        .arg(path.parent().unwrap_or(std::path::Path::new("/tmp")))
+        .output().await.map_err(|e| format!("whisper spawn: {e}"))?;
+    if !output.status.success() {
+        return Err(format!("whisper failed: {}", String::from_utf8_lossy(&output.stderr)));
+    }
+    // whisper writes <name>.txt; read it, else fall back to stdout.
+    if let Ok(t) = std::fs::read_to_string(&out_txt) {
+        let _ = std::fs::remove_file(&out_txt);
+        return Ok(t);
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+async fn transcribe_cloud(path: &std::path::Path, key: &str) -> Result<String, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("read audio: {e}"))?;
+    let fname = path.file_name().and_then(|s| s.to_str()).unwrap_or("voice.ogg").to_string();
+    let part = reqwest::multipart::Part::bytes(bytes).file_name(fname)
+        .mime_str("audio/ogg").map_err(|e| format!("mime: {e}"))?;
+    let form = reqwest::multipart::Form::new()
+        .text("model", "whisper-1")
+        .part("file", part);
+    let resp = reqwest::Client::new()
+        .post("https://openrouter.ai/api/v1/audio/transcriptions")
+        .bearer_auth(key)
+        .multipart(form)
+        .timeout(std::time::Duration::from_secs(120))
+        .send().await.map_err(|e| format!("transcription request: {e}"))?;
+    let body = resp.text().await.map_err(|e| format!("transcription body: {e}"))?;
+    let v: serde_json::Value = serde_json::from_str(&body).map_err(|e| format!("transcription json: {e}"))?;
+    v.get("text").and_then(|t| t.as_str()).map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| format!("transcription returned no text: {}", body.chars().take(160).collect::<String>()))
+}
 
 async fn fetch_updates(token: &str, offset: i64) -> Result<Vec<TgUpdate>, String> {
     let url = format!(
