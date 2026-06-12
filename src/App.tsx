@@ -2042,6 +2042,13 @@ export default function App() {
     if (getPref(PREF.taskgenEnabled, "0") === "1") {
       invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch((e) => console.error("taskgen_start", e));
     }
+    // Skill generation (self-learning) — on by default so the app learns
+    // skills from conversations out of the box; togglable in Settings.
+    if (getPref(PREF.skillgenEnabled, "1") === "1") {
+      invoke("skillgen_start", { cfg: skillgenCfgFromPrefs(vaultPath) }).catch((e) => console.error("skillgen_start", e));
+    } else {
+      invoke("skillgen_stop").catch(() => {});
+    }
   }, [vaultPath]);
   useEffect(() => {
     let unl: UnlistenFn | null = null;
@@ -4665,6 +4672,7 @@ function DomainPrefsPanel({
   const daemonCfgPath = `${vaultPath}/${domain}/_daemon.json`;
   const [daemonTaskgen, setDaemonTaskgen] = useState(true);
   const [daemonReminders, setDaemonReminders] = useState(true);
+  const [daemonSkillgen, setDaemonSkillgen] = useState(true);
   useEffect(() => {
     invoke<string>("read_text_file", { path: daemonCfgPath })
       .then((raw) => {
@@ -4672,13 +4680,14 @@ function DomainPrefsPanel({
           const cfg = JSON.parse(raw);
           if (typeof cfg.taskgen === "boolean") setDaemonTaskgen(cfg.taskgen);
           if (typeof cfg.reminders === "boolean") setDaemonReminders(cfg.reminders);
+          if (typeof cfg.skillgen === "boolean") setDaemonSkillgen(cfg.skillgen);
         } catch {}
       })
       .catch(() => {}); // file absent → defaults (true)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [daemonCfgPath]);
-  function saveDaemonCfg(patch: { taskgen?: boolean; reminders?: boolean }) {
-    const next = { taskgen: daemonTaskgen, reminders: daemonReminders, ...patch };
+  function saveDaemonCfg(patch: { taskgen?: boolean; reminders?: boolean; skillgen?: boolean }) {
+    const next = { taskgen: daemonTaskgen, reminders: daemonReminders, skillgen: daemonSkillgen, ...patch };
     invoke("write_text_file", { path: daemonCfgPath, contents: JSON.stringify(next, null, 2) }).catch(() => {});
   }
 
@@ -5111,6 +5120,13 @@ function DomainPrefsPanel({
               <div className="mt-0.5 text-xs text-text-secondary">Fire a notification when tasks in this domain are due or overdue.</div>
             </div>
             <Toggle on={daemonReminders} onChange={(v) => { setDaemonReminders(v); saveDaemonCfg({ reminders: v }); }} />
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-text-primary">Skill learning</div>
+              <div className="mt-0.5 text-xs text-text-secondary">Distill reusable skills from this domain's conversations as you use it.</div>
+            </div>
+            <Toggle on={daemonSkillgen} onChange={(v) => { setDaemonSkillgen(v); saveDaemonCfg({ skillgen: v }); }} />
           </div>
         </div>
       </section>
@@ -12504,6 +12520,10 @@ const PREF = {
   taskgenModel: "prevail.pref.taskgenModel",               // model for task generation
   taskgenIntervalSec: "prevail.pref.taskgenIntervalSec",   // task-gen daemon cadence (seconds)
   taskgenMaxPerDomain: "prevail.pref.taskgenMaxPerDomain", // max tasks generated per domain per day
+  skillgenEnabled: "prevail.pref.skillgenEnabled",         // "1" | "0" — self-learning skill gen
+  skillgenModel: "prevail.pref.skillgenModel",             // model for skill generation
+  skillgenIntervalSec: "prevail.pref.skillgenIntervalSec", // skill-gen daemon cadence (seconds)
+  skillgenMaxPerDomain: "prevail.pref.skillgenMaxPerDomain", // max skills learned per domain per day
   // Safety — guardrails. Most are read by the engine/ingestion; redactSecrets
   // is enforced desktop-side in the intent-ledger capture path.
   approvalMode: "prevail.pref.approvalMode",               // "manual" | "auto"
@@ -12721,6 +12741,18 @@ function taskgenCfgFromPrefs(vaultPath: string) {
   };
 }
 
+function skillgenCfgFromPrefs(vaultPath: string) {
+  return {
+    vault: vaultPath,
+    provider: getPref(PREF.memoryProvider, "claude"),
+    model: getPref(PREF.skillgenModel, "claude-haiku-4-5"),
+    // Skills change slowly — tick every 6h; a per-domain daily cursor caps it
+    // to one learning pass per domain per day regardless of tick cadence.
+    interval_sec: Number(getPref(PREF.skillgenIntervalSec, "21600")) || 21600,
+    max_skills_per_domain: Number(getPref(PREF.skillgenMaxPerDomain, "2")) || 2,
+  };
+}
+
 function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
   const [persistent, setPersistent] = useState(() => getPref(PREF.persistentMemory, "1") === "1");
   const [profile, setProfile] = useState(() => getPref(PREF.userProfile, "1") === "1");
@@ -12850,7 +12882,7 @@ function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
 }
 
 // ── Daemon card ───────────────────────────────────────────────────────────────
-type DaemonStatus = { running?: boolean; last_run_ts?: number | null; last_error?: string | null; lines_distilled?: number; tasks_generated?: number; domains_processed?: number; last_due_count?: number };
+type DaemonStatus = { running?: boolean; last_run_ts?: number | null; last_error?: string | null; lines_distilled?: number; tasks_generated?: number; skills_created?: number; domains_processed?: number; last_due_count?: number };
 
 function DaemonCard({
   name,
@@ -12960,6 +12992,13 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
   const [taskgenModel, setTaskgenModel] = useState(() => getPref(PREF.taskgenModel, "claude-haiku-4-5"));
   const [taskgenInterval, setTaskgenInterval] = useState(() => getPref(PREF.taskgenIntervalSec, "3600"));
   const [taskgenMax, setTaskgenMax] = useState(() => getPref(PREF.taskgenMaxPerDomain, "3"));
+  const [skillgenSt, setSkillgenSt] = useState<DaemonStatus | null>(null);
+  const [skillgenEnabled, setSkillgenEnabled] = useState(() => getPref(PREF.skillgenEnabled, "1") === "1");
+  const [skillgenModel, setSkillgenModel] = useState(() => getPref(PREF.skillgenModel, "claude-haiku-4-5"));
+  const [skillgenInterval, setSkillgenInterval] = useState(() => getPref(PREF.skillgenIntervalSec, "21600"));
+  const [skillgenMax, setSkillgenMax] = useState(() => getPref(PREF.skillgenMaxPerDomain, "2"));
+  const [skillgenMsg, setSkillgenMsg] = useState("");
+  const [skillgenRunning, setSkillgenRunning] = useState(false);
   const [remInterval, setRemInterval] = useState(() => getPref(PREF.remindersIntervalSec, "900"));
   const [taskgenMsg, setTaskgenMsg] = useState("");
   const [running, setRunning] = useState(false);
@@ -12970,6 +13009,7 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
       try { const s = await invoke<DaemonStatus>("distill_status"); if (alive) setDistillSt(s); } catch {}
       try { const s = await invoke<DaemonStatus>("reminders_daemon_status"); if (alive) setRemindersSt(s); } catch {}
       try { const s = await invoke<DaemonStatus>("taskgen_status"); if (alive) setTaskgenSt(s); } catch {}
+      try { const s = await invoke<DaemonStatus>("skillgen_status"); if (alive) setSkillgenSt(s); } catch {}
     };
     poll();
     const id = window.setInterval(poll, 2000);
@@ -12995,11 +13035,20 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
     finally { setRunning(false); }
   }
 
+  async function runSkillgenNow() {
+    setSkillgenRunning(true); setSkillgenMsg("");
+    try {
+      const n = await invoke<number>("skillgen_run_once", { cfg: skillgenCfgFromPrefs(vaultPath) });
+      setSkillgenMsg(n > 0 ? `Learned ${n} skill${n === 1 ? "" : "s"}.` : "No new skills (domains need conversation history first).");
+    } catch (e) { setSkillgenMsg(`Failed: ${e}`); }
+    finally { setSkillgenRunning(false); }
+  }
+
   return (
     <>
       <SettingsHeader
         title="Daemons"
-        subtitle="Background processes that run continuously: distill intents into memory, fire task reminders, and proactively generate new tasks."
+        subtitle="Background processes that run continuously: distill intents into memory, fire task reminders, proactively generate tasks, and learn reusable skills from your conversations."
       />
 
       <div className="mb-4 flex flex-col gap-2">
@@ -13031,6 +13080,13 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           onStop={async () => { await invoke("taskgen_stop"); }}
           onStart={async () => { await invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }); }}
         />
+        <DaemonCard
+          name="Skill Gen"
+          status={skillgenSt}
+          extra={skillgenSt?.skills_created ? `${skillgenSt.skills_created} skill${skillgenSt.skills_created === 1 ? "" : "s"} learned` : null}
+          onStop={async () => { await invoke("skillgen_stop"); }}
+          onStart={async () => { await invoke("skillgen_start", { cfg: skillgenCfgFromPrefs(vaultPath) }); }}
+        />
       </div>
 
       <div className="rounded-lg border border-border bg-surface px-5">
@@ -13058,14 +13114,35 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
               <span className="font-mono text-xs text-text-muted">s</span>
             </div>
           } />
+        <Row title="Skill learning" desc="Self-learning: distill reusable skills (playbooks, checklists, decision frameworks) from each domain's conversations, once per day."
+          control={<Toggle on={skillgenEnabled} onChange={(v) => { setSkillgenEnabled(v); setPref(PREF.skillgenEnabled, v ? "1" : "0"); if (!v) invoke("skillgen_stop").catch(() => {}); else invoke("skillgen_start", { cfg: skillgenCfgFromPrefs(vaultPath) }).catch(() => {}); }} />} />
+        <Row title="Skill gen model" desc="Model used to learn skills from conversations (use a cheap, fast model)."
+          control={<input value={skillgenModel} onChange={(e) => { setSkillgenModel(e.target.value); setPref(PREF.skillgenModel, e.target.value); }}
+            className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
+        <Row title="Skills per domain" desc="Maximum new skills learned per domain per day."
+          control={<input type="number" value={skillgenMax} onChange={(e) => { setSkillgenMax(e.target.value); setPref(PREF.skillgenMaxPerDomain, e.target.value); }}
+            className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+        <Row title="Skill gen interval" desc="How often the skill-learning daemon scans domains for new lessons (seconds; default 6h)."
+          control={
+            <div className="flex items-center gap-1.5">
+              <input type="number" value={skillgenInterval} onChange={(e) => { setSkillgenInterval(e.target.value); setPref(PREF.skillgenIntervalSec, e.target.value); }}
+                className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
+              <span className="font-mono text-xs text-text-muted">s</span>
+            </div>
+          } />
       </div>
 
-      <div className="mt-4 flex items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <button onClick={runTaskgenNow} disabled={running}
           className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
           {running ? "generating…" : "generate tasks now"}
         </button>
         {taskgenMsg && <span className="text-xs text-text-secondary">{taskgenMsg}</span>}
+        <button onClick={runSkillgenNow} disabled={skillgenRunning}
+          className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
+          {skillgenRunning ? "learning…" : "learn skills now"}
+        </button>
+        {skillgenMsg && <span className="text-xs text-text-secondary">{skillgenMsg}</span>}
       </div>
     </>
   );

@@ -17,6 +17,7 @@ mod engine;
 mod ingestion;
 mod reminders;
 mod surface;
+mod skillgen;
 mod taskgen;
 mod tasks;
 mod telegram_bridge;
@@ -3509,6 +3510,7 @@ pub fn run() {
         .manage(distill::DistillState::new())
         .manage(reminders::RemindersState::new())
         .manage(taskgen::TaskGenState::new())
+        .manage(skillgen::SkillGenState::new())
         .manage(webui::WebuiState::default())
         .invoke_handler(tauri::generate_handler![
             scan_vault,
@@ -3565,6 +3567,10 @@ pub fn run() {
             taskgen::taskgen_stop,
             taskgen::taskgen_status,
             taskgen::taskgen_run_once,
+            skillgen::skillgen_start,
+            skillgen::skillgen_stop,
+            skillgen::skillgen_status,
+            skillgen::skillgen_run_once,
             benchmark_questions,
             benchmark_save_question,
             benchmark_delete_question,
