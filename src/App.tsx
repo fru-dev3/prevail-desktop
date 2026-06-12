@@ -1037,6 +1037,7 @@ const LS = {
   telegramChatId: "prevail.desktop.telegramChatId",
   whatsappNumber: "prevail.desktop.whatsappNumber",
   mcpEnabled: "prevail.desktop.mcpEnabled",
+  vaultProduction: "prevail.desktop.vaultProduction", // remembered own-vault path for demo<->production round-trips
 } as const;
 
 // Per-domain toggles mirroring the CLI status bar:
@@ -1062,6 +1063,52 @@ function lsGet(key: string, fallback: string = ""): string {
 function lsSet(key: string, value: string): void {
   if (value) localStorage.setItem(key, value);
   else localStorage.removeItem(key);
+  if (typeof key === "string" && key.startsWith("prevail.")) scheduleUiPrefsPush();
+}
+
+// ── Cross-device UI prefs sync ───────────────────────────────────────────────
+// Pins, model picks, and per-domain toggles live in per-surface localStorage,
+// so the WebUI used to start blank versus the desktop. We mirror the syncable
+// prevail.* keys through a backend blob (ui_prefs_get/set): the desktop pushes
+// its working state; the browser hydrates from it on boot. Device-specific and
+// sensitive keys are excluded.
+const UI_PREFS_EXCLUDE_PREFIX = [
+  "prevail.desktop.vaultPath", "prevail.desktop.vaultProduction", "prevail.web.",
+  "prevail.about.", "prevail.backup.", "prevail.bench.schedule.", "prevail.desktop.theme",
+  "prevail.desktop.palette",
+];
+function isSyncablePrefKey(k: string): boolean {
+  if (!k.startsWith("prevail.")) return false;
+  return !UI_PREFS_EXCLUDE_PREFIX.some((p) => k.startsWith(p));
+}
+function snapshotUiPrefs(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && isSyncablePrefKey(k)) out[k] = localStorage.getItem(k) ?? "";
+  }
+  return out;
+}
+let uiPrefsPushTimer: number | null = null;
+// Desktop: debounce-push the syncable prefs whenever they change.
+function scheduleUiPrefsPush() {
+  if (isBrowser()) return;
+  if (uiPrefsPushTimer !== null) window.clearTimeout(uiPrefsPushTimer);
+  uiPrefsPushTimer = window.setTimeout(() => {
+    void invoke("ui_prefs_set", { json: JSON.stringify(snapshotUiPrefs()) }).catch(() => {});
+  }, 1500);
+}
+// Browser: hydrate localStorage from the desktop's pushed prefs before the app
+// reads them. Returns a promise so boot can await it.
+async function hydrateUiPrefs(): Promise<void> {
+  if (!isBrowser()) return;
+  try {
+    const raw = await invoke<string>("ui_prefs_get");
+    const obj = JSON.parse(raw || "{}") as Record<string, string>;
+    for (const [k, v] of Object.entries(obj)) {
+      if (isSyncablePrefKey(k) && localStorage.getItem(k) === null) localStorage.setItem(k, v);
+    }
+  } catch { /* offline / first run */ }
 }
 
 // ── Bunker Mode (app-wide local-only trust mode) ──
@@ -1943,7 +1990,9 @@ export default function App() {
           if (bp) setVaultPath((cur) => (cur === bp ? cur : bp));
         } catch { /* ignore */ }
       };
-      void pull();
+      // Mirror the desktop's pins / model picks / toggles, then pull its vault,
+      // then nudge a re-render so the hydrated prefs take effect.
+      void hydrateUiPrefs().then(() => pull()).then(() => setUiPrefsNonce((n) => n + 1));
       window.addEventListener("focus", pull);
       return () => window.removeEventListener("focus", pull);
     }
@@ -2043,6 +2092,7 @@ export default function App() {
   // a populated vault). The dismissed flag is retained so manual closes are
   // tracked even though nothing auto-reopens.
   const [onboardOpen, setOnboardOpen] = useState(false);
+  const [, setUiPrefsNonce] = useState(0); // browser: re-render after prefs hydrate
   const [, setOnboardDismissed] = useState(false);
   // Tracks whether the first scan_vault for the current vault has resolved.
   const [, setDomainsLoaded] = useState(false);
@@ -2112,6 +2162,8 @@ export default function App() {
     // Scheduled benchmark re-runs (drift tracking) — module-level timer; the
     // tick itself checks the enabled pref, so toggling needs no restart.
     startBenchScheduler(vaultPath);
+    // Scheduled vault backups (data protection) — same pattern.
+    startBackupScheduler(vaultPath);
     // Skill generation (self-learning) — on by default so the app learns
     // skills from conversations out of the box; togglable in Settings.
     if (getPref(PREF.skillgenEnabled, "1") === "1") {
@@ -10575,6 +10627,52 @@ async function rerunLatestBatch(vault: string): Promise<boolean> {
   return true;
 }
 let benchSchedTimer: number | null = null;
+// ── Vault backup scheduler ──────────────────────────────────────────────────
+// Automatic backups on a cadence (weekly default) plus change-awareness, so
+// the vault is protected without manual effort. Pre-event snapshots (before
+// encryption, mode switch, pack import, restore) call backupVaultNow directly.
+const BACKUP_CFG = {
+  enabled: "prevail.backup.enabled",
+  freq: "prevail.backup.freq", // daily | weekly | monthly
+  lastRun: "prevail.backup.lastRun",
+  dest: "prevail.backup.dest", // optional custom directory
+};
+const BACKUP_FREQ_MS: Record<string, number> = {
+  daily: 86_400_000,
+  weekly: 7 * 86_400_000,
+  monthly: 30 * 86_400_000,
+};
+async function backupVaultNow(vault: string): Promise<boolean> {
+  if (!vault) return false;
+  try {
+    const dest = lsGet(BACKUP_CFG.dest) || null;
+    await invoke("vault_backup_to", { vault, destDir: dest, keep: 10 });
+    lsSet(BACKUP_CFG.lastRun, String(Date.now()));
+    window.dispatchEvent(new Event("prevail:backup-done"));
+    return true;
+  } catch (e) {
+    console.error("vault backup", e);
+    return false;
+  }
+}
+let backupSchedTimer: number | null = null;
+function startBackupScheduler(vault: string) {
+  if (backupSchedTimer !== null) window.clearInterval(backupSchedTimer);
+  const tick = async () => {
+    try {
+      if (lsGet(BACKUP_CFG.enabled, "0") !== "1") return;
+      const freq = BACKUP_FREQ_MS[lsGet(BACKUP_CFG.freq, "weekly") || "weekly"] ?? BACKUP_FREQ_MS.weekly;
+      const last = Number(lsGet(BACKUP_CFG.lastRun, "0")) || 0;
+      if (Date.now() - last < freq) return;
+      await backupVaultNow(vault);
+    } catch (e) {
+      console.error("backup scheduler", e);
+    }
+  };
+  void tick();
+  backupSchedTimer = window.setInterval(() => void tick(), 30 * 60 * 1000);
+}
+
 function startBenchScheduler(vault: string) {
   if (benchSchedTimer !== null) window.clearInterval(benchSchedTimer);
   const tick = async () => {
@@ -12576,7 +12674,7 @@ function SettingsPanel({
           {section === "frameworks" && <FrameworksSection />}
           {section === "skills" && <SkillsSection vaultPath={vaultPath} />}
           {section === "shortcuts" && <ShortcutsSection />}
-          {section === "about" && <AboutSection />}
+          {section === "about" && <AboutSection vaultPath={vaultPath} />}
         </div>
       </div>
     </div>
@@ -13639,8 +13737,23 @@ function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
     <>
       <SettingsHeader
         title="Memory & Context"
-        subtitle="Self-learning: every chat is captured as an intent; a background process distills them into a compact long-term memory that's fed back into future chats."
+        subtitle="What the system has learned about you. Every chat is captured as an intent; the distiller daemon compacts them into per-domain long-term memory that is fed back into future chats."
       />
+      {/* The distiller runs on the Daemons page; this is its outcome view. A
+          live status chip links across so the two pages are clearly related. */}
+      <button
+        onClick={() => window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: "daemons" }))}
+        className="mb-4 flex w-full items-center gap-2 rounded-lg border border-border-subtle bg-surface px-4 py-2.5 text-left hover:border-accent-border"
+      >
+        <Brain className="h-3.5 w-3.5 shrink-0 text-accent" />
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-secondary">Distiller</span>
+        <span className="font-mono text-[10px] text-text-muted">
+          {status?.running ? "running" : "idle"}
+          {status?.last_run_ts ? ` · last pass ${formatFreshness(Math.max(0, (Date.now() - status.last_run_ts) / 1000))} ago` : ""}
+          {status?.lines_distilled ? ` · ${status.lines_distilled} lines` : ""}
+        </span>
+        <span className="ml-auto font-mono text-[10px] text-accent">Schedule & controls in Daemons →</span>
+      </button>
       <div className="rounded-lg border border-border bg-surface px-5">
         <Row title="Persistent memory" desc="Distill the intent ledger into per-domain memory and prepend it to prompts. Master switch."
           control={<Toggle on={persistent} onChange={(v) => { setPersistent(v); setPref(PREF.persistentMemory, v ? "1" : "0"); }} />} />
@@ -13875,8 +13988,16 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
     <>
       <SettingsHeader
         title="Daemons"
-        subtitle="Background processes that run continuously: distill intents into memory, fire task reminders, proactively generate tasks, and learn reusable skills from your conversations."
+        subtitle="The background workers. Each runs continuously: distill intents into memory, fire task reminders, proactively generate tasks, and learn reusable skills from your conversations."
       />
+      <button
+        onClick={() => window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: "memory" }))}
+        className="mb-4 flex w-full items-center gap-2 rounded-lg border border-border-subtle bg-surface px-4 py-2.5 text-left hover:border-accent-border"
+      >
+        <Brain className="h-3.5 w-3.5 shrink-0 text-accent" />
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-secondary">What they produce</span>
+        <span className="ml-auto font-mono text-[10px] text-accent">Distilled memory & budget in Memory & Context →</span>
+      </button>
 
       <div className="mb-4 flex flex-col gap-2">
         <DaemonCard
@@ -14394,6 +14515,7 @@ function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
     if (!window.confirm("Encrypt this vault? Make sure you have a backup first. You'll get a one-time recovery code: save it.")) return;
     setBusy(true); setNote(null); setRecovery(null);
     try {
+      await backupVaultNow(vaultPath); // automatic pre-encryption snapshot
       const r = await invoke<{ ok: boolean; recoveryCode?: string | null; error?: string }>("engine_vault_encrypt", { vault: vaultPath, passcode: pass });
       if (r.ok) {
         if (r.recoveryCode) setRecovery(r.recoveryCode);
@@ -14409,6 +14531,7 @@ function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
   async function decrypt() {
     setBusy(true); setNote(null);
     try {
+      await backupVaultNow(vaultPath); // automatic pre-decryption snapshot
       const r = await invoke<{ ok: boolean; error?: string }>("engine_vault_decrypt", { vault: vaultPath, passcode: pass });
       if (r.ok) { setNote("Vault decrypted back to plaintext. Reloading…"); setPass(""); await refresh(); setTimeout(() => window.location.reload(), 800); }
       else setNote(r.error ?? "Wrong passcode.");
@@ -14634,31 +14757,88 @@ function mcpCommandPath(enginePath: string): { command: string; unstable: boolea
 function McpSection({ vaultPath }: { vaultPath: string }) {
   const [enginePath, setEnginePath] = useState<string>("");
   const [copied, setCopied] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [handshake, setHandshake] = useState<{ ok: boolean; msg: string } | null>(null);
+  async function runHandshake() {
+    setTesting(true); setHandshake(null);
+    try {
+      const r = await invoke<{ ok: boolean; info?: string; error?: string }>("mcp_test_handshake", { vault: vaultPath });
+      setHandshake({ ok: !!r.ok, msg: r.ok ? (r.info ?? "Handshake OK.") : (r.error ?? "Handshake failed.") });
+    } catch (e) {
+      setHandshake({ ok: false, msg: String(e).slice(0, 160) });
+    } finally { setTesting(false); }
+  }
   useEffect(() => {
     invoke<{ engine_bin?: string }>("app_diagnostics").then((d) => setEnginePath(d.engine_bin ?? "prevail")).catch(() => setEnginePath("prevail"));
   }, []);
   const { command: mcpCommand, unstable: mcpPathUnstable } = mcpCommandPath(enginePath);
-  const snippet = JSON.stringify({ mcpServers: { prevail: { command: mcpCommand, args: ["mcp", "--vault", vaultPath] } } }, null, 2);
+  // Ready-to-paste configs per client — the resolved absolute bin path baked in,
+  // so connecting is copy-paste instead of guesswork.
+  const clients: { id: string; label: string; kind: "shell" | "json" | "toml"; body: string; note: string }[] = [
+    {
+      id: "claude-code", label: "Claude Code", kind: "shell",
+      body: `claude mcp add prevail -- ${mcpCommand} mcp --vault ${vaultPath}`,
+      note: "Run this in your terminal. Restart Claude Code, then `/mcp` to confirm.",
+    },
+    {
+      id: "claude-desktop", label: "Claude Desktop", kind: "json",
+      body: JSON.stringify({ mcpServers: { prevail: { command: mcpCommand, args: ["mcp", "--vault", vaultPath] } } }, null, 2),
+      note: "Add to claude_desktop_config.json (Settings → Developer → Edit Config), then restart.",
+    },
+    {
+      id: "codex", label: "Codex", kind: "toml",
+      body: `[mcp_servers.prevail]\ncommand = "${mcpCommand}"\nargs = ["mcp", "--vault", "${vaultPath}"]`,
+      note: "Add to ~/.codex/config.toml, then restart Codex.",
+    },
+    {
+      id: "gemini", label: "Gemini CLI", kind: "json",
+      body: JSON.stringify({ mcpServers: { prevail: { command: mcpCommand, args: ["mcp", "--vault", vaultPath] } } }, null, 2),
+      note: "Add to ~/.gemini/settings.json under mcpServers, then restart.",
+    },
+  ];
+  const [client, setClient] = useState(clients[0].id);
+  const active = clients.find((c) => c.id === client) ?? clients[0];
   return (
     <>
-      <SettingsHeader title="MCP" subtitle="Connect Model Context Protocol servers to Prevail, and expose Prevail as an MCP server to other tools." />
+      <SettingsHeader title="MCP" icon={Wrench} subtitle="Use Prevail headlessly: expose your vault as an MCP server so Claude Code, Claude Desktop, Codex, or the Gemini CLI drive it — the same domains, routing, and self-learning, no UI required." />
       <div className="mb-5">
         <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Connected servers (Prevail consumes)</div>
         <McpCard />
       </div>
       <div className="rounded-lg border border-border bg-surface p-5">
-        <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Expose Prevail as an MCP server</div>
-        <div className="mb-3 text-xs text-text-secondary">Add this to another tool's MCP config (e.g. Claude Desktop) to let it use your Prevail vault as an MCP server.</div>
+        <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Expose Prevail to your agent</div>
+        <div className="mb-3 text-xs text-text-secondary">Pick your tool, copy the config (the engine path is filled in), paste it, restart the tool. Then Test handshake to confirm it answers.</div>
         {mcpPathUnstable && (
-          <div className="mb-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[11px] text-warn">
-            Prevail is running from a temporary location (a mounted disk image or quarantine). Move <span className="font-mono">Prevail.app</span> into your <span className="font-mono">Applications</span> folder so this path stays valid after you eject the installer.
+          <div className="mb-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[11px] text-warn">
+            Prevail is running from a temporary location. Move <span className="font-mono">Prevail.app</span> into <span className="font-mono">Applications</span> so this path stays valid.
           </div>
         )}
-        <pre className="overflow-auto rounded-md border border-border-subtle bg-background p-3 font-mono text-[11px] text-text-secondary">{snippet}</pre>
-        <button onClick={() => { navigator.clipboard.writeText(snippet).catch(() => {}); setCopied(true); window.setTimeout(() => setCopied(false), 1500); }}
-          className="mt-2 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
-          {copied ? "Copied" : "Copy config"}
-        </button>
+        <div className="mb-3 inline-flex flex-wrap gap-1 rounded-lg border border-border-subtle bg-surface-warm/60 p-1">
+          {clients.map((c) => (
+            <button key={c.id} onClick={() => setClient(c.id)}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${client === c.id ? "bg-surface text-accent shadow-sm ring-1 ring-black/5" : "text-text-muted hover:text-text-secondary"}`}>
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <pre className="overflow-auto rounded-md border border-border-subtle bg-background p-3 font-mono text-[11px] text-text-secondary whitespace-pre-wrap">{active.body}</pre>
+        <div className="mt-1.5 text-[11px] text-text-muted">{active.note}</div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button onClick={() => { navigator.clipboard.writeText(active.body).catch(() => {}); setCopied(true); window.setTimeout(() => setCopied(false), 1500); }}
+            className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+            {copied ? "Copied" : `Copy ${active.kind === "shell" ? "command" : "config"}`}
+          </button>
+          <button onClick={runHandshake} disabled={testing}
+            className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50">
+            {testing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+            {testing ? "Testing…" : "Test handshake"}
+          </button>
+          {handshake && (
+            <span className={`font-mono text-[11px] ${handshake.ok ? "text-ok" : "text-warn"}`}>
+              {handshake.ok ? "✓ " : "✗ "}{handshake.msg}
+            </span>
+          )}
+        </div>
       </div>
     </>
   );
@@ -14977,6 +15157,9 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
   const [importingPack, setImportingPack] = useState<string | null>(null);
   const [importedPacks, setImportedPacks] = useState<Set<string>>(new Set());
   const [note, setNote] = useState<string | null>(null);
+  // The remembered production vault path, so switching demo<->production never
+  // re-asks for the folder, and both locations can be shown.
+  const [prodVault, setProdVault] = useState<string>(() => lsGet(LS.vaultProduction) || "");
   useEffect(() => {
     const loadMode = () =>
       invoke<{ mode: "demo" | "production" }>("engine_appmode_get").then((m) => setAppMode(m.mode)).catch(() => {});
@@ -14985,41 +15168,80 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
     window.addEventListener("prevail:appmode", loadMode);
     return () => window.removeEventListener("prevail:appmode", loadMode);
   }, []);
-  // Leave the demo sandbox for your own vault: pick a folder for your real
-  // vault, set it up (clearing the demo sandbox — only if it's actually a marked
-  // demo vault, never a real one), point the app there, and run domain onboarding.
+  // When we're in production, the current vaultPath IS the production vault —
+  // remember it (covers vaults set up before this round-trip logic existed).
+  useEffect(() => {
+    if (appMode === "production" && vaultPath && !vaultPath.includes("/.prevail/demo-vault")) {
+      if (vaultPath !== prodVault) { setProdVault(vaultPath); lsSet(LS.vaultProduction, vaultPath); }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appMode, vaultPath]);
+
+  // Point the app at a chosen folder as the production vault. `runOnboarding`
+  // is false when a starter pack already populated it — the pack IS the start.
+  async function enterProduction(picked: string, runOnboarding: boolean) {
+    // Snapshot before clearing the demo sandbox (a pre-event backup).
+    await backupVaultNow(vaultPath);
+    await invoke<{ vault: string; demoCleared: boolean }>("engine_production_init", { vault: picked, clearDemo: vaultPath });
+    await invoke("engine_appmode_set", { mode: "production", vault: picked }).catch(() => {});
+    setProdVault(picked); lsSet(LS.vaultProduction, picked);
+    setAppMode("production");
+    window.dispatchEvent(new Event("prevail:appmode"));
+    onVaultMoved?.(picked);
+    if (runOnboarding) onSetupDomains?.();
+  }
+
+  // Leave the demo sandbox for your own vault. If a production vault is already
+  // remembered, just switch back to it (no re-pick, no onboarding); otherwise
+  // pick a fresh folder and run setup.
   async function switchToProduction() {
-    const ok = await tauriConfirm(
+    // Already have a production vault on disk? Round-trip straight back to it.
+    if (prodVault) {
+      const ok = await invoke<boolean>("vault_exists", { path: prodVault }).catch(() => false);
+      if (ok) {
+        setSwitchingMode(true); setNote(null);
+        try {
+          await invoke("engine_appmode_set", { mode: "production", vault: prodVault }).catch(() => {});
+          setAppMode("production");
+          window.dispatchEvent(new Event("prevail:appmode"));
+          onVaultMoved?.(prodVault);
+          setNote(`Back in your own vault (${prodVault}).`);
+        } catch (e) { setNote(`Could not switch: ${String(e)}`); }
+        finally { setSwitchingMode(false); }
+        return;
+      }
+    }
+    const confirmOk = await tauriConfirm(
       "Ready to set up your own vault? You'll choose a folder for it, then set up your domains. The demo sample data is cleared.",
       { title: "Use your own vault", kind: "info", okLabel: "Choose my vault folder", cancelLabel: "Stay in demo" },
     );
-    if (!ok) return;
+    if (!confirmOk) return;
     const picked = await open({ directory: true, multiple: false, title: "Choose a folder for your own vault" });
     if (!picked || typeof picked !== "string") return;
     setSwitchingMode(true);
     setNote(null);
     try {
-      // Target = the picked vault; clear the old demo vault (only if marked).
-      await invoke<{ vault: string; demoCleared: boolean }>("engine_production_init", { vault: picked, clearDemo: vaultPath });
-      await invoke("engine_appmode_set", { mode: "production" }).catch(() => {});
-      setAppMode("production");
-      window.dispatchEvent(new Event("prevail:appmode"));
-      onVaultMoved?.(picked); // point the app at the chosen vault
-      onSetupDomains?.(); // run the onboarding workflow for it
+      await enterProduction(picked, true);
     } catch (e) {
       setNote(`Could not set up your vault: ${String(e)}`);
     } finally {
       setSwitchingMode(false);
     }
   }
-  // Return to the demo sandbox — just flips the flag (no data touched).
+  // Return to the demo sandbox: repoint the app at the demo vault (re-seeding
+  // the bundled sample data) and flip the flag. The production vault is
+  // remembered, untouched, and one click away.
   async function switchToDemo() {
     setSwitchingMode(true);
+    setNote(null);
     try {
-      await invoke("engine_appmode_set", { mode: "demo" });
+      const demoPath = await invoke<string>("import_sample_vault");
+      await invoke("engine_appmode_set", { mode: "demo", vault: demoPath }).catch(() => {});
+      await invoke("engine_appmode_mark_demo", { vault: demoPath }).catch(() => {});
       setAppMode("demo");
       window.dispatchEvent(new Event("prevail:appmode"));
-      setNote("You're back in the demo sandbox. Explore freely, then set up your own vault when you're ready.");
+      onVaultMoved?.(demoPath);
+      setNote("You're back in the demo sandbox. Your own vault is remembered and one click away.");
     } catch (e) {
       setNote(`Could not switch: ${String(e)}`);
     } finally {
@@ -15041,12 +15263,8 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
       setImportingPack(p.name);
       setNote(null);
       try {
-        await invoke<{ vault: string; demoCleared: boolean }>("engine_production_init", { vault: picked, clearDemo: vaultPath });
-        await invoke("engine_appmode_set", { mode: "production" }).catch(() => {});
-        setAppMode("production");
-        window.dispatchEvent(new Event("prevail:appmode"));
-        onVaultMoved?.(picked);
-        onSetupDomains?.();
+        // The pack populates the vault, so skip domain onboarding entirely.
+        await enterProduction(picked, false);
         const r = await invoke<{ created: string[]; skipped: string[] }>("engine_pack_import", { vault: picked, pack: p.name, overwrite: false });
         const parts: string[] = [];
         if (r.created.length) parts.push(`added ${r.created.join(", ")}`);
@@ -15102,8 +15320,45 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
           {!isDemo && appMode && <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-wider text-text-secondary">You are here</div>}
         </div>
       </div>
+      {/* Where each vault lives — demo (read-only) and production (the real
+          data, a danger zone). Always visible so the two are never confused. */}
+      <div className="mb-5 space-y-2">
+        <div className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface px-3 py-2">
+          <Sparkles className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">Demo vault</span>
+          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary" title={isDemo ? vaultPath : "~/.prevail/demo-vault"}>{isDemo ? vaultPath : "~/.prevail/demo-vault"}</span>
+          <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">sample · re-seeded</span>
+        </div>
+        <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${prodVault ? "border-warn/40 bg-warn/5" : "border-dashed border-border bg-surface"}`}>
+          <ShieldCheck className={`h-3.5 w-3.5 shrink-0 ${prodVault ? "text-warn" : "text-text-muted"}`} />
+          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">Your vault</span>
+          {prodVault ? (
+            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-primary" title={prodVault}>{prodVault}</span>
+          ) : (
+            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-muted">not set up yet</span>
+          )}
+          {prodVault && <span className="shrink-0 font-mono text-[9px] font-bold uppercase tracking-wider text-warn">real data · do not move/delete</span>}
+        </div>
+        {prodVault && (
+          <p className="px-1 text-[10px] text-text-muted">
+            This folder holds your real vault. Switching to demo never touches it; do not delete or move it from Finder, or Prevail will lose track of it.
+          </p>
+        )}
+      </div>
       {/* Action: in demo, the 3-step setup; in your own vault, a quiet way back. */}
-      {isDemo ? (
+      {isDemo && prodVault ? (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-warm p-4">
+          <p className="text-sm text-text-secondary">You have your own vault set up. Switch back to it any time — no re-setup.</p>
+          <button
+            onClick={switchToProduction}
+            disabled={switchingMode}
+            className="shrink-0 inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
+          >
+            {switchingMode ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+            {switchingMode ? "Switching…" : "Switch to my vault"}
+          </button>
+        </div>
+      ) : isDemo ? (
         <div className="mb-4 rounded-xl border border-accent-border bg-accent-soft p-4">
           <div className="mb-3 text-sm font-semibold text-text-primary">Setting up your own vault takes three steps:</div>
           <div className="mb-4 flex items-stretch gap-2">
@@ -15309,7 +15564,97 @@ function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { 
           {backupNote}
         </div>
       )}
+      <BackupAutomationCard vault={vaultPath} onChange={onChange} />
     </>
+  );
+}
+
+// Scheduled automatic backups + restore points, on the Vault page. Reuses the
+// module-scope backup scheduler; restore unpacks an archive over the vault
+// after snapshotting the current state first.
+function BackupAutomationCard({ vault, onChange }: { vault: string; onChange?: () => void }) {
+  const [enabled, setEnabled] = useState(() => lsGet(BACKUP_CFG.enabled, "0") === "1");
+  const [freq, setFreq] = useState(() => lsGet(BACKUP_CFG.freq, "weekly") || "weekly");
+  const [backups, setBackups] = useState<{ name: string; path: string; bytes: number; mtime: number }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const refresh = () =>
+    invoke<{ name: string; path: string; bytes: number; mtime: number }[]>("vault_backups_list", { destDir: lsGet(BACKUP_CFG.dest) || null })
+      .then((b) => setBackups(Array.isArray(b) ? b : []))
+      .catch(() => {});
+  useEffect(() => {
+    refresh();
+    const f = () => refresh();
+    window.addEventListener("prevail:backup-done", f);
+    return () => window.removeEventListener("prevail:backup-done", f);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const last = Number(lsGet(BACKUP_CFG.lastRun, "0")) || 0;
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-surface p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <RotateCw className="h-4 w-4 shrink-0 text-accent" />
+        <div className="min-w-0 flex-1">
+          <div className="font-display text-sm font-semibold tracking-tight">Automatic backups</div>
+          <div className="text-xs text-text-secondary">
+            Snapshots the whole vault on a schedule (and before risky operations like encryption or a mode switch), kept outside the vault. Old ones are pruned automatically.
+            {enabled && last > 0 && ` Last backup ${formatFreshness(Math.max(0, (Date.now() - last) / 1000))} ago.`}
+          </div>
+        </div>
+        <select value={freq} onChange={(e) => { setFreq(e.target.value); lsSet(BACKUP_CFG.freq, e.target.value); }} disabled={!enabled}
+          className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary disabled:opacity-40">
+          <option value="daily">daily</option>
+          <option value="weekly">weekly</option>
+          <option value="monthly">monthly</option>
+        </select>
+        <button onClick={() => { const v = !enabled; setEnabled(v); lsSet(BACKUP_CFG.enabled, v ? "1" : "0"); }}
+          className={`rounded-md border px-3 py-1 font-mono text-[11px] uppercase tracking-wider ${enabled ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
+          {enabled ? "On" : "Off"}
+        </button>
+        <button onClick={async () => { setBusy(true); setNote(null); const ok = await backupVaultNow(vault); setNote(ok ? "Backup created." : "Backup failed."); setBusy(false); }}
+          disabled={busy}
+          className="rounded-md border border-border px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
+          {busy ? "…" : "Back up now"}
+        </button>
+      </div>
+      {note && <div className="mt-2 text-xs text-text-secondary">{note}</div>}
+      {backups.length > 0 && (
+        <details className="mt-3 rounded-lg border border-border-subtle bg-background px-3 py-2">
+          <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
+            Restore points · {backups.length}
+          </summary>
+          <div className="mt-2 flex flex-col gap-1">
+            {backups.map((b) => (
+              <div key={b.path} className="flex items-center gap-2 px-1 py-1">
+                <span className="flex-1 truncate font-mono text-[11px] text-text-secondary" title={b.path}>{b.name.replace("prevail-backup-", "").replace(".tar.gz", "")}</span>
+                <span className="shrink-0 font-mono text-[10px] text-text-muted">{bytesHuman(b.bytes)}</span>
+                <button
+                  onClick={async () => {
+                    const ok = await tauriConfirm(
+                      "Restore this backup over your current vault? Your current state is backed up first, so this is reversible.",
+                      { title: "Restore vault", kind: "warning", okLabel: "Restore", cancelLabel: "Cancel" },
+                    );
+                    if (!ok) return;
+                    setBusy(true); setNote(null);
+                    try {
+                      await backupVaultNow(vault); // snapshot current state first
+                      await invoke("vault_restore_archive", { vault, archive: b.path });
+                      setNote("Restored. Reloading…");
+                      onChange?.();
+                      setTimeout(() => window.location.reload(), 900);
+                    } catch (e) { setNote(`Restore failed: ${String(e)}`); }
+                    finally { setBusy(false); }
+                  }}
+                  disabled={busy}
+                  className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
+                  Restore
+                </button>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
   );
 }
 
@@ -16570,27 +16915,104 @@ function ShortcutsSection() {
   );
 }
 
-function AboutSection() {
+type DiagCheck = { label: string; status: "ok" | "warn" | "fail" | "info"; detail: string; why: string };
+function AboutSection({ vaultPath }: { vaultPath: string }) {
+  const verify = useCliVerifyLive();
   const [checking, setChecking] = useState(false);
   const [latest, setLatest] = useState<string | null>(null);
   const [checkErr, setCheckErr] = useState<string | null>(null);
-  const [includePre, setIncludePre] = useState<boolean>(() => lsGet("prevail.about.includePrerelease") === "1");
-  useEffect(() => { lsSet("prevail.about.includePrerelease", includePre ? "1" : "0"); }, [includePre]);
-  const [diag, setDiag] = useState<string | null>(null);
+  const [checks, setChecks] = useState<DiagCheck[] | null>(null);
+  const [diagRunning, setDiagRunning] = useState(false);
   const [diagCopied, setDiagCopied] = useState(false);
 
+  // A real health check: each item verifies one thing Prevail depends on and
+  // says why it matters, with a pass/warn/fail verdict you can act on.
   async function runDiagnosis() {
+    setDiagRunning(true);
+    const out: DiagCheck[] = [];
+    let d: { desktop_version: string; os: string; arch: string; engine_version?: string; engine_bin: string; engine_bundled: boolean; app_support: string } | null = null;
+    try { d = await invoke("app_diagnostics"); } catch { /* engine probe failed */ }
+
+    // Engine sidecar.
+    if (d) {
+      const match = d.engine_version && d.engine_version.length > 0;
+      out.push({
+        label: "Engine", status: match ? "ok" : "warn",
+        detail: `${d.engine_version ?? "unknown"} ${d.engine_bundled ? "(bundled)" : `(${d.engine_bin})`}`,
+        why: "The engine runs every chat, council, and benchmark. Bundled = shipped with the app.",
+      });
+    } else {
+      out.push({ label: "Engine", status: "fail", detail: "not reachable", why: "Without the engine, nothing runs. Reinstall the app." });
+    }
+
+    // Vault: reachable, writable, encryption state.
+    if (vaultPath) {
+      let exists = false;
+      try { exists = await invoke<boolean>("vault_exists", { path: vaultPath }); } catch { /* */ }
+      let enc: { encrypted: boolean; unlocked: boolean } | null = null;
+      try { enc = await invoke("engine_vault_status", { vault: vaultPath }); } catch { /* */ }
+      const encNote = enc?.encrypted ? (enc.unlocked ? " · encrypted, unlocked" : " · encrypted, LOCKED") : "";
+      out.push({
+        label: "Vault", status: exists ? (enc?.encrypted && !enc.unlocked ? "warn" : "ok") : "fail",
+        detail: `${vaultPath}${encNote}`,
+        why: exists ? "Your data lives here. An encrypted+locked vault can't be read until you unlock it." : "The vault path doesn't exist — pick or restore it in Settings → Vault.",
+      });
+    } else {
+      out.push({ label: "Vault", status: "fail", detail: "no vault selected", why: "Set up a vault in Settings → Vault or Demo Mode." });
+    }
+
+    // Agents: detected AND validated.
+    let clis: CliInfo[] = [];
+    try { clis = await invoke<CliInfo[]>("detect_clis"); } catch { /* */ }
+    const detected = clis.filter((c) => c.available);
+    const valid = detected.filter((c) => verify.get(c.id)?.status === "ok");
+    out.push({
+      label: "Agents", status: valid.length > 0 ? "ok" : detected.length > 0 ? "warn" : "fail",
+      detail: detected.length === 0 ? "none detected" : detected.map((c) => `${c.label}${verify.get(c.id)?.status === "ok" ? " ✓" : verify.get(c.id)?.status === "failed" ? " ✗" : " ?"}`).join(", "),
+      why: valid.length > 0 ? "These models are installed and answered a live test." : detected.length > 0 ? "Installed but not validated — open Settings → Models and re-check (often a login/token issue)." : "Install at least one CLI (claude, codex, ollama) to chat.",
+    });
+
+    // Network + Bunker.
+    const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+    const bunker = isBunkerOn();
+    out.push({
+      label: "Network", status: bunker ? "info" : online ? "ok" : "warn",
+      detail: bunker ? "Bunker Mode ON (local-only by design)" : online ? "online" : "offline",
+      why: bunker ? "Cloud is intentionally blocked; only local models run." : online ? "Cloud models and updates are reachable." : "Offline — cloud models and update checks won't work until reconnected.",
+    });
+
+    // Update check.
     try {
-      const d = await invoke<{ desktop_version: string; os: string; arch: string; engine_version?: string; engine_bin: string; engine_bundled: boolean; app_support: string }>("app_diagnostics");
-      let clis: CliInfo[] = [];
-      try { clis = await invoke<CliInfo[]>("detect_clis"); } catch { /* ignore */ }
-      setDiag([
-        `Prevail Desktop v${d.desktop_version} (${d.os}/${d.arch})`,
-        `Engine: ${d.engine_version ?? "?"} ${d.engine_bundled ? "(bundled sidecar)" : `(${d.engine_bin})`}`,
-        `App support: ${d.app_support}`,
-        `Agents: ${clis.map((c) => `${c.id}${c.available ? "✓" : "✗"}`).join("  ") || "none detected"}`,
-      ].join("\n"));
-    } catch (e) { setDiag(`diagnosis failed: ${e}`); }
+      const u = await checkUpdate();
+      out.push({
+        label: "Updates", status: u ? "warn" : "ok",
+        detail: u ? `v${u.version} available` : `on the latest (v${APP_VERSION})`,
+        why: u ? "Click 'Check for updates' above to install it in place." : "You're running the newest release.",
+      });
+    } catch {
+      out.push({ label: "Updates", status: "info", detail: "couldn't check", why: "Update feed unreachable (offline or first release). Not a problem." });
+    }
+
+    // Background surfaces.
+    try {
+      const tg = await invoke<{ running: boolean }>("telegram_bridge_status");
+      const wu = await invoke<{ running: boolean }>("webui_status");
+      const surfaces = [tg.running ? "Telegram" : null, wu.running ? "WebUI" : null].filter(Boolean);
+      out.push({
+        label: "External access", status: surfaces.length > 0 ? "info" : "ok",
+        detail: surfaces.length > 0 ? `LIVE: ${surfaces.join(", ")}` : "none active",
+        why: surfaces.length > 0 ? "These bridges can reach the app from outside right now." : "No external surface is exposed.",
+      });
+    } catch { /* */ }
+
+    setChecks(out);
+    setDiagRunning(false);
+  }
+
+  function diagText(): string {
+    const head = `Prevail Desktop v${APP_VERSION}`;
+    const lines = (checks ?? []).map((c) => `[${c.status.toUpperCase()}] ${c.label}: ${c.detail}`);
+    return [head, ...lines].join("\n");
   }
 
   async function exportConfig() {
@@ -16664,8 +17086,7 @@ function AboutSection() {
         const r = await fetch("https://api.github.com/repos/fru-dev3/prevail-desktop/releases?per_page=10");
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const releases = await r.json() as Array<{ tag_name: string; prerelease: boolean; html_url: string }>;
-        const eligible = releases.filter((rel) => includePre || !rel.prerelease);
-        const top = eligible[0];
+        const top = releases.find((rel) => !rel.prerelease) ?? releases[0];
         if (!top) throw new Error("no releases found");
         setLatest(top.tag_name);
         try { await invoke("open_in_finder", { path: top.html_url }); } catch {}
@@ -16697,61 +17118,41 @@ function AboutSection() {
   const newer = latest && cmp > 0;
 
   return (
-    <>
-      <SettingsHeader title="About" />
+    <div className="mx-auto max-w-xl">
       <div className="flex flex-col items-center text-center">
-        <img src="/logo.png" alt="Prevail" className="h-20 w-20 rounded-3xl shadow-md" />
-        <h1 className="mt-5 font-display text-4xl font-extrabold tracking-tight">
+        <img src="/logo.png" alt="Prevail" className="h-16 w-16 rounded-2xl shadow-md" />
+        <h1 className="mt-3 font-display text-2xl font-extrabold tracking-tight">
           <Brand className="[letter-spacing:0.12em]" />
         </h1>
-        <p className="mt-2 max-w-md text-sm text-text-secondary">
-          One desktop. Your AI council, grounded in your domains.
-        </p>
-        <div className="mt-4 flex items-center gap-3">
-          <span className="rounded-full bg-surface-warm px-3 py-1 font-mono text-xs text-text-secondary">v{APP_VERSION}</span>
-          <a
-            href="https://github.com/fru-dev3/prevail-desktop"
-            target="_blank"
-            rel="noreferrer"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-warm text-text-secondary hover:text-accent"
-            title="GitHub"
-          >
-            <Github className="h-4 w-4" />
-          </a>
-        </div>
+        <p className="mt-1 text-xs text-text-secondary">One desktop. Your AI council, grounded in your domains.</p>
       </div>
 
-      <div className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
-        <button
-          onClick={checkForUpdates}
-          disabled={checking}
-          className="w-full rounded-xl bg-text-primary px-4 py-3 font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          {installing ? "Downloading & installing…" : checking ? "Checking…" : "Check for updates"}
-        </button>
+      {/* Update card — version + one-click install, compact. */}
+      <div className="mt-4 rounded-xl border border-border bg-surface p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <span className="rounded-full bg-surface-warm px-2.5 py-1 font-mono text-xs text-text-secondary">v{APP_VERSION}</span>
+          <span className="flex-1 text-xs text-text-muted">
+            {newer ? "An update is ready to install." : upToDate ? "You're on the latest release." : "Install updates in place, no browser needed."}
+          </span>
+          <button
+            onClick={checkForUpdates}
+            disabled={checking}
+            className="shrink-0 rounded-md bg-text-primary px-3 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {installing ? "Installing…" : checking ? "Checking…" : newer ? "Download & install" : "Check for updates"}
+          </button>
+        </div>
         {latest && (
-          <div className={`mt-3 rounded-md border px-3 py-2 text-sm ${
-            upToDate
-              ? "border-accent-border bg-accent-soft text-accent"
-              : "border-warn/40 bg-warn/10 text-warn"
+          <div className={`mt-2 rounded-md border px-3 py-1.5 text-xs ${
+            upToDate ? "border-accent-border bg-accent-soft text-accent" : "border-warn/40 bg-warn/10 text-warn"
           }`}>
-            {upToDate
-              ? `You're on the latest release (${latest}).`
-              : newer
-              ? `Newer release available: ${latest}. The release page opened in your browser.`
-              : `Latest: ${latest}`}
+            {upToDate ? `Latest release (${latest}).` : newer ? `Update available: ${latest} — click Download & install.` : `Latest: ${latest}`}
           </div>
         )}
-        {checkErr && (
-          <div className="mt-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{checkErr}</div>
-        )}
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <div className="text-sm text-text-secondary">Include prerelease / dev builds</div>
-          <Toggle on={includePre} onChange={setIncludePre} label="Include prerelease builds" />
-        </div>
+        {checkErr && <div className="mt-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-xs text-warn">{checkErr}</div>}
       </div>
 
-      <div className="mt-4 rounded-2xl border border-border bg-surface px-5 py-2 shadow-sm">
+      <div className="mt-3 rounded-xl border border-border bg-surface px-4 py-1 shadow-sm">
         <Row label="Help & documentation" href="https://github.com/fru-dev3/prevail-desktop#readme" />
         <Row label="Update log" href="https://github.com/fru-dev3/prevail-desktop/releases" />
         <Row label="Report an issue" href="https://github.com/fru-dev3/prevail-desktop/issues/new" />
@@ -16760,7 +17161,7 @@ function AboutSection() {
       </div>
 
       {/* Alpha / liability disclaimer */}
-      <div className="mt-4 rounded-2xl border border-border bg-surface px-5 py-4 shadow-sm">
+      <div className="mt-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-sm">
         <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Alpha software</div>
         <p className="text-xs leading-relaxed text-text-secondary">
           Prevail is an early, experimental alpha released for demonstration and testing. It is provided "as is",
@@ -16780,7 +17181,7 @@ function AboutSection() {
       </div>
 
       {/* Config — export / import / reset */}
-      <div className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+      <div className="mt-3 rounded-xl border border-border bg-surface p-4 shadow-sm">
         <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Configuration</div>
         <div className="flex flex-wrap gap-2">
           <button onClick={exportConfig}
@@ -16793,23 +17194,42 @@ function AboutSection() {
         <div className="mt-2 text-xs text-text-secondary">Backs up / restores all app preferences (not your vault). Reset clears every preference and reloads.</div>
       </div>
 
-      {/* Diagnostics */}
-      <div className="mt-4 rounded-2xl border border-border bg-surface p-5 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Diagnostics</div>
+      {/* Diagnostics — a real health check, one row per thing Prevail needs. */}
+      <div className="mt-3 rounded-xl border border-border bg-surface p-4 shadow-sm">
+        <div className="mb-1 flex items-center justify-between">
+          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Health check</div>
           <div className="flex gap-2">
-            <button onClick={runDiagnosis}
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent">Run diagnosis</button>
-            <button onClick={() => { if (diag) { navigator.clipboard.writeText(diag).catch(() => {}); setDiagCopied(true); window.setTimeout(() => setDiagCopied(false), 1500); } }}
-              disabled={!diag}
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-40">{diagCopied ? "Copied" : "Debug dump"}</button>
+            <button onClick={runDiagnosis} disabled={diagRunning}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{diagRunning ? "Checking…" : "Run check"}</button>
+            {checks && (
+              <button onClick={() => { navigator.clipboard.writeText(diagText()).catch(() => {}); setDiagCopied(true); window.setTimeout(() => setDiagCopied(false), 1500); }}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent">{diagCopied ? "Copied" : "Copy report"}</button>
+            )}
           </div>
         </div>
-        {diag && <pre className="max-h-48 overflow-auto rounded-md border border-border-subtle bg-background p-3 font-mono text-[11px] text-text-secondary">{diag}</pre>}
+        <p className="mb-3 text-xs text-text-muted">Verifies everything Prevail depends on is healthy. Copy the report when filing an issue.</p>
+        {checks && (
+          <div className="flex flex-col gap-1.5">
+            {checks.map((c) => (
+              <div key={c.label} className="flex items-start gap-2.5 rounded-lg border border-border-subtle bg-background px-3 py-2">
+                <span className={`mt-0.5 shrink-0 font-mono text-sm font-bold ${
+                  c.status === "ok" ? "text-ok" : c.status === "fail" ? "text-warn" : c.status === "warn" ? "text-warn" : "text-text-muted"
+                }`}>{c.status === "ok" ? "✓" : c.status === "fail" ? "✗" : c.status === "warn" ? "!" : "·"}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-text-primary">{c.label}</span>
+                    <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary" title={c.detail}>{c.detail}</span>
+                  </div>
+                  <div className="text-[11px] leading-snug text-text-muted">{c.why}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Danger zone — uninstall (never touches the vault) */}
-      <div className="mt-4 rounded-2xl border border-warn/30 bg-warn/5 p-5">
+      <div className="mt-3 rounded-xl border border-warn/30 bg-warn/5 p-4">
         <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-warn">Danger zone</div>
         <div className="mb-3 text-xs text-text-secondary">Removes the app and its data. Your vault is never deleted.</div>
         <div className="flex flex-col gap-2">
@@ -16830,7 +17250,7 @@ function AboutSection() {
         <span>MIT licensed · Tauri 2 · React 19 · Tailwind 4</span>
         <span>Local-first · Vault stays on this Mac</span>
       </div>
-    </>
+    </div>
   );
 }
 
