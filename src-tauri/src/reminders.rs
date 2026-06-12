@@ -13,6 +13,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
+use std::sync::Arc;
+use tauri::async_runtime::JoinHandle;
+use tokio::sync::{watch, Mutex as AsyncMutex};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DueTask {
@@ -151,14 +154,11 @@ fn unique_domains(tasks: &[&DueTask]) -> Vec<String> {
     seen.into_iter().collect()
 }
 
-/// Check for due tasks and fire native notifications for any not already
-/// notified today. Returns the full list of due/overdue tasks so the
-/// frontend can update its badges in the same call.
-#[tauri::command]
-pub fn reminders_check(app: tauri::AppHandle, vault: String) -> Result<Vec<DueTask>, String> {
+/// Core notification logic — shared between the command and the background daemon.
+fn notify_due_tasks(app: &tauri::AppHandle, vault: &str) -> Result<Vec<DueTask>, String> {
     use tauri_plugin_notification::NotificationExt;
     let today = today_str();
-    let due = scan_due(&vault, &today);
+    let due = scan_due(vault, &today);
     if due.is_empty() {
         return Ok(vec![]);
     }
@@ -192,12 +192,132 @@ pub fn reminders_check(app: tauri::AppHandle, vault: String) -> Result<Vec<DueTa
     Ok(due)
 }
 
+/// Check for due tasks and fire native notifications for any not already
+/// notified today. Returns the full list of due/overdue tasks so the
+/// frontend can update its badges in the same call.
+#[tauri::command]
+pub fn reminders_check(app: tauri::AppHandle, vault: String) -> Result<Vec<DueTask>, String> {
+    notify_due_tasks(&app, &vault)
+}
+
 /// Returns all due/overdue tasks without firing notifications.
 /// Called on startup to populate sidebar badges before the first
 /// focus event triggers reminders_check.
 #[tauri::command]
 pub fn reminders_due_today(vault: String) -> Result<Vec<DueTask>, String> {
     Ok(scan_due(&vault, &today_str()))
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+// ── Background daemon ────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct RemindersDaemonStatus {
+    pub running: bool,
+    pub last_run_ts: Option<u64>,
+    pub last_error: Option<String>,
+    pub last_due_count: u64,
+}
+
+struct RemindersInner {
+    handle: Option<JoinHandle<()>>,
+    stop_tx: Option<watch::Sender<bool>>,
+    status: Arc<AsyncMutex<RemindersDaemonStatus>>,
+}
+
+pub struct RemindersState {
+    inner: std::sync::Mutex<RemindersInner>,
+}
+
+impl RemindersState {
+    pub fn new() -> Self {
+        Self {
+            inner: std::sync::Mutex::new(RemindersInner {
+                handle: None,
+                stop_tx: None,
+                status: Arc::new(AsyncMutex::new(RemindersDaemonStatus::default())),
+            }),
+        }
+    }
+
+    pub async fn status(&self) -> RemindersDaemonStatus {
+        let arc = { self.inner.lock().unwrap_or_else(|e| e.into_inner()).status.clone() };
+        let x = arc.lock().await.clone(); x
+    }
+
+    pub async fn stop(&self) {
+        let (tx, handle, arc) = {
+            let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            (inner.stop_tx.take(), inner.handle.take(), inner.status.clone())
+        };
+        if let Some(tx) = tx { let _ = tx.send(true); }
+        if let Some(h) = handle { h.abort(); }
+        arc.lock().await.running = false;
+    }
+
+    pub async fn start(&self, app: tauri::AppHandle, vault: String, interval_sec: u64) {
+        self.stop().await;
+        let (stop_tx, mut stop_rx) = watch::channel(false);
+        let arc = { self.inner.lock().unwrap_or_else(|e| e.into_inner()).status.clone() };
+        { let mut s = arc.lock().await; *s = RemindersDaemonStatus { running: true, ..Default::default() }; }
+        let status_arc = arc.clone();
+        let interval = std::time::Duration::from_secs(interval_sec.max(60));
+
+        let handle = tauri::async_runtime::spawn(async move {
+            loop {
+                let res = notify_due_tasks(&app, &vault);
+                {
+                    let mut s = status_arc.lock().await;
+                    s.last_run_ts = Some(now_secs());
+                    match res {
+                        Ok(due) => { s.last_due_count = due.len() as u64; s.last_error = None; }
+                        Err(e) => s.last_error = Some(e),
+                    }
+                }
+                tokio::select! {
+                    _ = stop_rx.changed() => { if *stop_rx.borrow() { break; } }
+                    _ = tokio::time::sleep(interval) => {}
+                }
+            }
+            status_arc.lock().await.running = false;
+        });
+
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        inner.handle = Some(handle);
+        inner.stop_tx = Some(stop_tx);
+    }
+}
+
+#[tauri::command]
+pub async fn reminders_daemon_start(
+    app: tauri::AppHandle,
+    vault: String,
+    interval_sec: u64,
+    state: tauri::State<'_, RemindersState>,
+) -> Result<(), String> {
+    state.start(app, vault, interval_sec).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reminders_daemon_stop(
+    state: tauri::State<'_, RemindersState>,
+) -> Result<(), String> {
+    state.stop().await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reminders_daemon_status(
+    state: tauri::State<'_, RemindersState>,
+) -> Result<RemindersDaemonStatus, String> {
+    Ok(state.status().await)
 }
 
 #[cfg(test)]

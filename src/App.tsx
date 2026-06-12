@@ -473,6 +473,7 @@ import {
   ThumbsDown,
   ShieldCheck,
   Cloud,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -1375,7 +1376,7 @@ type Mode = "light" | "dark" | "system";
 type Palette = "vault" | "midnight" | "ember" | "mono" | "cyberpunk" | "slate";
 
 const PALETTES: { id: Palette; name: string; blurb: string; swatch: { bg: string; surface: string; accent: string; ai: string } }[] = [
-  { id: "vault",     name: "Vault",     blurb: "Cream + gold, focused, warm",                       swatch: { bg: "#faf8f1", surface: "#ffffff", accent: "#a8862d", ai: "#60a8c0" } },
+  { id: "vault",     name: "Vault",     blurb: "Cream + teal, focused, calm",                       swatch: { bg: "#faf8f1", surface: "#ffffff", accent: "#0d7a6e", ai: "#60a8c0" } },
   { id: "midnight",  name: "Midnight",  blurb: "Deep blue-violet with cool accents",                  swatch: { bg: "#0a0d1f", surface: "#131730", accent: "#818cf8", ai: "#60a8c0" } },
   { id: "ember",     name: "Ember",     blurb: "Warm crimson and bronze, forge vibes",               swatch: { bg: "#1a0a06", surface: "#2a130c", accent: "#ef6c4a", ai: "#60a8c0" } },
   { id: "mono",      name: "Mono",      blurb: "Clean grayscale, minimal and focused",               swatch: { bg: "#f7f7f8", surface: "#ffffff", accent: "#18181b", ai: "#60a8c0" } },
@@ -1689,7 +1690,7 @@ function OnboardingModal({
 // Deterministic per-domain accent color — turns the monochrome card grid
 // into a colorful, scannable board. Muted, on-brand palette.
 const DOMAIN_PALETTE = [
-  "#cc785c", "#2d7fe4", "#5fae74", "#c4a35a", "#a78bfa", "#e0823d",
+  "#cc785c", "#2d7fe4", "#5fae74", "#2dd4bf", "#a78bfa", "#e0823d",
   "#3fa6a0", "#c44e8a", "#7c83ff", "#6b8e23", "#d2674f", "#b8860b",
 ];
 function domainColor(name: string): string {
@@ -2029,18 +2030,23 @@ export default function App() {
     })();
     return () => { unlistens.forEach((u) => u()); unlistens = []; };
   }, []);
-  // Self-learning: start/stop the background distillation daemon based on the
-  // Memory & Context prefs once a vault is known (mirrors how the Telegram
-  // bridge starts on demand). Re-runs when the vault changes.
+  // Start/stop background daemons (distill + reminders + task-gen) when vault is known.
   useEffect(() => {
     if (!vaultPath) return;
-    // The distillation daemon is owned by the desktop host, not a browser tab.
     if (isBrowser()) return;
+    // Distill
     const on = getPref(PREF.persistentMemory, "1") === "1" && getPref(PREF.autoCompression, "1") === "1";
     if (on) {
       invoke("distill_start", { cfg: distillCfgFromPrefs(vaultPath) }).catch((e) => console.error("distill_start", e));
     } else {
       invoke("distill_stop").catch(() => {});
+    }
+    // Reminders
+    const remInterval = Number(getPref(PREF.remindersIntervalSec, "900")) || 900;
+    invoke("reminders_daemon_start", { vault: vaultPath, interval_sec: remInterval }).catch(() => {});
+    // Task generation
+    if (getPref(PREF.taskgenEnabled, "0") === "1") {
+      invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch((e) => console.error("taskgen_start", e));
     }
   }, [vaultPath]);
   useEffect(() => {
@@ -2427,7 +2433,7 @@ export default function App() {
   return (
     <div className="relative flex h-screen flex-col bg-background text-text-primary">
       {bunkerEnabled && !bunkerLocalOk && (
-        <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-600/30 bg-amber-500/10 px-4 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+        <div className="flex shrink-0 items-center justify-center gap-2 border-b border-warn/30 bg-warn/10 px-4 py-1.5 text-xs text-warn">
           <ShieldCheck className="h-3.5 w-3.5" />
           <span>Bunker Mode needs a local model provider, but none was detected.</span>
           <a href="https://ollama.com/download" target="_blank" rel="noreferrer" className="font-medium underline">Install Ollama ›</a>
@@ -3007,7 +3013,7 @@ function Sidebar({
                         pill.style.cssText =
                           "position:fixed;z-index:9999;pointer-events:none;" +
                           "padding:6px 10px;border-radius:9999px;" +
-                          "background:var(--color-accent,#a8862d);color:#fff;" +
+                          "background:var(--color-accent,#0d7a6e);color:#fff;" +
                           "font-family:ui-monospace,monospace;font-size:11px;" +
                           "box-shadow:0 6px 20px rgba(0,0,0,0.2);" +
                           "transform:translate(-50%,-50%);";
@@ -11500,7 +11506,7 @@ function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "user" | "memory" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "user" | "memory" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
@@ -11544,6 +11550,7 @@ function SettingsPanel({
     { heading: "You & Vault", items: [
       { id: "user", label: "Pro Profile", icon: Users },
       { id: "memory", label: "Memory & Context", icon: Brain },
+      { id: "daemons", label: "Daemons", icon: Zap },
       { id: "vault", label: "Vault", icon: Folder },
       { id: "demo", label: "Demo Mode", icon: Sparkles },
     ]},
@@ -11652,6 +11659,7 @@ function SettingsPanel({
           )}
           {section === "user" && <UserProfileSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
+          {section === "daemons" && <DaemonsSection vaultPath={vaultPath} />}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {section === "connectors" && (
             <>
@@ -12367,6 +12375,11 @@ const PREF = {
   compressionTarget: "prevail.pref.compressionTarget",     // 0..1 of budget to compress toward
   protectedRecent: "prevail.pref.protectedRecent",         // keep most-recent N ledger records raw
   distillIntervalSec: "prevail.pref.distillIntervalSec",   // daemon tick cadence
+  remindersIntervalSec: "prevail.pref.remindersIntervalSec", // reminders daemon cadence
+  taskgenEnabled: "prevail.pref.taskgenEnabled",           // "1" | "0" — proactive task gen
+  taskgenModel: "prevail.pref.taskgenModel",               // model for task generation
+  taskgenIntervalSec: "prevail.pref.taskgenIntervalSec",   // task-gen daemon cadence (seconds)
+  taskgenMaxPerDomain: "prevail.pref.taskgenMaxPerDomain", // max tasks generated per domain per day
   // Safety — guardrails. Most are read by the engine/ingestion; redactSecrets
   // is enforced desktop-side in the intent-ledger capture path.
   approvalMode: "prevail.pref.approvalMode",               // "manual" | "auto"
@@ -12574,6 +12587,16 @@ function distillCfgFromPrefs(vaultPath: string) {
   };
 }
 
+function taskgenCfgFromPrefs(vaultPath: string) {
+  return {
+    vault: vaultPath,
+    provider: getPref(PREF.memoryProvider, "claude"),
+    model: getPref(PREF.taskgenModel, "claude-haiku-4-5"),
+    interval_sec: Number(getPref(PREF.taskgenIntervalSec, "3600")) || 3600,
+    max_tasks_per_domain: Number(getPref(PREF.taskgenMaxPerDomain, "3")) || 3,
+  };
+}
+
 function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
   const [persistent, setPersistent] = useState(() => getPref(PREF.persistentMemory, "1") === "1");
   const [profile, setProfile] = useState(() => getPref(PREF.userProfile, "1") === "1");
@@ -12697,6 +12720,145 @@ function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
           </button>
           {distillMsg && <span className="text-xs text-text-secondary">{distillMsg}</span>}
         </div>
+      </div>
+    </>
+  );
+}
+
+// ── Daemons settings panel ────────────────────────────────────────────────────
+function DaemonsSection({ vaultPath }: { vaultPath: string }) {
+  type DaemonStatus = { running?: boolean; last_run_ts?: number | null; last_error?: string | null; lines_distilled?: number; tasks_generated?: number; domains_processed?: number; last_due_count?: number };
+  const [distillSt, setDistillSt] = useState<DaemonStatus | null>(null);
+  const [remindersSt, setRemindersSt] = useState<DaemonStatus | null>(null);
+  const [taskgenSt, setTaskgenSt] = useState<DaemonStatus | null>(null);
+  const [taskgenEnabled, setTaskgenEnabled] = useState(() => getPref(PREF.taskgenEnabled, "0") === "1");
+  const [taskgenModel, setTaskgenModel] = useState(() => getPref(PREF.taskgenModel, "claude-haiku-4-5"));
+  const [taskgenInterval, setTaskgenInterval] = useState(() => getPref(PREF.taskgenIntervalSec, "3600"));
+  const [taskgenMax, setTaskgenMax] = useState(() => getPref(PREF.taskgenMaxPerDomain, "3"));
+  const [remInterval, setRemInterval] = useState(() => getPref(PREF.remindersIntervalSec, "900"));
+  const [taskgenMsg, setTaskgenMsg] = useState("");
+  const [running, setRunning] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try { const s = await invoke<DaemonStatus>("distill_status"); if (alive) setDistillSt(s); } catch {}
+      try { const s = await invoke<DaemonStatus>("reminders_daemon_status"); if (alive) setRemindersSt(s); } catch {}
+      try { const s = await invoke<DaemonStatus>("taskgen_status"); if (alive) setTaskgenSt(s); } catch {}
+    };
+    poll();
+    const id = window.setInterval(poll, 4000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, []);
+
+  const fmtTs = (ts: number | null | undefined) => {
+    if (!ts) return "never";
+    const d = new Date(ts * 1000);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const Row = ({ title, desc, control }: { title: string; desc: string; control: React.ReactNode }) => (
+    <div className="flex items-start justify-between gap-6 border-b border-border-subtle py-4 last:border-0">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-text-primary">{title}</div>
+        <div className="mt-0.5 text-xs text-text-secondary">{desc}</div>
+      </div>
+      <div className="shrink-0">{control}</div>
+    </div>
+  );
+
+  const DaemonCard = ({ name, status, onStop, onStart, startLabel }: { name: string; status: DaemonStatus | null; onStop?: () => void; onStart?: () => void; startLabel?: string }) => (
+    <div className="rounded-lg border border-border bg-surface px-4 py-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className={`inline-block h-2 w-2 rounded-full ${status?.running ? "bg-ok" : "bg-text-muted/30"}`} />
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-text-primary">{name}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {status?.running && onStop && (
+            <button onClick={onStop} className="rounded border border-border px-2 py-0.5 font-mono text-[10px] text-text-muted hover:border-err/50 hover:text-err">stop</button>
+          )}
+          {!status?.running && onStart && (
+            <button onClick={onStart} className="rounded border border-border px-2 py-0.5 font-mono text-[10px] text-text-muted hover:border-accent-border hover:text-accent">{startLabel ?? "start"}</button>
+          )}
+        </div>
+      </div>
+      <div className="mt-1 font-mono text-[10px] text-text-muted">
+        {status?.running ? "running" : "idle"}
+        {status?.last_run_ts ? ` · last run ${fmtTs(status.last_run_ts)}` : ""}
+        {status?.last_error ? <span className="text-err"> · {status.last_error}</span> : null}
+      </div>
+    </div>
+  );
+
+  async function runTaskgenNow() {
+    setRunning(true); setTaskgenMsg("");
+    try {
+      const n = await invoke<number>("taskgen_run_once", { cfg: taskgenCfgFromPrefs(vaultPath) });
+      setTaskgenMsg(n > 0 ? `Generated ${n} task${n === 1 ? "" : "s"}.` : "No new tasks (domains need memory/state first).");
+    } catch (e) { setTaskgenMsg(`Failed: ${e}`); }
+    finally { setRunning(false); }
+  }
+
+  return (
+    <>
+      <SettingsHeader
+        title="Daemons"
+        subtitle="Background processes that run continuously: distill intents into memory, fire task reminders, and proactively generate new tasks."
+      />
+
+      <div className="mb-4 flex flex-col gap-2">
+        <DaemonCard name="Distill" status={distillSt}
+          onStop={() => invoke("distill_stop").catch(() => {})}
+          onStart={() => invoke("distill_start", { cfg: distillCfgFromPrefs(vaultPath) }).catch(() => {})}
+        />
+        <DaemonCard name="Reminders" status={remindersSt}
+          onStop={() => invoke("reminders_daemon_stop").catch(() => {})}
+          onStart={() => {
+            const sec = Number(getPref(PREF.remindersIntervalSec, "900")) || 900;
+            invoke("reminders_daemon_start", { vault: vaultPath, interval_sec: sec }).catch(() => {});
+          }}
+        />
+        <DaemonCard name="Task Gen" status={taskgenSt}
+          onStop={() => invoke("taskgen_stop").catch(() => {})}
+          onStart={() => { if (taskgenEnabled) invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch(() => {}); }}
+          startLabel="start"
+        />
+      </div>
+
+      <div className="rounded-lg border border-border bg-surface px-5">
+        <Row title="Reminders interval" desc="How often the reminders daemon checks for due tasks (seconds)."
+          control={
+            <div className="flex items-center gap-1.5">
+              <input type="number" value={remInterval} onChange={(e) => { setRemInterval(e.target.value); setPref(PREF.remindersIntervalSec, e.target.value); }}
+                className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
+              <span className="font-mono text-xs text-text-muted">s</span>
+            </div>
+          } />
+        <Row title="Task generation" desc="Proactively generate new tasks from your goals, memory, and domain state once per day."
+          control={<Toggle on={taskgenEnabled} onChange={(v) => { setTaskgenEnabled(v); setPref(PREF.taskgenEnabled, v ? "1" : "0"); if (!v) invoke("taskgen_stop").catch(() => {}); else invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch(() => {}); }} />} />
+        <Row title="Task gen model" desc="Model used to generate task suggestions (use a cheap, fast model)."
+          control={<input value={taskgenModel} onChange={(e) => { setTaskgenModel(e.target.value); setPref(PREF.taskgenModel, e.target.value); }}
+            className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
+        <Row title="Tasks per domain" desc="Maximum tasks generated per domain per day."
+          control={<input type="number" value={taskgenMax} onChange={(e) => { setTaskgenMax(e.target.value); setPref(PREF.taskgenMaxPerDomain, e.target.value); }}
+            className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+        <Row title="Task gen interval" desc="How often the task-gen daemon checks for domains that need new tasks (seconds)."
+          control={
+            <div className="flex items-center gap-1.5">
+              <input type="number" value={taskgenInterval} onChange={(e) => { setTaskgenInterval(e.target.value); setPref(PREF.taskgenIntervalSec, e.target.value); }}
+                className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
+              <span className="font-mono text-xs text-text-muted">s</span>
+            </div>
+          } />
+      </div>
+
+      <div className="mt-4 flex items-center gap-2">
+        <button onClick={runTaskgenNow} disabled={running}
+          className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
+          {running ? "generating…" : "generate tasks now"}
+        </button>
+        {taskgenMsg && <span className="text-xs text-text-secondary">{taskgenMsg}</span>}
       </div>
     </>
   );
@@ -13316,7 +13478,7 @@ function McpSection({ vaultPath }: { vaultPath: string }) {
         <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Expose Prevail as an MCP server</div>
         <div className="mb-3 text-xs text-text-secondary">Add this to another tool's MCP config (e.g. Claude Desktop) to let it use your Prevail vault as an MCP server.</div>
         {mcpPathUnstable && (
-          <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-text-secondary">
+          <div className="mb-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[11px] text-warn">
             Prevail is running from a temporary location (a mounted disk image or quarantine). Move <span className="font-mono">Prevail.app</span> into your <span className="font-mono">Applications</span> folder so this path stays valid after you eject the installer.
           </div>
         )}
