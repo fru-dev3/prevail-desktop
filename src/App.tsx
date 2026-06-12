@@ -13737,8 +13737,23 @@ function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
     <>
       <SettingsHeader
         title="Memory & Context"
-        subtitle="Self-learning: every chat is captured as an intent; a background process distills them into a compact long-term memory that's fed back into future chats."
+        subtitle="What the system has learned about you. Every chat is captured as an intent; the distiller daemon compacts them into per-domain long-term memory that is fed back into future chats."
       />
+      {/* The distiller runs on the Daemons page; this is its outcome view. A
+          live status chip links across so the two pages are clearly related. */}
+      <button
+        onClick={() => window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: "daemons" }))}
+        className="mb-4 flex w-full items-center gap-2 rounded-lg border border-border-subtle bg-surface px-4 py-2.5 text-left hover:border-accent-border"
+      >
+        <Brain className="h-3.5 w-3.5 shrink-0 text-accent" />
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-secondary">Distiller</span>
+        <span className="font-mono text-[10px] text-text-muted">
+          {status?.running ? "running" : "idle"}
+          {status?.last_run_ts ? ` · last pass ${formatFreshness(Math.max(0, (Date.now() - status.last_run_ts) / 1000))} ago` : ""}
+          {status?.lines_distilled ? ` · ${status.lines_distilled} lines` : ""}
+        </span>
+        <span className="ml-auto font-mono text-[10px] text-accent">Schedule & controls in Daemons →</span>
+      </button>
       <div className="rounded-lg border border-border bg-surface px-5">
         <Row title="Persistent memory" desc="Distill the intent ledger into per-domain memory and prepend it to prompts. Master switch."
           control={<Toggle on={persistent} onChange={(v) => { setPersistent(v); setPref(PREF.persistentMemory, v ? "1" : "0"); }} />} />
@@ -13973,8 +13988,16 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
     <>
       <SettingsHeader
         title="Daemons"
-        subtitle="Background processes that run continuously: distill intents into memory, fire task reminders, proactively generate tasks, and learn reusable skills from your conversations."
+        subtitle="The background workers. Each runs continuously: distill intents into memory, fire task reminders, proactively generate tasks, and learn reusable skills from your conversations."
       />
+      <button
+        onClick={() => window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: "memory" }))}
+        className="mb-4 flex w-full items-center gap-2 rounded-lg border border-border-subtle bg-surface px-4 py-2.5 text-left hover:border-accent-border"
+      >
+        <Brain className="h-3.5 w-3.5 shrink-0 text-accent" />
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-secondary">What they produce</span>
+        <span className="ml-auto font-mono text-[10px] text-accent">Distilled memory & budget in Memory & Context →</span>
+      </button>
 
       <div className="mb-4 flex flex-col gap-2">
         <DaemonCard
