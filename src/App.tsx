@@ -2222,6 +2222,20 @@ export default function App() {
   // card dispatches this event; we switch the domain + Council tab and seed the
   // question so the user just picks panelists and convenes.
   const [councilSeed, setCouncilSeed] = useState<string | null>(null);
+  const [councilAutoConvene, setCouncilAutoConvene] = useState(false);
+  // Auto-council: a chat send in a domain with the toggle on routes its
+  // question here: seed the Council tab and convene without another click.
+  useEffect(() => {
+    const onAuto = (e: Event) => {
+      const q = (e as CustomEvent<{ prompt?: string }>).detail?.prompt;
+      if (!q) return;
+      setCouncilSeed(q);
+      setCouncilAutoConvene(true);
+      setTab("council");
+    };
+    window.addEventListener("prevail:auto-council", onAuto as EventListener);
+    return () => window.removeEventListener("prevail:auto-council", onAuto as EventListener);
+  }, []);
   useEffect(() => {
     const onSeed = (e: Event) => {
       const detail = (e as CustomEvent<{ domain?: string; prompt: string }>).detail;
@@ -2635,7 +2649,8 @@ export default function App() {
                 onSwitchToChat={() => setTab("chat")}
                 onThreadsChanged={() => void refreshThreads()}
                 seedPrompt={councilSeed}
-                onSeedConsumed={() => setCouncilSeed(null)}
+                seedAutoConvene={councilAutoConvene}
+                onSeedConsumed={() => { setCouncilSeed(null); setCouncilAutoConvene(false); }}
               />
             )}
             {/* Per-domain benchmark, full screen — scoped to whatever domain
@@ -3998,7 +4013,7 @@ function DomainStatusBar({
               <ModeRow glyph="◉" label="Serendipity" on={serendipity} onClick={() => flip("serendipity", serendipity, setSeren)}
                 desc="Invite lateral, off-topic angles. Off stays strictly on-topic." />
               <ModeRow glyph="◐" label="Auto-council" on={auto} onClick={() => flip("auto", auto, setAuto)}
-                desc="Auto-convene the full council on every send instead of one model." />
+                desc="Every send in this domain convenes the full council instead of one model. (Off in Bunker Mode: panelists are cloud models.)" />
             </div>
           )}
         </div>
@@ -7112,6 +7127,16 @@ function ChatPanel({
 
   async function send() {
     if (!input.trim() || !selectedCli) return;
+    // Auto-council: this domain convenes the full council on every send
+    // instead of a single model. Route the question to the Council tab and
+    // convene immediately. (Bunker Mode stays in chat: panelists are cloud
+    // models, and chat auto-switches to a local provider instead.)
+    if (domain && !isBunkerOn() && getDomainToggle(domain, "auto", false)) {
+      const q = input.trim();
+      setInput("");
+      window.dispatchEvent(new CustomEvent("prevail:auto-council", { detail: { prompt: q } }));
+      return;
+    }
     setDomainTab("chat"); // sending always shows the chat, even from Preferences
     // Bunker Mode: auto-switch a (stale) cloud selection to an available local
     // provider instead of letting the backend hard-block. If nothing local is
@@ -8441,6 +8466,7 @@ function CouncilPanel({
   onSwitchToChat,
   onThreadsChanged,
   seedPrompt,
+  seedAutoConvene,
   onSeedConsumed,
 }: {
   domain: string | null;
@@ -8454,6 +8480,7 @@ function CouncilPanel({
   onSwitchToChat: () => void;
   onThreadsChanged?: () => void;
   seedPrompt?: string | null;
+  seedAutoConvene?: boolean;
   onSeedConsumed?: () => void;
 }) {
   // All possible (cli, model) panelist slots across ALL providers —
@@ -8699,8 +8726,13 @@ function CouncilPanel({
   // convenes. Consumed once so it doesn't re-fire on re-render.
   useEffect(() => {
     if (seedPrompt) {
-      setPrompt(seedPrompt);
+      const q = seedPrompt;
+      setPrompt(q);
+      const auto = seedAutoConvene;
       onSeedConsumed?.();
+      // Auto-council: the chat send routed here; convene immediately with the
+      // seeded question (slight delay so panelist slots finish mounting).
+      if (auto) setTimeout(() => void conveneWith(q), 150);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seedPrompt]);
@@ -8966,13 +8998,16 @@ function CouncilPanel({
   }, [phase, submittedPrompt, replies, verdict, panelistSlots, chairSlotObj, _vaultPath, domain, councilTurns, onActiveThreadChange, onThreadsChanged]);
 
   async function convene() {
-    if (!prompt.trim() || panelistSlots.length === 0) return;
+    return conveneWith(prompt);
+  }
+  async function conveneWith(raw: string) {
+    if (!raw.trim() || panelistSlots.length === 0) return;
     sessionRef.current = `council-${Date.now()}`;
     setReplies({});
     setVerdict("");
     setSynthesisSlots(null);
     setPhase("panelists");
-    const trimmed = prompt.trim();
+    const trimmed = raw.trim();
     setSubmittedPrompt(trimmed);
     // Ideal State (constitution) preamble — load fresh per convene so edits
     // propagate without app restart. Highest precedence; leads the prompt.
