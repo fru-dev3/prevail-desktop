@@ -613,7 +613,7 @@ const VENDOR_BRAND: Record<string, { hex: string; accent: string; name: string }
   antigravity: { hex: "#ffffff", accent: "#4285f4", name: "Google Antigravity" },
   ollama:      { hex: "#0a0a0a", accent: "#6b7280", name: "Ollama (local)" },
   lmstudio:    { hex: "#4f46e5", accent: "#6366f1", name: "LM Studio (local)" },
-  mlx:         { hex: "#1f2937", accent: "#9ca3af", name: "MLX (local)" },
+  mlx:         { hex: "#1f2937", accent: "#9ca3af", name: "oMLX (local)" },
   openrouter:  { hex: "#6566f1", accent: "#6566f1", name: "OpenRouter" },
   other:       { hex: "#6b7280", accent: "#6b7280", name: "-" },
 };
@@ -7469,7 +7469,7 @@ function ChatPanel({
     // so guide the user to a domain rather than failing on a missing binary.
     const ENGINE_ONLY = new Set(["openrouter", "lmstudio", "mlx"]);
     if (chatCli && ENGINE_ONLY.has(chatCli) && !useEngine) {
-      const label = chatCli === "openrouter" ? "OpenRouter" : chatCli === "lmstudio" ? "LM Studio" : "MLX";
+      const label = chatCli === "openrouter" ? "OpenRouter" : chatCli === "lmstudio" ? "LM Studio" : "oMLX";
       setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which needs a domain. Pick a domain (left sidebar) to chat with ${label}: or use an installed CLI here in General.`, ts: Date.now() }]);
       onStreamEnd(sessionRef.current);
       return;
@@ -8491,7 +8491,7 @@ function ChatBubble({
     : vendor === "antigravity" ? "Antigravity"
     : vendor === "ollama" ? "Ollama"
     : vendor === "lmstudio" ? "LM Studio"
-    : vendor === "mlx" ? "MLX"
+    : vendor === "mlx" ? "oMLX"
     : vendor;
   const empty = !msg.content && !msg.streaming;
   // Per-provider brand color for the name + bubble accent so each
@@ -10774,7 +10774,7 @@ function BenchmarkPanel({
     if (isBunkerOn() && mode === "council") { setErr("Blocked by Bunker Mode: the Council convenes cloud models."); return; }
     if (isBunkerOn() && runnable.length < plannedJobs.length) {
       setErr(runnable.length === 0
-        ? "Blocked by Bunker Mode: pick a local model (Ollama, LM Studio, MLX)."
+        ? "Blocked by Bunker Mode: pick a local model (Ollama, LM Studio, oMLX)."
         : "Cloud models were skipped (Blocked by Bunker Mode).");
       if (runnable.length === 0) return;
     }
@@ -11216,7 +11216,7 @@ function BenchRunConfig({
           {isBunkerOn() && (
             <div className="mb-3 flex items-center gap-2 rounded-lg border border-border bg-surface-warm/60 px-3 py-2">
               <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-accent" />
-              <span className="font-mono text-[11px] text-text-secondary">Bunker Mode is on: only local models (Ollama, LM Studio, MLX) can run.</span>
+              <span className="font-mono text-[11px] text-text-secondary">Bunker Mode is on: only local models (Ollama, LM Studio, oMLX) can run.</span>
             </div>
           )}
           <div className="space-y-3">
