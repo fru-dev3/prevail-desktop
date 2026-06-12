@@ -1439,6 +1439,9 @@ struct BenchQuestion {
     expected_decision: String,
     expected_verdict_keywords: Vec<String>,
     path: String,
+    created: Option<String>, // YYYY-MM-DD the question entered the suite
+    source: Option<String>,  // "user" | "ai"
+    archived: bool,          // kept for history, excluded from new runs
 }
 
 #[derive(Deserialize)]
@@ -1477,6 +1480,9 @@ fn parse_bench_question(path: &Path) -> Option<BenchQuestion> {
     let mut id = String::new();
     let mut domain = String::new();
     let mut council = false;
+    let mut created = String::new();
+    let mut source = String::new();
+    let mut archived = false;
     let mut expected_decision = String::new();
     let mut keywords: Vec<String> = Vec::new();
     let mut body_start = 0usize;
@@ -1494,6 +1500,9 @@ fn parse_bench_question(path: &Path) -> Option<BenchQuestion> {
                     "expected_decision" => {
                         expected_decision = val.trim_matches('"').to_string()
                     }
+                    "created" => created = val.to_string(),
+                    "source" => source = val.to_string(),
+                    "archived" => archived = val == "true",
                     "expected_verdict_keywords" => {
                         if val.starts_with('[') && val.ends_with(']') {
                             keywords = val[1..val.len() - 1]
@@ -1525,6 +1534,9 @@ fn parse_bench_question(path: &Path) -> Option<BenchQuestion> {
         expected_decision: if expected_decision.starts_with('<') { String::new() } else { expected_decision },
         expected_verdict_keywords: keywords,
         path: path.to_string_lossy().to_string(),
+        created: if created.is_empty() { None } else { Some(created) },
+        source: if source.is_empty() { None } else { Some(source) },
+        archived,
     })
 }
 
@@ -1601,10 +1613,52 @@ fn benchmark_save_question(vault: String, q: BenchQuestionInput) -> Result<Bench
     } else {
         format!("[{}]", kw.iter().map(|k| esc(k)).collect::<Vec<_>>().join(", "))
     };
+    let path = dir.join(format!("{id}.md"));
+    // Lifecycle: an edit never erases the version a past benchmark ran
+    // against. Snapshot the existing file into _versions/ first, and carry
+    // the original created/source/archived forward.
+    let prior = parse_bench_question(&path);
+    if let Some(p) = &prior {
+        let changed = p.prompt != q.prompt.trim()
+            || p.expected_decision != q.expected_decision.clone().unwrap_or_default()
+            || p.expected_verdict_keywords != q.expected_verdict_keywords.clone().unwrap_or_default();
+        if changed {
+            let vdir = dir.join("_versions");
+            let _ = fs::create_dir_all(&vdir);
+            let stamp = {
+                let secs = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+                format!("{y:04}{mo:02}{d:02}-{h:02}{mi:02}{s:02}")
+            };
+            let _ = fs::copy(&path, vdir.join(format!("{id}.{stamp}.md")));
+        }
+    }
+    let today = {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let (y, mo, d, _, _, _) = secs_to_ymdhms(secs);
+        format!("{y:04}-{mo:02}-{d:02}")
+    };
+    let created = prior.as_ref().and_then(|p| p.created.clone()).unwrap_or_else(|| today.clone());
+    let source = prior.as_ref().and_then(|p| p.source.clone()).unwrap_or_else(|| "user".to_string());
+    let archived = prior.as_ref().map(|p| p.archived).unwrap_or(false);
     let mut md = String::new();
     md.push_str("---\n");
     md.push_str(&format!("id: {id}\n"));
     md.push_str(&format!("domain: {}\n", q.domain));
+    md.push_str(&format!("created: {created}\n"));
+    md.push_str(&format!("source: {source}\n"));
+    if archived {
+        md.push_str("archived: true\n");
+    }
+    if prior.is_some() {
+        md.push_str(&format!("edited: {today}\n"));
+    }
     md.push_str(&format!("council: {council}\n"));
     md.push_str(&format!(
         "expected_decision: {}\n",
@@ -1619,9 +1673,40 @@ fn benchmark_save_question(vault: String, q: BenchQuestionInput) -> Result<Bench
     md.push_str("\n\n## Notes\n\n");
     md.push_str(q.notes.as_deref().unwrap_or("").trim());
     md.push('\n');
-    let path = dir.join(format!("{id}.md"));
     fs::write(&path, md).map_err(|e| e.to_string())?;
     parse_bench_question(&path).ok_or_else(|| "failed to re-read saved question".into())
+}
+
+/// Archive / unarchive a question in place: flips the frontmatter flag, so
+/// the file (and every past run that referenced it) stays intact while new
+/// runs and the active list exclude it.
+#[tauri::command]
+fn benchmark_set_question_archived(path: String, archived: bool) -> Result<(), String> {
+    if !path.replace('\\', "/").contains("/benchmark/questions/") || !path.ends_with(".md") {
+        return Err("not a benchmark question file".into());
+    }
+    let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut lines: Vec<String> = raw.lines().map(str::to_string).collect();
+    // Remove any existing archived: line inside the frontmatter block.
+    if lines.first().map(|l| l.trim()) == Some("---") {
+        let end = lines.iter().skip(1).position(|l| l.trim() == "---").map(|i| i + 1);
+        if let Some(end) = end {
+            lines.retain({
+                let mut idx = 0usize;
+                move |l| {
+                    let keep = !(idx > 0 && idx < end && l.trim_start().starts_with("archived:"));
+                    idx += 1;
+                    keep
+                }
+            });
+            if archived {
+                lines.insert(1, "archived: true".to_string());
+            }
+            fs::write(&path, format!("{}\n", lines.join("\n"))).map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+    }
+    Err("malformed question file (no frontmatter)".into())
 }
 
 #[tauri::command]
@@ -3824,6 +3909,7 @@ pub fn run() {
             benchmark_questions,
             benchmark_save_question,
             benchmark_delete_question,
+            benchmark_set_question_archived,
             benchmark_export_questions,
             benchmark_import_questions,
             benchmark_matrix,

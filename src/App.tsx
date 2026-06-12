@@ -10305,6 +10305,9 @@ interface BenchQuestion {
   expected_decision: string;
   expected_verdict_keywords: string[];
   path: string;
+  created?: string | null; // YYYY-MM-DD
+  source?: string | null; // "user" | "ai"
+  archived?: boolean;
 }
 interface MatrixDomainCell {
   judge_avg: number | null;
@@ -11964,7 +11967,15 @@ function BenchQuestions({
     return cli && models ? `${cli}${MODEL_SEP}${models[0].id}` : `claude${MODEL_SEP}opus`;
   });
 
-  const shown = filter === "all" ? questions : questions.filter((q) => q.domain === filter);
+  const inFilter = filter === "all" ? questions : questions.filter((q) => q.domain === filter);
+  const shown = inFilter.filter((q) => !q.archived);
+  const archivedShown = inFilter.filter((q) => q.archived);
+  async function setArchived(q: BenchQuestion, archived: boolean) {
+    try {
+      await invoke("benchmark_set_question_archived", { path: q.path, archived });
+      onChanged();
+    } catch (e) { setInfo(`Archive failed: ${e}`); }
+  }
 
   // Export the whole suite as one portable prevail.bench/v1 JSON file.
   async function exportQuestions() {
@@ -12198,16 +12209,61 @@ function BenchQuestions({
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border">
           {shown.map((q) => (
-            <button key={q.id} onClick={() => openEditor(q)} className="flex w-full items-start gap-3 border-b border-border-subtle px-4 py-3 text-left last:border-0 hover:bg-surface-warm">
-              <span className="mt-0.5 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{q.domain}</span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm text-text-primary">{q.prompt || <span className="text-text-muted">(empty prompt)</span>}</div>
-                {q.expected_decision && <div className="mt-0.5 truncate text-[11px] text-ok">→ {q.expected_decision}</div>}
-              </div>
-              {q.council && <Scale className="h-3.5 w-3.5 shrink-0 text-text-muted" />}
-            </button>
+            <div key={q.id} className="flex w-full items-start gap-3 border-b border-border-subtle px-4 py-3 text-left last:border-0 hover:bg-surface-warm">
+              <button onClick={() => openEditor(q)} className="flex min-w-0 flex-1 items-start gap-3 text-left">
+                <span className="mt-0.5 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{q.domain}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm text-text-primary">{q.prompt || <span className="text-text-muted">(empty prompt)</span>}</div>
+                  {q.expected_decision && <div className="mt-0.5 truncate text-[11px] text-ok">→ {q.expected_decision}</div>}
+                  <div className="mt-0.5 font-mono text-[9px] text-text-muted">
+                    {q.source === "ai" ? "AI-suggested" : "written by you"}{q.created ? ` · added ${q.created}` : ""}
+                  </div>
+                </div>
+                {q.council && <Scale className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />}
+              </button>
+              <button
+                onClick={() => void setArchived(q, true)}
+                title="Archive: kept for past runs, excluded from new ones"
+                className="mt-0.5 shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+              >
+                <Archive className="h-3 w-3" />
+              </button>
+            </div>
           ))}
         </div>
+      )}
+      {archivedShown.length > 0 && (
+        <details className="mt-3 rounded-xl border border-border-subtle bg-surface px-3 py-2">
+          <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
+            Archived · {archivedShown.length}: kept so past benchmark runs stay interpretable
+          </summary>
+          <div className="mt-2 flex flex-col">
+            {archivedShown.map((q) => (
+              <div key={q.id} className="flex items-start gap-3 border-b border-border-subtle px-1 py-2 last:border-0">
+                <span className="mt-0.5 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{q.domain}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm text-text-muted">{q.prompt}</div>
+                  <div className="mt-0.5 font-mono text-[9px] text-text-muted">
+                    {q.source === "ai" ? "AI-suggested" : "written by you"}{q.created ? ` · added ${q.created}` : ""}
+                  </div>
+                </div>
+                <button
+                  onClick={() => void setArchived(q, false)}
+                  className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                >
+                  Restore
+                </button>
+                <button
+                  onClick={async () => { try { await invoke("benchmark_delete_question", { path: q.path }); onChanged(); } catch (e) { setInfo(`Delete failed: ${e}`); } }}
+                  title="Delete permanently (past runs lose this question's text)"
+                  className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn"
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        </details>
       )}
     </div>
   );
