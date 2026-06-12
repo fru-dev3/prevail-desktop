@@ -340,7 +340,7 @@ async fn detect_clis(_app: tauri::AppHandle) -> Result<Vec<CliInfo>, String> {
     // their default port is listening. The engine reaches them via the
     // PREVAIL_OLLAMA_URL redirect (see bunker::local_endpoint_url). Probed the
     // same way as Ollama's daemon — a TCP connect is enough to know it's up.
-    for (id, label) in [("lmstudio", "LM Studio"), ("mlx", "MLX")] {
+    for (id, label) in [("lmstudio", "LM Studio"), ("mlx", "oMLX")] {
         out.push(CliInfo {
             id: id.to_string(),
             label: label.to_string(),
