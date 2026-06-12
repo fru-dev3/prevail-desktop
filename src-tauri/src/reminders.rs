@@ -40,6 +40,9 @@ pub fn scan_due(vault: &str, today: &str) -> Vec<DueTask> {
         if !entry.path().is_dir() {
             continue;
         }
+        if !crate::taskgen::domain_daemon_enabled(&entry.path(), "reminders") {
+            continue;
+        }
         let tasks_path = entry.path().join("_tasks.md");
         let Ok(md) = std::fs::read_to_string(&tasks_path) else {
             continue;
