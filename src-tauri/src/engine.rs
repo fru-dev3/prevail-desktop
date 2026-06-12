@@ -805,6 +805,70 @@ pub(crate) fn vault_append_line(path: &std::path::Path, line: &str) -> std::io::
     f.write_all(line.as_bytes())
 }
 
+/// Spawn `prevail mcp --vault <vault>`, send a JSON-RPC initialize request, and
+/// confirm a well-formed response — the desktop's 'Test handshake' button. Lets
+/// the user verify the MCP server actually answers before wiring it into an
+/// external agent. Returns { ok, info } / { ok:false, error }.
+#[tauri::command]
+pub async fn mcp_test_handshake(vault: String) -> Result<serde_json::Value, String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let bin = resolve_prevail_bin();
+    let (combined_path, user, logname) = crate::build_cli_env();
+    let mut child = tokio::process::Command::new(&bin)
+        .args(["mcp", "--vault", &vault])
+        .env_clear()
+        .envs(crate::scrubbed_env_pairs())
+        .env("PATH", combined_path)
+        .env("USER", user)
+        .env("LOGNAME", logname)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("spawn {bin} failed: {e}"))?;
+    let req = serde_json::json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": { "name": "prevail-desktop-test", "version": "1" } }
+    });
+    if let Some(mut stdin) = child.stdin.take() {
+        let line = format!("{}\n", serde_json::to_string(&req).unwrap_or_default());
+        let _ = stdin.write_all(line.as_bytes()).await;
+        let _ = stdin.flush().await;
+    }
+    // Read the response with a timeout.
+    let result = tokio::time::timeout(std::time::Duration::from_secs(12), async {
+        let mut out = child.stdout.take().ok_or("no stdout")?;
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            let n = out.read(&mut chunk).await.map_err(|e| e.to_string())?;
+            if n == 0 { break; }
+            buf.extend_from_slice(&chunk[..n]);
+            if buf.contains(&b'\n') { break; }
+        }
+        Ok::<String, String>(String::from_utf8_lossy(&buf).to_string())
+    }).await;
+    let _ = child.kill().await;
+    match result {
+        Ok(Ok(text)) => {
+            for line in text.lines() {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+                    if v.get("result").is_some() {
+                        let name = v.pointer("/result/serverInfo/name").and_then(|x| x.as_str()).unwrap_or("prevail");
+                        return Ok(serde_json::json!({ "ok": true, "info": format!("Handshake OK — server '{name}' responded.") }));
+                    }
+                    if let Some(err) = v.get("error") {
+                        return Ok(serde_json::json!({ "ok": false, "error": format!("server returned an error: {err}") }));
+                    }
+                }
+            }
+            Ok(serde_json::json!({ "ok": false, "error": "no valid initialize response from the server" }))
+        }
+        Ok(Err(e)) => Ok(serde_json::json!({ "ok": false, "error": e })),
+        Err(_) => Ok(serde_json::json!({ "ok": false, "error": "timed out waiting for the server (12s)" })),
+    }
+}
+
 /// Is this vault encrypted, and is the session currently unlocked?
 #[tauri::command]
 pub fn engine_vault_status(vault: String) -> Result<serde_json::Value, String> {
@@ -1115,6 +1179,103 @@ pub fn engine_vault_backup(
         }
     }
     run_engine_json(&args)
+}
+
+/// Default backup directory: app-support/backups (outside the vault).
+fn default_backup_dir() -> Option<std::path::PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    Some(std::path::Path::new(&home).join("Library/Application Support/sh.prevail.desktop/backups"))
+}
+
+/// Back up the whole vault into a directory (default: app-support/backups) as a
+/// timestamped archive, then prune old ones. Returns the engine BackupResult
+/// plus the archive path. Used by manual + scheduled + pre-event backups.
+#[tauri::command]
+pub fn vault_backup_to(
+    vault: String,
+    dest_dir: Option<String>,
+    keep: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    let dir = match dest_dir.filter(|d| !d.is_empty()) {
+        Some(d) => std::path::PathBuf::from(d),
+        None => default_backup_dir().ok_or("no HOME")?,
+    };
+    std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir backups: {e}"))?;
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = crate::secs_to_ymdhms(secs);
+    let out = dir.join(format!("prevail-backup-{y:04}{mo:02}{d:02}_{h:02}{mi:02}{s:02}.tar.gz"));
+    let out_str = out.to_string_lossy().to_string();
+    let res = run_engine_json(&["--vault", &vault, "vault", "backup", "--output", &out_str])?;
+    prune_backups(&dir, keep.unwrap_or(10));
+    Ok(res)
+}
+
+/// Keep the newest `keep` backups plus the newest one from each ISO week, prune
+/// the rest, so backups never silently fill the disk.
+fn prune_backups(dir: &std::path::Path, keep: usize) {
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let mut files: Vec<(String, std::path::PathBuf, u64)> = rd
+        .flatten()
+        .filter_map(|e| {
+            let p = e.path();
+            let name = p.file_name()?.to_str()?.to_string();
+            if !name.starts_with("prevail-backup-") || !name.ends_with(".tar.gz") {
+                return None;
+            }
+            let mtime = e.metadata().ok()?.modified().ok()?
+                .duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+            Some((name, p, mtime))
+        })
+        .collect();
+    files.sort_by(|a, b| b.2.cmp(&a.2)); // newest first
+    let mut kept_weeks: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    for (idx, (_, path, mtime)) in files.iter().enumerate() {
+        let week = (*mtime as i64) / (7 * 86_400);
+        let keep_recent = idx < keep;
+        let keep_weekly = kept_weeks.insert(week); // true if this week not yet kept
+        if !keep_recent && !keep_weekly {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+/// List backup archives in `dest_dir` (default app-support/backups), newest
+/// first, with size and timestamp for the restore picker.
+#[tauri::command]
+pub fn vault_backups_list(dest_dir: Option<String>) -> Result<Vec<serde_json::Value>, String> {
+    let dir = match dest_dir.filter(|d| !d.is_empty()) {
+        Some(d) => std::path::PathBuf::from(d),
+        None => default_backup_dir().ok_or("no HOME")?,
+    };
+    let mut out = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            let Some(name) = p.file_name().and_then(|s| s.to_str()) else { continue };
+            if !name.starts_with("prevail-backup-") || !name.ends_with(".tar.gz") {
+                continue;
+            }
+            let meta = e.metadata().ok();
+            let bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            let mtime = meta.and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs()).unwrap_or(0);
+            out.push(serde_json::json!({
+                "name": name, "path": p.to_string_lossy(), "bytes": bytes, "mtime": mtime,
+            }));
+        }
+    }
+    out.sort_by(|a, b| b["mtime"].as_u64().cmp(&a["mtime"].as_u64()));
+    Ok(out)
+}
+
+/// Restore the whole vault from a backup archive (`prevail vault restore <path>`).
+#[tauri::command]
+pub fn vault_restore_archive(vault: String, archive: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["--vault", &vault, "vault", "restore", &archive, "--json", "--force"])
 }
 
 /// `prevail --vault <vault> vault archive <domain> --json`
