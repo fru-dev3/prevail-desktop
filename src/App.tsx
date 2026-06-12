@@ -11541,6 +11541,7 @@ function BenchQuestions({
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestDomain, setSuggestDomain] = useState<string>(initialDomain?.toLowerCase() ?? "");
   const [suggestCount, setSuggestCount] = useState(3);
+  const [suggestModel, setSuggestModel] = useState(`claude${MODEL_SEP}opus`);
 
   const shown = filter === "all" ? questions : questions.filter((q) => q.domain === filter);
 
@@ -11574,15 +11575,21 @@ function BenchQuestions({
     }
   }
 
-  // AI-draft questions from the domain's own recorded context, via the
-  // engine's `bench suggest`. Drafts land in the list for review/editing.
+  // AI-draft questions from each domain's own context, via the engine's
+  // `bench suggest`. Drafts land in the list for review/editing.
   async function suggestWithAi() {
     const domain = suggestDomain.trim().toLowerCase();
     if (!domain) return;
+    const [cli, model] = suggestModel.split(MODEL_SEP);
     const session = `bench-suggest-${Date.now()}`;
     setSuggesting(true);
     setInfo(null);
+    let output = "";
+    let chunkUn: UnlistenFn | null = null;
     try {
+      listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
+        if (e.payload.session === session) output = (output + e.payload.data).slice(-2000);
+      }).then((u) => { chunkUn = u; });
       const done = new Promise<number | null>((resolve) => {
         let un: UnlistenFn | null = null;
         listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
@@ -11590,19 +11597,25 @@ function BenchQuestions({
         }).then((u) => { un = u; });
       });
       await invoke("benchmark_suggest", {
-        args: { session_id: session, vault: vaultPath, domain, count: suggestCount },
+        args: { session_id: session, vault: vaultPath, domain, count: suggestCount, cli, model: model || null },
       });
       const code = await done;
       if (code === 0 || code === null) {
-        setInfo(`Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} for ${titleCase(domain)}. Review the ground truth before trusting scores.`);
+        setInfo(
+          domain === "all"
+            ? `Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} per domain, across all domains. Review the ground truth before trusting scores.`
+            : `Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} for ${titleCase(domain)}. Review the ground truth before trusting scores.`,
+        );
         setSuggestOpen(false);
         onChanged();
       } else {
-        setInfo(`Suggest failed (exit ${code}). Does ${titleCase(domain)} have recorded context yet?`);
+        const tail = output.trim().split("\n").filter(Boolean).slice(-2).join(" / ");
+        setInfo(`Suggest failed (exit ${code})${tail ? `: ${tail}` : ""}`);
       }
     } catch (e) {
       setInfo(`Suggest failed: ${e}`);
     } finally {
+      void (async () => { (chunkUn as UnlistenFn | null)?.(); })();
       setSuggesting(false);
     }
   }
@@ -11732,16 +11745,24 @@ function BenchQuestions({
           <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Draft from context:</span>
           <select value={suggestDomain} onChange={(e) => setSuggestDomain(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
             <option value="">pick a domain…</option>
+            <option value="all">All domains</option>
             {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
           </select>
           <select value={suggestCount} onChange={(e) => setSuggestCount(Number(e.target.value))} className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
-            {[1, 2, 3, 5, 8].map((n) => <option key={n} value={n}>{n} question{n === 1 ? "" : "s"}</option>)}
+            {[1, 2, 3, 5, 8].map((n) => <option key={n} value={n}>{n} question{n === 1 ? "" : "s"}{suggestDomain === "all" ? " per domain" : ""}</option>)}
+          </select>
+          <select value={suggestModel} onChange={(e) => setSuggestModel(e.target.value)} title="Model that drafts the questions" className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
+            {Object.entries(MODELS).flatMap(([cli, models]) =>
+              models.map((m) => (
+                <option key={`${cli}${MODEL_SEP}${m.id}`} value={`${cli}${MODEL_SEP}${m.id}`}>{titleCase(cli)} · {m.label}</option>
+              )),
+            )}
           </select>
           <button onClick={suggestWithAi} disabled={suggesting || !suggestDomain} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background hover:bg-accent-hover disabled:opacity-40">
             {suggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
             {suggesting ? "Drafting…" : "Draft"}
           </button>
-          <span className="text-[10px] text-text-muted">Reads the domain's state, goals, and decisions. Drafts are marked for your review.</span>
+          <span className="text-[10px] text-text-muted">Reads each domain's state, goals, and decisions (fresh domains use goals/config). Drafts are marked for your review.</span>
         </div>
       )}
       {info && (
