@@ -473,6 +473,7 @@ import {
   ThumbsDown,
   ShieldCheck,
   Cloud,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -1375,7 +1376,7 @@ type Mode = "light" | "dark" | "system";
 type Palette = "vault" | "midnight" | "ember" | "mono" | "cyberpunk" | "slate";
 
 const PALETTES: { id: Palette; name: string; blurb: string; swatch: { bg: string; surface: string; accent: string; ai: string } }[] = [
-  { id: "vault",     name: "Vault",     blurb: "Cream + gold, focused, warm",                       swatch: { bg: "#faf8f1", surface: "#ffffff", accent: "#a8862d", ai: "#60a8c0" } },
+  { id: "vault",     name: "Vault",     blurb: "Cream + teal, focused, calm",                       swatch: { bg: "#faf8f1", surface: "#ffffff", accent: "#0d7a6e", ai: "#60a8c0" } },
   { id: "midnight",  name: "Midnight",  blurb: "Deep blue-violet with cool accents",                  swatch: { bg: "#0a0d1f", surface: "#131730", accent: "#818cf8", ai: "#60a8c0" } },
   { id: "ember",     name: "Ember",     blurb: "Warm crimson and bronze, forge vibes",               swatch: { bg: "#1a0a06", surface: "#2a130c", accent: "#ef6c4a", ai: "#60a8c0" } },
   { id: "mono",      name: "Mono",      blurb: "Clean grayscale, minimal and focused",               swatch: { bg: "#f7f7f8", surface: "#ffffff", accent: "#18181b", ai: "#60a8c0" } },
@@ -1689,7 +1690,7 @@ function OnboardingModal({
 // Deterministic per-domain accent color — turns the monochrome card grid
 // into a colorful, scannable board. Muted, on-brand palette.
 const DOMAIN_PALETTE = [
-  "#cc785c", "#2d7fe4", "#5fae74", "#c4a35a", "#a78bfa", "#e0823d",
+  "#cc785c", "#2d7fe4", "#5fae74", "#2dd4bf", "#a78bfa", "#e0823d",
   "#3fa6a0", "#c44e8a", "#7c83ff", "#6b8e23", "#d2674f", "#b8860b",
 ];
 function domainColor(name: string): string {
@@ -1937,6 +1938,30 @@ export default function App() {
     );
     setDomainStats(Object.fromEntries(results));
   }, []);
+  // Fire reminders_check once when the vault becomes known, then again on
+  // every window focus (catches a new day without a relaunch).
+  useEffect(() => {
+    if (isBrowser() || !vaultPath) return;
+    void checkReminders(vaultPath);
+    const onFocus = () => void checkReminders(vaultPath);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [vaultPath, checkReminders]);
+  // Refresh sidebar badge counts silently after any task write (no new
+  // notifications — just update the counts so checking a box clears the badge).
+  useEffect(() => {
+    if (isBrowser() || !vaultPath) return;
+    const refresh = async () => {
+      try {
+        const due = await invoke<{ domain: string }[]>("reminders_due_today", { vault: vaultPath });
+        const counts: Record<string, number> = {};
+        for (const t of due) counts[t.domain] = (counts[t.domain] ?? 0) + 1;
+        setDueTasks(counts);
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("prevail:tasks-changed", refresh);
+    return () => window.removeEventListener("prevail:tasks-changed", refresh);
+  }, [vaultPath]);
   // Onboarding flow — opt-in only, opened manually via "Set up domains".
   // It never auto-appears (the old auto-open raced the scan and popped over
   // a populated vault). The dismissed flag is retained so manual closes are
@@ -1990,18 +2015,23 @@ export default function App() {
     })();
     return () => { unlistens.forEach((u) => u()); unlistens = []; };
   }, []);
-  // Self-learning: start/stop the background distillation daemon based on the
-  // Memory & Context prefs once a vault is known (mirrors how the Telegram
-  // bridge starts on demand). Re-runs when the vault changes.
+  // Start/stop background daemons (distill + reminders + task-gen) when vault is known.
   useEffect(() => {
     if (!vaultPath) return;
-    // The distillation daemon is owned by the desktop host, not a browser tab.
     if (isBrowser()) return;
+    // Distill
     const on = getPref(PREF.persistentMemory, "1") === "1" && getPref(PREF.autoCompression, "1") === "1";
     if (on) {
       invoke("distill_start", { cfg: distillCfgFromPrefs(vaultPath) }).catch((e) => console.error("distill_start", e));
     } else {
       invoke("distill_stop").catch(() => {});
+    }
+    // Reminders
+    const remInterval = Number(getPref(PREF.remindersIntervalSec, "900")) || 900;
+    invoke("reminders_daemon_start", { vault: vaultPath, interval_sec: remInterval }).catch(() => {});
+    // Task generation
+    if (getPref(PREF.taskgenEnabled, "0") === "1") {
+      invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch((e) => console.error("taskgen_start", e));
     }
   }, [vaultPath]);
   useEffect(() => {
@@ -2029,6 +2059,7 @@ export default function App() {
     startedAt: number;
   };
   const [runningStreams, setRunningStreams] = useState<RunningStream[]>([]);
+  const [activeBenchmark, setActiveBenchmark] = useState<{ label: string; done: number; total: number } | null>(null);
   // Domains whose background run finished while you were looking elsewhere.
   // The live amber pulse vanishes the instant a stream ends; this keeps a
   // steady "ready" marker on the domain until you actually open it, so a
@@ -2372,6 +2403,7 @@ export default function App() {
           }}
           onBack={() => setTab("chat")}
           jumpTo={settingsJump}
+          onBenchmarkActive={setActiveBenchmark}
           onStartChatWith={(cliId, modelId) => {
             lsSet(LS.defaultChatCli, cliId);
             if (modelId) lsSet(`prevail.model.${cliId}`, modelId);
@@ -2388,7 +2420,7 @@ export default function App() {
   return (
     <div className="relative flex h-screen flex-col bg-background text-text-primary">
       {bunkerEnabled && !bunkerLocalOk && (
-        <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-600/30 bg-amber-500/10 px-4 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+        <div className="flex shrink-0 items-center justify-center gap-2 border-b border-warn/30 bg-warn/10 px-4 py-1.5 text-xs text-warn">
           <ShieldCheck className="h-3.5 w-3.5" />
           <span>Bunker Mode needs a local model provider, but none was detected.</span>
           <a href="https://ollama.com/download" target="_blank" rel="noreferrer" className="font-medium underline">Install Ollama ›</a>
@@ -2417,6 +2449,7 @@ export default function App() {
           railWidth={domainRailWidth}
           onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
           onDomainsChanged={() => void refreshDomains()}
+          activeBenchmark={activeBenchmark}
         />
         {!sidebarCollapsed && (
           <ResizeHandle
@@ -2600,6 +2633,7 @@ export default function App() {
                 key={selectedDomain || benchScope || "all"}
                 vaultPath={vaultPath}
                 initialDomain={selectedDomain || benchScope}
+                onBenchmarkActive={setActiveBenchmark}
               />
             </div>
           </div>
@@ -2672,6 +2706,7 @@ function Sidebar({
   railWidth,
   onOpenOnboarding,
   onDomainsChanged,
+  activeBenchmark,
 }: {
   collapsed: boolean;
   setCollapsed: (v: boolean | ((cur: boolean) => boolean)) => void;
@@ -2691,6 +2726,7 @@ function Sidebar({
   railWidth: number;
   onOpenOnboarding: () => void;
   onDomainsChanged: () => void;
+  activeBenchmark?: { label: string; done: number; total: number } | null;
 }) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -2962,7 +2998,7 @@ function Sidebar({
                         pill.style.cssText =
                           "position:fixed;z-index:9999;pointer-events:none;" +
                           "padding:6px 10px;border-radius:9999px;" +
-                          "background:var(--color-accent,#a8862d);color:#fff;" +
+                          "background:var(--color-accent,#0d7a6e);color:#fff;" +
                           "font-family:ui-monospace,monospace;font-size:11px;" +
                           "box-shadow:0 6px 20px rgba(0,0,0,0.2);" +
                           "transform:translate(-50%,-50%);";
@@ -3180,27 +3216,56 @@ function Sidebar({
         </button>
       )}
 
+      {/* Active benchmark indicator — visible while navigating away */}
+      {activeBenchmark && (
+        collapsed ? (
+          <div className="flex justify-center border-t border-border-subtle px-2 py-2" title={`Benchmarking: ${activeBenchmark.done}/${activeBenchmark.total}`}>
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+            </span>
+          </div>
+        ) : (
+          <div className="border-t border-border-subtle px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-1.5 w-1.5 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
+              </span>
+              <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-accent">Benchmarking</span>
+              <span className="font-mono text-[10px] text-text-muted">{activeBenchmark.done}/{activeBenchmark.total}</span>
+            </div>
+            <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-surface-strong">
+              <div
+                className="h-full rounded-full bg-accent transition-all duration-500"
+                style={{ width: activeBenchmark.total > 0 ? `${Math.round((activeBenchmark.done / activeBenchmark.total) * 100)}%` : "0%" }}
+              />
+            </div>
+          </div>
+        )
+      )}
+
       {/* Settings + theme — pinned to bottom (Upgrade lives in Settings) */}
-      <div className={`border-t border-border-subtle ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1 px-2 py-2"}`}>
+      <div className={`border-t border-border-subtle bg-surface-warm/30 ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1 px-2 py-1.5"}`}>
         <button
           onClick={() => setTab("settings")}
           title="Settings"
           className={
             collapsed
-              ? `flex h-9 w-9 items-center justify-center rounded-md transition-colors ${
+              ? `flex h-8 w-8 items-center justify-center rounded transition-colors ${
                   tab === "settings"
                     ? "bg-accent-soft text-accent"
-                    : "text-text-muted hover:bg-surface-warm hover:text-text-primary"
+                    : "text-text-muted hover:text-text-primary"
                 }`
-              : `flex flex-1 items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
+              : `flex flex-1 items-center gap-2 rounded px-2 py-1.5 text-left transition-colors ${
                   tab === "settings"
-                    ? "bg-accent-soft text-accent"
-                    : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+                    ? "text-accent"
+                    : "text-text-muted hover:text-text-secondary"
                 }`
           }
         >
-          <SettingsIcon className="h-4 w-4" />
-          {!collapsed && "Settings"}
+          <SettingsIcon className="h-3.5 w-3.5 shrink-0" />
+          {!collapsed && <span className="font-mono text-[11px] tracking-wide uppercase">Settings</span>}
         </button>
         <button
           onClick={() => {
@@ -3208,11 +3273,7 @@ function Sidebar({
             const i = cycle.indexOf(appearance.mode);
             appearance.setMode(cycle[(i + 1) % cycle.length]);
           }}
-          className={
-            collapsed
-              ? "flex h-9 w-9 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-text-primary"
-              : "flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-text-primary"
-          }
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:text-text-secondary transition-colors"
           title={`Theme: ${appearance.mode} — click to cycle`}
         >
           {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
@@ -4141,7 +4202,10 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
   }, [vaultPath, domain, nonce]);
   async function persist(next: DomainTask[]) {
     setTasks(next);
-    try { await invoke("tasks_set", { vault: vaultPath, domain, tasks: next }); } catch (e) { console.error("tasks_set", e); }
+    try {
+      await invoke("tasks_set", { vault: vaultPath, domain, tasks: next });
+      window.dispatchEvent(new Event("prevail:tasks-changed"));
+    } catch (e) { console.error("tasks_set", e); }
   }
   if (tasks.length === 0 && !adding) {
     return (
@@ -4587,6 +4651,28 @@ function DomainPrefsPanel({
   const sandboxKey = `prevail.domain.${domain}.sandbox`;
   const keywordsKey = `prevail.domain.${domain}.routing.keywords`;
 
+  // Per-domain daemon config (_daemon.json) — taskgen + reminders toggles.
+  // Default true so domains work without any config file.
+  const daemonCfgPath = `${vaultPath}/${domain}/_daemon.json`;
+  const [daemonTaskgen, setDaemonTaskgen] = useState(true);
+  const [daemonReminders, setDaemonReminders] = useState(true);
+  useEffect(() => {
+    invoke<string>("read_text_file", { path: daemonCfgPath })
+      .then((raw) => {
+        try {
+          const cfg = JSON.parse(raw);
+          if (typeof cfg.taskgen === "boolean") setDaemonTaskgen(cfg.taskgen);
+          if (typeof cfg.reminders === "boolean") setDaemonReminders(cfg.reminders);
+        } catch {}
+      })
+      .catch(() => {}); // file absent → defaults (true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [daemonCfgPath]);
+  function saveDaemonCfg(patch: { taskgen?: boolean; reminders?: boolean }) {
+    const next = { taskgen: daemonTaskgen, reminders: daemonReminders, ...patch };
+    invoke("write_text_file", { path: daemonCfgPath, contents: JSON.stringify(next, null, 2) }).catch(() => {});
+  }
+
   // Per-domain prefs are stored in the domain's manifest (config block)
   // when the engine supports it, and ALSO mirrored to localStorage so the
   // rest of the app (ChatPanel) — which reads localStorage — keeps working.
@@ -4998,6 +5084,26 @@ function DomainPrefsPanel({
         />
         <div className="mt-2 font-mono text-[10px] text-text-muted">
           Edits save when the field loses focus.
+        </div>
+      </section>
+
+      <section className="mb-6 rounded-xl border border-border bg-surface p-4">
+        <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Daemons</div>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-text-primary">Task generation</div>
+              <div className="mt-0.5 text-xs text-text-secondary">AI proactively writes tasks for this domain from your goals and memory.</div>
+            </div>
+            <Toggle on={daemonTaskgen} onChange={(v) => { setDaemonTaskgen(v); saveDaemonCfg({ taskgen: v }); }} />
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-text-primary">Reminders</div>
+              <div className="mt-0.5 text-xs text-text-secondary">Fire a notification when tasks in this domain are due or overdue.</div>
+            </div>
+            <Toggle on={daemonReminders} onChange={(v) => { setDaemonReminders(v); saveDaemonCfg({ reminders: v }); }} />
+          </div>
         </div>
       </section>
     </div>
@@ -9832,9 +9938,11 @@ const MODEL_SEP = "::";
 function BenchmarkPanel({
   vaultPath,
   initialDomain,
+  onBenchmarkActive,
 }: {
   vaultPath: string;
   initialDomain?: string | null;
+  onBenchmarkActive?: (info: { label: string; done: number; total: number } | null) => void;
 }) {
   // A "runs" deep link from the Models page lands here with a model key to
   // expand on the leaderboard. Consumed once.
@@ -9903,6 +10011,15 @@ function BenchmarkPanel({
   const [log, setLog] = useState("");
   const logRef = useRef<HTMLPreElement>(null);
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log]);
+
+  // Propagate running state up so the sidebar can show a persistent indicator.
+  useEffect(() => {
+    if (!onBenchmarkActive) return;
+    if (!running) { onBenchmarkActive(null); return; }
+    const done = jobs.reduce((a, j) => a + j.done, 0);
+    const total = jobs.reduce((a, j) => a + j.total, 0);
+    onBenchmarkActive({ label: activeBatch?.label ?? "Benchmarking", done, total });
+  }, [running, jobs, activeBatch, onBenchmarkActive]);
 
   const toggleModel = (cli: string, model: string) => {
     const k = `${cli}${MODEL_SEP}${model}`;
@@ -10008,9 +10125,9 @@ function BenchmarkPanel({
   }
 
   async function executeJobs(plannedJobs: BenchJob[], councilMode: boolean, scopeStr: string) {
-    // One BATCH per launch: the unit you see (and rerun) in History. Named so
-    // several batches a day stay distinguishable: time, scope, panel size.
     const now = new Date();
+    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const dateLabel = `${MONTHS[now.getMonth()]} ${now.getDate()}`;
     const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const batchId = `b${now.getTime()}`;
     const scopeDomains = scopeStr ? scopeStr.split(",").map((d) => titleCase(d.trim())).filter(Boolean) : [];
@@ -10018,8 +10135,10 @@ function BenchmarkPanel({
       scopeDomains.length === 0 ? "All domains"
       : scopeDomains.length <= 2 ? scopeDomains.join(", ")
       : `${scopeDomains.length} domains`;
-    const modelPart = plannedJobs.length === 1 ? plannedJobs[0].label : `${plannedJobs.length} models`;
-    const batchLabel = `${hhmm} · ${scopePart} · ${modelPart}`;
+    // Compact model label: "Claude Opus 4.7" instead of "Claude · Opus (latest)"
+    const shortModel = (j: BenchJob) => `${titleCase(j.cli)} ${(MODELS[j.cli]?.find(m => m.id === j.model)?.label ?? j.model).replace(/\s*\(.*?\)/, "")}`.trim();
+    const modelPart = plannedJobs.length === 1 ? shortModel(plannedJobs[0]) : `${plannedJobs.length} models`;
+    const batchLabel = `${dateLabel} ${hhmm.replace(":", "-")} ${scopePart} ${modelPart}`;
     setActiveBatch({ label: batchLabel, scope: scopePart, domains: scopeDomains });
     setErr(null);
     setFinishedBatch(null);
@@ -10188,6 +10307,7 @@ function BenchmarkPanel({
             onRun={runBenchmark}
             onViewResults={() => setView("board")}
             onReset={() => { setJobs([]); setLog(""); }}
+            onCrumbHome={() => setView("board")}
           />
         )}
         {(view === "board" || view === "history" || view === "matrix") && (
@@ -10228,25 +10348,35 @@ function BenchCrumbs({
   meta?: React.ReactNode;
 }) {
   return (
-    <nav className="mb-4 flex items-center gap-2 font-mono text-[17px] text-text-muted">
-      {items.map((it, i) => (
-        <Fragment key={`${it.label}-${i}`}>
-          {i > 0 && <ChevronRight className="h-4 w-4 shrink-0" />}
-          {it.onClick ? (
-            <button onClick={it.onClick} className="max-w-[320px] truncate hover:text-accent">{it.label}</button>
-          ) : (
-            <span className={`max-w-[320px] truncate ${i === items.length - 1 ? "font-semibold text-text-primary" : ""}`}>{it.label}</span>
-          )}
-        </Fragment>
-      ))}
-      {meta != null && <span className="ml-auto shrink-0 text-xs text-text-muted">{meta}</span>}
+    <nav className="mb-4 flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
+      {items.map((it, i) => {
+        const isLast = i === items.length - 1;
+        return (
+          <Fragment key={`${it.label}-${i}`}>
+            {i > 0 && <ChevronRight className={`shrink-0 ${isLast ? "h-4 w-4 text-text-muted/50" : "h-3.5 w-3.5 text-text-muted/40"}`} />}
+            {it.onClick ? (
+              <button
+                onClick={it.onClick}
+                className="font-mono text-sm text-text-muted underline underline-offset-2 decoration-text-muted/40 hover:text-accent hover:decoration-accent transition-colors"
+              >
+                {it.label}
+              </button>
+            ) : isLast ? (
+              <span className="font-mono text-sm text-text-primary">{it.label}</span>
+            ) : (
+              <span className="font-mono text-sm text-text-muted">{it.label}</span>
+            )}
+          </Fragment>
+        );
+      })}
+      {meta != null && <span className="ml-auto shrink-0 font-mono text-xs text-text-muted">{meta}</span>}
     </nav>
   );
 }
 
 function BenchRunConfig({
   mode, setMode, selModels, toggleModel, allDomains, scope, toggleScope,
-  questionCounts, questionCount, running, jobs, log, logRef, activeBatch, onRun, onViewResults, onReset,
+  questionCounts, questionCount, running, jobs, log, logRef, activeBatch, onRun, onViewResults, onReset, onCrumbHome,
 }: {
   mode: "single" | "council";
   setMode: (m: "single" | "council") => void;
@@ -10265,6 +10395,7 @@ function BenchRunConfig({
   onRun: () => void;
   onViewResults: () => void;
   onReset: () => void;
+  onCrumbHome?: () => void;
 }) {
   const selCount = mode === "council" ? 1 : selModels.size;
   void setMode; // mode toggle now lives in the header bar; prop kept for the call site
@@ -10295,7 +10426,7 @@ function BenchRunConfig({
       <div className="w-full space-y-4 px-8 py-5">
         <BenchCrumbs
           items={[
-            { label: "Benchmark" },
+            { label: "Benchmark", onClick: onCrumbHome },
             { label: "Run", onClick: allDone ? onReset : undefined },
             { label: activeBatch?.label ?? (running ? "Running…" : "Finished") },
           ]}
@@ -10430,7 +10561,7 @@ function BenchRunConfig({
   return (
     <div className="w-full space-y-7 px-8 py-5">
       <BenchCrumbs
-        items={[{ label: "Benchmark" }, { label: "Run" }]}
+        items={[{ label: "Benchmark", onClick: onCrumbHome }, { label: "Run" }]}
         meta={`${questionCount} question${questionCount === 1 ? "" : "s"}${scope.size > 0 ? " · scoped" : ""}`}
       />
       {/* Mode lives in the header bar now (one consistent control row). */}
@@ -11430,6 +11561,7 @@ function SettingsPanel({
   onSetupDomains,
   onVaultMoved,
   jumpTo,
+  onBenchmarkActive,
 }: {
   appearance: ReturnType<typeof useAppearance>;
   vaultPath: string;
@@ -11443,8 +11575,9 @@ function SettingsPanel({
   onSetupDomains?: () => void;
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
+  onBenchmarkActive?: (info: { label: string; done: number; total: number } | null) => void;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "user" | "memory" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "user" | "memory" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
@@ -11488,6 +11621,7 @@ function SettingsPanel({
     { heading: "You & Vault", items: [
       { id: "user", label: "Pro Profile", icon: Users },
       { id: "memory", label: "Memory & Context", icon: Brain },
+      { id: "daemons", label: "Daemons", icon: Zap },
       { id: "vault", label: "Vault", icon: Folder },
       { id: "demo", label: "Demo Mode", icon: Sparkles },
     ]},
@@ -11590,12 +11724,13 @@ function SettingsPanel({
               {/* Full cockpit: unscoped, so runs/results/questions cover the
                   whole vault. The same panel opens scoped from a domain. */}
               <div className="-mx-4 min-h-[60vh]">
-                <BenchmarkPanel vaultPath={vaultPath} />
+                <BenchmarkPanel vaultPath={vaultPath} onBenchmarkActive={onBenchmarkActive} />
               </div>
             </>
           )}
           {section === "user" && <UserProfileSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
+          {section === "daemons" && <DaemonsSection vaultPath={vaultPath} />}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {section === "connectors" && (
             <>
@@ -12311,6 +12446,11 @@ const PREF = {
   compressionTarget: "prevail.pref.compressionTarget",     // 0..1 of budget to compress toward
   protectedRecent: "prevail.pref.protectedRecent",         // keep most-recent N ledger records raw
   distillIntervalSec: "prevail.pref.distillIntervalSec",   // daemon tick cadence
+  remindersIntervalSec: "prevail.pref.remindersIntervalSec", // reminders daemon cadence
+  taskgenEnabled: "prevail.pref.taskgenEnabled",           // "1" | "0" — proactive task gen
+  taskgenModel: "prevail.pref.taskgenModel",               // model for task generation
+  taskgenIntervalSec: "prevail.pref.taskgenIntervalSec",   // task-gen daemon cadence (seconds)
+  taskgenMaxPerDomain: "prevail.pref.taskgenMaxPerDomain", // max tasks generated per domain per day
   // Safety — guardrails. Most are read by the engine/ingestion; redactSecrets
   // is enforced desktop-side in the intent-ledger capture path.
   approvalMode: "prevail.pref.approvalMode",               // "manual" | "auto"
@@ -12518,6 +12658,16 @@ function distillCfgFromPrefs(vaultPath: string) {
   };
 }
 
+function taskgenCfgFromPrefs(vaultPath: string) {
+  return {
+    vault: vaultPath,
+    provider: getPref(PREF.memoryProvider, "claude"),
+    model: getPref(PREF.taskgenModel, "claude-haiku-4-5"),
+    interval_sec: Number(getPref(PREF.taskgenIntervalSec, "3600")) || 3600,
+    max_tasks_per_domain: Number(getPref(PREF.taskgenMaxPerDomain, "3")) || 3,
+  };
+}
+
 function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
   const [persistent, setPersistent] = useState(() => getPref(PREF.persistentMemory, "1") === "1");
   const [profile, setProfile] = useState(() => getPref(PREF.userProfile, "1") === "1");
@@ -12641,6 +12791,228 @@ function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
           </button>
           {distillMsg && <span className="text-xs text-text-secondary">{distillMsg}</span>}
         </div>
+      </div>
+    </>
+  );
+}
+
+// ── Daemon card ───────────────────────────────────────────────────────────────
+type DaemonStatus = { running?: boolean; last_run_ts?: number | null; last_error?: string | null; lines_distilled?: number; tasks_generated?: number; domains_processed?: number; last_due_count?: number };
+
+function DaemonCard({
+  name,
+  status,
+  extra,
+  onStart,
+  onStop,
+}: {
+  name: string;
+  status: DaemonStatus | null;
+  extra?: string | null;
+  onStart?: () => Promise<void>;
+  onStop?: () => Promise<void>;
+}) {
+  const [phase, setPhase] = useState<"idle" | "starting" | "stopping">("idle");
+
+  // Sync: as soon as the poll confirms the expected state, clear the transition.
+  useEffect(() => {
+    if (phase === "starting" && status?.running) setPhase("idle");
+    if (phase === "stopping" && status?.running === false) setPhase("idle");
+  }, [status?.running]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isRunning = phase === "starting" || (!!status?.running && phase !== "stopping");
+  const busy = phase !== "idle";
+
+  const fmtTs = (ts: number | null | undefined) =>
+    ts ? new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
+
+  const statusLine = phase === "starting"
+    ? "starting…"
+    : phase === "stopping"
+    ? "stopping…"
+    : isRunning
+    ? `running${status?.last_run_ts ? ` · checked ${fmtTs(status.last_run_ts)}` : ""}`
+    : `idle${status?.last_run_ts ? ` · last ran ${fmtTs(status.last_run_ts)}` : ""}`;
+
+  async function handleStart() {
+    setPhase("starting");
+    try { await onStart?.(); } catch {}
+    setTimeout(() => setPhase((p) => p === "starting" ? "idle" : p), 4000);
+  }
+  async function handleStop() {
+    setPhase("stopping");
+    try { await onStop?.(); } catch {}
+    setTimeout(() => setPhase((p) => p === "stopping" ? "idle" : p), 4000);
+  }
+
+  return (
+    <div className={`rounded-lg border px-4 py-3 transition-all duration-300 ${
+      isRunning
+        ? "border-ok/30 bg-ok/5"
+        : busy
+        ? "border-accent-border bg-accent-soft/50"
+        : "border-border bg-surface"
+    }`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span className="relative inline-flex h-2.5 w-2.5 items-center justify-center">
+            {isRunning && (
+              <span className="pulse-soft absolute inset-0 rounded-full bg-ok/40" />
+            )}
+            <span className={`relative inline-block h-2 w-2 rounded-full transition-colors duration-300 ${
+              isRunning ? "bg-ok" : busy ? "bg-accent" : "bg-text-muted/30"
+            }`} />
+          </span>
+          <span className={`font-mono text-[11px] font-bold uppercase tracking-[0.15em] ${
+            isRunning ? "text-ok" : "text-text-primary"
+          }`}>{name}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {busy ? (
+            <span className="font-mono text-[10px] text-text-muted opacity-60">
+              {phase === "starting" ? "starting…" : "stopping…"}
+            </span>
+          ) : isRunning ? (
+            onStop && (
+              <button onClick={handleStop}
+                className="rounded border border-border px-2 py-0.5 font-mono text-[10px] text-text-muted transition-colors hover:border-err/60 hover:bg-err/5 hover:text-err">
+                stop
+              </button>
+            )
+          ) : (
+            onStart && (
+              <button onClick={handleStart}
+                className="rounded border border-border px-2 py-0.5 font-mono text-[10px] text-text-muted transition-colors hover:border-ok/50 hover:bg-ok/5 hover:text-ok">
+                start
+              </button>
+            )
+          )}
+        </div>
+      </div>
+      <div className={`mt-1.5 font-mono text-[10px] ${isRunning ? "text-ok/70" : "text-text-muted"}`}>
+        {statusLine}
+        {!busy && extra ? <span className="text-text-muted"> · {extra}</span> : null}
+        {!busy && status?.last_error ? <span className="text-err"> · {status.last_error}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+// ── Daemons settings panel ────────────────────────────────────────────────────
+function DaemonsSection({ vaultPath }: { vaultPath: string }) {
+  const [distillSt, setDistillSt] = useState<DaemonStatus | null>(null);
+  const [remindersSt, setRemindersSt] = useState<DaemonStatus | null>(null);
+  const [taskgenSt, setTaskgenSt] = useState<DaemonStatus | null>(null);
+  const [taskgenEnabled, setTaskgenEnabled] = useState(() => getPref(PREF.taskgenEnabled, "0") === "1");
+  const [taskgenModel, setTaskgenModel] = useState(() => getPref(PREF.taskgenModel, "claude-haiku-4-5"));
+  const [taskgenInterval, setTaskgenInterval] = useState(() => getPref(PREF.taskgenIntervalSec, "3600"));
+  const [taskgenMax, setTaskgenMax] = useState(() => getPref(PREF.taskgenMaxPerDomain, "3"));
+  const [remInterval, setRemInterval] = useState(() => getPref(PREF.remindersIntervalSec, "900"));
+  const [taskgenMsg, setTaskgenMsg] = useState("");
+  const [running, setRunning] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try { const s = await invoke<DaemonStatus>("distill_status"); if (alive) setDistillSt(s); } catch {}
+      try { const s = await invoke<DaemonStatus>("reminders_daemon_status"); if (alive) setRemindersSt(s); } catch {}
+      try { const s = await invoke<DaemonStatus>("taskgen_status"); if (alive) setTaskgenSt(s); } catch {}
+    };
+    poll();
+    const id = window.setInterval(poll, 2000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, []);
+
+  const Row = ({ title, desc, control }: { title: string; desc: string; control: React.ReactNode }) => (
+    <div className="flex items-start justify-between gap-6 border-b border-border-subtle py-4 last:border-0">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-text-primary">{title}</div>
+        <div className="mt-0.5 text-xs text-text-secondary">{desc}</div>
+      </div>
+      <div className="shrink-0">{control}</div>
+    </div>
+  );
+
+  async function runTaskgenNow() {
+    setRunning(true); setTaskgenMsg("");
+    try {
+      const n = await invoke<number>("taskgen_run_once", { cfg: taskgenCfgFromPrefs(vaultPath) });
+      setTaskgenMsg(n > 0 ? `Generated ${n} task${n === 1 ? "" : "s"}.` : "No new tasks (domains need memory/state first).");
+    } catch (e) { setTaskgenMsg(`Failed: ${e}`); }
+    finally { setRunning(false); }
+  }
+
+  return (
+    <>
+      <SettingsHeader
+        title="Daemons"
+        subtitle="Background processes that run continuously: distill intents into memory, fire task reminders, and proactively generate new tasks."
+      />
+
+      <div className="mb-4 flex flex-col gap-2">
+        <DaemonCard
+          name="Distill"
+          status={distillSt}
+          extra={distillSt?.lines_distilled ? `${distillSt.lines_distilled} lines distilled` : null}
+          onStop={async () => { await invoke("distill_stop"); }}
+          onStart={async () => { await invoke("distill_start", { cfg: distillCfgFromPrefs(vaultPath) }); }}
+        />
+        <DaemonCard
+          name="Reminders"
+          status={remindersSt}
+          extra={remindersSt?.last_due_count != null
+            ? remindersSt.last_due_count > 0
+              ? `${remindersSt.last_due_count} task${remindersSt.last_due_count === 1 ? "" : "s"} due`
+              : "no due tasks"
+            : null}
+          onStop={async () => { await invoke("reminders_daemon_stop"); }}
+          onStart={async () => {
+            const sec = Number(getPref(PREF.remindersIntervalSec, "900")) || 900;
+            await invoke("reminders_daemon_start", { vault: vaultPath, interval_sec: sec });
+          }}
+        />
+        <DaemonCard
+          name="Task Gen"
+          status={taskgenSt}
+          extra={taskgenSt?.tasks_generated ? `${taskgenSt.tasks_generated} tasks generated` : null}
+          onStop={async () => { await invoke("taskgen_stop"); }}
+          onStart={async () => { await invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }); }}
+        />
+      </div>
+
+      <div className="rounded-lg border border-border bg-surface px-5">
+        <Row title="Reminders interval" desc="How often the reminders daemon checks for due tasks (seconds)."
+          control={
+            <div className="flex items-center gap-1.5">
+              <input type="number" value={remInterval} onChange={(e) => { setRemInterval(e.target.value); setPref(PREF.remindersIntervalSec, e.target.value); }}
+                className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
+              <span className="font-mono text-xs text-text-muted">s</span>
+            </div>
+          } />
+        <Row title="Task generation" desc="Proactively generate new tasks from your goals, memory, and domain state once per day."
+          control={<Toggle on={taskgenEnabled} onChange={(v) => { setTaskgenEnabled(v); setPref(PREF.taskgenEnabled, v ? "1" : "0"); if (!v) invoke("taskgen_stop").catch(() => {}); else invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch(() => {}); }} />} />
+        <Row title="Task gen model" desc="Model used to generate task suggestions (use a cheap, fast model)."
+          control={<input value={taskgenModel} onChange={(e) => { setTaskgenModel(e.target.value); setPref(PREF.taskgenModel, e.target.value); }}
+            className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
+        <Row title="Tasks per domain" desc="Maximum tasks generated per domain per day."
+          control={<input type="number" value={taskgenMax} onChange={(e) => { setTaskgenMax(e.target.value); setPref(PREF.taskgenMaxPerDomain, e.target.value); }}
+            className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+        <Row title="Task gen interval" desc="How often the task-gen daemon checks for domains that need new tasks (seconds)."
+          control={
+            <div className="flex items-center gap-1.5">
+              <input type="number" value={taskgenInterval} onChange={(e) => { setTaskgenInterval(e.target.value); setPref(PREF.taskgenIntervalSec, e.target.value); }}
+                className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
+              <span className="font-mono text-xs text-text-muted">s</span>
+            </div>
+          } />
+      </div>
+
+      <div className="mt-4 flex items-center gap-2">
+        <button onClick={runTaskgenNow} disabled={running}
+          className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
+          {running ? "generating…" : "generate tasks now"}
+        </button>
+        {taskgenMsg && <span className="text-xs text-text-secondary">{taskgenMsg}</span>}
       </div>
     </>
   );
@@ -13260,7 +13632,7 @@ function McpSection({ vaultPath }: { vaultPath: string }) {
         <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Expose Prevail as an MCP server</div>
         <div className="mb-3 text-xs text-text-secondary">Add this to another tool's MCP config (e.g. Claude Desktop) to let it use your Prevail vault as an MCP server.</div>
         {mcpPathUnstable && (
-          <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-text-secondary">
+          <div className="mb-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[11px] text-warn">
             Prevail is running from a temporary location (a mounted disk image or quarantine). Move <span className="font-mono">Prevail.app</span> into your <span className="font-mono">Applications</span> folder so this path stays valid after you eject the installer.
           </div>
         )}
