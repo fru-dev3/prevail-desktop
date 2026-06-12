@@ -12821,7 +12821,7 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         />
         <DaemonCard name="Task Gen" status={taskgenSt}
           onStop={() => invoke("taskgen_stop").catch(() => {})}
-          onStart={() => { if (taskgenEnabled) invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch(() => {}); }}
+          onStart={() => invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch(() => {})}
           startLabel="start"
         />
       </div>
