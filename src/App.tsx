@@ -3096,8 +3096,8 @@ function Sidebar({
                       // Don't let onClick fire after a drag ended
                       ev.preventDefault();
                       ev.stopPropagation();
-                      const hook = (window as unknown as { __prevailAttach?: (n: string) => void }).__prevailAttach;
-                      if (hook) hook(d.name);
+                      const hook = (window as unknown as { __prevailAttach?: (n: string, mode?: "light" | "full" | "folder") => void }).__prevailAttach;
+                      if (hook) hook(d.name, ev.altKey ? "folder" : ev.shiftKey ? "full" : "light");
                       else console.warn("[prevail/drag] no attach hook registered: drop fell outside chat panel");
                     };
                     window.addEventListener("mousemove", onMove);
@@ -3107,7 +3107,7 @@ function Sidebar({
                     setSelectedDomain(d.name);
                     if (tab === "settings") setTab("chat");
                   }}
-                  title="Click to enter · drag to add as context to current chat"
+                  title="Click to enter · drag to chat as context (plain: state · ⇧ full · ⌥ entire folder)"
                   className={`flex flex-1 cursor-grab items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors active:cursor-grabbing ${
                     active
                       ? "bg-surface-strong text-text-primary font-medium"
@@ -7309,10 +7309,24 @@ function ChatPanel({
   }, []);
   // A8: drag a domain in as context. Default is the LIGHT state summary
   // (state.md only) to keep the window small; hold Shift to pull the FULL,
-  // heavy context (state + decisions + journal). Same behavior in chat & council.
-  const attachDomainAsContext = useCallback(async (name: string, mode: "light" | "full" = "light") => {
+  // heavy context (state + decisions + journal); hold Option to attach the
+  // ENTIRE folder as a readable map (path + file list) so the model can scan
+  // any file in it. Same behavior in chat & council.
+  const attachDomainAsContext = useCallback(async (name: string, mode: "light" | "full" | "folder" = "light") => {
     if (!name || !vaultPath) return;
     try {
+      if (mode === "folder") {
+        const t = await invoke<{ root: string; files: string[] }>("domain_tree", { vault: vaultPath, domain: name });
+        const body = [
+          `Domain folder: ${t.root}`,
+          "Read any file in this folder directly (paths below, relative to the folder) when it is relevant to the question. Scan broadly; state alone may not have everything.",
+          "",
+          "Files:",
+          ...t.files.map((f) => `- ${f}`),
+        ].join("\n");
+        injectContext(body, `extra (entire folder): ${titleCase(name)}`);
+        return;
+      }
       const c = await invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain: name });
       if (mode === "full") {
         const parts = [
@@ -7334,7 +7348,7 @@ function ChatPanel({
   // window.__prevailAttach('tax') in DevTools to confirm the chip
   // appears in the composer.
   useEffect(() => {
-    (window as unknown as { __prevailAttach?: (n: string) => void }).__prevailAttach = (n) => void attachDomainAsContext(n);
+    (window as unknown as { __prevailAttach?: (n: string, mode?: "light" | "full" | "folder") => void }).__prevailAttach = (n, mode) => void attachDomainAsContext(n, mode ?? "light");
     return () => { try { delete (window as unknown as { __prevailAttach?: unknown }).__prevailAttach; } catch {} };
   }, [attachDomainAsContext]);
   return (
@@ -7359,7 +7373,7 @@ function ChatPanel({
         const name = resolveDroppedDomain(e.dataTransfer);
         if (!name) return;
         e.preventDefault();
-        void attachDomainAsContext(name, e.shiftKey ? "full" : "light");
+        void attachDomainAsContext(name, e.altKey ? "folder" : e.shiftKey ? "full" : "light");
       }}
     >
       <div className="relative flex min-w-0 flex-1 flex-col">
@@ -7732,7 +7746,7 @@ function ChatPanel({
               // parent attaches it once (avoid double-attach).
               e.preventDefault();
               e.stopPropagation();
-              void attachDomainAsContext(name, e.shiftKey ? "full" : "light");
+              void attachDomainAsContext(name, e.altKey ? "folder" : e.shiftKey ? "full" : "light");
             }}
             onPaste={async (e) => {
               if (lsGet("prevail.pref.autoConvertLongPaste") !== "1") return;
