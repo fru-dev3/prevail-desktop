@@ -805,6 +805,70 @@ pub(crate) fn vault_append_line(path: &std::path::Path, line: &str) -> std::io::
     f.write_all(line.as_bytes())
 }
 
+/// Spawn `prevail mcp --vault <vault>`, send a JSON-RPC initialize request, and
+/// confirm a well-formed response — the desktop's 'Test handshake' button. Lets
+/// the user verify the MCP server actually answers before wiring it into an
+/// external agent. Returns { ok, info } / { ok:false, error }.
+#[tauri::command]
+pub async fn mcp_test_handshake(vault: String) -> Result<serde_json::Value, String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let bin = resolve_prevail_bin();
+    let (combined_path, user, logname) = crate::build_cli_env();
+    let mut child = tokio::process::Command::new(&bin)
+        .args(["mcp", "--vault", &vault])
+        .env_clear()
+        .envs(crate::scrubbed_env_pairs())
+        .env("PATH", combined_path)
+        .env("USER", user)
+        .env("LOGNAME", logname)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("spawn {bin} failed: {e}"))?;
+    let req = serde_json::json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": { "name": "prevail-desktop-test", "version": "1" } }
+    });
+    if let Some(mut stdin) = child.stdin.take() {
+        let line = format!("{}\n", serde_json::to_string(&req).unwrap_or_default());
+        let _ = stdin.write_all(line.as_bytes()).await;
+        let _ = stdin.flush().await;
+    }
+    // Read the response with a timeout.
+    let result = tokio::time::timeout(std::time::Duration::from_secs(12), async {
+        let mut out = child.stdout.take().ok_or("no stdout")?;
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            let n = out.read(&mut chunk).await.map_err(|e| e.to_string())?;
+            if n == 0 { break; }
+            buf.extend_from_slice(&chunk[..n]);
+            if buf.contains(&b'\n') { break; }
+        }
+        Ok::<String, String>(String::from_utf8_lossy(&buf).to_string())
+    }).await;
+    let _ = child.kill().await;
+    match result {
+        Ok(Ok(text)) => {
+            for line in text.lines() {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+                    if v.get("result").is_some() {
+                        let name = v.pointer("/result/serverInfo/name").and_then(|x| x.as_str()).unwrap_or("prevail");
+                        return Ok(serde_json::json!({ "ok": true, "info": format!("Handshake OK — server '{name}' responded.") }));
+                    }
+                    if let Some(err) = v.get("error") {
+                        return Ok(serde_json::json!({ "ok": false, "error": format!("server returned an error: {err}") }));
+                    }
+                }
+            }
+            Ok(serde_json::json!({ "ok": false, "error": "no valid initialize response from the server" }))
+        }
+        Ok(Err(e)) => Ok(serde_json::json!({ "ok": false, "error": e })),
+        Err(_) => Ok(serde_json::json!({ "ok": false, "error": "timed out waiting for the server (12s)" })),
+    }
+}
+
 /// Is this vault encrypted, and is the session currently unlocked?
 #[tauri::command]
 pub fn engine_vault_status(vault: String) -> Result<serde_json::Value, String> {
