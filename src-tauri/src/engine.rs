@@ -683,6 +683,102 @@ pub fn engine_biometric_authenticate(reason: String) -> Result<bool, String> {
 // DEK is held in this process (set_vault_key) and injected into every engine
 // spawn as PREVAIL_VAULT_KEY — it never crosses to the JS layer.
 
+// ── Vault crypto (desktop-native twin of the engine's vault-session) ──────
+// The engine encrypts vault files as JSON SealedBlobs ({iv, ct, tag}, all
+// base64, AES-256-GCM, 32-byte DEK). The desktop holds the DEK after unlock
+// (vault_key) but used to read vault files RAW, so an encrypted vault
+// rendered as ciphertext and crashed views. These helpers make every desktop
+// read/write transparently crypto-aware; plaintext vaults pass through
+// untouched.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SealedBlob {
+    iv: String,
+    ct: String,
+    tag: String,
+}
+
+/// The session DEK, iff `path` is inside the unlocked, encrypted vault.
+fn session_key_for(path: &std::path::Path) -> Option<[u8; 32]> {
+    use base64::Engine as _;
+    let root = vault_root()?;
+    if !path.starts_with(&root) {
+        return None;
+    }
+    if !std::path::Path::new(&root).join(".prevail-encrypted").exists() {
+        return None;
+    }
+    let k = vault_key()?;
+    base64::engine::general_purpose::STANDARD
+        .decode(k)
+        .ok()?
+        .try_into()
+        .ok()
+}
+
+/// Decrypt raw file content when it is a sealed blob from this vault;
+/// passthrough otherwise (plaintext vaults, foreign files, no session key).
+pub(crate) fn maybe_decrypt(path: &std::path::Path, raw: String) -> String {
+    use aes_gcm::aead::Aead;
+    use aes_gcm::KeyInit;
+    use base64::Engine as _;
+    let t = raw.trim_start();
+    if !(t.starts_with('{') && t.contains("\"iv\"") && t.contains("\"ct\"")) {
+        return raw;
+    }
+    let Some(key) = session_key_for(path) else { return raw };
+    let Ok(blob) = serde_json::from_str::<SealedBlob>(t) else { return raw };
+    let b64 = base64::engine::general_purpose::STANDARD;
+    let (Ok(iv), Ok(ct), Ok(tag)) = (b64.decode(&blob.iv), b64.decode(&blob.ct), b64.decode(&blob.tag)) else {
+        return raw;
+    };
+    let Ok(cipher) = aes_gcm::Aes256Gcm::new_from_slice(&key) else { return raw };
+    let mut ct_tag = ct;
+    ct_tag.extend_from_slice(&tag);
+    match cipher.decrypt(aes_gcm::Nonce::from_slice(&iv), ct_tag.as_ref()) {
+        Ok(pt) => String::from_utf8(pt).unwrap_or(raw),
+        Err(_) => raw, // wrong key / tampered: surface the raw blob rather than lying
+    }
+}
+
+/// Encrypt content for `path` when the session vault is encrypted; passthrough
+/// otherwise. The write-side twin of maybe_decrypt.
+pub(crate) fn maybe_encrypt(path: &std::path::Path, content: &str) -> String {
+    use aes_gcm::aead::Aead;
+    use aes_gcm::KeyInit;
+    use base64::Engine as _;
+    use rand::RngCore;
+    let Some(key) = session_key_for(path) else { return content.to_string() };
+    let Ok(cipher) = aes_gcm::Aes256Gcm::new_from_slice(&key) else { return content.to_string() };
+    let mut iv = [0u8; 12];
+    rand::thread_rng().fill_bytes(&mut iv);
+    let Ok(mut ct_tag) = cipher.encrypt(aes_gcm::Nonce::from_slice(&iv), content.as_bytes()) else {
+        return content.to_string();
+    };
+    let tag = ct_tag.split_off(ct_tag.len().saturating_sub(16));
+    let b64 = base64::engine::general_purpose::STANDARD;
+    serde_json::to_string(&SealedBlob {
+        iv: b64.encode(iv),
+        ct: b64.encode(ct_tag),
+        tag: b64.encode(tag),
+    })
+    .unwrap_or_else(|_| content.to_string())
+}
+
+/// Append a line to a vault ledger. You can't append to an AES-GCM blob, so
+/// under encryption this is decrypt + append + re-encrypt (single user, low
+/// contention — mirrors the engine's vappendLine). Plain append otherwise.
+pub(crate) fn vault_append_line(path: &std::path::Path, line: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    if session_key_for(path).is_some() {
+        let existing = std::fs::read_to_string(path)
+            .map(|r| maybe_decrypt(path, r))
+            .unwrap_or_default();
+        return std::fs::write(path, maybe_encrypt(path, &format!("{existing}{line}")));
+    }
+    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
+    f.write_all(line.as_bytes())
+}
+
 /// Is this vault encrypted, and is the session currently unlocked?
 #[tauri::command]
 pub fn engine_vault_status(vault: String) -> Result<serde_json::Value, String> {
@@ -1131,6 +1227,28 @@ pub async fn engine_chat(
 #[cfg(test)]
 mod vault_key_state_tests {
     use super::*;
+
+    #[test]
+    fn vault_crypto_round_trip_and_passthrough() {
+        let dir = std::env::temp_dir().join(format!("prevail-enc-rt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(".prevail-encrypted"), "1").unwrap();
+        let p = dir.join("wealth.md");
+        use base64::Engine as _;
+        let key = base64::engine::general_purpose::STANDARD.encode([7u8; 32]);
+        set_vault_root(Some(dir.to_string_lossy().to_string()));
+        set_vault_key(Some(key));
+        let sealed = maybe_encrypt(&p, "hello vault");
+        assert!(sealed.contains("\"iv\"") && sealed.contains("\"tag\""));
+        assert_eq!(maybe_decrypt(&p, sealed), "hello vault");
+        assert_eq!(maybe_decrypt(&p, "plain".into()), "plain");
+        let outside = std::env::temp_dir().join("not-in-vault.md");
+        assert_eq!(maybe_encrypt(&outside, "x"), "x");
+        set_vault_key(None);
+        set_vault_root(None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     // Verifies the desktop's in-memory encryption key + vault-root holding logic
     // (what gets injected as PREVAIL_VAULT_KEY / PREVAIL_VAULT_ROOT into the
