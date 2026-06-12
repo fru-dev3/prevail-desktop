@@ -4015,6 +4015,7 @@ pub fn run() {
             engine::engine_biometric_authenticate,
             ideal_state_versions,
             engine::engine_vault_status,
+            engine::mcp_test_handshake,
             engine::engine_vault_unlock,
             engine::engine_vault_lock_session,
             engine::engine_vault_encrypt,
