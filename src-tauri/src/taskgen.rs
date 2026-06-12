@@ -226,7 +226,11 @@ async fn generate_for_domain(
     }
 
     let today = crate::reminders::today_str();
-    let prompt = build_prompt(domain, soul, goals, &memory, &state_md, &existing, &today, cfg.max_tasks_per_domain);
+    let prompt = format!(
+        "{}{}",
+        crate::ideal_state_preamble(Path::new(&cfg.vault)),
+        build_prompt(domain, soul, goals, &memory, &state_md, &existing, &today, cfg.max_tasks_per_domain),
+    );
 
     crate::bunker::guard_cli(&cfg.provider)?;
     let model = if cfg.model.is_empty() { None } else { Some(cfg.model.as_str()) };
