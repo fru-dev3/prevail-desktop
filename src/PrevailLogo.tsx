@@ -57,8 +57,8 @@ export function PrevailLogo({
     >
       <rect x="0" y="0" width="512" height="512" rx="116" fill="#141416" />
       <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M116 312 L256 176 L396 312" stroke="#2dd4bf" strokeWidth="56" />
-        <path d="M156 392 L256 296 L356 392" stroke="#0d7a6e" strokeWidth="34" />
+        <path d="M116 312 L256 176 L396 312" stroke="#C4A35A" strokeWidth="56" />
+        <path d="M156 392 L256 296 L356 392" stroke="#6E5C32" strokeWidth="34" />
       </g>
       {Star}
     </svg>

@@ -109,15 +109,18 @@ fn read_dir_retry(p: &Path) -> std::io::Result<fs::ReadDir> {
     }
     fs::read_dir(p)
 }
-fn read_to_string_retry(p: &Path) -> std::io::Result<String> {
+fn read_to_string_retry<P: AsRef<Path>>(p: P) -> std::io::Result<String> {
+    // Transparently decrypts sealed vault files when the session is unlocked
+    // (engine::maybe_decrypt is a passthrough for plaintext / foreign paths).
+    let p = p.as_ref();
     for _ in 0..5 {
         match fs::read_to_string(p) {
-            Ok(s) => return Ok(s),
+            Ok(s) => return Ok(engine::maybe_decrypt(p, s)),
             Err(e) if e.raw_os_error() == Some(4) => continue,
             Err(e) => return Err(e),
         }
     }
-    fs::read_to_string(p)
+    fs::read_to_string(p).map(|s| engine::maybe_decrypt(p, s))
 }
 
 /// Pull a short, human-meaningful summary from a domain's state.md for card
@@ -337,7 +340,7 @@ async fn detect_clis(_app: tauri::AppHandle) -> Result<Vec<CliInfo>, String> {
     // their default port is listening. The engine reaches them via the
     // PREVAIL_OLLAMA_URL redirect (see bunker::local_endpoint_url). Probed the
     // same way as Ollama's daemon — a TCP connect is enough to know it's up.
-    for (id, label) in [("lmstudio", "LM Studio"), ("mlx", "MLX")] {
+    for (id, label) in [("lmstudio", "LM Studio"), ("mlx", "oMLX")] {
         out.push(CliInfo {
             id: id.to_string(),
             label: label.to_string(),
@@ -357,6 +360,14 @@ fn provider_key_set(provider: String, key: String) -> Result<(), String> {
     ingestion::keychain::set("prevail.providers", &provider, &key)
 }
 // Presence check only — never returns the secret value to the frontend.
+#[tauri::command]
+fn provider_key_last4(provider: String) -> Option<String> {
+    ingestion::keychain::get("prevail.providers", &provider)
+        .ok()
+        .filter(|k| k.len() >= 4)
+        .map(|k| k[k.len() - 4..].to_string())
+}
+
 #[tauri::command]
 fn provider_key_exists(provider: String) -> bool {
     ingestion::keychain::get("prevail.providers", &provider)
@@ -528,7 +539,7 @@ pub(crate) fn scrubbed_env_pairs() -> Vec<(String, String)> {
 /// highest-precedence context everywhere. Mirrors the engine's framing in
 /// prevail-cli `cli-bridge.ts::buildConstitutionPreamble`.
 pub(crate) fn ideal_state_preamble(vault: &Path) -> String {
-    let raw = std::fs::read_to_string(vault.join("ideal-state.md")).unwrap_or_default();
+    let raw = read_to_string_retry(vault.join("ideal-state.md")).unwrap_or_default();
     let raw = raw.trim();
     if raw.is_empty() {
         return String::new();
@@ -736,6 +747,41 @@ pub struct BenchmarkRun {
     /// Directory creation time (ms since epoch). Lets the UI cluster
     /// pre-batch-era runs that were launched together into pseudo-batches.
     pub created_ms: u64,
+    /// From meta.json (engine-written since the rerun fix): the exact target,
+    /// so reruns don't have to parse directory names.
+    pub cli: Option<String>,
+    pub model: Option<String>,
+    pub council: Option<bool>,
+}
+
+#[derive(Deserialize, Default)]
+struct RunMetaFile {
+    cli: Option<String>,
+    model: Option<String>,
+    council: Option<bool>,
+}
+
+fn read_run_meta(run_dir: &Path) -> RunMetaFile {
+    read_to_string_retry(run_dir.join("meta.json"))
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+/// Strip the "_HH-MM-SS" dedupe suffix reruns carry, for display labels.
+fn strip_rerun_suffix(label: &str) -> String {
+    let b = label.as_bytes();
+    if b.len() > 9 && b[b.len() - 9] == b'_' {
+        let tail = &label[label.len() - 8..];
+        let ok = tail.chars().enumerate().all(|(i, c)| match i {
+            2 | 5 => c == '-',
+            _ => c.is_ascii_digit(),
+        });
+        if ok {
+            return label[..label.len() - 9].to_string();
+        }
+    }
+    label.to_string()
 }
 
 fn dir_created_ms(p: &Path) -> u64 {
@@ -755,7 +801,7 @@ struct BatchFile {
 
 fn read_batch(run_dir: &Path) -> (Option<String>, Option<String>) {
     let p = run_dir.join("batch.json");
-    if let Ok(raw) = fs::read_to_string(&p) {
+    if let Ok(raw) = read_to_string_retry(&p) {
         if let Ok(b) = serde_json::from_str::<BatchFile>(&raw) {
             let label = b.label.clone();
             return (Some(b.id), label);
@@ -819,12 +865,13 @@ fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
         let date = run_dir_date(&dir_name);
         let score_file = p.join("score.json");
         let (batch_id, batch_label) = read_batch(&p);
+        let meta = read_run_meta(&p);
         if score_file.exists() {
-            if let Ok(raw) = fs::read_to_string(&score_file) {
+            if let Ok(raw) = read_to_string_retry(&score_file) {
                 if let Ok(parsed) = serde_json::from_str::<ScoreFile>(&raw) {
                     let domains = distinct_domains(&parsed.question_scores);
                     out.push(BenchmarkRun {
-                        label: parsed.label,
+                        label: strip_rerun_suffix(&parsed.label),
                         run_dir: parsed.run_dir,
                         judge_avg: parsed.judge_avg,
                         keyword_avg: parsed.keyword_avg,
@@ -835,6 +882,9 @@ fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
                         batch_id,
                         batch_label,
                         created_ms: dir_created_ms(&p),
+                        cli: meta.cli,
+                        model: meta.model,
+                        council: meta.council,
                     });
                     continue;
                 }
@@ -844,14 +894,12 @@ fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
         // instead of hiding it — the user must be able to SEE every run.
         let results_file = p.join("results.json");
         if results_file.exists() {
-            if let Ok(raw) = fs::read_to_string(&results_file) {
+            if let Ok(raw) = read_to_string_retry(&results_file) {
                 if let Ok(records) = serde_json::from_str::<Vec<serde_json::Value>>(&raw) {
                     let domains = distinct_domains(&records);
-                    let label = dir_name
-                        .splitn(2, '_')
-                        .nth(1)
-                        .unwrap_or(&dir_name)
-                        .to_string();
+                    let label = strip_rerun_suffix(
+                        dir_name.splitn(2, '_').nth(1).unwrap_or(&dir_name),
+                    );
                     out.push(BenchmarkRun {
                         label,
                         run_dir: p.to_string_lossy().to_string(),
@@ -864,6 +912,9 @@ fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
                         batch_id,
                         batch_label,
                         created_ms: dir_created_ms(&p),
+                        cli: meta.cli.clone(),
+                        model: meta.model.clone(),
+                        council: meta.council,
                     });
                 }
             }
@@ -887,9 +938,9 @@ fn benchmark_run_detail(run_dir: String) -> Result<serde_json::Value, String> {
     }
     let results_file = Path::new(&run_dir).join("results.json");
     let score_file = Path::new(&run_dir).join("score.json");
-    let results = fs::read_to_string(&results_file)
+    let results = read_to_string_retry(&results_file)
         .map_err(|e| format!("results.json: {e}"))?;
-    let score = fs::read_to_string(&score_file).map_err(|e| format!("score.json: {e}"))?;
+    let score = read_to_string_retry(&score_file).map_err(|e| format!("score.json: {e}"))?;
     let results_v: serde_json::Value = serde_json::from_str(&results).map_err(|e| e.to_string())?;
     let score_v: serde_json::Value = serde_json::from_str(&score).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({
@@ -1056,7 +1107,7 @@ fn migrate_legacy_usage(vault: &str) {
     if marker.exists() || !legacy.exists() {
         return;
     }
-    let Ok(raw) = fs::read_to_string(&legacy) else { return };
+    let Ok(raw) = read_to_string_retry(&legacy) else { return };
     let mut out = String::new();
     for line in raw.lines() {
         let line = line.trim();
@@ -1186,17 +1237,11 @@ fn intent_append(
     domain: Option<String>,
     record: serde_json::Value,
 ) -> Result<(), String> {
-    use std::io::Write;
     let dir = domain_dir(&vault, &domain);
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir intents: {e}"))?;
     let file = dir.join("_intents.jsonl");
     let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
-    let mut f = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&file)
-        .map_err(|e| format!("open _intents.jsonl: {e}"))?;
-    writeln!(f, "{line}").map_err(|e| format!("write intent: {e}"))?;
+    engine::vault_append_line(&file, &format!("{line}\n")).map_err(|e| format!("write intent: {e}"))?;
     Ok(())
 }
 
@@ -1241,7 +1286,7 @@ fn journal_append(vault: String, domain: Option<String>, entry: String) -> Resul
     let existing = read_to_string_retry(&path).unwrap_or_default();
     let body = existing.strip_prefix(HEADER).unwrap_or(&existing).to_string();
     let merged = format!("{HEADER}{}\n{body}", entry.trim_end());
-    fs::write(&path, merged).map_err(|e| format!("write journal: {e}"))?;
+    fs::write(&path, engine::maybe_encrypt(&path, &merged)).map_err(|e| format!("write journal: {e}"))?;
     Ok(())
 }
 
@@ -1250,23 +1295,54 @@ fn journal_append(vault: String, domain: Option<String>, entry: String) -> Resul
 /// or a user-stated preference ("make Mayo my favorite hospital") is a decision
 /// — durable, provenance-tagged, and fed into state derivation + scoring so the
 /// domain actually learns. Mirrors `intent_append`. (feedback v0.4.1 I1/I5)
+/// Every intent across the whole vault (each domain's _intents.jsonl plus the
+/// vault-root general ledger), tagged with its domain, newest first. Powers the
+/// Settings > Intents browser.
+#[tauri::command]
+fn intents_read_all(vault: String, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
+    let root = PathBuf::from(&vault);
+    let mut dirs: Vec<(String, PathBuf)> = vec![("general".into(), root.clone())];
+    if let Ok(it) = read_dir_retry(&root) {
+        for e in it.flatten() {
+            let p = e.path();
+            let name = e.file_name().to_string_lossy().to_string();
+            if p.is_dir() && !name.starts_with('.') && !name.starts_with('_') {
+                dirs.push((name, p));
+            }
+        }
+    }
+    let mut out: Vec<serde_json::Value> = Vec::new();
+    for (dom, dir) in dirs {
+        let Ok(text) = read_to_string_retry(&dir.join("_intents.jsonl")) else { continue };
+        for l in text.lines().filter(|l| !l.trim().is_empty()) {
+            let Ok(mut v) = serde_json::from_str::<serde_json::Value>(l) else { continue };
+            if v.get("kind").and_then(|k| k.as_str()) != Some("intent") {
+                continue;
+            }
+            if let Some(obj) = v.as_object_mut() {
+                obj.insert("domain".into(), serde_json::json!(dom));
+            }
+            out.push(v);
+        }
+    }
+    out.sort_by_key(|v| std::cmp::Reverse(v.get("ts").and_then(|t| t.as_i64()).unwrap_or(0)));
+    if let Some(n) = limit {
+        out.truncate(n);
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 fn decision_append(
     vault: String,
     domain: Option<String>,
     record: serde_json::Value,
 ) -> Result<(), String> {
-    use std::io::Write;
     let dir = domain_dir(&vault, &domain);
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir decisions: {e}"))?;
     let file = dir.join("_decisions.jsonl");
     let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
-    let mut f = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&file)
-        .map_err(|e| format!("open _decisions.jsonl: {e}"))?;
-    writeln!(f, "{line}").map_err(|e| format!("write decision: {e}"))?;
+    engine::vault_append_line(&file, &format!("{line}\n")).map_err(|e| format!("write decision: {e}"))?;
     Ok(())
 }
 
@@ -1341,7 +1417,7 @@ fn decision_feedback(
         .filter_map(|r| serde_json::to_string(r).ok())
         .collect::<Vec<_>>()
         .join("\n");
-    fs::write(&file, format!("{body}\n")).map_err(|e| format!("write _decisions.jsonl: {e}"))?;
+    fs::write(&file, engine::maybe_encrypt(&file, &format!("{body}\n"))).map_err(|e| format!("write _decisions.jsonl: {e}"))?;
     Ok(())
 }
 
@@ -1362,6 +1438,9 @@ struct BenchQuestion {
     expected_decision: String,
     expected_verdict_keywords: Vec<String>,
     path: String,
+    created: Option<String>, // YYYY-MM-DD the question entered the suite
+    source: Option<String>,  // "user" | "ai"
+    archived: bool,          // kept for history, excluded from new runs
 }
 
 #[derive(Deserialize)]
@@ -1396,10 +1475,13 @@ fn extract_section(body: &str, heading: &str) -> String {
 }
 
 fn parse_bench_question(path: &Path) -> Option<BenchQuestion> {
-    let raw = fs::read_to_string(path).ok()?;
+    let raw = read_to_string_retry(path).ok()?;
     let mut id = String::new();
     let mut domain = String::new();
     let mut council = false;
+    let mut created = String::new();
+    let mut source = String::new();
+    let mut archived = false;
     let mut expected_decision = String::new();
     let mut keywords: Vec<String> = Vec::new();
     let mut body_start = 0usize;
@@ -1417,6 +1499,9 @@ fn parse_bench_question(path: &Path) -> Option<BenchQuestion> {
                     "expected_decision" => {
                         expected_decision = val.trim_matches('"').to_string()
                     }
+                    "created" => created = val.to_string(),
+                    "source" => source = val.to_string(),
+                    "archived" => archived = val == "true",
                     "expected_verdict_keywords" => {
                         if val.starts_with('[') && val.ends_with(']') {
                             keywords = val[1..val.len() - 1]
@@ -1448,6 +1533,9 @@ fn parse_bench_question(path: &Path) -> Option<BenchQuestion> {
         expected_decision: if expected_decision.starts_with('<') { String::new() } else { expected_decision },
         expected_verdict_keywords: keywords,
         path: path.to_string_lossy().to_string(),
+        created: if created.is_empty() { None } else { Some(created) },
+        source: if source.is_empty() { None } else { Some(source) },
+        archived,
     })
 }
 
@@ -1524,10 +1612,52 @@ fn benchmark_save_question(vault: String, q: BenchQuestionInput) -> Result<Bench
     } else {
         format!("[{}]", kw.iter().map(|k| esc(k)).collect::<Vec<_>>().join(", "))
     };
+    let path = dir.join(format!("{id}.md"));
+    // Lifecycle: an edit never erases the version a past benchmark ran
+    // against. Snapshot the existing file into _versions/ first, and carry
+    // the original created/source/archived forward.
+    let prior = parse_bench_question(&path);
+    if let Some(p) = &prior {
+        let changed = p.prompt != q.prompt.trim()
+            || p.expected_decision != q.expected_decision.clone().unwrap_or_default()
+            || p.expected_verdict_keywords != q.expected_verdict_keywords.clone().unwrap_or_default();
+        if changed {
+            let vdir = dir.join("_versions");
+            let _ = fs::create_dir_all(&vdir);
+            let stamp = {
+                let secs = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+                format!("{y:04}{mo:02}{d:02}-{h:02}{mi:02}{s:02}")
+            };
+            let _ = fs::copy(&path, vdir.join(format!("{id}.{stamp}.md")));
+        }
+    }
+    let today = {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let (y, mo, d, _, _, _) = secs_to_ymdhms(secs);
+        format!("{y:04}-{mo:02}-{d:02}")
+    };
+    let created = prior.as_ref().and_then(|p| p.created.clone()).unwrap_or_else(|| today.clone());
+    let source = prior.as_ref().and_then(|p| p.source.clone()).unwrap_or_else(|| "user".to_string());
+    let archived = prior.as_ref().map(|p| p.archived).unwrap_or(false);
     let mut md = String::new();
     md.push_str("---\n");
     md.push_str(&format!("id: {id}\n"));
     md.push_str(&format!("domain: {}\n", q.domain));
+    md.push_str(&format!("created: {created}\n"));
+    md.push_str(&format!("source: {source}\n"));
+    if archived {
+        md.push_str("archived: true\n");
+    }
+    if prior.is_some() {
+        md.push_str(&format!("edited: {today}\n"));
+    }
     md.push_str(&format!("council: {council}\n"));
     md.push_str(&format!(
         "expected_decision: {}\n",
@@ -1542,9 +1672,40 @@ fn benchmark_save_question(vault: String, q: BenchQuestionInput) -> Result<Bench
     md.push_str("\n\n## Notes\n\n");
     md.push_str(q.notes.as_deref().unwrap_or("").trim());
     md.push('\n');
-    let path = dir.join(format!("{id}.md"));
-    fs::write(&path, md).map_err(|e| e.to_string())?;
+    fs::write(&path, engine::maybe_encrypt(&path, &md)).map_err(|e| e.to_string())?;
     parse_bench_question(&path).ok_or_else(|| "failed to re-read saved question".into())
+}
+
+/// Archive / unarchive a question in place: flips the frontmatter flag, so
+/// the file (and every past run that referenced it) stays intact while new
+/// runs and the active list exclude it.
+#[tauri::command]
+fn benchmark_set_question_archived(path: String, archived: bool) -> Result<(), String> {
+    if !path.replace('\\', "/").contains("/benchmark/questions/") || !path.ends_with(".md") {
+        return Err("not a benchmark question file".into());
+    }
+    let raw = read_to_string_retry(&path).map_err(|e| e.to_string())?;
+    let mut lines: Vec<String> = raw.lines().map(str::to_string).collect();
+    // Remove any existing archived: line inside the frontmatter block.
+    if lines.first().map(|l| l.trim()) == Some("---") {
+        let end = lines.iter().skip(1).position(|l| l.trim() == "---").map(|i| i + 1);
+        if let Some(end) = end {
+            lines.retain({
+                let mut idx = 0usize;
+                move |l| {
+                    let keep = !(idx > 0 && idx < end && l.trim_start().starts_with("archived:"));
+                    idx += 1;
+                    keep
+                }
+            });
+            if archived {
+                lines.insert(1, "archived: true".to_string());
+            }
+            fs::write(Path::new(&path), engine::maybe_encrypt(Path::new(&path), &format!("{}\n", lines.join("\n")))).map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+    }
+    Err("malformed question file (no frontmatter)".into())
 }
 
 #[tauri::command]
@@ -1683,7 +1844,7 @@ fn benchmark_matrix(vault: String) -> Result<Vec<MatrixRow>, String> {
         if !score_file.exists() {
             continue;
         }
-        let raw = match fs::read_to_string(&score_file) {
+        let raw = match read_to_string_retry(&score_file) {
             Ok(r) => r,
             Err(_) => continue,
         };
@@ -1731,7 +1892,7 @@ fn benchmark_matrix(vault: String) -> Result<Vec<MatrixRow>, String> {
 
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path).map_err(|e| format!("read {}: {}", path, e))
+    read_to_string_retry(&path).map_err(|e| format!("read {}: {}", path, e))
 }
 
 // Diagnostic: the frontend's fatal-error handler writes the crash here so
@@ -1828,7 +1989,7 @@ fn remember_vault(path: String) {
 #[tauri::command]
 fn bootstrap_vault() -> Option<String> {
     let bf = bootstrap_vault_path()?;
-    let s = fs::read_to_string(&bf).ok()?;
+    let s = read_to_string_retry(&bf).ok()?;
     let s = s.trim();
     if s.is_empty() || !Path::new(s).exists() {
         return None;
@@ -1847,7 +2008,7 @@ fn ui_settings_path() -> Option<std::path::PathBuf> {
 #[tauri::command]
 fn ui_settings_get() -> String {
     ui_settings_path()
-        .and_then(|p| fs::read_to_string(&p).ok())
+        .and_then(|p| read_to_string_retry(&p).ok())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "{}".to_string())
@@ -2172,7 +2333,43 @@ fn read_ideal_state(vault: String) -> Result<String, String> {
 #[tauri::command]
 fn write_ideal_state(vault: String, body: String) -> Result<(), String> {
     let p = PathBuf::from(&vault).join("ideal-state.md");
-    fs::write(&p, body).map_err(|e| format!("write ideal-state.md: {e}"))
+    // The constitution is never silently overwritten: every save that changes
+    // it first snapshots the prior text into _meta/ideal-state-versions/, so
+    // edits always leave a dated trace and nothing is ever lost.
+    if let Ok(existing) = read_to_string_retry(&p) {
+        if existing.trim() != body.trim() && !existing.trim().is_empty() {
+            let vdir = PathBuf::from(&vault).join("_meta").join("ideal-state-versions");
+            let _ = fs::create_dir_all(&vdir);
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+            let vp = vdir.join(format!("{y:04}-{mo:02}-{d:02}_{h:02}{mi:02}{s:02}.md"));
+            let _ = fs::write(&vp, engine::maybe_encrypt(&vp, &existing));
+        }
+    }
+    fs::write(&p, engine::maybe_encrypt(&p, &body)).map_err(|e| format!("write ideal-state.md: {e}"))
+}
+
+/// Dated snapshots of the constitution, newest first.
+#[tauri::command]
+fn ideal_state_versions(vault: String) -> Result<Vec<serde_json::Value>, String> {
+    let vdir = PathBuf::from(&vault).join("_meta").join("ideal-state-versions");
+    let mut out = Vec::new();
+    if let Ok(it) = read_dir_retry(&vdir) {
+        for e in it.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("md") {
+                out.push(serde_json::json!({
+                    "name": p.file_stem().and_then(|s| s.to_str()).unwrap_or(""),
+                    "path": p.to_string_lossy(),
+                }));
+            }
+        }
+    }
+    out.sort_by(|a, b| b["name"].as_str().cmp(&a["name"].as_str()));
+    Ok(out)
 }
 
 // Generic text file read/write — used by config export/import (the frontend
@@ -2214,7 +2411,7 @@ fn write_text_file(path: String, contents: String) -> Result<(), String> {
 }
 #[tauri::command]
 fn read_text_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path).map_err(|e| format!("read {path}: {e}"))
+    read_to_string_retry(&path).map_err(|e| format!("read {path}: {e}"))
 }
 
 // Diagnostics for the About → Run Diagnosis / Debug Dump panel. Gathers the
@@ -2416,7 +2613,7 @@ fn save_session(
 }
 
 // Days-since-epoch → date. Good enough for log filenames, no chrono.
-fn secs_to_ymdhms(secs: i64) -> (i32, u32, u32, u32, u32, u32) {
+pub(crate) fn secs_to_ymdhms(secs: i64) -> (i32, u32, u32, u32, u32, u32) {
     let day_secs = 86_400i64;
     let mut days = secs.div_euclid(day_secs);
     let mut rem = secs.rem_euclid(day_secs);
@@ -3012,6 +3209,44 @@ fn read_domain_prompts(vault: String, domain: String) -> Result<Vec<String>, Str
     Ok(prompts)
 }
 
+/// Flat file listing of a domain folder (relative paths + sizes, capped), so
+/// "attach the whole folder" can hand the model a map of what it may read.
+#[tauri::command]
+fn domain_tree(vault: String, domain: String) -> Result<serde_json::Value, String> {
+    let root = PathBuf::from(&vault).join(&domain);
+    if !root.exists() {
+        return Err(format!("domain not found: {}", root.display()));
+    }
+    fn walk(dir: &Path, root: &Path, files: &mut Vec<String>, depth: usize) {
+        if depth > 4 || files.len() >= 200 {
+            return;
+        }
+        let Ok(it) = std::fs::read_dir(dir) else { return };
+        let mut entries: Vec<_> = it.flatten().collect();
+        entries.sort_by_key(|e| e.file_name());
+        for e in entries {
+            if files.len() >= 200 {
+                return;
+            }
+            let p = e.path();
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            if p.is_dir() {
+                walk(&p, root, files, depth + 1);
+            } else {
+                let kb = e.metadata().map(|m| (m.len() as f64 / 1024.0).max(0.1)).unwrap_or(0.0);
+                let rel = p.strip_prefix(root).unwrap_or(&p).to_string_lossy().to_string();
+                files.push(format!("{rel} ({kb:.1} KB)"));
+            }
+        }
+    }
+    let mut files: Vec<String> = Vec::new();
+    walk(&root, &root, &mut files, 0);
+    Ok(serde_json::json!({ "root": root.to_string_lossy(), "files": files }))
+}
+
 #[tauri::command]
 fn domain_context(vault: String, domain: String) -> Result<DomainContext, String> {
     let root = PathBuf::from(&vault).join(&domain);
@@ -3022,8 +3257,40 @@ fn domain_context(vault: String, domain: String) -> Result<DomainContext, String
         if !p.exists() { return None; }
         read_to_string_retry(&p).ok()
     };
-    let state = read(root.join("state.md"));
-    let decisions = read(root.join("decisions.md"));
+    // v2 layout first (_state.md, written by the distill daemon), v1 fallback
+    // (state.md). The panel showed "no state.md found" forever because it only
+    // knew the v1 name while everything else wrote v2.
+    let state = read(root.join("_state.md")).or_else(|| read(root.join("state.md")));
+    // Curated decisions: the journal distiller's file when present, else the
+    // v1 root file, else the full _decisions.jsonl ledger rendered readable
+    // (the same ledger "Recent decisions" tails, but complete).
+    let decisions = read(root.join("_journal").join("decisions.md"))
+        .or_else(|| read(root.join("decisions.md")))
+        .or_else(|| {
+            let ledger = read(root.join("_decisions.jsonl"))?;
+            let lines: Vec<String> = ledger
+                .lines()
+                .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+                .map(|v| {
+                    let txt = ["decision", "verdict", "text", "prompt"]
+                        .iter()
+                        .find_map(|k| v.get(k).and_then(|x| x.as_str()).map(str::to_string))
+                        .unwrap_or_default();
+                    let kind = v.get("kind").and_then(|x| x.as_str()).unwrap_or("decision");
+                    let day = v
+                        .get("ts")
+                        .and_then(|x| x.as_i64())
+                        .map(|ms| {
+                            let (y, mo, d, _, _, _) = secs_to_ymdhms(ms / 1000);
+                            format!("{y:04}-{mo:02}-{d:02}")
+                        })
+                        .unwrap_or_default();
+                    format!("- {}{}{}", if day.is_empty() { String::new() } else { format!("{day} · ") }, format!("{kind}: "), txt)
+                })
+                .filter(|l| l.len() > 4)
+                .collect();
+            if lines.is_empty() { None } else { Some(lines.join("\n")) }
+        });
     // Journal can live as a single _journal.md or a _journal/ folder
     // of dated entries — concat the latter into newest-first order.
     let journal = read(root.join("_journal.md")).or_else(|| {
@@ -3155,7 +3422,7 @@ fn scan_skills(vault: String) -> Result<Vec<SkillEntry>, String> {
                 let mut description: Option<String> = None;
                 for candidate in &["SKILL.md", "README.md", "skill.md"] {
                     let f = p.join(candidate);
-                    if let Ok(s) = fs::read_to_string(&f) {
+                    if let Ok(s) = read_to_string_retry(&f) {
                         if let Some(desc) = extract_skill_description(&s) {
                             description = Some(desc);
                             break;
@@ -3310,17 +3577,28 @@ async fn spawn_prevail_streaming(
     let bin = engine::resolve_prevail_bin();
     let (combined_path, user, logname) = build_cli_env();
 
-    let mut child = TokioCommand::new(&bin)
-        .args(&args)
+    let mut cmd = TokioCommand::new(&bin);
+    cmd.args(&args)
         .env_clear()
         .envs(scrubbed_env_pairs())
         .env("PATH", combined_path)
         .env("USER", user)
         .env("LOGNAME", logname)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    // Bunker flag or gateway provider keys (OpenRouter), same as every other
+    // engine spawn — without the key, OpenRouter benchmark runs 401'd.
+    for (k, v) in engine::provider_env_pairs() {
+        cmd.env(k, v);
+    }
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("spawn {bin} failed: {e}"))?;
+
+    // Track the child so `abort_sessions` can cancel a benchmark run.
+    if let Some(pid) = child.id() {
+        register_child(&session, pid);
+    }
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -3362,6 +3640,7 @@ async fn spawn_prevail_streaming(
     }
     tauri::async_runtime::spawn(async move {
         let code = child.wait().await.ok().and_then(|s| s.code());
+        unregister_child(&session_done);
         let _ = app.emit(
             "benchmark:done",
             serde_json::json!({
@@ -3379,6 +3658,16 @@ async fn benchmark_start(
     app: tauri::AppHandle,
     args: BenchmarkRunArgs,
 ) -> Result<(), String> {
+    // Bunker Mode: benchmarks may only target local providers. Refuse (never
+    // silently switch) so the recorded run is what the user asked to measure.
+    if bunker::bunker_enabled() {
+        if args.council.unwrap_or(false) {
+            return Err(format!("{BLOCKED}: council benchmarks convene cloud models", BLOCKED = bunker::BLOCKED));
+        }
+        if !bunker::is_local_cli(&args.cli) {
+            return Err(format!("{}: {} is a cloud provider. Pick a local model.", bunker::BLOCKED, args.cli));
+        }
+    }
     let mut cli_args: Vec<String> = vec![
         "--vault".into(), args.vault.clone(),
         "bench".into(), "run".into(), "--canonical".into(),
@@ -3434,7 +3723,12 @@ async fn benchmark_score(
         cli_args.push("--run".into());
         cli_args.push(r.clone());
     }
-    if args.no_judge.unwrap_or(false) {
+    let judge_is_local = args.judge_cli.as_deref().map(bunker::is_local_cli).unwrap_or(false);
+    let no_judge = args.no_judge.unwrap_or(false)
+        // Bunker Mode: the judge is an LLM call too; without a local judge,
+        // degrade to the mechanical keyword pass (the engine double-checks).
+        || (bunker::bunker_enabled() && !judge_is_local);
+    if no_judge {
         cli_args.push("--no-judge".into());
     } else {
         if let Some(c) = &args.judge_cli {
@@ -3466,6 +3760,14 @@ async fn benchmark_suggest(
     app: tauri::AppHandle,
     args: BenchmarkSuggestArgs,
 ) -> Result<(), String> {
+    // Bunker Mode: drafting questions is an LLM call; local providers only.
+    if bunker::bunker_enabled() {
+        if let Some(c) = &args.cli {
+            if !bunker::is_local_cli(c) {
+                return Err(format!("{}: {} is a cloud provider. Pick a local model.", bunker::BLOCKED, c));
+            }
+        }
+    }
     let mut cli_args: Vec<String> = vec![
         "--vault".into(), args.vault.clone(),
         "bench".into(), "suggest".into(),
@@ -3596,6 +3898,7 @@ pub fn run() {
             usage_summary_domain,
             intent_append,
             intents_read,
+            intents_read_all,
             journal_append,
             decision_append,
             decisions_read,
@@ -3610,6 +3913,7 @@ pub fn run() {
             set_close_to_tray,
             provider_key_set,
             provider_key_exists,
+            provider_key_last4,
             provider_key_del,
             webui::webui_start,
             webui::webui_stop,
@@ -3640,6 +3944,7 @@ pub fn run() {
             benchmark_questions,
             benchmark_save_question,
             benchmark_delete_question,
+            benchmark_set_question_archived,
             benchmark_export_questions,
             benchmark_import_questions,
             benchmark_matrix,
@@ -3648,6 +3953,7 @@ pub fn run() {
             open_in_finder,
             create_domain,
             domain_context,
+            domain_tree,
             read_domain_prompts,
             scan_skills,
             skill_create,
@@ -3677,6 +3983,7 @@ pub fn run() {
             engine::engine_lock_verify,
             engine::engine_lock_clear,
             engine::engine_biometric_authenticate,
+            ideal_state_versions,
             engine::engine_vault_status,
             engine::engine_vault_unlock,
             engine::engine_vault_lock_session,
@@ -3882,7 +4189,7 @@ mod usage_tests {
 
         // Engine ledger now has both lines, in the engine schema.
         let engine_ledger = vault.join("_meta").join("usage.jsonl");
-        let raw = fs::read_to_string(&engine_ledger).expect("engine ledger written");
+        let raw = read_to_string_retry(&engine_ledger).expect("engine ledger written");
         let lines: Vec<&str> = raw.lines().filter(|l| !l.trim().is_empty()).collect();
         assert_eq!(lines.len(), 2);
         let first: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
@@ -3893,7 +4200,7 @@ mod usage_tests {
         // Marker prevents a second migration from double-appending.
         assert!(vault.join("usage").join(".migrated-to-engine").exists());
         migrate_legacy_usage(&vault.to_string_lossy());
-        let raw2 = fs::read_to_string(&engine_ledger).unwrap();
+        let raw2 = read_to_string_retry(&engine_ledger).unwrap();
         assert_eq!(raw2.lines().filter(|l| !l.trim().is_empty()).count(), 2, "idempotent");
 
         let _ = fs::remove_dir_all(&vault);
@@ -3926,7 +4233,7 @@ mod usage_tests {
         intent_append(vault_s.clone(), None, serde_json::json!({ "kind": "intent", "session": "s2", "message": "hi" })).unwrap();
 
         // Domain ledger: two lines, both valid JSON, prompt + raw preserved verbatim.
-        let dom_ledger = fs::read_to_string(vault.join("wealth").join("_intents.jsonl")).expect("domain ledger written");
+        let dom_ledger = read_to_string_retry(vault.join("wealth").join("_intents.jsonl")).expect("domain ledger written");
         let lines: Vec<&str> = dom_ledger.lines().filter(|l| !l.trim().is_empty()).collect();
         assert_eq!(lines.len(), 2);
         let intent: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
@@ -3935,12 +4242,12 @@ mod usage_tests {
         let reply: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
         assert!(reply["raw"].as_str().unwrap().contains("RAW")); // raw, escape codes intact
         // Root ledger holds the General turn.
-        assert!(fs::read_to_string(vault.join("_intents.jsonl")).unwrap().contains("\"s2\""));
+        assert!(read_to_string_retry(vault.join("_intents.jsonl")).unwrap().contains("\"s2\""));
 
         // Journal: header + newest-first ordering.
         journal_append(vault_s.clone(), Some("wealth".into()), "- 2026-06-07 09:00 · [opus] first".into()).unwrap();
         journal_append(vault_s.clone(), Some("wealth".into()), "- 2026-06-07 10:00 · [opus] second".into()).unwrap();
-        let journal = fs::read_to_string(vault.join("wealth").join("_journal.md")).unwrap();
+        let journal = read_to_string_retry(vault.join("wealth").join("_journal.md")).unwrap();
         assert!(journal.starts_with("# Journal\n\n"));
         let i_first = journal.find("first").unwrap();
         let i_second = journal.find("second").unwrap();

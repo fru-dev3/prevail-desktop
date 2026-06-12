@@ -18,7 +18,7 @@ Run this whenever a foreign account balance changes materially or at tax time.
 3. **FATCA threshold.** Check Form 8938 thresholds (higher, and they vary by
    filing status and residency). This is separate from and additional to FBAR.
 4. **Document the trail.** Note account institution, account number, and the
-   peak balance for each — you'll need them on the forms.
+   peak balance for each: you'll need them on the forms.
 5. **Flag penalties.** Non-willful FBAR penalties are steep; if a prior year
    was missed, surface the streamlined-filing option rather than ignoring it.
 
