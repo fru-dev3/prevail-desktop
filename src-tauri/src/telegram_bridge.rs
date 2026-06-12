@@ -29,7 +29,74 @@ pub struct BridgeConfig {
     pub chat_id: String,
     pub cli: String,           // claude | codex | antigravity | ollama
     pub model: Option<String>, // optional override
-    pub domain: Option<String>, // optional — currently unused but reserved
+    pub domain: Option<String>, // default domain when no keyword matches
+    #[serde(default)]
+    pub vault: Option<String>, // vault root: enables routing + thread recording
+    #[serde(default)]
+    pub routes: Vec<RouteRule>, // keyword routing, first match wins
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RouteRule {
+    pub domain: String,
+    pub keywords: Vec<String>,
+}
+
+/// First route whose domain name or any keyword appears in the message.
+fn resolve_domain(cfg: &BridgeConfig, text: &str) -> Option<String> {
+    let lower = text.to_lowercase();
+    for r in &cfg.routes {
+        if lower.contains(&r.domain.to_lowercase())
+            || r.keywords.iter().any(|k| !k.trim().is_empty() && lower.contains(&k.trim().to_lowercase()))
+        {
+            return Some(r.domain.clone());
+        }
+    }
+    cfg.domain.clone()
+}
+
+/// Record one Telegram exchange in the routed domain: an intent in the
+/// ledger (the distiller feeds state/memory from it) and a turn in a dated
+/// telegram thread file, so the conversation is visible in the desktop's
+/// thread list. Crypto-aware via vault_append_line.
+fn record_exchange(cfg: &BridgeConfig, domain: &str, user_text: &str, reply: &str) {
+    let Some(vault) = cfg.vault.as_deref().filter(|v| !v.is_empty()) else { return };
+    let dir = std::path::Path::new(vault).join(domain);
+    if !dir.exists() {
+        return;
+    }
+    let ts_ms = now_secs() * 1000;
+    let intent = serde_json::json!({
+        "kind": "intent",
+        "ts": ts_ms,
+        "source": "telegram",
+        "domain": domain,
+        "cli": cfg.cli,
+        "model": cfg.model,
+        "message": user_text,
+    });
+    if let Ok(line) = serde_json::to_string(&intent) {
+        let _ = crate::engine::vault_append_line(&dir.join("_intents.jsonl"), &format!("{line}
+"));
+    }
+    let threads = dir.join("_threads");
+    let _ = std::fs::create_dir_all(&threads);
+    let (y, mo, d, h, mi, _) = crate::secs_to_ymdhms(now_secs() as i64);
+    let file = threads.join(format!("{y:04}-{mo:02}-{d:02}_telegram.md"));
+    let header = if file.exists() { String::new() } else { format!("# Telegram · {y:04}-{mo:02}-{d:02}
+
+") };
+    let entry = format!(
+        "{header}## {h:02}:{mi:02} via Telegram
+
+**You:** {user_text}
+
+**{}:** {reply}
+
+",
+        cfg.cli,
+    );
+    let _ = crate::engine::vault_append_line(&file, &entry);
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -159,7 +226,9 @@ impl BridgeState {
                                             tokio::time::sleep(Duration::from_secs(4)).await;
                                         }
                                     });
-                                    // Dispatch to the CLI and reply.
+                                    // Dispatch to the CLI and reply. Keyword-route to a
+                                    // domain first so the exchange is recorded there.
+                                    let routed_domain = resolve_domain(&cfg, &text);
                                     let cli_result = run_cli(&cfg.cli, cfg.model.as_deref(), &text).await;
                                     typing_task.abort();
                                     match cli_result {
@@ -191,9 +260,12 @@ impl BridgeState {
                                                     }
                                                 }
                                             }
+                                            if let Some(d) = &routed_domain {
+                                                record_exchange(&cfg, d, &text, &reply);
+                                            }
                                             let _ = app.emit(
                                                 "tg:message_out",
-                                                serde_json::json!({ "text": reply }),
+                                                serde_json::json!({ "text": reply, "domain": routed_domain }),
                                             );
                                         }
                                         Err(e) => {
