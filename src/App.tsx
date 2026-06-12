@@ -10154,9 +10154,9 @@ function BenchmarkPanel({
   }
 
   async function executeJobs(plannedJobs: BenchJob[], councilMode: boolean, scopeStr: string) {
-    // One BATCH per launch: the unit you see (and rerun) in History. Named so
-    // several batches a day stay distinguishable: time, scope, panel size.
     const now = new Date();
+    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const dateLabel = `${MONTHS[now.getMonth()]} ${now.getDate()}`;
     const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const batchId = `b${now.getTime()}`;
     const scopeDomains = scopeStr ? scopeStr.split(",").map((d) => titleCase(d.trim())).filter(Boolean) : [];
@@ -10164,8 +10164,10 @@ function BenchmarkPanel({
       scopeDomains.length === 0 ? "All domains"
       : scopeDomains.length <= 2 ? scopeDomains.join(", ")
       : `${scopeDomains.length} domains`;
-    const modelPart = plannedJobs.length === 1 ? plannedJobs[0].label : `${plannedJobs.length} models`;
-    const batchLabel = `${hhmm} · ${scopePart} · ${modelPart}`;
+    // Compact model label: "Claude Opus 4.7" instead of "Claude · Opus (latest)"
+    const shortModel = (j: BenchJob) => `${titleCase(j.cli)} ${(MODELS[j.cli]?.find(m => m.id === j.model)?.label ?? j.model).replace(/\s*\(.*?\)/, "")}`.trim();
+    const modelPart = plannedJobs.length === 1 ? shortModel(plannedJobs[0]) : `${plannedJobs.length} models`;
+    const batchLabel = `${dateLabel} · ${hhmm} · ${scopePart} · ${modelPart}`;
     setActiveBatch({ label: batchLabel, scope: scopePart, domains: scopeDomains });
     setErr(null);
     setFinishedBatch(null);
@@ -10334,6 +10336,7 @@ function BenchmarkPanel({
             onRun={runBenchmark}
             onViewResults={() => setView("board")}
             onReset={() => { setJobs([]); setLog(""); }}
+            onCrumbHome={() => setView("board")}
           />
         )}
         {(view === "board" || view === "history" || view === "matrix") && (
@@ -10374,25 +10377,35 @@ function BenchCrumbs({
   meta?: React.ReactNode;
 }) {
   return (
-    <nav className="mb-4 flex items-center gap-2 font-mono text-[17px] text-text-muted">
-      {items.map((it, i) => (
-        <Fragment key={`${it.label}-${i}`}>
-          {i > 0 && <ChevronRight className="h-4 w-4 shrink-0" />}
-          {it.onClick ? (
-            <button onClick={it.onClick} className="max-w-[320px] truncate hover:text-accent">{it.label}</button>
-          ) : (
-            <span className={`max-w-[320px] truncate ${i === items.length - 1 ? "font-semibold text-text-primary" : ""}`}>{it.label}</span>
-          )}
-        </Fragment>
-      ))}
-      {meta != null && <span className="ml-auto shrink-0 text-xs text-text-muted">{meta}</span>}
+    <nav className="mb-4 flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
+      {items.map((it, i) => {
+        const isLast = i === items.length - 1;
+        return (
+          <Fragment key={`${it.label}-${i}`}>
+            {i > 0 && <ChevronRight className={`shrink-0 ${isLast ? "h-4 w-4 text-text-muted/50" : "h-3.5 w-3.5 text-text-muted/40"}`} />}
+            {it.onClick ? (
+              <button
+                onClick={it.onClick}
+                className="font-mono text-sm text-text-muted hover:text-accent transition-colors"
+              >
+                {it.label}
+              </button>
+            ) : isLast ? (
+              <span className="font-display text-xl font-semibold tracking-tight text-text-primary">{it.label}</span>
+            ) : (
+              <span className="font-mono text-sm text-text-muted">{it.label}</span>
+            )}
+          </Fragment>
+        );
+      })}
+      {meta != null && <span className="ml-auto shrink-0 font-mono text-xs text-text-muted">{meta}</span>}
     </nav>
   );
 }
 
 function BenchRunConfig({
   mode, setMode, selModels, toggleModel, allDomains, scope, toggleScope,
-  questionCounts, questionCount, running, jobs, log, logRef, activeBatch, onRun, onViewResults, onReset,
+  questionCounts, questionCount, running, jobs, log, logRef, activeBatch, onRun, onViewResults, onReset, onCrumbHome,
 }: {
   mode: "single" | "council";
   setMode: (m: "single" | "council") => void;
@@ -10411,6 +10424,7 @@ function BenchRunConfig({
   onRun: () => void;
   onViewResults: () => void;
   onReset: () => void;
+  onCrumbHome?: () => void;
 }) {
   const selCount = mode === "council" ? 1 : selModels.size;
   void setMode; // mode toggle now lives in the header bar; prop kept for the call site
@@ -10441,7 +10455,7 @@ function BenchRunConfig({
       <div className="w-full space-y-4 px-8 py-5">
         <BenchCrumbs
           items={[
-            { label: "Benchmark" },
+            { label: "Benchmark", onClick: onCrumbHome },
             { label: "Run", onClick: allDone ? onReset : undefined },
             { label: activeBatch?.label ?? (running ? "Running…" : "Finished") },
           ]}
@@ -10576,7 +10590,7 @@ function BenchRunConfig({
   return (
     <div className="w-full space-y-7 px-8 py-5">
       <BenchCrumbs
-        items={[{ label: "Benchmark" }, { label: "Run" }]}
+        items={[{ label: "Benchmark", onClick: onCrumbHome }, { label: "Run" }]}
         meta={`${questionCount} question${questionCount === 1 ? "" : "s"}${scope.size > 0 ? " · scoped" : ""}`}
       />
       {/* Mode lives in the header bar now (one consistent control row). */}
