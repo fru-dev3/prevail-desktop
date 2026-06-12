@@ -2812,6 +2812,7 @@ function titleCase(slug: string): string {
 // Gateway settings.
 function SidebarGatewayLive({ collapsed }: { collapsed: boolean }) {
   const [live, setLive] = useState(false);
+  const [webLive, setWebLive] = useState(false);
   useEffect(() => {
     let alive = true;
     const check = async () => {
@@ -2819,13 +2820,18 @@ function SidebarGatewayLive({ collapsed }: { collapsed: boolean }) {
         const t = await invoke<{ running: boolean }>("telegram_bridge_status");
         if (alive) setLive(!!t.running);
       } catch { if (alive) setLive(false); }
+      try {
+        const w = await invoke<{ running: boolean }>("webui_status");
+        if (alive) setWebLive(!!w.running);
+      } catch { if (alive) setWebLive(false); }
     };
     void check();
     const id = window.setInterval(() => void check(), 30_000);
     return () => { alive = false; window.clearInterval(id); };
   }, []);
-  if (!live) return null;
-  const goGateway = () => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "gateway" }));
+  if (!live && !webLive) return null;
+  const goGateway = () => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: live ? "gateway" : "remote" }));
+  const label = [live ? "Telegram" : null, webLive ? "WebUI" : null].filter(Boolean).join(" + ");
   const dot = (
     <span className="relative flex h-2 w-2 shrink-0">
       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ai opacity-60" />
@@ -2834,7 +2840,7 @@ function SidebarGatewayLive({ collapsed }: { collapsed: boolean }) {
   );
   if (collapsed) {
     return (
-      <button onClick={goGateway} title="Gateway is LIVE: Telegram can reach this app. Click for settings." className="flex w-full justify-center border-t border-border-subtle px-2 py-2">
+      <button onClick={goGateway} title={`LIVE: ${label} can reach this app externally. Click for settings.`} className="flex w-full justify-center border-t border-border-subtle px-2 py-2">
         {dot}
       </button>
     );
@@ -2842,7 +2848,7 @@ function SidebarGatewayLive({ collapsed }: { collapsed: boolean }) {
   return (
     <button onClick={goGateway} className="flex w-full items-center gap-2 border-t border-border-subtle px-3 py-2 text-left hover:bg-surface-warm" title="External messages can reach this app right now. Click for Gateway settings.">
       {dot}
-      <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-ai">Gateway live · Telegram</span>
+      <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-ai">Live · {label}</span>
       <MessagesSquare className="h-3 w-3 shrink-0 text-text-muted" />
     </button>
   );
