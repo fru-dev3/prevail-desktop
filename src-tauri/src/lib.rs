@@ -3049,6 +3049,44 @@ fn read_domain_prompts(vault: String, domain: String) -> Result<Vec<String>, Str
     Ok(prompts)
 }
 
+/// Flat file listing of a domain folder (relative paths + sizes, capped), so
+/// "attach the whole folder" can hand the model a map of what it may read.
+#[tauri::command]
+fn domain_tree(vault: String, domain: String) -> Result<serde_json::Value, String> {
+    let root = PathBuf::from(&vault).join(&domain);
+    if !root.exists() {
+        return Err(format!("domain not found: {}", root.display()));
+    }
+    fn walk(dir: &Path, root: &Path, files: &mut Vec<String>, depth: usize) {
+        if depth > 4 || files.len() >= 200 {
+            return;
+        }
+        let Ok(it) = std::fs::read_dir(dir) else { return };
+        let mut entries: Vec<_> = it.flatten().collect();
+        entries.sort_by_key(|e| e.file_name());
+        for e in entries {
+            if files.len() >= 200 {
+                return;
+            }
+            let p = e.path();
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            if p.is_dir() {
+                walk(&p, root, files, depth + 1);
+            } else {
+                let kb = e.metadata().map(|m| (m.len() as f64 / 1024.0).max(0.1)).unwrap_or(0.0);
+                let rel = p.strip_prefix(root).unwrap_or(&p).to_string_lossy().to_string();
+                files.push(format!("{rel} ({kb:.1} KB)"));
+            }
+        }
+    }
+    let mut files: Vec<String> = Vec::new();
+    walk(&root, &root, &mut files, 0);
+    Ok(serde_json::json!({ "root": root.to_string_lossy(), "files": files }))
+}
+
 #[tauri::command]
 fn domain_context(vault: String, domain: String) -> Result<DomainContext, String> {
     let root = PathBuf::from(&vault).join(&domain);
@@ -3754,6 +3792,7 @@ pub fn run() {
             open_in_finder,
             create_domain,
             domain_context,
+            domain_tree,
             read_domain_prompts,
             scan_skills,
             skill_create,
