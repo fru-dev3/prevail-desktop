@@ -5938,28 +5938,34 @@ function UsageBreakdown({
   if (rows.length === 0) return null;
   const max = Math.max(1, ...rows.map((r) => r.turns));
   return (
-    <div className="rounded-xl border border-border-subtle bg-surface p-3">
-      <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
+    <div className="flex flex-col rounded-xl border border-border-subtle bg-surface p-4">
+      <div className="mb-3 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
         <Icon className="h-3.5 w-3.5" />
         {title}
       </div>
-      <div className="flex flex-col gap-1.5">
-        {rows.slice(0, 5).map((r) => (
-          <div key={r.key} className="flex items-center gap-3">
-            <div className="w-24 shrink-0 truncate font-mono text-[11px] text-text-secondary" title={r.key}>
-              {r.key}
+      {/* Each row spans the full card width: name + metrics on one baseline,
+          a full-width proportional bar beneath. Reads cleanly and fills the
+          horizontal space instead of hugging the left edge. */}
+      <div className="flex flex-1 flex-col gap-3">
+        {rows.slice(0, 6).map((r) => (
+          <div key={r.key} className="flex flex-col gap-1.5">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="min-w-0 truncate font-mono text-xs text-text-primary" title={r.key}>
+                {r.key}
+              </span>
+              <span className="shrink-0 font-mono text-[11px] tabular-nums text-text-muted">
+                <span className="text-text-secondary">{r.turns}</span> {r.turns === 1 ? "turn" : "turns"}
+                <span className="mx-1.5 text-border">·</span>
+                {compactNum(r.input_tokens + r.output_tokens)} tok
+                <span className="mx-1.5 text-border">·</span>
+                <span className="text-text-secondary">{fmtCost(r.cost_usd)}</span>
+              </span>
             </div>
-            <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-surface-warm">
+            <div className="relative h-2 w-full overflow-hidden rounded-full bg-surface-warm">
               <span
                 className="absolute inset-y-0 left-0 rounded-full bg-accent"
                 style={{ width: `${(r.turns / max) * 100}%` }}
               />
-            </div>
-            <div className="w-10 shrink-0 text-right font-mono text-[11px] tabular-nums text-text-secondary">
-              {r.turns}
-            </div>
-            <div className="w-14 shrink-0 text-right font-mono text-[11px] tabular-nums text-text-muted">
-              {fmtCost(r.cost_usd)}
             </div>
           </div>
         ))}
@@ -6013,62 +6019,101 @@ function UsageDashboard({
     );
   }
 
-  const stats: { label: string; value: string; icon: LucideIcon }[] = [
-    { label: "Turns", value: summary.total_turns.toLocaleString(), icon: MessagesSquare },
-    {
-      label: "Tokens",
-      value: compactNum(summary.total_input_tokens + summary.total_output_tokens),
-      icon: TrendingUp,
-    },
-    { label: "Cost", value: fmtCost(summary.total_cost_usd), icon: Coins },
-  ];
+  const inTok = summary.total_input_tokens;
+  const outTok = summary.total_output_tokens;
+  const avgCost = summary.total_turns > 0 ? summary.total_cost_usd / summary.total_turns : 0;
   // Per-day activity strip — last 14 days of recorded turns.
   const days = summary.by_day.slice(-14);
   const dayMax = Math.max(1, ...days.map((d) => d.turns));
+  const stats: { label: string; value: string; sub: string; icon: LucideIcon }[] = [
+    {
+      label: "Turns",
+      value: summary.total_turns.toLocaleString(),
+      sub: days.length > 1 ? `over ${days.length} days` : "recorded",
+      icon: MessagesSquare,
+    },
+    {
+      label: "Tokens",
+      value: compactNum(inTok + outTok),
+      sub: `${compactNum(inTok)} in · ${compactNum(outTok)} out`,
+      icon: TrendingUp,
+    },
+    {
+      label: "Cost",
+      value: fmtCost(summary.total_cost_usd),
+      sub: `${fmtCost(avgCost)} / turn avg`,
+      icon: Coins,
+    },
+  ];
+  // Short label for an activity bar (key is YYYY-MM-DD → MM/DD).
+  const shortDay = (key: string) => (key.length >= 10 ? key.slice(5).replace("-", "/") : key);
 
   return (
-    <div className="mt-3 w-full max-w-5xl">
-      <div className="mb-1.5 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
+    <div className="mt-3 w-full">
+      <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
         <Activity className="h-3.5 w-3.5" />
         Usage
       </div>
 
-      {/* hero totals */}
-      <div className="grid grid-cols-3 gap-2.5">
+      {/* hero totals — icon chip + big value + context sub, filling each card */}
+      <div className="grid grid-cols-3 gap-3">
         {stats.map((s) => (
-          <div key={s.label} className="rounded-xl border border-border-subtle bg-surface px-3 py-2">
-            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-              <s.icon className="h-3.5 w-3.5" />
-              {s.label}
+          <div key={s.label} className="flex items-center gap-3.5 rounded-xl border border-border-subtle bg-surface p-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
+              <s.icon className="h-5 w-5" />
             </div>
-            <div className="mt-0.5 font-display text-lg font-semibold tabular-nums text-text-primary">
-              {s.value}
+            <div className="min-w-0">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{s.label}</div>
+              <div className="font-display text-2xl font-semibold leading-tight tabular-nums text-text-primary">
+                {s.value}
+              </div>
+              <div className="truncate font-mono text-[10px] text-text-muted">{s.sub}</div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* per-day activity strip */}
+      {/* per-day activity strip — taller bars with date labels for context */}
       {days.length > 1 && (
-        <div className="mt-2 rounded-xl border border-border-subtle bg-surface px-3 py-2">
-          <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
-            Activity · last {days.length} day{days.length === 1 ? "" : "s"}
+        <div className="mt-3 rounded-xl border border-border-subtle bg-surface p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
+              Activity · last {days.length} day{days.length === 1 ? "" : "s"}
+            </div>
+            <div className="font-mono text-[10px] text-text-muted">
+              {summary.total_turns} turn{summary.total_turns === 1 ? "" : "s"} total
+            </div>
           </div>
-          <div className="flex h-8 items-end gap-1">
+          <div className="flex h-20 items-end gap-1.5">
             {days.map((d) => (
               <div
                 key={d.key}
-                className="flex-1 rounded-t bg-accent/70 transition-colors hover:bg-accent"
-                style={{ height: `${Math.max(6, (d.turns / dayMax) * 100)}%` }}
+                className="group h-full flex-1 rounded-t bg-accent/15"
                 title={`${d.key} · ${d.turns} turn${d.turns === 1 ? "" : "s"} · ${fmtCost(d.cost_usd)}`}
-              />
+              >
+                <div className="flex h-full flex-col justify-end">
+                  <div
+                    className="rounded-t bg-accent/70 transition-colors group-hover:bg-accent"
+                    style={{ height: `${Math.max(4, (d.turns / dayMax) * 100)}%` }}
+                  />
+                </div>
+              </div>
             ))}
           </div>
+          {days.length <= 14 && (
+            <div className="mt-1.5 flex gap-1.5">
+              {days.map((d) => (
+                <div key={d.key} className="flex-1 truncate text-center font-mono text-[9px] text-text-muted">
+                  {shortDay(d.key)}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* breakdowns */}
-      <div className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+      {/* breakdowns — three equal columns, each row filling the card width */}
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <UsageBreakdown title="By agent" icon={Cpu} rows={summary.by_cli} />
         <UsageBreakdown title="By model" icon={Layers} rows={summary.by_model} />
         <UsageBreakdown title="By domain" icon={Users} rows={summary.by_domain} />
