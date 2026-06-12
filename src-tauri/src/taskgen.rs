@@ -174,6 +174,9 @@ async fn run_once_inner(cfg: &TaskGenConfig, force: bool) -> Result<(u64, u64), 
         }
         let domain_dir = entry.path();
 
+        if !domain_daemon_enabled(&domain_dir, "taskgen") {
+            continue;
+        }
         let cursor = read_cursor(&domain_dir);
         if !force && today_ts.saturating_sub(cursor.last_run_ts) < ONE_DAY {
             continue;
@@ -323,6 +326,20 @@ fn parse_tasks(output: &str) -> Vec<String> {
             Some(rest.to_string())
         })
         .collect()
+}
+
+/// Read `_daemon.json` in `domain_dir` and return whether `key` ("taskgen" or
+/// "reminders") is enabled. Defaults to `true` when the file is absent or the
+/// key is missing, so domains work out-of-the-box with no config required.
+pub fn domain_daemon_enabled(domain_dir: &Path, key: &str) -> bool {
+    let path = domain_dir.join("_daemon.json");
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return true; // no file → enabled by default
+    };
+    let Ok(map): Result<serde_json::Map<String, serde_json::Value>, _> = serde_json::from_str(&raw) else {
+        return true;
+    };
+    map.get(key).and_then(|v| v.as_bool()).unwrap_or(true)
 }
 
 // ── Tauri commands ────────────────────────────────────────────────────────────

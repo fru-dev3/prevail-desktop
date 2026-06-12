@@ -4649,6 +4649,28 @@ function DomainPrefsPanel({
   const sandboxKey = `prevail.domain.${domain}.sandbox`;
   const keywordsKey = `prevail.domain.${domain}.routing.keywords`;
 
+  // Per-domain daemon config (_daemon.json) — taskgen + reminders toggles.
+  // Default true so domains work without any config file.
+  const daemonCfgPath = `${vaultPath}/${domain}/_daemon.json`;
+  const [daemonTaskgen, setDaemonTaskgen] = useState(true);
+  const [daemonReminders, setDaemonReminders] = useState(true);
+  useEffect(() => {
+    invoke<string>("read_text_file", { path: daemonCfgPath })
+      .then((raw) => {
+        try {
+          const cfg = JSON.parse(raw);
+          if (typeof cfg.taskgen === "boolean") setDaemonTaskgen(cfg.taskgen);
+          if (typeof cfg.reminders === "boolean") setDaemonReminders(cfg.reminders);
+        } catch {}
+      })
+      .catch(() => {}); // file absent → defaults (true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [daemonCfgPath]);
+  function saveDaemonCfg(patch: { taskgen?: boolean; reminders?: boolean }) {
+    const next = { taskgen: daemonTaskgen, reminders: daemonReminders, ...patch };
+    invoke("write_text_file", { path: daemonCfgPath, contents: JSON.stringify(next, null, 2) }).catch(() => {});
+  }
+
   // Per-domain prefs are stored in the domain's manifest (config block)
   // when the engine supports it, and ALSO mirrored to localStorage so the
   // rest of the app (ChatPanel) — which reads localStorage — keeps working.
@@ -5060,6 +5082,26 @@ function DomainPrefsPanel({
         />
         <div className="mt-2 font-mono text-[10px] text-text-muted">
           Edits save when the field loses focus.
+        </div>
+      </section>
+
+      <section className="mb-6 rounded-xl border border-border bg-surface p-4">
+        <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Daemons</div>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-text-primary">Task generation</div>
+              <div className="mt-0.5 text-xs text-text-secondary">AI proactively writes tasks for this domain from your goals and memory.</div>
+            </div>
+            <Toggle on={daemonTaskgen} onChange={(v) => { setDaemonTaskgen(v); saveDaemonCfg({ taskgen: v }); }} />
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-text-primary">Reminders</div>
+              <div className="mt-0.5 text-xs text-text-secondary">Fire a notification when tasks in this domain are due or overdue.</div>
+            </div>
+            <Toggle on={daemonReminders} onChange={(v) => { setDaemonReminders(v); saveDaemonCfg({ reminders: v }); }} />
+          </div>
         </div>
       </section>
     </div>
