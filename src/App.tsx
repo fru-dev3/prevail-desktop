@@ -12577,7 +12577,7 @@ function SettingsPanel({
           {section === "frameworks" && <FrameworksSection />}
           {section === "skills" && <SkillsSection vaultPath={vaultPath} />}
           {section === "shortcuts" && <ShortcutsSection />}
-          {section === "about" && <AboutSection />}
+          {section === "about" && <AboutSection vaultPath={vaultPath} />}
         </div>
       </div>
     </div>
@@ -16644,27 +16644,104 @@ function ShortcutsSection() {
   );
 }
 
-function AboutSection() {
+type DiagCheck = { label: string; status: "ok" | "warn" | "fail" | "info"; detail: string; why: string };
+function AboutSection({ vaultPath }: { vaultPath: string }) {
+  const verify = useCliVerifyLive();
   const [checking, setChecking] = useState(false);
   const [latest, setLatest] = useState<string | null>(null);
   const [checkErr, setCheckErr] = useState<string | null>(null);
-  const [includePre, setIncludePre] = useState<boolean>(() => lsGet("prevail.about.includePrerelease") === "1");
-  useEffect(() => { lsSet("prevail.about.includePrerelease", includePre ? "1" : "0"); }, [includePre]);
-  const [diag, setDiag] = useState<string | null>(null);
+  const [checks, setChecks] = useState<DiagCheck[] | null>(null);
+  const [diagRunning, setDiagRunning] = useState(false);
   const [diagCopied, setDiagCopied] = useState(false);
 
+  // A real health check: each item verifies one thing Prevail depends on and
+  // says why it matters, with a pass/warn/fail verdict you can act on.
   async function runDiagnosis() {
+    setDiagRunning(true);
+    const out: DiagCheck[] = [];
+    let d: { desktop_version: string; os: string; arch: string; engine_version?: string; engine_bin: string; engine_bundled: boolean; app_support: string } | null = null;
+    try { d = await invoke("app_diagnostics"); } catch { /* engine probe failed */ }
+
+    // Engine sidecar.
+    if (d) {
+      const match = d.engine_version && d.engine_version.length > 0;
+      out.push({
+        label: "Engine", status: match ? "ok" : "warn",
+        detail: `${d.engine_version ?? "unknown"} ${d.engine_bundled ? "(bundled)" : `(${d.engine_bin})`}`,
+        why: "The engine runs every chat, council, and benchmark. Bundled = shipped with the app.",
+      });
+    } else {
+      out.push({ label: "Engine", status: "fail", detail: "not reachable", why: "Without the engine, nothing runs. Reinstall the app." });
+    }
+
+    // Vault: reachable, writable, encryption state.
+    if (vaultPath) {
+      let exists = false;
+      try { exists = await invoke<boolean>("vault_exists", { path: vaultPath }); } catch { /* */ }
+      let enc: { encrypted: boolean; unlocked: boolean } | null = null;
+      try { enc = await invoke("engine_vault_status", { vault: vaultPath }); } catch { /* */ }
+      const encNote = enc?.encrypted ? (enc.unlocked ? " · encrypted, unlocked" : " · encrypted, LOCKED") : "";
+      out.push({
+        label: "Vault", status: exists ? (enc?.encrypted && !enc.unlocked ? "warn" : "ok") : "fail",
+        detail: `${vaultPath}${encNote}`,
+        why: exists ? "Your data lives here. An encrypted+locked vault can't be read until you unlock it." : "The vault path doesn't exist — pick or restore it in Settings → Vault.",
+      });
+    } else {
+      out.push({ label: "Vault", status: "fail", detail: "no vault selected", why: "Set up a vault in Settings → Vault or Demo Mode." });
+    }
+
+    // Agents: detected AND validated.
+    let clis: CliInfo[] = [];
+    try { clis = await invoke<CliInfo[]>("detect_clis"); } catch { /* */ }
+    const detected = clis.filter((c) => c.available);
+    const valid = detected.filter((c) => verify.get(c.id)?.status === "ok");
+    out.push({
+      label: "Agents", status: valid.length > 0 ? "ok" : detected.length > 0 ? "warn" : "fail",
+      detail: detected.length === 0 ? "none detected" : detected.map((c) => `${c.label}${verify.get(c.id)?.status === "ok" ? " ✓" : verify.get(c.id)?.status === "failed" ? " ✗" : " ?"}`).join(", "),
+      why: valid.length > 0 ? "These models are installed and answered a live test." : detected.length > 0 ? "Installed but not validated — open Settings → Models and re-check (often a login/token issue)." : "Install at least one CLI (claude, codex, ollama) to chat.",
+    });
+
+    // Network + Bunker.
+    const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+    const bunker = isBunkerOn();
+    out.push({
+      label: "Network", status: bunker ? "info" : online ? "ok" : "warn",
+      detail: bunker ? "Bunker Mode ON (local-only by design)" : online ? "online" : "offline",
+      why: bunker ? "Cloud is intentionally blocked; only local models run." : online ? "Cloud models and updates are reachable." : "Offline — cloud models and update checks won't work until reconnected.",
+    });
+
+    // Update check.
     try {
-      const d = await invoke<{ desktop_version: string; os: string; arch: string; engine_version?: string; engine_bin: string; engine_bundled: boolean; app_support: string }>("app_diagnostics");
-      let clis: CliInfo[] = [];
-      try { clis = await invoke<CliInfo[]>("detect_clis"); } catch { /* ignore */ }
-      setDiag([
-        `Prevail Desktop v${d.desktop_version} (${d.os}/${d.arch})`,
-        `Engine: ${d.engine_version ?? "?"} ${d.engine_bundled ? "(bundled sidecar)" : `(${d.engine_bin})`}`,
-        `App support: ${d.app_support}`,
-        `Agents: ${clis.map((c) => `${c.id}${c.available ? "✓" : "✗"}`).join("  ") || "none detected"}`,
-      ].join("\n"));
-    } catch (e) { setDiag(`diagnosis failed: ${e}`); }
+      const u = await checkUpdate();
+      out.push({
+        label: "Updates", status: u ? "warn" : "ok",
+        detail: u ? `v${u.version} available` : `on the latest (v${APP_VERSION})`,
+        why: u ? "Click 'Check for updates' above to install it in place." : "You're running the newest release.",
+      });
+    } catch {
+      out.push({ label: "Updates", status: "info", detail: "couldn't check", why: "Update feed unreachable (offline or first release). Not a problem." });
+    }
+
+    // Background surfaces.
+    try {
+      const tg = await invoke<{ running: boolean }>("telegram_bridge_status");
+      const wu = await invoke<{ running: boolean }>("webui_status");
+      const surfaces = [tg.running ? "Telegram" : null, wu.running ? "WebUI" : null].filter(Boolean);
+      out.push({
+        label: "External access", status: surfaces.length > 0 ? "info" : "ok",
+        detail: surfaces.length > 0 ? `LIVE: ${surfaces.join(", ")}` : "none active",
+        why: surfaces.length > 0 ? "These bridges can reach the app from outside right now." : "No external surface is exposed.",
+      });
+    } catch { /* */ }
+
+    setChecks(out);
+    setDiagRunning(false);
+  }
+
+  function diagText(): string {
+    const head = `Prevail Desktop v${APP_VERSION}`;
+    const lines = (checks ?? []).map((c) => `[${c.status.toUpperCase()}] ${c.label}: ${c.detail}`);
+    return [head, ...lines].join("\n");
   }
 
   async function exportConfig() {
@@ -16738,8 +16815,7 @@ function AboutSection() {
         const r = await fetch("https://api.github.com/repos/fru-dev3/prevail-desktop/releases?per_page=10");
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const releases = await r.json() as Array<{ tag_name: string; prerelease: boolean; html_url: string }>;
-        const eligible = releases.filter((rel) => includePre || !rel.prerelease);
-        const top = eligible[0];
+        const top = releases.find((rel) => !rel.prerelease) ?? releases[0];
         if (!top) throw new Error("no releases found");
         setLatest(top.tag_name);
         try { await invoke("open_in_finder", { path: top.html_url }); } catch {}
@@ -16771,61 +16847,41 @@ function AboutSection() {
   const newer = latest && cmp > 0;
 
   return (
-    <>
-      <SettingsHeader title="About" />
+    <div className="mx-auto max-w-xl">
       <div className="flex flex-col items-center text-center">
-        <img src="/logo.png" alt="Prevail" className="h-20 w-20 rounded-3xl shadow-md" />
-        <h1 className="mt-5 font-display text-4xl font-extrabold tracking-tight">
+        <img src="/logo.png" alt="Prevail" className="h-16 w-16 rounded-2xl shadow-md" />
+        <h1 className="mt-3 font-display text-2xl font-extrabold tracking-tight">
           <Brand className="[letter-spacing:0.12em]" />
         </h1>
-        <p className="mt-2 max-w-md text-sm text-text-secondary">
-          One desktop. Your AI council, grounded in your domains.
-        </p>
-        <div className="mt-4 flex items-center gap-3">
-          <span className="rounded-full bg-surface-warm px-3 py-1 font-mono text-xs text-text-secondary">v{APP_VERSION}</span>
-          <a
-            href="https://github.com/fru-dev3/prevail-desktop"
-            target="_blank"
-            rel="noreferrer"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-warm text-text-secondary hover:text-accent"
-            title="GitHub"
-          >
-            <Github className="h-4 w-4" />
-          </a>
-        </div>
+        <p className="mt-1 text-xs text-text-secondary">One desktop. Your AI council, grounded in your domains.</p>
       </div>
 
-      <div className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
-        <button
-          onClick={checkForUpdates}
-          disabled={checking}
-          className="w-full rounded-xl bg-text-primary px-4 py-3 font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          {installing ? "Downloading & installing…" : checking ? "Checking…" : "Check for updates"}
-        </button>
+      {/* Update card — version + one-click install, compact. */}
+      <div className="mt-4 rounded-xl border border-border bg-surface p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <span className="rounded-full bg-surface-warm px-2.5 py-1 font-mono text-xs text-text-secondary">v{APP_VERSION}</span>
+          <span className="flex-1 text-xs text-text-muted">
+            {newer ? "An update is ready to install." : upToDate ? "You're on the latest release." : "Install updates in place, no browser needed."}
+          </span>
+          <button
+            onClick={checkForUpdates}
+            disabled={checking}
+            className="shrink-0 rounded-md bg-text-primary px-3 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {installing ? "Installing…" : checking ? "Checking…" : newer ? "Download & install" : "Check for updates"}
+          </button>
+        </div>
         {latest && (
-          <div className={`mt-3 rounded-md border px-3 py-2 text-sm ${
-            upToDate
-              ? "border-accent-border bg-accent-soft text-accent"
-              : "border-warn/40 bg-warn/10 text-warn"
+          <div className={`mt-2 rounded-md border px-3 py-1.5 text-xs ${
+            upToDate ? "border-accent-border bg-accent-soft text-accent" : "border-warn/40 bg-warn/10 text-warn"
           }`}>
-            {upToDate
-              ? `You're on the latest release (${latest}).`
-              : newer
-              ? `Newer release available: ${latest}. The release page opened in your browser.`
-              : `Latest: ${latest}`}
+            {upToDate ? `Latest release (${latest}).` : newer ? `Update available: ${latest} — click Download & install.` : `Latest: ${latest}`}
           </div>
         )}
-        {checkErr && (
-          <div className="mt-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{checkErr}</div>
-        )}
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <div className="text-sm text-text-secondary">Include prerelease / dev builds</div>
-          <Toggle on={includePre} onChange={setIncludePre} label="Include prerelease builds" />
-        </div>
+        {checkErr && <div className="mt-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-xs text-warn">{checkErr}</div>}
       </div>
 
-      <div className="mt-4 rounded-2xl border border-border bg-surface px-5 py-2 shadow-sm">
+      <div className="mt-3 rounded-xl border border-border bg-surface px-4 py-1 shadow-sm">
         <Row label="Help & documentation" href="https://github.com/fru-dev3/prevail-desktop#readme" />
         <Row label="Update log" href="https://github.com/fru-dev3/prevail-desktop/releases" />
         <Row label="Report an issue" href="https://github.com/fru-dev3/prevail-desktop/issues/new" />
@@ -16834,7 +16890,7 @@ function AboutSection() {
       </div>
 
       {/* Alpha / liability disclaimer */}
-      <div className="mt-4 rounded-2xl border border-border bg-surface px-5 py-4 shadow-sm">
+      <div className="mt-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-sm">
         <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Alpha software</div>
         <p className="text-xs leading-relaxed text-text-secondary">
           Prevail is an early, experimental alpha released for demonstration and testing. It is provided "as is",
@@ -16854,7 +16910,7 @@ function AboutSection() {
       </div>
 
       {/* Config — export / import / reset */}
-      <div className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+      <div className="mt-3 rounded-xl border border-border bg-surface p-4 shadow-sm">
         <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Configuration</div>
         <div className="flex flex-wrap gap-2">
           <button onClick={exportConfig}
@@ -16867,23 +16923,42 @@ function AboutSection() {
         <div className="mt-2 text-xs text-text-secondary">Backs up / restores all app preferences (not your vault). Reset clears every preference and reloads.</div>
       </div>
 
-      {/* Diagnostics */}
-      <div className="mt-4 rounded-2xl border border-border bg-surface p-5 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Diagnostics</div>
+      {/* Diagnostics — a real health check, one row per thing Prevail needs. */}
+      <div className="mt-3 rounded-xl border border-border bg-surface p-4 shadow-sm">
+        <div className="mb-1 flex items-center justify-between">
+          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Health check</div>
           <div className="flex gap-2">
-            <button onClick={runDiagnosis}
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent">Run diagnosis</button>
-            <button onClick={() => { if (diag) { navigator.clipboard.writeText(diag).catch(() => {}); setDiagCopied(true); window.setTimeout(() => setDiagCopied(false), 1500); } }}
-              disabled={!diag}
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-40">{diagCopied ? "Copied" : "Debug dump"}</button>
+            <button onClick={runDiagnosis} disabled={diagRunning}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{diagRunning ? "Checking…" : "Run check"}</button>
+            {checks && (
+              <button onClick={() => { navigator.clipboard.writeText(diagText()).catch(() => {}); setDiagCopied(true); window.setTimeout(() => setDiagCopied(false), 1500); }}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent">{diagCopied ? "Copied" : "Copy report"}</button>
+            )}
           </div>
         </div>
-        {diag && <pre className="max-h-48 overflow-auto rounded-md border border-border-subtle bg-background p-3 font-mono text-[11px] text-text-secondary">{diag}</pre>}
+        <p className="mb-3 text-xs text-text-muted">Verifies everything Prevail depends on is healthy. Copy the report when filing an issue.</p>
+        {checks && (
+          <div className="flex flex-col gap-1.5">
+            {checks.map((c) => (
+              <div key={c.label} className="flex items-start gap-2.5 rounded-lg border border-border-subtle bg-background px-3 py-2">
+                <span className={`mt-0.5 shrink-0 font-mono text-sm font-bold ${
+                  c.status === "ok" ? "text-ok" : c.status === "fail" ? "text-warn" : c.status === "warn" ? "text-warn" : "text-text-muted"
+                }`}>{c.status === "ok" ? "✓" : c.status === "fail" ? "✗" : c.status === "warn" ? "!" : "·"}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-text-primary">{c.label}</span>
+                    <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary" title={c.detail}>{c.detail}</span>
+                  </div>
+                  <div className="text-[11px] leading-snug text-text-muted">{c.why}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Danger zone — uninstall (never touches the vault) */}
-      <div className="mt-4 rounded-2xl border border-warn/30 bg-warn/5 p-5">
+      <div className="mt-3 rounded-xl border border-warn/30 bg-warn/5 p-4">
         <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-warn">Danger zone</div>
         <div className="mb-3 text-xs text-text-secondary">Removes the app and its data. Your vault is never deleted.</div>
         <div className="flex flex-col gap-2">
@@ -16904,7 +16979,7 @@ function AboutSection() {
         <span>MIT licensed · Tauri 2 · React 19 · Tailwind 4</span>
         <span>Local-first · Vault stays on this Mac</span>
       </div>
-    </>
+    </div>
   );
 }
 
