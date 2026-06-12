@@ -262,8 +262,9 @@ async fn generate_for_domain(
     if !content.is_empty() && !content.ends_with('\n') {
         content.push('\n');
     }
+    let stamp = crate::tasks::today_ymd();
     for t in &fresh {
-        content.push_str(&format!("- [ ] {t}\n"));
+        content.push_str(&format!("- [ ] {t} +{stamp} ~daemon\n"));
     }
     std::fs::write(&tasks_path, &content).map_err(|e| format!("write _tasks.md: {e}"))?;
 

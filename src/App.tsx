@@ -4245,7 +4245,7 @@ function buildQuickActions(domain: string | null): { glyph: string; label: strin
 // Proactive surfacing for a domain — questions worth asking + suggested next
 // actions, generated from the vault (cached). Click one to seed the composer.
 interface SurfaceResult { questions: string[]; actions: string[]; generated_at: number; stale: boolean }
-interface DomainTask { text: string; done: boolean; due?: string | null }
+interface DomainTask { text: string; done: boolean; due?: string | null; added?: string | null; source?: string | null }
 function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: string; nonce: number }) {
   const [tasks, setTasks] = useState<DomainTask[]>([]);
   const [adding, setAdding] = useState("");
@@ -4271,21 +4271,29 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
       <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Tasks · {titleCase(domain)}</div>
       <div className="flex flex-col gap-1">
         {tasks.map((t, i) => (
-          <label key={i} className="flex cursor-pointer items-center gap-2 text-sm">
+          <label
+            key={i}
+            title={`${t.added ? `added ${t.added}` : "added before tracking"} · by ${t.source === "daemon" ? "the task daemon" : t.source === "surface" ? "an accepted suggestion" : "you"}${t.due ? ` · due ${t.due}` : ""}`}
+            className="flex cursor-pointer items-center gap-2 text-sm"
+          >
             <input type="checkbox" checked={t.done} onChange={() => persist(tasks.map((x, j) => j === i ? { ...x, done: !x.done } : x))} />
             <span className={t.done ? "text-text-muted line-through" : "text-text-primary"}>{t.text}</span>
+            {t.source && t.source !== "user" && (
+              <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] text-text-muted">{t.source === "daemon" ? "auto" : "suggested"}</span>
+            )}
             {t.due && !t.done && (() => {
               const today = new Date().toISOString().slice(0, 10);
               const overdue = t.due < today, due = t.due === today;
               return <span className={`rounded px-1.5 py-0.5 font-mono text-[9px] ${overdue ? "bg-warn/15 text-warn" : due ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>{overdue ? "overdue" : due ? "today" : t.due}</span>;
             })()}
-            <button onClick={() => persist(tasks.filter((_, j) => j !== i))} className="ml-auto text-text-muted/50 hover:text-warn">✕</button>
+            <span className="ml-auto shrink-0 font-mono text-[9px] text-text-muted/60">{t.added ?? ""}</span>
+            <button onClick={() => persist(tasks.filter((_, j) => j !== i))} className="shrink-0 text-text-muted/50 hover:text-warn">✕</button>
           </label>
         ))}
       </div>
       <div className="mt-2 flex gap-2">
         <input value={adding} placeholder="add a task…  (optional due: @2026-04-15)" onChange={(e) => setAdding(e.target.value)}
-          onKeyDown={async (e) => { if (e.key === "Enter" && adding.trim()) { const txt = adding.trim(); setAdding(""); try { const next = await invoke<DomainTask[]>("tasks_add", { vault: vaultPath, domain, text: txt }); setTasks(next); } catch (err) { console.error("tasks_add", err); } } }}
+          onKeyDown={async (e) => { if (e.key === "Enter" && adding.trim()) { const txt = adding.trim(); setAdding(""); try { const next = await invoke<DomainTask[]>("tasks_add", { vault: vaultPath, domain, text: txt, source: "user" }); setTasks(next); } catch (err) { console.error("tasks_add", err); } } }}
           className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm focus:border-accent-border focus:outline-none" />
       </div>
     </div>
@@ -4310,7 +4318,7 @@ function InsightsPanel({ vaultPath, domain, onSeed }: { vaultPath: string; domai
         vaultPath={vaultPath}
         domain={domain}
         onPick={onSeed}
-        onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }}
+        onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t, source: "surface" }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }}
       />
       <TasksPanel vaultPath={vaultPath} domain={domain} nonce={taskNonce} />
       {/* I6: the intents ledger, finally visible. */}
@@ -4528,7 +4536,7 @@ function DomainHome({
                   </div>
                 )}
                 <SurfacePanel vaultPath={vaultPath} domain={domain} onPick={onPickPrompt}
-                  onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }} />
+                  onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t, source: "surface" }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }} />
                 <TasksPanel vaultPath={vaultPath} domain={domain} nonce={taskNonce} />
                 <ul className="flex flex-col gap-2">
                 {buildQuickActions(domain).map((q) => (
