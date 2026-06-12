@@ -2014,6 +2014,34 @@ fn ui_settings_get() -> String {
         .unwrap_or_else(|| "{}".to_string())
 }
 
+/// Cross-device UI PREFERENCES blob (pinned domains, model picks, per-domain
+/// toggles) — the broader sibling of ui_settings, so the WebUI mirrors the
+/// desktop's working state instead of starting blank. Frontend owns the schema.
+fn ui_prefs_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    Some(std::path::Path::new(&home).join("Library/Application Support/sh.prevail.desktop/ui-prefs.json"))
+}
+
+#[tauri::command]
+fn ui_prefs_get() -> String {
+    ui_prefs_path()
+        .and_then(|p| read_to_string_retry(&p).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "{}".to_string())
+}
+
+#[tauri::command]
+fn ui_prefs_set(json: String) -> Result<(), String> {
+    serde_json::from_str::<serde_json::Value>(&json)
+        .map_err(|e| format!("invalid ui prefs json: {e}"))?;
+    let p = ui_prefs_path().ok_or("no HOME directory")?;
+    if let Some(dir) = p.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    fs::write(&p, json).map_err(|e| e.to_string())
+}
+
 /// Persist cross-device UI settings. The frontend owns the schema; we only
 /// validate that it's well-formed JSON so we never write garbage to disk.
 #[tauri::command]
@@ -3889,6 +3917,8 @@ pub fn run() {
             vault_exists,
             bootstrap_vault,
             ui_settings_get,
+            ui_prefs_get,
+            ui_prefs_set,
             ui_settings_set,
             chat_send,
             benchmark_runs,

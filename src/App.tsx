@@ -1063,6 +1063,52 @@ function lsGet(key: string, fallback: string = ""): string {
 function lsSet(key: string, value: string): void {
   if (value) localStorage.setItem(key, value);
   else localStorage.removeItem(key);
+  if (typeof key === "string" && key.startsWith("prevail.")) scheduleUiPrefsPush();
+}
+
+// ── Cross-device UI prefs sync ───────────────────────────────────────────────
+// Pins, model picks, and per-domain toggles live in per-surface localStorage,
+// so the WebUI used to start blank versus the desktop. We mirror the syncable
+// prevail.* keys through a backend blob (ui_prefs_get/set): the desktop pushes
+// its working state; the browser hydrates from it on boot. Device-specific and
+// sensitive keys are excluded.
+const UI_PREFS_EXCLUDE_PREFIX = [
+  "prevail.desktop.vaultPath", "prevail.desktop.vaultProduction", "prevail.web.",
+  "prevail.about.", "prevail.backup.", "prevail.bench.schedule.", "prevail.desktop.theme",
+  "prevail.desktop.palette",
+];
+function isSyncablePrefKey(k: string): boolean {
+  if (!k.startsWith("prevail.")) return false;
+  return !UI_PREFS_EXCLUDE_PREFIX.some((p) => k.startsWith(p));
+}
+function snapshotUiPrefs(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && isSyncablePrefKey(k)) out[k] = localStorage.getItem(k) ?? "";
+  }
+  return out;
+}
+let uiPrefsPushTimer: number | null = null;
+// Desktop: debounce-push the syncable prefs whenever they change.
+function scheduleUiPrefsPush() {
+  if (isBrowser()) return;
+  if (uiPrefsPushTimer !== null) window.clearTimeout(uiPrefsPushTimer);
+  uiPrefsPushTimer = window.setTimeout(() => {
+    void invoke("ui_prefs_set", { json: JSON.stringify(snapshotUiPrefs()) }).catch(() => {});
+  }, 1500);
+}
+// Browser: hydrate localStorage from the desktop's pushed prefs before the app
+// reads them. Returns a promise so boot can await it.
+async function hydrateUiPrefs(): Promise<void> {
+  if (!isBrowser()) return;
+  try {
+    const raw = await invoke<string>("ui_prefs_get");
+    const obj = JSON.parse(raw || "{}") as Record<string, string>;
+    for (const [k, v] of Object.entries(obj)) {
+      if (isSyncablePrefKey(k) && localStorage.getItem(k) === null) localStorage.setItem(k, v);
+    }
+  } catch { /* offline / first run */ }
 }
 
 // ── Bunker Mode (app-wide local-only trust mode) ──
@@ -1944,7 +1990,9 @@ export default function App() {
           if (bp) setVaultPath((cur) => (cur === bp ? cur : bp));
         } catch { /* ignore */ }
       };
-      void pull();
+      // Mirror the desktop's pins / model picks / toggles, then pull its vault,
+      // then nudge a re-render so the hydrated prefs take effect.
+      void hydrateUiPrefs().then(() => pull()).then(() => setUiPrefsNonce((n) => n + 1));
       window.addEventListener("focus", pull);
       return () => window.removeEventListener("focus", pull);
     }
@@ -2044,6 +2092,7 @@ export default function App() {
   // a populated vault). The dismissed flag is retained so manual closes are
   // tracked even though nothing auto-reopens.
   const [onboardOpen, setOnboardOpen] = useState(false);
+  const [, setUiPrefsNonce] = useState(0); // browser: re-render after prefs hydrate
   const [, setOnboardDismissed] = useState(false);
   // Tracks whether the first scan_vault for the current vault has resolved.
   const [, setDomainsLoaded] = useState(false);
