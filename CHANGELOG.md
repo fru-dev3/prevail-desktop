@@ -4,6 +4,18 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.10] — 2026-06-12 · the big testing sweep: 30+ fixes from live use
+
+### Fixed
+
+- **Vault encryption no longer crashes the app.** The desktop gained a native crypto layer: every vault read/write is transparently AES-256-GCM-aware after unlock, the error screen is recoverable, and encrypting ends with an explicit save-recovery-code + restart step.
+- **Benchmarks**: runs survive any navigation (global registry, sidebar progress rows, cancel buttons); reruns create real fresh runs (engine run-dir collision + ignored --batch flags fixed); Bunker Mode is enforced at every layer; compact leaderboard redesigned with rank cards and drift sparklines; Suggest-with-AI works on fresh domains, supports all-domains drafting and a model picker.
+- **Chat**: returning to a domain lands on the thread you were working on, with disk catch-up when a run finished while you were away; Auto-council actually convenes (was a complete no-op); the constitution is pullable from the context drawer (and verified injected on every turn).
+- **Providers**: auto-validated at launch with ✓/✗ everywhere (Models page, chat picker); OpenRouter authenticates on every spawn path (the 401), shows a masked-key configured state, and has a real live test; one picker entry per model (aliases carry their resolved version); MLX renamed oMLX.
+- **Telegram**: messages keyword-route to domains and leave threads + intents; model picker dropdown; voice-note handling designed (next release). A live-gateway indicator (Telegram + WebUI) pulses in the sidebar everywhere.
+- **Context drawer** reads the v2 vault layout (state/decisions no longer permanently empty) with honest empty-state explanations; Insights page restructured (dominant header, collapsed sections with counts, refresh freshness).
+- **Misc**: tasks carry provenance (added date, source, due); questions are archival + versioned with provenance; Ideal State renders as an icon-mapped visual page with full edit history and restore; Settings > Intents cross-domain browser; scheduled benchmark re-runs; 22 seeded demo skills; gateway brand logos; in-app logo restored to brand gold; theme palettes in a compact grid; same-day backups create distinct archives; routing keywords pre-populate per domain; web UI favicon + first-class live indicator; em dashes removed app-wide.
+
 ## [0.7.9] — 2026-06-12 · engine follows your vault after demo exit
 
 ### Fixed
