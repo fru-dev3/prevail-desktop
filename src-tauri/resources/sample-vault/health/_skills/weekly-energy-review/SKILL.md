@@ -11,7 +11,7 @@ source: seed
 Run once a week to keep health habits on track without over-engineering.
 
 1. **Sleep first.** Average hours and consistency this week. If sleep is below
-   7 hours, fixing it outranks adding any new workout — protect it before
+   7 hours, fixing it outranks adding any new workout: protect it before
    stacking morning training on top.
 2. **Movement.** Count intentional activity sessions. Aim for consistency over
    intensity; a sustainable 3x beats an ambitious 6x that collapses.
