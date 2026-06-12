@@ -281,15 +281,15 @@ interface ModelPick {
 }
 const MODELS: Record<string, ModelPick[]> = {
   claude: [
-    { id: "opus",              label: "Opus (latest)",  blurb: "alias · auto-upgrades" },
-    { id: "claude-opus-4-8",   label: "Opus 4.8",       blurb: "current flagship" },
-    { id: "claude-opus-4-7",   label: "Opus 4.7",       blurb: "previous flagship" },
-    { id: "claude-opus-4-6",   label: "Opus 4.6",       blurb: "legacy flagship" },
-    { id: "claude-fable-5",    label: "Fable 5",        blurb: "newest · most capable" },
-    { id: "sonnet",            label: "Sonnet (latest)", blurb: "alias · balanced" },
-    { id: "claude-sonnet-4-6", label: "Sonnet 4.6",     blurb: "balanced workhorse" },
-    { id: "haiku",             label: "Haiku (latest)", blurb: "alias · fast + cheap" },
-    { id: "claude-haiku-4-5",  label: "Haiku 4.5",      blurb: "fastest, cheapest" },
+    // One entry per model: the alias id (auto-upgrades) carries the resolved
+    // version in its label, so "Opus 4.8 (latest)" and a separate "Opus 4.8"
+    // never coexist. Bump these labels when Anthropic ships a new version.
+    { id: "opus",            label: "Opus 4.8 (latest)",   blurb: "auto-upgrades to the newest Opus" },
+    { id: "claude-opus-4-7", label: "Opus 4.7",            blurb: "pinned · previous flagship" },
+    { id: "claude-opus-4-6", label: "Opus 4.6",            blurb: "pinned · legacy flagship" },
+    { id: "claude-fable-5",  label: "Fable 5",             blurb: "newest · most capable" },
+    { id: "sonnet",          label: "Sonnet 4.6 (latest)", blurb: "auto-upgrades · balanced" },
+    { id: "haiku",           label: "Haiku 4.5 (latest)",  blurb: "auto-upgrades · fast + cheap" },
   ],
   codex: [
     // gpt-5.5 is the ONLY model Codex accepts on a ChatGPT-login
@@ -388,9 +388,17 @@ function migrateModelPrefs() {
       const cur = lsGet(`prevail.model.${cli}`);
       if (cur && !ids.has(cur)) lsSet(`prevail.model.${cli}`, MODELS[cli][0].id);
     }
+    const ALIAS_REMAP: Record<string, string> = {
+      // Concrete ids folded into their auto-upgrading aliases (one entry per
+      // model in the picker).
+      "claude-opus-4-8": "opus",
+      "claude-sonnet-4-6": "sonnet",
+      "claude-haiku-4-5": "haiku",
+    };
     for (const k of keys) {
       const v = lsGet(k);
       if (v && DEAD_MODELS.has(v)) lsSet(k, "gpt-5.5");
+      else if (v && ALIAS_REMAP[v]) lsSet(k, ALIAS_REMAP[v]);
     }
   } catch {
     /* localStorage unavailable — ignore */
