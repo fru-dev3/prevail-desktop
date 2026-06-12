@@ -736,6 +736,41 @@ pub struct BenchmarkRun {
     /// Directory creation time (ms since epoch). Lets the UI cluster
     /// pre-batch-era runs that were launched together into pseudo-batches.
     pub created_ms: u64,
+    /// From meta.json (engine-written since the rerun fix): the exact target,
+    /// so reruns don't have to parse directory names.
+    pub cli: Option<String>,
+    pub model: Option<String>,
+    pub council: Option<bool>,
+}
+
+#[derive(Deserialize, Default)]
+struct RunMetaFile {
+    cli: Option<String>,
+    model: Option<String>,
+    council: Option<bool>,
+}
+
+fn read_run_meta(run_dir: &Path) -> RunMetaFile {
+    fs::read_to_string(run_dir.join("meta.json"))
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+/// Strip the "_HH-MM-SS" dedupe suffix reruns carry, for display labels.
+fn strip_rerun_suffix(label: &str) -> String {
+    let b = label.as_bytes();
+    if b.len() > 9 && b[b.len() - 9] == b'_' {
+        let tail = &label[label.len() - 8..];
+        let ok = tail.chars().enumerate().all(|(i, c)| match i {
+            2 | 5 => c == '-',
+            _ => c.is_ascii_digit(),
+        });
+        if ok {
+            return label[..label.len() - 9].to_string();
+        }
+    }
+    label.to_string()
 }
 
 fn dir_created_ms(p: &Path) -> u64 {
@@ -819,12 +854,13 @@ fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
         let date = run_dir_date(&dir_name);
         let score_file = p.join("score.json");
         let (batch_id, batch_label) = read_batch(&p);
+        let meta = read_run_meta(&p);
         if score_file.exists() {
             if let Ok(raw) = fs::read_to_string(&score_file) {
                 if let Ok(parsed) = serde_json::from_str::<ScoreFile>(&raw) {
                     let domains = distinct_domains(&parsed.question_scores);
                     out.push(BenchmarkRun {
-                        label: parsed.label,
+                        label: strip_rerun_suffix(&parsed.label),
                         run_dir: parsed.run_dir,
                         judge_avg: parsed.judge_avg,
                         keyword_avg: parsed.keyword_avg,
@@ -835,6 +871,9 @@ fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
                         batch_id,
                         batch_label,
                         created_ms: dir_created_ms(&p),
+                        cli: meta.cli,
+                        model: meta.model,
+                        council: meta.council,
                     });
                     continue;
                 }
@@ -847,11 +886,9 @@ fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
             if let Ok(raw) = fs::read_to_string(&results_file) {
                 if let Ok(records) = serde_json::from_str::<Vec<serde_json::Value>>(&raw) {
                     let domains = distinct_domains(&records);
-                    let label = dir_name
-                        .splitn(2, '_')
-                        .nth(1)
-                        .unwrap_or(&dir_name)
-                        .to_string();
+                    let label = strip_rerun_suffix(
+                        dir_name.splitn(2, '_').nth(1).unwrap_or(&dir_name),
+                    );
                     out.push(BenchmarkRun {
                         label,
                         run_dir: p.to_string_lossy().to_string(),
@@ -864,6 +901,9 @@ fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
                         batch_id,
                         batch_label,
                         created_ms: dir_created_ms(&p),
+                        cli: meta.cli.clone(),
+                        model: meta.model.clone(),
+                        council: meta.council,
                     });
                 }
             }
