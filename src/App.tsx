@@ -4789,8 +4789,6 @@ function DomainPrefsPanel({
     force();
   }
 
-  const cliModels = pickedCli ? (MODELS[pickedCli] ?? []) : [];
-
   void onBack;
   return (
     <div className="w-full">
@@ -4818,102 +4816,103 @@ function DomainPrefsPanel({
         </button>
       </div>
 
-      {/* CLI picker — brand-icon cards */}
+      {/* CLI picker — select a CLI to expand its models inline (collapse & indent) */}
       <section className="mb-6 rounded-xl border border-border bg-surface p-4">
         <div className="mb-3 flex items-center justify-between">
           <div>
             <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">CLI</div>
-            <p className="mt-0.5 text-sm text-text-secondary">Which agent runs every prompt in {titleCase(domain)}.</p>
+            <p className="mt-0.5 text-sm text-text-secondary">Which agent runs every prompt in {titleCase(domain)}. Pick one to choose its model.</p>
           </div>
           {pickedCli && (
             <button
-              onClick={() => setOverride(cliKey, "")}
+              onClick={() => { setOverride(cliKey, ""); setOverride(modelKey, ""); }}
               className="rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
             >
               use global
             </button>
           )}
         </div>
-        {/* U4: list rows (not big icon cards), keeping the provider icon. */}
+        {/* List rows; the selected CLI expands to show its models indented below. */}
         <div className="flex flex-col gap-1.5">
           {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
             const picked = pickedCli === c.id;
             const disabled = !c.available;
+            const models = MODELS[c.id] ?? [];
             return (
-              <button
-                key={c.id}
-                disabled={disabled}
-                onClick={() => setOverride(cliKey, c.id)}
-                title={disabled ? `${c.label} not installed` : c.label}
-                className={`group flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
-                  picked
-                    ? "border-accent bg-accent-soft ring-1 ring-accent/20"
-                    : disabled
-                    ? "border-border-subtle bg-background opacity-40"
-                    : "border-border bg-background hover:bg-surface-warm"
-                }`}
-              >
-                <ProviderMark vendor={c.id} size={22} />
-                <span className={`flex-1 font-display text-sm font-semibold tracking-tight ${picked ? "text-accent" : "text-text-primary"}`}>
-                  {c.label}
-                </span>
-                {disabled && (
-                  <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">not installed</span>
-                )}
-                {picked && (
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-background">
-                    <Check className="h-3 w-3" strokeWidth={3} />
+              <div key={c.id}>
+                <button
+                  disabled={disabled}
+                  onClick={() => setOverride(cliKey, c.id)}
+                  title={disabled ? `${c.label} not installed` : c.label}
+                  className={`group flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
+                    picked
+                      ? "border-accent bg-accent-soft ring-1 ring-accent/20"
+                      : disabled
+                      ? "border-border-subtle bg-background opacity-40"
+                      : "border-border bg-background hover:bg-surface-warm"
+                  }`}
+                >
+                  <ProviderMark vendor={c.id} size={22} />
+                  <span className={`flex-1 font-display text-sm font-semibold tracking-tight ${picked ? "text-accent" : "text-text-primary"}`}>
+                    {c.label}
                   </span>
+                  {disabled && (
+                    <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">not installed</span>
+                  )}
+                  {!disabled && models.length > 0 && (
+                    <svg className={`h-3.5 w-3.5 text-text-muted transition-transform ${picked ? "rotate-180" : ""}`} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                      <path d="M3 4.5L6 7.5L9 4.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                  {picked && (
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-background">
+                      <Check className="h-3 w-3" strokeWidth={3} />
+                    </span>
+                  )}
+                </button>
+                {/* Models — indented under the selected CLI, collapsed otherwise. */}
+                {picked && models.length > 0 && (
+                  <div className="ml-4 mt-1.5 flex flex-col gap-1.5 border-l-2 border-accent-border/40 pl-4">
+                    <div className="flex items-center justify-between pt-0.5">
+                      <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">Model</span>
+                      {pickedModel && (
+                        <button
+                          onClick={() => setOverride(modelKey, "")}
+                          className="rounded border border-border bg-background px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                        >
+                          use cli default
+                        </button>
+                      )}
+                    </div>
+                    {models.map((m) => {
+                      const mpicked = pickedModel === m.id;
+                      return (
+                        <button
+                          key={m.id}
+                          onClick={() => setOverride(modelKey, m.id)}
+                          className={`flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
+                            mpicked
+                              ? "border-accent bg-accent-soft"
+                              : "border-border-subtle bg-background hover:border-accent-border"
+                          }`}
+                        >
+                          <span className={`shrink-0 font-mono text-sm ${mpicked ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
+                          {m.blurb && <span className="min-w-0 flex-1 truncate text-[11px] text-text-muted">{m.blurb}</span>}
+                          {mpicked && (
+                            <span className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent text-background">
+                              <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>
       </section>
-
-      {/* Model picker — depends on CLI */}
-      {pickedCli && cliModels.length > 0 && (
-        <section className="mb-6 rounded-xl border border-border bg-surface p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Model</div>
-              <p className="mt-0.5 text-sm text-text-secondary">Locked to the CLI you picked above.</p>
-            </div>
-            {pickedModel && (
-              <button
-                onClick={() => setOverride(modelKey, "")}
-                className="rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
-              >
-                use cli default
-              </button>
-            )}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            {cliModels.map((m) => {
-              const picked = pickedModel === m.id;
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => setOverride(modelKey, m.id)}
-                  className={`flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
-                    picked
-                      ? "border-accent bg-accent-soft"
-                      : "border-border-subtle bg-background hover:border-accent-border"
-                  }`}
-                >
-                  <span className={`shrink-0 font-mono text-sm ${picked ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
-                  {m.blurb && <span className="min-w-0 flex-1 truncate text-[11px] text-text-muted">{m.blurb}</span>}
-                  {picked && (
-                    <span className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent text-background">
-                      <Check className="h-2.5 w-2.5" strokeWidth={3} />
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
 
       {/* Framework + Lens — stacked full-width, one per row */}
       <section className="mb-6 grid grid-cols-1 gap-4">
