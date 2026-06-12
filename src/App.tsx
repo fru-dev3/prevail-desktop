@@ -2077,7 +2077,6 @@ export default function App() {
     startedAt: number;
   };
   const [runningStreams, setRunningStreams] = useState<RunningStream[]>([]);
-  const [activeBenchmark, setActiveBenchmark] = useState<{ label: string; done: number; total: number } | null>(null);
   // Domains whose background run finished while you were looking elsewhere.
   // The live amber pulse vanishes the instant a stream ends; this keeps a
   // steady "ready" marker on the domain until you actually open it, so a
@@ -2421,7 +2420,6 @@ export default function App() {
           }}
           onBack={() => setTab("chat")}
           jumpTo={settingsJump}
-          onBenchmarkActive={setActiveBenchmark}
           onStartChatWith={(cliId, modelId) => {
             lsSet(LS.defaultChatCli, cliId);
             if (modelId) lsSet(`prevail.model.${cliId}`, modelId);
@@ -2467,7 +2465,6 @@ export default function App() {
           railWidth={domainRailWidth}
           onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
           onDomainsChanged={() => void refreshDomains()}
-          activeBenchmark={activeBenchmark}
         />
         {!sidebarCollapsed && (
           <ResizeHandle
@@ -2651,7 +2648,6 @@ export default function App() {
                 key={selectedDomain || benchScope || "all"}
                 vaultPath={vaultPath}
                 initialDomain={selectedDomain || benchScope}
-                onBenchmarkActive={setActiveBenchmark}
               />
             </div>
           </div>
@@ -2705,6 +2701,71 @@ function titleCase(slug: string): string {
 // ─────────────────────────────────────────────────────────────────────
 // Vault wizard
 
+// One row per live benchmark run, pinned above the Settings strip. The data
+// lives in the module-scope registry, so the rows persist (and progress)
+// across every navigation; each row can cancel its run.
+function SidebarBenchmarkRuns({ collapsed }: { collapsed: boolean }) {
+  const runningBatches = useBenchBatches().filter((b) => b.running);
+  if (runningBatches.length === 0) return null;
+  if (collapsed) {
+    return (
+      <div
+        className="flex items-center justify-center gap-1 border-t border-border-subtle px-2 py-2"
+        title={runningBatches.map((b) => `Benchmarking ${b.scopeLabel}`).join("\n")}
+      >
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+        </span>
+        {runningBatches.length > 1 && (
+          <span className="font-mono text-[10px] text-accent">{runningBatches.length}</span>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="border-t border-border-subtle">
+      {runningBatches.map((b) => {
+        const done = b.jobs.reduce(
+          (a, j) => a + (j.status === "done" || j.status === "scoring" ? j.total : j.done),
+          0,
+        );
+        const total = b.jobs.reduce((a, j) => a + j.total, 0);
+        return (
+          <div key={b.id} className="px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-1.5 w-1.5 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
+              </span>
+              <span
+                className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-accent"
+                title={b.label}
+              >
+                {b.scopeLabel}
+              </span>
+              <span className="font-mono text-[10px] text-text-muted">{done}/{total}</span>
+              <button
+                onClick={() => void cancelBenchBatch(b.id)}
+                title="Cancel this benchmark run"
+                className="shrink-0 rounded px-1 font-mono text-[10px] text-text-muted hover:bg-surface-strong hover:text-danger"
+              >
+                ✗
+              </button>
+            </div>
+            <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-surface-strong">
+              <div
+                className="h-full rounded-full bg-accent transition-all duration-500"
+                style={{ width: total > 0 ? `${Math.round((done / total) * 100)}%` : "0%" }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Sidebar({
   collapsed,
   setCollapsed,
@@ -2724,7 +2785,6 @@ function Sidebar({
   railWidth,
   onOpenOnboarding,
   onDomainsChanged,
-  activeBenchmark,
 }: {
   collapsed: boolean;
   setCollapsed: (v: boolean | ((cur: boolean) => boolean)) => void;
@@ -2744,7 +2804,6 @@ function Sidebar({
   railWidth: number;
   onOpenOnboarding: () => void;
   onDomainsChanged: () => void;
-  activeBenchmark?: { label: string; done: number; total: number } | null;
 }) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -3234,34 +3293,9 @@ function Sidebar({
         </button>
       )}
 
-      {/* Active benchmark indicator — visible while navigating away */}
-      {activeBenchmark && (
-        collapsed ? (
-          <div className="flex justify-center border-t border-border-subtle px-2 py-2" title={`Benchmarking: ${activeBenchmark.done}/${activeBenchmark.total}`}>
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
-            </span>
-          </div>
-        ) : (
-          <div className="border-t border-border-subtle px-3 py-2">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-1.5 w-1.5 shrink-0">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
-              </span>
-              <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-accent">Benchmarking</span>
-              <span className="font-mono text-[10px] text-text-muted">{activeBenchmark.done}/{activeBenchmark.total}</span>
-            </div>
-            <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-surface-strong">
-              <div
-                className="h-full rounded-full bg-accent transition-all duration-500"
-                style={{ width: activeBenchmark.total > 0 ? `${Math.round((activeBenchmark.done / activeBenchmark.total) * 100)}%` : "0%" }}
-              />
-            </div>
-          </div>
-        )
-      )}
+      {/* Live benchmark runs (from the global registry) — one row per batch,
+          visible wherever you navigate, each cancellable. */}
+      <SidebarBenchmarkRuns collapsed={collapsed} />
 
       {/* Settings + theme — pinned to bottom (Upgrade lives in Settings) */}
       <div className={`border-t border-border-subtle bg-surface-warm/30 ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1 px-2 py-1.5"}`}>
@@ -10001,7 +10035,7 @@ interface MatrixRow {
   per_domain: Record<string, MatrixDomainCell>;
 }
 
-type BenchJobStatus = "queued" | "running" | "scoring" | "done" | "error";
+type BenchJobStatus = "queued" | "running" | "scoring" | "done" | "error" | "cancelled";
 interface BenchJob {
   key: string;
   cli: string;
@@ -10022,14 +10056,215 @@ interface BenchJob {
 
 const MODEL_SEP = "::";
 
+// ── Global benchmark-run registry ───────────────────────────────────────────
+// A benchmark is a set of engine processes that outlive any one view. This
+// module-scope store is the single source of truth for every live run, so
+// domain switches, settings navigation, or panel remounts never lose one.
+// Panels and the sidebar subscribe via useBenchBatches(); cancelBenchBatch
+// signals the engine processes through abort_sessions.
+interface BenchBatch {
+  id: string;
+  label: string;
+  scopeLabel: string; // human-readable scope ("All domains", "Wealth", …)
+  scopeKey: string; // lowercase csv of scoped domains; "" = all
+  scopeDomains: string[]; // titlecased, for chips + nav targeting
+  vault: string;
+  councilMode: boolean;
+  jobs: BenchJob[];
+  running: boolean;
+  log: string;
+  sessions: string[]; // engine session ids (jobs + scoring) for cancel
+  cancelled: boolean;
+  consumed: boolean; // a panel already showed the finished banner
+}
+const benchBatches = new Map<string, BenchBatch>();
+const benchSubs = new Set<() => void>();
+function benchNotify() {
+  for (const f of benchSubs) f();
+}
+function useBenchBatches(): BenchBatch[] {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const f = () => force((n) => n + 1);
+    benchSubs.add(f);
+    return () => {
+      benchSubs.delete(f);
+    };
+  }, []);
+  return Array.from(benchBatches.values());
+}
+function benchPatchJob(b: BenchBatch, key: string, patch: Partial<BenchJob>) {
+  b.jobs = b.jobs.map((j) => (j.key === key ? { ...j, ...patch } : j));
+  benchNotify();
+}
+async function cancelBenchBatch(id: string) {
+  const b = benchBatches.get(id);
+  if (!b || !b.running) return;
+  b.cancelled = true;
+  b.jobs = b.jobs.map((j) =>
+    j.status === "done" || j.status === "error" ? j : { ...j, status: "cancelled" as BenchJobStatus },
+  );
+  benchNotify();
+  // SIGTERM every engine process of this batch; their benchmark:done events
+  // unwind the awaits inside executeBenchBatch.
+  await Promise.all(b.sessions.map((s) => invoke("abort_sessions", { prefix: s }).catch(() => {})));
+}
+// Wait for one benchmark:done (matched by session+phase), folding raw chunks
+// into the batch's engine log along the way.
+function benchWaitDone(b: BenchBatch, session: string, phase: string) {
+  return new Promise<number | null>((resolve) => {
+    let unlisten: UnlistenFn | null = null;
+    let chunkUn: UnlistenFn | null = null;
+    listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
+      if (e.payload.session === session && e.payload.phase === phase) {
+        unlisten?.();
+        chunkUn?.();
+        resolve(e.payload.code);
+      }
+    }).then((u) => {
+      unlisten = u;
+    });
+    listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
+      if (e.payload.session === session) {
+        b.log = (b.log + e.payload.data).slice(-8000);
+        benchNotify();
+      }
+    }).then((u) => {
+      chunkUn = u;
+    });
+  });
+}
+
+// Run a batch of benchmark jobs to completion (all jobs in parallel, then one
+// scoring pass). Lives at module scope, mutating the registry — NOT component
+// state — so the run survives whatever the user navigates to.
+async function executeBenchBatch(
+  vault: string,
+  plannedJobs: BenchJob[],
+  councilMode: boolean,
+  scopeStr: string,
+): Promise<void> {
+  const now = new Date();
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const dateLabel = `${MONTHS[now.getMonth()]} ${now.getDate()}`;
+  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const batchId = `b${now.getTime()}`;
+  const scopeDomains = scopeStr ? scopeStr.split(",").map((d) => titleCase(d.trim())).filter(Boolean) : [];
+  const scopeLabel =
+    scopeDomains.length === 0 ? "All domains"
+    : scopeDomains.length <= 2 ? scopeDomains.join(", ")
+    : `${scopeDomains.length} domains`;
+  // Compact model label: "Claude Opus 4.7" instead of "Claude · Opus (latest)"
+  const shortModel = (j: BenchJob) =>
+    `${titleCase(j.cli)} ${(MODELS[j.cli]?.find((m) => m.id === j.model)?.label ?? j.model).replace(/\s*\(.*?\)/, "")}`.trim();
+  const modelPart = plannedJobs.length === 1 ? shortModel(plannedJobs[0]) : `${plannedJobs.length} models`;
+  const batchLabel = `${dateLabel} ${hhmm.replace(":", "-")} ${scopeLabel} ${modelPart}`;
+  // Drop stale finished batches so the registry never accumulates.
+  for (const [k, v] of benchBatches) if (!v.running && v.consumed) benchBatches.delete(k);
+  const batch: BenchBatch = {
+    id: batchId,
+    label: batchLabel,
+    scopeLabel,
+    scopeKey: scopeStr.toLowerCase(),
+    scopeDomains,
+    vault,
+    councilMode,
+    jobs: plannedJobs,
+    running: true,
+    log: "",
+    sessions: [],
+    cancelled: false,
+    consumed: false,
+  };
+  benchBatches.set(batchId, batch);
+  benchNotify();
+
+  // Run one job: start the model, track per-question progress from its
+  // output stream, wait for it, mark scoring.
+  const runOne = async (job: BenchJob) => {
+    if (batch.cancelled) return;
+    benchPatchJob(batch, job.key, { status: "running" });
+    const session = `bench-${job.key.replace(/[^a-z0-9]/gi, "")}-${Date.now()}`;
+    batch.sessions.push(session);
+    // The engine prints one "  <id>… <result>" line per finished question;
+    // recount completed lines on every chunk for a live progress bar.
+    let buf = "";
+    const chunkUnlisten = listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
+      if (e.payload.session !== session) return;
+      buf += e.payload.data;
+      // Completed questions are full "  <id>… <info>" lines; the question
+      // currently in flight is a trailing "  <id>…" with no info yet.
+      const qdone: Record<string, string> = {};
+      const lines = buf.split("\n");
+      for (const line of lines) {
+        const m = line.match(/^ {2}(\S+)…\s*(.+)$/);
+        if (m) qdone[m[1]] = m[2].trim();
+      }
+      const tail = lines[lines.length - 1] ?? "";
+      const cm = tail.match(/^ {2}(\S+)…\s*$/);
+      benchPatchJob(batch, job.key, {
+        done: Math.min(Object.keys(qdone).length, job.total),
+        qdone,
+        qcur: cm?.[1],
+      });
+    });
+    try {
+      await invoke("benchmark_start", {
+        args: {
+          session_id: session,
+          vault,
+          cli: job.cli || "claude",
+          model: job.model || null,
+          council: councilMode,
+          domain: scopeStr || null,
+          batch_id: batchId,
+          batch_label: batchLabel,
+        },
+      });
+      const code = await benchWaitDone(batch, session, "run");
+      if (batch.cancelled) return; // statuses already set by cancelBenchBatch
+      if (code !== 0 && code !== null) {
+        benchPatchJob(batch, job.key, { status: "error", note: `exit ${code}` });
+        return;
+      }
+      benchPatchJob(batch, job.key, { status: "scoring", done: job.total });
+    } catch (e) {
+      benchPatchJob(batch, job.key, { status: "error", note: String(e) });
+    } finally {
+      void chunkUnlisten.then((u) => u());
+    }
+  };
+
+  try {
+    // ALL jobs run in parallel — each is its own engine process, and
+    // waiting serially on a 24-question run per model is far worse than
+    // the occasional provider rate-limit (which surfaces as a per-job
+    // error you can rerun).
+    await Promise.all(plannedJobs.map(runOne));
+    if (!batch.cancelled) {
+      // Score every new (unscored) run in one robust pass.
+      const scoreSession = `bench-score-${Date.now()}`;
+      batch.sessions.push(scoreSession);
+      await invoke("benchmark_score", { args: { session_id: scoreSession, vault, all: true } });
+      await benchWaitDone(batch, scoreSession, "score");
+      if (!batch.cancelled) {
+        batch.jobs = batch.jobs.map((j) =>
+          j.status === "scoring" || j.status === "running" ? { ...j, status: "done" } : j,
+        );
+      }
+    }
+  } finally {
+    batch.running = false;
+    benchNotify();
+  }
+}
+
 function BenchmarkPanel({
   vaultPath,
   initialDomain,
-  onBenchmarkActive,
 }: {
   vaultPath: string;
   initialDomain?: string | null;
-  onBenchmarkActive?: (info: { label: string; done: number; total: number } | null) => void;
 }) {
   // A "runs" deep link from the Models page lands here with a model key to
   // expand on the leaderboard. Consumed once.
@@ -10049,9 +10284,6 @@ function BenchmarkPanel({
   // Set when a batch just finished: the Leaderboard shows a "batch finished"
   // banner linking to it in History (answer first, filing one click away).
   const [finishedBatch, setFinishedBatch] = useState<string | null>(null);
-  // The batch currently running (or just run): label + human-readable scope,
-  // so the progress page always says WHAT is being benchmarked.
-  const [activeBatch, setActiveBatch] = useState<{ label: string; scope: string; domains: string[] } | null>(null);
 
   // Data
   const [runs, setRuns] = useState<BenchmarkRun[]>([]);
@@ -10093,20 +10325,41 @@ function BenchmarkPanel({
   const [scope, setScope] = useState<Set<string>>(
     () => new Set(initialDomain ? [initialDomain.toLowerCase()] : []),
   );
-  const [jobs, setJobs] = useState<BenchJob[]>([]);
-  const [running, setRunning] = useState(false);
-  const [log, setLog] = useState("");
+  // Live run state comes from the module-scope registry, so it survives any
+  // navigation and remount. This panel surfaces the batch matching its home
+  // domain when scoped, otherwise the most relevant one.
+  const allBatches = useBenchBatches().filter((b) => b.vault === vaultPath);
+  const homeDomain = initialDomain ? initialDomain.toLowerCase() : null;
+  const matchesHome = (b: BenchBatch) =>
+    !homeDomain || b.scopeKey === "" || b.scopeKey.split(",").includes(homeDomain);
+  const visibleBatches = allBatches.filter(matchesHome);
+  const current =
+    [...visibleBatches].reverse().find((b) => b.running) ??
+    [...visibleBatches].reverse().find((b) => !b.consumed) ??
+    null;
+  const jobs = current?.jobs ?? [];
+  const running = current?.running ?? false;
+  const log = current?.log ?? "";
+  const activeBatch = current
+    ? { label: current.label, scope: current.scopeLabel, domains: current.scopeDomains }
+    : null;
   const logRef = useRef<HTMLPreElement>(null);
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log]);
 
-  // Propagate running state up so the sidebar can show a persistent indicator.
+  // When a batch this panel surfaces finishes, land on the refreshed
+  // leaderboard with the "batch finished" banner — once.
   useEffect(() => {
-    if (!onBenchmarkActive) return;
-    if (!running) { onBenchmarkActive(null); return; }
-    const done = jobs.reduce((a, j) => a + j.done, 0);
-    const total = jobs.reduce((a, j) => a + j.total, 0);
-    onBenchmarkActive({ label: activeBatch?.label ?? "Benchmarking", done, total });
-  }, [running, jobs, activeBatch, onBenchmarkActive]);
+    const fin = visibleBatches.find((b) => !b.running && !b.consumed);
+    if (!fin) return;
+    fin.consumed = true;
+    refresh();
+    if (!fin.cancelled) {
+      setFinishedBatch(fin.label);
+      setView("board");
+    }
+    benchBatches.delete(fin.id);
+    benchNotify();
+  }, [visibleBatches, refresh]);
 
   const toggleModel = (cli: string, model: string) => {
     const k = `${cli}${MODEL_SEP}${model}`;
@@ -10122,24 +10375,6 @@ function BenchmarkPanel({
       next.has(d) ? next.delete(d) : next.add(d);
       return next;
     });
-
-  // Wait for a specific benchmark:done event (matched by session + phase).
-  const waitForDone = useCallback((session: string, phase: string) => {
-    return new Promise<number | null>((resolve) => {
-      let unlisten: UnlistenFn | null = null;
-      let chunkUn: UnlistenFn | null = null;
-      listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
-        if (e.payload.session === session && e.payload.phase === phase) {
-          unlisten?.();
-          chunkUn?.();
-          resolve(e.payload.code);
-        }
-      }).then((u) => { unlisten = u; });
-      listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
-        if (e.payload.session === session) setLog((l) => (l + e.payload.data).slice(-8000));
-      }).then((u) => { chunkUn = u; });
-    });
-  }, []);
 
   async function runBenchmark() {
     const scopeStr = Array.from(scope).join(",");
@@ -10157,7 +10392,7 @@ function BenchmarkPanel({
             return { key: k, cli, model, label: `${titleCase(cli)} · ${ml}`, ...blankJob, qdone: {} };
           });
     if (plannedJobs.length === 0) { setErr("Pick at least one model to run."); return; }
-    await executeJobs(plannedJobs, mode === "council", scopeStr);
+    void executeBenchBatch(vaultPath, plannedJobs, mode === "council", scopeStr);
   }
 
   // Rebuild a runnable job from a stored run's label + domain scope.
@@ -10189,7 +10424,7 @@ function BenchmarkPanel({
     const built = jobFromRun(r, `rerun-${Date.now()}`);
     if (!built) { setErr(`Can't rerun: unrecognized run label "${r.label}"`); return; }
     setView("run");
-    await executeJobs([built.job], built.council, r.domains.join(","));
+    void executeBenchBatch(vaultPath, [built.job], built.council, r.domains.join(","));
   }
 
   // Rerun a whole BATCH: every model that ran together, together again.
@@ -10208,101 +10443,7 @@ function BenchmarkPanel({
     });
     const council = jobs.some(({ built }) => built.council);
     setView("run");
-    await executeJobs(jobs.map(({ built }) => built.job), council, batchRuns[0]?.domains.join(",") ?? "");
-  }
-
-  async function executeJobs(plannedJobs: BenchJob[], councilMode: boolean, scopeStr: string) {
-    const now = new Date();
-    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    const dateLabel = `${MONTHS[now.getMonth()]} ${now.getDate()}`;
-    const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    const batchId = `b${now.getTime()}`;
-    const scopeDomains = scopeStr ? scopeStr.split(",").map((d) => titleCase(d.trim())).filter(Boolean) : [];
-    const scopePart =
-      scopeDomains.length === 0 ? "All domains"
-      : scopeDomains.length <= 2 ? scopeDomains.join(", ")
-      : `${scopeDomains.length} domains`;
-    // Compact model label: "Claude Opus 4.7" instead of "Claude · Opus (latest)"
-    const shortModel = (j: BenchJob) => `${titleCase(j.cli)} ${(MODELS[j.cli]?.find(m => m.id === j.model)?.label ?? j.model).replace(/\s*\(.*?\)/, "")}`.trim();
-    const modelPart = plannedJobs.length === 1 ? shortModel(plannedJobs[0]) : `${plannedJobs.length} models`;
-    const batchLabel = `${dateLabel} ${hhmm.replace(":", "-")} ${scopePart} ${modelPart}`;
-    setActiveBatch({ label: batchLabel, scope: scopePart, domains: scopeDomains });
-    setErr(null);
-    setFinishedBatch(null);
-    setRunning(true);
-    setLog("");
-    setJobs(plannedJobs);
-    const setJob = (key: string, patch: Partial<BenchJob>) =>
-      setJobs((cur) => cur.map((j) => (j.key === key ? { ...j, ...patch } : j)));
-
-    // Run one job: start the model, track per-question progress from its
-    // output stream, wait for it, mark scoring.
-    const runOne = async (job: BenchJob) => {
-      setJob(job.key, { status: "running" });
-      const session = `bench-${job.key.replace(/[^a-z0-9]/gi, "")}-${Date.now()}`;
-      // The engine prints one "  <id>… <result>" line per finished question;
-      // recount completed lines on every chunk for a live progress bar.
-      let buf = "";
-      const chunkUnlisten = listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
-        if (e.payload.session !== session) return;
-        buf += e.payload.data;
-        // Completed questions are full "  <id>… <info>" lines; the question
-        // currently in flight is a trailing "  <id>…" with no info yet.
-        const qdone: Record<string, string> = {};
-        const lines = buf.split("\n");
-        for (const line of lines) {
-          const m = line.match(/^ {2}(\S+)…\s*(.+)$/);
-          if (m) qdone[m[1]] = m[2].trim();
-        }
-        const tail = lines[lines.length - 1] ?? "";
-        const cm = tail.match(/^ {2}(\S+)…\s*$/);
-        setJob(job.key, {
-          done: Math.min(Object.keys(qdone).length, job.total),
-          qdone,
-          qcur: cm?.[1],
-        });
-      });
-      try {
-        await invoke("benchmark_start", {
-          args: {
-            session_id: session,
-            vault: vaultPath,
-            cli: job.cli || "claude",
-            model: job.model || null,
-            council: councilMode,
-            domain: scopeStr || null,
-            batch_id: batchId,
-            batch_label: batchLabel,
-          },
-        });
-        const code = await waitForDone(session, "run");
-        if (code !== 0 && code !== null) { setJob(job.key, { status: "error", note: `exit ${code}` }); return; }
-        setJob(job.key, { status: "scoring", done: job.total });
-      } catch (e) {
-        setJob(job.key, { status: "error", note: String(e) });
-      } finally {
-        void chunkUnlisten.then((u) => u());
-      }
-    };
-
-    try {
-      // ALL jobs run in parallel — each is its own engine process, and
-      // waiting serially on a 24-question run per model is far worse than
-      // the occasional provider rate-limit (which surfaces as a per-job
-      // error you can rerun).
-      await Promise.all(plannedJobs.map(runOne));
-      // Score every new (unscored) run in one robust pass.
-      const scoreSession = `bench-score-${Date.now()}`;
-      await invoke("benchmark_score", { args: { session_id: scoreSession, vault: vaultPath, all: true } });
-      await waitForDone(scoreSession, "score");
-      setJobs((cur) => cur.map((j) => (j.status === "scoring" || j.status === "running" ? { ...j, status: "done" } : j)));
-      refresh();
-      // Land on the ANSWER (leaderboard); the banner links to the batch.
-      setFinishedBatch(batchLabel);
-      setView("board");
-    } finally {
-      setRunning(false);
-    }
+    void executeBenchBatch(vaultPath, jobs.map(({ built }) => built.job), council, batchRuns[0]?.domains.join(",") ?? "");
   }
 
   return (
@@ -10393,7 +10534,8 @@ function BenchmarkPanel({
             activeBatch={activeBatch}
             onRun={runBenchmark}
             onViewResults={() => setView("board")}
-            onReset={() => { setJobs([]); setLog(""); }}
+            onReset={() => { if (current && !current.running) { benchBatches.delete(current.id); benchNotify(); } }}
+            onCancel={current?.running ? () => void cancelBenchBatch(current.id) : undefined}
             onCrumbHome={() => setView("board")}
           />
         )}
@@ -10463,7 +10605,7 @@ function BenchCrumbs({
 
 function BenchRunConfig({
   mode, setMode, selModels, toggleModel, allDomains, scope, toggleScope,
-  questionCounts, questionCount, running, jobs, log, logRef, activeBatch, onRun, onViewResults, onReset, onCrumbHome,
+  questionCounts, questionCount, running, jobs, log, logRef, activeBatch, onRun, onViewResults, onReset, onCancel, onCrumbHome,
 }: {
   mode: "single" | "council";
   setMode: (m: "single" | "council") => void;
@@ -10481,6 +10623,7 @@ function BenchRunConfig({
   activeBatch?: { label: string; scope: string; domains: string[] } | null;
   onRun: () => void;
   onViewResults: () => void;
+  onCancel?: () => void;
   onReset: () => void;
   onCrumbHome?: () => void;
 }) {
@@ -10521,7 +10664,7 @@ function BenchRunConfig({
         />
         <div className="text-center">
           <div className="font-display text-xl font-semibold tracking-tight">
-            {running ? "Benchmarking…" : errCount > 0 ? "Finished with errors" : "Benchmark complete"}
+            {running ? "Benchmarking…" : jobs.some((j) => j.status === "cancelled") ? "Run cancelled" : errCount > 0 ? "Finished with errors" : "Benchmark complete"}
           </div>
           <div className="mt-2 flex flex-wrap items-center justify-center gap-1">
             {(activeBatch?.domains?.length ? activeBatch.domains : ["All domains"]).slice(0, 10).map((d) => (
@@ -10551,6 +10694,14 @@ function BenchRunConfig({
               </div>
             );
           })()}
+          {running && onCancel && (
+            <button
+              onClick={onCancel}
+              className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1 font-mono text-[11px] text-text-secondary hover:border-danger hover:text-danger"
+            >
+              ✗ Cancel run
+            </button>
+          )}
         </div>
         <div className="space-y-2">
           {jobs.map((j) => {
@@ -10574,15 +10725,15 @@ function BenchRunConfig({
                       {j.status === "queued" ? "queued" : `${j.done}/${j.total}`}
                     </span>
                     <span className={`w-16 text-right font-mono text-[10px] uppercase tracking-wider ${
-                      j.status === "error" ? "text-danger" : j.status === "done" ? "text-ok" : "text-accent"
+                      j.status === "error" ? "text-danger" : j.status === "cancelled" ? "text-text-muted" : j.status === "done" ? "text-ok" : "text-accent"
                     }`}>
-                      {j.status === "error" ? "error" : j.status === "done" ? "done" : j.status === "scoring" ? "scoring" : j.status === "running" ? `${pct}%` : "queued"}
+                      {j.status === "error" ? "error" : j.status === "cancelled" ? "cancelled" : j.status === "done" ? "done" : j.status === "scoring" ? "scoring" : j.status === "running" ? `${pct}%` : "queued"}
                     </span>
                   </div>
                   <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-warm">
                     <div
                       className={`h-full rounded-full transition-all duration-500 ${
-                        j.status === "error" ? "bg-danger/60" : j.status === "scoring" || j.status === "done" ? "bg-ok" : "bg-accent"
+                        j.status === "error" ? "bg-danger/60" : j.status === "cancelled" ? "bg-surface-strong" : j.status === "scoring" || j.status === "done" ? "bg-ok" : "bg-accent"
                       } ${j.status === "scoring" ? "animate-pulse" : ""}`}
                       style={{ width: `${j.status === "done" || j.status === "scoring" ? 100 : pct}%` }}
                     />
@@ -11648,7 +11799,6 @@ function SettingsPanel({
   onSetupDomains,
   onVaultMoved,
   jumpTo,
-  onBenchmarkActive,
 }: {
   appearance: ReturnType<typeof useAppearance>;
   vaultPath: string;
@@ -11662,7 +11812,6 @@ function SettingsPanel({
   onSetupDomains?: () => void;
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
-  onBenchmarkActive?: (info: { label: string; done: number; total: number } | null) => void;
 }) {
   type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "ideal-state" | "memory" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
@@ -11811,7 +11960,7 @@ function SettingsPanel({
               {/* Full cockpit: unscoped, so runs/results/questions cover the
                   whole vault. The same panel opens scoped from a domain. */}
               <div className="-mx-4 min-h-[60vh]">
-                <BenchmarkPanel vaultPath={vaultPath} onBenchmarkActive={onBenchmarkActive} />
+                <BenchmarkPanel vaultPath={vaultPath} />
               </div>
             </>
           )}
