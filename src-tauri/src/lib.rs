@@ -3310,15 +3310,22 @@ async fn spawn_prevail_streaming(
     let bin = engine::resolve_prevail_bin();
     let (combined_path, user, logname) = build_cli_env();
 
-    let mut child = TokioCommand::new(&bin)
-        .args(&args)
+    let mut cmd = TokioCommand::new(&bin);
+    cmd.args(&args)
         .env_clear()
         .envs(scrubbed_env_pairs())
         .env("PATH", combined_path)
         .env("USER", user)
         .env("LOGNAME", logname)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    // Bunker Mode: the engine self-enforces local-only when told. This was the
+    // one engine spawn path that didn't set it, which let benchmarks run cloud
+    // models in Bunker Mode.
+    if bunker::bunker_enabled() {
+        cmd.env("PREVAIL_BUNKER", "1");
+    }
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
@@ -3385,6 +3392,16 @@ async fn benchmark_start(
     app: tauri::AppHandle,
     args: BenchmarkRunArgs,
 ) -> Result<(), String> {
+    // Bunker Mode: benchmarks may only target local providers. Refuse (never
+    // silently switch) so the recorded run is what the user asked to measure.
+    if bunker::bunker_enabled() {
+        if args.council.unwrap_or(false) {
+            return Err(format!("{BLOCKED}: council benchmarks convene cloud models", BLOCKED = bunker::BLOCKED));
+        }
+        if !bunker::is_local_cli(&args.cli) {
+            return Err(format!("{}: {} is a cloud provider. Pick a local model.", bunker::BLOCKED, args.cli));
+        }
+    }
     let mut cli_args: Vec<String> = vec![
         "--vault".into(), args.vault.clone(),
         "bench".into(), "run".into(), "--canonical".into(),
@@ -3440,7 +3457,12 @@ async fn benchmark_score(
         cli_args.push("--run".into());
         cli_args.push(r.clone());
     }
-    if args.no_judge.unwrap_or(false) {
+    let judge_is_local = args.judge_cli.as_deref().map(bunker::is_local_cli).unwrap_or(false);
+    let no_judge = args.no_judge.unwrap_or(false)
+        // Bunker Mode: the judge is an LLM call too; without a local judge,
+        // degrade to the mechanical keyword pass (the engine double-checks).
+        || (bunker::bunker_enabled() && !judge_is_local);
+    if no_judge {
         cli_args.push("--no-judge".into());
     } else {
         if let Some(c) = &args.judge_cli {
@@ -3472,6 +3494,14 @@ async fn benchmark_suggest(
     app: tauri::AppHandle,
     args: BenchmarkSuggestArgs,
 ) -> Result<(), String> {
+    // Bunker Mode: drafting questions is an LLM call; local providers only.
+    if bunker::bunker_enabled() {
+        if let Some(c) = &args.cli {
+            if !bunker::is_local_cli(c) {
+                return Err(format!("{}: {} is a cloud provider. Pick a local model.", bunker::BLOCKED, c));
+            }
+        }
+    }
     let mut cli_args: Vec<String> = vec![
         "--vault".into(), args.vault.clone(),
         "bench".into(), "suggest".into(),
