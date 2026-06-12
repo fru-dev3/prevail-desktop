@@ -14757,31 +14757,88 @@ function mcpCommandPath(enginePath: string): { command: string; unstable: boolea
 function McpSection({ vaultPath }: { vaultPath: string }) {
   const [enginePath, setEnginePath] = useState<string>("");
   const [copied, setCopied] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [handshake, setHandshake] = useState<{ ok: boolean; msg: string } | null>(null);
+  async function runHandshake() {
+    setTesting(true); setHandshake(null);
+    try {
+      const r = await invoke<{ ok: boolean; info?: string; error?: string }>("mcp_test_handshake", { vault: vaultPath });
+      setHandshake({ ok: !!r.ok, msg: r.ok ? (r.info ?? "Handshake OK.") : (r.error ?? "Handshake failed.") });
+    } catch (e) {
+      setHandshake({ ok: false, msg: String(e).slice(0, 160) });
+    } finally { setTesting(false); }
+  }
   useEffect(() => {
     invoke<{ engine_bin?: string }>("app_diagnostics").then((d) => setEnginePath(d.engine_bin ?? "prevail")).catch(() => setEnginePath("prevail"));
   }, []);
   const { command: mcpCommand, unstable: mcpPathUnstable } = mcpCommandPath(enginePath);
-  const snippet = JSON.stringify({ mcpServers: { prevail: { command: mcpCommand, args: ["mcp", "--vault", vaultPath] } } }, null, 2);
+  // Ready-to-paste configs per client — the resolved absolute bin path baked in,
+  // so connecting is copy-paste instead of guesswork.
+  const clients: { id: string; label: string; kind: "shell" | "json" | "toml"; body: string; note: string }[] = [
+    {
+      id: "claude-code", label: "Claude Code", kind: "shell",
+      body: `claude mcp add prevail -- ${mcpCommand} mcp --vault ${vaultPath}`,
+      note: "Run this in your terminal. Restart Claude Code, then `/mcp` to confirm.",
+    },
+    {
+      id: "claude-desktop", label: "Claude Desktop", kind: "json",
+      body: JSON.stringify({ mcpServers: { prevail: { command: mcpCommand, args: ["mcp", "--vault", vaultPath] } } }, null, 2),
+      note: "Add to claude_desktop_config.json (Settings → Developer → Edit Config), then restart.",
+    },
+    {
+      id: "codex", label: "Codex", kind: "toml",
+      body: `[mcp_servers.prevail]\ncommand = "${mcpCommand}"\nargs = ["mcp", "--vault", "${vaultPath}"]`,
+      note: "Add to ~/.codex/config.toml, then restart Codex.",
+    },
+    {
+      id: "gemini", label: "Gemini CLI", kind: "json",
+      body: JSON.stringify({ mcpServers: { prevail: { command: mcpCommand, args: ["mcp", "--vault", vaultPath] } } }, null, 2),
+      note: "Add to ~/.gemini/settings.json under mcpServers, then restart.",
+    },
+  ];
+  const [client, setClient] = useState(clients[0].id);
+  const active = clients.find((c) => c.id === client) ?? clients[0];
   return (
     <>
-      <SettingsHeader title="MCP" subtitle="Connect Model Context Protocol servers to Prevail, and expose Prevail as an MCP server to other tools." />
+      <SettingsHeader title="MCP" icon={Wrench} subtitle="Use Prevail headlessly: expose your vault as an MCP server so Claude Code, Claude Desktop, Codex, or the Gemini CLI drive it — the same domains, routing, and self-learning, no UI required." />
       <div className="mb-5">
         <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Connected servers (Prevail consumes)</div>
         <McpCard />
       </div>
       <div className="rounded-lg border border-border bg-surface p-5">
-        <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Expose Prevail as an MCP server</div>
-        <div className="mb-3 text-xs text-text-secondary">Add this to another tool's MCP config (e.g. Claude Desktop) to let it use your Prevail vault as an MCP server.</div>
+        <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Expose Prevail to your agent</div>
+        <div className="mb-3 text-xs text-text-secondary">Pick your tool, copy the config (the engine path is filled in), paste it, restart the tool. Then Test handshake to confirm it answers.</div>
         {mcpPathUnstable && (
-          <div className="mb-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[11px] text-warn">
-            Prevail is running from a temporary location (a mounted disk image or quarantine). Move <span className="font-mono">Prevail.app</span> into your <span className="font-mono">Applications</span> folder so this path stays valid after you eject the installer.
+          <div className="mb-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[11px] text-warn">
+            Prevail is running from a temporary location. Move <span className="font-mono">Prevail.app</span> into <span className="font-mono">Applications</span> so this path stays valid.
           </div>
         )}
-        <pre className="overflow-auto rounded-md border border-border-subtle bg-background p-3 font-mono text-[11px] text-text-secondary">{snippet}</pre>
-        <button onClick={() => { navigator.clipboard.writeText(snippet).catch(() => {}); setCopied(true); window.setTimeout(() => setCopied(false), 1500); }}
-          className="mt-2 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
-          {copied ? "Copied" : "Copy config"}
-        </button>
+        <div className="mb-3 inline-flex flex-wrap gap-1 rounded-lg border border-border-subtle bg-surface-warm/60 p-1">
+          {clients.map((c) => (
+            <button key={c.id} onClick={() => setClient(c.id)}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${client === c.id ? "bg-surface text-accent shadow-sm ring-1 ring-black/5" : "text-text-muted hover:text-text-secondary"}`}>
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <pre className="overflow-auto rounded-md border border-border-subtle bg-background p-3 font-mono text-[11px] text-text-secondary whitespace-pre-wrap">{active.body}</pre>
+        <div className="mt-1.5 text-[11px] text-text-muted">{active.note}</div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button onClick={() => { navigator.clipboard.writeText(active.body).catch(() => {}); setCopied(true); window.setTimeout(() => setCopied(false), 1500); }}
+            className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+            {copied ? "Copied" : `Copy ${active.kind === "shell" ? "command" : "config"}`}
+          </button>
+          <button onClick={runHandshake} disabled={testing}
+            className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50">
+            {testing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+            {testing ? "Testing…" : "Test handshake"}
+          </button>
+          {handshake && (
+            <span className={`font-mono text-[11px] ${handshake.ok ? "text-ok" : "text-warn"}`}>
+              {handshake.ok ? "✓ " : "✗ "}{handshake.msg}
+            </span>
+          )}
+        </div>
       </div>
     </>
   );
