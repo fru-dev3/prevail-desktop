@@ -1037,6 +1037,7 @@ const LS = {
   telegramChatId: "prevail.desktop.telegramChatId",
   whatsappNumber: "prevail.desktop.whatsappNumber",
   mcpEnabled: "prevail.desktop.mcpEnabled",
+  vaultProduction: "prevail.desktop.vaultProduction", // remembered own-vault path for demo<->production round-trips
 } as const;
 
 // Per-domain toggles mirroring the CLI status bar:
@@ -14977,6 +14978,9 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
   const [importingPack, setImportingPack] = useState<string | null>(null);
   const [importedPacks, setImportedPacks] = useState<Set<string>>(new Set());
   const [note, setNote] = useState<string | null>(null);
+  // The remembered production vault path, so switching demo<->production never
+  // re-asks for the folder, and both locations can be shown.
+  const [prodVault, setProdVault] = useState<string>(() => lsGet(LS.vaultProduction) || "");
   useEffect(() => {
     const loadMode = () =>
       invoke<{ mode: "demo" | "production" }>("engine_appmode_get").then((m) => setAppMode(m.mode)).catch(() => {});
@@ -14985,41 +14989,78 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
     window.addEventListener("prevail:appmode", loadMode);
     return () => window.removeEventListener("prevail:appmode", loadMode);
   }, []);
-  // Leave the demo sandbox for your own vault: pick a folder for your real
-  // vault, set it up (clearing the demo sandbox — only if it's actually a marked
-  // demo vault, never a real one), point the app there, and run domain onboarding.
+  // When we're in production, the current vaultPath IS the production vault —
+  // remember it (covers vaults set up before this round-trip logic existed).
+  useEffect(() => {
+    if (appMode === "production" && vaultPath && !vaultPath.includes("/.prevail/demo-vault")) {
+      if (vaultPath !== prodVault) { setProdVault(vaultPath); lsSet(LS.vaultProduction, vaultPath); }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appMode, vaultPath]);
+
+  // Point the app at a chosen folder as the production vault. `runOnboarding`
+  // is false when a starter pack already populated it — the pack IS the start.
+  async function enterProduction(picked: string, runOnboarding: boolean) {
+    await invoke<{ vault: string; demoCleared: boolean }>("engine_production_init", { vault: picked, clearDemo: vaultPath });
+    await invoke("engine_appmode_set", { mode: "production", vault: picked }).catch(() => {});
+    setProdVault(picked); lsSet(LS.vaultProduction, picked);
+    setAppMode("production");
+    window.dispatchEvent(new Event("prevail:appmode"));
+    onVaultMoved?.(picked);
+    if (runOnboarding) onSetupDomains?.();
+  }
+
+  // Leave the demo sandbox for your own vault. If a production vault is already
+  // remembered, just switch back to it (no re-pick, no onboarding); otherwise
+  // pick a fresh folder and run setup.
   async function switchToProduction() {
-    const ok = await tauriConfirm(
+    // Already have a production vault on disk? Round-trip straight back to it.
+    if (prodVault) {
+      const ok = await invoke<boolean>("vault_exists", { path: prodVault }).catch(() => false);
+      if (ok) {
+        setSwitchingMode(true); setNote(null);
+        try {
+          await invoke("engine_appmode_set", { mode: "production", vault: prodVault }).catch(() => {});
+          setAppMode("production");
+          window.dispatchEvent(new Event("prevail:appmode"));
+          onVaultMoved?.(prodVault);
+          setNote(`Back in your own vault (${prodVault}).`);
+        } catch (e) { setNote(`Could not switch: ${String(e)}`); }
+        finally { setSwitchingMode(false); }
+        return;
+      }
+    }
+    const confirmOk = await tauriConfirm(
       "Ready to set up your own vault? You'll choose a folder for it, then set up your domains. The demo sample data is cleared.",
       { title: "Use your own vault", kind: "info", okLabel: "Choose my vault folder", cancelLabel: "Stay in demo" },
     );
-    if (!ok) return;
+    if (!confirmOk) return;
     const picked = await open({ directory: true, multiple: false, title: "Choose a folder for your own vault" });
     if (!picked || typeof picked !== "string") return;
     setSwitchingMode(true);
     setNote(null);
     try {
-      // Target = the picked vault; clear the old demo vault (only if marked).
-      await invoke<{ vault: string; demoCleared: boolean }>("engine_production_init", { vault: picked, clearDemo: vaultPath });
-      await invoke("engine_appmode_set", { mode: "production" }).catch(() => {});
-      setAppMode("production");
-      window.dispatchEvent(new Event("prevail:appmode"));
-      onVaultMoved?.(picked); // point the app at the chosen vault
-      onSetupDomains?.(); // run the onboarding workflow for it
+      await enterProduction(picked, true);
     } catch (e) {
       setNote(`Could not set up your vault: ${String(e)}`);
     } finally {
       setSwitchingMode(false);
     }
   }
-  // Return to the demo sandbox — just flips the flag (no data touched).
+  // Return to the demo sandbox: repoint the app at the demo vault (re-seeding
+  // the bundled sample data) and flip the flag. The production vault is
+  // remembered, untouched, and one click away.
   async function switchToDemo() {
     setSwitchingMode(true);
+    setNote(null);
     try {
-      await invoke("engine_appmode_set", { mode: "demo" });
+      const demoPath = await invoke<string>("import_sample_vault");
+      await invoke("engine_appmode_set", { mode: "demo", vault: demoPath }).catch(() => {});
+      await invoke("engine_appmode_mark_demo", { vault: demoPath }).catch(() => {});
       setAppMode("demo");
       window.dispatchEvent(new Event("prevail:appmode"));
-      setNote("You're back in the demo sandbox. Explore freely, then set up your own vault when you're ready.");
+      onVaultMoved?.(demoPath);
+      setNote("You're back in the demo sandbox. Your own vault is remembered and one click away.");
     } catch (e) {
       setNote(`Could not switch: ${String(e)}`);
     } finally {
@@ -15041,12 +15082,8 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
       setImportingPack(p.name);
       setNote(null);
       try {
-        await invoke<{ vault: string; demoCleared: boolean }>("engine_production_init", { vault: picked, clearDemo: vaultPath });
-        await invoke("engine_appmode_set", { mode: "production" }).catch(() => {});
-        setAppMode("production");
-        window.dispatchEvent(new Event("prevail:appmode"));
-        onVaultMoved?.(picked);
-        onSetupDomains?.();
+        // The pack populates the vault, so skip domain onboarding entirely.
+        await enterProduction(picked, false);
         const r = await invoke<{ created: string[]; skipped: string[] }>("engine_pack_import", { vault: picked, pack: p.name, overwrite: false });
         const parts: string[] = [];
         if (r.created.length) parts.push(`added ${r.created.join(", ")}`);
@@ -15102,8 +15139,45 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
           {!isDemo && appMode && <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-wider text-text-secondary">You are here</div>}
         </div>
       </div>
+      {/* Where each vault lives — demo (read-only) and production (the real
+          data, a danger zone). Always visible so the two are never confused. */}
+      <div className="mb-5 space-y-2">
+        <div className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface px-3 py-2">
+          <Sparkles className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">Demo vault</span>
+          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary" title={isDemo ? vaultPath : "~/.prevail/demo-vault"}>{isDemo ? vaultPath : "~/.prevail/demo-vault"}</span>
+          <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">sample · re-seeded</span>
+        </div>
+        <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${prodVault ? "border-warn/40 bg-warn/5" : "border-dashed border-border bg-surface"}`}>
+          <ShieldCheck className={`h-3.5 w-3.5 shrink-0 ${prodVault ? "text-warn" : "text-text-muted"}`} />
+          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">Your vault</span>
+          {prodVault ? (
+            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-primary" title={prodVault}>{prodVault}</span>
+          ) : (
+            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-muted">not set up yet</span>
+          )}
+          {prodVault && <span className="shrink-0 font-mono text-[9px] font-bold uppercase tracking-wider text-warn">real data · do not move/delete</span>}
+        </div>
+        {prodVault && (
+          <p className="px-1 text-[10px] text-text-muted">
+            This folder holds your real vault. Switching to demo never touches it; do not delete or move it from Finder, or Prevail will lose track of it.
+          </p>
+        )}
+      </div>
       {/* Action: in demo, the 3-step setup; in your own vault, a quiet way back. */}
-      {isDemo ? (
+      {isDemo && prodVault ? (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-warm p-4">
+          <p className="text-sm text-text-secondary">You have your own vault set up. Switch back to it any time — no re-setup.</p>
+          <button
+            onClick={switchToProduction}
+            disabled={switchingMode}
+            className="shrink-0 inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
+          >
+            {switchingMode ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+            {switchingMode ? "Switching…" : "Switch to my vault"}
+          </button>
+        </div>
+      ) : isDemo ? (
         <div className="mb-4 rounded-xl border border-accent-border bg-accent-soft p-4">
           <div className="mb-3 text-sm font-semibold text-text-primary">Setting up your own vault takes three steps:</div>
           <div className="mb-4 flex items-stretch gap-2">
