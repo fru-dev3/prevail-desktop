@@ -3322,6 +3322,11 @@ async fn spawn_prevail_streaming(
         .spawn()
         .map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
+    // Track the child so `abort_sessions` can cancel a benchmark run.
+    if let Some(pid) = child.id() {
+        register_child(&session, pid);
+    }
+
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let session_done = session.clone();
@@ -3362,6 +3367,7 @@ async fn spawn_prevail_streaming(
     }
     tauri::async_runtime::spawn(async move {
         let code = child.wait().await.ok().and_then(|s| s.code());
+        unregister_child(&session_done);
         let _ = app.emit(
             "benchmark:done",
             serde_json::json!({
