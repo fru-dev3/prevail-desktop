@@ -77,3 +77,14 @@ jobs:
           releaseBody: "See CHANGELOG.md for details."
           releaseDraft: false
           prerelease: false
+
+      # The README badge and prevail-web download links point at the
+      # version-independent releases/latest/download/Prevail-mac-arm64.dmg,
+      # so every release must also carry the DMG under that stable name.
+      - name: Upload stable-name DMG alias
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dmg=$(ls src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Prevail_*_aarch64.dmg)
+          cp "$dmg" Prevail-mac-arm64.dmg
+          gh release upload "${{ github.ref_name }}" Prevail-mac-arm64.dmg --clobber
