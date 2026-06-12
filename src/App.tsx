@@ -72,7 +72,9 @@ const Markdown = React.memo(function Markdown({ source, compact = false }: { sou
 });
 
 // Single source of truth for the version chip in title bar.
-const APP_VERSION = "0.7.3";
+// Injected by Vite from package.json — never hand-stamp this again.
+declare const __APP_VERSION__: string;
+const APP_VERSION = __APP_VERSION__;
 
 // Canonical on/off toggle. Track 36×20px, thumb 16×16px, slides
 // 18px. Every switch in the app routes through this so we never
