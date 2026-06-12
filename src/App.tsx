@@ -10167,7 +10167,7 @@ function BenchmarkPanel({
     // Compact model label: "Claude Opus 4.7" instead of "Claude · Opus (latest)"
     const shortModel = (j: BenchJob) => `${titleCase(j.cli)} ${(MODELS[j.cli]?.find(m => m.id === j.model)?.label ?? j.model).replace(/\s*\(.*?\)/, "")}`.trim();
     const modelPart = plannedJobs.length === 1 ? shortModel(plannedJobs[0]) : `${plannedJobs.length} models`;
-    const batchLabel = `${dateLabel} · ${hhmm} · ${scopePart} · ${modelPart}`;
+    const batchLabel = `${dateLabel} ${hhmm.replace(":", "-")} ${scopePart} ${modelPart}`;
     setActiveBatch({ label: batchLabel, scope: scopePart, domains: scopeDomains });
     setErr(null);
     setFinishedBatch(null);
@@ -10386,12 +10386,12 @@ function BenchCrumbs({
             {it.onClick ? (
               <button
                 onClick={it.onClick}
-                className="font-mono text-sm text-text-muted hover:text-accent transition-colors"
+                className="font-mono text-sm text-text-muted underline underline-offset-2 decoration-text-muted/40 hover:text-accent hover:decoration-accent transition-colors"
               >
                 {it.label}
               </button>
             ) : isLast ? (
-              <span className="font-display text-xl font-semibold tracking-tight text-text-primary">{it.label}</span>
+              <span className="font-mono text-sm text-text-primary">{it.label}</span>
             ) : (
               <span className="font-mono text-sm text-text-muted">{it.label}</span>
             )}
