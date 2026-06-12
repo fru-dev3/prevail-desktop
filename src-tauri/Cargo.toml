@@ -34,3 +34,6 @@ tokio = { version = "1", features = ["process", "io-util", "rt", "macros"] }
 libc = "0.2"
 sha2 = "0.10"
 robius-authentication = "0.1.1"
+aes-gcm = "0.10"
+base64 = "0.22"
+rand = "0.8"

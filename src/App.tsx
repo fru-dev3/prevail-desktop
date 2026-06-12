@@ -14301,7 +14301,7 @@ function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
     setBusy(true); setNote(null);
     try {
       const r = await invoke<{ ok: boolean; error?: string }>("engine_vault_decrypt", { vault: vaultPath, passcode: pass });
-      if (r.ok) { setNote("Vault decrypted back to plaintext."); setPass(""); await refresh(); }
+      if (r.ok) { setNote("Vault decrypted back to plaintext. Reloading…"); setPass(""); await refresh(); setTimeout(() => window.location.reload(), 800); }
       else setNote(r.error ?? "Wrong passcode.");
     } catch (e) { setNote(`Failed: ${String(e)}`); } finally { setBusy(false); }
   }
@@ -14339,6 +14339,13 @@ function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
           <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-accent">Recovery code: save this now</div>
           <div className="mt-1 select-all font-mono text-sm text-text-primary">{recovery}</div>
           <div className="mt-1 text-[11px] text-text-muted">If you forget your passcode, this is the only other way to unlock your vault. It won't be shown again.</div>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-2 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-background hover:bg-accent-hover"
+          >
+            I saved it · Restart Prevail
+          </button>
+          <span className="ml-2 text-[11px] text-text-muted">Restarting re-opens the vault through the unlock screen so every view reads it correctly.</span>
         </div>
       )}
       {note && <div className="mt-2 text-xs text-text-secondary">{note}</div>}

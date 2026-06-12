@@ -109,15 +109,18 @@ fn read_dir_retry(p: &Path) -> std::io::Result<fs::ReadDir> {
     }
     fs::read_dir(p)
 }
-fn read_to_string_retry(p: &Path) -> std::io::Result<String> {
+fn read_to_string_retry<P: AsRef<Path>>(p: P) -> std::io::Result<String> {
+    // Transparently decrypts sealed vault files when the session is unlocked
+    // (engine::maybe_decrypt is a passthrough for plaintext / foreign paths).
+    let p = p.as_ref();
     for _ in 0..5 {
         match fs::read_to_string(p) {
-            Ok(s) => return Ok(s),
+            Ok(s) => return Ok(engine::maybe_decrypt(p, s)),
             Err(e) if e.raw_os_error() == Some(4) => continue,
             Err(e) => return Err(e),
         }
     }
-    fs::read_to_string(p)
+    fs::read_to_string(p).map(|s| engine::maybe_decrypt(p, s))
 }
 
 /// Pull a short, human-meaningful summary from a domain's state.md for card
@@ -528,7 +531,7 @@ pub(crate) fn scrubbed_env_pairs() -> Vec<(String, String)> {
 /// highest-precedence context everywhere. Mirrors the engine's framing in
 /// prevail-cli `cli-bridge.ts::buildConstitutionPreamble`.
 pub(crate) fn ideal_state_preamble(vault: &Path) -> String {
-    let raw = std::fs::read_to_string(vault.join("ideal-state.md")).unwrap_or_default();
+    let raw = read_to_string_retry(vault.join("ideal-state.md")).unwrap_or_default();
     let raw = raw.trim();
     if raw.is_empty() {
         return String::new();
@@ -751,7 +754,7 @@ struct RunMetaFile {
 }
 
 fn read_run_meta(run_dir: &Path) -> RunMetaFile {
-    fs::read_to_string(run_dir.join("meta.json"))
+    read_to_string_retry(run_dir.join("meta.json"))
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
         .unwrap_or_default()
@@ -790,7 +793,7 @@ struct BatchFile {
 
 fn read_batch(run_dir: &Path) -> (Option<String>, Option<String>) {
     let p = run_dir.join("batch.json");
-    if let Ok(raw) = fs::read_to_string(&p) {
+    if let Ok(raw) = read_to_string_retry(&p) {
         if let Ok(b) = serde_json::from_str::<BatchFile>(&raw) {
             let label = b.label.clone();
             return (Some(b.id), label);
@@ -856,7 +859,7 @@ fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
         let (batch_id, batch_label) = read_batch(&p);
         let meta = read_run_meta(&p);
         if score_file.exists() {
-            if let Ok(raw) = fs::read_to_string(&score_file) {
+            if let Ok(raw) = read_to_string_retry(&score_file) {
                 if let Ok(parsed) = serde_json::from_str::<ScoreFile>(&raw) {
                     let domains = distinct_domains(&parsed.question_scores);
                     out.push(BenchmarkRun {
@@ -883,7 +886,7 @@ fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
         // instead of hiding it — the user must be able to SEE every run.
         let results_file = p.join("results.json");
         if results_file.exists() {
-            if let Ok(raw) = fs::read_to_string(&results_file) {
+            if let Ok(raw) = read_to_string_retry(&results_file) {
                 if let Ok(records) = serde_json::from_str::<Vec<serde_json::Value>>(&raw) {
                     let domains = distinct_domains(&records);
                     let label = strip_rerun_suffix(
@@ -927,9 +930,9 @@ fn benchmark_run_detail(run_dir: String) -> Result<serde_json::Value, String> {
     }
     let results_file = Path::new(&run_dir).join("results.json");
     let score_file = Path::new(&run_dir).join("score.json");
-    let results = fs::read_to_string(&results_file)
+    let results = read_to_string_retry(&results_file)
         .map_err(|e| format!("results.json: {e}"))?;
-    let score = fs::read_to_string(&score_file).map_err(|e| format!("score.json: {e}"))?;
+    let score = read_to_string_retry(&score_file).map_err(|e| format!("score.json: {e}"))?;
     let results_v: serde_json::Value = serde_json::from_str(&results).map_err(|e| e.to_string())?;
     let score_v: serde_json::Value = serde_json::from_str(&score).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({
@@ -1096,7 +1099,7 @@ fn migrate_legacy_usage(vault: &str) {
     if marker.exists() || !legacy.exists() {
         return;
     }
-    let Ok(raw) = fs::read_to_string(&legacy) else { return };
+    let Ok(raw) = read_to_string_retry(&legacy) else { return };
     let mut out = String::new();
     for line in raw.lines() {
         let line = line.trim();
@@ -1226,17 +1229,11 @@ fn intent_append(
     domain: Option<String>,
     record: serde_json::Value,
 ) -> Result<(), String> {
-    use std::io::Write;
     let dir = domain_dir(&vault, &domain);
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir intents: {e}"))?;
     let file = dir.join("_intents.jsonl");
     let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
-    let mut f = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&file)
-        .map_err(|e| format!("open _intents.jsonl: {e}"))?;
-    writeln!(f, "{line}").map_err(|e| format!("write intent: {e}"))?;
+    engine::vault_append_line(&file, &format!("{line}\n")).map_err(|e| format!("write intent: {e}"))?;
     Ok(())
 }
 
@@ -1281,7 +1278,7 @@ fn journal_append(vault: String, domain: Option<String>, entry: String) -> Resul
     let existing = read_to_string_retry(&path).unwrap_or_default();
     let body = existing.strip_prefix(HEADER).unwrap_or(&existing).to_string();
     let merged = format!("{HEADER}{}\n{body}", entry.trim_end());
-    fs::write(&path, merged).map_err(|e| format!("write journal: {e}"))?;
+    fs::write(&path, engine::maybe_encrypt(&path, &merged)).map_err(|e| format!("write journal: {e}"))?;
     Ok(())
 }
 
@@ -1333,17 +1330,11 @@ fn decision_append(
     domain: Option<String>,
     record: serde_json::Value,
 ) -> Result<(), String> {
-    use std::io::Write;
     let dir = domain_dir(&vault, &domain);
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir decisions: {e}"))?;
     let file = dir.join("_decisions.jsonl");
     let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
-    let mut f = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&file)
-        .map_err(|e| format!("open _decisions.jsonl: {e}"))?;
-    writeln!(f, "{line}").map_err(|e| format!("write decision: {e}"))?;
+    engine::vault_append_line(&file, &format!("{line}\n")).map_err(|e| format!("write decision: {e}"))?;
     Ok(())
 }
 
@@ -1418,7 +1409,7 @@ fn decision_feedback(
         .filter_map(|r| serde_json::to_string(r).ok())
         .collect::<Vec<_>>()
         .join("\n");
-    fs::write(&file, format!("{body}\n")).map_err(|e| format!("write _decisions.jsonl: {e}"))?;
+    fs::write(&file, engine::maybe_encrypt(&file, &format!("{body}\n"))).map_err(|e| format!("write _decisions.jsonl: {e}"))?;
     Ok(())
 }
 
@@ -1476,7 +1467,7 @@ fn extract_section(body: &str, heading: &str) -> String {
 }
 
 fn parse_bench_question(path: &Path) -> Option<BenchQuestion> {
-    let raw = fs::read_to_string(path).ok()?;
+    let raw = read_to_string_retry(path).ok()?;
     let mut id = String::new();
     let mut domain = String::new();
     let mut council = false;
@@ -1673,7 +1664,7 @@ fn benchmark_save_question(vault: String, q: BenchQuestionInput) -> Result<Bench
     md.push_str("\n\n## Notes\n\n");
     md.push_str(q.notes.as_deref().unwrap_or("").trim());
     md.push('\n');
-    fs::write(&path, md).map_err(|e| e.to_string())?;
+    fs::write(&path, engine::maybe_encrypt(&path, &md)).map_err(|e| e.to_string())?;
     parse_bench_question(&path).ok_or_else(|| "failed to re-read saved question".into())
 }
 
@@ -1685,7 +1676,7 @@ fn benchmark_set_question_archived(path: String, archived: bool) -> Result<(), S
     if !path.replace('\\', "/").contains("/benchmark/questions/") || !path.ends_with(".md") {
         return Err("not a benchmark question file".into());
     }
-    let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let raw = read_to_string_retry(&path).map_err(|e| e.to_string())?;
     let mut lines: Vec<String> = raw.lines().map(str::to_string).collect();
     // Remove any existing archived: line inside the frontmatter block.
     if lines.first().map(|l| l.trim()) == Some("---") {
@@ -1702,7 +1693,7 @@ fn benchmark_set_question_archived(path: String, archived: bool) -> Result<(), S
             if archived {
                 lines.insert(1, "archived: true".to_string());
             }
-            fs::write(&path, format!("{}\n", lines.join("\n"))).map_err(|e| e.to_string())?;
+            fs::write(Path::new(&path), engine::maybe_encrypt(Path::new(&path), &format!("{}\n", lines.join("\n")))).map_err(|e| e.to_string())?;
             return Ok(());
         }
     }
@@ -1845,7 +1836,7 @@ fn benchmark_matrix(vault: String) -> Result<Vec<MatrixRow>, String> {
         if !score_file.exists() {
             continue;
         }
-        let raw = match fs::read_to_string(&score_file) {
+        let raw = match read_to_string_retry(&score_file) {
             Ok(r) => r,
             Err(_) => continue,
         };
@@ -1893,7 +1884,7 @@ fn benchmark_matrix(vault: String) -> Result<Vec<MatrixRow>, String> {
 
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path).map_err(|e| format!("read {}: {}", path, e))
+    read_to_string_retry(&path).map_err(|e| format!("read {}: {}", path, e))
 }
 
 // Diagnostic: the frontend's fatal-error handler writes the crash here so
@@ -1990,7 +1981,7 @@ fn remember_vault(path: String) {
 #[tauri::command]
 fn bootstrap_vault() -> Option<String> {
     let bf = bootstrap_vault_path()?;
-    let s = fs::read_to_string(&bf).ok()?;
+    let s = read_to_string_retry(&bf).ok()?;
     let s = s.trim();
     if s.is_empty() || !Path::new(s).exists() {
         return None;
@@ -2009,7 +2000,7 @@ fn ui_settings_path() -> Option<std::path::PathBuf> {
 #[tauri::command]
 fn ui_settings_get() -> String {
     ui_settings_path()
-        .and_then(|p| fs::read_to_string(&p).ok())
+        .and_then(|p| read_to_string_retry(&p).ok())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "{}".to_string())
@@ -2376,7 +2367,7 @@ fn write_text_file(path: String, contents: String) -> Result<(), String> {
 }
 #[tauri::command]
 fn read_text_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path).map_err(|e| format!("read {path}: {e}"))
+    read_to_string_retry(&path).map_err(|e| format!("read {path}: {e}"))
 }
 
 // Diagnostics for the About → Run Diagnosis / Debug Dump panel. Gathers the
@@ -3387,7 +3378,7 @@ fn scan_skills(vault: String) -> Result<Vec<SkillEntry>, String> {
                 let mut description: Option<String> = None;
                 for candidate in &["SKILL.md", "README.md", "skill.md"] {
                     let f = p.join(candidate);
-                    if let Ok(s) = fs::read_to_string(&f) {
+                    if let Ok(s) = read_to_string_retry(&f) {
                         if let Some(desc) = extract_skill_description(&s) {
                             description = Some(desc);
                             break;
@@ -4153,7 +4144,7 @@ mod usage_tests {
 
         // Engine ledger now has both lines, in the engine schema.
         let engine_ledger = vault.join("_meta").join("usage.jsonl");
-        let raw = fs::read_to_string(&engine_ledger).expect("engine ledger written");
+        let raw = read_to_string_retry(&engine_ledger).expect("engine ledger written");
         let lines: Vec<&str> = raw.lines().filter(|l| !l.trim().is_empty()).collect();
         assert_eq!(lines.len(), 2);
         let first: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
@@ -4164,7 +4155,7 @@ mod usage_tests {
         // Marker prevents a second migration from double-appending.
         assert!(vault.join("usage").join(".migrated-to-engine").exists());
         migrate_legacy_usage(&vault.to_string_lossy());
-        let raw2 = fs::read_to_string(&engine_ledger).unwrap();
+        let raw2 = read_to_string_retry(&engine_ledger).unwrap();
         assert_eq!(raw2.lines().filter(|l| !l.trim().is_empty()).count(), 2, "idempotent");
 
         let _ = fs::remove_dir_all(&vault);
@@ -4197,7 +4188,7 @@ mod usage_tests {
         intent_append(vault_s.clone(), None, serde_json::json!({ "kind": "intent", "session": "s2", "message": "hi" })).unwrap();
 
         // Domain ledger: two lines, both valid JSON, prompt + raw preserved verbatim.
-        let dom_ledger = fs::read_to_string(vault.join("wealth").join("_intents.jsonl")).expect("domain ledger written");
+        let dom_ledger = read_to_string_retry(vault.join("wealth").join("_intents.jsonl")).expect("domain ledger written");
         let lines: Vec<&str> = dom_ledger.lines().filter(|l| !l.trim().is_empty()).collect();
         assert_eq!(lines.len(), 2);
         let intent: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
@@ -4206,12 +4197,12 @@ mod usage_tests {
         let reply: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
         assert!(reply["raw"].as_str().unwrap().contains("RAW")); // raw, escape codes intact
         // Root ledger holds the General turn.
-        assert!(fs::read_to_string(vault.join("_intents.jsonl")).unwrap().contains("\"s2\""));
+        assert!(read_to_string_retry(vault.join("_intents.jsonl")).unwrap().contains("\"s2\""));
 
         // Journal: header + newest-first ordering.
         journal_append(vault_s.clone(), Some("wealth".into()), "- 2026-06-07 09:00 · [opus] first".into()).unwrap();
         journal_append(vault_s.clone(), Some("wealth".into()), "- 2026-06-07 10:00 · [opus] second".into()).unwrap();
-        let journal = fs::read_to_string(vault.join("wealth").join("_journal.md")).unwrap();
+        let journal = read_to_string_retry(vault.join("wealth").join("_journal.md")).unwrap();
         assert!(journal.starts_with("# Journal\n\n"));
         let i_first = journal.find("first").unwrap();
         let i_second = journal.find("second").unwrap();
