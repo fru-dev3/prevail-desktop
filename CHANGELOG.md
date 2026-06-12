@@ -4,6 +4,12 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.9] — 2026-06-12 · engine follows your vault after demo exit
+
+### Fixed
+
+- **Switching from demo to your own vault now updates the engine config too.** Previously the engine's `vaultPath` stayed pointed at the demo sandbox, so CLI and scheduled runs that didn't pass `--vault` explicitly kept reading demo data after you'd set up your real vault. (Engine fix in prevail-cli, bundled here.)
+
 ## [0.7.8] — 2026-06-12 · accurate in-app version
 
 ### Fixed
