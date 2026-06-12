@@ -2113,6 +2113,8 @@ export default function App() {
     // Scheduled benchmark re-runs (drift tracking) — module-level timer; the
     // tick itself checks the enabled pref, so toggling needs no restart.
     startBenchScheduler(vaultPath);
+    // Scheduled vault backups (data protection) — same pattern.
+    startBackupScheduler(vaultPath);
     // Skill generation (self-learning) — on by default so the app learns
     // skills from conversations out of the box; togglable in Settings.
     if (getPref(PREF.skillgenEnabled, "1") === "1") {
@@ -10576,6 +10578,52 @@ async function rerunLatestBatch(vault: string): Promise<boolean> {
   return true;
 }
 let benchSchedTimer: number | null = null;
+// ── Vault backup scheduler ──────────────────────────────────────────────────
+// Automatic backups on a cadence (weekly default) plus change-awareness, so
+// the vault is protected without manual effort. Pre-event snapshots (before
+// encryption, mode switch, pack import, restore) call backupVaultNow directly.
+const BACKUP_CFG = {
+  enabled: "prevail.backup.enabled",
+  freq: "prevail.backup.freq", // daily | weekly | monthly
+  lastRun: "prevail.backup.lastRun",
+  dest: "prevail.backup.dest", // optional custom directory
+};
+const BACKUP_FREQ_MS: Record<string, number> = {
+  daily: 86_400_000,
+  weekly: 7 * 86_400_000,
+  monthly: 30 * 86_400_000,
+};
+async function backupVaultNow(vault: string): Promise<boolean> {
+  if (!vault) return false;
+  try {
+    const dest = lsGet(BACKUP_CFG.dest) || null;
+    await invoke("vault_backup_to", { vault, destDir: dest, keep: 10 });
+    lsSet(BACKUP_CFG.lastRun, String(Date.now()));
+    window.dispatchEvent(new Event("prevail:backup-done"));
+    return true;
+  } catch (e) {
+    console.error("vault backup", e);
+    return false;
+  }
+}
+let backupSchedTimer: number | null = null;
+function startBackupScheduler(vault: string) {
+  if (backupSchedTimer !== null) window.clearInterval(backupSchedTimer);
+  const tick = async () => {
+    try {
+      if (lsGet(BACKUP_CFG.enabled, "0") !== "1") return;
+      const freq = BACKUP_FREQ_MS[lsGet(BACKUP_CFG.freq, "weekly") || "weekly"] ?? BACKUP_FREQ_MS.weekly;
+      const last = Number(lsGet(BACKUP_CFG.lastRun, "0")) || 0;
+      if (Date.now() - last < freq) return;
+      await backupVaultNow(vault);
+    } catch (e) {
+      console.error("backup scheduler", e);
+    }
+  };
+  void tick();
+  backupSchedTimer = window.setInterval(() => void tick(), 30 * 60 * 1000);
+}
+
 function startBenchScheduler(vault: string) {
   if (benchSchedTimer !== null) window.clearInterval(benchSchedTimer);
   const tick = async () => {
@@ -14395,6 +14443,7 @@ function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
     if (!window.confirm("Encrypt this vault? Make sure you have a backup first. You'll get a one-time recovery code: save it.")) return;
     setBusy(true); setNote(null); setRecovery(null);
     try {
+      await backupVaultNow(vaultPath); // automatic pre-encryption snapshot
       const r = await invoke<{ ok: boolean; recoveryCode?: string | null; error?: string }>("engine_vault_encrypt", { vault: vaultPath, passcode: pass });
       if (r.ok) {
         if (r.recoveryCode) setRecovery(r.recoveryCode);
@@ -14410,6 +14459,7 @@ function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
   async function decrypt() {
     setBusy(true); setNote(null);
     try {
+      await backupVaultNow(vaultPath); // automatic pre-decryption snapshot
       const r = await invoke<{ ok: boolean; error?: string }>("engine_vault_decrypt", { vault: vaultPath, passcode: pass });
       if (r.ok) { setNote("Vault decrypted back to plaintext. Reloading…"); setPass(""); await refresh(); setTimeout(() => window.location.reload(), 800); }
       else setNote(r.error ?? "Wrong passcode.");
@@ -15001,6 +15051,8 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
   // Point the app at a chosen folder as the production vault. `runOnboarding`
   // is false when a starter pack already populated it — the pack IS the start.
   async function enterProduction(picked: string, runOnboarding: boolean) {
+    // Snapshot before clearing the demo sandbox (a pre-event backup).
+    await backupVaultNow(vaultPath);
     await invoke<{ vault: string; demoCleared: boolean }>("engine_production_init", { vault: picked, clearDemo: vaultPath });
     await invoke("engine_appmode_set", { mode: "production", vault: picked }).catch(() => {});
     setProdVault(picked); lsSet(LS.vaultProduction, picked);
@@ -15383,7 +15435,97 @@ function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { 
           {backupNote}
         </div>
       )}
+      <BackupAutomationCard vault={vaultPath} onChange={onChange} />
     </>
+  );
+}
+
+// Scheduled automatic backups + restore points, on the Vault page. Reuses the
+// module-scope backup scheduler; restore unpacks an archive over the vault
+// after snapshotting the current state first.
+function BackupAutomationCard({ vault, onChange }: { vault: string; onChange?: () => void }) {
+  const [enabled, setEnabled] = useState(() => lsGet(BACKUP_CFG.enabled, "0") === "1");
+  const [freq, setFreq] = useState(() => lsGet(BACKUP_CFG.freq, "weekly") || "weekly");
+  const [backups, setBackups] = useState<{ name: string; path: string; bytes: number; mtime: number }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const refresh = () =>
+    invoke<{ name: string; path: string; bytes: number; mtime: number }[]>("vault_backups_list", { destDir: lsGet(BACKUP_CFG.dest) || null })
+      .then((b) => setBackups(Array.isArray(b) ? b : []))
+      .catch(() => {});
+  useEffect(() => {
+    refresh();
+    const f = () => refresh();
+    window.addEventListener("prevail:backup-done", f);
+    return () => window.removeEventListener("prevail:backup-done", f);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const last = Number(lsGet(BACKUP_CFG.lastRun, "0")) || 0;
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-surface p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <RotateCw className="h-4 w-4 shrink-0 text-accent" />
+        <div className="min-w-0 flex-1">
+          <div className="font-display text-sm font-semibold tracking-tight">Automatic backups</div>
+          <div className="text-xs text-text-secondary">
+            Snapshots the whole vault on a schedule (and before risky operations like encryption or a mode switch), kept outside the vault. Old ones are pruned automatically.
+            {enabled && last > 0 && ` Last backup ${formatFreshness(Math.max(0, (Date.now() - last) / 1000))} ago.`}
+          </div>
+        </div>
+        <select value={freq} onChange={(e) => { setFreq(e.target.value); lsSet(BACKUP_CFG.freq, e.target.value); }} disabled={!enabled}
+          className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary disabled:opacity-40">
+          <option value="daily">daily</option>
+          <option value="weekly">weekly</option>
+          <option value="monthly">monthly</option>
+        </select>
+        <button onClick={() => { const v = !enabled; setEnabled(v); lsSet(BACKUP_CFG.enabled, v ? "1" : "0"); }}
+          className={`rounded-md border px-3 py-1 font-mono text-[11px] uppercase tracking-wider ${enabled ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
+          {enabled ? "On" : "Off"}
+        </button>
+        <button onClick={async () => { setBusy(true); setNote(null); const ok = await backupVaultNow(vault); setNote(ok ? "Backup created." : "Backup failed."); setBusy(false); }}
+          disabled={busy}
+          className="rounded-md border border-border px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
+          {busy ? "…" : "Back up now"}
+        </button>
+      </div>
+      {note && <div className="mt-2 text-xs text-text-secondary">{note}</div>}
+      {backups.length > 0 && (
+        <details className="mt-3 rounded-lg border border-border-subtle bg-background px-3 py-2">
+          <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
+            Restore points · {backups.length}
+          </summary>
+          <div className="mt-2 flex flex-col gap-1">
+            {backups.map((b) => (
+              <div key={b.path} className="flex items-center gap-2 px-1 py-1">
+                <span className="flex-1 truncate font-mono text-[11px] text-text-secondary" title={b.path}>{b.name.replace("prevail-backup-", "").replace(".tar.gz", "")}</span>
+                <span className="shrink-0 font-mono text-[10px] text-text-muted">{bytesHuman(b.bytes)}</span>
+                <button
+                  onClick={async () => {
+                    const ok = await tauriConfirm(
+                      "Restore this backup over your current vault? Your current state is backed up first, so this is reversible.",
+                      { title: "Restore vault", kind: "warning", okLabel: "Restore", cancelLabel: "Cancel" },
+                    );
+                    if (!ok) return;
+                    setBusy(true); setNote(null);
+                    try {
+                      await backupVaultNow(vault); // snapshot current state first
+                      await invoke("vault_restore_archive", { vault, archive: b.path });
+                      setNote("Restored. Reloading…");
+                      onChange?.();
+                      setTimeout(() => window.location.reload(), 900);
+                    } catch (e) { setNote(`Restore failed: ${String(e)}`); }
+                    finally { setBusy(false); }
+                  }}
+                  disabled={busy}
+                  className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
+                  Restore
+                </button>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
   );
 }
 
