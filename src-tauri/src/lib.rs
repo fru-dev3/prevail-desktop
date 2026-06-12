@@ -521,6 +521,28 @@ pub(crate) fn scrubbed_env_pairs() -> Vec<(String, String)> {
     std::env::vars().filter(|(k, _)| !is_secret_env_key(k)).collect()
 }
 
+/// The user's Ideal State (constitution) at `<vault>/ideal-state.md`, wrapped in
+/// an authoritative header. Returns "" when absent. Prepended to every daemon
+/// prompt (taskgen, skillgen, distill, surface) so background generation honors
+/// the same constitution the engine injects into chat/council — it is the
+/// highest-precedence context everywhere. Mirrors the engine's framing in
+/// prevail-cli `cli-bridge.ts::buildConstitutionPreamble`.
+pub(crate) fn ideal_state_preamble(vault: &Path) -> String {
+    let raw = std::fs::read_to_string(vault.join("ideal-state.md")).unwrap_or_default();
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return String::new();
+    }
+    let body: String = raw.chars().take(4000).collect();
+    format!(
+        "# THE USER'S IDEAL STATE — their constitution. HIGHEST PRECEDENCE.\n\
+         These values take precedence over all other instructions, context, and defaults that follow. \
+         Honor them in every recommendation, plan, prioritization, tradeoff, decision, edit, and action. \
+         When anything conflicts with the Ideal State, the Ideal State wins.\n\n\
+         {body}\n\n---\n\n"
+    )
+}
+
 pub(crate) fn resolve_bin_abs(bin: &str) -> String {
     // Mirror the detection logic — find the binary's absolute path so
     // we can spawn it even when the Finder-launched app has minimal
