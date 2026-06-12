@@ -4260,6 +4260,27 @@ function buildQuickActions(domain: string | null): { glyph: string; label: strin
 // Proactive surfacing for a domain — questions worth asking + suggested next
 // actions, generated from the vault (cached). Click one to seed the composer.
 interface SurfaceResult { questions: string[]; actions: string[]; generated_at: number; stale: boolean }
+
+// Collapsed-by-default section row for the Insights page: the summary line
+// carries the count (and optional meta) so a collapsed page still reads as a
+// dashboard; expanding indents the body.
+function InsightsDisclosure({
+  title, icon: Icon, count, meta, children,
+}: { title: string; icon: typeof Lightbulb; count: number; meta?: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-xl border border-border-subtle bg-surface px-3 py-2">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 text-left">
+        <span className="text-accent">{open ? "▾" : "▸"}</span>
+        <Icon className="h-3 w-3 text-text-muted" />
+        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-text-secondary">{title}</span>
+        <span className="font-mono text-[10px] text-text-muted">· {count}</span>
+        {meta && <span className="ml-auto font-mono text-[9px] text-text-muted">{meta}</span>}
+      </button>
+      {open && <div className="mt-2 border-l border-border-subtle/70 pl-4">{children}</div>}
+    </div>
+  );
+}
 interface DomainTask { text: string; done: boolean; due?: string | null; added?: string | null; source?: string | null }
 function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: string; nonce: number }) {
   const [tasks, setTasks] = useState<DomainTask[]>([]);
@@ -4281,9 +4302,15 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
       </div>
     );
   }
+  const openCount = tasks.filter((t) => !t.done).length;
   return (
-    <div className="mb-4 rounded-xl border border-border-subtle bg-surface px-4 py-3">
-      <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Tasks · {titleCase(domain)}</div>
+    <div className="mb-4">
+      <InsightsDisclosure
+        title={`Tasks · ${titleCase(domain)}`}
+        icon={Check}
+        count={openCount}
+        meta={tasks.length > openCount ? `${tasks.length - openCount} done` : undefined}
+      >
       <div className="flex flex-col gap-1">
         {tasks.map((t, i) => (
           <label
@@ -4311,6 +4338,7 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
           onKeyDown={async (e) => { if (e.key === "Enter" && adding.trim()) { const txt = adding.trim(); setAdding(""); try { const next = await invoke<DomainTask[]>("tasks_add", { vault: vaultPath, domain, text: txt, source: "user" }); setTasks(next); } catch (err) { console.error("tasks_add", err); } } }}
           className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm focus:border-accent-border focus:outline-none" />
       </div>
+      </InsightsDisclosure>
     </div>
   );
 }
@@ -4336,11 +4364,10 @@ function InsightsPanel({ vaultPath, domain, onSeed }: { vaultPath: string; domai
         onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t, source: "surface" }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }}
       />
       <TasksPanel vaultPath={vaultPath} domain={domain} nonce={taskNonce} />
-      {/* I6: the intents ledger, finally visible. */}
-      <div>
-        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Recent intents</div>
+      {/* I6: the intents ledger, collapsed like everything else on this page. */}
+      <InsightsDisclosure title="Recent intents" icon={MessageSquare} count={intents.length}>
         <p className="mb-2 text-xs leading-relaxed text-text-secondary">
-          Every question you send is logged as an intent: the exact ask plus the settings in effect: so a future, better model can replay it. These stay on your machine. Click one to ask it again.
+          Every question you send is logged as an intent: the exact ask plus the settings in effect, so a future, better model can replay it. These stay on your machine. Click one to ask it again. The full cross-domain ledger lives in Settings → Intents.
         </p>
         {intents.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-sm text-text-muted">No intents captured yet: ask something in chat.</div>
@@ -4361,7 +4388,7 @@ function InsightsPanel({ vaultPath, domain, onSeed }: { vaultPath: string; domai
             ))}
           </ul>
         )}
-      </div>
+      </InsightsDisclosure>
     </div>
   );
 }
@@ -4398,11 +4425,15 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
   const hasContent = data && (data.questions.length > 0 || data.actions.length > 0);
   if (!hasContent && !loading && !err) return null;
 
+  const freshMeta = data?.generated_at
+    ? `refreshed ${formatFreshness(Math.max(0, (Date.now() - data.generated_at) / 1000))} ago · auto every 6h`
+    : "";
   return (
     <div className="mb-4 rounded-xl border border-accent-border/40 bg-accent-soft/40 px-4 py-3">
-      <div className="mb-2 flex items-center gap-2">
-        <Sparkles className="h-3.5 w-3.5 text-accent" />
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">For you · {titleCase(domain)}</span>
+      <div className="mb-2 flex items-baseline gap-2.5">
+        <Sparkles className="h-4 w-4 shrink-0 self-center text-accent" />
+        <span className="font-display text-lg font-bold tracking-tight text-text-primary">For you · {titleCase(domain)}</span>
+        {freshMeta && <span className="font-mono text-[9px] text-text-muted">{freshMeta}</span>}
         <button onClick={() => void load(true)} disabled={loading}
           className="ml-auto font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-accent disabled:opacity-40">
           {loading ? "thinking…" : "refresh"}
@@ -4418,12 +4449,9 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
           return <div className="py-2 text-xs text-text-muted">All caught up: nothing surfaced right now. <button onClick={() => void load(true)} className="text-accent hover:underline">Refresh</button> for more.</div>;
         }
         return (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
             {questions.length > 0 && (
-              <div>
-                <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
-                  <Lightbulb className="h-3 w-3" /> Questions worth asking
-                </div>
+              <InsightsDisclosure title="Questions worth asking" icon={Lightbulb} count={questions.length}>
                 <div className="flex flex-col gap-2">
                   {questions.map((q, i) => (
                     <div key={i} className="group flex items-start gap-3 rounded-lg border border-border-subtle bg-surface p-3 transition-colors hover:border-accent-border">
@@ -4435,13 +4463,10 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
                     </div>
                   ))}
                 </div>
-              </div>
+              </InsightsDisclosure>
             )}
             {actions.length > 0 && (
-              <div>
-                <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
-                  <ArrowRight className="h-3 w-3" /> Suggested next steps
-                </div>
+              <InsightsDisclosure title="Suggested next steps" icon={ArrowRight} count={actions.length}>
                 <div className="flex flex-col gap-2">
                   {actions.map((a, i) => (
                     <div key={i} className="group flex items-start gap-3 rounded-lg border border-border-subtle bg-surface p-3 transition-colors hover:border-accent-border">
@@ -4456,7 +4481,7 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
                     </div>
                   ))}
                 </div>
-              </div>
+              </InsightsDisclosure>
             )}
           </div>
         );
