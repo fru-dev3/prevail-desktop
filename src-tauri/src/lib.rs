@@ -2152,6 +2152,29 @@ fn write_user_md(vault: String, body: String) -> Result<(), String> {
     fs::write(&p, body).map_err(|e| format!("write user.md: {e}"))
 }
 
+// The user's Ideal State — their constitution. A single `<vault>/ideal-state.md`
+// that captures the operating vision and values the whole system optimizes for.
+// It is the HIGHEST-PRECEDENCE context, injected ahead of everything in chat,
+// council, suggestions, surface, and every background daemon (see
+// `ideal_state_preamble`). Editable in Settings; supersedes the old Pro Profile.
+// When the file is absent, `read_ideal_state` returns this starter template so a
+// fresh vault opens with a sensible, editable default.
+pub(crate) const DEFAULT_IDEAL_STATE: &str = include_str!("default_ideal_state.md");
+
+#[tauri::command]
+fn read_ideal_state(vault: String) -> Result<String, String> {
+    let p = PathBuf::from(&vault).join("ideal-state.md");
+    if !p.exists() {
+        return Ok(DEFAULT_IDEAL_STATE.to_string());
+    }
+    read_to_string_retry(&p).map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn write_ideal_state(vault: String, body: String) -> Result<(), String> {
+    let p = PathBuf::from(&vault).join("ideal-state.md");
+    fs::write(&p, body).map_err(|e| format!("write ideal-state.md: {e}"))
+}
+
 // Generic text file read/write — used by config export/import (the frontend
 // picks a path via the dialog plugin, then calls these). Kept generic so
 // other features can reuse them.
@@ -3610,6 +3633,8 @@ pub fn run() {
             abort_sessions,
             read_user_md,
             write_user_md,
+            read_ideal_state,
+            write_ideal_state,
             write_paste_attachment,
             save_session,
             verify_cli_model,
