@@ -592,6 +592,7 @@ import {
   siGmail, siGooglecalendar, siGoogledrive, siGooglesheets, siDropbox, siNotion,
   siDiscord, siGithub, siGitlab, siLinear, siStripe, siShopify, siCoinbase,
   siTelegram, siWhatsapp, siReddit, siYoutube, siSpotify, siZoom, siAirtable,
+  siSignal, siMatrix, siMattermost,
   siTrello, siAsana, siTodoist, siHubspot, siQuickbooks, siCalendly, siObsidian,
   siWise, siRobinhood, siStrava, siFitbit,
   // Model-provider brand marks (Settings → Models, direct-provider roadmap).
@@ -14475,7 +14476,33 @@ function SafetySection({ vaultPath }: { vaultPath: string }) {
 }
 
 // WhatsApp is rendered as its own (fuller) card below, so it's excluded here.
-const COMING_SOON_GATEWAYS = ["Discord", "Slack", "Signal", "Matrix", "Mattermost", "Email (IMAP/SMTP)", "SMS (Twilio)"];
+function GatewayMark({ icon, mono }: { icon?: { path: string; hex: string }; mono?: typeof Mail }) {
+  const Mono = mono;
+  return (
+    <span
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-subtle"
+      style={icon ? { background: `#${icon.hex}1f`, color: `#${icon.hex}` } : undefined}
+    >
+      {icon ? (
+        <svg width={18} height={18} viewBox="0 0 24 24" fill={`#${icon.hex}`} aria-hidden>
+          <path d={icon.path} />
+        </svg>
+      ) : Mono ? (
+        <Mono className="h-[18px] w-[18px] text-text-muted" />
+      ) : null}
+    </span>
+  );
+}
+
+const COMING_SOON_GATEWAYS: { name: string; icon?: { path: string; hex: string }; mono?: typeof Mail }[] = [
+  { name: "Discord", icon: siDiscord },
+  { name: "Slack", mono: MessagesSquare },
+  { name: "Signal", icon: siSignal },
+  { name: "Matrix", icon: siMatrix },
+  { name: "Mattermost", icon: siMattermost },
+  { name: "Email (IMAP/SMTP)", mono: Mail },
+  { name: "SMS (Twilio)", mono: MessageSquare },
+];
 
 // U2: Gateway is the single, self-contained section (owns its header) — folds in
 // the former "Integrations" bridge cards (A1) without the earlier double header /
@@ -14483,7 +14510,7 @@ const COMING_SOON_GATEWAYS = ["Discord", "Slack", "Signal", "Matrix", "Mattermos
 function GatewaySection() {
   return (
     <>
-      <SettingsHeader title="Gateway" subtitle="Chat with your council from anywhere. Your vault stays local: these bridges relay messages to your domains and back." />
+      <SettingsHeader title="Gateway" icon={MessagesSquare} subtitle="Chat with your council from anywhere. Your vault stays local: these bridges relay messages to your domains and back." />
 
       {/* Live + in-progress bridges — each card carries its own brand mark/color. */}
       <div className="mb-6 grid grid-cols-1 gap-4">
@@ -14494,9 +14521,10 @@ function GatewaySection() {
       {/* Planned surfaces — shared list-row spec. */}
       <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">More surfaces</div>
       <div className="space-y-2">
-        {COMING_SOON_GATEWAYS.map((name) => (
-          <div key={name} className={SETTINGS_ROW}>
-            <span className="flex-1 text-sm text-text-secondary">{name}</span>
+        {COMING_SOON_GATEWAYS.map((g) => (
+          <div key={g.name} className={SETTINGS_ROW}>
+            <GatewayMark icon={g.icon} mono={g.mono} />
+            <span className="flex-1 text-sm text-text-secondary">{g.name}</span>
             <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
           </div>
         ))}
@@ -17176,8 +17204,8 @@ function TelegramCard() {
   return (
     <div className="rounded-xl border border-border bg-surface p-5">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#229ED9]/15 text-[#229ED9]">
-          <Send className="h-5 w-5" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#229ED9]/15">
+          <svg width={20} height={20} viewBox="0 0 24 24" fill="#229ED9" aria-hidden><path d={siTelegram.path} /></svg>
         </div>
         <div>
           <h3 className="font-semibold">Telegram bridge</h3>
@@ -17349,8 +17377,8 @@ function WhatsAppCard() {
   return (
     <div className="rounded-xl border border-border bg-surface p-5">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#25D366]/15 text-[#25D366]">
-          <MessageSquare className="h-5 w-5" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#25D366]/15">
+          <svg width={20} height={20} viewBox="0 0 24 24" fill="#25D366" aria-hidden><path d={siWhatsapp.path} /></svg>
         </div>
         <div>
           <h3 className="font-semibold">
