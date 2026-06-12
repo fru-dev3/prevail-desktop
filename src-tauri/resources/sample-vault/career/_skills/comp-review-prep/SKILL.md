@@ -2,7 +2,7 @@
 id: comp-review-prep
 runner: llm
 trigger: on-demand
-description: Prepare for a compensation conversation — decide between a base raise and an equity refresh, with evidence.
+description: Prepare for a compensation conversation: decide between a base raise and an equity refresh, with evidence.
 source: seed
 ---
 
@@ -14,7 +14,7 @@ Use before any compensation or performance conversation.
    one number. Benchmark it against market for the role and level.
 2. **Lead with the right lever.** When the original equity grant is partway
    vested and the company is doing well, an RSU refresh usually beats a base
-   bump — recurring, performance-linked, tax-advantaged upside. Keep base as a
+   bump: recurring, performance-linked, tax-advantaged upside. Keep base as a
    fallback ask.
 3. **Build the evidence file.** List shipped impact, scope growth, and any
    market data. Quantify wherever possible.
