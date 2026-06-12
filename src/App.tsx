@@ -918,6 +918,9 @@ interface BenchmarkRun {
   batch_id?: string | null;
   batch_label?: string | null;
   created_ms: number;
+  cli?: string | null;
+  model?: string | null;
+  council?: boolean | null;
 }
 
 interface QuestionScore {
@@ -10610,13 +10613,20 @@ function BenchmarkPanel({
     void executeBenchBatch(vaultPath, runnable, mode === "council", scopeStr);
   }
 
-  // Rebuild a runnable job from a stored run's label + domain scope.
+  // Rebuild a runnable job from a stored run. Runs since the rerun fix carry
+  // meta.json (exact cli/model/council); older runs fall back to parsing the
+  // label.
   function jobFromRun(r: BenchmarkRun, key: string): { job: BenchJob; council: boolean } | null {
     const stripped = r.label.replace(/^\d{4}-\d{2}-\d{2}[_ ]/, "").trim();
-    const council = /^council\b/i.test(stripped);
+    let council = /^council\b/i.test(stripped);
     let cli = "";
     let modelId = "";
-    if (!council) {
+    if (r.council) {
+      council = true;
+    } else if (r.cli) {
+      cli = r.cli;
+      modelId = r.model ?? "";
+    } else if (!council) {
       const known = ["claude", "codex", "antigravity", "ollama", "openrouter", "lmstudio"];
       for (const k of known) {
         if (stripped === k) { cli = k; break; }
