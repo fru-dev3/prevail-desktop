@@ -2259,6 +2259,17 @@ export default function App() {
     setSettingsJump((j) => ({ section, n: (j?.n ?? 0) + 1 }));
     setTab("settings");
   };
+  // Window-event form of the same jump, for module-scope UI (sidebar
+  // indicators) that has no prop line to the App.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const s = (e as CustomEvent<string>).detail;
+      if (s) openSettingsAt(s);
+    };
+    window.addEventListener("prevail:open-settings", onOpen as EventListener);
+    return () => window.removeEventListener("prevail:open-settings", onOpen as EventListener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Lifted from ChatPanel so the top bar owns the domain Insights / Preferences
   // toggles. ChatPanel receives these as props and renders the matching view.
   const [domainTab, setDomainTab] = useState<DomainTab>("chat");
@@ -2794,6 +2805,47 @@ function titleCase(slug: string): string {
 
 // ─────────────────────────────────────────────────────────────────────
 // Vault wizard
+
+// Always-visible "the gateway is live" indicator: external messages can
+// reach this app right now. Polls the bridge every 30s; click jumps to the
+// Gateway settings.
+function SidebarGatewayLive({ collapsed }: { collapsed: boolean }) {
+  const [live, setLive] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      try {
+        const t = await invoke<{ running: boolean }>("telegram_bridge_status");
+        if (alive) setLive(!!t.running);
+      } catch { if (alive) setLive(false); }
+    };
+    void check();
+    const id = window.setInterval(() => void check(), 30_000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, []);
+  if (!live) return null;
+  const goGateway = () => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "gateway" }));
+  const dot = (
+    <span className="relative flex h-2 w-2 shrink-0">
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ai opacity-60" />
+      <span className="relative inline-flex h-2 w-2 rounded-full bg-ai" />
+    </span>
+  );
+  if (collapsed) {
+    return (
+      <button onClick={goGateway} title="Gateway is LIVE: Telegram can reach this app. Click for settings." className="flex w-full justify-center border-t border-border-subtle px-2 py-2">
+        {dot}
+      </button>
+    );
+  }
+  return (
+    <button onClick={goGateway} className="flex w-full items-center gap-2 border-t border-border-subtle px-3 py-2 text-left hover:bg-surface-warm" title="External messages can reach this app right now. Click for Gateway settings.">
+      {dot}
+      <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-ai">Gateway live · Telegram</span>
+      <MessagesSquare className="h-3 w-3 shrink-0 text-text-muted" />
+    </button>
+  );
+}
 
 // One row per live benchmark run, pinned above the Settings strip. The data
 // lives in the module-scope registry, so the rows persist (and progress)
@@ -3387,6 +3439,9 @@ function Sidebar({
         </button>
       )}
 
+      {/* External connectivity: a live gateway is something you should never
+          forget is on. Pulsing indicator whenever the Telegram bridge runs. */}
+      <SidebarGatewayLive collapsed={collapsed} />
       {/* Live benchmark runs (from the global registry) — one row per batch,
           visible wherever you navigate, each cancellable. */}
       <SidebarBenchmarkRuns collapsed={collapsed} />
@@ -17205,13 +17260,17 @@ function TelegramCard() {
               </select>
             </label>
             <label className="block">
-              <div className="text-[10px] uppercase tracking-wider text-text-muted">Model (optional)</div>
-              <input
+              <div className="text-[10px] uppercase tracking-wider text-text-muted">Model</div>
+              <select
                 value={bridgeModel}
                 onChange={(e) => setBridgeModel(e.target.value)}
-                placeholder={MODELS[bridgeCli]?.[0]?.id ?? "default"}
-                className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-xs focus:border-accent-border focus:outline-none"
-              />
+                className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none"
+              >
+                <option value="">{`Provider default (${modelsFor(bridgeCli)[0]?.label ?? "default"})`}</option>
+                {modelsFor(bridgeCli).map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
             </label>
           </div>
           <div className="mt-3 flex items-center gap-2">
