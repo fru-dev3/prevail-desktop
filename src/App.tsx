@@ -148,7 +148,7 @@ function QuickSwitcher({
         try {
           const rows = await invoke<ThreadMeta[]>("list_threads", { vault: vaultPath, domain: name });
           for (const r of rows) collected.push({ domain: name, meta: r });
-        } catch { /* ignore — empty dir is fine */ }
+        } catch { /* ignore: empty dir is fine */ }
       };
       tasks.push(fetchOne(null));
       for (const d of domains) tasks.push(fetchOne(d.name));
@@ -607,7 +607,7 @@ const VENDOR_BRAND: Record<string, { hex: string; accent: string; name: string }
   lmstudio:    { hex: "#4f46e5", accent: "#6366f1", name: "LM Studio (local)" },
   mlx:         { hex: "#1f2937", accent: "#9ca3af", name: "MLX (local)" },
   openrouter:  { hex: "#6566f1", accent: "#6566f1", name: "OpenRouter" },
-  other:       { hex: "#6b7280", accent: "#6b7280", name: "—" },
+  other:       { hex: "#6b7280", accent: "#6b7280", name: "-" },
 };
 
 // Brand accent for a vendor, safe for text/border use. Returns the hex
@@ -965,13 +965,13 @@ interface Framework {
 }
 const FRAMEWORKS: Framework[] = [
   { id: "none", label: "OFF", blurb: "No framework, model's default response shape", instruction: "" },
-  { id: "bluf", label: "BLUF", blurb: "Bottom Line Up Front, lead with the answer", instruction: "Apply the BLUF framework. Your first sentence MUST be the bottom line — the single most important conclusion or recommendation. Then provide supporting context in 1-3 short paragraphs. Never bury the conclusion under context." },
+  { id: "bluf", label: "BLUF", blurb: "Bottom Line Up Front, lead with the answer", instruction: "Apply the BLUF framework. Your first sentence MUST be the bottom line: the single most important conclusion or recommendation. Then provide supporting context in 1-3 short paragraphs. Never bury the conclusion under context." },
   { id: "win", label: "WIN", blurb: "What's Important Now, name the ONE next move", instruction: "Apply the WIN (What's Important Now) framework. Identify the ONE most important next move the user should make. State that move in the first sentence. Drop everything that doesn't directly serve that next step." },
   { id: "scqa", label: "SCQA", blurb: "Situation → Complication → Question → Answer", instruction: "Structure your response as SCQA: a one-line Situation, a one-line Complication, a one-line Question, then a decisive Answer." },
   { id: "sbar", label: "SBAR", blurb: "Situation · Background · Assessment · Recommendation", instruction: "Structure your response as SBAR: Situation, Background, Assessment, Recommendation. Each in 1-2 lines max." },
   { id: "ooda", label: "OODA", blurb: "Observe → Orient → Decide → Act", instruction: "Structure your response as an OODA loop: Observe, Orient, Decide, Act. Each step labelled and one line." },
   { id: "proscons", label: "PROS/CONS", blurb: "Structured trade-off with weight", instruction: "Structure your response as a PROS/CONS analysis. Two columns. End with a one-line Weight verdict naming the winner." },
-  { id: "steelman", label: "STEELMAN", blurb: "Strongest version of the other side first", instruction: "Steelman the opposing position first — give it the strongest framing you can. Then give your verdict." },
+  { id: "steelman", label: "STEELMAN", blurb: "Strongest version of the other side first", instruction: "Steelman the opposing position first: give it the strongest framing you can. Then give your verdict." },
 ];
 
 interface Lens {
@@ -984,12 +984,12 @@ const LENSES: Lens[] = [
   { id: "none", label: "OFF", blurb: "No lens, single response, default angle", instruction: "" },
   { id: "first-principles", label: "FIRST PRINCIPLES", blurb: "Strip the problem to fundamentals", instruction: "Approach this problem from first principles. Forget conventional wisdom, prior advice, industry best practice, or what 'most people do.' Strip the problem to its fundamental mechanics and rebuild the answer from there." },
   { id: "outsider", label: "OUTSIDER", blurb: "Challenge the thinking; ignore prior context", instruction: "Approach this as a complete outsider with no prior context. Challenge every assumption that the question seems to bake in." },
-  { id: "contrarian", label: "CONTRARIAN", blurb: "Argue the strongest case against the obvious answer", instruction: "Argue the strongest possible case against the obvious or expected answer. Don't be devil's advocate — actually pressure-test the consensus until something cracks." },
+  { id: "contrarian", label: "CONTRARIAN", blurb: "Argue the strongest case against the obvious answer", instruction: "Argue the strongest possible case against the obvious or expected answer. Don't be devil's advocate: actually pressure-test the consensus until something cracks." },
   { id: "expansionist", label: "EXPANSIONIST", blurb: "What's the bigger version of this question?", instruction: "Don't answer the question as asked. First ask: what's the bigger version of this question? Then answer THAT." },
   { id: "executor", label: "EXECUTOR", blurb: "Skip the framing, literal next step today", instruction: "Skip all framing. The user wants the literal next step they should take today. State the action in one imperative sentence, then list 2-3 concrete tasks." },
   { id: "alien", label: "ALIEN", blurb: "An outsider notices what's obvious to you", instruction: "You are an alien observer with no familiarity with this user's biases. State what is plainly obvious about their situation that they themselves are too close to see." },
-  { id: "mom", label: "MOM", blurb: "Plain English, what would she actually do?", instruction: "Answer as a wise mom would — plain English, no jargon, sentimentally honest, practical. What would she actually tell her child to do?" },
-  { id: "dad", label: "DAD", blurb: "Hard-nosed, what's the trap you're not seeing?", instruction: "Answer as a hard-nosed dad would — direct, no coddling. Name the trap the user is not seeing. Tell them what they will regret in 10 years if they get this wrong." },
+  { id: "mom", label: "MOM", blurb: "Plain English, what would she actually do?", instruction: "Answer as a wise mom would: plain English, no jargon, sentimentally honest, practical. What would she actually tell her child to do?" },
+  { id: "dad", label: "DAD", blurb: "Hard-nosed, what's the trap you're not seeing?", instruction: "Answer as a hard-nosed dad would: direct, no coddling. Name the trap the user is not seeing. Tell them what they will regret in 10 years if they get this wrong." },
 ];
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1143,8 +1143,8 @@ function BridgeStatusChips() {
   );
   return (
     <div className="pointer-events-none absolute bottom-1 left-2 z-20 flex items-center gap-1.5">
-      {web && <Chip Icon={Monitor} label="WebUI" title="WebUI is live — reachable in your browser (Settings → Remote)" />}
-      {tg && <Chip Icon={MessagesSquare} label="Telegram" title="Telegram bridge is live — messages route to your domains" />}
+      {web && <Chip Icon={Monitor} label="WebUI" title="WebUI is live: reachable in your browser (Settings → Remote)" />}
+      {tg && <Chip Icon={MessagesSquare} label="Telegram" title="Telegram bridge is live: messages route to your domains" />}
     </div>
   );
 }
@@ -1421,7 +1421,7 @@ function useAppearance() {
         const s = JSON.parse(raw || "{}") as { theme?: string; palette?: string };
         if (s.theme === "light" || s.theme === "dark" || s.theme === "system") setMode(s.theme);
         if (s.palette && PALETTES.some((p) => p.id === s.palette)) setPalette(s.palette as Palette);
-      } catch { /* offline / first run — keep localStorage values */ }
+      } catch { /* offline / first run: keep localStorage values */ }
       hydratedRef.current = true;
     })();
   }, []);
@@ -1564,7 +1564,7 @@ function OnboardingModal({
             <>
               <p className="mb-4 text-sm text-text-secondary">
                 A few quick questions. Prevail proposes a starter set of life domains
-                from your answers — you pick what to keep. Leave any blank to skip.
+                from your answers: you pick what to keep. Leave any blank to skip.
               </p>
               <div className="flex flex-col gap-4">
                 {ONBOARDING_QUESTIONS.map((q) => (
@@ -1796,7 +1796,7 @@ function WebLogin({ onAuthed }: { onAuthed: () => void }) {
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-background px-6">
       <PrevailLogo size={64} src="/logo-512.png" animated={false} />
-      <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">Prevail — Web</h1>
+      <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">Prevail Web</h1>
       <p className="mt-1 text-sm text-text-muted">Sign in to your remote agent.</p>
       <div className="mt-6 w-full max-w-xs space-y-2">
         <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="Username" className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus:border-accent-border focus:outline-none" />
@@ -2345,7 +2345,7 @@ export default function App() {
         }
       }
       if (!cancelled) {
-        setVaultError("vault scan failed after retries — try toggling vault in Settings");
+        setVaultError("vault scan failed after retries: try toggling vault in Settings");
       }
     };
     tryScan();
@@ -2365,7 +2365,7 @@ export default function App() {
     // fallback — guide the user to the desktop instead of crashing. (B4)
     if (isBrowser()) {
       window.alert(
-        "Pick your vault from the Prevail desktop app on this Mac — a browser can't open a native folder picker. The web view then syncs to it automatically.",
+        "Pick your vault from the Prevail desktop app on this Mac: a browser can't open a native folder picker. The web view then syncs to it automatically.",
       );
       return;
     }
@@ -2554,7 +2554,7 @@ export default function App() {
             <div className="flex items-center gap-1">
               <button
                 onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "insights" ? "chat" : "insights"); }}
-                title="Insights — what to work on, your tasks, and recent intents"
+                title="Insights: what to work on, your tasks, and recent intents"
                 className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
                   tab === "chat" && domainTab === "insights"
                     ? "bg-accent-soft text-accent"
@@ -2565,7 +2565,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "usage" ? "chat" : "usage"); }}
-                title={selectedDomain ? "Usage — queries, tokens, and cost for this domain" : "Usage — queries, tokens, and cost across everything"}
+                title={selectedDomain ? "Usage: queries, tokens, and cost for this domain" : "Usage: queries, tokens, and cost across everything"}
                 className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
                   tab === "chat" && domainTab === "usage"
                     ? "bg-accent-soft text-accent"
@@ -2953,7 +2953,7 @@ function Sidebar({
               setSelectedDomain("");
               if (tab === "settings") setTab("chat");
             }}
-            title="General — chats not tied to any domain"
+            title="General: chats not tied to any domain"
             className={
               collapsed
                 ? `flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
@@ -3098,7 +3098,7 @@ function Sidebar({
                       ev.stopPropagation();
                       const hook = (window as unknown as { __prevailAttach?: (n: string) => void }).__prevailAttach;
                       if (hook) hook(d.name);
-                      else console.warn("[prevail/drag] no attach hook registered — drop fell outside chat panel");
+                      else console.warn("[prevail/drag] no attach hook registered: drop fell outside chat panel");
                     };
                     window.addEventListener("mousemove", onMove);
                     window.addEventListener("mouseup", onUp);
@@ -3137,7 +3137,7 @@ function Sidebar({
                         background: "var(--color-ok, #2e9e5b)",
                         boxShadow: "0 0 0 3px color-mix(in srgb, var(--color-ok, #2e9e5b) 28%, transparent)",
                       }}
-                      title="Just finished — open to view"
+                      title="Just finished: open to view"
                     />
                   ) : null}
                 </button>
@@ -3266,7 +3266,7 @@ function Sidebar({
       {lifeScore && (
         <button
           onClick={() => setTab("settings")}
-          title={`Life readiness — mean context score across ${lifeScore.count} domain${lifeScore.count === 1 ? "" : "s"}. Click for settings.`}
+          title={`Life readiness: mean context score across ${lifeScore.count} domain${lifeScore.count === 1 ? "" : "s"}. Click for settings.`}
           className={`flex items-center border-t border-border-subtle transition-colors hover:bg-surface-warm ${
             collapsed ? "justify-center px-2 py-2" : "gap-2.5 px-3 py-2"
           }`}
@@ -3326,7 +3326,7 @@ function Sidebar({
             appearance.setMode(cycle[(i + 1) % cycle.length]);
           }}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:text-text-secondary transition-colors"
-          title={`Theme: ${appearance.mode} — click to cycle`}
+          title={`Theme: ${appearance.mode}: click to cycle`}
         >
           {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
         </button>
@@ -3341,7 +3341,7 @@ function Sidebar({
               <span className="font-mono text-[10px] text-text-muted">experimental build</span>
             </div>
             <p className="mt-1.5 text-[10px] leading-snug text-text-muted">
-              Provided as-is, no warranty — use at your own risk.
+              Provided as-is, no warranty: use at your own risk.
             </p>
             <a
               href="https://github.com/fru-dev3/prevail-desktop/issues/new"
@@ -3752,7 +3752,7 @@ function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLoadSampl
         </motion.div>
 
         <motion.p variants={item} className="mx-auto mt-5 max-w-2xl whitespace-nowrap text-[15px] text-text-secondary">
-          Your life in <span className="font-medium text-text-primary">domains</span> — scored, private, <span className="font-medium text-accent">local-first</span>.
+          Your life in <span className="font-medium text-text-primary">domains</span>: scored, private, <span className="font-medium text-accent">local-first</span>.
         </motion.p>
 
         {/* feature pills */}
@@ -3991,7 +3991,7 @@ function DomainStatusBar({
               <ModeRow glyph="○" label={bunker ? "Web access · locked" : "Web access"} on={webShown}
                 onClick={() => { if (bunker) return; flip("web", web, setWeb); }}
                 desc={bunker
-                  ? "Locked off by Bunker Mode — no request may leave this device. Turn off Bunker Mode to allow web access."
+                  ? "Locked off by Bunker Mode: no request may leave this device. Turn off Bunker Mode to allow web access."
                   : "Let the model fetch URLs and web-search while replying. Off keeps the reply offline."} />
               <ModeRow glyph="▣" label="Save history" on={save} onClick={() => flip("save", save, setSave)}
                 desc="Log every reply to history so you can re-read it later. Off makes the turn ephemeral." />
@@ -4202,13 +4202,13 @@ function buildCouncilQuickActions(domain: string | null): { glyph: string; label
       glyph: "✗",
       label: "Steelman",
       blurb: "Where am I wrong?",
-      prompt: `Steelman the strongest case AGAINST my current ${d} plan. Don't be polite — name the specific failure modes, who would tell me I'm wrong and why, and the one assumption that would invalidate the whole approach.`,
+      prompt: `Steelman the strongest case AGAINST my current ${d} plan. Don't be polite: name the specific failure modes, who would tell me I'm wrong and why, and the one assumption that would invalidate the whole approach.`,
     },
     {
       glyph: "▸",
       label: "Reframe",
       blurb: "Bigger question?",
-      prompt: `Is this even the right question to be asking about ${d}? What's a larger or different framing that would dissolve the dilemma — or expose a question I should be asking instead?`,
+      prompt: `Is this even the right question to be asking about ${d}? What's a larger or different framing that would dissolve the dilemma: or expose a question I should be asking instead?`,
     },
     {
       glyph: "◆",
@@ -4220,7 +4220,7 @@ function buildCouncilQuickActions(domain: string | null): { glyph: string; label
       glyph: "●",
       label: "Stakes",
       blurb: "What's at risk?",
-      prompt: `If I'm wrong about ${d}, what's the cost? Rank the failure scenarios by impact and reversibility — which mistakes are recoverable, and which are not?`,
+      prompt: `If I'm wrong about ${d}, what's the cost? Rank the failure scenarios by impact and reversibility: which mistakes are recoverable, and which are not?`,
     },
   ];
 }
@@ -4233,7 +4233,7 @@ function buildQuickActions(domain: string | null): { glyph: string; label: strin
   return [
     { glyph: "◆", label: "Status", prompt: `Read state.md for ${d} and summarize where I am right now in 5 bullets.` },
     { glyph: "◇", label: "Next action", prompt: `Given the current ${d} state, what's the single highest-leverage next action I should take this week? Be specific.` },
-    { glyph: "▸", label: "Decision", prompt: `Walk me through the most important open decision in ${d} right now — options, trade-offs, and your recommendation.`, council: true },
+    { glyph: "▸", label: "Decision", prompt: `Walk me through the most important open decision in ${d} right now: options, trade-offs, and your recommendation.`, council: true },
     { glyph: "●", label: "Risks", prompt: `What are the top 3 risks or blind spots in my ${d} plan? Rank by severity.`, council: true },
   ];
 }
@@ -4317,10 +4317,10 @@ function InsightsPanel({ vaultPath, domain, onSeed }: { vaultPath: string; domai
       <div>
         <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Recent intents</div>
         <p className="mb-2 text-xs leading-relaxed text-text-secondary">
-          Every question you send is logged as an intent — the exact ask plus the settings in effect — so a future, better model can replay it. These stay on your machine. Click one to ask it again.
+          Every question you send is logged as an intent: the exact ask plus the settings in effect: so a future, better model can replay it. These stay on your machine. Click one to ask it again.
         </p>
         {intents.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-sm text-text-muted">No intents captured yet — ask something in chat.</div>
+          <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-sm text-text-muted">No intents captured yet: ask something in chat.</div>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {intents.map((it, i) => (
@@ -4392,7 +4392,7 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
         const questions = data!.questions.filter((q) => !dismissed.has(q));
         const actions = data!.actions.filter((a) => !dismissed.has(a));
         if (questions.length === 0 && actions.length === 0) {
-          return <div className="py-2 text-xs text-text-muted">All caught up — nothing surfaced right now. <button onClick={() => void load(true)} className="text-accent hover:underline">Refresh</button> for more.</div>;
+          return <div className="py-2 text-xs text-text-muted">All caught up: nothing surfaced right now. <button onClick={() => void load(true)} className="text-accent hover:underline">Refresh</button> for more.</div>;
         }
         return (
           <div className="flex flex-col gap-4">
@@ -4575,14 +4575,14 @@ function DomainHome({
                 <Markdown source={ctx.journal} />
               ) : (
                 <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
-                  no journal entries yet — they accumulate as you save sessions.
+                  no journal entries yet: they accumulate as you save sessions.
                 </div>
               )
             )}
             {tab === "logs" && (
               ctx.recent_logs.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
-                  no past sessions. Start chatting — each "New chat" saves a session to _log/.
+                  no past sessions. Start chatting: each "New chat" saves a session to _log/.
                 </div>
               ) : (
                 <ul className="space-y-2">
@@ -5037,7 +5037,7 @@ function DomainPrefsPanel({
             <div className="mt-0.5 text-xs text-text-secondary">
               {autoState
                 ? "Each new chat starts with state.md as a context chip you can remove."
-                : "Manual — drag the domain in or use the Context drawer to attach state.md."}
+                : "Manual: drag the domain in or use the Context drawer to attach state.md."}
             </div>
           </div>
           <Toggle
@@ -5056,8 +5056,8 @@ function DomainPrefsPanel({
             <div className="text-sm font-semibold text-text-primary">Local-only (Ollama)</div>
             <div className="mt-0.5 text-xs text-text-secondary">
               {localOnly
-                ? "Every prompt in this domain is forced through a local model — nothing leaves your machine."
-                : "Off — prompts use the domain's configured CLI, which may call a cloud model."}
+                ? "Every prompt in this domain is forced through a local model: nothing leaves your machine."
+                : "Off: prompts use the domain's configured CLI, which may call a cloud model."}
             </div>
           </div>
           <Toggle
@@ -5079,8 +5079,8 @@ function DomainPrefsPanel({
             <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Sandbox</div>
             <p className="mt-0.5 text-sm text-text-secondary">
               {sandboxMode === "locked"
-                ? "Locked — agents can read this domain but cannot write files or run shell side-effects."
-                : "Open — agents can read and write within this domain's folder."}
+                ? "Locked: agents can read this domain but cannot write files or run shell side-effects."
+                : "Open: agents can read and write within this domain's folder."}
             </p>
           </div>
           <select
@@ -5108,7 +5108,7 @@ function DomainPrefsPanel({
           The domain name always matches; add extras below. Saved to the domain manifest.
         </p>
         <div className="mb-2 flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-xs text-accent" title="Always matched — the domain name is a built-in keyword">
+          <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-xs text-accent" title="Always matched: the domain name is a built-in keyword">
             <Pin className="h-3 w-3" /> {domain.toLowerCase()}
           </span>
           <span className="font-mono text-[10px] text-text-muted">always on</span>
@@ -5386,7 +5386,7 @@ function SkillsList({
                 {onTogglePreferred && (
                   <button
                     onClick={() => onTogglePreferred(s.name)}
-                    title={preferredSet?.has(s.name) ? "Unpin — won't auto-attach to new chats" : "Pin — auto-attach to new chats in this domain"}
+                    title={preferredSet?.has(s.name) ? "Unpin: won't auto-attach to new chats" : "Pin: auto-attach to new chats in this domain"}
                     className={`mr-2 mt-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
                       preferredSet?.has(s.name)
                         ? "border-accent-border bg-accent-soft text-accent"
@@ -5688,7 +5688,7 @@ function DomainContextDrawer({
                       {onTogglePreferred && (
                         <button
                           onClick={() => onTogglePreferred(s.name)}
-                          title={preferredSet?.has(s.name) ? "Unpin" : "Pin — auto-attach"}
+                          title={preferredSet?.has(s.name) ? "Unpin" : "Pin: auto-attach"}
                           className={`shrink-0 rounded border px-2 text-[12px] transition-colors ${
                             preferredSet?.has(s.name)
                               ? "border-accent-border bg-accent-soft text-accent"
@@ -5914,7 +5914,7 @@ function DomainActionsMenu({
           ) : (
             <div className="rounded-md border border-border-subtle bg-background p-2">
               <div className="mb-1.5 text-xs text-text-secondary">
-                Hide <span className="font-semibold">{titleCase(domain)}</span> from the active list? Nothing is deleted — restore it any time.
+                Hide <span className="font-semibold">{titleCase(domain)}</span> from the active list? Nothing is deleted: restore it any time.
               </div>
               <div className="flex gap-1.5">
                 <button
@@ -5987,7 +5987,7 @@ function buildIdealStatePreamble(idealMd: string): string {
   const t = idealMd.trim();
   if (!t) return "";
   return (
-    "# THE USER'S IDEAL STATE — their constitution. HIGHEST PRECEDENCE.\n" +
+    "# THE USER'S IDEAL STATE: their constitution. HIGHEST PRECEDENCE.\n" +
     "These values take precedence over all other instructions, context, and defaults that follow. " +
     "Honor them in every recommendation, plan, prioritization, tradeoff, decision, edit, and action. " +
     "When anything conflicts with the Ideal State, the Ideal State wins.\n\n" +
@@ -6711,7 +6711,7 @@ function ChatPanel({
       // be retried, but a successful slug=null save never happens
       // twice.
       if (wantSlugNull && initialSaveDispatchedRef.current) {
-        console.log("[prevail/save_thread] BLOCK slug=null — already claimed");
+        console.log("[prevail/save_thread] BLOCK slug=null: already claimed");
         return;
       }
       if (wantSlugNull) initialSaveDispatchedRef.current = true;
@@ -7202,7 +7202,7 @@ function ChatPanel({
     const ENGINE_ONLY = new Set(["openrouter", "lmstudio", "mlx"]);
     if (chatCli && ENGINE_ONLY.has(chatCli) && !useEngine) {
       const label = chatCli === "openrouter" ? "OpenRouter" : chatCli === "lmstudio" ? "LM Studio" : "MLX";
-      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which needs a domain. Pick a domain (left sidebar) to chat with ${label} — or use an installed CLI here in General.`, ts: Date.now() }]);
+      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which needs a domain. Pick a domain (left sidebar) to chat with ${label}: or use an installed CLI here in General.`, ts: Date.now() }]);
       onStreamEnd(sessionRef.current);
       return;
     }
@@ -7469,7 +7469,7 @@ function ChatPanel({
                                   background: "var(--color-ok, #2e9e5b)",
                                   boxShadow: "0 0 0 3px color-mix(in srgb, var(--color-ok, #2e9e5b) 28%, transparent)",
                                 }}
-                                title="Just finished — open to view"
+                                title="Just finished: open to view"
                               />
                             ) : null}
                             <ChevronRight
@@ -7817,7 +7817,7 @@ function ChatPanel({
                 <span
                   key={name}
                   className="inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-soft py-0.5 pl-1.5 pr-1 font-mono text-[11px] text-accent"
-                  title="Attached skill — included as `/name` reference in the prompt"
+                  title="Attached skill: included as `/name` reference in the prompt"
                 >
                   <Sparkles className="h-3 w-3" />
                   /{name}
@@ -7926,7 +7926,7 @@ function ChatPanel({
                   </div>
                   {skillsCache.length === 0 && (
                     <div className="px-3 py-2 text-xs text-text-muted">
-                      no skills under <code className="text-accent">{titleCase(domain ?? "—")}/_skills/</code>
+                      no skills under <code className="text-accent">{titleCase(domain ?? "-")}/_skills/</code>
                     </div>
                   )}
                   <div className="max-h-48 overflow-y-auto">
@@ -8034,7 +8034,7 @@ function ChatPanel({
                     <div className="flex items-center justify-between gap-2 border-t border-border-subtle bg-surface-warm/60 px-3 py-2 font-mono text-[10px] text-text-muted">
                       <span>
                         {lsGet(domainCliKey)
-                          ? <>default for <span className="text-accent">{titleCase(domain)}</span>: {selectedCli} · {selectedModel || "—"}</>
+                          ? <>default for <span className="text-accent">{titleCase(domain)}</span>: {selectedCli} · {selectedModel || "-"}</>
                           : <>using global default · pick a model to set one for <span className="text-accent">{titleCase(domain)}</span></>}
                       </span>
                       {lsGet(domainCliKey) && (
@@ -9066,7 +9066,7 @@ function CouncilPanel({
         )}
         <div className="flex-1" />
         {/* Context is a collapse/expand sidebar (right edge), never a labeled
-            button — see the rail at the end of this panel. */}
+            button: see the rail at the end of this panel. */}
         <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
           {panelistSlots.length} on panel
         </span>
@@ -9094,7 +9094,7 @@ function CouncilPanel({
             )}
             {phase !== "idle" && (
               <div className="pb-1 pt-1 text-center font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">
-                — continuing —
+                continuing…
               </div>
             )}
           </div>
@@ -9112,7 +9112,7 @@ function CouncilPanel({
                 <>
                   {panelistSlots.length} model{panelistSlots.length === 1 ? "" : "s"} on panel · chair:{" "}
                   <span className="text-accent">
-                    {chairSlotObj ? `${chairSlotObj.cliLabel.toLowerCase()} · ${chairSlotObj.modelLabel}` : "—"}
+                    {chairSlotObj ? `${chairSlotObj.cliLabel.toLowerCase()} · ${chairSlotObj.modelLabel}` : "-"}
                   </span>
                   {" "}· best for <span className="text-accent">why</span> / <span className="text-accent">should-I</span> decisions, not quick lookups.
                 </>
@@ -9235,7 +9235,7 @@ function CouncilPanel({
                   <Crown className="h-3.5 w-3.5" />
                   <span>
                     verdict · synthesized by{" "}
-                    {chairSlotObj ? `${chairSlotObj.cliLabel.toLowerCase()} · ${chairSlotObj.modelLabel}` : "—"}
+                    {chairSlotObj ? `${chairSlotObj.cliLabel.toLowerCase()} · ${chairSlotObj.modelLabel}` : "-"}
                   </span>
                   {phase === "synthesizing" && <span className="pulse-soft">streaming</span>}
                 </summary>
@@ -9380,7 +9380,7 @@ function CouncilPanel({
               const tip = verifyError[s.key]
                 ? `Failed: ${verifyError[s.key]}\n\nClick the dot to re-verify.`
                 : st === "ok"
-                ? "Verified — model is ready"
+                ? "Verified: model is ready"
                 : st === "verifying"
                 ? "Verifying…"
                 : "Click the dot to verify this model";
@@ -10867,7 +10867,7 @@ function BenchRunConfig({
         </SubsectionHeader>
         {allDomains.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-xs text-text-muted">
-            No questions yet — add some in the <span className="text-accent">Questions</span> tab first.
+            No questions yet: add some in the <span className="text-accent">Questions</span> tab first.
           </div>
         ) : (() => {
           const withQ = allDomains.filter((d) => (questionCounts[d] ?? 0) > 0).sort((a, b) => (questionCounts[b] ?? 0) - (questionCounts[a] ?? 0));
@@ -10880,7 +10880,7 @@ function BenchRunConfig({
               <button
                 key={d}
                 onClick={() => toggleScope(d)}
-                title={count === 0 ? "No questions yet — add or AI-suggest some in Questions" : `${count} question${count === 1 ? "" : "s"}`}
+                title={count === 0 ? "No questions yet: add or AI-suggest some in Questions" : `${count} question${count === 1 ? "" : "s"}`}
                 className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] ${
                   on
                     ? "border-accent-border bg-accent-soft text-accent"
@@ -11152,7 +11152,7 @@ function BenchResults({
             {(selectedRun?.domains.length ?? 0) > 6 && <span className="font-mono text-[10px] text-text-muted">+{(selectedRun?.domains.length ?? 0) - 6}</span>}
           </span>
           <div className="ml-auto flex items-center gap-5 font-mono text-sm">
-            <span><span className="font-display text-2xl font-bold text-accent">{selected.score.judge_avg?.toFixed(1) ?? "—"}</span><span className="text-[11px] text-text-muted"> /10</span></span>
+            <span><span className="font-display text-2xl font-bold text-accent">{selected.score.judge_avg?.toFixed(1) ?? "-"}</span><span className="text-[11px] text-text-muted"> /10</span></span>
             <span className="text-text-secondary">{selected.score.keyword_avg !== null ? Math.round(selected.score.keyword_avg) + "% kw" : ""}</span>
             <span className="text-text-muted">{selected.score.questionScores.length} q</span>
             {selectedRun && (
@@ -11178,8 +11178,8 @@ function BenchResults({
                   <span className="rounded bg-surface-warm px-1.5 py-0 font-mono text-[10px] text-text-muted">{q.domain}</span>
                   <div className="min-w-0 flex-1"><ScoreBar value={q.judge_score} max={10} /></div>
                   <span className="flex shrink-0 items-center gap-3 font-mono text-xs">
-                    <span className="text-text-muted">{q.keyword_score !== null ? Math.round(q.keyword_score) + "%" : "—"}</span>
-                    <span className="w-10 text-right text-accent">{q.judge_score ?? "—"}/10</span>
+                    <span className="text-text-muted">{q.keyword_score !== null ? Math.round(q.keyword_score) + "%" : "-"}</span>
+                    <span className="w-10 text-right text-accent">{q.judge_score ?? "-"}/10</span>
                   </span>
                 </button>
                 {expanded && (
@@ -11303,10 +11303,10 @@ function BenchResults({
                   <ProviderMark vendor={m.parsed.vendor} size={22} />
                   <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-primary">{m.parsed.model}</span>
                   <span className="hidden font-mono text-[10px] text-text-muted sm:inline">
-                    {m.runs.length} · {m.domains.length} · {m.latestDate || "—"}
+                    {m.runs.length} · {m.domains.length} · {m.latestDate || "-"}
                   </span>
                   <div className="hidden w-36 lg:block"><ScoreBar value={m.best} max={10} color={scoreColor((m.best ?? 0) * 10)} /></div>
-                  <span className="w-12 text-right font-mono text-sm font-semibold text-accent">{m.best?.toFixed(1) ?? "—"}</span>
+                  <span className="w-12 text-right font-mono text-sm font-semibold text-accent">{m.best?.toFixed(1) ?? "-"}</span>
                 </button>
                 {expandedModel === m.key && (
                   <div className="border-t border-border-subtle bg-surface px-4 py-2">
@@ -11326,7 +11326,7 @@ function BenchResults({
                           </span>
                           <span className="font-mono text-[10px] text-text-muted">{r.questions} q</span>
                           {r.scored ? (
-                            <span className="w-12 text-right font-mono text-xs font-semibold text-accent">{r.judge_avg?.toFixed(1) ?? "—"}</span>
+                            <span className="w-12 text-right font-mono text-xs font-semibold text-accent">{r.judge_avg?.toFixed(1) ?? "-"}</span>
                           ) : (
                             <span className="font-mono text-[10px] text-warn">unscored</span>
                           )}
@@ -11375,7 +11375,7 @@ function BenchResults({
                   <RotateCw className="h-3 w-3" /> rerun batch
                 </span>
                 <span className="font-mono text-[10px] text-text-muted">best</span>
-                <span className="font-mono text-sm font-semibold text-accent">{best?.toFixed(1) ?? "—"}</span>
+                <span className="font-mono text-sm font-semibold text-accent">{best?.toFixed(1) ?? "-"}</span>
               </summary>
               <div className="space-y-1.5 border-t border-border-subtle px-3 py-2.5">
                 {group.runs.map((r) => {
@@ -11402,8 +11402,8 @@ function BenchResults({
                       <span className="font-mono text-[10px] text-text-muted">{r.questions} q</span>
                       {r.scored ? (
                         <>
-                          <span className="w-12 text-right font-mono text-sm font-semibold text-accent">{r.judge_avg?.toFixed(1) ?? "—"}</span>
-                          <span className="w-10 text-right font-mono text-[11px] text-text-muted">{r.keyword_avg !== null ? Math.round(r.keyword_avg) + "%" : "—"}</span>
+                          <span className="w-12 text-right font-mono text-sm font-semibold text-accent">{r.judge_avg?.toFixed(1) ?? "-"}</span>
+                          <span className="w-10 text-right font-mono text-[11px] text-text-muted">{r.keyword_avg !== null ? Math.round(r.keyword_avg) + "%" : "-"}</span>
                         </>
                       ) : (
                         <button
@@ -11499,7 +11499,7 @@ function BenchMatrix({
                   return (
                     <td key={d} className="px-3 py-2 text-center font-mono text-xs">
                       {v == null ? (
-                        <span className="text-text-muted/40">—</span>
+                        <span className="text-text-muted/40">-</span>
                       ) : (
                         <span
                           className={isBest ? "rounded px-1.5 py-0.5 font-semibold" : ""}
@@ -11511,7 +11511,7 @@ function BenchMatrix({
                     </td>
                   );
                 })}
-                <td className="px-3 py-2 text-center font-mono text-xs font-semibold text-accent">{m.judge_avg?.toFixed(1) ?? "—"}</td>
+                <td className="px-3 py-2 text-center font-mono text-xs font-semibold text-accent">{m.judge_avg?.toFixed(1) ?? "-"}</td>
               </tr>
             );
           })}
@@ -11672,16 +11672,16 @@ function BenchQuestions({
           <input value={draft.domain} onChange={(e) => setDraft({ ...draft, domain: e.target.value })} list="bench-domains" placeholder="wealth" className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
           <datalist id="bench-domains">{allDomains.map((d) => <option key={d} value={d} />)}</datalist>
         </Field>
-        <Field label="Prompt — the question as you'd ask it">
+        <Field label="Prompt: the question as you'd ask it">
           <textarea value={draft.prompt} onChange={(e) => setDraft({ ...draft, prompt: e.target.value })} rows={3} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
         </Field>
-        <Field label="Context — facts the model needs (numbers, dates)">
+        <Field label="Context: facts the model needs (numbers, dates)">
           <textarea value={draft.context} onChange={(e) => setDraft({ ...draft, context: e.target.value })} rows={3} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
         </Field>
-        <Field label="Expected decision — your real ground-truth answer">
+        <Field label="Expected decision: your real ground-truth answer">
           <input value={draft.expected_decision} onChange={(e) => setDraft({ ...draft, expected_decision: e.target.value })} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
         </Field>
-        <Field label="Expected keywords — comma-separated, for the mechanical floor">
+        <Field label="Expected keywords: comma-separated, for the mechanical floor">
           <input
             value={draft.expected_verdict_keywords.join(", ")}
             onChange={(e) => setDraft({ ...draft, expected_verdict_keywords: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
@@ -11689,7 +11689,7 @@ function BenchQuestions({
             className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
           />
         </Field>
-        <Field label="Notes — what you actually decided, and why">
+        <Field label="Notes: what you actually decided, and why">
           <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} rows={2} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
         </Field>
         <label className="flex items-center gap-2 text-sm text-text-secondary">
@@ -12101,7 +12101,7 @@ function AgentsSection({
       {!embedded && (
         <SettingsHeader
           title="Agents"
-          subtitle="CLIs Prevail can route prompts to. Each agent is detected from your machine — Prevail doesn't install or update them."
+          subtitle="CLIs Prevail can route prompts to. Each agent is detected from your machine. Prevail doesn't install or update them."
         />
       )}
       {detected.length > 0 && (
@@ -12333,7 +12333,7 @@ function AgentCard({
                         // Auth error → actionable hint; raw error on hover.
                         return (
                           <span className="ml-2 text-warn" title={err}>
-                            · not signed in — run{" "}
+                            · not signed in: run{" "}
                             {loginCmd
                               ? <code className="text-accent">{loginCmd}</code>
                               : "this CLI's login"}{" "}
@@ -13023,7 +13023,7 @@ function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
           control={<Num value={threshold} set={setThreshold} pref={PREF.compressionThreshold} step="0.1" />} />
         <Row title="Compression target" desc="Compress memory toward this fraction of the budget."
           control={<Num value={target} set={setTarget} pref={PREF.compressionTarget} step="0.1" />} />
-        <Row title="Protected recent messages" desc="Never distill the most-recent N ledger entries — keep them raw."
+        <Row title="Protected recent messages" desc="Never distill the most-recent N ledger entries: keep them raw."
           control={<Num value={protectedRecent} set={setProtectedRecent} pref={PREF.protectedRecent} />} />
         <Row title="Distill interval" desc="How often the background daemon runs a pass."
           control={<div className="flex items-center gap-1.5"><Num value={interval} set={setIntervalSec} pref={PREF.distillIntervalSec} /><span className="font-mono text-xs text-text-muted">s</span></div>} />
@@ -13445,7 +13445,7 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
         {activated === true && (
           <div className="mt-3 flex items-center gap-2 rounded-md border border-accent-border bg-accent-soft px-3 py-2 text-xs text-accent">
             <Check className="h-4 w-4" />
-            OpenRouter activated — now selectable in every model picker (Chat &amp; Council).
+            OpenRouter activated: now selectable in every model picker (Chat &amp; Council).
           </div>
         )}
         {activated === false && (
@@ -13585,7 +13585,7 @@ function ConnectorsSection() {
     <>
       <SettingsHeader
         title="Connectors"
-        subtitle="Connect your data sources so Prevail auto-syncs and builds full context per domain — bank statements into Wealth, email where it belongs, and more."
+        subtitle="Connect your data sources so Prevail auto-syncs and builds full context per domain: bank statements into Wealth, email where it belongs, and more."
       />
       {/* Connector hub */}
       <div className="mb-6 flex items-start gap-3 rounded-2xl border border-border bg-surface p-5 shadow-sm">
@@ -13664,7 +13664,7 @@ function AppLockCard() {
         <Shield className="h-3.5 w-3.5" /> App lock {lockSet ? "· on" : "· off"}
       </div>
       <p className="mt-2 text-xs text-text-muted">
-        Require a passcode to open Prevail. This locks the app window. It does <span className="font-semibold">not</span> yet encrypt your vault files on disk — turn on FileVault for full at-rest protection. (Vault encryption is coming as a separate, reviewed update.)
+        Require a passcode to open Prevail. This locks the app window. It does <span className="font-semibold">not</span> yet encrypt your vault files on disk: turn on FileVault for full at-rest protection. (Vault encryption is coming as a separate, reviewed update.)
       </p>
       <div className="mt-3 flex items-center gap-2">
         <input
@@ -13714,7 +13714,7 @@ function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
   useEffect(() => { void refresh(); /* eslint-disable-next-line */ }, [vaultPath]);
   async function encrypt() {
     if (pass.length < 4) { setNote("Passcode must be at least 4 characters."); return; }
-    if (!window.confirm("Encrypt this vault? Make sure you have a backup first. You'll get a one-time recovery code — save it.")) return;
+    if (!window.confirm("Encrypt this vault? Make sure you have a backup first. You'll get a one-time recovery code: save it.")) return;
     setBusy(true); setNote(null); setRecovery(null);
     try {
       const r = await invoke<{ ok: boolean; recoveryCode?: string | null; error?: string }>("engine_vault_encrypt", { vault: vaultPath, passcode: pass });
@@ -13768,7 +13768,7 @@ function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
       </div>
       {recovery && (
         <div className="mt-3 rounded-lg border border-accent-border bg-accent-soft p-3">
-          <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-accent">Recovery code — save this now</div>
+          <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-accent">Recovery code: save this now</div>
           <div className="mt-1 select-all font-mono text-sm text-text-primary">{recovery}</div>
           <div className="mt-1 text-[11px] text-text-muted">If you forget your passcode, this is the only other way to unlock your vault. It won't be shown again.</div>
         </div>
@@ -13826,7 +13826,7 @@ const COMING_SOON_GATEWAYS = ["Discord", "Slack", "Signal", "Matrix", "Mattermos
 function GatewaySection() {
   return (
     <>
-      <SettingsHeader title="Gateway" subtitle="Chat with your council from anywhere. Your vault stays local — these bridges relay messages to your domains and back." />
+      <SettingsHeader title="Gateway" subtitle="Chat with your council from anywhere. Your vault stays local: these bridges relay messages to your domains and back." />
 
       {/* Live + in-progress bridges — each card carries its own brand mark/color. */}
       <div className="mb-6 grid grid-cols-1 gap-4">
@@ -13876,7 +13876,7 @@ function RemoteSection() {
   }
   return (
     <>
-      <SettingsHeader title="Remote (WebUI)" subtitle="Serve this exact app to a browser — same UI, no rebuild. Then reach it from your phone or laptop, anywhere, via Tailscale or Cloudflare." />
+      <SettingsHeader title="Remote (WebUI)" subtitle="Serve this exact app to a browser: same UI, no rebuild. Then reach it from your phone or laptop, anywhere, via Tailscale or Cloudflare." />
       <div className="rounded-lg border border-border bg-surface px-5">
         <SettingsRowLite title="Enable WebUI" desc="Run the bridge server so a browser can use Prevail. This Mac must stay on."
           control={<Toggle on={running} onChange={toggle} />} />
@@ -13884,7 +13884,7 @@ function RemoteSection() {
           control={<input type="number" value={port} disabled={running} onChange={(e) => { setPort(e.target.value); setPref(PREF.webuiPort, e.target.value); }} className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />} />
         <SettingsRowLite title="Username" desc="Login for the WebUI."
           control={<input value={user} disabled={running} onChange={(e) => { setUser(e.target.value); setPref(PREF.webuiUser, e.target.value); }} className="w-40 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />} />
-        <SettingsRowLite title="Password" desc="Keep this private — anyone with it and the URL can use your agent."
+        <SettingsRowLite title="Password" desc="Keep this private: anyone with it and the URL can use your agent."
           control={
             <div className="flex items-center gap-2">
               <input type={showPass ? "text" : "password"} value={pass} disabled={running} onChange={(e) => { setPass(e.target.value); setPref(PREF.webuiPass, e.target.value); }} className="w-40 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />
@@ -13953,11 +13953,33 @@ function McpSection({ vaultPath }: { vaultPath: string }) {
   );
 }
 
+// Map an ideal-state section heading to an icon matching its theme, so the
+// rendered constitution reads as a visual map rather than a text wall.
+function idealSectionIcon(title: string) {
+  const t = title.toLowerCase();
+  if (/vision|north|ideal|future|dream/.test(t)) return Compass;
+  if (/value|principle|rule|constitution/.test(t)) return Scale;
+  if (/wealth|money|finan|invest/.test(t)) return Coins;
+  if (/health|body|fitness|energy|sleep/.test(t)) return Activity;
+  if (/family|relation|people|friend|marriage/.test(t)) return Users;
+  if (/work|career|business|craft|build/.test(t)) return Briefcase;
+  if (/learn|grow|educat|skill|read|stud/.test(t)) return GraduationCap;
+  if (/home|living|place|environment/.test(t)) return Home;
+  if (/faith|spirit|soul|peace|joy/.test(t)) return Heart;
+  if (/freedom|travel|world|adventure/.test(t)) return Globe;
+  if (/legacy|impact|give|generos|serve/.test(t)) return Award;
+  if (/secur|safe|protect|risk/.test(t)) return Shield;
+  if (/mind|mental|focus|clarity|think/.test(t)) return Brain;
+  if (/time|priorit|goal|target|measure/.test(t)) return Target;
+  return Lightbulb;
+}
+
 function IdealStateSection({ vaultPath }: { vaultPath: string }) {
   const [body, setBody] = useState<string>("");
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [editing, setEditing] = useState(false);
   useEffect(() => {
     invoke<string>("read_ideal_state", { vault: vaultPath })
       .then((s) => { setBody(s); setLoaded(true); })
@@ -13968,40 +13990,142 @@ function IdealStateSection({ vaultPath }: { vaultPath: string }) {
     try {
       await invoke("write_ideal_state", { vault: vaultPath, body });
       setSavedAt(Date.now());
+      setEditing(false);
     } finally {
       setSaving(false);
     }
   }
+
+  // Split the markdown into an intro plus one block per `## ` heading, so the
+  // default view is a structured, icon-marked map of the constitution.
+  const parsed = useMemo(() => {
+    const lines = body.split("\n");
+    let title = "";
+    const intro: string[] = [];
+    const sections: { title: string; body: string[] }[] = [];
+    let cur: { title: string; body: string[] } | null = null;
+    for (const line of lines) {
+      const h2 = line.match(/^##\s+(.+)/);
+      const h1 = line.match(/^#\s+(.+)/);
+      if (h2) { cur = { title: h2[1].trim(), body: [] }; sections.push(cur); continue; }
+      if (h1 && !cur && !title) { title = h1[1].trim(); continue; }
+      (cur ? cur.body : intro).push(line);
+    }
+    return {
+      title,
+      intro: intro.join("\n").trim(),
+      sections: sections.map((s) => ({ title: s.title, body: s.body.join("\n").trim() })),
+    };
+  }, [body]);
+
   return (
     <>
       <SettingsHeader
         title="Ideal State"
-        subtitle="Your constitution — the operating vision and values the whole system optimizes for. It takes precedence over everything else: every chat, council, recommendation, plan, tradeoff, and background daemon aligns with it. Edit freely; it's respected the moment you save. Lives at vault/ideal-state.md."
+        icon={Compass}
+        subtitle="The vision and values everything optimizes for. Every chat, council, recommendation, plan, and background daemon reads this first and aligns to it. Saved to vault/ideal-state.md the moment you hit Save."
       />
-      <div className="rounded-lg border border-border bg-surface">
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder={loaded
-            ? "# Operating Vision\n\nThe life you're building, and the principles every decision should honor…"
-            : "loading…"}
-          rows={24}
-          className="w-full resize-y rounded-lg bg-transparent p-4 font-mono text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:outline-none"
-        />
-        <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-4 py-2">
-          <span className="font-mono text-[10px] text-text-muted">
-            {body.length.toLocaleString()} chars · highest-precedence preamble everywhere
-            {savedAt && ` · saved ${Math.round((Date.now() - savedAt) / 1000)}s ago`}
-          </span>
-          <button
-            onClick={save}
-            disabled={saving || !loaded}
-            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-background hover:bg-accent-hover disabled:bg-surface-strong disabled:text-text-muted"
-          >
-            {saving ? "saving…" : "Save"}
-          </button>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
+          {editing
+            ? "Editing markdown"
+            : parsed.sections.length > 0
+              ? `${parsed.sections.length} section${parsed.sections.length === 1 ? "" : "s"} · highest precedence everywhere`
+              : "Highest precedence everywhere"}
+        </span>
+        <div className="flex items-center gap-2">
+          {savedAt && !editing && (
+            <span className="font-mono text-[10px] text-ok">✓ saved</span>
+          )}
+          {loaded && (
+            <button
+              onClick={() => setEditing((e) => !e)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-text-secondary hover:border-accent-border hover:text-accent"
+            >
+              {editing ? <Eye className="h-3.5 w-3.5" /> : <PenLine className="h-3.5 w-3.5" />}
+              {editing ? "View" : "Edit"}
+            </button>
+          )}
         </div>
       </div>
+      {editing ? (
+        <div className="rounded-lg border border-border bg-surface">
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder={"# Operating Vision\n\n## Values\n\n- What every decision should honor\n\n## Wealth\n\n- The position you are building toward"}
+            rows={24}
+            className="w-full resize-y rounded-lg bg-transparent p-4 font-mono text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:outline-none"
+          />
+          <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-4 py-2">
+            <span className="font-mono text-[10px] text-text-muted">
+              {body.length.toLocaleString()} chars · sections start with ## headings
+            </span>
+            <button
+              onClick={save}
+              disabled={saving || !loaded}
+              className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-background hover:bg-accent-hover disabled:bg-surface-strong disabled:text-text-muted"
+            >
+              {saving ? "saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : !loaded ? null : body.trim() === "" ? (
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-surface px-6 py-10 text-center">
+          <Compass className="h-8 w-8 text-accent" />
+          <div className="font-display text-base font-semibold">No Ideal State yet</div>
+          <p className="max-w-md text-sm text-text-secondary">
+            Write the life you are building and the principles every decision should honor.
+            Use ## headings (Values, Wealth, Health, Family) and the page renders them as a map.
+          </p>
+          <button
+            onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-background hover:bg-accent-hover"
+          >
+            <PenLine className="h-3.5 w-3.5" /> Start writing
+          </button>
+        </div>
+      ) : (
+        <div>
+          {parsed.title && (
+            <h2 className="font-display text-lg font-bold tracking-tight">{parsed.title}</h2>
+          )}
+          {parsed.intro && (
+            <div className="mt-2 rounded-xl border border-accent-border bg-accent-soft/40 p-4 text-sm leading-relaxed text-text-primary">
+              <Markdown source={parsed.intro} compact />
+            </div>
+          )}
+          {parsed.sections.length > 0 ? (
+            <div className="relative mt-4">
+              <div className="absolute bottom-4 left-[17px] top-4 w-px bg-border" aria-hidden />
+              <div className="space-y-3">
+                {parsed.sections.map((s) => {
+                  const Icon = idealSectionIcon(s.title);
+                  return (
+                    <div key={s.title} className="relative flex gap-3.5">
+                      <div className="relative z-10 mt-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent-border bg-accent-soft">
+                        <Icon className="h-4 w-4 text-accent" />
+                      </div>
+                      <div className="min-w-0 flex-1 rounded-xl border border-border bg-surface p-4">
+                        <div className="font-display text-sm font-semibold tracking-tight">{s.title}</div>
+                        {s.body && (
+                          <div className="mt-2 text-sm leading-relaxed text-text-secondary">
+                            <Markdown source={s.body} compact />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-xl border border-border bg-surface p-4 text-sm leading-relaxed text-text-secondary">
+              <Markdown source={body} compact />
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
@@ -14071,7 +14195,7 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
     // then import the pack into the new vault once it's ready.
     if (appMode === "demo") {
       const ok = await tauriConfirm(
-        `Starter packs are saved to your own vault. You're in demo — set up your vault now and "${p.name}" will be imported there.`,
+        `Starter packs are saved to your own vault. You're in demo: set up your vault now and "${p.name}" will be imported there.`,
         { title: "Set up your own vault first", kind: "info", okLabel: "Set up my vault", cancelLabel: "Keep exploring" },
       );
       if (!ok) return;
@@ -14092,7 +14216,7 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
         if (r.created.length) parts.push(`added ${r.created.join(", ")}`);
         if (r.skipped.length) parts.push(`kept ${r.skipped.join(", ")}`);
         setImportedPacks((s) => new Set(s).add(p.name));
-        setNote(`Vault set up and ${p.name} imported — ${parts.join(" · ") || "no new domains"}.`);
+        setNote(`Vault set up and ${p.name} imported: ${parts.join(" · ") || "no new domains"}.`);
         window.dispatchEvent(new Event("prevail:domains-changed"));
       } catch (e) {
         setNote(`Could not set up vault: ${String(e)}`);
@@ -14111,7 +14235,7 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
       if (r.created.length) parts.push(`added ${r.created.join(", ")}`);
       if (r.skipped.length) parts.push(`kept ${r.skipped.join(", ")}`);
       setImportedPacks((s) => new Set(s).add(p.name));
-      setNote(`Imported ${p.name} — ${parts.join(" · ") || "no new domains"}. Find them in your sidebar.`);
+      setNote(`Imported ${p.name}: ${parts.join(" · ") || "no new domains"}. Find them in your sidebar.`);
       window.dispatchEvent(new Event("prevail:domains-changed"));
     } catch (e) {
       setNote(`Import failed: ${String(e)}`);
@@ -14235,7 +14359,7 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-text-muted" />
         <span>
           {isDemo
-            ? "You're in demo mode. Importing a pack sets up your own vault and moves you out of demo — or use the button above to set up your vault first."
+            ? "You're in demo mode. Importing a pack sets up your own vault and moves you out of demo: or use the button above to set up your vault first."
             : "You're in your own vault. Import a starter pack any time to add ready-made domains."}
         </span>
       </div>
@@ -14482,7 +14606,7 @@ function PreambleColumn({
   return (
     <div className="flex min-w-0 flex-col">
       {/* Prominent section header. The current selection is a small badge on
-          the right, not a giant card — the header is the focus. */}
+          the right, not a giant card: the header is the focus. */}
       <div className="mb-3 border-b border-border-subtle pb-3">
         <div className="flex items-center gap-2.5">
           <span className="text-lg text-accent">{glyph}</span>
@@ -14561,7 +14685,7 @@ function PreambleCard({
               {option.instruction}
             </pre>
           ) : (
-            <p className="text-xs italic text-text-muted">no preamble — uses the model's default response shape</p>
+            <p className="text-xs italic text-text-muted">no preamble: uses the model's default response shape</p>
           )}
         </div>
       )}
@@ -14818,7 +14942,7 @@ function IngestionSection() {
     <>
       <SettingsHeader
         title="Ingestion"
-        subtitle="Triple-tier data engine. Pull artifacts from MCP servers, the Composio gateway, or a headed browser into the right domain folder — without leaving the app."
+        subtitle="Triple-tier data engine. Pull artifacts from MCP servers, the Composio gateway, or a headed browser into the right domain folder: without leaving the app."
       />
       {err && (
         <div className="mb-4 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{err}</div>
@@ -15141,7 +15265,7 @@ function IngestionAuditPanel() {
       {open && (
         <ul className="mt-4 max-h-72 overflow-y-auto flex flex-col gap-1">
           {entries.length === 0 && (
-            <li className="text-xs text-text-muted">No entries yet — captured ingests will appear here.</li>
+            <li className="text-xs text-text-muted">No entries yet: captured ingests will appear here.</li>
           )}
           {entries.map((e, i) => {
             const t = e.ts ? new Date(e.ts * 1000).toLocaleString() : "";
@@ -15417,7 +15541,7 @@ function IngestionBrowserRunner() {
               onChange={(e) => applyRecipe(e.target.value)}
               className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm focus:border-accent-border focus:outline-none"
             >
-              <option value="">— start from blank —</option>
+              <option value="">start from blank</option>
               {recipes.map((r) => (
                 <option key={r.id} value={r.id}>{r.label} · {r.domain_hint}</option>
               ))}
@@ -15563,7 +15687,7 @@ function ShortcutsSection() {
       name: "Thread rail",
       entries: [
         { keys: ["double-click"], label: "Rename", desc: "Edit the thread's title inline. ↵ to confirm." },
-        { keys: ["+"], label: "New thread", desc: "Creates an empty thread file immediately — rename it before typing." },
+        { keys: ["+"], label: "New thread", desc: "Creates an empty thread file immediately: rename it before typing." },
       ],
     },
   ];
@@ -15576,7 +15700,7 @@ function ShortcutsSection() {
 
   return (
     <>
-      <SettingsHeader title="Shortcuts" subtitle="Keyboard surface for common actions. Most are global — they work even while you're typing." />
+      <SettingsHeader title="Shortcuts" subtitle="Keyboard surface for common actions. Most are global: they work even while you're typing." />
       <div className="space-y-6">
         {groups.map((g) => (
           <section key={g.name} className="rounded-xl border border-border bg-surface p-5 shadow-sm">
@@ -16094,7 +16218,7 @@ function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   const toggle = (key: string) => setMembers((m) => { const n = new Set(m); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   // Resolve a readable chair label from its slot key.
   const chairLabel = (() => {
-    if (!chair) return "—";
+    if (!chair) return "-";
     const [cli, model] = chair.split("::");
     const c = clis.find((x) => x.id === cli);
     const m = councilModelsFor(cli).find((x) => x.id === model);
@@ -16103,7 +16227,7 @@ function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
 
   return (
     <>
-      <SettingsHeader title="Council" subtitle="Convene several models on one question — each answers independently, then a chair writes the verdict. Pick the exact models on your default panel (you can add several from the same provider)." />
+      <SettingsHeader title="Council" subtitle="Convene several models on one question: each answers independently, then a chair writes the verdict. Pick the exact models on your default panel (you can add several from the same provider)." />
       {/* Compact summary bar — what the panel is right now. */}
       <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-accent-border bg-accent-soft px-4 py-3 text-sm">
         <span className="font-semibold text-text-primary">{members.size} model{members.size === 1 ? "" : "s"} on the panel</span>
@@ -16162,7 +16286,7 @@ function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
         })}
       </div>
       <p className="mt-4 text-xs leading-relaxed text-text-muted">
-        Convene a council from the <span className="text-accent">Council</span> tab in any domain — it starts with this panel. Each model answers in parallel; the <Crown className="inline h-3 w-3" /> chair synthesizes a consensus + disagreements + recommended action. <span className="text-accent">Defaults</span> sets your single-model chat; this sets the panel.
+        Convene a council from the <span className="text-accent">Council</span> tab in any domain: it starts with this panel. Each model answers in parallel; the <Crown className="inline h-3 w-3" /> chair synthesizes a consensus + disagreements + recommended action. <span className="text-accent">Defaults</span> sets your single-model chat; this sets the panel.
       </p>
     </>
   );
@@ -16216,7 +16340,7 @@ function TelegramCard() {
         }
         const ok = await invoke<boolean>("provider_key_exists", { provider: "telegram" });
         setTokenSaved(!!ok);
-      } catch { /* keychain unavailable — leave unconfigured */ }
+      } catch { /* keychain unavailable: leave unconfigured */ }
     })();
   }, []);
   useEffect(() => { lsSet(LS.telegramChatId, chatId); }, [chatId]);
@@ -16329,7 +16453,7 @@ function TelegramCard() {
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            placeholder={tokenSaved ? "•••••••• (saved — type to replace)" : "123456:ABC-XYZ…"}
+            placeholder={tokenSaved ? "•••••••• (saved: type to replace)" : "123456:ABC-XYZ…"}
             className="mt-1 w-full rounded border border-border bg-background px-3 py-2 font-mono text-sm"
             spellCheck={false}
           />
@@ -16532,7 +16656,7 @@ function McpCard() {
         <Toggle on={enabled} onChange={setEnabled} label="Enable MCP server" />
       </div>
       <p className="mt-3 text-xs text-text-muted">
-        For full MCP coverage right now, run the <Brand /> CLI's <code className="text-accent">mcp-server</code> command — it ships read-only by default and is parent-process verified.
+        For full MCP coverage right now, run the <Brand /> CLI's <code className="text-accent">mcp-server</code> command: it ships read-only by default and is parent-process verified.
       </p>
     </div>
   );
