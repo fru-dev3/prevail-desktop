@@ -263,24 +263,25 @@ struct TgUser {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// HTTP helpers using `curl` so we don't need reqwest.
+// HTTP helpers — in-process `reqwest` (rustls). Security: the bot token is a
+// secret and must NOT appear on a process command line. The previous `curl`
+// implementation put `…/bot<TOKEN>/…` in argv, where any same-user process
+// could read it via `ps`. reqwest keeps the token in-process.
 
 async fn fetch_updates(token: &str, offset: i64) -> Result<Vec<TgUpdate>, String> {
     let url = format!(
         "https://api.telegram.org/bot{token}/getUpdates?offset={offset}&timeout=25"
     );
-    let out = TokioCommand::new("curl")
-        .args(["-fsS", "--max-time", "60", &url])
-        .output()
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .timeout(std::time::Duration::from_secs(60))
+        .send()
         .await
-        .map_err(|e| format!("curl spawn: {e}"))?;
-    if !out.status.success() {
-        return Err(format!(
-            "curl getUpdates: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    let body = String::from_utf8_lossy(&out.stdout).to_string();
+        .map_err(|e| format!("getUpdates request: {e}"))?;
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("getUpdates read: {e}"))?;
     let parsed: UpdatesResponse =
         serde_json::from_str(&body).map_err(|e| format!("parse getUpdates: {e}"))?;
     if !parsed.ok {
@@ -294,38 +295,20 @@ async fn fetch_updates(token: &str, offset: i64) -> Result<Vec<TgUpdate>, String
 /// renders as formatting instead of literal markup (T2).
 async fn send_message(token: &str, chat_id: &str, text: &str, html: bool) -> Result<(), String> {
     let url = format!("https://api.telegram.org/bot{token}/sendMessage");
-    let body = if html {
-        format!(
-            "{{\"chat_id\":\"{}\",\"text\":{},\"parse_mode\":\"HTML\"}}",
-            chat_id,
-            serde_json::to_string(text).map_err(|e| e.to_string())?,
-        )
-    } else {
-        format!(
-            "{{\"chat_id\":\"{}\",\"text\":{}}}",
-            chat_id,
-            serde_json::to_string(text).map_err(|e| e.to_string())?,
-        )
-    };
-    let out = TokioCommand::new("curl")
-        .args([
-            "-fsS",
-            "-X",
-            "POST",
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            &body,
-            &url,
-        ])
-        .output()
+    let mut body = serde_json::json!({ "chat_id": chat_id, "text": text });
+    if html {
+        body["parse_mode"] = serde_json::Value::from("HTML");
+    }
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .json(&body)
+        .send()
         .await
-        .map_err(|e| format!("curl spawn: {e}"))?;
-    if !out.status.success() {
-        return Err(format!(
-            "sendMessage: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
+        .map_err(|e| format!("sendMessage request: {e}"))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let detail = resp.text().await.unwrap_or_default();
+        return Err(format!("sendMessage: {status} {}", detail.trim()));
     }
     Ok(())
 }
@@ -334,14 +317,15 @@ async fn send_message(token: &str, chat_id: &str, text: &str, html: bool) -> Res
 /// ignored by the caller since it's only cosmetic.
 async fn send_chat_action(token: &str, chat_id: &str, action: &str) -> Result<(), String> {
     let url = format!("https://api.telegram.org/bot{token}/sendChatAction");
-    let body = format!("{{\"chat_id\":\"{chat_id}\",\"action\":\"{action}\"}}");
-    let out = TokioCommand::new("curl")
-        .args(["-fsS", "-X", "POST", "-H", "Content-Type: application/json", "-d", &body, &url])
-        .output()
+    let body = serde_json::json!({ "chat_id": chat_id, "action": action });
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .json(&body)
+        .send()
         .await
-        .map_err(|e| format!("curl spawn: {e}"))?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+        .map_err(|e| format!("sendChatAction request: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("sendChatAction: {}", resp.status()));
     }
     Ok(())
 }
