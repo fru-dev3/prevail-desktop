@@ -145,7 +145,7 @@ fn write_cursor(domain_dir: &Path, c: &Cursor) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-async fn run_once(cfg: &TaskGenConfig) -> Result<(u64, u64), String> {
+async fn run_once_inner(cfg: &TaskGenConfig, force: bool) -> Result<(u64, u64), String> {
     let vault = PathBuf::from(&cfg.vault);
     if !vault.exists() {
         return Err(format!("vault not found: {}", cfg.vault));
@@ -175,7 +175,7 @@ async fn run_once(cfg: &TaskGenConfig) -> Result<(u64, u64), String> {
         let domain_dir = entry.path();
 
         let cursor = read_cursor(&domain_dir);
-        if today_ts.saturating_sub(cursor.last_run_ts) < ONE_DAY {
+        if !force && today_ts.saturating_sub(cursor.last_run_ts) < ONE_DAY {
             continue;
         }
 
@@ -201,6 +201,10 @@ async fn run_once(cfg: &TaskGenConfig) -> Result<(u64, u64), String> {
     }
 
     Ok((domains_done, tasks_done))
+}
+
+async fn run_once(cfg: &TaskGenConfig) -> Result<(u64, u64), String> {
+    run_once_inner(cfg, false).await
 }
 
 async fn generate_for_domain(
@@ -349,6 +353,7 @@ pub async fn taskgen_status(
 pub async fn taskgen_run_once(
     cfg: TaskGenConfig,
 ) -> Result<u64, String> {
-    let (_, tasks) = run_once(&cfg).await?;
+    // Manual trigger always bypasses the daily cursor so testing works.
+    let (_, tasks) = run_once_inner(&cfg, true).await?;
     Ok(tasks)
 }
