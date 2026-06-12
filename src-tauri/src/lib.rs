@@ -2178,8 +2178,38 @@ fn write_ideal_state(vault: String, body: String) -> Result<(), String> {
 // Generic text file read/write — used by config export/import (the frontend
 // picks a path via the dialog plugin, then calls these). Kept generic so
 // other features can reuse them.
+
+/// Defense-in-depth for the generic write primitive. The frontend is the only
+/// caller (deliberately NOT in the WebUI allowlist), and there is no XSS vector
+/// today (react-markdown renders untrusted content without raw HTML, behind a
+/// `script-src 'self'` CSP). But a "write any absolute path" command is exactly
+/// what injected code would reach for to gain persistence, so refuse the
+/// classic auto-run / credential targets regardless of caller. Legitimate
+/// config export (Documents/Downloads, the app-support tree) is unaffected.
+fn reject_sensitive_write(path: &str) -> Result<(), String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let blocked_suffixes = [
+        "/.zshrc", "/.zshenv", "/.zprofile", "/.bashrc", "/.bash_profile",
+        "/.profile", "/.config/fish/config.fish",
+    ];
+    let blocked_dirs = [
+        format!("{home}/.ssh/"),
+        format!("{home}/Library/LaunchAgents/"),
+        format!("{home}/.config/autostart/"),
+    ];
+    let lower = path.to_lowercase();
+    if blocked_suffixes.iter().any(|s| path.ends_with(s))
+        || blocked_dirs.iter().any(|d| path.starts_with(d.as_str()))
+        || lower.contains("/launchdaemons/")
+    {
+        return Err("refused: writing to a sensitive system location is not allowed".into());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    reject_sensitive_write(&path)?;
     fs::write(&path, contents).map_err(|e| format!("write {path}: {e}"))
 }
 #[tauri::command]
@@ -3201,13 +3231,17 @@ pub struct TelegramResult {
 
 #[tauri::command]
 async fn telegram_send(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     token: String,
     chat_id: String,
     text: String,
 ) -> Result<TelegramResult, String> {
-    // Audit #7: resolve an empty token from the Keychain (the token is stored
-    // there, not in localStorage) so "Test" works against the saved secret.
+    // Bunker Mode is a hard network kill-switch: every cloud egress path must
+    // consult it. This "Test" command POSTs to the Telegram cloud, so it gets
+    // the same guard the bridge has — closes the one path that skipped it.
+    bunker::guard_cloud()?;
+    // Resolve an empty token from the Keychain (the token is stored there, not
+    // localStorage) so "Test" works against the saved secret.
     let token = if token.trim().is_empty() {
         ingestion::keychain::get("prevail.providers", "telegram").unwrap_or_default()
     } else {
@@ -3216,38 +3250,25 @@ async fn telegram_send(
     if token.trim().is_empty() {
         return Err("no Telegram token configured".into());
     }
+    // In-process reqwest, NOT `curl`: the previous shell-plugin curl put the bot
+    // token in argv (readable via `ps`) and required `curl` in the shell
+    // allowlist (an arbitrary-exfil primitive). reqwest keeps the token
+    // in-process and lets us drop curl from the capability allowlist entirely.
     let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
-    let body = format!(
-        "{{\"chat_id\":\"{}\",\"text\":{},\"parse_mode\":\"Markdown\"}}",
-        chat_id,
-        serde_json::to_string(&text).map_err(|e| e.to_string())?,
-    );
-    let out = app
-        .shell()
-        .command("curl")
-        .args([
-            "-fsS",
-            "-X",
-            "POST",
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            &body,
-            &url,
-        ])
-        .output()
+    let body = serde_json::json!({
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown",
+    });
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .json(&body)
+        .send()
         .await
-        .map_err(|e| format!("curl spawn failed: {e}"))?;
-
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-        return Ok(TelegramResult {
-            ok: false,
-            description: Some(if stderr.is_empty() { "send failed".into() } else { stderr }),
-        });
-    }
-    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-    let v: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|e| format!("telegram request failed: {e}"))?;
+    let v: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| format!("parse response: {e}"))?;
     let ok = v.get("ok").and_then(|x| x.as_bool()).unwrap_or(false);
     let desc = v.get("description").and_then(|x| x.as_str()).map(String::from);
@@ -3687,7 +3708,6 @@ pub fn run() {
             ingestion::ingestion_composio_stop,
             ingestion::ingestion_browser_run,
             ingestion::ingestion_keychain_set,
-            ingestion::ingestion_keychain_get,
             ingestion::ingestion_keychain_del,
             ingestion::ingestion_mcp_config_path,
             ingestion::ingestion_mcp_config_init,
