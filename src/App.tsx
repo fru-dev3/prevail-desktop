@@ -596,7 +596,7 @@ import {
   siTrello, siAsana, siTodoist, siHubspot, siQuickbooks, siCalendly, siObsidian,
   siWise, siRobinhood, siStrava, siFitbit,
   // Model-provider brand marks (Settings → Models, direct-provider roadmap).
-  siAnthropic, siGooglegemini, siHuggingface, siX as siXRaw, siDeepseek, siQwen, siMinimax,
+  siAnthropic, siGooglegemini, siHuggingface, siX as siXRaw, siDeepseek, siQwen, siMinimax, siMeta, siMistralai,
 } from "simple-icons";
 
 const siClaude = siClaudeRaw as { path: string };
@@ -10429,6 +10429,7 @@ const BENCH_CLI_OPTIONS = [
   { id: "claude",      label: "Claude" },
   { id: "codex",       label: "Codex" },
   { id: "antigravity", label: "Antigravity" },
+  { id: "openrouter",  label: "OpenRouter" },
   { id: "ollama",      label: "Ollama" },
 ] as const;
 
@@ -14140,6 +14141,38 @@ const DIRECT_PROVIDERS_SOON: DirectProvider[] = [
 // tile, gap-3, px-4 py-3, subtle border. Containers wrap these in `space-y-2`.
 const SETTINGS_ROW = "flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-4 py-3 transition-colors";
 
+// Map an OpenRouter model id ("anthropic/claude-...", "x-ai/grok-4", "qwen/...")
+// to a brand mark, so the catalog reads visually instead of as a wall of ids.
+const OR_VENDOR_ICON: Record<string, { path?: string; hex?: string; mono: string }> = {
+  anthropic: { ...brandIcon(siAnthropic, "A") } as { path?: string; hex?: string; mono: string },
+  openai: { mono: "AI" },
+  google: { ...brandIcon(siGooglegemini, "G") } as { path?: string; hex?: string; mono: string },
+  "x-ai": { ...brandIcon(siXRaw, "x") } as { path?: string; hex?: string; mono: string },
+  deepseek: { ...brandIcon(siDeepseek, "DS") } as { path?: string; hex?: string; mono: string },
+  qwen: { ...brandIcon(siQwen, "Q") } as { path?: string; hex?: string; mono: string },
+  "meta-llama": { ...brandIcon(siMeta, "M") } as { path?: string; hex?: string; mono: string },
+  mistralai: { ...brandIcon(siMistralai, "Mi") } as { path?: string; hex?: string; mono: string },
+  minimax: { ...brandIcon(siMinimax, "MM") } as { path?: string; hex?: string; mono: string },
+  moonshotai: { mono: "Ki" },
+  "z-ai": { mono: "Z" },
+};
+function orVendorOf(id: string): string {
+  const v = id.includes("/") ? id.split("/")[0].toLowerCase() : "";
+  return v;
+}
+function OrVendorMark({ id, size = 18 }: { id: string; size?: number }) {
+  const v = OR_VENDOR_ICON[orVendorOf(id)];
+  return (
+    <span className="flex shrink-0 items-center justify-center rounded-md border border-border-subtle bg-white" style={{ width: size + 8, height: size + 8 }}>
+      {v?.path ? (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill={v.hex ?? "#111"} aria-hidden><path d={v.path} /></svg>
+      ) : (
+        <span className="font-mono text-[9px] font-semibold text-text-muted">{v?.mono ?? "·"}</span>
+      )}
+    </span>
+  );
+}
+
 function DirectProviderMark({ p }: { p: DirectProvider }) {
   return (
     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-white">
@@ -14260,31 +14293,39 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
           </div>
           <div className="mb-2 flex flex-wrap gap-1.5">
             {orCurated.map((m) => (
-              <span key={m.id} className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary" title={m.id}>{m.label}</span>
+              <span key={m.id} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary" title={m.id}>
+                <OrVendorMark id={m.id} size={12} />{m.label}
+              </span>
             ))}
           </div>
           <input
             value={orQuery}
             onChange={(e) => setOrQuery(e.target.value)}
-            placeholder={orLive.length > 0 ? `Search all ${orLive.length} live models (e.g. fable, grok, gemini)…` : "Refresh in Models to load the live catalog…"}
+            placeholder={orLive.length > 0 ? `Search all ${orLive.length} live models (e.g. fable, grok, qwen, kimi)…` : "Refresh in Models to load the live catalog…"}
             className="w-full rounded-md border border-border bg-background px-3 py-1.5 font-mono text-xs focus:border-accent-border focus:outline-none"
           />
-          {orQuery.trim() && (
-            <div className="mt-2 max-h-56 overflow-auto rounded-md border border-border-subtle bg-background">
-              {orResults.length === 0 ? (
+          {/* The full live catalog, always browsable (icon per vendor). Search
+              narrows; otherwise the first 80 are shown so it is never blank. */}
+          {orLive.length > 0 && (
+            <div className="mt-2 max-h-72 overflow-auto rounded-md border border-border-subtle bg-background">
+              {(orQuery.trim() ? orResults : orLive.slice(0, 80)).length === 0 ? (
                 <div className="px-3 py-2 text-xs text-text-muted">No models match "{orQuery}".</div>
               ) : (
-                orResults.map((m) => (
+                (orQuery.trim() ? orResults : orLive.slice(0, 80)).map((m) => (
                   <button
                     key={m.id}
                     onClick={() => { navigator.clipboard.writeText(m.id).catch(() => {}); }}
                     title="Click to copy the model id"
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-warm"
                   >
-                    <span className="font-mono text-[11px] text-text-primary">{m.id}</span>
-                    {m.label && m.label !== m.id && <span className="truncate text-[10px] text-text-muted">{m.label}</span>}
+                    <OrVendorMark id={m.id} size={16} />
+                    <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-primary">{m.label && m.label !== m.id ? m.label : m.id}</span>
+                    <span className="shrink-0 font-mono text-[9px] text-text-muted">{orVendorOf(m.id) || "model"}</span>
                   </button>
                 ))
+              )}
+              {!orQuery.trim() && orLive.length > 80 && (
+                <div className="px-3 py-1.5 font-mono text-[10px] text-text-muted">+{orLive.length - 80} more — search to find them</div>
               )}
             </div>
           )}
