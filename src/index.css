@@ -17,20 +17,20 @@
   --color-text-primary: #1a1814;
   --color-text-secondary: #514b41;
   --color-text-muted: #6f6857;
-  --color-accent: #806413;
-  --color-accent-hover: #a8862d;
-  --color-accent-soft: rgba(168, 134, 45, 0.12);
-  --color-accent-border: rgba(168, 134, 45, 0.32);
+  --color-accent: #0d7a6e;
+  --color-accent-hover: #0f9882;
+  --color-accent-soft: rgba(13, 122, 110, 0.12);
+  --color-accent-border: rgba(13, 122, 110, 0.30);
   /* Foreground for SOLID accent fills (badges/buttons). High-contrast vs accent
      in every theme — light for dark accents, dark for light accents. */
   --color-on-accent: #ffffff;
   --color-ai: #60a8c0;
   --color-ai-soft: rgba(96, 168, 192, 0.10);
   --color-ok: #2e7d32;
-  --color-warn: #b87f10;
+  --color-warn: #c05621;
   --color-err: #c62828;
-  --color-logo-bg: #1f2a1f;
-  --color-logo-gold: #e8b945;
+  --color-logo-bg: #141416;
+  --color-logo-teal: #2dd4bf;
   --color-logo-cyan: #4ab9cc;
 }
 
@@ -41,7 +41,7 @@
    palette controls accent + surface styling.
    ═════════════════════════════════════════════════════════════════════ */
 
-/* ── VAULT (default) — cream + gold ────────────────────────────────── */
+/* ── VAULT (default) — cream + teal ────────────────────────────────── */
 :root[data-palette="vault"][data-theme="dark"] {
   --color-background: #0d0d0e;
   --color-surface: #16161a;
@@ -52,14 +52,14 @@
   --color-text-primary: #f3eee0;
   --color-text-secondary: #b6ad99;
   --color-text-muted: #6a6357;
-  --color-accent: #c4a35a;
-  --color-accent-hover: #d4b675;
-  --color-accent-soft: rgba(196, 163, 90, 0.08);
-  --color-accent-border: rgba(196, 163, 90, 0.22);
+  --color-accent: #2dd4bf;
+  --color-accent-hover: #5eead4;
+  --color-accent-soft: rgba(45, 212, 191, 0.10);
+  --color-accent-border: rgba(45, 212, 191, 0.22);
   --color-ai: #60a8c0;
   --color-ai-soft: rgba(96, 168, 192, 0.10);
   --color-ok: #52c41a;
-  --color-warn: #faad14;
+  --color-warn: #f97316;
   --color-err: #ff4d4f;
 }
 
