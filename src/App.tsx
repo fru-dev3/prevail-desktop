@@ -5021,6 +5021,26 @@ function DomainPrefsPanel({
           );
           lsSet(keywordsKey, extras.join(", "));
         }
+        // Nothing stored and nothing in the manifest: derive routing keywords
+        // from the domain's own goals/soul so routing works without manual
+        // setup. Frequency-ranked distinctive words, top six.
+        if (!lsGet(keywordsKey)) {
+          try {
+            const texts = await Promise.all(
+              ["goals.md", "soul.md", "config.md"].map((f) =>
+                invoke<string>("read_text_file", { path: `${vaultPath}/${domain}/${f}` }).catch(() => ""),
+              ),
+            );
+            const STOP = new Set("the and for with that this from your you are was have has not but they them then than when what where which while will would could should about into over under each every some most more very just also like been being our their his her its only own same can may might must a an of to in on at by it is as or be do if no so we i me my".split(" "));
+            const freq = new Map<string, number>();
+            for (const w of texts.join(" ").toLowerCase().split(/[^a-z][^a-z]*/)) {
+              if (w.length < 4 || STOP.has(w) || w === domain.toLowerCase()) continue;
+              freq.set(w, (freq.get(w) ?? 0) + 1);
+            }
+            const top = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([w]) => w);
+            if (top.length > 0) lsSet(keywordsKey, top.join(", "));
+          } catch { /* derivation is best-effort */ }
+        }
       } catch {
         // Engine/manifest unavailable — localStorage remains the source.
       } finally {
