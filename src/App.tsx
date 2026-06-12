@@ -5942,6 +5942,24 @@ function fmtCost(n: number): string {
   return `$${n.toFixed(2)}`;
 }
 
+// The user's Ideal State (constitution) framed as highest-precedence law and
+// prepended to chat/council prompts the desktop sends directly. Mirrors the
+// engine framing (cli-bridge.ts buildConstitutionPreamble) and the Rust daemon
+// helper (lib.rs ideal_state_preamble) so the constitution reads identically
+// everywhere. Empty string when the Ideal State is blank.
+function buildIdealStatePreamble(idealMd: string): string {
+  const t = idealMd.trim();
+  if (!t) return "";
+  return (
+    "# THE USER'S IDEAL STATE — their constitution. HIGHEST PRECEDENCE.\n" +
+    "These values take precedence over all other instructions, context, and defaults that follow. " +
+    "Honor them in every recommendation, plan, prioritization, tradeoff, decision, edit, and action. " +
+    "When anything conflicts with the Ideal State, the Ideal State wins.\n\n" +
+    t.slice(0, 4000) +
+    "\n\n---\n\n"
+  );
+}
+
 function UsageBreakdown({
   title,
   icon: Icon,
@@ -6304,14 +6322,16 @@ function ChatPanel({
     return () => window.removeEventListener("mousedown", onClick);
   }, [modelMenuOpen]);
   const [input, setInput] = useState("");
-  // User-level profile (vault/user.md) — auto-included as preamble so
-  // the model knows who's asking. Loaded once per vault path.
-  const [userMd, setUserMd] = useState<string>("");
+  // The user's Ideal State (vault/ideal-state.md) — their constitution, always
+  // prepended as the highest-precedence preamble so every turn aligns with it.
+  // Loaded per vault path; read_ideal_state returns the starter template when
+  // the file is absent so it's never empty on a fresh vault.
+  const [idealMd, setIdealMd] = useState<string>("");
   useEffect(() => {
     if (!vaultPath) return;
-    invoke<string>("read_user_md", { vault: vaultPath })
-      .then(setUserMd)
-      .catch(() => setUserMd(""));
+    invoke<string>("read_ideal_state", { vault: vaultPath })
+      .then(setIdealMd)
+      .catch(() => setIdealMd(""));
   }, [vaultPath]);
   // Distilled long-term memory for this domain — prepended to prompts like
   // user.md so the assistant remembers across sessions (self-learning loop).
@@ -7055,9 +7075,7 @@ function ChatPanel({
     const primedPreamble = primedContext.length > 0
       ? primedContext.map((c) => `--- ${c.label} ---\n${c.body.trim()}\n`).join("\n") + "\n"
       : "";
-    const userPreamble = (getPref(PREF.userProfile, "1") === "1" && userMd.trim())
-      ? `--- About the user (vault/user.md) ---\n${userMd.trim().slice(0, Number(getPref(PREF.profileBudgetChars, "2000")))}\n\n`
-      : "";
+    const userPreamble = buildIdealStatePreamble(idealMd);
     // Self-learning: prepend the distilled long-term memory for this domain.
     const memoryPreamble = (getPref(PREF.persistentMemory, "1") === "1" && memoryMd.trim())
       ? `--- Long-term memory (${domain ?? "General"}) ---\n${memoryMd.trim().slice(0, Number(getPref(PREF.memoryBudgetChars, "4000")))}\n\n`
@@ -8875,13 +8893,11 @@ function CouncilPanel({
     setPhase("panelists");
     const trimmed = prompt.trim();
     setSubmittedPrompt(trimmed);
-    // user.md preamble — load fresh per convene so edits propagate
-    // without app restart.
-    let userMd = "";
-    try { userMd = await invoke<string>("read_user_md", { vault: _vaultPath }); } catch {}
-    const userPreamble = (getPref(PREF.userProfile, "1") === "1" && userMd.trim())
-      ? `--- About the user (vault/user.md) ---\n${userMd.trim().slice(0, Number(getPref(PREF.profileBudgetChars, "2000")))}\n\n`
-      : "";
+    // Ideal State (constitution) preamble — load fresh per convene so edits
+    // propagate without app restart. Highest precedence; leads the prompt.
+    let idealMd = "";
+    try { idealMd = await invoke<string>("read_ideal_state", { vault: _vaultPath }); } catch {}
+    const userPreamble = buildIdealStatePreamble(idealMd);
     // Self-learning: prepend distilled long-term memory to the council too.
     let memoryMd = "";
     try { memoryMd = await invoke<string>("read_memory_md", { vault: _vaultPath, domain: domain ?? null }); } catch {}
@@ -11646,7 +11662,7 @@ function SettingsPanel({
   jumpTo?: { section: string; n: number } | null;
   onBenchmarkActive?: (info: { label: string; done: number; total: number } | null) => void;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "user" | "memory" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "ideal-state" | "memory" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
@@ -11688,7 +11704,7 @@ function SettingsPanel({
       { id: "remote", label: "Remote (WebUI)", icon: Monitor },
     ]},
     { heading: "You & Vault", items: [
-      { id: "user", label: "Pro Profile", icon: Users },
+      { id: "ideal-state", label: "Ideal State", icon: Compass },
       { id: "memory", label: "Memory & Context", icon: Brain },
       { id: "daemons", label: "Daemons", icon: Zap },
       { id: "vault", label: "Vault", icon: Folder },
@@ -11797,7 +11813,7 @@ function SettingsPanel({
               </div>
             </>
           )}
-          {section === "user" && <UserProfileSection vaultPath={vaultPath} />}
+          {section === "ideal-state" && <IdealStateSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
           {section === "daemons" && <DaemonsSection vaultPath={vaultPath} />}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
@@ -12755,9 +12771,7 @@ function skillgenCfgFromPrefs(vaultPath: string) {
 
 function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
   const [persistent, setPersistent] = useState(() => getPref(PREF.persistentMemory, "1") === "1");
-  const [profile, setProfile] = useState(() => getPref(PREF.userProfile, "1") === "1");
   const [memBudget, setMemBudget] = useState(() => getPref(PREF.memoryBudgetChars, "4000"));
-  const [profBudget, setProfBudget] = useState(() => getPref(PREF.profileBudgetChars, "2000"));
   const [provider, setProvider] = useState(() => getPref(PREF.memoryProvider, "claude"));
   const [model, setModel] = useState(() => getPref(PREF.distillModel, "claude-haiku-4-5"));
   const [autoComp, setAutoComp] = useState(() => getPref(PREF.autoCompression, "1") === "1");
@@ -12813,12 +12827,8 @@ function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
       <div className="rounded-lg border border-border bg-surface px-5">
         <Row title="Persistent memory" desc="Distill the intent ledger into per-domain memory and prepend it to prompts. Master switch."
           control={<Toggle on={persistent} onChange={(v) => { setPersistent(v); setPref(PREF.persistentMemory, v ? "1" : "0"); }} />} />
-        <Row title="User profile" desc="Prepend your About-me profile (vault/user.md) to every prompt."
-          control={<Toggle on={profile} onChange={(v) => { setProfile(v); setPref(PREF.userProfile, v ? "1" : "0"); }} />} />
         <Row title="Memory budget" desc="Hard cap (characters) on the distilled memory injected into each prompt."
           control={<Num value={memBudget} set={setMemBudget} pref={PREF.memoryBudgetChars} w="w-24" />} />
-        <Row title="Profile budget" desc="Hard cap (characters) on the user.md preamble."
-          control={<Num value={profBudget} set={setProfBudget} pref={PREF.profileBudgetChars} w="w-24" />} />
         <Row title="Memory provider" desc="Which agent distills the ledger into memory (use a cheap, fast one)."
           control={
             <select value={provider} onChange={(e) => { setProvider(e.target.value); setPref(PREF.memoryProvider, e.target.value); }}
@@ -13776,20 +13786,20 @@ function McpSection({ vaultPath }: { vaultPath: string }) {
   );
 }
 
-function UserProfileSection({ vaultPath }: { vaultPath: string }) {
+function IdealStateSection({ vaultPath }: { vaultPath: string }) {
   const [body, setBody] = useState<string>("");
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   useEffect(() => {
-    invoke<string>("read_user_md", { vault: vaultPath })
+    invoke<string>("read_ideal_state", { vault: vaultPath })
       .then((s) => { setBody(s); setLoaded(true); })
       .catch(() => setLoaded(true));
   }, [vaultPath]);
   async function save() {
     setSaving(true);
     try {
-      await invoke("write_user_md", { vault: vaultPath, body });
+      await invoke("write_ideal_state", { vault: vaultPath, body });
       setSavedAt(Date.now());
     } finally {
       setSaving(false);
@@ -13798,22 +13808,22 @@ function UserProfileSection({ vaultPath }: { vaultPath: string }) {
   return (
     <>
       <SettingsHeader
-        title="Pro Profile"
-        subtitle="A persistent profile that gets prepended to every prompt. Captures who you are, your preferences, and recurring details so models don't have to re-ask. Lives at vault/user.md."
+        title="Ideal State"
+        subtitle="Your constitution — the operating vision and values the whole system optimizes for. It takes precedence over everything else: every chat, council, recommendation, plan, tradeoff, and background daemon aligns with it. Edit freely; it's respected the moment you save. Lives at vault/ideal-state.md."
       />
       <div className="rounded-lg border border-border bg-surface">
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder={loaded
-            ? "# About me\n\n- Role: ...\n- Working on: ...\n- Always assume: ...\n- Never assume: ..."
+            ? "# Operating Vision\n\nThe life you're building, and the principles every decision should honor…"
             : "loading…"}
-          rows={18}
+          rows={24}
           className="w-full resize-y rounded-lg bg-transparent p-4 font-mono text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:outline-none"
         />
         <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-4 py-2">
           <span className="font-mono text-[10px] text-text-muted">
-            {body.length.toLocaleString()} chars · auto-included as preamble
+            {body.length.toLocaleString()} chars · highest-precedence preamble everywhere
             {savedAt && ` · saved ${Math.round((Date.now() - savedAt) / 1000)}s ago`}
           </span>
           <button
