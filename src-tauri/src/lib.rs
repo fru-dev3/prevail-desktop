@@ -361,6 +361,14 @@ fn provider_key_set(provider: String, key: String) -> Result<(), String> {
 }
 // Presence check only — never returns the secret value to the frontend.
 #[tauri::command]
+fn provider_key_last4(provider: String) -> Option<String> {
+    ingestion::keychain::get("prevail.providers", &provider)
+        .ok()
+        .filter(|k| k.len() >= 4)
+        .map(|k| k[k.len() - 4..].to_string())
+}
+
+#[tauri::command]
 fn provider_key_exists(provider: String) -> bool {
     ingestion::keychain::get("prevail.providers", &provider)
         .map(|k| !k.is_empty())
@@ -3542,11 +3550,10 @@ async fn spawn_prevail_streaming(
         .env("LOGNAME", logname)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    // Bunker Mode: the engine self-enforces local-only when told. This was the
-    // one engine spawn path that didn't set it, which let benchmarks run cloud
-    // models in Bunker Mode.
-    if bunker::bunker_enabled() {
-        cmd.env("PREVAIL_BUNKER", "1");
+    // Bunker flag or gateway provider keys (OpenRouter), same as every other
+    // engine spawn — without the key, OpenRouter benchmark runs 401'd.
+    for (k, v) in engine::provider_env_pairs() {
+        cmd.env(k, v);
     }
     let mut child = cmd
         .spawn()
@@ -3870,6 +3877,7 @@ pub fn run() {
             set_close_to_tray,
             provider_key_set,
             provider_key_exists,
+            provider_key_last4,
             provider_key_del,
             webui::webui_start,
             webui::webui_stop,
