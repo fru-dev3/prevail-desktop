@@ -219,7 +219,7 @@ async fn generate_for_domain(
 ) -> Result<u64, String> {
     let memory = std::fs::read_to_string(domain_dir.join("_memory.md")).unwrap_or_default();
     let state_md = std::fs::read_to_string(domain_dir.join("_state.md")).unwrap_or_default();
-    let existing = std::fs::read_to_string(domain_dir.join("_tasks.md")).unwrap_or_default();
+    let existing = crate::read_to_string_retry(domain_dir.join("_tasks.md")).unwrap_or_default();
 
     if memory.trim().is_empty() && state_md.trim().is_empty() {
         return Ok(0);
@@ -266,7 +266,7 @@ async fn generate_for_domain(
     for t in &fresh {
         content.push_str(&format!("- [ ] {t} +{stamp} ~daemon\n"));
     }
-    std::fs::write(&tasks_path, &content).map_err(|e| format!("write _tasks.md: {e}"))?;
+    std::fs::write(&tasks_path, crate::engine::maybe_encrypt(&tasks_path, &content)).map_err(|e| format!("write _tasks.md: {e}"))?;
 
     Ok(fresh.len() as u64)
 }
