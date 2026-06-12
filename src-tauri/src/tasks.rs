@@ -106,7 +106,7 @@ fn render_tasks(tasks: &[Task]) -> String {
 #[tauri::command]
 pub fn tasks_read(vault: String, domain: String) -> Result<Vec<Task>, String> {
     let p = tasks_path(&vault, &domain);
-    match std::fs::read_to_string(&p) {
+    match crate::read_to_string_retry(&p) {
         Ok(md) => Ok(parse_tasks(&md)),
         Err(_) => Ok(vec![]),
     }
@@ -119,7 +119,7 @@ pub fn tasks_set(vault: String, domain: String, tasks: Vec<Task>) -> Result<(), 
     if let Some(parent) = p.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&p, render_tasks(&tasks)).map_err(|e| format!("write _tasks.md: {e}"))
+    std::fs::write(&p, crate::engine::maybe_encrypt(&p, &render_tasks(&tasks))).map_err(|e| format!("write _tasks.md: {e}"))
 }
 
 // Append one task if not already present (used by "add as task" on a surfaced
