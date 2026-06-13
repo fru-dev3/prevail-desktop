@@ -4,6 +4,16 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.24] — 2026-06-13 · an open app is isolated from the domain it grounds in
+
+### Changed
+
+- **An open app no longer borrows domain chrome.** When you open an app (e.g. LinkedIn), the canvas stops showing the grounding domain's hero header ("Brand: Your name, your voice...") and the "apps refreshing this domain" strip. An app feeds domains; it isn't one, so it shouldn't show another domain's identity or list its sibling apps.
+- **No Benchmark tab on an app.** Benchmarks run against domains, not apps, so the Benchmark tab is hidden while an app is open.
+- **The top-right "Apps" chip becomes "Domains" on an app.** For a domain it lists the apps refreshing it; the symmetric view for an app is the domains it refreshes. The Domains chip toggles the detail panel that lists and edits those bindings (the same panel the breadcrumb chevron opens).
+
+---
+
 ## [0.7.23] — 2026-06-13 · app-independent threads + editable app→domain binding
 
 ### Added
