@@ -5397,6 +5397,8 @@ function DomainPrefsPanel({
   const [tick, setTick] = useState(0);
   const force = () => { setTick((t) => t + 1); onChanged(); };
   void tick;
+  // Skill list collapses by default so a long roster doesn't crowd the panel.
+  const [skillsOpen, setSkillsOpen] = useState(false);
 
   const cliKey = `prevail.domain.${domain}.cli`;
   const modelKey = `prevail.domain.${domain}.model`;
@@ -5706,23 +5708,27 @@ function DomainPrefsPanel({
         />
       </section>
 
-      {/* Skills — star-toggle list with avatars */}
+      {/* Skills — star-toggle list with avatars; collapsed by default, indented when open */}
       <section className="mb-6 rounded-xl border border-border bg-surface p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Skills</div>
+        <button
+          onClick={() => setSkillsOpen((v) => !v)}
+          className="flex w-full items-start gap-2 text-left"
+        >
+          <ChevronRight className={`mt-1 h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${skillsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+          <div className="flex-1">
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Skills · {skills.length}</div>
             <p className="mt-0.5 text-sm text-text-secondary">
               Pinned skills auto-attach to every new chat in {titleCase(domain)}.
               <span className="ml-2 font-mono text-[10px] text-text-muted">★ pinned · ☆ tap to pin</span>
             </p>
           </div>
-        </div>
-        {skills.length === 0 ? (
-          <div className="rounded border border-dashed border-border bg-background p-4 text-sm text-text-muted">
+        </button>
+        {skillsOpen && (skills.length === 0 ? (
+          <div className="mt-3 ml-5 rounded border border-dashed border-border bg-background p-4 text-sm text-text-muted">
             No skills under <code className="text-accent">{titleCase(domain)}/skills/</code> yet.
           </div>
         ) : (
-          <ul className="flex flex-col gap-1.5">
+          <ul className="mt-3 ml-5 flex flex-col gap-1.5 border-l border-border-subtle pl-3">
             {skills.map((s) => {
               const on = preferredSkills.includes(s.name);
               const color = pickSkillColor(s.name);
@@ -5752,7 +5758,7 @@ function DomainPrefsPanel({
               );
             })}
           </ul>
-        )}
+        ))}
       </section>
 
       {/* Behavior toggles */}
@@ -13018,7 +13024,7 @@ function SettingsPanel({
   return (
     <div className="flex h-full">
       {/* Sidebar nav — Codex-style with Back to app at top */}
-      <aside className="flex w-56 shrink-0 flex-col overflow-y-auto border-r border-border-subtle bg-surface-warm px-2 py-3">
+      <aside className="flex h-full min-h-0 w-56 shrink-0 flex-col overflow-y-auto border-r border-border-subtle bg-surface-warm px-2 py-3">
         {onBack && (
           <button
             onClick={onBack}
@@ -13876,7 +13882,7 @@ function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; o
       {/* Live status — visual tiles for what's blocked vs open. */}
       <div className="mt-5">
         <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Live status</div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {tiles.map((t) => (
             <div
               key={t.label}
