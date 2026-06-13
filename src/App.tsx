@@ -14669,6 +14669,11 @@ function ConnectorsSection({ vaultPath }: { vaultPath: string }) {
     setAdding(null);
   }
   const connectedIds = useMemo(() => new Set((engineApps ?? []).map((a) => a.id)), [engineApps]);
+  const [triageOnly, setTriageOnly] = useState(false);
+  const needsAttention = useMemo(
+    () => (engineApps ?? []).filter((a) => a.status === "error" || a.status === "expired"),
+    [engineApps],
+  );
 
   // Reuse the curated brand marks where an app name matches; everything else
   // shows a neutral pattern-tinted dot. Keeps CONNECTOR_GROUPS/ConnectorIcon live.
@@ -14717,9 +14722,18 @@ function ConnectorsSection({ vaultPath }: { vaultPath: string }) {
           <div className="mb-2 flex items-baseline gap-2">
             <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Connected</span>
             <span className="font-mono text-[10px] text-text-muted/60">{engineApps.length}</span>
+            {needsAttention.length > 0 && (
+              <button
+                onClick={() => setTriageOnly((v) => !v)}
+                className={`ml-auto rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${triageOnly ? "border-warn bg-warn/10 text-warn" : "border-warn/40 text-warn/80 hover:bg-warn/10"}`}
+                title="Apps with expired auth or sync errors"
+              >
+                {needsAttention.length} need attention
+              </button>
+            )}
           </div>
           <div className="space-y-2">
-            {engineApps.map((app) => {
+            {(triageOnly ? needsAttention : engineApps).map((app) => {
               const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
               return (
                 <div key={app.id} className={`group ${SETTINGS_ROW} hover:border-accent-border hover:bg-surface-warm`}>
