@@ -690,6 +690,12 @@ pub fn engine_alignment(vault: String) -> Result<serde_json::Value, String> {
     run_engine_json(&["--vault", &vault, "alignment", "--json"])
 }
 
+/// One app's runnable skills (id/runner/trigger) for the per-app detail view.
+#[tauri::command]
+pub fn engine_app_skills(id: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "skills", &id, "--json"])
+}
+
 /// App lock (Phase 0 passcode). The passcode is sent on the child's STDIN so it
 /// never appears in argv/process list. Desktop-only — deliberately NOT in
 /// WEBUI_ALLOWED; the WebUI has its own login.
