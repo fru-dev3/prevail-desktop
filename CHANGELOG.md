@@ -4,6 +4,14 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.15] — 2026-06-12 · triage, alignment scoring, per-domain apps
+
+### Added
+
+- **Ideal-state alignment.** A new engine pass scores each life pillar (wealth, revenue, health, living, relationships) against `ideal-state.md` — model-scored when a CLI is available, deterministic signal fallback otherwise — and writes `_meta/alignment.json`. The Ideal State page shows an Alignment readout: overall score, per-pillar bars, and top corrective actions. CLI: `prevail alignment`.
+- **Per-domain apps strip.** Each domain view shows the apps bound to it with live status dots, so you can see at a glance which feeds are fresh.
+- **Triage.** The Connected panel surfaces a "N need attention" badge/filter for apps with expired auth or sync errors.
+
 ## [0.7.14] — 2026-06-12 · add-app + sync-now loop, Tier D tests, engine integrity
 
 ### Added
