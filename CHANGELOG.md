@@ -15,6 +15,7 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 - **Public Prevail Benchmark foundation**: 33 grounded questions across all 11 domains, a `bench export-results` matrix command, and a live website board (leaderboard + domains×models heatmap).
 - **OpenRouter is now a first-class benchmark target** and its 300+ model catalog browses visually with per-vendor icons (Anthropic, Gemini, xAI/Grok, DeepSeek, Qwen, Meta, Mistral, Kimi…).
 - **Settings → Tasks**: a cross-domain task triage view (open/overdue counts, domain filter, inline check-off) alongside the per-domain Insights lists.
+- **Headless self-learning**: `prevail daemon --learn` runs the distiller with the desktop app closed (a faithful port of the in-app logic, identical file formats); `daemon install` registers a launchd login agent; the Daemons page has a 'Keep learning with the app closed' toggle, and the in-app distiller defers to the agent when it is on. Drive Prevail entirely via MCP/Telegram/CLI and your memory keeps updating.
 - **Smart auto-council**: convenes the council only for judgment-call prompts (should-I / tradeoff / advice / high-stakes), single model for simple questions; an Always mode keeps every-send behavior.
 - **Telegram route-to-CLI** lists only validated, active providers. **Change-based vault backups** ('every N changes') alongside the schedule. **Decisions vs Recent Decisions** explained accurately in the context drawer. Benchmark questions show their edited date. Every remaining user-visible em dash removed (desktop and website).
 
