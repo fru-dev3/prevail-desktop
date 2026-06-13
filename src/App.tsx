@@ -1991,6 +1991,20 @@ export default function App() {
   // exactly like a domain. Cleared whenever you navigate to a domain/General.
   const [selectedApp, setSelectedApp] = useState<EngineApp | null>(null);
   const [appView, setAppView] = useState(false);
+  // Thread scope — WHERE conversations are stored/listed. An open app gets its
+  // OWN thread space (`_app-<id>`) that's INDEPENDENT of any domain, so you can
+  // hold several ongoing conversations with an app over time without them
+  // being tied to (or scattered across) the app's many bound domains. A plain
+  // domain (or General) scopes to the domain itself. This is distinct from the
+  // GROUNDING domain (what the model reads) — app chats still ground in the
+  // app's primary domain so engine_chat has real state to reason over.
+  const threadScope = useMemo(
+    () =>
+      appView && selectedApp
+        ? `_app-${selectedApp.id.replace(/[^a-z0-9_-]/gi, "-")}`
+        : selectedDomain,
+    [appView, selectedApp, selectedDomain],
+  );
   // Open an app in the canvas. Shared by the sidebar and the per-domain Apps
   // strip so "click an app anywhere → jump to it" works the same everywhere.
   const openApp = useCallback((app: EngineApp) => {
@@ -2016,6 +2030,23 @@ export default function App() {
   // Apps strip) can highlight it without prop-drilling.
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("prevail:active-app", { detail: appView && selectedApp ? selectedApp.id : null }));
+  }, [appView, selectedApp]);
+  // When an app's binding changes (e.g. domains added/removed on its canvas),
+  // refresh the OPEN app record in place so grounding + the detail bar stay
+  // current — WITHOUT re-opening it (which would reset the conversation).
+  useEffect(() => {
+    const onAppsChanged = () => {
+      if (!appView || !selectedApp) return;
+      const id = selectedApp.id;
+      invoke<EngineApp[]>("engine_apps_list")
+        .then((list) => {
+          const fresh = (list ?? []).find((a) => a.id === id);
+          if (fresh) setSelectedApp(fresh);
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("prevail:apps-changed", onAppsChanged);
+    return () => window.removeEventListener("prevail:apps-changed", onAppsChanged);
   }, [appView, selectedApp]);
   // Threads — backed by <vault>/<domain>/_threads/<slug>.md files.
   // Active thread defines what's loaded into the chat transcript.
@@ -2249,15 +2280,16 @@ export default function App() {
   // but returning to a domain lands on what you were working on: a stream
   // that's still running there first, else the thread you last had open.
   useEffect(() => {
-    if (!selectedDomain) { setActiveThreadPath(null); return; }
-    const running = runningStreams.find((s) => s.domain === selectedDomain && s.threadPath);
-    const remembered = lsGet(`prevail.domain.${selectedDomain}.lastThread`);
+    const scope = threadScope;
+    if (!scope) { setActiveThreadPath(null); return; }
+    const running = runningStreams.find((s) => s.threadPath && s.threadPath.includes(`/${scope}/`));
+    const remembered = lsGet(`prevail.domain.${scope}.lastThread`);
     setActiveThreadPath(
       running?.threadPath
-        ?? (remembered && remembered.includes(`/${selectedDomain}/`) ? remembered : null),
+        ?? (remembered && remembered.includes(`/${scope}/`) ? remembered : null),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDomain]);
+  }, [threadScope]);
   // Cross-domain streaming awareness — App-level map of in-flight
   // streams. Sidebar + ThreadsRail read this to pulse domains/threads
   // that have work happening in the background.
@@ -2362,10 +2394,10 @@ export default function App() {
   const refreshThreads = useCallback(async () => {
     if (!vaultPath) return;
     try {
-      const list = await invoke<ThreadMeta[]>("list_threads", { vault: vaultPath, domain: selectedDomain || null });
+      const list = await invoke<ThreadMeta[]>("list_threads", { vault: vaultPath, domain: threadScope || null });
       setThreads(list);
     } catch (e) { console.error("list_threads", e); }
-  }, [vaultPath, selectedDomain]);
+  }, [vaultPath, threadScope]);
   useEffect(() => { void refreshThreads(); }, [refreshThreads]);
   const [clis, setClis] = useState<CliInfo[]>([]);
   const [tab, setTab] = useState<TabId>("chat");
@@ -2718,16 +2750,18 @@ export default function App() {
               threads={threads}
               activePath={activeThreadPath}
               selectedDomain={selectedDomain}
+              scopeLabel={appView && selectedApp ? selectedApp.title : null}
               vaultPath={vaultPath}
               onPick={(p) => { setActiveThreadPath(p); setChatViewNonce((n) => n + 1); if (tab === "benchmark") setTab("chat"); }}
               onNew={async () => {
                 // Create the thread file immediately so the user gets
                 // a renameable entry in the rail BEFORE typing the
-                // first prompt. Backend accepts empty turns.
+                // first prompt. Backend accepts empty turns. Scoped to the
+                // active app's own thread space when an app is open.
                 try {
                   const path = await invoke<string>("save_thread", {
                     vault: vaultPath,
-                    domain: selectedDomain || null,
+                    domain: threadScope || null,
                     slug: null,
                     title: "Untitled",
                     turns: [],
@@ -2849,6 +2883,7 @@ export default function App() {
             <AppDetailBar
               app={selectedApp}
               vaultPath={vaultPath}
+              domains={domains}
               onClose={() => { setSelectedApp(null); setAppView(false); }}
               onChanged={() => { void refreshThreads(); }}
             />
@@ -2858,6 +2893,7 @@ export default function App() {
               <ChatPanel
                 domain={selectedDomain}
                 domainPath={selectedDomainPath}
+                threadDomain={threadScope}
                 vaultPath={vaultPath}
                 clis={clis}
                 fwLens={fwLens}
@@ -2881,6 +2917,7 @@ export default function App() {
               <CouncilPanel
                 domain={selectedDomain}
                 domainPath={selectedDomainPath}
+                threadDomain={threadScope}
                 vaultPath={vaultPath}
                 clis={clis}
                 fwLens={fwLens}
@@ -3886,6 +3923,7 @@ function ThreadsRail({
   threads,
   activePath,
   selectedDomain,
+  scopeLabel,
   vaultPath,
   onPick,
   onNew,
@@ -3896,6 +3934,10 @@ function ThreadsRail({
   threads: ThreadMeta[];
   activePath: string | null;
   selectedDomain: string | null;
+  // When set (e.g. an open app's title), the rail header labels the scope with
+  // this instead of the domain — the conversations belong to the app, not a
+  // domain.
+  scopeLabel?: string | null;
   vaultPath: string;
   onPick: (path: string) => void;
   onNew: () => void;
@@ -3979,7 +4021,7 @@ function ThreadsRail({
     <aside className="flex shrink-0 flex-col border-r border-border-subtle bg-surface-warm" style={{ width: railWidth }}>
       <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-3 py-2.5">
         <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
-          Threads · {selectedDomain ? titleCase(selectedDomain) : "General"}
+          Threads · {scopeLabel ?? (selectedDomain ? titleCase(selectedDomain) : "General")}
         </span>
         <div className="flex items-center gap-0.5">
           <button
@@ -4945,16 +4987,62 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
 // the vault paths it writes, and its skills. Collapsible so it gets out of the
 // way; the conversation below is the app's "conversations". Test/Sync reuse the
 // same engine commands the Settings → Apps detail uses.
-function AppDetailBar({ app, vaultPath, onClose, onChanged }: { app: EngineApp; vaultPath: string; onClose: () => void; onChanged: () => void }) {
-  const [open, setOpen] = useState(true);
+function AppDetailBar({ app, vaultPath, domains, onClose, onChanged }: { app: EngineApp; vaultPath: string; domains: Domain[]; onClose: () => void; onChanged: () => void }) {
+  // Collapsed by default — the header line already shows status + which domains
+  // it refreshes; expand only when you want schedule, the domain editor, and
+  // skills. Choice persists across launches.
+  const [open, setOpen] = useState<boolean>(() => lsGet("prevail.appDetail.open") === "1");
+  useEffect(() => { lsSet("prevail.appDetail.open", open ? "1" : "0"); }, [open]);
   const [skills, setSkills] = useState<{ id: string; runner: string; trigger: string }[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // Editable app→domain binding (many-to-many). Seeded from the app record;
+  // re-seeded whenever a different app is opened. Persisted via the engine,
+  // which is the source of truth — local state is optimistic and reverts on
+  // failure.
+  const [doms, setDoms] = useState<string[]>(app.domains);
+  const [savingDoms, setSavingDoms] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addValue, setAddValue] = useState("");
+  useEffect(() => { setDoms(app.domains); setAddOpen(false); setAddValue(""); }, [app.id, app.domains]);
   useEffect(() => {
     setSkills(null);
     invoke<{ id: string; runner: string; trigger: string }[]>("engine_app_skills", { id: app.id }).then(setSkills).catch(() => setSkills([]));
   }, [app.id]);
   const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
+  // Domains that exist in the vault but aren't bound yet — offered in the add
+  // picker. Free-text entry is also allowed for a domain not yet created.
+  const addable = useMemo(
+    () => domains.map((d) => d.name).filter((n) => !doms.includes(n)).sort((a, b) => a.localeCompare(b)),
+    [domains, doms],
+  );
+  async function persistDomains(next: string[]) {
+    const prev = doms;
+    setDoms(next);
+    setSavingDoms(true);
+    setNote(null);
+    try {
+      const r = await invoke<{ ok: boolean; domains?: string[]; error?: string }>(
+        "engine_app_set_domains",
+        { id: app.id, domains: next },
+      );
+      if (!r.ok) { setDoms(prev); setNote(`failed: ${r.error}`); return; }
+      if (r.domains) setDoms(r.domains);
+      // Refresh the open app record (grounding) + every domain Apps strip.
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+      onChanged();
+    } catch (e) {
+      setDoms(prev); setNote(`error: ${e}`);
+    } finally { setSavingDoms(false); }
+  }
+  function removeDomain(d: string) { void persistDomains(doms.filter((x) => x !== d)); }
+  function addDomain(raw: string) {
+    const d = raw.trim().toLowerCase();
+    if (!d || doms.includes(d)) { setAddOpen(false); setAddValue(""); return; }
+    if (!/^[a-z0-9][a-z0-9-]{0,48}$/.test(d)) { setNote(`invalid domain "${raw}"`); return; }
+    setAddOpen(false); setAddValue("");
+    void persistDomains([...doms, d]);
+  }
   async function test() {
     setBusy("test"); setNote(null);
     try { const r = await invoke<{ status?: string; message?: string }>("engine_app_probe", { id: app.id }); setNote(r.message || r.status || "tested"); }
@@ -4976,7 +5064,7 @@ function AppDetailBar({ app, vaultPath, onClose, onChanged }: { app: EngineApp; 
           <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
           <span className="truncate text-base font-semibold text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
           <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">{app.integration}</span>
-          {app.domains.length > 0 && <span className="truncate font-mono text-[10px] text-text-muted/70">refreshes {app.domains.map(titleCase).join(", ")}</span>}
+          {doms.length > 0 && <span className="truncate font-mono text-[10px] text-text-muted/70">refreshes {doms.map(titleCase).join(", ")}</span>}
         </button>
         <button onClick={test} disabled={busy === "test"} className="shrink-0 rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "test" ? "testing" : "test"}</button>
         <button onClick={sync} disabled={busy === "sync"} title="Sync this app now" className="shrink-0 rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "sync" ? "syncing" : "sync"}</button>
@@ -4993,16 +5081,59 @@ function AppDetailBar({ app, vaultPath, onClose, onChanged }: { app: EngineApp; 
             </div>
           </div>
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Refreshes domains · writes to vault</div>
-            {app.domains.length === 0 ? (
-              <div className="font-mono text-[11px] text-text-muted">none yet</div>
+            <div className="flex items-center gap-2">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Refreshes domains · writes to vault</div>
+              {savingDoms && <span className="font-mono text-[9px] text-text-muted/60">saving…</span>}
+            </div>
+            {doms.length === 0 ? (
+              <div className="font-mono text-[11px] text-text-muted">Not bound to any domain yet. Add one below to start refreshing it.</div>
             ) : (
-              <ul className="mt-0.5 space-y-0.5">
-                {app.domains.map((d) => (
-                  <li key={d} className="font-mono text-[11px] text-text-secondary">▸ {titleCase(d)} <span className="text-text-muted/60">→ vault/{d}/</span></li>
+              <ul className="mt-1 space-y-0.5">
+                {doms.map((d) => (
+                  <li key={d} className="group/dom flex items-center gap-1.5">
+                    <span className="font-mono text-[11px] text-text-secondary">▸ {titleCase(d)} <span className="text-text-muted/60">→ vault/{d}/</span></span>
+                    <button
+                      onClick={() => removeDomain(d)}
+                      disabled={savingDoms}
+                      title={`Remove ${titleCase(d)} from ${app.title}`}
+                      className="flex h-5 w-5 items-center justify-center rounded text-text-muted opacity-0 transition-opacity hover:bg-surface-warm hover:text-warn group-hover/dom:opacity-100 disabled:opacity-30"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </li>
                 ))}
               </ul>
             )}
+            {/* Add a domain: pick an existing one or type a new slug. The
+                binding is many-to-many, so one app can feed several domains. */}
+            <div className="mt-1.5">
+              {addOpen ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    list={`app-doms-${app.id}`}
+                    autoFocus
+                    value={addValue}
+                    onChange={(e) => setAddValue(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") addDomain(addValue); if (e.key === "Escape") { setAddOpen(false); setAddValue(""); } }}
+                    placeholder="domain name"
+                    className="w-40 rounded border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-primary outline-none focus:border-accent-border"
+                  />
+                  <datalist id={`app-doms-${app.id}`}>
+                    {addable.map((n) => <option key={n} value={n}>{titleCase(n)}</option>)}
+                  </datalist>
+                  <button onClick={() => addDomain(addValue)} disabled={savingDoms || !addValue.trim()} className="rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-40">add</button>
+                  <button onClick={() => { setAddOpen(false); setAddValue(""); }} className="rounded p-1 text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setAddOpen(true)}
+                  disabled={savingDoms}
+                  className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-accent disabled:opacity-40"
+                >
+                  <Plus className="h-3 w-3" /> add domain
+                </button>
+              )}
+            </div>
           </div>
           <div>
             <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Skills</div>
@@ -5019,7 +5150,7 @@ function AppDetailBar({ app, vaultPath, onClose, onChanged }: { app: EngineApp; 
             )}
           </div>
           <div className="font-mono text-[10px] text-text-muted/70">
-            Conversations below are scoped to {app.domains[0] ? titleCase(app.domains[0]) : "this app"}: chat to ask about {app.title}'s data.
+            Conversations below belong to {app.title}, independent of any domain. Threads accumulate here over time{doms.length > 0 ? `, grounded in ${titleCase(doms[0])}` : ""}.
           </div>
         </div>
       )}
@@ -7111,6 +7242,7 @@ function UsageDashboard({
 function ChatPanel({
   domain,
   domainPath,
+  threadDomain,
   vaultPath,
   clis,
   fwLens,
@@ -7131,6 +7263,11 @@ function ChatPanel({
 }: {
   domain: string | null;
   domainPath: string | null;
+  // Where threads are stored/listed. Defaults to `domain`. An open app passes
+  // its own `_app-<id>` scope so conversations live in the app's space,
+  // independent of the (possibly many) domains it's bound to — while `domain`
+  // above still drives model grounding.
+  threadDomain?: string | null;
   vaultPath: string;
   clis: CliInfo[];
   fwLens: ReturnType<typeof useFrameworkLens>;
@@ -7150,6 +7287,10 @@ function ChatPanel({
   setDomainTab: (t: DomainTab) => void;
 }) {
   const available = useMemo(() => clis.filter((c) => c.available), [clis]);
+  // Thread storage scope: the app's own space when given, else the domain.
+  // `domain` keeps driving grounding/engine; `tDomain` drives where the
+  // conversation's .md file is written and which lastThread we remember.
+  const tDomain = threadDomain !== undefined ? threadDomain : domain;
 
   // ── Unified engine chat (Track D5) ────────────────────────────────
   // When the `prevail` CLI is present we prefer driving the conversation
@@ -7566,10 +7707,10 @@ function ChatPanel({
   const activeThreadRef = useRef<string | null>(activeThreadPath);
   useEffect(() => { activeThreadRef.current = activeThreadPath; }, [activeThreadPath]);
   useEffect(() => {
-    if (domain && activeThreadPath && activeThreadPath.includes(`/${domain}/`)) {
-      lsSet(`prevail.domain.${domain}.lastThread`, activeThreadPath);
+    if (tDomain && activeThreadPath && activeThreadPath.includes(`/${tDomain}/`)) {
+      lsSet(`prevail.domain.${tDomain}.lastThread`, activeThreadPath);
     }
-  }, [domain, activeThreadPath]);
+  }, [tDomain, activeThreadPath]);
   // When the auto-save effect adopts a new path mid-stream we stamp
   // the path here. The load-on-change effect below uses this to skip
   // reloading from disk — the in-memory messages are already ahead of
@@ -7642,10 +7783,10 @@ function ChatPanel({
         const title = first ? first.content.slice(0, 60).replace(/\n/g, " ") : "untitled";
         const current = activeThreadRef.current;
         const slug = current ? current.split("/").pop()?.replace(/\.md$/, "") ?? null : null;
-        console.log("[prevail/save_thread]", { slug, current, msgCount: messages.length, domain, t: Date.now() });
+        console.log("[prevail/save_thread]", { slug, current, msgCount: messages.length, domain: tDomain, t: Date.now() });
         const path = await invoke<string>("save_thread", {
           vault: vaultPath,
-          domain: domain ?? null,
+          domain: tDomain ?? null,
           slug,
           title,
           turns: messages.map((m) => ({
@@ -9358,6 +9499,7 @@ interface PanelistSlot {
 function CouncilPanel({
   domain,
   domainPath,
+  threadDomain,
   vaultPath: _vaultPath,
   clis,
   fwLens,
@@ -9372,6 +9514,9 @@ function CouncilPanel({
 }: {
   domain: string | null;
   domainPath: string | null;
+  // See ChatPanel: thread storage scope (app space when set), distinct from
+  // the grounding `domain`.
+  threadDomain?: string | null;
   vaultPath: string;
   clis: CliInfo[];
   fwLens: ReturnType<typeof useFrameworkLens>;
@@ -9384,6 +9529,8 @@ function CouncilPanel({
   seedAutoConvene?: boolean;
   onSeedConsumed?: () => void;
 }) {
+  // Thread storage scope (app space when set), else the grounding domain.
+  const tDomain = threadDomain !== undefined ? threadDomain : domain;
   // All possible (cli, model) panelist slots across ALL providers —
   // even ones not installed are listed (greyed out) so the user knows
   // what's possible. Same provider can appear multiple times with
@@ -9881,7 +10028,7 @@ function CouncilPanel({
     const title = `Council · ${firstUser.slice(0, 50).replace(/\n/g, " ")}`;
     invoke<string>("save_thread", {
       vault: _vaultPath,
-      domain: domain ?? null,
+      domain: tDomain ?? null,
       slug,
       title,
       turns: allTurns,
