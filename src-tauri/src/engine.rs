@@ -646,6 +646,21 @@ pub fn engine_domains(vault: String) -> Result<serde_json::Value, String> {
     run_engine_json(&["--vault", &vault, "domains"])
 }
 
+/// The user's REAL connected apps as the engine sees them (community apps under
+/// ~/.prevail/apps + vault apps), with connection + sync state. This is the
+/// live counterpart to the static connector catalog: what is actually wired up.
+#[tauri::command]
+pub fn engine_apps_list() -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "list", "--json"])
+}
+
+/// Probe one app's connectivity/auth (api/oauth/browser/mcp/cli/manual).
+/// Returns the structured ProbeResult: { ok, status, message, fixHint?, ... }.
+#[tauri::command]
+pub fn engine_app_probe(id: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "test", &id, "--json"])
+}
+
 /// App lock (Phase 0 passcode). The passcode is sent on the child's STDIN so it
 /// never appears in argv/process list. Desktop-only — deliberately NOT in
 /// WEBUI_ALLOWED; the WebUI has its own login.
