@@ -1015,7 +1015,7 @@ type TabId = "chat" | "council" | "benchmark" | "settings";
 // top bar can own the Insights / Preferences toggles (and the domain header
 // shrinks to just the title). "chat" = the conversation; the rest are domain
 // sub-views rendered in place of the transcript.
-type DomainTab = "chat" | "context" | "insights" | "usage" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs";
+type DomainTab = "chat" | "context" | "insights" | "usage" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs" | "apps";
 const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
   { id: "chat", label: "Chat", icon: MessageSquare },
   { id: "council", label: "Council", icon: Scale },
@@ -2781,6 +2781,19 @@ export default function App() {
               >
                 <SettingsIcon className="h-4 w-4" /> Preferences
               </button>
+              {selectedDomain && (
+                <button
+                  onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "apps" ? "chat" : "apps"); }}
+                  title="Apps that refresh this domain"
+                  className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                    tab === "chat" && domainTab === "apps"
+                      ? "bg-accent-soft text-accent"
+                      : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                  }`}
+                >
+                  <Plug className="h-4 w-4" /> Apps
+                </button>
+              )}
               <DomainActionsMenu
                 domain={selectedDomain || "general"}
                 vaultPath={vaultPath}
@@ -4783,6 +4796,67 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
           className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm focus:border-accent-border focus:outline-none" />
       </div>
       </InsightsDisclosure>
+    </div>
+  );
+}
+
+// Apps tab in domain view: shows all engine apps that refresh this domain.
+function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath: string }) {
+  const [apps, setApps] = useState<EngineApp[] | null>(null);
+  const [probing, setProbing] = useState<string | null>(null);
+  const [probeResult, setProbeResult] = useState<Record<string, string>>({});
+  useEffect(() => {
+    invoke<EngineApp[]>("engine_apps_list").then(setApps).catch(() => setApps([]));
+  }, []);
+  const domainApps = useMemo(() => (apps ?? []).filter((a) => a.domains.includes(domain)), [apps, domain]);
+
+  async function sync(id: string) {
+    setProbing(id);
+    try {
+      const r = await invoke<{ ok: boolean; artifacts?: number; error?: string }>("engine_app_sync", { id, vault: vaultPath });
+      setProbeResult((m) => ({ ...m, [id]: r.ok ? `synced. ${r.artifacts ?? 0} artifact(s)` : `failed: ${r.error}` }));
+      invoke<EngineApp[]>("engine_apps_list").then(setApps).catch(() => {});
+    } catch (e) { setProbeResult((m) => ({ ...m, [id]: `error: ${e}` })); }
+    setProbing(null);
+  }
+
+  if (!apps) return <div className="text-sm text-text-muted">loading…</div>;
+  if (domainApps.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+        No apps are refreshing this domain yet. Add one from Settings. Apps.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <div className="mb-3 font-mono text-[10px] uppercase tracking-wider text-text-muted">{domainApps.length} app{domainApps.length !== 1 ? "s" : ""} refreshing {domain}</div>
+      {domainApps.map((app) => {
+        const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
+        return (
+          <div key={app.id} className={`${SETTINGS_ROW} hover:border-accent-border hover:bg-surface-warm`}>
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: tint }} title={app.status} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="truncate text-sm font-medium text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
+                <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">{app.integration}</span>
+              </div>
+              <div className="font-mono text-[10px] text-text-muted">
+                {app.status}{app.refresh?.every ? ` · every ${app.refresh.every}` : ""} · synced {relTime(app.lastSuccessTs)}
+                {probeResult[app.id] && <span className="ml-2 text-text-secondary">{probeResult[app.id]}</span>}
+                {app.lastError && !probeResult[app.id] && <span className="ml-2 text-warn">{app.lastError}</span>}
+              </div>
+            </div>
+            <button
+              onClick={() => sync(app.id)}
+              disabled={probing === app.id}
+              className="shrink-0 rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
+            >
+              {probing === app.id ? "syncing" : "sync"}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -8188,7 +8262,10 @@ function ChatPanel({
             {domainTab === "usage" && (
               <UsageDashboard vault={vaultPath} domain={domain ?? null} nonce={chatViewNonce} />
             )}
-            {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && domainTab !== "insights" && domainTab !== "usage" && <div className="text-sm text-text-muted">loading…</div>}
+            {domainTab === "apps" && domain && (
+              <DomainAppsTab domain={domain} vaultPath={vaultPath} />
+            )}
+            {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && domainTab !== "insights" && domainTab !== "usage" && domainTab !== "apps" && <div className="text-sm text-text-muted">loading…</div>}
             {domainCtx && domainTab === "state" && (domainCtx.state ? <Markdown source={domainCtx.state} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">state.md</code> in this domain.</div>)}
             {domainCtx && domainTab === "decisions" && (domainCtx.decisions ? <Markdown source={domainCtx.decisions} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">decisions.md</code> yet.</div>)}
             {domainCtx && domainTab === "journal" && (domainCtx.journal ? <Markdown source={domainCtx.journal} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no journal entries yet.</div>)}
@@ -12741,12 +12818,22 @@ function SettingsPanel({
   useEffect(() => {
     if (jumpTo?.section) setSection(jumpTo.section as Section);
   }, [jumpTo?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [settingsDeepLink, setSettingsDeepLink] = useState<string | null>(null);
   // In-settings deep links (e.g. a model row's "runs" button jumping to the
   // Benchmark cockpit) dispatch this event rather than threading props.
+  // Format: "section" or "section:detail" — detail is passed to the section.
   useEffect(() => {
     const onJump = (e: Event) => {
-      const s = (e as CustomEvent<string>).detail;
-      if (s) setSection(s as Section);
+      const raw = (e as CustomEvent<string>).detail;
+      if (!raw) return;
+      const colonIdx = raw.indexOf(":");
+      if (colonIdx === -1) {
+        setSection(raw as Section);
+        setSettingsDeepLink(null);
+      } else {
+        setSection(raw.slice(0, colonIdx) as Section);
+        setSettingsDeepLink(raw.slice(colonIdx + 1));
+      }
     };
     window.addEventListener("prevail:settings-section", onJump as EventListener);
     return () => window.removeEventListener("prevail:settings-section", onJump as EventListener);
@@ -12890,7 +12977,7 @@ function SettingsPanel({
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {section === "connectors" && (
             <>
-              <ConnectorsSection vaultPath={vaultPath} />
+              <ConnectorsSection vaultPath={vaultPath} focusAppId={settingsDeepLink ?? undefined} />
               <div className="mt-8 border-t border-border-subtle pt-8">
                 <IngestionSection />
               </div>
@@ -12926,6 +13013,8 @@ function ModelsSection({
   onStartChatWith?: (cliId: string, modelId?: string) => void;
   onActivated?: () => Promise<CliInfo[]>;
 }) {
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const toggleGroup = (id: string) => setOpenGroups((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const firstAvailable = useMemo(() => clis.find((c) => c.available)?.id ?? "", [clis]);
   const [defaultChatCli, setDefaultChatCli] = useState(() => lsGet(LS.defaultChatCli) || firstAvailable);
   useEffect(() => { if (defaultChatCli) lsSet(LS.defaultChatCli, defaultChatCli); }, [defaultChatCli]);
@@ -12999,21 +13088,63 @@ function ModelsSection({
           Re-check all
         </button>
       </div>
-      <section className="mb-8">
-        <SubsectionHeader icon={Sparkles}>Installed CLIs</SubsectionHeader>
-        <AgentsSection
-          clis={clis}
-          onStartChatWith={onStartChatWith}
-          defaultChatCli={defaultChatCli}
-          onMakeDefault={setDefaultChatCli}
-          embedded
-        />
-      </section>
-      <section className="border-t border-border-subtle pt-8">
-        <SubsectionHeader icon={Layers}>API providers</SubsectionHeader>
-        <p className="mb-4 text-xs text-text-muted">Bring your own key, no install. OpenRouter is one key for 200+ hosted models.</p>
-        <ProvidersSection onActivated={onActivated} embedded />
-      </section>
+      {/* Three collapsible groups — all collapsed by default for a clean landing */}
+      {([
+        {
+          id: "clis",
+          label: "Installed CLIs",
+          icon: Sparkles,
+          desc: `${clis.filter((c) => c.available).length} detected · ${clis.filter((c) => !c.available).length} not installed`,
+          content: (
+            <AgentsSection
+              clis={clis}
+              onStartChatWith={onStartChatWith}
+              defaultChatCli={defaultChatCli}
+              onMakeDefault={setDefaultChatCli}
+              embedded
+            />
+          ),
+        },
+        {
+          id: "api",
+          label: "API Providers",
+          icon: Layers,
+          desc: "OpenRouter, AWS Bedrock — one key for hundreds of models",
+          content: (
+            <>
+              <p className="mb-4 text-xs text-text-muted">Bring your own key, no install. OpenRouter is one key for 200+ hosted models.</p>
+              <ProvidersSection onActivated={onActivated} embedded />
+            </>
+          ),
+        },
+        {
+          id: "direct",
+          label: "Direct Providers",
+          icon: Globe,
+          desc: "Anthropic, OpenAI, Google — native API keys",
+          content: (
+            <div className="rounded-lg border border-border-subtle bg-surface px-4 py-4 text-xs text-text-muted">
+              Native single-vendor keys (Anthropic API, OpenAI API, Google AI) are coming next. Use OpenRouter above to access all of these today with one key.
+            </div>
+          ),
+        },
+      ] as const).map(({ id, label, icon: Icon, desc, content }) => {
+        const isOpen = openGroups.has(id);
+        return (
+          <div key={id} className="mb-2 overflow-hidden rounded-lg border border-border-subtle bg-surface">
+            <button
+              onClick={() => toggleGroup(id)}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-warm"
+            >
+              <Icon className="h-4 w-4 shrink-0 text-text-muted" />
+              <span className="flex-1 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">{label}</span>
+              <span className="shrink-0 font-mono text-[10px] text-text-muted/60">{desc}</span>
+              <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${isOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+            </button>
+            {isOpen && <div className="border-t border-border-subtle px-4 py-4">{content}</div>}
+          </div>
+        );
+      })}
     </>
   );
 }
@@ -14844,12 +14975,12 @@ function PatternChip({ pattern }: { pattern: string }) {
   );
 }
 
-function ConnectorsSection({ vaultPath }: { vaultPath: string }) {
+function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string; focusAppId?: string }) {
   const [cat, setCat] = useState<ConnectorCatalog | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [showAll, setShowAll] = useState(false);
-  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
   const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
   const [engineApps, setEngineApps] = useState<EngineApp[] | null>(null);
   const [probing, setProbing] = useState<string | null>(null);
@@ -14876,8 +15007,10 @@ function ConnectorsSection({ vaultPath }: { vaultPath: string }) {
     setProbing(null);
   }
 
-  const [expandedApp, setExpandedApp] = useState<string | null>(null);
+  const [expandedApp, setExpandedApp] = useState<string | null>(focusAppId ?? null);
   const [appSkills, setAppSkills] = useState<Record<string, { id: string; runner: string; trigger: string }[]>>({});
+  // Sync prop changes (e.g. sidebar click fires a new focusAppId after mount).
+  useEffect(() => { if (focusAppId) setExpandedApp(focusAppId); }, [focusAppId]);
   async function toggleApp(id: string) {
     if (expandedApp === id) { setExpandedApp(null); return; }
     setExpandedApp(id);
@@ -14934,22 +15067,26 @@ function ConnectorsSection({ vaultPath }: { vaultPath: string }) {
   const needle = q.trim().toLowerCase();
   // Default to the household-name core (tier 1). Searching or "Show all"
   // widens to the full catalog so nothing is ever truly hidden.
-  const groups = useMemo(() => {
+  const allTags = useMemo(() => {
+    const domains = new Set((cat?.apps ?? []).map((a) => a.domain));
+    return Array.from(domains)
+      .map((d) => ({ key: d, label: DOMAIN_LABEL[d] ?? titleCase(d) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [cat]);
+
+  const flatApps = useMemo(() => {
     const all = cat?.apps ?? [];
     const base = needle || showAll ? all : all.filter((a) => a.tier === 1);
-    const filtered = needle
+    let filtered = needle
       ? base.filter((a) => a.name.toLowerCase().includes(needle) || a.domain.toLowerCase().includes(needle) || (DOMAIN_LABEL[a.domain] ?? "").toLowerCase().includes(needle))
       : base;
-    const by: Record<string, CatalogApp[]> = {};
-    for (const a of filtered) (by[a.domain] ??= []).push(a);
-    return Object.entries(by)
-      .map(([domain, items]) => ({ domain, items: items.slice().sort((a, b) => a.name.localeCompare(b.name)) }))
-      .sort((a, b) => (DOMAIN_LABEL[a.domain] ?? a.domain).localeCompare(DOMAIN_LABEL[b.domain] ?? b.domain));
-  }, [cat, needle, showAll]);
+    if (activeTags.size > 0) filtered = filtered.filter((a) => activeTags.has(a.domain));
+    return filtered.slice().sort((a, b) => a.name.localeCompare(b.name));
+  }, [cat, needle, showAll, activeTags]);
 
   const total = cat?.apps.length ?? 0;
   const coreTotal = useMemo(() => (cat?.apps ?? []).filter((a) => a.tier === 1).length, [cat]);
-  const shown = useMemo(() => groups.reduce((n, g) => n + g.items.length, 0), [groups]);
+  const shown = flatApps.length;
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
     for (const a of cat?.apps ?? []) c[a.pattern] = (c[a.pattern] ?? 0) + 1;
@@ -15097,82 +15234,90 @@ function ConnectorsSection({ vaultPath }: { vaultPath: string }) {
           })}
         </div>
       </div>
+      {/* Tag filter chips */}
+      {allTags.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {allTags.map((t) => {
+            const active = activeTags.has(t.key);
+            return (
+              <button
+                key={t.key}
+                onClick={() => setActiveTags((s) => { const n = new Set(s); if (n.has(t.key)) n.delete(t.key); else n.add(t.key); return n; })}
+                className={`rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider transition-colors ${active ? "border-accent bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:border-accent-border hover:text-text-secondary"}`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+          {activeTags.size > 0 && (
+            <button
+              onClick={() => setActiveTags(new Set())}
+              className="rounded-full border border-border bg-background px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-warn/50 hover:text-warn"
+            >
+              clear
+            </button>
+          )}
+        </div>
+      )}
       <div className="mb-4 font-mono text-[10px] uppercase tracking-wider text-text-muted/70">
         {needle
           ? `${shown.toLocaleString()} match${shown === 1 ? "" : "es"}`
-          : showAll
-            ? `Showing all ${total.toLocaleString()} apps`
-            : `Showing ${coreTotal} core apps · toggle All for the full ${total.toLocaleString()}`}
+          : activeTags.size > 0
+            ? `${shown.toLocaleString()} app${shown === 1 ? "" : "s"} in selected categories`
+            : showAll
+              ? `Showing all ${total.toLocaleString()} apps`
+              : `Showing ${coreTotal} core apps · toggle All for the full ${total.toLocaleString()}`}
       </div>
 
-      {/* One collapsible group per domain. Collapsed by default to keep the
-          screen calm; expanded rows are indented under the header. */}
-      <div className="space-y-2">
-        {groups.map((g) => {
-          const expanded = needle ? true : !!open[g.domain];
+      {/* Flat alphabetical list — category shown as secondary label on each row */}
+      <div className="space-y-1.5">
+        {flatApps.map((a) => {
+          const brand = brandByName[a.name.toLowerCase()];
+          const hasLogo = !!(a.iconSlug && logos[a.iconSlug]);
           return (
-            <div key={g.domain} className="rounded-lg border border-border-subtle bg-surface">
-              <button
-                onClick={() => setOpen((o) => ({ ...o, [g.domain]: !o[g.domain] }))}
-                className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-surface-warm"
-              >
-                <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${expanded ? "rotate-90" : ""}`} strokeWidth={2.5} />
-                <span className="flex-1 truncate font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">
-                  {DOMAIN_LABEL[g.domain] ?? titleCase(g.domain)}
-                </span>
-                <span className="shrink-0 font-mono text-[10px] text-text-muted/60">{g.items.length}</span>
-              </button>
-              {expanded && (
-                <div className="space-y-1.5 border-t border-border-subtle px-3 pb-3 pt-2 pl-7">
-                  {g.items.map((a) => {
-                    const brand = brandByName[a.name.toLowerCase()];
-                    const hasLogo = !!(a.iconSlug && logos[a.iconSlug]);
-                    return (
-                      <div key={a.name} className={`group ${SETTINGS_ROW} py-2 hover:border-accent-border hover:bg-surface-warm`}>
-                        {hasLogo ? (
-                          <AppLogo app={a} logos={logos} />
-                        ) : brand ? (
-                          <ConnectorIcon c={brand} />
-                        ) : (
-                          <AppLogo app={a} logos={logos} />
-                        )}
-                        <span className="flex-1 truncate text-sm font-medium text-text-primary">
-                          {a.name}
-                          {a.note && <span className="ml-2 text-[11px] font-normal text-text-muted">{a.note}</span>}
-                        </span>
-                        {a.via && <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">via {a.via}</span>}
-                        {a.fallback && <span className="shrink-0 font-mono text-[9px] text-text-muted/50" title={`falls back to ${a.fallback}`}>→ {PATTERN_LABEL[a.fallback] ?? a.fallback}</span>}
-                        {a.verified && a.sources && a.sources.length > 0 && (
-                          <span className="shrink-0 font-mono text-[9px] text-accent" title={`Verified connector — listed by: ${a.sources.join(", ")}`}>
-                            ✓ {a.sources.map((s) => SOURCE_ABBR[s] ?? s).join("·")}
-                          </span>
-                        )}
-                        {(() => {
-                          const slug = a.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
-                          const already = connectedIds.has(slug);
-                          return already ? (
-                            <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-accent" title="Already a connected app">added</span>
-                          ) : (
-                            <button
-                              onClick={() => addApp(a)}
-                              disabled={adding === a.name}
-                              title="Add as a connectable app"
-                              className="shrink-0 rounded border border-border bg-background px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted opacity-0 transition-opacity hover:border-accent-border hover:text-accent group-hover:opacity-100 disabled:opacity-50"
-                            >
-                              {adding === a.name ? "…" : addMsg[a.name] === "added" ? "added" : "add"}
-                            </button>
-                          );
-                        })()}
-                        <PatternChip pattern={a.pattern} />
-                      </div>
-                    );
-                  })}
-                </div>
+            <div key={a.name} className={`group ${SETTINGS_ROW} py-2 hover:border-accent-border hover:bg-surface-warm`}>
+              {hasLogo ? (
+                <AppLogo app={a} logos={logos} />
+              ) : brand ? (
+                <ConnectorIcon c={brand} />
+              ) : (
+                <AppLogo app={a} logos={logos} />
               )}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-text-primary">
+                  {a.name}
+                  {a.note && <span className="ml-2 text-[11px] font-normal text-text-muted">{a.note}</span>}
+                </span>
+                <span className="font-mono text-[10px] text-text-muted/60">{DOMAIN_LABEL[a.domain] ?? titleCase(a.domain)}</span>
+              </span>
+              {a.via && <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">via {a.via}</span>}
+              {a.fallback && <span className="shrink-0 font-mono text-[9px] text-text-muted/50" title={`falls back to ${a.fallback}`}>→ {PATTERN_LABEL[a.fallback] ?? a.fallback}</span>}
+              {a.verified && a.sources && a.sources.length > 0 && (
+                <span className="shrink-0 font-mono text-[9px] text-accent" title={`Verified connector — listed by: ${a.sources.join(", ")}`}>
+                  ✓ {a.sources.map((s) => SOURCE_ABBR[s] ?? s).join("·")}
+                </span>
+              )}
+              {(() => {
+                const slug = a.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+                const already = connectedIds.has(slug);
+                return already ? (
+                  <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-accent" title="Already a connected app">added</span>
+                ) : (
+                  <button
+                    onClick={() => addApp(a)}
+                    disabled={adding === a.name}
+                    title="Add as a connectable app"
+                    className="shrink-0 rounded border border-border bg-background px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted opacity-0 transition-opacity hover:border-accent-border hover:text-accent group-hover:opacity-100 disabled:opacity-50"
+                  >
+                    {adding === a.name ? "…" : addMsg[a.name] === "added" ? "added" : "add"}
+                  </button>
+                );
+              })()}
+              <PatternChip pattern={a.pattern} />
             </div>
           );
         })}
-        {cat && groups.length === 0 && (
+        {cat && flatApps.length === 0 && (
           <div className="rounded-lg border border-border-subtle bg-surface px-4 py-6 text-center text-sm text-text-muted">No apps match "{q}".</div>
         )}
       </div>
@@ -16835,7 +16980,7 @@ function PreambleCard({
         </button>
       </div>
       {open && (
-        <div className="border-t border-border-subtle px-3 py-2">
+        <div className="border-t border-border-subtle py-2 pl-8 pr-3">
           {option.instruction ? (
             <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
               {option.instruction}

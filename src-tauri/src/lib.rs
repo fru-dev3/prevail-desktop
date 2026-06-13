@@ -4023,6 +4023,7 @@ pub fn run() {
             engine::engine_lock_set,
             engine::engine_lock_verify,
             engine::engine_lock_clear,
+            engine::engine_lock_reset,
             engine::engine_biometric_authenticate,
             ideal_state_versions,
             engine::engine_vault_status,
