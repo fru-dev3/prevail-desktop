@@ -15856,21 +15856,37 @@ function McpSection({ vaultPath }: { vaultPath: string }) {
         {mcpPathUnstable && (
           <div className="mb-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[11px] text-warn">
             <div className="mb-2 font-medium">Prevail is not in your Applications folder.</div>
-            <div className="mb-2">MCP requires a stable path. The config below uses the canonical location. Move Prevail.app to Applications once and this resolves permanently.</div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => invoke("open_in_finder", { path: "/Applications" }).catch(() => {})}
-                className="inline-flex items-center gap-1.5 rounded border border-warn/40 bg-warn/10 px-2.5 py-1 text-[11px] hover:bg-warn/20"
-              >
-                <Folder className="h-3 w-3" /> Open Applications folder
-              </button>
-              <button
-                onClick={() => invoke("open_in_finder", { path: enginePath || "/Applications/Prevail.app" }).catch(() => {})}
-                className="inline-flex items-center gap-1.5 rounded border border-warn/40 bg-warn/10 px-2.5 py-1 text-[11px] hover:bg-warn/20"
-              >
-                <Folder className="h-3 w-3" /> Reveal current Prevail.app
-              </button>
-            </div>
+            <div className="mb-2">MCP requires a stable path. Move Prevail.app to /Applications/ once and this resolves permanently.</div>
+            {(() => {
+              const [moving, setMoving] = useState(false);
+              const [moveMsg, setMoveMsg] = useState<string | null>(null);
+              return (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      setMoving(true); setMoveMsg(null);
+                      try {
+                        const src = enginePath?.includes(".app") ? enginePath.slice(0, enginePath.lastIndexOf(".app") + 4) : enginePath || "";
+                        const msg = await invoke<string>("move_to_applications", { source: src });
+                        setMoveMsg(msg);
+                      } catch (e) { setMoveMsg(`Failed: ${e}`); }
+                      setMoving(false);
+                    }}
+                    disabled={moving || !enginePath}
+                    className="inline-flex items-center gap-1.5 rounded border border-warn bg-warn/20 px-2.5 py-1 text-[11px] font-semibold hover:bg-warn/30 disabled:opacity-50"
+                  >
+                    {moving ? "Moving…" : "Move to Applications automatically"}
+                  </button>
+                  <button
+                    onClick={() => invoke("open_in_finder", { path: "/Applications" }).catch(() => {})}
+                    className="inline-flex items-center gap-1.5 rounded border border-warn/40 bg-warn/10 px-2.5 py-1 text-[11px] hover:bg-warn/20"
+                  >
+                    <Folder className="h-3 w-3" /> Open Applications folder
+                  </button>
+                  {moveMsg && <span className="w-full text-[11px]">{moveMsg}</span>}
+                </div>
+              );
+            })()}
           </div>
         )}
         <div className="mb-3 inline-flex flex-wrap gap-1 rounded-lg border border-border-subtle bg-surface-warm/60 p-1">
