@@ -4007,6 +4007,8 @@ pub fn run() {
             engine::engine_domains,
             engine::engine_apps_list,
             engine::engine_app_probe,
+            engine::engine_app_add,
+            engine::engine_app_sync,
             engine::engine_vault_embed,
             engine::engine_appmode_get,
             engine::engine_appmode_set,
