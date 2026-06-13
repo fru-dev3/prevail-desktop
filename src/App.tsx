@@ -2990,7 +2990,7 @@ function SidebarMcpLive({ collapsed, setTab }: { collapsed: boolean; setTab: (t:
   );
   if (collapsed) {
     return (
-      <button onClick={goMcp} title="MCP server is live — click for settings" className="flex w-full justify-center border-t border-border-subtle px-2 py-2">
+      <button onClick={goMcp} title="MCP server is live. Click for settings." className="flex w-full justify-center border-t border-border-subtle px-2 py-2">
         {dot}
       </button>
     );
@@ -4395,8 +4395,8 @@ function DomainStatusBar({
                     onChange={(e) => { setAutoMode(e.target.value); setPref(`prevail.domain.${domain}.autoMode`, e.target.value); }}
                     className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary"
                   >
-                    <option value="smart">Smart — only judgment calls</option>
-                    <option value="always">Always — every send</option>
+                    <option value="smart">Smart: only judgment calls</option>
+                    <option value="always">Always: every send</option>
                   </select>
                 </div>
               )}
@@ -5022,7 +5022,7 @@ function DomainAppsStrip({ domain }: { domain: string }) {
     <div className="mb-4 flex flex-wrap items-center gap-2">
       <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Apps</span>
       {apps.map((a) => (
-        <span key={a.id} className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-2 py-0.5" title={`${a.status}${a.lastError ? " — " + a.lastError : ""}`}>
+        <span key={a.id} className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-2 py-0.5" title={`${a.status}${a.lastError ? ": " + a.lastError : ""}`}>
           <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: STATUS_TINT[a.status] ?? "#9aa0a6" }} />
           <span className="text-[11px] text-text-secondary">{a.account?.label ? `${a.title} · ${a.account.label}` : a.title}</span>
         </span>
@@ -13139,7 +13139,7 @@ function ModelsSection({
           id: "api",
           label: "API Providers",
           icon: Layers,
-          desc: "OpenRouter, AWS Bedrock — one key for hundreds of models",
+          desc: "OpenRouter, AWS Bedrock: one key for hundreds of models",
           content: (
             <>
               <p className="mb-4 text-xs text-text-muted">Bring your own key, no install. OpenRouter is one key for 200+ hosted models.</p>
@@ -15031,7 +15031,7 @@ function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string; focus
     setProbing(id);
     try {
       const r = await invoke<{ status?: string; message?: string }>("engine_app_probe", { id });
-      setProbeResult((m) => ({ ...m, [id]: `${r.status ?? "?"}${r.message ? " — " + r.message : ""}` }));
+      setProbeResult((m) => ({ ...m, [id]: `${r.status ?? "?"}${r.message ? ": " + r.message : ""}` }));
       setEngineApps(await invoke<EngineApp[]>("engine_apps_list"));
     } catch (e) { setProbeResult((m) => ({ ...m, [id]: `error: ${e}` })); }
     setProbing(null);
@@ -15056,7 +15056,7 @@ function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string; focus
     setProbing("sync:" + id);
     try {
       const r = await invoke<{ ok: boolean; artifacts?: number; error?: string }>("engine_app_sync", { id, vault: vaultPath });
-      setProbeResult((m) => ({ ...m, [id]: r.ok ? `synced — ${r.artifacts ?? 0} artifact(s)` : `sync failed: ${r.error}` }));
+      setProbeResult((m) => ({ ...m, [id]: r.ok ? `synced. ${r.artifacts ?? 0} artifact(s)` : `sync failed: ${r.error}` }));
       setEngineApps(await invoke<EngineApp[]>("engine_apps_list"));
     } catch (e) { setProbeResult((m) => ({ ...m, [id]: `error: ${e}` })); }
     setProbing(null);
@@ -15348,7 +15348,7 @@ function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string; focus
               {a.via && <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">via {a.via}</span>}
               {a.fallback && <span className="shrink-0 font-mono text-[9px] text-text-muted/50" title={`falls back to ${a.fallback}`}>→ {PATTERN_LABEL[a.fallback] ?? a.fallback}</span>}
               {a.verified && a.sources && a.sources.length > 0 && (
-                <span className="shrink-0 font-mono text-[9px] text-accent" title={`Verified connector — listed by: ${a.sources.join(", ")}`}>
+                <span className="shrink-0 font-mono text-[9px] text-accent" title={`Verified connector. Listed by: ${a.sources.join(", ")}`}>
                   ✓ {a.sources.map((s) => SOURCE_ABBR[s] ?? s).join("·")}
                 </span>
               )}
