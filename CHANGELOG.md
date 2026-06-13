@@ -4,6 +4,17 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.12] — 2026-06-12 · connector catalog + CLI connectors (Tier D)
+
+### Added
+
+- **Connector catalog, pre-populated.** Settings → Connectors now lists 8,322 personal-life apps across 30 domains (money, credit, investing, taxes, insurance, real estate, health, fitness, email, comms, productivity, calendar, files, security, career, shopping, travel, smart home, social, media, learning, government, utilities, automotive, food, family, giving, legal, news, dev). Every app is tagged with a connector pattern (API, OAuth, CLI, Web) that maps to an ingestion tier, so the connector layer is app-agnostic: a new app needs only a pattern tag, not bespoke code. The page defaults to a ~270-app household-name core; a Core/All toggle and search span the full catalog. Bundled as a resource, loaded via `ingestion_connector_catalog`.
+- **Tier D — CLI connectors.** A fourth ingestion tier that runs an installed first-party CLI's read-only command (gh, op, stripe, gcloud) and ingests the output into the matching domain. Allowlist only (providers come from a bundled file), no shell, validated bare binary names, wall-clock timeout, output size cap, and behind the Bunker network guard. The user installs and signs into the CLI themselves; Prevail never bundles one.
+
+### Changed
+
+- The Connectors page is now data-driven (collapsible per-domain groups, pattern chips, fallback ladders) instead of a hardcoded placeholder grid.
+
 ## [0.7.11] — 2026-06-12 · agent-first, backups, public benchmark
 
 ### Added
