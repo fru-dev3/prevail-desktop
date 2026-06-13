@@ -869,6 +869,41 @@ pub async fn mcp_test_handshake(vault: String) -> Result<serde_json::Value, Stri
     }
 }
 
+/// Path to the headless-learn launchd plist (mirrors prevail-cli daemon-launchd).
+fn learn_agent_plist() -> Option<std::path::PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    Some(std::path::Path::new(&home).join("Library/LaunchAgents/sh.prevail.learn.plist"))
+}
+
+/// Is the headless self-learning launchd agent installed?
+#[tauri::command]
+pub fn headless_learn_status() -> bool {
+    learn_agent_plist().map(|p| p.exists()).unwrap_or(false)
+}
+
+/// Install or remove the headless-learn launchd agent by driving the engine's
+/// own `daemon install|uninstall` (so the plist/launchctl logic lives in one
+/// place). Returns the engine's stdout/stderr summary.
+#[tauri::command]
+pub async fn headless_learn_set(vault: String, enabled: bool) -> Result<String, String> {
+    let bin = resolve_prevail_bin();
+    let (combined_path, user, logname) = crate::build_cli_env();
+    let sub = if enabled { "install" } else { "uninstall" };
+    let mut cmd = tokio::process::Command::new(&bin);
+    cmd.args(["daemon", sub, "--vault", &vault])
+        .env_clear()
+        .envs(crate::scrubbed_env_pairs())
+        .env("PATH", combined_path)
+        .env("USER", user)
+        .env("LOGNAME", logname)
+        // Tell the engine the absolute bin to put in the plist (resolve_prevail_bin
+        // gives the bundled sidecar; the agent must launch that exact path).
+        .env("PREVAIL_BIN", &bin);
+    let out = cmd.output().await.map_err(|e| format!("spawn {bin} failed: {e}"))?;
+    let txt = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    if out.status.success() { Ok(txt.trim().to_string()) } else { Err(txt.trim().to_string()) }
+}
+
 /// Is this vault encrypted, and is the session currently unlocked?
 #[tauri::command]
 pub fn engine_vault_status(vault: String) -> Result<serde_json::Value, String> {
