@@ -14537,8 +14537,26 @@ function ConnectorIcon({ c }: { c: Connector }) {
 
 // Catalog shapes — mirror resources/connectors/catalog.json. The Rust command
 // returns it verbatim, so the frontend owns the type.
-type CatalogApp = { name: string; domain: string; pattern: string; fallback?: string; via?: string; note?: string; tier?: number; sources?: string[]; verified?: boolean; obscure?: boolean };
+type CatalogApp = { name: string; domain: string; pattern: string; fallback?: string; via?: string; note?: string; tier?: number; sources?: string[]; verified?: boolean; obscure?: boolean; iconSlug?: string };
 const SOURCE_ABBR: Record<string, string> = { claude: "Cl", chatgpt: "GPT", gemini: "Gem" };
+type BrandLogo = { hex: string; path: string };
+
+// Real brand SVG (simple-icons) when the app matched one at build time; else a
+// pattern-tinted dot. Keeps the row scannable for all 1,400+ apps.
+function AppLogo({ app, logos }: { app: CatalogApp; logos: Record<string, BrandLogo> }) {
+  const logo = app.iconSlug ? logos[app.iconSlug] : undefined;
+  return (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-white">
+      {logo ? (
+        <svg width={16} height={16} viewBox="0 0 24 24" fill={`#${logo.hex}`} aria-hidden>
+          <path d={logo.path} />
+        </svg>
+      ) : (
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: PATTERN_TINT[app.pattern] ?? "#9aa0a6" }} />
+      )}
+    </span>
+  );
+}
 type ConnectorCatalog = { version: number; domains?: string[]; apps: CatalogApp[]; patterns?: Record<string, { tier: string; label: string }> };
 
 // Each connector PATTERN maps to one ingestion tier. Short label + tint so a
@@ -14581,11 +14599,14 @@ function ConnectorsSection() {
   const [q, setQ] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
 
   useEffect(() => {
     (async () => {
       try { setCat(await invoke<ConnectorCatalog>("ingestion_connector_catalog")); }
       catch (e) { setErr(String(e)); }
+      try { setLogos(await invoke<Record<string, BrandLogo>>("ingestion_connector_logos")); }
+      catch { /* logos optional */ }
     })();
   }, []);
 
@@ -14707,14 +14728,15 @@ function ConnectorsSection() {
                 <div className="space-y-1.5 border-t border-border-subtle px-3 pb-3 pt-2 pl-7">
                   {g.items.map((a) => {
                     const brand = brandByName[a.name.toLowerCase()];
+                    const hasLogo = !!(a.iconSlug && logos[a.iconSlug]);
                     return (
                       <div key={a.name} className={`group ${SETTINGS_ROW} py-2 hover:border-accent-border hover:bg-surface-warm`}>
-                        {brand ? (
+                        {hasLogo ? (
+                          <AppLogo app={a} logos={logos} />
+                        ) : brand ? (
                           <ConnectorIcon c={brand} />
                         ) : (
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center">
-                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: PATTERN_TINT[a.pattern] ?? "#9aa0a6" }} />
-                          </span>
+                          <AppLogo app={a} logos={logos} />
                         )}
                         <span className="flex-1 truncate text-sm font-medium text-text-primary">
                           {a.name}
