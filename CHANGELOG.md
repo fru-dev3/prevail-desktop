@@ -4,6 +4,19 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.16] — 2026-06-12 · per-app detail, Gmail connector, engine hardening
+
+### Added
+
+- **Per-app detail.** Click a Connected app to expand its detail: runnable skills (id/runner/trigger), status, schedule, last error. Completes the apps experience (gallery + add + connect + test + sync + per-domain strip + detail).
+- **Gmail connector** (engine): a real `gmail` app (OAuth → email domain) whose sync-inbox skill calls the Gmail API via the http runner's `${auth.token}` refresh. Authorize once with `prevail connectors oauth gmail`; then it syncs into the email domain. (`plaid` already covers bank → wealth.)
+- **Tier D security audit** (`docs/SECURITY-tier-d-cli.md`) + 6 Tier D unit tests.
+
+### Fixed / hardened
+
+- **Sync daemon: exponential failure backoff** so a broken connector stops hammering its API/portal (cron scheduling + concurrency cap already existed).
+- **Vault restore test** aligned to the documented in-place round-trip — the engine suite is now fully green (309 pass / 0 fail).
+
 ## [0.7.15] — 2026-06-12 · triage, alignment scoring, per-domain apps
 
 ### Added
