@@ -4021,6 +4021,8 @@ pub fn run() {
             ideal_state_versions,
             engine::engine_vault_status,
             engine::mcp_test_handshake,
+            engine::headless_learn_status,
+            engine::headless_learn_set,
             engine::engine_vault_unlock,
             engine::engine_vault_lock_session,
             engine::engine_vault_encrypt,
