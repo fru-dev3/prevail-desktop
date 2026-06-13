@@ -14535,49 +14535,205 @@ function ConnectorIcon({ c }: { c: Connector }) {
   );
 }
 
+// Catalog shapes — mirror resources/connectors/catalog.json. The Rust command
+// returns it verbatim, so the frontend owns the type.
+type CatalogApp = { name: string; domain: string; pattern: string; fallback?: string; via?: string; note?: string; tier?: number };
+type ConnectorCatalog = { version: number; domains?: string[]; apps: CatalogApp[]; patterns?: Record<string, { tier: string; label: string }> };
+
+// Each connector PATTERN maps to one ingestion tier. Short label + tint so a
+// row scans at a glance without per-brand icons (the catalog has hundreds).
+const PATTERN_LABEL: Record<string, string> = { api: "API", oauth: "OAuth", cli: "CLI", browser: "Web" };
+const PATTERN_TINT: Record<string, string> = { api: "#2fb87a", oauth: "#C4A35A", cli: "#6b7cff", browser: "#9aa0a6" };
+const PATTERN_TIER: Record<string, string> = { api: "Tier A · API/MCP", oauth: "Tier B · OAuth gateway", cli: "Tier D · CLI", browser: "Tier C · browser" };
+
+// Friendly domain headings. Falls back to titleCase for anything unmapped.
+const DOMAIN_LABEL: Record<string, string> = {
+  money: "Money & Banking", credit: "Credit & Debt", investing: "Investing & Wealth",
+  taxes: "Taxes & Accounting", insurance: "Insurance", realestate: "Real Estate & Home",
+  health: "Health & Medical", fitness: "Fitness & Wellness", email: "Email",
+  communication: "Communication", productivity: "Productivity", calendar: "Calendar",
+  files: "Files & Storage", security: "Security & Identity", career: "Career & Work",
+  shopping: "Shopping", travel: "Travel", smarthome: "Smart Home", social: "Social",
+  media: "Media & Streaming", learning: "Learning", government: "Government & Civic",
+  utilities: "Utilities", automotive: "Automotive", food: "Food & Dining",
+  family: "Family & Home", giving: "Giving", legal: "Legal & Estate",
+  news: "News & Research", dev: "Developer",
+};
+
+function PatternChip({ pattern }: { pattern: string }) {
+  const label = PATTERN_LABEL[pattern] ?? pattern;
+  const tint = PATTERN_TINT[pattern] ?? "#9aa0a6";
+  return (
+    <span
+      className="shrink-0 rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider"
+      style={{ color: tint, borderColor: `${tint}55`, backgroundColor: `${tint}14` }}
+      title={PATTERN_TIER[pattern] ?? pattern}
+    >
+      {label}
+    </span>
+  );
+}
+
 function ConnectorsSection() {
-  const total = CONNECTOR_GROUPS.reduce((n, g) => n + g.items.length, 0);
+  const [cat, setCat] = useState<ConnectorCatalog | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    (async () => {
+      try { setCat(await invoke<ConnectorCatalog>("ingestion_connector_catalog")); }
+      catch (e) { setErr(String(e)); }
+    })();
+  }, []);
+
+  // Reuse the curated brand marks where an app name matches; everything else
+  // shows a neutral pattern-tinted dot. Keeps CONNECTOR_GROUPS/ConnectorIcon live.
+  const brandByName = useMemo(() => {
+    const m: Record<string, Connector> = {};
+    for (const g of CONNECTOR_GROUPS) for (const it of g.items) m[it.name.split(" (")[0].toLowerCase()] = it;
+    return m;
+  }, []);
+
+  const needle = q.trim().toLowerCase();
+  // Default to the household-name core (tier 1). Searching or "Show all"
+  // widens to the full catalog so nothing is ever truly hidden.
+  const groups = useMemo(() => {
+    const all = cat?.apps ?? [];
+    const base = needle || showAll ? all : all.filter((a) => a.tier === 1);
+    const filtered = needle
+      ? base.filter((a) => a.name.toLowerCase().includes(needle) || a.domain.toLowerCase().includes(needle) || (DOMAIN_LABEL[a.domain] ?? "").toLowerCase().includes(needle))
+      : base;
+    const by: Record<string, CatalogApp[]> = {};
+    for (const a of filtered) (by[a.domain] ??= []).push(a);
+    return Object.entries(by)
+      .map(([domain, items]) => ({ domain, items: items.slice().sort((a, b) => a.name.localeCompare(b.name)) }))
+      .sort((a, b) => (DOMAIN_LABEL[a.domain] ?? a.domain).localeCompare(DOMAIN_LABEL[b.domain] ?? b.domain));
+  }, [cat, needle, showAll]);
+
+  const total = cat?.apps.length ?? 0;
+  const coreTotal = useMemo(() => (cat?.apps ?? []).filter((a) => a.tier === 1).length, [cat]);
+  const shown = useMemo(() => groups.reduce((n, g) => n + g.items.length, 0), [groups]);
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const a of cat?.apps ?? []) c[a.pattern] = (c[a.pattern] ?? 0) + 1;
+    return c;
+  }, [cat]);
+
   return (
     <>
       <SettingsHeader
         title="Connectors"
-        subtitle="Connect your data sources so Prevail auto-syncs and builds full context per domain: bank statements into Wealth, email where it belongs, and more."
+        subtitle="Every app Prevail can pull from, pre-populated and tagged by how it connects. Pulled data lands in the matching domain's vault and feeds the intent ledger + memory."
       />
       {/* Connector hub */}
-      <div className="mb-6 flex items-start gap-3 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+      <div className="mb-5 flex items-start gap-3 rounded-2xl border border-border bg-surface p-5 shadow-sm">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft">
           <Plug className="h-5 w-5 text-accent" />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-text-primary">Composio connector hub</span>
-            <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
+            <span className="font-semibold text-text-primary">Connector catalog</span>
+            <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">{total} apps</span>
           </div>
-          <div className="mt-1 text-xs text-text-secondary">Authenticate once to Composio and switch on any connector below. Pulled data lands in the matching domain's vault and feeds the intent ledger + memory. {total} integrations planned.</div>
-        </div>
-      </div>
-      {/* U1: cleaner grid — category counts, even 2/3-col tiles, and no
-          per-card "Soon" badge (the hub banner already says coming soon, so a
-          badge on every tile was just noise). Domain routing stays as the
-          subtle caption. */}
-      {CONNECTOR_GROUPS.map((g) => (
-        <div key={g.category} className="mb-5">
-          <div className="mb-2 flex items-baseline gap-2">
-            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">{g.category}</span>
-            <span className="font-mono text-[10px] text-text-muted/60">{g.items.length}</span>
+          <div className="mt-1 text-xs text-text-secondary">
+            Each app routes through one of four connector patterns, and each pattern maps to an ingestion tier. A new app just needs a pattern tag, never bespoke code.
           </div>
-          {/* Shared list-row spec; domain inline (one line). */}
-          <div className="space-y-2">
-            {g.items.map((c) => (
-              <div key={c.name} className={`group ${SETTINGS_ROW} hover:border-accent-border hover:bg-surface-warm`}>
-                <ConnectorIcon c={c} />
-                <span className="flex-1 truncate text-sm font-medium text-text-primary">{c.name}</span>
-                <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">→ {titleCase(c.domain)}</span>
-              </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {(["api", "oauth", "cli", "browser"] as const).map((p) => (
+              <span key={p} className="inline-flex items-center gap-1.5">
+                <PatternChip pattern={p} />
+                <span className="font-mono text-[10px] text-text-muted">{PATTERN_TIER[p].replace(/^Tier [A-D] · /, "")} · {counts[p] ?? 0}</span>
+              </span>
             ))}
           </div>
         </div>
-      ))}
+      </div>
+
+      {err && <div className="mb-4 rounded-lg border border-border bg-surface px-4 py-3 text-xs text-text-muted">Could not load the catalog: {err}</div>}
+
+      {/* Search + Core/All toggle. Search auto-expands matching domains and
+          always spans the full catalog regardless of the toggle. */}
+      <div className="mb-2 flex items-center gap-2">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={`Search all ${total.toLocaleString()} apps…`}
+          className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-accent-border focus:outline-none"
+        />
+        <div className="flex shrink-0 overflow-hidden rounded-md border border-border">
+          {([["core", "Core"], ["all", "All"]] as const).map(([val, label]) => {
+            const active = val === "all" ? showAll : !showAll;
+            return (
+              <button
+                key={val}
+                onClick={() => setShowAll(val === "all")}
+                className={`px-3 py-2 text-xs font-medium transition-colors ${active ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="mb-4 font-mono text-[10px] uppercase tracking-wider text-text-muted/70">
+        {needle
+          ? `${shown.toLocaleString()} match${shown === 1 ? "" : "es"}`
+          : showAll
+            ? `Showing all ${total.toLocaleString()} apps`
+            : `Showing ${coreTotal} core apps · toggle All for the full ${total.toLocaleString()}`}
+      </div>
+
+      {/* One collapsible group per domain. Collapsed by default to keep the
+          screen calm; expanded rows are indented under the header. */}
+      <div className="space-y-2">
+        {groups.map((g) => {
+          const expanded = needle ? true : !!open[g.domain];
+          return (
+            <div key={g.domain} className="rounded-lg border border-border-subtle bg-surface">
+              <button
+                onClick={() => setOpen((o) => ({ ...o, [g.domain]: !o[g.domain] }))}
+                className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-surface-warm"
+              >
+                <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${expanded ? "rotate-90" : ""}`} strokeWidth={2.5} />
+                <span className="flex-1 truncate font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">
+                  {DOMAIN_LABEL[g.domain] ?? titleCase(g.domain)}
+                </span>
+                <span className="shrink-0 font-mono text-[10px] text-text-muted/60">{g.items.length}</span>
+              </button>
+              {expanded && (
+                <div className="space-y-1.5 border-t border-border-subtle px-3 pb-3 pt-2 pl-7">
+                  {g.items.map((a) => {
+                    const brand = brandByName[a.name.toLowerCase()];
+                    return (
+                      <div key={a.name} className={`group ${SETTINGS_ROW} py-2 hover:border-accent-border hover:bg-surface-warm`}>
+                        {brand ? (
+                          <ConnectorIcon c={brand} />
+                        ) : (
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: PATTERN_TINT[a.pattern] ?? "#9aa0a6" }} />
+                          </span>
+                        )}
+                        <span className="flex-1 truncate text-sm font-medium text-text-primary">
+                          {a.name}
+                          {a.note && <span className="ml-2 text-[11px] font-normal text-text-muted">{a.note}</span>}
+                        </span>
+                        {a.via && <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">via {a.via}</span>}
+                        {a.fallback && <span className="shrink-0 font-mono text-[9px] text-text-muted/50" title={`falls back to ${a.fallback}`}>→ {PATTERN_LABEL[a.fallback] ?? a.fallback}</span>}
+                        <PatternChip pattern={a.pattern} />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {cat && groups.length === 0 && (
+          <div className="rounded-lg border border-border-subtle bg-surface px-4 py-6 text-center text-sm text-text-muted">No apps match "{q}".</div>
+        )}
+      </div>
     </>
   );
 }
@@ -16411,6 +16567,9 @@ function IngestionSection() {
   );
 }
 
+// Tier D — one allowlisted CLI integration (mirrors the Rust CliProvider).
+type CliProvider = { id: string; label: string; app: string; domain: string; binary: string; version_args: string[]; fetch_args: string[] };
+
 function IngestionTierCard({
   tier,
   mcp,
@@ -16427,6 +16586,37 @@ function IngestionTierCard({
   const [busy, setBusy] = useState<string | null>(null);
   const [composioKey, setComposioKey] = useState<string>("");
   const [stderr, setStderr] = useState<Record<string, string>>({});
+  const [cliProviders, setCliProviders] = useState<CliProvider[]>([]);
+  const [cliProbe, setCliProbe] = useState<Record<string, boolean>>({});
+  const [cliMsg, setCliMsg] = useState<Record<string, string>>({});
+
+  // Tier D — load the bundled providers and probe which CLIs are installed.
+  useEffect(() => {
+    if (tier.id !== "tier_d_cli") return;
+    (async () => {
+      try {
+        const ps = await invoke<CliProvider[]>("ingestion_cli_providers");
+        setCliProviders(ps);
+        for (const p of ps) {
+          try {
+            const ok = await invoke<boolean>("ingestion_cli_probe", { providerId: p.id });
+            setCliProbe((c) => ({ ...c, [p.id]: ok }));
+          } catch { /* probe is best-effort */ }
+        }
+      } catch (e) { console.error(e); }
+    })();
+  }, [tier.id]);
+
+  async function cliRun(id: string) {
+    setBusy(`cli:${id}`);
+    setCliMsg((m) => ({ ...m, [id]: "" }));
+    try {
+      const r = await invoke<{ app: string; domain: string; bytes: number }>("ingestion_cli_run", { providerId: id });
+      setCliMsg((m) => ({ ...m, [id]: `Pulled ${r.bytes.toLocaleString()} bytes into ${titleCase(r.domain)}` }));
+      await onRefresh();
+    } catch (e) { setCliMsg((m) => ({ ...m, [id]: `${e}` })); }
+    setBusy(null);
+  }
 
   async function peekStderr(name: string) {
     try {
@@ -16604,6 +16794,43 @@ function IngestionTierCard({
         <p className="mt-3 text-xs text-text-muted">
           Run a portal automation below. Browser opens in headed mode with a persistent profile per (domain, portal). Downloads are intercepted into the domain's <code className="text-accent">imports/</code> folder.
         </p>
+      )}
+
+      {/* Tier D — official CLI connectors. Read-only pull of an installed CLI. */}
+      {tier.id === "tier_d_cli" && (
+        <div className="mt-4 flex flex-col gap-2">
+          <p className="text-xs text-text-muted">
+            Pull from a first-party CLI you have already installed and signed into. Runs a read-only command; output lands in the domain's <code className="text-accent">imports/</code> folder.
+          </p>
+          {cliProviders.length === 0 ? (
+            <p className="text-xs text-text-muted">No CLI providers bundled.</p>
+          ) : (
+            cliProviders.map((p) => {
+              const installed = cliProbe[p.id];
+              return (
+                <div key={p.id} className="flex items-center gap-3 rounded-md border border-border-subtle bg-background px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-text-primary">{p.label}</span>
+                      <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">→ {titleCase(p.domain)}</span>
+                      {installed === true && <span className="font-mono text-[9px] text-accent">installed</span>}
+                      {installed === false && <span className="font-mono text-[9px] text-text-muted/60">not found on PATH</span>}
+                    </div>
+                    <div className="font-mono text-[10px] text-text-muted">{p.binary} {p.fetch_args.join(" ")}</div>
+                    {cliMsg[p.id] && <div className="mt-0.5 font-mono text-[10px] text-text-muted">{cliMsg[p.id]}</div>}
+                  </div>
+                  <button
+                    onClick={() => cliRun(p.id)}
+                    disabled={busy === `cli:${p.id}` || installed === false}
+                    className="shrink-0 rounded border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
+                  >
+                    {busy === `cli:${p.id}` ? "pulling" : "pull"}
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
       )}
     </div>
   );
