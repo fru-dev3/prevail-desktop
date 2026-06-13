@@ -15495,6 +15495,52 @@ function idealSectionIcon(title: string) {
   return Lightbulb;
 }
 
+// Alignment readout — how close each life pillar is to the ideal state. Reads
+// the engine's alignment report (signal mode); shown on the Ideal State page.
+type AlignmentReport = { method: string; overall: number; pillars: { pillar: string; score: number; trend: string; rationale: string }[]; actions: string[] };
+function AlignmentCard({ vaultPath }: { vaultPath: string }) {
+  const [rep, setRep] = useState<AlignmentReport | null>(null);
+  const [loading, setLoading] = useState(false);
+  async function refresh() {
+    setLoading(true);
+    try { setRep(await invoke<AlignmentReport>("engine_alignment", { vault: vaultPath })); }
+    catch { /* alignment optional */ }
+    setLoading(false);
+  }
+  useEffect(() => { void refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [vaultPath]);
+  if (!rep || rep.pillars.length === 0) return null;
+  const tint = (s: number) => (s >= 70 ? "#2fb87a" : s >= 40 ? "#C4A35A" : "#e06c75");
+  return (
+    <div className="mb-5 rounded-xl border border-border bg-surface p-5 shadow-sm">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="font-display text-base font-semibold tracking-tight">Alignment</span>
+        <span className="font-mono text-2xl font-bold" style={{ color: tint(rep.overall) }}>{rep.overall}</span>
+        <span className="font-mono text-[10px] text-text-muted">/100 · {rep.method === "model" ? "model-scored" : "signal"}</span>
+        <button onClick={refresh} disabled={loading} className="ml-auto rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">{loading ? "…" : "refresh"}</button>
+      </div>
+      <div className="space-y-1.5">
+        {rep.pillars.map((p) => (
+          <div key={p.pillar} className="flex items-center gap-3">
+            <span className="w-28 shrink-0 font-mono text-[11px] uppercase tracking-wider text-text-secondary">{p.pillar}</span>
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-warm">
+              <div className="h-full rounded-full" style={{ width: `${p.score}%`, backgroundColor: tint(p.score) }} />
+            </div>
+            <span className="w-8 shrink-0 text-right font-mono text-[11px] text-text-muted">{p.score}</span>
+          </div>
+        ))}
+      </div>
+      {rep.actions.length > 0 && (
+        <div className="mt-3 border-t border-border-subtle pt-2">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Top actions</div>
+          <ul className="mt-1 space-y-0.5">
+            {rep.actions.map((a, i) => <li key={i} className="text-xs text-text-secondary">▸ {a}</li>)}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function IdealStateSection({ vaultPath }: { vaultPath: string }) {
   const [body, setBody] = useState<string>("");
   const [loaded, setLoaded] = useState(false);
@@ -15554,6 +15600,7 @@ function IdealStateSection({ vaultPath }: { vaultPath: string }) {
         icon={Compass}
         subtitle="The vision and values everything optimizes for. Every chat, council, recommendation, plan, and background daemon reads this first and aligns to it. Saved to vault/ideal-state.md the moment you hit Save."
       />
+      <AlignmentCard vaultPath={vaultPath} />
       <div className="mb-4 flex items-center justify-between gap-2">
         <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
           {editing
