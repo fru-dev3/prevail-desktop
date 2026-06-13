@@ -661,6 +661,28 @@ pub fn engine_app_probe(id: String) -> Result<serde_json::Value, String> {
     run_engine_json(&["connectors", "test", &id, "--json"])
 }
 
+/// Scaffold a new app from a catalog pick — writes ~/.prevail/apps/<id>/ so it
+/// becomes a real connectable App. Returns { ok, path?, error? }.
+#[tauri::command]
+pub fn engine_app_add(
+    id: String,
+    title: String,
+    integration: String,
+    domains: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let doms = domains.join(",");
+    run_engine_json(&[
+        "connectors", "add", "--id", &id, "--title", &title,
+        "--integration", &integration, "--domains", &doms, "--json",
+    ])
+}
+
+/// Sync one app on demand ("Sync now"). Returns { ok, artifacts, error? }.
+#[tauri::command]
+pub fn engine_app_sync(id: String, vault: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "sync", &id, "--vault", &vault, "--json"])
+}
+
 /// App lock (Phase 0 passcode). The passcode is sent on the child's STDIN so it
 /// never appears in argv/process list. Desktop-only — deliberately NOT in
 /// WEBUI_ALLOWED; the WebUI has its own login.
