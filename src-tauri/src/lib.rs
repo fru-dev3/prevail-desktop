@@ -21,6 +21,7 @@ mod skillgen;
 mod taskgen;
 mod tasks;
 mod telegram_bridge;
+mod watchdog;
 mod webui;
 
 use serde::{Deserialize, Serialize};
@@ -44,9 +45,18 @@ fn register_child(session: &str, pid: u32) {
         g.insert(session.to_string(), pid);
     }
 }
-fn unregister_child(session: &str) {
+pub(crate) fn unregister_child(session: &str) {
     if let Ok(mut g) = child_registry().lock() {
         g.remove(session);
+    }
+}
+
+// Snapshot of (session key, pid) for every tracked child. Used by the memory
+// watchdog to measure per-session process subtrees.
+pub(crate) fn snapshot_children() -> Vec<(String, u32)> {
+    match child_registry().lock() {
+        Ok(g) => g.iter().map(|(k, v)| (k.clone(), *v)).collect(),
+        Err(_) => Vec::new(),
     }
 }
 
@@ -3935,6 +3945,13 @@ pub fn run() {
                     let _ = st.start(handle, port, u, p);
                 }
             }
+
+            // Memory watchdog: always-on safety net. Never fires in normal use;
+            // only steps in if Prevail's footprint approaches a machine-freezing
+            // fraction of physical RAM, at which point it stops the largest
+            // runaway task and warns the UI.
+            watchdog::start(app.handle().clone());
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -4053,6 +4070,8 @@ pub fn run() {
             engine::engine_app_probe,
             engine::engine_app_add,
             engine::engine_app_set_domains,
+            engine::engine_app_set_enabled,
+            engine::engine_app_runs,
             engine::engine_app_sync,
             engine::engine_alignment,
             engine::engine_app_skills,
