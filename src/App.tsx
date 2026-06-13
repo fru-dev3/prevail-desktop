@@ -2945,6 +2945,52 @@ function SidebarGatewayLive({ collapsed }: { collapsed: boolean }) {
   );
 }
 
+function SidebarMcpLive({ collapsed, setTab }: { collapsed: boolean; setTab: (t: TabId) => void }) {
+  const [live, setLive] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      try {
+        const s = await invoke<{ running: boolean }>("mcp_server_status");
+        if (alive) setLive(!!s.running);
+      } catch {
+        try {
+          const h = await invoke<{ ok: boolean }>("mcp_test_handshake", { vault: "" });
+          if (alive) setLive(!!h.ok);
+        } catch { if (alive) setLive(false); }
+      }
+    };
+    void check();
+    const id = window.setInterval(() => void check(), 30_000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, []);
+  if (!live) return null;
+  const goMcp = () => {
+    setTab("settings");
+    window.setTimeout(() => window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: "mcp" })), 50);
+  };
+  const dot = (
+    <span className="relative flex h-2 w-2 shrink-0">
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+      <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+    </span>
+  );
+  if (collapsed) {
+    return (
+      <button onClick={goMcp} title="MCP server is live — click for settings" className="flex w-full justify-center border-t border-border-subtle px-2 py-2">
+        {dot}
+      </button>
+    );
+  }
+  return (
+    <button onClick={goMcp} className="flex w-full items-center gap-2 border-t border-border-subtle px-3 py-2 text-left hover:bg-surface-warm" title="MCP server live. Click for MCP settings.">
+      {dot}
+      <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-accent">Live · MCP</span>
+      <Wrench className="h-3 w-3 shrink-0 text-text-muted" />
+    </button>
+  );
+}
+
 // One row per live benchmark run, pinned above the Settings strip. The data
 // lives in the module-scope registry, so the rows persist (and progress)
 // across every navigation; each row can cancel its run.
@@ -3115,6 +3161,10 @@ function Sidebar({
     }
   }
 
+  // Domains top-level collapse.
+  const [domainsOpen, setDomainsOpen] = useState<boolean>(() => lsGet("prevail.sidebar.domainsOpen") !== "0");
+  useEffect(() => { lsSet("prevail.sidebar.domainsOpen", domainsOpen ? "1" : "0"); }, [domainsOpen]);
+
   // Archived domains — fetched from the engine. Shown in a collapsible
   // group at the bottom of the rail, each with a Restore action.
   const [archived, setArchived] = useState<string[]>([]);
@@ -3133,6 +3183,37 @@ function Sidebar({
   }, [vaultPath]);
   // Refresh when the active domain set changes (e.g. after archive/restore).
   useEffect(() => { void refreshArchived(); }, [refreshArchived, domains.length]);
+
+  // Apps section — peer to Domains in the sidebar.
+  const APP_PIN_KEY = "prevail.sidebar.pinnedApps";
+  const [sidebarApps, setSidebarApps] = useState<EngineApp[]>([]);
+  const [appsOpen, setAppsOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsOpen") !== "0");
+  const [pinnedApps, setPinnedApps] = useState<Set<string>>(() => {
+    try { const r = lsGet(APP_PIN_KEY); return new Set(r ? r.split(",").filter(Boolean) : []); } catch { return new Set(); }
+  });
+  useEffect(() => { lsSet("prevail.sidebar.appsOpen", appsOpen ? "1" : "0"); }, [appsOpen]);
+  useEffect(() => {
+    let alive = true;
+    invoke<EngineApp[]>("engine_apps_list").then((a) => { if (alive) setSidebarApps(a ?? []); }).catch(() => {});
+    return () => { alive = false; };
+  }, [vaultPath]);
+  function toggleAppPin(id: string) {
+    setPinnedApps((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      lsSet(APP_PIN_KEY, Array.from(next).join(","));
+      return next;
+    });
+  }
+  function openAppInSettings(id: string) {
+    setTab("settings");
+    window.setTimeout(() => window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: `connectors:${id}` })), 50);
+  }
+  const sortedSidebarApps = useMemo(() => {
+    const pinned = sidebarApps.filter((a) => pinnedApps.has(a.id));
+    const rest = sidebarApps.filter((a) => !pinnedApps.has(a.id));
+    return [...pinned.sort((a, b) => a.title.localeCompare(b.title)), ...rest.sort((a, b) => a.title.localeCompare(b.title))];
+  }, [sidebarApps, pinnedApps]);
 
   async function restoreDomain(name: string) {
     setRestoring(name);
@@ -3217,14 +3298,19 @@ function Sidebar({
           </button>
         </div>
         {!collapsed && (
-          <div className="mb-1 px-3 pt-3 text-[10px] font-medium uppercase tracking-[0.18em] text-text-muted">
-            Domains
-          </div>
+          <button
+            onClick={() => setDomainsOpen((v) => !v)}
+            className="group/h mt-2 flex w-full items-center gap-1.5 rounded-md px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted hover:text-text-secondary transition-colors"
+          >
+            <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${domainsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+            <span>Domains</span>
+            <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{domains.length}</span>
+          </button>
         )}
-        {vaultError && !collapsed && (
+        {vaultError && !collapsed && domainsOpen && (
           <div className="mx-2 my-2 rounded border border-warn/40 bg-warn/10 p-2 text-xs text-warn">{vaultError}</div>
         )}
-        {domains.length === 0 && !vaultError && !collapsed && (
+        {domains.length === 0 && !vaultError && !collapsed && domainsOpen && (
           <div className="px-3 py-3">
             <div className="mb-2 text-xs text-text-muted">
               no domains yet. let Prevail recommend a starter set, or create one manually below.
@@ -3247,6 +3333,7 @@ function Sidebar({
             const isFirstPinned = !collapsed && isPinned && (i === 0 || !pinned.has(sortedDomains[i - 1].name));
             const isFirstAll = !collapsed && !isPinned && (i === 0 || pinned.has(sortedDomains[i - 1].name));
             // Hide entries when their group is collapsed.
+            if (!collapsed && !domainsOpen) return null;
             if (!collapsed && isPinned && !pinnedOpen && !isFirstPinned) return null;
             if (!collapsed && !isPinned && !allOpen && !isFirstAll) return null;
             const renderGroupHeader = (label: "Pinned" | "All", open: boolean, set: (v: boolean) => void, count: number) => (
@@ -3411,7 +3498,7 @@ function Sidebar({
         </ul>
 
         {/* Add domain */}
-        {!collapsed && (
+        {!collapsed && domainsOpen && (
           <div className="mt-2 px-2">
             {!adding && (
               <button
@@ -3467,9 +3554,50 @@ function Sidebar({
           </div>
         )}
 
+        {/* Apps — peer to Domains. Collapsible, pin-favorites, scroll. */}
+        {!collapsed && sidebarApps.length > 0 && (
+          <div className="mt-3 px-2">
+            <button
+              onClick={() => setAppsOpen((v) => !v)}
+              className="group/h flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
+            >
+              <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${appsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+              <span>Apps</span>
+              <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{sidebarApps.length}</span>
+            </button>
+            {appsOpen && (
+              <ul className="mt-0.5 space-y-0.5">
+                {sortedSidebarApps.map((app) => {
+                  const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
+                  const isPinned = pinnedApps.has(app.id);
+                  return (
+                    <li key={app.id} className="group flex items-center gap-1 pl-2.5">
+                      <button
+                        onClick={() => openAppInSettings(app.id)}
+                        className="flex flex-1 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm text-text-secondary hover:bg-surface-warm hover:text-text-primary transition-colors"
+                        title={`${app.title}${app.domains.length ? " · " + app.domains.map(titleCase).join(", ") : ""}`}
+                      >
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: tint }} />
+                        <span className="flex-1 truncate text-sm">{app.title}</span>
+                      </button>
+                      <button
+                        onClick={() => toggleAppPin(app.id)}
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${isPinned ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                        title={isPinned ? "Unpin" : "Pin to top"}
+                      >
+                        <Pin className={`h-3 w-3 ${isPinned ? "fill-accent text-accent" : ""}`} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
+
         {/* Archived domains — collapsible. Hidden from the active list;
             restore brings them back into the vault scan. */}
-        {!collapsed && archived.length > 0 && (
+        {!collapsed && domainsOpen && archived.length > 0 && (
           <div className="mt-3 px-2">
             <button
               onClick={() => setArchivedOpen((v) => !v)}
@@ -3537,11 +3665,9 @@ function Sidebar({
         </button>
       )}
 
-      {/* External connectivity: a live gateway is something you should never
-          forget is on. Pulsing indicator whenever the Telegram bridge runs. */}
+      {/* External connectivity indicators */}
       <SidebarGatewayLive collapsed={collapsed} />
-      {/* Live benchmark runs (from the global registry) — one row per batch,
-          visible wherever you navigate, each cancellable. */}
+      <SidebarMcpLive collapsed={collapsed} setTab={setTab} />
       <SidebarBenchmarkRuns collapsed={collapsed} />
 
       {/* Settings + theme — pinned to bottom (Upgrade lives in Settings) */}
@@ -12608,7 +12734,7 @@ function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "ideal-state" | "memory" | "intents" | "tasks" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "memory" | "intents" | "tasks" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
@@ -12643,25 +12769,20 @@ function SettingsPanel({
       { id: "privacy", label: "Privacy", icon: ShieldCheck },
       { id: "safety", label: "Safety", icon: Shield },
     ]},
-    { heading: "Connect", items: [
-      { id: "connectors", label: "Connectors", icon: Plug },
+    { heading: "Apps", items: [
+      { id: "connectors", label: "Apps", icon: Plug },
       { id: "gateway", label: "Gateway", icon: MessagesSquare },
       { id: "mcp", label: "MCP", icon: Wrench },
-      { id: "remote", label: "Remote (WebUI)", icon: Monitor },
     ]},
     { heading: "You & Vault", items: [
-      { id: "ideal-state", label: "Ideal State", icon: Compass },
-      { id: "memory", label: "Memory & Context", icon: Brain },
+      { id: "configuration", label: "Configuration", icon: Brain },
       { id: "intents", label: "Intents", icon: Lightbulb },
-      { id: "tasks", label: "Tasks", icon: Check },
       { id: "daemons", label: "Daemons", icon: Zap },
       { id: "vault", label: "Vault", icon: Folder },
       { id: "demo", label: "Demo Mode", icon: Sparkles },
     ]},
     { heading: "App", items: [
       { id: "general", label: "General", icon: SettingsIcon },
-      { id: "appearance", label: "Appearance", icon: Sparkles },
-      { id: "shortcuts", label: "Shortcuts", icon: SettingsIcon },
       { id: "about", label: "About", icon: Github },
     ]},
   ];
@@ -12688,7 +12809,7 @@ function SettingsPanel({
   return (
     <div className="flex h-full">
       {/* Sidebar nav — Codex-style with Back to app at top */}
-      <aside className="flex w-56 shrink-0 flex-col border-r border-border-subtle bg-surface-warm px-2 py-3">
+      <aside className="flex w-56 shrink-0 flex-col overflow-y-auto border-r border-border-subtle bg-surface-warm px-2 py-3">
         {onBack && (
           <button
             onClick={onBack}
@@ -12744,7 +12865,7 @@ function SettingsPanel({
             the rest of the app. Long prose inside sections caps itself
             (subtitles use max-w-2xl) so readability stays intact. */}
         <div className="w-full px-8 py-10">
-          {section === "general" && <GeneralSection />}
+          {section === "general" && <GeneralSection appearance={appearance} />}
           {section === "privacy" && <PrivacyConnectivitySection enabled={bunkerEnabled} onChange={onBunkerChange} />}
           {section === "models" && <ModelsSection clis={clis} onStartChatWith={onStartChatWith} onActivated={onRefreshClis} />}
           {section === "benchmark" && (
@@ -12755,13 +12876,12 @@ function SettingsPanel({
                 subtitle="Your personal eval suite. Run any model against your own questions across every domain, see who leads where, and manage the question set: write, AI-draft from your data, import, export."
               />
               <BenchScheduleCard vault={vaultPath} />
-              {/* Full cockpit: unscoped, so runs/results/questions cover the
-                  whole vault. The same panel opens scoped from a domain. */}
               <div className="-mx-4 min-h-[60vh]">
                 <BenchmarkPanel vaultPath={vaultPath} />
               </div>
             </>
           )}
+          {section === "configuration" && <ConfigurationSection vaultPath={vaultPath} />}
           {section === "ideal-state" && <IdealStateSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
           {section === "intents" && <IntentsSection vaultPath={vaultPath} />}
@@ -12771,8 +12891,6 @@ function SettingsPanel({
           {section === "connectors" && (
             <>
               <ConnectorsSection vaultPath={vaultPath} />
-              {/* A2: Ingestion folded in — same concept (getting your data into
-                  the vault), one section. */}
               <div className="mt-8 border-t border-border-subtle pt-8">
                 <IngestionSection />
               </div>
@@ -13436,7 +13554,7 @@ function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; o
       {/* Live status — visual tiles for what's blocked vs open. */}
       <div className="mt-5">
         <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Live status</div>
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           {tiles.map((t) => (
             <div
               key={t.label}
@@ -13589,7 +13707,7 @@ function getPref(key: string, fallback: string): string {
 }
 function setPref(key: string, v: string): void { lsSet(key, v); }
 
-function GeneralSection() {
+function GeneralSection({ appearance }: { appearance?: ReturnType<typeof useAppearance> }) {
   const [startOnBoot, setStartOnBoot] = useState(false);
   useEffect(() => { autostartIsEnabled().then(setStartOnBoot).catch(() => {}); }, []);
   const [closeToTray, setCloseToTray] = useState(() => getPref(PREF.closeToTray, "0") === "1");
@@ -13645,12 +13763,33 @@ function GeneralSection() {
     <Toggle on={on} onChange={onChange} />
   );
 
+  const [genSubOpen, setGenSubOpen] = useState<"main" | "appearance" | "shortcuts" | null>("main");
+  const toggleSub = (id: "main" | "appearance" | "shortcuts") => setGenSubOpen((v) => (v === id ? null : id));
+  const GenSub = ({ id, title, children }: { id: "main" | "appearance" | "shortcuts"; title: string; children: React.ReactNode }) => (
+    <div className="rounded-lg border border-border bg-surface overflow-hidden">
+      <button
+        onClick={() => toggleSub(id)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-warm transition-colors"
+      >
+        <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${genSubOpen === id ? "rotate-90" : ""}`} strokeWidth={2.5} />
+        <span className="text-sm font-semibold text-text-primary">{title}</span>
+      </button>
+      {genSubOpen === id && (
+        <div className="border-t border-border-subtle px-4 py-5">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <>
       <SettingsHeader
         title="General"
-        subtitle="App-wide behavior preferences."
+        subtitle="App-wide behavior, appearance, and keyboard shortcuts."
       />
+      <div className="space-y-2">
+      <GenSub id="main" title="Main">
       <div className="rounded-lg border border-border bg-surface px-5">
         <Row
           title="Start on boot"
@@ -13738,8 +13877,8 @@ function GeneralSection() {
         />
       </div>
 
-      {/* Budget meter — display-only spend vs cap. */}
-      <div className="mt-6 rounded-lg border border-border bg-surface px-5 py-4">
+      {/* Budget meter */}
+      <div className="mt-4 rounded-lg border border-border bg-surface px-5 py-4">
         <div className="mb-2 flex items-center justify-between">
           <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Budget this month</div>
           <div className="font-mono text-xs text-text-secondary">
@@ -13747,16 +13886,44 @@ function GeneralSection() {
           </div>
         </div>
         <div className="h-2 w-full overflow-hidden rounded-full bg-surface-strong">
-          <div
-            className="h-full rounded-full transition-all"
-            style={{ width: hasCap ? `${pct}%` : "0%", background: meterColor }}
-          />
+          <div className="h-full rounded-full transition-all" style={{ width: hasCap ? `${pct}%` : "0%", background: meterColor }} />
         </div>
         <div className="mt-1.5 font-mono text-[10px] text-text-muted">
-          {hasCap
-            ? `${pct}% of cap used${pct >= 90 ? " · approaching limit" : ""}`
-            : "Set a cap above to track usage against it."}
+          {hasCap ? `${pct}% of cap used${pct >= 90 ? " · approaching limit" : ""}` : "Set a cap above to track usage against it."}
         </div>
+      </div>
+      </GenSub>
+      {appearance && (
+        <GenSub id="appearance" title="Appearance">
+          <div className="mb-6 rounded-xl border border-border bg-surface p-5">
+            <div className="mb-1 font-medium">Color Mode</div>
+            <div className="mb-4 text-sm text-text-secondary">Pick a fixed mode or let Prevail follow your system setting.</div>
+            <div className="inline-flex items-center rounded-md border border-border bg-background p-1 text-xs">
+              {([{ id: "light", label: "Light", icon: Sun }, { id: "dark", label: "Dark", icon: Moon }, { id: "system", label: "System", icon: Monitor }] as const).map((m) => {
+                const Icon = m.icon; const active = appearance.mode === m.id;
+                return (
+                  <button key={m.id} onClick={() => appearance.setMode(m.id as Mode)}
+                    className={`inline-flex items-center gap-1.5 rounded px-3 py-1.5 transition-colors ${active ? "bg-accent text-background shadow-sm" : "text-text-secondary hover:bg-surface-warm"}`}>
+                    <Icon className="h-3.5 w-3.5" />{m.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <div className="mb-1 font-medium">Theme</div>
+            <p className="mb-4 text-sm text-text-secondary">Desktop palettes. The selected mode is applied on top.</p>
+            <div className="grid grid-cols-3 gap-3">
+              {PALETTES.map((p) => (
+                <PaletteCard key={p.id} palette={p} active={appearance.palette === p.id} onSelect={() => appearance.setPalette(p.id)} />
+              ))}
+            </div>
+          </div>
+        </GenSub>
+      )}
+      <GenSub id="shortcuts" title="Shortcuts">
+        <ShortcutsSection />
+      </GenSub>
       </div>
     </>
   );
@@ -13796,6 +13963,50 @@ function skillgenCfgFromPrefs(vaultPath: string) {
     interval_sec: Number(getPref(PREF.skillgenIntervalSec, "21600")) || 21600,
     max_skills_per_domain: Number(getPref(PREF.skillgenMaxPerDomain, "2")) || 2,
   };
+}
+
+function ConfigurationSection({ vaultPath }: { vaultPath: string }) {
+  const [open, setOpen] = useState<"ideal-state" | "memory" | "tasks" | null>(null);
+  const toggle = (id: "ideal-state" | "memory" | "tasks") => setOpen((v) => (v === id ? null : id));
+  const Sub = ({ id, title, desc, children }: { id: "ideal-state" | "memory" | "tasks"; title: string; desc: string; children: React.ReactNode }) => (
+    <div className="rounded-lg border border-border bg-surface overflow-hidden">
+      <button
+        onClick={() => toggle(id)}
+        className="flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-surface-warm transition-colors"
+      >
+        <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${open === id ? "rotate-90" : ""}`} strokeWidth={2.5} />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-text-primary">{title}</div>
+          <div className="mt-0.5 text-xs text-text-secondary">{desc}</div>
+        </div>
+      </button>
+      {open === id && (
+        <div className="border-t border-border-subtle px-4 py-5">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+  return (
+    <>
+      <SettingsHeader
+        title="Configuration"
+        icon={Brain}
+        subtitle="Your constitution, context windows, and task ledger in one place."
+      />
+      <div className="space-y-2">
+        <Sub id="ideal-state" title="Ideal State" desc="Your personal constitution: goals, values, and priorities injected into every model turn.">
+          <IdealStateSection vaultPath={vaultPath} />
+        </Sub>
+        <Sub id="memory" title="Memory & Context" desc="Persistent memory, distillation, and what stays in context across sessions.">
+          <MemoryContextSection vaultPath={vaultPath} />
+        </Sub>
+        <Sub id="tasks" title="Tasks" desc="Cross-domain task ledger: every pending item across your vault in one view.">
+          <TasksCrossDomainSection vaultPath={vaultPath} />
+        </Sub>
+      </div>
+    </>
+  );
 }
 
 function MemoryContextSection(_props: { vaultPath: string }) {
@@ -14748,7 +14959,7 @@ function ConnectorsSection({ vaultPath }: { vaultPath: string }) {
   return (
     <>
       <SettingsHeader
-        title="Connectors"
+        title="Apps"
         subtitle="Every app Prevail can pull from, pre-populated and tagged by how it connects. Pulled data lands in the matching domain's vault and feeds the intent ledger + memory."
       />
 
@@ -14977,6 +15188,8 @@ function AppLockCard() {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [showReset, setShowReset] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState("");
   useEffect(() => {
     (async () => {
       try { const s = await invoke<{ set: boolean }>("engine_lock_status"); setLockSet(!!s.set); } catch { setLockSet(false); }
@@ -14996,8 +15209,17 @@ function AppLockCard() {
     try {
       const r = await invoke<{ ok: boolean; error?: string }>("engine_lock_clear", { passcode: value });
       if (r.ok) { setLockSet(false); setValue(""); setNote("Passcode removed."); }
-      else setNote(r.error ?? "Wrong passcode.");
+      else setNote(r.error ?? "Wrong passcode. If you forgot it, use the Reset option below.");
     } catch (e) { setNote(`Failed: ${String(e)}`); } finally { setBusy(false); }
+  }
+  async function resetPasscode() {
+    if (resetConfirm !== "RESET") { setNote("Type RESET to confirm."); return; }
+    setBusy(true); setNote(null);
+    try {
+      await invoke("engine_lock_reset");
+      setLockSet(false); setShowReset(false); setResetConfirm("");
+      setNote("App lock removed. Your vault data is unchanged. Set a new passcode below.");
+    } catch (e) { setNote(`Reset failed: ${String(e)}`); } finally { setBusy(false); }
   }
   const [touchId, setTouchId] = useState(() => getPref("prevail.pref.touchIdLock", "0") === "1");
   if (lockSet === null) return null;
@@ -15007,13 +15229,14 @@ function AppLockCard() {
         <Shield className="h-3.5 w-3.5" /> App lock {lockSet ? "· on" : "· off"}
       </div>
       <p className="mt-2 text-xs text-text-muted">
-        Require a passcode to open Prevail. This locks the app window. It does <span className="font-semibold">not</span> yet encrypt your vault files on disk: turn on FileVault for full at-rest protection. (Vault encryption is coming as a separate, reviewed update.)
+        Require a passcode to open Prevail. This locks the app window. It does <span className="font-semibold">not</span> encrypt your vault files on disk.
       </p>
       <div className="mt-3 flex items-center gap-2">
         <input
           type="password"
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { if (lockSet) void removePasscode(); else void setPasscode(); } }}
           placeholder={lockSet ? "Current passcode" : "New passcode (min 4 chars)"}
           className="w-56 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none"
         />
@@ -15028,14 +15251,49 @@ function AppLockCard() {
         )}
       </div>
       {lockSet && (
-        <label className="mt-3 flex items-center gap-2 text-xs text-text-secondary">
-          <input
-            type="checkbox"
-            checked={touchId}
-            onChange={(e) => { setTouchId(e.target.checked); setPref("prevail.pref.touchIdLock", e.target.checked ? "1" : "0"); }}
-          />
-          Offer Touch ID on the lock screen (passcode still works). Verify it once on this Mac.
-        </label>
+        <>
+          <label className="mt-3 flex items-center gap-2 text-xs text-text-secondary">
+            <input
+              type="checkbox"
+              checked={touchId}
+              onChange={(e) => { setTouchId(e.target.checked); setPref("prevail.pref.touchIdLock", e.target.checked ? "1" : "0"); }}
+            />
+            Offer Touch ID on the lock screen. The passcode path is always available independently.
+          </label>
+          {touchId && (
+            <div className="mt-2 rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-[11px] text-warn">
+              Known issue: in some cases enabling Touch ID may affect passcode verification. If your passcode stops working, use the Reset option below to remove the lock without entering the passcode.
+            </div>
+          )}
+          <button
+            onClick={() => setShowReset((v) => !v)}
+            className="mt-2 text-xs text-text-muted underline decoration-dotted hover:text-text-secondary"
+          >
+            Forgot passcode? Reset app lock.
+          </button>
+          {showReset && (
+            <div className="mt-2 rounded-md border border-warn/30 bg-warn/5 px-3 py-3">
+              <div className="mb-2 text-xs text-text-secondary">
+                Resetting removes the app lock entirely. Your vault data is <span className="font-semibold">not</span> affected. Type <code className="font-mono text-warn">RESET</code> to confirm.
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={resetConfirm}
+                  onChange={(e) => setResetConfirm(e.target.value)}
+                  placeholder="Type RESET"
+                  className="w-32 rounded border border-warn/40 bg-background px-2 py-1 font-mono text-xs focus:outline-none"
+                />
+                <button
+                  onClick={resetPasscode}
+                  disabled={busy || resetConfirm !== "RESET"}
+                  className="rounded border border-warn/40 bg-warn/10 px-3 py-1 text-xs text-warn hover:bg-warn/20 disabled:opacity-50"
+                >
+                  {busy ? "Resetting…" : "Reset lock"}
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
       {note && <div className="mt-2 text-xs text-text-secondary">{note}</div>}
     </div>
@@ -15202,26 +15460,68 @@ const COMING_SOON_GATEWAYS: { name: string; icon?: { path: string; hex: string }
 // the former "Integrations" bridge cards (A1) without the earlier double header /
 // double Telegram-card bug. Live bridges first, then coming-soon, evenly gridded.
 function GatewaySection() {
+  const [bridgesOpen, setBridgesOpen] = useState(false);
+  const [surfacesOpen, setSurfacesOpen] = useState(false);
+  const [liveTg, setLiveTg] = useState(false);
+  const liveWa = false;
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      try { const t = await invoke<{ running: boolean }>("telegram_bridge_status"); if (alive) setLiveTg(!!t.running); } catch { if (alive) setLiveTg(false); }
+    };
+    void check();
+    const id = window.setInterval(() => void check(), 8000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, []);
+  const anyLive = liveTg || liveWa;
   return (
     <>
       <SettingsHeader title="Gateway" icon={MessagesSquare} subtitle="Chat with your council from anywhere. Your vault stays local: these bridges relay messages to your domains and back." />
 
-      {/* Live + in-progress bridges — each card carries its own brand mark/color. */}
-      <div className="mb-6 grid grid-cols-1 gap-4">
-        <TelegramCard />
-        <WhatsAppCard />
-      </div>
-
-      {/* Planned surfaces — shared list-row spec. */}
-      <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">More surfaces</div>
       <div className="space-y-2">
-        {COMING_SOON_GATEWAYS.map((g) => (
-          <div key={g.name} className={SETTINGS_ROW}>
-            <GatewayMark icon={g.icon} mono={g.mono} />
-            <span className="flex-1 text-sm text-text-secondary">{g.name}</span>
-            <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
-          </div>
-        ))}
+        <div className="rounded-lg border border-border bg-surface overflow-hidden">
+          <button
+            onClick={() => setBridgesOpen((v) => !v)}
+            className="flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-surface-warm transition-colors"
+          >
+            <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${bridgesOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+            <span className="flex-1 text-sm font-semibold text-text-primary">Bridges</span>
+            {anyLive && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
+                <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full bg-accent" />
+                live{liveTg ? " · Telegram" : ""}
+              </span>
+            )}
+          </button>
+          {bridgesOpen && (
+            <div className="border-t border-border-subtle px-4 py-4 space-y-4">
+              <TelegramCard />
+              <WhatsAppCard />
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-border bg-surface overflow-hidden">
+          <button
+            onClick={() => setSurfacesOpen((v) => !v)}
+            className="flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-surface-warm transition-colors"
+          >
+            <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${surfacesOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+            <span className="flex-1 text-sm font-semibold text-text-primary">More surfaces</span>
+            <span className="font-mono text-[10px] text-text-muted">{COMING_SOON_GATEWAYS.length} coming</span>
+          </button>
+          {surfacesOpen && (
+            <div className="border-t border-border-subtle px-4 py-2 space-y-1">
+              {COMING_SOON_GATEWAYS.map((g) => (
+                <div key={g.name} className={SETTINGS_ROW}>
+                  <GatewayMark icon={g.icon} mono={g.mono} />
+                  <span className="flex-1 text-sm text-text-secondary">{g.name}</span>
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </>
   );
@@ -15355,7 +15655,22 @@ function McpSection({ vaultPath }: { vaultPath: string }) {
         <div className="mb-3 text-xs text-text-secondary">Pick your tool, copy the config (the engine path is filled in), paste it, restart the tool. Then Test handshake to confirm it answers.</div>
         {mcpPathUnstable && (
           <div className="mb-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[11px] text-warn">
-            Prevail is running from a temporary location. Move <span className="font-mono">Prevail.app</span> into <span className="font-mono">Applications</span> so this path stays valid.
+            <div className="mb-2 font-medium">Prevail is not in your Applications folder.</div>
+            <div className="mb-2">MCP requires a stable path. The config below uses the canonical location. Move Prevail.app to Applications once and this resolves permanently.</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => invoke("open_in_finder", { path: "/Applications" }).catch(() => {})}
+                className="inline-flex items-center gap-1.5 rounded border border-warn/40 bg-warn/10 px-2.5 py-1 text-[11px] hover:bg-warn/20"
+              >
+                <Folder className="h-3 w-3" /> Open Applications folder
+              </button>
+              <button
+                onClick={() => invoke("open_in_finder", { path: enginePath || "/Applications/Prevail.app" }).catch(() => {})}
+                className="inline-flex items-center gap-1.5 rounded border border-warn/40 bg-warn/10 px-2.5 py-1 text-[11px] hover:bg-warn/20"
+              >
+                <Folder className="h-3 w-3" /> Reveal current Prevail.app
+              </button>
+            </div>
           </div>
         )}
         <div className="mb-3 inline-flex flex-wrap gap-1 rounded-lg border border-border-subtle bg-surface-warm/60 p-1">
@@ -16485,7 +16800,7 @@ function PreambleCard({
   on: boolean;
   onSelect: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(on);
   return (
     <div
       className={`rounded-lg border transition-colors ${
@@ -16569,6 +16884,7 @@ function SkillsSection({ vaultPath }: { vaultPath: string }) {
   const [skills, setSkills] = useState<SkillEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("");
+  const [listOpen, setListOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -16654,43 +16970,54 @@ function SkillsSection({ vaultPath }: { vaultPath: string }) {
         )}
 
         {!loading && filtered.length > 0 && (
-          <ul className="flex flex-col gap-1">
-            {filtered.map((s) => {
-              const cleaned = (s.description ?? "").replace(/^[>*\-\s]+/, "").trim();
-              const color = pickSkillColor(s.name);
-              const initial = (s.name || "·").charAt(0).toUpperCase();
-              return (
-                <li key={s.path}>
-                  <button
-                    onClick={() => openSkill(s.path)}
-                    title={s.path}
-                    className="group flex w-full items-start gap-4 rounded-xl px-3 py-3 text-left transition-colors hover:bg-surface-warm"
-                  >
-                    <span
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg font-display text-xl font-bold ring-1 ring-black/5"
-                      style={{ background: color.bg, color: color.fg }}
-                    >
-                      {initial}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-baseline gap-2">
-                        <span className="font-display text-base font-semibold tracking-tight text-text-primary">{s.name}</span>
-                        <span className="rounded-md border border-border-subtle bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">
-                          {titleCase(s.domain)}
+          <>
+            <button
+              onClick={() => setListOpen((v) => !v)}
+              className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-left text-xs text-text-muted hover:text-text-secondary transition-colors"
+            >
+              <ChevronRight className={`h-3.5 w-3.5 shrink-0 transition-transform ${listOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+              {listOpen ? "Collapse" : `Show ${filtered.length} skill${filtered.length === 1 ? "" : "s"}`}
+            </button>
+            {listOpen && (
+              <ul className="ml-4 mt-1 flex flex-col gap-1 border-l border-border-subtle pl-3">
+                {filtered.map((s) => {
+                  const cleaned = (s.description ?? "").replace(/^[>*\-\s]+/, "").trim();
+                  const color = pickSkillColor(s.name);
+                  const initial = (s.name || "·").charAt(0).toUpperCase();
+                  return (
+                    <li key={s.path}>
+                      <button
+                        onClick={() => openSkill(s.path)}
+                        title={s.path}
+                        className="group flex w-full items-start gap-4 rounded-xl px-3 py-3 text-left transition-colors hover:bg-surface-warm"
+                      >
+                        <span
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg font-display text-xl font-bold ring-1 ring-black/5"
+                          style={{ background: color.bg, color: color.fg }}
+                        >
+                          {initial}
                         </span>
-                      </div>
-                      {cleaned && (
-                        <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-text-secondary">
-                          {cleaned}
-                        </p>
-                      )}
-                    </div>
-                    <Folder className="mt-1.5 h-4 w-4 shrink-0 text-text-muted opacity-0 transition-opacity group-hover:opacity-100" />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-baseline gap-2">
+                            <span className="font-display text-base font-semibold tracking-tight text-text-primary">{s.name}</span>
+                            <span className="rounded-md border border-border-subtle bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                              {titleCase(s.domain)}
+                            </span>
+                          </div>
+                          {cleaned && (
+                            <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-text-secondary">
+                              {cleaned}
+                            </p>
+                          )}
+                        </div>
+                        <Folder className="mt-1.5 h-4 w-4 shrink-0 text-text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </>
         )}
       </div>
     </>
