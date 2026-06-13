@@ -4,6 +4,21 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.21] — 2026-06-13 · sidebar nav: icons, indent, app favorites, active-app clarity
+
+### Added
+
+- **Section icons.** Domains and Apps now carry header icons (Layers, Plug) so the two first-class groups read at a glance.
+- **App favorites.** Pin apps to a Favorites group at the top of the Apps section, just like pinned Domains. Favorites stay expanded; the full list (All / Connected) collapses by default so a long catalog never floods the rail.
+- **Active-app highlight.** The app you're currently inside is highlighted in the sidebar (and in a domain's Apps strip) with a filled row and a ringed status dot, so "which app am I in" is never ambiguous.
+- **Clickable domain Apps strip.** Each app pill under a domain is now a button: click to jump straight into that app, with the active app's pill highlighted.
+
+### Changed
+
+- **Nested indentation.** Sidebar groups now indent their children (section, group, item) so the Domains and Apps trees read as a clear hierarchy.
+
+---
+
 ## [0.7.20] — 2026-06-13 · apps as first-class, multi-tag catalog, settings IA
 
 ### Added
