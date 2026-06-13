@@ -12,6 +12,8 @@
 // signing complexity for the first release.
 
 mod bunker;
+mod children;
+mod clis;
 mod distill;
 mod engine;
 mod ingestion;
@@ -28,63 +30,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
 use tauri::Emitter;
 #[allow(unused_imports)]
 use tauri_plugin_shell::ShellExt;
 
-// Registry of running spawned children keyed by session id (or session
-// prefix for council slots/score). Used so the React side can abort a
-// long-running run.
-fn child_registry() -> &'static Mutex<HashMap<String, u32>> {
-    static REG: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
-    REG.get_or_init(|| Mutex::new(HashMap::new()))
-}
-fn register_child(session: &str, pid: u32) {
-    if let Ok(mut g) = child_registry().lock() {
-        g.insert(session.to_string(), pid);
-    }
-}
-pub(crate) fn unregister_child(session: &str) {
-    if let Ok(mut g) = child_registry().lock() {
-        g.remove(session);
-    }
-}
-
-// Snapshot of (session key, pid) for every tracked child. Used by the memory
-// watchdog to measure per-session process subtrees.
-pub(crate) fn snapshot_children() -> Vec<(String, u32)> {
-    match child_registry().lock() {
-        Ok(g) => g.iter().map(|(k, v)| (k.clone(), *v)).collect(),
-        Err(_) => Vec::new(),
-    }
-}
-
-// Kill every running child whose registry key starts with `prefix`.
-// Returns the number of processes signalled.
-#[tauri::command]
-fn abort_sessions(prefix: String) -> Result<usize, String> {
-    let pids: Vec<(String, u32)> = match child_registry().lock() {
-        Ok(g) => g.iter()
-            .filter(|(k, _)| k.starts_with(&prefix))
-            .map(|(k, v)| (k.clone(), *v))
-            .collect(),
-        Err(_) => return Err("registry poisoned".into()),
-    };
-    let mut killed = 0;
-    for (key, pid) in &pids {
-        // Use libc::kill on Unix; on Windows we'd use TerminateProcess.
-        #[cfg(unix)]
-        unsafe {
-            // SIGTERM first; tokio's wait will pick up the exit and emit
-            // benchmark:done / chat:done.
-            libc::kill(*pid as i32, libc::SIGTERM);
-        }
-        unregister_child(key);
-        killed += 1;
-    }
-    Ok(killed)
-}
+// The spawned-child registry (register/unregister/snapshot/abort_sessions)
+// lives in children.rs. These two are used throughout this file's spawn paths.
+use children::{register_child, unregister_child};
 
 // ─────────────────────────────────────────────────────────────────────
 // Vault scanning
@@ -232,135 +184,7 @@ fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// CLI detection
-
-#[derive(Serialize, Clone)]
-pub struct CliInfo {
-    pub id: String,
-    pub label: String,
-    pub bin: String,
-    pub available: bool,
-    pub version: Option<String>,
-}
-
-const CLIS: &[(&str, &str, &str)] = &[
-    ("claude", "Claude", "claude"),
-    ("codex", "Codex", "codex"),
-    ("antigravity", "Antigravity", "agy"),
-    ("ollama", "Ollama", "ollama"),
-];
-
-fn resolve_bin_path(bin: &str) -> Option<String> {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let candidates = [
-        format!("{home}/.local/bin/{bin}"),
-        format!("{home}/.bun/bin/{bin}"),
-        format!("/opt/homebrew/bin/{bin}"),
-        format!("/usr/local/bin/{bin}"),
-        format!("/usr/bin/{bin}"),
-    ];
-    candidates.into_iter().find(|p| Path::new(p).exists())
-}
-
-fn probe_cli_version(bin: &str) -> Option<String> {
-    let path = resolve_bin_path(bin)?;
-    use std::process::Command;
-    // Pass the same enriched env chat_send uses — PATH so env-node
-    // shebangs resolve, USER/LOGNAME so claude finds its keychain.
-    let (combined, user, logname) = build_cli_env();
-    let out = Command::new(&path)
-        .arg("--version")
-        .env_clear()
-        .envs(scrubbed_env_pairs())
-        .env("PATH", combined)
-        .env("USER", user)
-        .env("LOGNAME", logname)
-        .output()
-        .ok()?;
-    let text = if !out.stdout.is_empty() {
-        String::from_utf8_lossy(&out.stdout).to_string()
-    } else if !out.stderr.is_empty() {
-        String::from_utf8_lossy(&out.stderr).to_string()
-    } else {
-        return None;
-    };
-    let first = text.lines().next()?.trim();
-    if first.is_empty() {
-        return None;
-    }
-    Some(first.to_string())
-}
-
-fn find_in_known_paths(bin: &str) -> bool {
-    // Mac apps launched from Finder inherit a minimal PATH from
-    // launchctl (/usr/bin:/bin:/usr/sbin:/sbin), which excludes the
-    // usual CLI install locations. Probe them explicitly.
-    let home = std::env::var("HOME").unwrap_or_default();
-    let candidates = [
-        format!("{home}/.local/bin/{bin}"),
-        format!("{home}/.bun/bin/{bin}"),
-        format!("/opt/homebrew/bin/{bin}"),
-        format!("/usr/local/bin/{bin}"),
-        format!("/usr/bin/{bin}"),
-    ];
-    candidates.iter().any(|p| Path::new(p).exists())
-}
-
-#[tauri::command]
-async fn detect_clis(_app: tauri::AppHandle) -> Result<Vec<CliInfo>, String> {
-    let mut out = Vec::new();
-    for (id, label, bin) in CLIS {
-        // Special-case ollama: it runs as a daemon, the `ollama` binary
-        // is optional. Treat the daemon port as the source of truth.
-        let available = if *id == "ollama" {
-            // Probe the local API. Tiny HEAD-ish check via TCP — we
-            // don't pull in reqwest just for this; a TcpStream connect
-            // is enough to know the daemon is up.
-            use std::net::TcpStream;
-            use std::time::Duration;
-            TcpStream::connect_timeout(
-                &"127.0.0.1:11434".parse().unwrap(),
-                Duration::from_millis(250),
-            )
-            .is_ok()
-                || find_in_known_paths(bin)
-        } else {
-            find_in_known_paths(bin)
-        };
-        let version = if available { probe_cli_version(bin) } else { None };
-        out.push(CliInfo {
-            id: id.to_string(),
-            label: label.to_string(),
-            bin: bin.to_string(),
-            available,
-            version,
-        });
-    }
-    // OpenRouter — an HTTP gateway, not a binary. Available iff an API key is
-    // stored in the Keychain (Settings → Providers). Routes to every model.
-    let or_key = ingestion::keychain::get("prevail.providers", "openrouter").ok();
-    out.push(CliInfo {
-        id: "openrouter".to_string(),
-        label: "OpenRouter".to_string(),
-        bin: "https://openrouter.ai/api/v1".to_string(),
-        available: or_key.as_deref().map(|k| !k.is_empty()).unwrap_or(false),
-        version: None,
-    });
-    // Local OpenAI-compatible model servers (no spawnable binary): available iff
-    // their default port is listening. The engine reaches them via the
-    // PREVAIL_OLLAMA_URL redirect (see bunker::local_endpoint_url). Probed the
-    // same way as Ollama's daemon — a TCP connect is enough to know it's up.
-    for (id, label) in [("lmstudio", "LM Studio"), ("mlx", "oMLX")] {
-        out.push(CliInfo {
-            id: id.to_string(),
-            label: label.to_string(),
-            bin: bunker::local_endpoint_url(id).unwrap_or("").to_string(),
-            available: bunker::local_cli_available(id),
-            version: None,
-        });
-    }
-    Ok(out)
-}
+// CLI / provider detection (CliInfo, detect_clis) lives in clis.rs.
 
 // Provider API-key storage (Keychain service "prevail.providers"). Used by the
 // Settings → Providers section + the AI-provider onboarding. get returns "" if
@@ -3974,7 +3798,7 @@ pub fn run() {
         .manage(webui::WebuiState::default())
         .invoke_handler(tauri::generate_handler![
             scan_vault,
-            detect_clis,
+            clis::detect_clis,
             log_fatal,
             import_sample_vault,
             remember_vault,
@@ -4053,7 +3877,7 @@ pub fn run() {
             read_domain_prompts,
             scan_skills,
             skill_create,
-            abort_sessions,
+            children::abort_sessions,
             read_user_md,
             write_user_md,
             read_ideal_state,

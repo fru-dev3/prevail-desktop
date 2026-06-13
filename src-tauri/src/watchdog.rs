@@ -143,7 +143,7 @@ pub fn start(app: AppHandle) {
 
             // Largest single tracked session subtree — the kill target.
             let mut biggest: Option<(String, i32, u64)> = None;
-            for (key, pid) in crate::snapshot_children() {
+            for (key, pid) in crate::children::snapshot_children() {
                 let pid = pid as i32;
                 let pids = subtree_pids(pid, &kids);
                 let rss = rss_of(&pids, &table);
@@ -173,7 +173,7 @@ pub fn start(app: AppHandle) {
                                 libc::kill(p, libc::SIGKILL);
                             }
                         }
-                        crate::unregister_child(&key);
+                        crate::children::unregister_child(&key);
                         let _ = app.emit(
                             "system:memory-warning",
                             MemoryWarning {
