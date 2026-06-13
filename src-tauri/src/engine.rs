@@ -715,6 +715,23 @@ pub fn engine_lock_verify(passcode: String) -> Result<serde_json::Value, String>
 pub fn engine_lock_clear(passcode: String) -> Result<serde_json::Value, String> {
     run_engine_json_stdin(&["lock", "clear"], &passcode)
 }
+#[tauri::command]
+pub fn engine_lock_reset() -> Result<serde_json::Value, String> {
+    // Recovery path for "forgot passcode" — deletes the lock file without
+    // requiring the existing passcode. The lock file is at:
+    //   $PREVAIL_CONFIG_DIR/lock.json  or  ~/.prevail/lock.json
+    let lock_path = if let Ok(d) = std::env::var("PREVAIL_CONFIG_DIR") {
+        std::path::PathBuf::from(d).join("lock.json")
+    } else {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        std::path::PathBuf::from(home).join(".prevail").join("lock.json")
+    };
+    if lock_path.exists() {
+        std::fs::remove_file(&lock_path)
+            .map_err(|e| format!("could not remove lock file: {e}"))?;
+    }
+    Ok(serde_json::json!({ "ok": true }))
+}
 
 // ── Touch ID (biometric unlock for the app lock) ──
 // Prompts the OS biometric (Touch ID on macOS), falling back to the device
