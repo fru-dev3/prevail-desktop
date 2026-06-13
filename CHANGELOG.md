@@ -4,6 +4,18 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.13] — 2026-06-12 · real connector directories, logos, connected-apps view
+
+### Added
+
+- **Catalog rebuilt from the real assistant connector directories.** Replaced the generated long-tail with 1,468 apps: 1,260 verified real-connector apps from the Claude / ChatGPT / Gemini directories (June 2026) plus 208 preserved household-name life essentials with no assistant connector. Each app shows which assistants list it (a verified-connector check), a core/obscure tier, a category-mapped domain, and a connector pattern.
+- **Real brand logos.** A build-time pipeline (`scripts/gen-logos.mjs`) matches each app to a simple-icons brand; the Connectors rows render the real SVG, with a pattern-tinted dot fallback. Shipped as `logos.json`.
+- **Connected apps view.** The Connectors page now shows the user's REAL apps as the engine sees them (community + vault apps) with a live status dot (connected / expired / error / not-configured), integration tier, bound domains, last-sync time, last error, and a Test (probe) button. Wired via new `engine_apps_list` / `engine_app_probe` commands over the engine bridge.
+
+### Changed / Fixed
+
+- **Engine: sync daemon connector loading fixed (2 real bugs).** `loadSkillsForConnector` now reads the `skills/<id>/SKILL.md` subdirectory layout real community apps use (previously it found zero skills, so nothing synced); the auth probe accepts `paths` as an alias for `files`. `connectors list --json` is enriched with status/domains/sync state and `connectors test` gains `--json`. Engine sync suite green.
+
 ## [0.7.12] — 2026-06-12 · connector catalog + CLI connectors (Tier D)
 
 ### Added
