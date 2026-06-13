@@ -14537,7 +14537,8 @@ function ConnectorIcon({ c }: { c: Connector }) {
 
 // Catalog shapes — mirror resources/connectors/catalog.json. The Rust command
 // returns it verbatim, so the frontend owns the type.
-type CatalogApp = { name: string; domain: string; pattern: string; fallback?: string; via?: string; note?: string; tier?: number };
+type CatalogApp = { name: string; domain: string; pattern: string; fallback?: string; via?: string; note?: string; tier?: number; sources?: string[]; verified?: boolean; obscure?: boolean };
+const SOURCE_ABBR: Record<string, string> = { claude: "Cl", chatgpt: "GPT", gemini: "Gem" };
 type ConnectorCatalog = { version: number; domains?: string[]; apps: CatalogApp[]; patterns?: Record<string, { tier: string; label: string }> };
 
 // Each connector PATTERN maps to one ingestion tier. Short label + tint so a
@@ -14721,6 +14722,11 @@ function ConnectorsSection() {
                         </span>
                         {a.via && <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">via {a.via}</span>}
                         {a.fallback && <span className="shrink-0 font-mono text-[9px] text-text-muted/50" title={`falls back to ${a.fallback}`}>→ {PATTERN_LABEL[a.fallback] ?? a.fallback}</span>}
+                        {a.verified && a.sources && a.sources.length > 0 && (
+                          <span className="shrink-0 font-mono text-[9px] text-accent" title={`Verified connector — listed by: ${a.sources.join(", ")}`}>
+                            ✓ {a.sources.map((s) => SOURCE_ABBR[s] ?? s).join("·")}
+                          </span>
+                        )}
                         <PatternChip pattern={a.pattern} />
                       </div>
                     );
