@@ -4005,6 +4005,8 @@ pub fn run() {
             benchmark_score,
             benchmark_suggest,
             engine::engine_domains,
+            engine::engine_apps_list,
+            engine::engine_app_probe,
             engine::engine_vault_embed,
             engine::engine_appmode_get,
             engine::engine_appmode_set,
