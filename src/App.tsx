@@ -5,71 +5,9 @@ import { enable as autostartEnable, disable as autostartDisable, isEnabled as au
 import { check as checkUpdate } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from "framer-motion";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { PrevailLogo } from "./PrevailLogo";
-
-// Renders LLM output as proper markdown — headings, lists, bold,
-// inline code, fenced blocks, tables. Wraps each block element in
-// `prose`-like Tailwind so the spacing reads.
-// Code-fence renderer for ReactMarkdown — multi-line blocks get a
-// card with a language label + copy button at the top-right;
-// inline `code` stays as a plain <code>. Stable component identity
-// (declared at module scope) so React doesn't reuse stale closures.
-function MarkdownCode(props: React.HTMLAttributes<HTMLElement> & { className?: string; children?: React.ReactNode }) {
-  const { className, children, ...rest } = props;
-  // ReactMarkdown gives us a className like "language-ts" for fenced
-  // blocks and no className for inline code. We use the presence of
-  // a newline in the body as a backup signal because some prompts
-  // emit triple-backtick blocks with no language.
-  const text = typeof children === "string"
-    ? children
-    : Array.isArray(children)
-      ? children.map((c) => (typeof c === "string" ? c : "")).join("")
-      : "";
-  const lang = (className ?? "").replace(/^language-/, "") || "code";
-  const isBlock = (className && className.startsWith("language-")) || text.includes("\n");
-  if (!isBlock) {
-    return <code className={className} {...rest}>{children}</code>;
-  }
-  return (
-    <div className="my-3 overflow-hidden rounded-lg border border-border-subtle bg-background">
-      <div className="flex items-center justify-between gap-2 border-b border-border-subtle bg-surface-warm px-3 py-1.5">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{lang}</span>
-        <button
-          onClick={() => { void navigator.clipboard.writeText(text); }}
-          className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted transition-colors hover:border-accent-border hover:text-accent"
-        >
-          copy
-        </button>
-      </div>
-      <pre className="overflow-x-auto px-3 py-2 font-mono text-[12px] leading-relaxed text-text-primary">
-        <code className={className}>{children}</code>
-      </pre>
-    </div>
-  );
-}
-
-const MARKDOWN_COMPONENTS = { code: MarkdownCode } as const;
-
-const Markdown = React.memo(function Markdown({ source, compact = false }: { source: string; compact?: boolean }) {
-  // Two flavors: default (chat reply) and compact (state/decisions/
-  // journal). Compact mode is denser, sans-serif headings, smaller
-  // bullets, no emoji bloat — looks like a real doc, not AI slop.
-  //
-  // Memoized so that re-rendering a parent doesn't force ReactMarkdown
-  // to reparse the source string. During streaming, each new chunk
-  // creates a new source string anyway — that's intentional. But
-  // sibling re-renders (hover state, neighbor message updates) no
-  // longer redo the parse.
-  return (
-    <div
-      className={`prose-prevail max-w-none ${compact ? "prose-prevail--compact" : ""}`}
-    >
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>{source}</ReactMarkdown>
-    </div>
-  );
-});
+import { Markdown, StreamingPlain } from "./Markdown";
+import { scoreColor, formatFreshness, titleCase, relTime } from "./format";
 
 // Single source of truth for the version chip in title bar.
 // Injected by Vite from package.json — never hand-stamp this again.
@@ -873,22 +811,6 @@ const SCORE_DIMENSIONS: { key: keyof ScoreBreakdown; label: string }[] = [
 ];
 
 // Color thresholds: green >=75, amber 50-74, red <50. Returns a CSS color.
-function scoreColor(score: number): string {
-  if (score >= 75) return "var(--color-ok, #2e9e5b)";
-  if (score >= 50) return "var(--color-warn, #c98a2b)";
-  return "var(--color-danger, #d24b4b)";
-}
-// Human freshness from seconds.
-function formatFreshness(secs: number): string {
-  if (secs < 0) return "unknown";
-  const d = Math.floor(secs / 86400);
-  if (d >= 1) return d === 1 ? "1 day ago" : `${d} days ago`;
-  const h = Math.floor(secs / 3600);
-  if (h >= 1) return h === 1 ? "1 hour ago" : `${h} hours ago`;
-  const m = Math.floor(secs / 60);
-  if (m >= 1) return m === 1 ? "1 minute ago" : `${m} minutes ago`;
-  return "just now";
-}
 function formatAuditedAt(ms: number | null): string {
   if (!ms) return "never audited";
   try {
@@ -3118,13 +3040,6 @@ export default function App() {
 // Title-case helper. 'real-estate' → 'Real Estate', 'tax' → 'Tax'.
 // Used to render life domain labels in the UI without mutating the
 // underlying folder names that drive everything else.
-function titleCase(slug: string): string {
-  return slug
-    .replace(/[-_]+/g, " ")
-    .split(" ")
-    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ""))
-    .join(" ");
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // Vault wizard
@@ -8863,15 +8778,13 @@ function ChatPanel({
         )}
         {domain && domainTab === "chat" && messages.length > 0 && (
           <div className="mx-auto w-full max-w-3xl px-6 py-8">
-            {messages.map((m, i) => (
-              <ChatBubble
-                key={i}
-                msg={m}
-                onCopy={copyToClipboard}
-                onRetry={m.role === "assistant" ? () => retryFromHere(i) : undefined}
-                onEdit={m.role === "user" ? (text) => editFromHere(text, i) : undefined}
-              />
-            ))}
+            <MessageList
+              messages={messages}
+              resetKey={chatViewNonce}
+              onCopy={copyToClipboard}
+              onRetry={retryFromHere}
+              onEdit={editFromHere}
+            />
           </div>
         )}
         {domainTab !== "chat" && (
@@ -8959,15 +8872,13 @@ function ChatPanel({
         )}
         {!domain && messages.length > 0 && (
           <div className="mx-auto w-full max-w-3xl px-6 py-8">
-            {messages.map((m, i) => (
-              <ChatBubble
-                key={i}
-                msg={m}
-                onCopy={copyToClipboard}
-                onRetry={m.role === "assistant" ? () => retryFromHere(i) : undefined}
-                onEdit={m.role === "user" ? (text) => editFromHere(text, i) : undefined}
-              />
-            ))}
+            <MessageList
+              messages={messages}
+              resetKey={chatViewNonce}
+              onCopy={copyToClipboard}
+              onRetry={retryFromHere}
+              onEdit={editFromHere}
+            />
           </div>
         )}
       </div>
@@ -9488,6 +9399,53 @@ function modelLabel(cli?: string, id?: string): string {
   return m?.label ?? id;
 }
 
+// Render only the most recent slice of a conversation. A long thread loaded
+// from disk can hold thousands of turns; mounting a full ReactMarkdown subtree
+// per turn balloons the WebView heap (audit finding #1). We cap the rendered
+// window and offer a "show earlier" control that reveals more on demand. Real
+// indices are preserved so retry/edit still target the right turn.
+const MESSAGE_WINDOW = 80;
+function MessageList({ messages, resetKey, onCopy, onRetry, onEdit }: {
+  messages: ChatMessage[];
+  resetKey: number;
+  onCopy: (text: string) => void;
+  onRetry: (i: number) => void;
+  onEdit: (text: string, i: number) => void;
+}) {
+  const [limit, setLimit] = useState(MESSAGE_WINDOW);
+  // Reset the window when the thread changes (switched/cleared) so a new thread
+  // always opens at the latest messages, never inheriting a huge expanded window.
+  useEffect(() => { setLimit(MESSAGE_WINDOW); }, [resetKey]);
+  const start = Math.max(0, messages.length - limit);
+  const shown = messages.slice(start);
+  return (
+    <>
+      {start > 0 && (
+        <div className="mb-4 flex justify-center">
+          <button
+            onClick={() => setLimit((l) => l + MESSAGE_WINDOW)}
+            className="rounded-full border border-border bg-surface px-4 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+          >
+            Show earlier messages ({start} hidden)
+          </button>
+        </div>
+      )}
+      {shown.map((m, idx) => {
+        const i = start + idx;
+        return (
+          <ChatBubble
+            key={i}
+            msg={m}
+            onCopy={onCopy}
+            onRetry={m.role === "assistant" ? () => onRetry(i) : undefined}
+            onEdit={m.role === "user" ? (text) => onEdit(text, i) : undefined}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 function ChatBubble({
   msg,
   onCopy,
@@ -9609,7 +9567,7 @@ function ChatBubble({
               return (
                 <>
                   {showThinking && thinking && <ThinkingDisclosure text={thinking} open={!answer} />}
-                  {answer ? <Markdown source={answer} /> : (!thinking && msg.streaming ? <ThinkingDots /> : null)}
+                  {answer ? (msg.streaming ? <StreamingPlain source={answer} /> : <Markdown source={answer} />) : (!thinking && msg.streaming ? <ThinkingDots /> : null)}
                 </>
               );
             })() : (
@@ -15634,15 +15592,6 @@ type EngineApp = {
   path?: string | null;
 };
 const STATUS_TINT: Record<string, string> = { connected: "#2fb87a", expired: "#d8a657", error: "#e06c75", "not-configured": "#2fb87a" };
-function relTime(ts: number | null): string {
-  if (!ts) return "never";
-  const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
-}
-
 // Real brand SVG (simple-icons) when the app matched one at build time; else a
 // pattern-tinted dot. Keeps the row scannable for all 1,400+ apps.
 function AppLogo({ app, logos }: { app: CatalogApp; logos: Record<string, BrandLogo> }) {

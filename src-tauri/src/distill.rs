@@ -177,13 +177,29 @@ async fn distill_dir(dir: &Path, cfg: &DistillConfig) -> Result<u64, String> {
         return Ok(0);
     }
     let cursor = read_cursor(dir);
-    let raw = crate::read_to_string_retry(&ledger)
-        .map_err(|e| format!("read ledger: {e}"))?
-        .into_bytes();
-    if (cursor.byte_offset as usize) >= raw.len() {
+    // Memory-safe read: seek to the cursor and read ONLY the new tail, never the
+    // whole (append-only, ever-growing) ledger. Byte-equivalent to the old
+    // read-whole-then-slice, without resident-ing the already-distilled prefix.
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(&ledger).map_err(|e| format!("open ledger: {e}"))?;
+    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+    // Rotation/truncation safety net: if the ledger shrank below our cursor (an
+    // archive pass, here or in another process), restart from the new start.
+    if size < cursor.byte_offset {
+        let mut c = cursor.clone();
+        c.byte_offset = 0;
+        write_cursor(dir, &c);
+        return Ok(0);
+    }
+    if cursor.byte_offset >= size {
         return Ok(0); // nothing new
     }
-    let new_slice = String::from_utf8_lossy(&raw[cursor.byte_offset as usize..]).to_string();
+    file.seek(SeekFrom::Start(cursor.byte_offset))
+        .map_err(|e| format!("seek ledger: {e}"))?;
+    let mut tail = Vec::with_capacity((size - cursor.byte_offset) as usize);
+    file.read_to_end(&mut tail)
+        .map_err(|e| format!("read ledger tail: {e}"))?;
+    let new_slice = String::from_utf8_lossy(&tail).to_string();
     let (records, consumed_bytes) = plan_distill(&new_slice, cfg.protected_recent);
     if records.is_empty() {
         return Ok(0); // not enough new material past the protected tail
@@ -270,7 +286,58 @@ async fn distill_dir(dir: &Path, cfg: &DistillConfig) -> Result<u64, String> {
         last_error: None,
     };
     write_cursor(dir, &new_cursor);
+    maybe_rotate_ledger(dir, &new_cursor);
     Ok(line_count)
+}
+
+/// Keep _intents.jsonl bounded on disk. Only fires once the ledger is large,
+/// only archives the prefix the distiller has already consumed (so undistilled
+/// records are never touched), always keeps a recent tail (so the daily
+/// skillgen/taskgen readers still see fresh activity), and decrements the cursor
+/// by exactly what was removed. Archives BEFORE truncating so a crash mid-rotate
+/// can only duplicate the archived prefix, never lose it. Best-effort.
+fn maybe_rotate_ledger(dir: &Path, cursor: &Cursor) {
+    const ROTATE_BYTES: u64 = 4 * 1024 * 1024;
+    const KEEP_TAIL_BYTES: usize = 512 * 1024;
+    let ledger = dir.join("_intents.jsonl");
+    let size = match std::fs::metadata(&ledger) {
+        Ok(m) => m.len(),
+        Err(_) => return,
+    };
+    if size < ROTATE_BYTES {
+        return;
+    }
+    let raw = match std::fs::read(&ledger) {
+        Ok(r) => r,
+        Err(_) => return,
+    };
+    // Cut = min(cursor, len - keepTail), snapped DOWN to a newline so a record
+    // is never split.
+    let max_cut = (cursor.byte_offset as usize).min(raw.len());
+    let keep_floor = raw.len().saturating_sub(KEEP_TAIL_BYTES);
+    let mut cut = max_cut.min(keep_floor);
+    while cut > 0 && raw[cut - 1] != b'\n' {
+        cut -= 1;
+    }
+    if cut == 0 {
+        return;
+    }
+    use std::io::Write;
+    let archive = dir.join("_intents.archive.jsonl");
+    match std::fs::OpenOptions::new().create(true).append(true).open(&archive) {
+        Ok(mut f) => {
+            if f.write_all(&raw[..cut]).is_err() {
+                return; // archive failed → leave the ledger untouched
+            }
+        }
+        Err(_) => return,
+    }
+    if std::fs::write(&ledger, &raw[cut..]).is_err() {
+        return; // tail rewrite failed → cursor unchanged, no data lost
+    }
+    let mut c = cursor.clone();
+    c.byte_offset = cursor.byte_offset.saturating_sub(cut as u64);
+    write_cursor(dir, &c);
 }
 
 // ─────────────────────────────────────────────────────────────────────
