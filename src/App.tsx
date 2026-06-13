@@ -4824,7 +4824,7 @@ function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath: strin
   if (domainApps.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
-        No apps are refreshing this domain yet. Add one from Settings. Apps.
+        No apps are refreshing this domain yet. Add one from Settings → Apps.
       </div>
     );
   }
@@ -17032,6 +17032,7 @@ function PreambleCard({
   onSelect: () => void;
 }) {
   const [open, setOpen] = useState(on);
+  useEffect(() => { if (!on) setOpen(false); }, [on]);
   return (
     <div
       className={`rounded-lg border transition-colors ${
