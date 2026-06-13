@@ -7771,7 +7771,7 @@ function ChatPanel({
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-accent-soft/80 backdrop-blur-sm">
           <div className="rounded-2xl border-2 border-dashed border-accent bg-surface px-8 py-6 text-center font-mono text-sm uppercase tracking-wider text-accent shadow-xl">
             ⊕ drop to add as context
-            <div className="mt-1 text-[10px] normal-case tracking-normal text-accent/70">state summary · hold ⇧ for full context</div>
+            <div className="mt-1 text-[10px] normal-case tracking-normal text-accent/70">state summary · ⇧ full context · ⌥ entire folder</div>
           </div>
         </div>
       )}
@@ -9482,7 +9482,7 @@ function CouncilPanel({
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-accent-soft/80 backdrop-blur-sm">
           <div className="rounded-2xl border-2 border-dashed border-accent bg-surface px-8 py-6 text-center font-mono text-sm uppercase tracking-wider text-accent shadow-xl">
             ⊕ drop to add as context
-            <div className="mt-1 text-[10px] normal-case tracking-normal text-accent/70">state summary · hold ⇧ for full context</div>
+            <div className="mt-1 text-[10px] normal-case tracking-normal text-accent/70">state summary · ⇧ full context · ⌥ entire folder</div>
           </div>
         </div>
       )}
