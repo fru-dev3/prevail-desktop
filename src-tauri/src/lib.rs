@@ -4052,6 +4052,7 @@ pub fn run() {
             engine::engine_apps_list,
             engine::engine_app_probe,
             engine::engine_app_add,
+            engine::engine_app_set_domains,
             engine::engine_app_sync,
             engine::engine_alignment,
             engine::engine_app_skills,

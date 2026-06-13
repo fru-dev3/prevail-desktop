@@ -677,6 +677,15 @@ pub fn engine_app_add(
     ])
 }
 
+/// Rewrite an app's many-to-many domain binding. Pass the full desired list;
+/// the engine normalizes/validates/dedups and writes only the manifest's
+/// `domains` array. Returns { ok, path?, domains?, error? }.
+#[tauri::command]
+pub fn engine_app_set_domains(id: String, domains: Vec<String>) -> Result<serde_json::Value, String> {
+    let doms = domains.join(",");
+    run_engine_json(&["connectors", "set", &id, "domains", &doms, "--json"])
+}
+
 /// Sync one app on demand ("Sync now"). Returns { ok, artifacts, error? }.
 #[tauri::command]
 pub fn engine_app_sync(id: String, vault: String) -> Result<serde_json::Value, String> {

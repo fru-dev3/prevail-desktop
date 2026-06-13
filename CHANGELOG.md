@@ -4,6 +4,19 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.23] — 2026-06-13 · app-independent threads + editable app→domain binding
+
+### Added
+
+- **Threads belong to the app, not a domain.** When an app is open, the threads rail and chat are scoped to the app's own conversation space (independent of the many domains it may feed), so you can keep several ongoing conversations with an app over time. The rail header now reads "Threads · <App>". Grounding still uses the app's primary domain, so replies stay informed by real state.
+- **Add or remove an app's domains from its canvas.** The app detail bar's "Refreshes domains" list is now editable: remove a binding with the inline control, or add one (pick an existing domain or type a new slug). The binding is many-to-many, persisted by the engine's new `connectors set <id> domains` command.
+
+### Changed
+
+- **App detail bar collapses by default.** The header line already shows status and which domains the app refreshes; expand only when you want the schedule, domain editor, and skills. The choice persists.
+
+---
+
 ## [0.7.22] — 2026-06-13 · app folder shortcut in the sidebar
 
 ### Added
