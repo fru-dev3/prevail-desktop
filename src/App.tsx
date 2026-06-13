@@ -1991,6 +1991,32 @@ export default function App() {
   // exactly like a domain. Cleared whenever you navigate to a domain/General.
   const [selectedApp, setSelectedApp] = useState<EngineApp | null>(null);
   const [appView, setAppView] = useState(false);
+  // Open an app in the canvas. Shared by the sidebar and the per-domain Apps
+  // strip so "click an app anywhere → jump to it" works the same everywhere.
+  const openApp = useCallback((app: EngineApp) => {
+    setSelectedApp(app);
+    setAppView(true);
+    setSelectedDomain(app.domains[0] ?? "");
+    setActiveThreadPath(null);
+    setChatViewNonce((n) => n + 1);
+    setDomainTab("chat");
+    setTab("chat");
+  }, []);
+  // The domain Apps strip lives deep in the tree; let it open an app via a
+  // window event instead of threading a callback through every layer.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const app = (e as CustomEvent).detail as EngineApp | undefined;
+      if (app && app.id) openApp(app);
+    };
+    window.addEventListener("prevail:open-app", onOpen);
+    return () => window.removeEventListener("prevail:open-app", onOpen);
+  }, [openApp]);
+  // Broadcast which app is active so deeply-nested views (e.g. the per-domain
+  // Apps strip) can highlight it without prop-drilling.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("prevail:active-app", { detail: appView && selectedApp ? selectedApp.id : null }));
+  }, [appView, selectedApp]);
   // Threads — backed by <vault>/<domain>/_threads/<slug>.md files.
   // Active thread defines what's loaded into the chat transcript.
   const [threads, setThreads] = useState<ThreadMeta[]>([]);
@@ -2653,6 +2679,7 @@ export default function App() {
           vaultError={vaultError}
           selectedDomain={selectedDomain}
           setSelectedDomain={(name) => { setSelectedApp(null); setAppView(false); setSelectedDomain(name); }}
+          activeAppId={appView && selectedApp ? selectedApp.id : null}
           openInFinder={openInFinder}
           tab={tab}
           setTab={setTab}
@@ -2668,17 +2695,7 @@ export default function App() {
           railWidth={domainRailWidth}
           onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
           onDomainsChanged={() => void refreshDomains()}
-          onOpenApp={(app) => {
-            // Open the app in the canvas: scope the chat + threads rail to the
-            // domain its data lands in, and raise the detail bar above the chat.
-            setSelectedApp(app);
-            setAppView(true);
-            setSelectedDomain(app.domains[0] ?? "");
-            setActiveThreadPath(null);
-            setChatViewNonce((n) => n + 1);
-            setDomainTab("chat");
-            setTab("chat");
-          }}
+          onOpenApp={openApp}
         />
         {!sidebarCollapsed && (
           <ResizeHandle
@@ -3108,6 +3125,7 @@ function Sidebar({
   vaultError,
   selectedDomain,
   setSelectedDomain,
+  activeAppId,
   openInFinder,
   tab,
   setTab,
@@ -3128,6 +3146,7 @@ function Sidebar({
   vaultError: string | null;
   selectedDomain: string | null;
   setSelectedDomain: (n: string) => void;
+  activeAppId: string | null;
   openInFinder: (p: string | null) => void;
   tab: TabId;
   setTab: (t: TabId) => void;
@@ -3234,14 +3253,24 @@ function Sidebar({
   const APP_PIN_KEY = "prevail.sidebar.pinnedApps";
   const [sidebarApps, setSidebarApps] = useState<EngineApp[]>([]);
   const [appsOpen, setAppsOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsOpen") !== "0");
+  // Favorites expand by default; the full list stays collapsed so a long
+  // catalog never floods the rail — mirrors Domains' Pinned/All split.
+  const [appsFavOpen, setAppsFavOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsFavOpen") !== "0");
+  const [appsAllOpen, setAppsAllOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsAllOpen") === "1");
   const [pinnedApps, setPinnedApps] = useState<Set<string>>(() => {
     try { const r = lsGet(APP_PIN_KEY); return new Set(r ? r.split(",").filter(Boolean) : []); } catch { return new Set(); }
   });
   useEffect(() => { lsSet("prevail.sidebar.appsOpen", appsOpen ? "1" : "0"); }, [appsOpen]);
+  useEffect(() => { lsSet("prevail.sidebar.appsFavOpen", appsFavOpen ? "1" : "0"); }, [appsFavOpen]);
+  useEffect(() => { lsSet("prevail.sidebar.appsAllOpen", appsAllOpen ? "1" : "0"); }, [appsAllOpen]);
   useEffect(() => {
     let alive = true;
-    invoke<EngineApp[]>("engine_apps_list").then((a) => { if (alive) setSidebarApps(a ?? []); }).catch(() => {});
-    return () => { alive = false; };
+    const pull = () => { invoke<EngineApp[]>("engine_apps_list").then((a) => { if (alive) setSidebarApps(a ?? []); }).catch(() => {}); };
+    pull();
+    // Re-pull when an app is added/removed elsewhere (e.g. the Apps catalog).
+    const onChanged = () => pull();
+    window.addEventListener("prevail:apps-changed", onChanged);
+    return () => { alive = false; window.removeEventListener("prevail:apps-changed", onChanged); };
   }, [vaultPath]);
   function toggleAppPin(id: string) {
     setPinnedApps((cur) => {
@@ -3251,11 +3280,47 @@ function Sidebar({
       return next;
     });
   }
-  const sortedSidebarApps = useMemo(() => {
-    const pinned = sidebarApps.filter((a) => pinnedApps.has(a.id));
-    const rest = sidebarApps.filter((a) => !pinnedApps.has(a.id));
-    return [...pinned.sort((a, b) => a.title.localeCompare(b.title)), ...rest.sort((a, b) => a.title.localeCompare(b.title))];
-  }, [sidebarApps, pinnedApps]);
+  const pinnedSidebarApps = useMemo(
+    () => sidebarApps.filter((a) => pinnedApps.has(a.id)).sort((a, b) => a.title.localeCompare(b.title)),
+    [sidebarApps, pinnedApps],
+  );
+  const restSidebarApps = useMemo(
+    () => sidebarApps.filter((a) => !pinnedApps.has(a.id)).sort((a, b) => a.title.localeCompare(b.title)),
+    [sidebarApps, pinnedApps],
+  );
+  // One app row, reused by the Favorites and All groups. Highlights when it's
+  // the app currently open in the canvas so "which app am I in" is obvious.
+  const renderAppRow = (app: EngineApp) => {
+    const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
+    const isPinned = pinnedApps.has(app.id);
+    const active = activeAppId === app.id;
+    return (
+      <li key={app.id} className="group flex items-center gap-1 pl-6">
+        <button
+          onClick={() => onOpenApp(app)}
+          className={`flex flex-1 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
+            active
+              ? "bg-surface-strong font-medium text-text-primary"
+              : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+          }`}
+          title={`Open ${app.title}${app.domains.length ? " · refreshes " + app.domains.map(titleCase).join(", ") : ""}`}
+        >
+          <span
+            className="h-2 w-2 shrink-0 rounded-full"
+            style={active ? { backgroundColor: tint, boxShadow: `0 0 0 3px color-mix(in srgb, ${tint} 28%, transparent)` } : { backgroundColor: tint }}
+          />
+          <span className="flex-1 truncate text-sm">{app.title}</span>
+        </button>
+        <button
+          onClick={() => toggleAppPin(app.id)}
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${isPinned || active ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+          title={isPinned ? "Unpin" : "Pin to favorites"}
+        >
+          <Pin className={`h-3 w-3 ${isPinned ? "fill-accent text-accent" : ""}`} />
+        </button>
+      </li>
+    );
+  };
 
   async function restoreDomain(name: string) {
     setRestoring(name);
@@ -3342,9 +3407,10 @@ function Sidebar({
         {!collapsed && (
           <button
             onClick={() => setDomainsOpen((v) => !v)}
-            className="group/h mt-2 flex w-full items-center gap-1.5 rounded-md px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted hover:text-text-secondary transition-colors"
+            className="group/h mt-2 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted hover:text-text-secondary transition-colors"
           >
             <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${domainsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+            <Layers className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
             <span>Domains</span>
             <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{domains.length}</span>
           </button>
@@ -3383,7 +3449,7 @@ function Sidebar({
                 <button
                   onClick={() => set(!open)}
                   title={`${open ? "Collapse" : "Expand"} ${label}`}
-                  className="group/h flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
+                  className="group/h flex w-full items-center gap-1.5 rounded-md py-1.5 pl-4 pr-2 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
                 >
                   <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
                   <span>{label}</span>
@@ -3424,7 +3490,7 @@ function Sidebar({
                 {isFirstAll && renderGroupHeader("All", allOpen, setAllOpen, sortedDomains.length - pinned.size)}
                 {((isPinned && pinnedOpen) || (!isPinned && allOpen)) && (
               <li
-                className="group flex items-center gap-1 pl-2.5"
+                className="group flex items-center gap-1 pl-6"
               >
                 <button
                   onMouseDown={(e) => {
@@ -3596,44 +3662,78 @@ function Sidebar({
           </div>
         )}
 
-        {/* Apps — peer to Domains. Collapsible, pin-favorites, scroll. */}
-        {!collapsed && sidebarApps.length > 0 && (
+        {/* Apps — peer to Domains. Always shown so it stays first-class even
+            with nothing connected yet. Favorites expand by default; the full
+            list stays collapsed so a long catalog never floods the rail. */}
+        {!collapsed && (
           <div className="mt-3 px-2">
             <button
               onClick={() => setAppsOpen((v) => !v)}
               className="group/h flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
             >
               <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${appsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+              <Plug className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
               <span>Apps</span>
               <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{sidebarApps.length}</span>
             </button>
-            {appsOpen && (
+            {appsOpen && (sidebarApps.length > 0 ? (
               <ul className="mt-0.5 space-y-0.5">
-                {sortedSidebarApps.map((app) => {
-                  const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
-                  const isPinned = pinnedApps.has(app.id);
-                  return (
-                    <li key={app.id} className="group flex items-center gap-1 pl-2.5">
+                {/* Favorites — pinned apps, expanded by default. */}
+                {pinnedSidebarApps.length > 0 && (
+                  <>
+                    <li className="mt-1 first:mt-0">
                       <button
-                        onClick={() => onOpenApp(app)}
-                        className="flex flex-1 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm text-text-secondary hover:bg-surface-warm hover:text-text-primary transition-colors"
-                        title={`Open ${app.title}${app.domains.length ? " · refreshes " + app.domains.map(titleCase).join(", ") : ""}`}
+                        onClick={() => setAppsFavOpen((v) => !v)}
+                        title={`${appsFavOpen ? "Collapse" : "Expand"} Favorites`}
+                        className="group/h flex w-full items-center gap-1.5 rounded-md py-1.5 pl-4 pr-2 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
                       >
-                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: tint }} />
-                        <span className="flex-1 truncate text-sm">{app.title}</span>
-                      </button>
-                      <button
-                        onClick={() => toggleAppPin(app.id)}
-                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${isPinned ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-                        title={isPinned ? "Unpin" : "Pin to top"}
-                      >
-                        <Pin className={`h-3 w-3 ${isPinned ? "fill-accent text-accent" : ""}`} />
+                        <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${appsFavOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+                        <span>Favorites</span>
+                        <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{pinnedSidebarApps.length}</span>
                       </button>
                     </li>
-                  );
-                })}
+                    {appsFavOpen && pinnedSidebarApps.map(renderAppRow)}
+                  </>
+                )}
+                {/* All — every connected app, collapsed by default. */}
+                {restSidebarApps.length > 0 && (
+                  <>
+                    <li className="mt-1 first:mt-0">
+                      <button
+                        onClick={() => setAppsAllOpen((v) => !v)}
+                        title={`${appsAllOpen ? "Collapse" : "Expand"} All`}
+                        className="group/h flex w-full items-center gap-1.5 rounded-md py-1.5 pl-4 pr-2 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
+                      >
+                        <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${appsAllOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+                        <span>{pinnedSidebarApps.length > 0 ? "All" : "Connected"}</span>
+                        <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{restSidebarApps.length}</span>
+                      </button>
+                    </li>
+                    {appsAllOpen && restSidebarApps.map(renderAppRow)}
+                  </>
+                )}
+                {/* Add another app. */}
+                <li className="mt-0.5">
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
+                    className="flex w-full items-center gap-2 rounded-md py-1.5 pl-6 pr-2 text-left text-xs text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+                    title="Browse and connect apps"
+                  >
+                    <Plus className="h-3.5 w-3.5 shrink-0" />
+                    add an app
+                  </button>
+                </li>
               </ul>
-            )}
+            ) : (
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
+                className="mt-0.5 flex w-full items-center gap-2 rounded-md py-1.5 pl-6 pr-2 text-left text-xs text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+                title="Browse and connect apps"
+              >
+                <Plus className="h-3.5 w-3.5 shrink-0" />
+                add an app
+              </button>
+            ))}
           </div>
         )}
 
@@ -5129,21 +5229,45 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
 // at the top of the domain view so you can see at a glance which feeds are fresh.
 function DomainAppsStrip({ domain }: { domain: string }) {
   const [apps, setApps] = useState<EngineApp[]>([]);
+  // Mirror the sidebar's active-app highlight here so it's obvious which app
+  // (if any) you're currently inside while standing in this domain.
+  const [activeId, setActiveId] = useState<string | null>(null);
   useEffect(() => {
     invoke<EngineApp[]>("engine_apps_list")
       .then((all) => setApps((all ?? []).filter((a) => a.domains?.includes(domain))))
       .catch(() => {});
   }, [domain]);
+  useEffect(() => {
+    const onActive = (e: Event) => setActiveId(((e as CustomEvent).detail as string | null) ?? null);
+    window.addEventListener("prevail:active-app", onActive);
+    return () => window.removeEventListener("prevail:active-app", onActive);
+  }, []);
   if (apps.length === 0) return null;
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2">
       <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Apps</span>
-      {apps.map((a) => (
-        <span key={a.id} className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-2 py-0.5" title={`${a.status}${a.lastError ? ": " + a.lastError : ""}`}>
-          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: STATUS_TINT[a.status] ?? "#9aa0a6" }} />
-          <span className="text-[11px] text-text-secondary">{a.account?.label ? `${a.title} · ${a.account.label}` : a.title}</span>
-        </span>
-      ))}
+      {apps.map((a) => {
+        const tint = STATUS_TINT[a.status] ?? "#9aa0a6";
+        const active = activeId === a.id;
+        return (
+          <button
+            key={a.id}
+            onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: a }))}
+            title={`Open ${a.title} · ${a.status}${a.lastError ? ": " + a.lastError : ""}`}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 transition-colors ${
+              active
+                ? "border-accent-border bg-accent-soft text-text-primary"
+                : "border-border-subtle bg-surface text-text-secondary hover:border-accent-border hover:bg-surface-warm"
+            }`}
+          >
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={active ? { backgroundColor: tint, boxShadow: `0 0 0 3px color-mix(in srgb, ${tint} 28%, transparent)` } : { backgroundColor: tint }}
+            />
+            <span className="text-[11px]">{a.account?.label ? `${a.title} · ${a.account.label}` : a.title}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -15110,7 +15234,7 @@ type EngineApp = {
   domains: string[]; lastSuccessTs: number | null; lastError: string | null;
   account: { label?: string } | null; refresh: { every?: string } | null; community: boolean;
 };
-const STATUS_TINT: Record<string, string> = { connected: "#2fb87a", expired: "#d8a657", error: "#e06c75", "not-configured": "#9aa0a6" };
+const STATUS_TINT: Record<string, string> = { connected: "#2fb87a", expired: "#d8a657", error: "#e06c75", "not-configured": "#2fb87a" };
 function relTime(ts: number | null): string {
   if (!ts) return "never";
   const s = Math.floor((Date.now() - ts) / 1000);
@@ -15242,8 +15366,13 @@ function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string; focus
         id, title: a.name, integration: a.pattern, domains: [a.domain],
       });
       setAddMsg((m) => ({ ...m, [a.name]: r.ok ? "added" : (r.error ?? "failed") }));
-      if (r.ok) setEngineApps(await invoke<EngineApp[]>("engine_apps_list"));
-    } catch (e) { setAddMsg((m) => ({ ...m, [a.name]: `error: ${e}` })); }
+      if (r.ok) {
+        setEngineApps(await invoke<EngineApp[]>("engine_apps_list"));
+        // Tell the sidebar (and any other listener) to re-pull its app list so
+        // the new app shows up immediately, not just on next launch.
+        window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+      }
+    } catch (e) { setAddMsg((m) => ({ ...m, [a.name]: `${e}`.replace(/^error:\s*/i, "") || "failed" })); }
     setAdding(null);
   }
   const connectedIds = useMemo(() => new Set((engineApps ?? []).map((a) => a.id)), [engineApps]);
@@ -15534,17 +15663,24 @@ function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string; focus
               {(() => {
                 const slug = a.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
                 const already = connectedIds.has(slug);
+                const msg = addMsg[a.name];
+                const errored = msg && msg !== "added";
                 return already ? (
                   <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-accent" title="Already a connected app">added</span>
                 ) : (
-                  <button
-                    onClick={() => addApp(a)}
-                    disabled={adding === a.name}
-                    title="Add as a connectable app"
-                    className="shrink-0 rounded border border-border bg-background px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted opacity-0 transition-opacity hover:border-accent-border hover:text-accent group-hover:opacity-100 disabled:opacity-50"
-                  >
-                    {adding === a.name ? "…" : addMsg[a.name] === "added" ? "added" : "add"}
-                  </button>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {errored && (
+                      <span className="max-w-[160px] truncate font-mono text-[9px] text-err" title={msg}>{msg}</span>
+                    )}
+                    <button
+                      onClick={() => addApp(a)}
+                      disabled={adding === a.name}
+                      title={errored ? `Retry. Last error: ${msg}` : "Add as a connectable app"}
+                      className={`shrink-0 rounded border bg-background px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider transition-opacity group-hover:opacity-100 disabled:opacity-50 ${errored ? "border-err/50 text-err opacity-100 hover:border-err" : "border-border text-text-muted opacity-0 hover:border-accent-border hover:text-accent"}`}
+                    >
+                      {adding === a.name ? "…" : errored ? "retry" : "add"}
+                    </button>
+                  </span>
                 );
               })()}
               <PatternChip pattern={a.pattern} />
