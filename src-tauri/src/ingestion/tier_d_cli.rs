@@ -44,6 +44,7 @@ pub struct CliProvider {
 }
 
 /// Result of a single CLI run, handed back to mod.rs for ingestion.
+#[derive(Debug)]
 pub struct CliRunOutput {
     pub stdout: Vec<u8>,
     pub stderr: String,
@@ -181,5 +182,65 @@ impl CliRunner {
             running: 0,
             last_error: self.last_error.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn provider(binary: &str, fetch: &[&str]) -> CliProvider {
+        CliProvider {
+            id: "t".into(),
+            label: "t".into(),
+            app: "T".into(),
+            domain: "dev".into(),
+            binary: binary.into(),
+            version_args: vec!["--version".into()],
+            fetch_args: fetch.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn valid_binary_accepts_bare_names() {
+        for b in ["gh", "op", "gcloud", "stripe", "a-b_c.d"] {
+            assert!(CliRunner::valid_binary(b), "{b} should be valid");
+        }
+    }
+
+    #[test]
+    fn valid_binary_rejects_paths_and_injection() {
+        for b in ["", "..", "/usr/bin/sh", "../etc/passwd", "foo/bar", "foo bar", "foo;rm", "a|b", "$(x)"] {
+            assert!(!CliRunner::valid_binary(b), "{b:?} must be rejected");
+        }
+        assert!(!CliRunner::valid_binary(&"x".repeat(65)), "over-long must be rejected");
+    }
+
+    #[test]
+    fn run_captures_stdout_of_readonly_command() {
+        let mut r = CliRunner::new();
+        let out = r.run(&provider("printf", &["hello-prevail"])).expect("run should succeed");
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "hello-prevail");
+        assert_eq!(out.code, Some(0));
+    }
+
+    #[test]
+    fn run_errors_on_nonzero_exit() {
+        let mut r = CliRunner::new();
+        assert!(r.run(&provider("false", &[])).is_err());
+    }
+
+    #[test]
+    fn run_refuses_unsafe_binary_without_spawning() {
+        let mut r = CliRunner::new();
+        let err = r.run(&provider("../evil", &[])).unwrap_err();
+        assert!(err.contains("unsafe"), "expected refusal, got: {err}");
+    }
+
+    #[test]
+    fn probe_detects_presence_and_absence() {
+        let mut r = CliRunner::new();
+        assert!(r.probe(&provider("true", &[])), "`true` should probe as present");
+        assert!(!r.probe(&provider("definitely-not-a-real-binary-xyz", &[])));
     }
 }
