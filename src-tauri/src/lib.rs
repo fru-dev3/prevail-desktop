@@ -1440,6 +1440,7 @@ struct BenchQuestion {
     path: String,
     created: Option<String>, // YYYY-MM-DD the question entered the suite
     source: Option<String>,  // "user" | "ai"
+    edited: Option<String>,  // YYYY-MM-DD last edit (prior text snapshotted in _versions/)
     archived: bool,          // kept for history, excluded from new runs
 }
 
@@ -1481,6 +1482,7 @@ fn parse_bench_question(path: &Path) -> Option<BenchQuestion> {
     let mut council = false;
     let mut created = String::new();
     let mut source = String::new();
+    let mut edited = String::new();
     let mut archived = false;
     let mut expected_decision = String::new();
     let mut keywords: Vec<String> = Vec::new();
@@ -1501,6 +1503,7 @@ fn parse_bench_question(path: &Path) -> Option<BenchQuestion> {
                     }
                     "created" => created = val.to_string(),
                     "source" => source = val.to_string(),
+                    "edited" => edited = val.to_string(),
                     "archived" => archived = val == "true",
                     "expected_verdict_keywords" => {
                         if val.starts_with('[') && val.ends_with(']') {
@@ -1535,6 +1538,7 @@ fn parse_bench_question(path: &Path) -> Option<BenchQuestion> {
         path: path.to_string_lossy().to_string(),
         created: if created.is_empty() { None } else { Some(created) },
         source: if source.is_empty() { None } else { Some(source) },
+        edited: if edited.is_empty() { None } else { Some(edited) },
         archived,
     })
 }
