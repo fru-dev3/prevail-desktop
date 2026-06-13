@@ -686,6 +686,17 @@ pub fn engine_app_set_domains(id: String, domains: Vec<String>) -> Result<serde_
     run_engine_json(&["connectors", "set", &id, "domains", &doms, "--json"])
 }
 
+/// Enable / disable an app's autonomous sync. A disabled app stays configured
+/// and chattable; only the sync daemon's scheduled tick skips it (an explicit
+/// "Sync now" still runs). Returns { ok, path?, enabled?, error? }.
+#[tauri::command]
+pub fn engine_app_set_enabled(id: String, enabled: bool) -> Result<serde_json::Value, String> {
+    run_engine_json(&[
+        "connectors", "set", &id, "enabled",
+        if enabled { "true" } else { "false" }, "--json",
+    ])
+}
+
 /// Sync one app on demand ("Sync now"). Returns { ok, artifacts, error? }.
 #[tauri::command]
 pub fn engine_app_sync(id: String, vault: String) -> Result<serde_json::Value, String> {
@@ -703,6 +714,14 @@ pub fn engine_alignment(vault: String) -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub fn engine_app_skills(id: String) -> Result<serde_json::Value, String> {
     run_engine_json(&["connectors", "skills", &id, "--json"])
+}
+
+/// One app's run history (last ~20 runs) for the per-app Runs facet. Returns
+/// { lastRunTs, lastOkTs, lastRunOk, lastError, nextDueTs, consecutiveFailures,
+/// runs: [{ ts, ok, skill, summary?, error?, duration_ms, artifacts }] }.
+#[tauri::command]
+pub fn engine_app_runs(id: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "runs", &id, "--json"])
 }
 
 /// App lock (Phase 0 passcode). The passcode is sent on the child's STDIN so it

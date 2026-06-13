@@ -484,6 +484,10 @@ import {
   ShieldCheck,
   Cloud,
   Zap,
+  RefreshCw,
+  Clock,
+  KeyRound,
+  Power,
   type LucideIcon,
 } from "lucide-react";
 
@@ -1991,6 +1995,11 @@ export default function App() {
   // exactly like a domain. Cleared whenever you navigate to a domain/General.
   const [selectedApp, setSelectedApp] = useState<EngineApp | null>(null);
   const [appView, setAppView] = useState(false);
+  // Which facet of the open app the canvas shows. "chat" = the app's own
+  // conversation; the rest are app sub-views (mirror of DomainTab, but for an
+  // app's own concerns — never the grounding domain's).
+  type AppTab = "chat" | "runs" | "settings" | "domains";
+  const [appTab, setAppTab] = useState<AppTab>("chat");
   // Thread scope — WHERE conversations are stored/listed. An open app gets its
   // OWN thread space (`_app-<id>`) that's INDEPENDENT of any domain, so you can
   // hold several ongoing conversations with an app over time without them
@@ -2010,22 +2019,43 @@ export default function App() {
   // domain" strip, Benchmark tab). Those are domain concepts; an app feeds
   // domains, it isn't one.
   const onApp = appView && !!selectedApp;
-  // Whether the app detail panel (which lists + edits the domains this app
-  // refreshes) is expanded. Lifted here so the top bar's "Domains" chip can
-  // toggle the same panel the breadcrumb chevron does. Persists across launches.
-  const [appDetailOpen, setAppDetailOpen] = useState<boolean>(() => lsGet("prevail.appDetail.open") === "1");
-  useEffect(() => { lsSet("prevail.appDetail.open", appDetailOpen ? "1" : "0"); }, [appDetailOpen]);
   // Open an app in the canvas. Shared by the sidebar and the per-domain Apps
   // strip so "click an app anywhere → jump to it" works the same everywhere.
   const openApp = useCallback((app: EngineApp) => {
     setSelectedApp(app);
     setAppView(true);
+    setAppTab("chat");
     setSelectedDomain(app.domains[0] ?? "");
     setActiveThreadPath(null);
     setChatViewNonce((n) => n + 1);
     setDomainTab("chat");
     setTab("chat");
   }, []);
+  // Navigate to a domain's own chat, leaving app view. The mirror of openApp:
+  // app detail links to its domains, domain Apps strip links to its apps.
+  const openDomain = useCallback((name: string) => {
+    setSelectedApp(null);
+    setAppView(false);
+    setSelectedDomain(name);
+    setActiveThreadPath(null);
+    setChatViewNonce((n) => n + 1);
+    setDomainTab("chat");
+    setTab("chat");
+  }, []);
+  // Enable / disable an app's autonomous sync. Disabled apps stay configured
+  // and chattable; the sync daemon simply skips them. The apps-changed event
+  // refreshes the open record so the UI reflects the new state.
+  const [togglingEnabled, setTogglingEnabled] = useState(false);
+  const toggleAppEnabled = useCallback(async () => {
+    if (!selectedApp) return;
+    const next = !(selectedApp.enabled ?? true);
+    setTogglingEnabled(true);
+    try {
+      await invoke("engine_app_set_enabled", { id: selectedApp.id, enabled: next });
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+    } catch (e) { console.error("set app enabled", e); }
+    finally { setTogglingEnabled(false); }
+  }, [selectedApp]);
   // The domain Apps strip lives deep in the tree; let it open an app via a
   // window event instead of threading a callback through every layer.
   useEffect(() => {
@@ -2330,6 +2360,33 @@ export default function App() {
       try { new Notification(title, { body }); } catch {}
     }
   }
+  // Memory watchdog surface. The Rust watchdog emits `system:memory-warning`
+  // when Prevail's footprint approaches a machine-freezing fraction of RAM;
+  // kind "killed" means it already stopped the largest runaway task to protect
+  // the Mac. This is a SAFETY alert, so it shows regardless of the routine
+  // notification pref. The banner auto-clears; the native notification reaches
+  // the user even if they've switched to another app (when a freeze would hit).
+  const [memoryAlert, setMemoryAlert] = useState<{ kind: string; message: string } | null>(null);
+  useEffect(() => {
+    let un: UnlistenFn | undefined;
+    listen<{ kind: string; message: string }>("system:memory-warning", (e) => {
+      const { kind, message } = e.payload;
+      console.warn(`[memory ${kind}] ${message}`);
+      setMemoryAlert({ kind, message });
+      if (typeof Notification !== "undefined" && notifyPermissionRef.current === "granted") {
+        try {
+          new Notification(kind === "killed" ? "Prevail stopped a runaway task" : "Prevail memory is high", { body: message });
+        } catch {}
+      }
+    }).then((f) => { un = f; }).catch(() => {});
+    return () => { un?.(); };
+  }, []);
+  // Auto-dismiss the banner a while after the latest alert.
+  useEffect(() => {
+    if (!memoryAlert) return;
+    const t = setTimeout(() => setMemoryAlert(null), 20000);
+    return () => clearTimeout(t);
+  }, [memoryAlert]);
   function playDoneChime() {
     if (lsGet("prevail.pref.soundOnDone") !== "1") return;
     try {
@@ -2705,6 +2762,16 @@ export default function App() {
 
   return (
     <div className="relative flex h-screen flex-col bg-background text-text-primary">
+      {memoryAlert && (
+        <div className="fixed left-1/2 top-3 z-[100] flex max-w-xl -translate-x-1/2 items-start gap-2.5 rounded-lg border border-warn/40 bg-warn/10 px-4 py-2.5 shadow-lg backdrop-blur">
+          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-warn" />
+          <div className="min-w-0 flex-1 text-[13px]">
+            <div className="font-semibold text-warn">{memoryAlert.kind === "killed" ? "Runaway task stopped to protect your Mac" : "Memory is running high"}</div>
+            <div className="text-text-secondary">{memoryAlert.message}</div>
+          </div>
+          <button onClick={() => setMemoryAlert(null)} title="Dismiss" className="shrink-0 rounded p-0.5 text-text-muted hover:text-text-primary"><X className="h-4 w-4" /></button>
+        </div>
+      )}
       {bunkerEnabled && !bunkerLocalOk && (
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-warn/30 bg-warn/10 px-4 py-1.5 text-xs text-warn">
           <ShieldCheck className="h-3.5 w-3.5" />
@@ -2827,66 +2894,97 @@ export default function App() {
                 "archive" for General (you can't archive your whole workspace),
                 keeping just back up / export. */}
             <div className="flex items-center gap-1">
-              <button
-                onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "insights" ? "chat" : "insights"); }}
-                title="Insights: what to work on, your tasks, and recent intents"
-                className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
-                  tab === "chat" && domainTab === "insights"
-                    ? "bg-accent-soft text-accent"
-                    : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                }`}
-              >
-                <Lightbulb className="h-4 w-4" /> Insights
-              </button>
-              <button
-                onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "usage" ? "chat" : "usage"); }}
-                title={selectedDomain ? "Usage: queries, tokens, and cost for this domain" : "Usage: queries, tokens, and cost across everything"}
-                className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
-                  tab === "chat" && domainTab === "usage"
-                    ? "bg-accent-soft text-accent"
-                    : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                }`}
-              >
-                <Activity className="h-4 w-4" /> Usage
-              </button>
-              <button
-                onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "prefs" ? "chat" : "prefs"); }}
-                title={selectedDomain ? "Domain preferences" : "General preferences"}
-                className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
-                  tab === "chat" && domainTab === "prefs"
-                    ? "bg-accent-soft text-accent"
-                    : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                }`}
-              >
-                <SettingsIcon className="h-4 w-4" /> Preferences
-              </button>
               {onApp ? (
-                // On an app, the symmetric concept is the domains this app
-                // refreshes (not "apps refreshing a domain"). Toggle the detail
-                // panel, which lists + edits those domains.
-                <button
-                  onClick={() => { setTab("chat"); setAppDetailOpen((v) => !v); }}
-                  title="Domains this app refreshes"
-                  className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
-                    appDetailOpen
-                      ? "bg-accent-soft text-accent"
-                      : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                  }`}
-                >
-                  <Layers className="h-4 w-4" /> Domains
-                </button>
-              ) : selectedDomain && (
-                <button
-                  onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "apps" ? "chat" : "apps"); }}
-                  title="Apps that refresh this domain"
-                  className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
-                    tab === "chat" && domainTab === "apps"
-                      ? "bg-accent-soft text-accent"
-                      : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                  }`}
-                >
-                  <Plug className="h-4 w-4" /> Apps
-                </button>
+                // An open app shows ITS OWN facets, independent of the domain it
+                // grounds in (the isolation shipped in 0.7.24). Chat is the app's
+                // conversation; Runs / Settings / Domains are the AppFacetPanel
+                // views. The grounding domain's own Insights/Usage/Preferences no
+                // longer leak in here.
+                <>
+                  {([
+                    { key: "chat", label: "Chat", Icon: MessageSquare, title: `Conversations with ${selectedApp.title}` },
+                    { key: "runs", label: "Runs", Icon: RefreshCw, title: "Last sync, schedule, and run history" },
+                    { key: "settings", label: "Settings", Icon: SettingsIcon, title: "Connection, autonomy, schedule, and skills" },
+                    { key: "domains", label: "Domains", Icon: Layers, title: "Domains this app refreshes" },
+                  ] as const).map(({ key, label, Icon, title }) => (
+                    <button
+                      key={key}
+                      onClick={() => { setTab("chat"); setAppTab(key); }}
+                      title={title}
+                      className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                        tab === "chat" && appTab === key
+                          ? "bg-accent-soft text-accent"
+                          : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" /> {label}
+                    </button>
+                  ))}
+                  <button
+                    onClick={toggleAppEnabled}
+                    disabled={togglingEnabled}
+                    title={(selectedApp.enabled ?? true) ? "Disable autonomous sync (stays configured and chattable)" : "Enable autonomous sync"}
+                    className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors disabled:opacity-50 ${
+                      (selectedApp.enabled ?? true)
+                        ? "text-text-muted hover:bg-surface-warm hover:text-accent"
+                        : "text-warn hover:bg-surface-warm hover:text-warn"
+                    }`}
+                  >
+                    <Power className="h-4 w-4" /> {(selectedApp.enabled ?? true) ? "Enabled" : "Disabled"}
+                  </button>
+                </>
+              ) : (
+                // Insights / Usage / Preferences / Apps — available for General
+                // too, not just domains. They toggle the Chat sub-view (jumping
+                // to Chat first if you're on Council/Benchmark).
+                <>
+                  <button
+                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "insights" ? "chat" : "insights"); }}
+                    title="Insights: what to work on, your tasks, and recent intents"
+                    className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                      tab === "chat" && domainTab === "insights"
+                        ? "bg-accent-soft text-accent"
+                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <Lightbulb className="h-4 w-4" /> Insights
+                  </button>
+                  <button
+                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "usage" ? "chat" : "usage"); }}
+                    title={selectedDomain ? "Usage: queries, tokens, and cost for this domain" : "Usage: queries, tokens, and cost across everything"}
+                    className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                      tab === "chat" && domainTab === "usage"
+                        ? "bg-accent-soft text-accent"
+                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <Activity className="h-4 w-4" /> Usage
+                  </button>
+                  <button
+                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "prefs" ? "chat" : "prefs"); }}
+                    title={selectedDomain ? "Domain preferences" : "General preferences"}
+                    className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                      tab === "chat" && domainTab === "prefs"
+                        ? "bg-accent-soft text-accent"
+                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <SettingsIcon className="h-4 w-4" /> Preferences
+                  </button>
+                  {selectedDomain && (
+                    <button
+                      onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "apps" ? "chat" : "apps"); }}
+                      title="Apps that refresh this domain"
+                      className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                        tab === "chat" && domainTab === "apps"
+                          ? "bg-accent-soft text-accent"
+                          : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                      }`}
+                    >
+                      <Plug className="h-4 w-4" /> Apps
+                    </button>
+                  )}
+                </>
               )}
               <DomainActionsMenu
                 domain={selectedDomain || "general"}
@@ -2901,22 +2999,29 @@ export default function App() {
             </div>
           </div>
 
-          {/* App view: detail bar above the chat, scoped to the app's domain.
+          {/* App view: a slim, always-visible identity bar above the canvas.
               Full-width chrome (not inside the chat scroll) so ChatPanel's own
-              layout is untouched. */}
-          {appView && selectedApp && tab === "chat" && (
-            <AppDetailBar
+              layout is untouched. The rich detail lives in the AppFacetPanel
+              facets (Runs / Settings / Domains), reached via the top-bar chips. */}
+          {appView && selectedApp && (
+            <AppHeaderBar
               app={selectedApp}
-              vaultPath={vaultPath}
-              domains={domains}
-              open={appDetailOpen}
-              onToggleOpen={() => setAppDetailOpen((v) => !v)}
+              enabled={selectedApp.enabled ?? true}
+              onOpenDomain={openDomain}
               onClose={() => { setSelectedApp(null); setAppView(false); }}
-              onChanged={() => { void refreshThreads(); }}
             />
           )}
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {tab === "chat" && (
+            {tab === "chat" && onApp && selectedApp && appTab !== "chat" ? (
+              <AppFacetPanel
+                app={selectedApp}
+                vaultPath={vaultPath}
+                domains={domains}
+                appTab={appTab}
+                onOpenDomain={openDomain}
+                onChanged={() => { void refreshThreads(); }}
+              />
+            ) : tab === "chat" && (
               <ChatPanel
                 domain={selectedDomain}
                 domainPath={selectedDomainPath}
@@ -5008,25 +5113,94 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
   );
 }
 
-// Apps tab in domain view: shows all engine apps that refresh this domain.
-// App view detail bar — the in-canvas "app page" header. Sits above the chat
-// (which is scoped to the app's primary domain) and shows the six things the
-// app is: sync schedule, refresh cadence, last run, the domains it refreshes,
-// the vault paths it writes, and its skills. Collapsible so it gets out of the
-// way; the conversation below is the app's "conversations". Test/Sync reuse the
-// same engine commands the Settings → Apps detail uses.
-function AppDetailBar({ app, vaultPath, domains, open, onToggleOpen, onClose, onChanged }: { app: EngineApp; vaultPath: string; domains: Domain[]; open: boolean; onToggleOpen: () => void; onClose: () => void; onChanged: () => void }) {
-  // Open/collapsed state is owned by App (so the top bar's "Domains" chip can
-  // toggle the same panel as the breadcrumb chevron). Collapsed by default —
-  // the header line already shows status + which domains it refreshes; expand
-  // for the schedule, the domain editor, and skills.
+// How an app talks to its third party — human label for the Settings facet.
+const INTEGRATION_LABEL: Record<string, string> = {
+  api: "Direct API", oauth: "OAuth", browser: "Browser", mcp: "MCP server", manual: "Manual drop",
+};
+// What the app is allowed to DO on your behalf.
+const AUTONOMY_LABEL: Record<string, string> = {
+  "read-only": "Read only", draft: "Can draft", act: "Can act",
+};
+const AUTONOMY_TINT: Record<string, string> = {
+  "read-only": "#2fb87a", draft: "#d8a657", act: "#e06c75",
+};
+// Human-readable cadence from the refresh block (every / on / at).
+function appScheduleText(app: EngineApp): string {
+  if (!app.refresh?.every) return "Manual. No schedule set.";
+  const parts = [`Every ${app.refresh.every}`];
+  if (app.refresh.on) parts.push(titleCase(app.refresh.on));
+  if (app.refresh.at) parts.push(`at ${app.refresh.at}`);
+  return parts.join(" · ");
+}
+
+// Small labelled section card used across the app facets. Keeps each block
+// visually distinct without the old wall-of-monospace look.
+function AppCard({ icon: Icon, label, children, action }: { icon: LucideIcon; label: string; children: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="mb-2.5 flex items-center gap-2">
+        <Icon className="h-3.5 w-3.5 shrink-0 text-accent" />
+        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">{label}</span>
+        {action && <span className="ml-auto">{action}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+// One key/value row inside an AppCard.
+function AppKV({ k, children }: { k: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline gap-3 py-1">
+      <span className="w-28 shrink-0 font-mono text-[11px] text-text-muted">{k}</span>
+      <span className="min-w-0 flex-1 text-sm text-text-primary">{children}</span>
+    </div>
+  );
+}
+
+// Slim, always-visible identity bar for an open app. Status, name + account,
+// integration, and the domains it feeds (each a link into that domain's chat).
+// The rich detail lives in the Runs / Settings / Domains facets below.
+function AppHeaderBar({ app, enabled, onOpenDomain, onClose }: { app: EngineApp; enabled: boolean; onOpenDomain: (d: string) => void; onClose: () => void }) {
+  const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
+  return (
+    <div className="shrink-0 border-b border-border-subtle bg-surface px-4 py-2.5">
+      <div className="flex items-center gap-2.5">
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: enabled ? tint : "#9aa0a6" }} title={enabled ? app.status : "disabled"} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-base font-semibold text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
+            <span className="shrink-0 rounded-full border border-border-subtle px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">{INTEGRATION_LABEL[app.integration] ?? app.integration}</span>
+            {!enabled && <span className="shrink-0 rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-warn">disabled</span>}
+          </div>
+          {app.domains.length > 0 && (
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted/70">feeds</span>
+              {app.domains.map((d, i) => (
+                <span key={d} className="inline-flex items-center gap-1.5">
+                  <button onClick={() => onOpenDomain(d)} className="rounded px-1 text-[12px] font-medium text-accent hover:bg-accent-soft hover:underline" title={`Open ${titleCase(d)} and chat there`}>{titleCase(d)}</button>
+                  {i < app.domains.length - 1 && <span className="text-text-muted/40">·</span>}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        <button onClick={onClose} title="Close app view" className="shrink-0 rounded p-1 text-text-muted hover:bg-surface-warm hover:text-text-primary"><X className="h-4 w-4" /></button>
+      </div>
+    </div>
+  );
+}
+
+// The app's Runs / Settings / Domains facet bodies. Rendered in the canvas
+// scroll area when the matching top-bar chip is active. Owns the domain-binding
+// editor (the cross-link), the skills list, and the Test / Sync actions.
+// One recorded sync run, mirroring the engine's sync-state.json `runs` ring.
+type AppRun = { ts: number; ok: boolean; skill: string; summary?: string; error?: string; duration_ms: number; artifacts: number };
+type AppRunHistory = { runs: AppRun[]; nextDueTs: number | null; consecutiveFailures: number };
+
+function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, onChanged }: { app: EngineApp; vaultPath: string; domains: Domain[]; appTab: "runs" | "settings" | "domains"; onOpenDomain: (d: string) => void; onChanged: () => void }) {
   const [skills, setSkills] = useState<{ id: string; runner: string; trigger: string }[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  // Editable app→domain binding (many-to-many). Seeded from the app record;
-  // re-seeded whenever a different app is opened. Persisted via the engine,
-  // which is the source of truth — local state is optimistic and reverts on
-  // failure.
   const [doms, setDoms] = useState<string[]>(app.domains);
   const [savingDoms, setSavingDoms] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -5036,31 +5210,29 @@ function AppDetailBar({ app, vaultPath, domains, open, onToggleOpen, onClose, on
     setSkills(null);
     invoke<{ id: string; runner: string; trigger: string }[]>("engine_app_skills", { id: app.id }).then(setSkills).catch(() => setSkills([]));
   }, [app.id]);
-  const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
-  // Domains that exist in the vault but aren't bound yet — offered in the add
-  // picker. Free-text entry is also allowed for a domain not yet created.
+  // Per-app run history (the bounded ring the sync layer records). Refetched
+  // when the app changes and after a manual "Sync now" so the list stays live.
+  const [history, setHistory] = useState<AppRunHistory | null>(null);
+  const loadRuns = useCallback(() => {
+    invoke<AppRunHistory>("engine_app_runs", { id: app.id })
+      .then(setHistory)
+      .catch(() => setHistory({ runs: [], nextDueTs: null, consecutiveFailures: 0 }));
+  }, [app.id]);
+  useEffect(() => { setHistory(null); loadRuns(); }, [app.id, loadRuns]);
   const addable = useMemo(
     () => domains.map((d) => d.name).filter((n) => !doms.includes(n)).sort((a, b) => a.localeCompare(b)),
     [domains, doms],
   );
   async function persistDomains(next: string[]) {
     const prev = doms;
-    setDoms(next);
-    setSavingDoms(true);
-    setNote(null);
+    setDoms(next); setSavingDoms(true); setNote(null);
     try {
-      const r = await invoke<{ ok: boolean; domains?: string[]; error?: string }>(
-        "engine_app_set_domains",
-        { id: app.id, domains: next },
-      );
+      const r = await invoke<{ ok: boolean; domains?: string[]; error?: string }>("engine_app_set_domains", { id: app.id, domains: next });
       if (!r.ok) { setDoms(prev); setNote(`failed: ${r.error}`); return; }
       if (r.domains) setDoms(r.domains);
-      // Refresh the open app record (grounding) + every domain Apps strip.
       window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
       onChanged();
-    } catch (e) {
-      setDoms(prev); setNote(`error: ${e}`);
-    } finally { setSavingDoms(false); }
+    } catch (e) { setDoms(prev); setNote(`error: ${e}`); } finally { setSavingDoms(false); }
   }
   function removeDomain(d: string) { void persistDomains(doms.filter((x) => x !== d)); }
   function addDomain(raw: string) {
@@ -5079,107 +5251,133 @@ function AppDetailBar({ app, vaultPath, domains, open, onToggleOpen, onClose, on
     setBusy("sync"); setNote(null);
     try {
       const r = await invoke<{ ok: boolean; artifacts?: number; error?: string }>("engine_app_sync", { id: app.id, vault: vaultPath });
-      setNote(r.ok ? `synced. ${r.artifacts ?? 0} artifact(s)` : `failed: ${r.error}`);
+      setNote(r.ok ? `Synced. ${r.artifacts ?? 0} artifact(s) written.` : `Failed: ${r.error}`);
       onChanged();
+      loadRuns();
     } catch (e) { setNote(`error: ${e}`); } finally { setBusy(null); }
   }
-  return (
-    <div className="shrink-0 border-b border-border-subtle bg-surface px-4 py-2.5">
-      <div className="flex items-center gap-2.5">
-        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: tint }} title={app.status} />
-        <button onClick={onToggleOpen} className="flex min-w-0 flex-1 items-center gap-2 text-left" title="Show app detail">
-          <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
-          <span className="truncate text-base font-semibold text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
-          <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">{app.integration}</span>
-          {doms.length > 0 && <span className="truncate font-mono text-[10px] text-text-muted/70">refreshes {doms.map(titleCase).join(", ")}</span>}
-        </button>
-        <button onClick={test} disabled={busy === "test"} className="shrink-0 rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "test" ? "testing" : "test"}</button>
-        <button onClick={sync} disabled={busy === "sync"} title="Sync this app now" className="shrink-0 rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "sync" ? "syncing" : "sync"}</button>
-        <button onClick={onClose} title="Close app view" className="shrink-0 rounded p-1 text-text-muted hover:bg-surface-warm hover:text-text-primary"><X className="h-4 w-4" /></button>
-      </div>
-      {note && <div className="mt-1 pl-6 font-mono text-[10px] text-text-secondary">{note}</div>}
-      {open && (
-        <div className="mt-2 space-y-2.5 border-t border-border-subtle pl-6 pt-2.5 text-xs">
-          <div>
-            <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Sync schedule · last run</div>
-            <div className="font-mono text-[11px] text-text-secondary">
-              {app.refresh?.every ? `every ${app.refresh.every}` : "manual: no schedule set"} · last run {relTime(app.lastSuccessTs)}
-              {app.lastError && <span className="ml-2 text-warn">last error: {app.lastError}</span>}
-            </div>
+  const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
+  const autonomy = app.autonomy ?? "read-only";
+
+  const domainEditor = (
+    <AppCard icon={Layers} label="Domains this app refreshes" action={savingDoms ? <span className="font-mono text-[9px] text-text-muted/60">saving…</span> : undefined}>
+      <p className="mb-2 text-[12px] text-text-muted">Many-to-many. Click a domain to open it and chat there; remove or add bindings here.</p>
+      {doms.length === 0 ? (
+        <div className="text-[12px] text-text-muted">Not bound to any domain yet. Add one below to start refreshing it.</div>
+      ) : (
+        <ul className="space-y-1">
+          {doms.map((d) => (
+            <li key={d} className="group/dom flex items-center gap-2 rounded-lg border border-border-subtle bg-background px-3 py-2">
+              {(() => { const I = domainIcon(d); return I ? <I className="h-4 w-4 shrink-0 text-accent" /> : <span className="text-accent">◆</span>; })()}
+              <button onClick={() => onOpenDomain(d)} className="text-sm font-medium text-text-primary hover:text-accent hover:underline" title={`Open ${titleCase(d)} and chat there`}>{titleCase(d)}</button>
+              <span className="font-mono text-[10px] text-text-muted/60">vault/{d}/</span>
+              <button onClick={() => onOpenDomain(d)} title={`Open ${titleCase(d)}`} className="ml-auto flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-0 transition-opacity hover:bg-accent-soft hover:text-accent group-hover/dom:opacity-100"><ArrowRight className="h-3.5 w-3.5" /></button>
+              <button onClick={() => removeDomain(d)} disabled={savingDoms} title={`Remove ${titleCase(d)} from ${app.title}`} className="flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-0 transition-opacity hover:bg-surface-warm hover:text-warn group-hover/dom:opacity-100 disabled:opacity-30"><X className="h-3.5 w-3.5" /></button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-2">
+        {addOpen ? (
+          <div className="flex items-center gap-1.5">
+            <input list={`app-doms-${app.id}`} autoFocus value={addValue} onChange={(e) => setAddValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") addDomain(addValue); if (e.key === "Escape") { setAddOpen(false); setAddValue(""); } }}
+              placeholder="domain name" className="w-44 rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] text-text-primary outline-none focus:border-accent-border" />
+            <datalist id={`app-doms-${app.id}`}>{addable.map((n) => <option key={n} value={n}>{titleCase(n)}</option>)}</datalist>
+            <button onClick={() => addDomain(addValue)} disabled={savingDoms || !addValue.trim()} className="rounded-lg border border-border bg-background px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-40">add</button>
+            <button onClick={() => { setAddOpen(false); setAddValue(""); }} className="rounded p-1.5 text-text-muted hover:text-text-primary"><X className="h-4 w-4" /></button>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Refreshes domains · writes to vault</div>
-              {savingDoms && <span className="font-mono text-[9px] text-text-muted/60">saving…</span>}
-            </div>
-            {doms.length === 0 ? (
-              <div className="font-mono text-[11px] text-text-muted">Not bound to any domain yet. Add one below to start refreshing it.</div>
+        ) : (
+          <button onClick={() => setAddOpen(true)} disabled={savingDoms} className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40"><Plus className="h-3.5 w-3.5" /> add domain</button>
+        )}
+      </div>
+    </AppCard>
+  );
+
+  return (
+    <div className="mx-auto w-full max-w-3xl space-y-4 px-6 py-6">
+      {appTab === "settings" && (
+        <>
+          <AppCard icon={KeyRound} label="Connection" action={
+            <button onClick={test} disabled={busy === "test"} className="rounded-lg border border-border bg-background px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "test" ? "testing…" : "test"}</button>
+          }>
+            <AppKV k="Status"><span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: tint }} />{app.status}</span></AppKV>
+            <AppKV k="Method">{INTEGRATION_LABEL[app.integration] ?? app.integration}</AppKV>
+            <AppKV k="Account">{app.account?.label ? <span>{app.account.label}{app.account.address ? <span className="text-text-muted"> · {app.account.address}</span> : null}</span> : <span className="text-text-muted">-</span>}</AppKV>
+            <AppKV k="Autonomy"><span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ backgroundColor: `${AUTONOMY_TINT[autonomy] ?? "#9aa0a6"}1a`, color: AUTONOMY_TINT[autonomy] ?? "#9aa0a6" }}><ShieldCheck className="h-3 w-3" />{AUTONOMY_LABEL[autonomy] ?? autonomy}</span></AppKV>
+            {app.connections && app.connections.length > 0 && (
+              <AppKV k="Strategies">{app.connections.map((c) => c.kind).join(" → ")}</AppKV>
+            )}
+            {note && <div className="mt-2 rounded-lg bg-surface-warm px-3 py-1.5 font-mono text-[11px] text-text-secondary">{note}</div>}
+          </AppCard>
+          <AppCard icon={Clock} label="Schedule">
+            <div className="text-sm text-text-primary">{appScheduleText(app)}</div>
+            <p className="mt-1 text-[11px] text-text-muted">The sync daemon refreshes this app on this cadence when it is enabled.</p>
+          </AppCard>
+          <AppCard icon={Zap} label="Skills">
+            {skills === null ? (
+              <div className="text-[12px] text-text-muted">loading…</div>
+            ) : skills.length === 0 ? (
+              <div className="text-[12px] text-text-muted">No skills yet. Add one under <code className="text-accent">skills/</code> to enable syncing.</div>
             ) : (
-              <ul className="mt-1 space-y-0.5">
-                {doms.map((d) => (
-                  <li key={d} className="group/dom flex items-center gap-1.5">
-                    <span className="font-mono text-[11px] text-text-secondary">▸ {titleCase(d)} <span className="text-text-muted/60">→ vault/{d}/</span></span>
-                    <button
-                      onClick={() => removeDomain(d)}
-                      disabled={savingDoms}
-                      title={`Remove ${titleCase(d)} from ${app.title}`}
-                      className="flex h-5 w-5 items-center justify-center rounded text-text-muted opacity-0 transition-opacity hover:bg-surface-warm hover:text-warn group-hover/dom:opacity-100 disabled:opacity-30"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+              <ul className="space-y-1">
+                {skills.map((s) => (
+                  <li key={s.id} className="flex items-center gap-2 text-[13px] text-text-secondary"><span className="text-accent">▸</span> <span className="font-medium text-text-primary">{s.id}</span> <span className="font-mono text-[10px] text-text-muted">{s.runner} · {s.trigger}</span></li>
+                ))}
+              </ul>
+            )}
+          </AppCard>
+        </>
+      )}
+
+      {appTab === "runs" && (
+        <>
+          <AppCard icon={RefreshCw} label="Last run" action={
+            <button onClick={sync} disabled={busy === "sync"} className="inline-flex items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent/10 disabled:opacity-50"><RefreshCw className={`h-3 w-3 ${busy === "sync" ? "animate-spin" : ""}`} />{busy === "sync" ? "syncing…" : "sync now"}</button>
+          }>
+            <div className="text-2xl font-semibold text-text-primary">{relTime(app.lastSuccessTs)}</div>
+            <div className="mt-0.5 text-[12px] text-text-muted">{app.lastSuccessTs ? "last successful refresh" : "this app has never run"}</div>
+            {app.lastError && (
+              <div className="mt-3 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-[12px] text-warn"><span className="font-mono uppercase tracking-wider">last error</span> · {app.lastError}</div>
+            )}
+            {note && <div className="mt-3 rounded-lg bg-surface-warm px-3 py-1.5 font-mono text-[11px] text-text-secondary">{note}</div>}
+          </AppCard>
+          <AppCard icon={Clock} label="Schedule">
+            <div className="text-sm text-text-primary">{appScheduleText(app)}</div>
+            {history?.nextDueTs && <div className="mt-1 text-[11px] text-text-muted">Next autonomous run {relTime(history.nextDueTs)}.</div>}
+          </AppCard>
+          <AppCard icon={Activity} label="Run history">
+            {history === null ? (
+              <div className="text-[12px] text-text-muted">loading…</div>
+            ) : history.runs.length === 0 ? (
+              <div className="text-[12px] text-text-muted">No runs recorded yet. Use Sync now above to run this app.</div>
+            ) : (
+              <ul className="space-y-1">
+                {[...history.runs].reverse().map((r, i) => (
+                  <li key={`${r.ts}-${i}`} title={r.error ?? r.summary ?? undefined} className="flex items-center gap-2.5 rounded-lg border border-border-subtle bg-background px-3 py-2 text-[12px]">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: r.ok ? "#2fb87a" : "#e06c75" }} />
+                    <span className="shrink-0 text-text-secondary">{relTime(r.ts)}</span>
+                    <span className="truncate font-mono text-[10px] text-text-muted">{r.skill}</span>
+                    <span className="ml-auto flex shrink-0 items-center gap-2.5 font-mono text-[10px] text-text-muted">
+                      {r.artifacts > 0 && <span>{r.artifacts} artifact{r.artifacts === 1 ? "" : "s"}</span>}
+                      <span>{r.duration_ms < 1000 ? `${r.duration_ms}ms` : `${(r.duration_ms / 1000).toFixed(1)}s`}</span>
+                    </span>
                   </li>
                 ))}
               </ul>
             )}
-            {/* Add a domain: pick an existing one or type a new slug. The
-                binding is many-to-many, so one app can feed several domains. */}
-            <div className="mt-1.5">
-              {addOpen ? (
-                <div className="flex items-center gap-1.5">
-                  <input
-                    list={`app-doms-${app.id}`}
-                    autoFocus
-                    value={addValue}
-                    onChange={(e) => setAddValue(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") addDomain(addValue); if (e.key === "Escape") { setAddOpen(false); setAddValue(""); } }}
-                    placeholder="domain name"
-                    className="w-40 rounded border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-primary outline-none focus:border-accent-border"
-                  />
-                  <datalist id={`app-doms-${app.id}`}>
-                    {addable.map((n) => <option key={n} value={n}>{titleCase(n)}</option>)}
-                  </datalist>
-                  <button onClick={() => addDomain(addValue)} disabled={savingDoms || !addValue.trim()} className="rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-40">add</button>
-                  <button onClick={() => { setAddOpen(false); setAddValue(""); }} className="rounded p-1 text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setAddOpen(true)}
-                  disabled={savingDoms}
-                  className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-accent disabled:opacity-40"
-                >
-                  <Plus className="h-3 w-3" /> add domain
-                </button>
-              )}
-            </div>
-          </div>
-          <div>
-            <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Skills</div>
-            {skills === null ? (
-              <div className="text-text-muted">loading…</div>
-            ) : skills.length === 0 ? (
-              <div className="text-text-muted">No skills yet. Add one under <code className="text-accent">skills/</code> to enable syncing.</div>
-            ) : (
-              <ul className="mt-0.5 space-y-0.5">
-                {skills.map((s) => (
-                  <li key={s.id} className="font-mono text-[11px] text-text-secondary">▸ {s.id} <span className="text-text-muted">· {s.runner} · {s.trigger}</span></li>
-                ))}
-              </ul>
+            {history && history.runs.length > 0 && (
+              <p className="mt-2 text-[10px] text-text-muted/60">Most recent {history.runs.length} run{history.runs.length === 1 ? "" : "s"} (manual and autonomous). Older runs roll off.</p>
             )}
-          </div>
-          <div className="font-mono text-[10px] text-text-muted/70">
-            Conversations below belong to {app.title}, independent of any domain. Threads accumulate here over time{doms.length > 0 ? `, grounded in ${titleCase(doms[0])}` : ""}.
-          </div>
-        </div>
+          </AppCard>
+        </>
+      )}
+
+      {appTab === "domains" && (
+        <>
+          {domainEditor}
+          <p className="px-1 text-[11px] text-text-muted/70">Conversations with {app.title} are kept here, independent of any domain{doms.length > 0 ? `, grounded in ${titleCase(doms[0])}` : ""}.</p>
+        </>
       )}
     </div>
   );
@@ -15426,7 +15624,13 @@ type BrandLogo = { hex: string; path: string };
 type EngineApp = {
   id: string; title: string; integration: string; status: string; configured: boolean;
   domains: string[]; lastSuccessTs: number | null; lastError: string | null;
-  account: { label?: string } | null; refresh: { every?: string } | null; community: boolean;
+  account: { label?: string; address?: string } | null;
+  refresh: { every?: string; at?: string; on?: string } | null;
+  autonomy?: string | null;
+  connections?: { kind: string; description?: string }[] | null;
+  // Whether the sync daemon may run this app. Absent / true = enabled.
+  enabled?: boolean | null;
+  community: boolean;
   path?: string | null;
 };
 const STATUS_TINT: Record<string, string> = { connected: "#2fb87a", expired: "#d8a657", error: "#e06c75", "not-configured": "#2fb87a" };
