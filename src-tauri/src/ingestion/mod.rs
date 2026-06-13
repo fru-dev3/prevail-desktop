@@ -18,6 +18,7 @@ pub mod keychain;
 pub mod tier_a_mcp;
 pub mod tier_b_composio;
 pub mod tier_c_browser;
+pub mod tier_d_cli;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -91,6 +92,7 @@ pub struct OrchestratorState {
     pub tier_a: Mutex<tier_a_mcp::McpRegistry>,
     pub tier_b: Mutex<tier_b_composio::ComposioRuntime>,
     pub tier_c: Mutex<tier_c_browser::BrowserRunner>,
+    pub tier_d: Mutex<tier_d_cli::CliRunner>,
 }
 
 impl Default for OrchestratorState {
@@ -99,6 +101,7 @@ impl Default for OrchestratorState {
             tier_a: Mutex::new(tier_a_mcp::McpRegistry::new()),
             tier_b: Mutex::new(tier_b_composio::ComposioRuntime::new()),
             tier_c: Mutex::new(tier_c_browser::BrowserRunner::new()),
+            tier_d: Mutex::new(tier_d_cli::CliRunner::new()),
         }
     }
 }
@@ -113,7 +116,8 @@ pub fn ingestion_status(
     let a = state.tier_a.lock().map_err(|e| e.to_string())?.status();
     let b = state.tier_b.lock().map_err(|e| e.to_string())?.status();
     let c = state.tier_c.lock().map_err(|e| e.to_string())?.status();
-    Ok(vec![a, b, c])
+    let d = state.tier_d.lock().map_err(|e| e.to_string())?.status();
+    Ok(vec![a, b, c, d])
 }
 
 #[tauri::command]
@@ -420,6 +424,133 @@ pub fn ingestion_recipe_save(recipe: PortalRecipe) -> Result<(), String> {
     }
     std::fs::write(&path, text).map_err(|e| format!("write user recipes: {e}"))?;
     Ok(())
+}
+
+/// Bundled connector catalog — the pre-populated, pattern-tagged list of
+/// personal-life apps. Every app carries a connector `pattern`
+/// (api/oauth/cli/browser) that maps to an ingestion tier, so the router
+/// stays app-agnostic. Returned verbatim as parsed JSON to avoid struct
+/// drift as the catalog schema grows; the frontend owns the shape.
+#[tauri::command]
+pub fn ingestion_connector_catalog(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    use tauri::Manager;
+    let resource = app
+        .path()
+        .resolve(
+            "resources/connectors/catalog.json",
+            tauri::path::BaseDirectory::Resource,
+        )
+        .map_err(|e| format!("resolve catalog.json: {e}"))?;
+    if !resource.exists() {
+        return Ok(serde_json::json!({ "version": 0, "domains": [], "apps": [] }));
+    }
+    let raw =
+        std::fs::read_to_string(&resource).map_err(|e| format!("read catalog.json: {e}"))?;
+    serde_json::from_str(&raw).map_err(|e| format!("parse catalog.json: {e}"))
+}
+
+// ── Tier D — CLI connectors ──────────────────────────────────────────
+
+/// Load the bundled, allowlisted CLI providers. The JS surface can only
+/// reference these by id; it never supplies a binary or args itself.
+fn load_cli_providers(app: &tauri::AppHandle) -> Result<Vec<tier_d_cli::CliProvider>, String> {
+    use tauri::Manager;
+    let resource = app
+        .path()
+        .resolve(
+            "resources/connectors/cli_providers.json",
+            tauri::path::BaseDirectory::Resource,
+        )
+        .map_err(|e| format!("resolve cli_providers.json: {e}"))?;
+    if !resource.exists() {
+        return Ok(Vec::new());
+    }
+    let raw = std::fs::read_to_string(&resource).map_err(|e| format!("read cli_providers.json: {e}"))?;
+    serde_json::from_str(&raw).map_err(|e| format!("parse cli_providers.json: {e}"))
+}
+
+#[tauri::command]
+pub fn ingestion_cli_providers(app: tauri::AppHandle) -> Result<Vec<tier_d_cli::CliProvider>, String> {
+    load_cli_providers(&app)
+}
+
+/// Is the provider's CLI installed + on PATH? Runs its read-only version probe.
+#[tauri::command]
+pub fn ingestion_cli_probe(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, OrchestratorState>,
+    provider_id: String,
+) -> Result<bool, String> {
+    let providers = load_cli_providers(&app)?;
+    let provider = providers
+        .into_iter()
+        .find(|p| p.id == provider_id)
+        .ok_or_else(|| format!("unknown CLI provider: {provider_id}"))?;
+    let mut runner = state.tier_d.lock().map_err(|e| e.to_string())?;
+    Ok(runner.probe(&provider))
+}
+
+/// Summary returned to the UI after a successful CLI pull.
+#[derive(Serialize, Clone)]
+pub struct CliRunSummary {
+    pub provider: String,
+    pub app: String,
+    pub domain: String,
+    pub path: String,
+    pub bytes: u64,
+    pub sha256: String,
+}
+
+/// Run a provider's read-only command and ingest its stdout as an artifact.
+#[tauri::command]
+pub fn ingestion_cli_run(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, OrchestratorState>,
+    provider_id: String,
+) -> Result<CliRunSummary, String> {
+    use tauri::Emitter;
+    crate::bunker::guard_cloud()?; // a CLI fetch may reach the network
+
+    let providers = load_cli_providers(&app)?;
+    let provider = providers
+        .into_iter()
+        .find(|p| p.id == provider_id)
+        .ok_or_else(|| format!("unknown CLI provider: {provider_id}"))?;
+
+    let out = {
+        let mut runner = state.tier_d.lock().map_err(|e| e.to_string())?;
+        runner.run(&provider)?
+    };
+
+    // Stage the captured stdout in a temp file, then move it through the
+    // single artifact sink (SHA-256 + sidecar) like every other tier.
+    let tmp = std::env::temp_dir().join(format!("prevail-cli-{}-{}.out", provider.id, std::process::id()));
+    std::fs::write(&tmp, &out.stdout).map_err(|e| format!("stage cli output: {e}"))?;
+    let clean = format!("{}-{}.txt", provider.app, provider.id);
+    let (dest, meta) = storage::ingest_artifact(&tmp, &provider.domain, "tier_d_cli", &provider.app, &clean)?;
+
+    let _ = app.emit(
+        "ingestion:artifact",
+        serde_json::json!({
+            "tier_id": "tier_d_cli",
+            "domain": meta.domain,
+            "source": meta.source,
+            "path": dest.to_string_lossy(),
+            "sha256": meta.sha256,
+            "size": meta.size,
+            "original": meta.original_name,
+            "ts": meta.ts,
+        }),
+    );
+
+    Ok(CliRunSummary {
+        provider: provider.id,
+        app: provider.app,
+        domain: provider.domain,
+        path: dest.to_string_lossy().to_string(),
+        bytes: meta.size,
+        sha256: meta.sha256,
+    })
 }
 
 /// Per-domain quick stats — number of imports, total size. Used by
