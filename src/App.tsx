@@ -1985,6 +1985,12 @@ export default function App() {
   }, [vaultPath]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
+  // App view — clicking an app in the sidebar opens it in the canvas: a detail
+  // bar (schedule, cadence, last run, vault paths, domains) above a chat scoped
+  // to the app's primary domain, so you converse against the app's own data
+  // exactly like a domain. Cleared whenever you navigate to a domain/General.
+  const [selectedApp, setSelectedApp] = useState<EngineApp | null>(null);
+  const [appView, setAppView] = useState(false);
   // Threads — backed by <vault>/<domain>/_threads/<slug>.md files.
   // Active thread defines what's loaded into the chat transcript.
   const [threads, setThreads] = useState<ThreadMeta[]>([]);
@@ -2646,12 +2652,13 @@ export default function App() {
           domains={domains}
           vaultError={vaultError}
           selectedDomain={selectedDomain}
-          setSelectedDomain={setSelectedDomain}
+          setSelectedDomain={(name) => { setSelectedApp(null); setAppView(false); setSelectedDomain(name); }}
           openInFinder={openInFinder}
           tab={tab}
           setTab={setTab}
           onDomainCreated={(d) => {
             setDomains((cur) => [...cur, d].sort((a, b) => a.name.localeCompare(b.name)));
+            setSelectedApp(null); setAppView(false);
             setSelectedDomain(d.name);
           }}
           appearance={appearance}
@@ -2661,6 +2668,17 @@ export default function App() {
           railWidth={domainRailWidth}
           onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
           onDomainsChanged={() => void refreshDomains()}
+          onOpenApp={(app) => {
+            // Open the app in the canvas: scope the chat + threads rail to the
+            // domain its data lands in, and raise the detail bar above the chat.
+            setSelectedApp(app);
+            setAppView(true);
+            setSelectedDomain(app.domains[0] ?? "");
+            setActiveThreadPath(null);
+            setChatViewNonce((n) => n + 1);
+            setDomainTab("chat");
+            setTab("chat");
+          }}
         />
         {!sidebarCollapsed && (
           <ResizeHandle
@@ -2807,6 +2825,17 @@ export default function App() {
             </div>
           </div>
 
+          {/* App view: detail bar above the chat, scoped to the app's domain.
+              Full-width chrome (not inside the chat scroll) so ChatPanel's own
+              layout is untouched. */}
+          {appView && selectedApp && tab === "chat" && (
+            <AppDetailBar
+              app={selectedApp}
+              vaultPath={vaultPath}
+              onClose={() => { setSelectedApp(null); setAppView(false); }}
+              onChanged={() => { void refreshThreads(); }}
+            />
+          )}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {tab === "chat" && (
               <ChatPanel
@@ -2873,12 +2902,14 @@ export default function App() {
           domains={domains}
           onClose={() => setQuickSwitcherOpen(false)}
           onPickDomain={(name) => {
+            setSelectedApp(null); setAppView(false);
             setSelectedDomain(name);
             setActiveThreadPath(null);
             setTab("chat");
             setQuickSwitcherOpen(false);
           }}
           onPickThread={(domain, path) => {
+            setSelectedApp(null); setAppView(false);
             setSelectedDomain(domain ?? "");
             setActiveThreadPath(path);
             setTab("chat");
@@ -3088,6 +3119,7 @@ function Sidebar({
   railWidth,
   onOpenOnboarding,
   onDomainsChanged,
+  onOpenApp,
 }: {
   collapsed: boolean;
   setCollapsed: (v: boolean | ((cur: boolean) => boolean)) => void;
@@ -3107,6 +3139,7 @@ function Sidebar({
   railWidth: number;
   onOpenOnboarding: () => void;
   onDomainsChanged: () => void;
+  onOpenApp: (app: EngineApp) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -3217,10 +3250,6 @@ function Sidebar({
       lsSet(APP_PIN_KEY, Array.from(next).join(","));
       return next;
     });
-  }
-  function openAppInSettings(id: string) {
-    setTab("settings");
-    window.setTimeout(() => window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: `connectors:${id}` })), 50);
   }
   const sortedSidebarApps = useMemo(() => {
     const pinned = sidebarApps.filter((a) => pinnedApps.has(a.id));
@@ -3586,9 +3615,9 @@ function Sidebar({
                   return (
                     <li key={app.id} className="group flex items-center gap-1 pl-2.5">
                       <button
-                        onClick={() => openAppInSettings(app.id)}
+                        onClick={() => onOpenApp(app)}
                         className="flex flex-1 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm text-text-secondary hover:bg-surface-warm hover:text-text-primary transition-colors"
-                        title={`${app.title}${app.domains.length ? " · " + app.domains.map(titleCase).join(", ") : ""}`}
+                        title={`Open ${app.title}${app.domains.length ? " · refreshes " + app.domains.map(titleCase).join(", ") : ""}`}
                       >
                         <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: tint }} />
                         <span className="flex-1 truncate text-sm">{app.title}</span>
@@ -4801,6 +4830,94 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
 }
 
 // Apps tab in domain view: shows all engine apps that refresh this domain.
+// App view detail bar — the in-canvas "app page" header. Sits above the chat
+// (which is scoped to the app's primary domain) and shows the six things the
+// app is: sync schedule, refresh cadence, last run, the domains it refreshes,
+// the vault paths it writes, and its skills. Collapsible so it gets out of the
+// way; the conversation below is the app's "conversations". Test/Sync reuse the
+// same engine commands the Settings → Apps detail uses.
+function AppDetailBar({ app, vaultPath, onClose, onChanged }: { app: EngineApp; vaultPath: string; onClose: () => void; onChanged: () => void }) {
+  const [open, setOpen] = useState(true);
+  const [skills, setSkills] = useState<{ id: string; runner: string; trigger: string }[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    setSkills(null);
+    invoke<{ id: string; runner: string; trigger: string }[]>("engine_app_skills", { id: app.id }).then(setSkills).catch(() => setSkills([]));
+  }, [app.id]);
+  const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
+  async function test() {
+    setBusy("test"); setNote(null);
+    try { const r = await invoke<{ status?: string; message?: string }>("engine_app_probe", { id: app.id }); setNote(r.message || r.status || "tested"); }
+    catch (e) { setNote(`error: ${e}`); } finally { setBusy(null); }
+  }
+  async function sync() {
+    setBusy("sync"); setNote(null);
+    try {
+      const r = await invoke<{ ok: boolean; artifacts?: number; error?: string }>("engine_app_sync", { id: app.id, vault: vaultPath });
+      setNote(r.ok ? `synced. ${r.artifacts ?? 0} artifact(s)` : `failed: ${r.error}`);
+      onChanged();
+    } catch (e) { setNote(`error: ${e}`); } finally { setBusy(null); }
+  }
+  return (
+    <div className="shrink-0 border-b border-border-subtle bg-surface px-4 py-2.5">
+      <div className="flex items-center gap-2.5">
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: tint }} title={app.status} />
+        <button onClick={() => setOpen((v) => !v)} className="flex min-w-0 flex-1 items-center gap-2 text-left" title="Show app detail">
+          <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
+          <span className="truncate text-base font-semibold text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
+          <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">{app.integration}</span>
+          {app.domains.length > 0 && <span className="truncate font-mono text-[10px] text-text-muted/70">refreshes {app.domains.map(titleCase).join(", ")}</span>}
+        </button>
+        <button onClick={test} disabled={busy === "test"} className="shrink-0 rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "test" ? "testing" : "test"}</button>
+        <button onClick={sync} disabled={busy === "sync"} title="Sync this app now" className="shrink-0 rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "sync" ? "syncing" : "sync"}</button>
+        <button onClick={onClose} title="Close app view" className="shrink-0 rounded p-1 text-text-muted hover:bg-surface-warm hover:text-text-primary"><X className="h-4 w-4" /></button>
+      </div>
+      {note && <div className="mt-1 pl-6 font-mono text-[10px] text-text-secondary">{note}</div>}
+      {open && (
+        <div className="mt-2 space-y-2.5 border-t border-border-subtle pl-6 pt-2.5 text-xs">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Sync schedule · last run</div>
+            <div className="font-mono text-[11px] text-text-secondary">
+              {app.refresh?.every ? `every ${app.refresh.every}` : "manual: no schedule set"} · last run {relTime(app.lastSuccessTs)}
+              {app.lastError && <span className="ml-2 text-warn">last error: {app.lastError}</span>}
+            </div>
+          </div>
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Refreshes domains · writes to vault</div>
+            {app.domains.length === 0 ? (
+              <div className="font-mono text-[11px] text-text-muted">none yet</div>
+            ) : (
+              <ul className="mt-0.5 space-y-0.5">
+                {app.domains.map((d) => (
+                  <li key={d} className="font-mono text-[11px] text-text-secondary">▸ {titleCase(d)} <span className="text-text-muted/60">→ vault/{d}/</span></li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Skills</div>
+            {skills === null ? (
+              <div className="text-text-muted">loading…</div>
+            ) : skills.length === 0 ? (
+              <div className="text-text-muted">No skills yet. Add one under <code className="text-accent">skills/</code> to enable syncing.</div>
+            ) : (
+              <ul className="mt-0.5 space-y-0.5">
+                {skills.map((s) => (
+                  <li key={s.id} className="font-mono text-[11px] text-text-secondary">▸ {s.id} <span className="text-text-muted">· {s.runner} · {s.trigger}</span></li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="font-mono text-[10px] text-text-muted/70">
+            Conversations below are scoped to {app.domains[0] ? titleCase(app.domains[0]) : "this app"}: chat to ask about {app.title}'s data.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath: string }) {
   const [apps, setApps] = useState<EngineApp[] | null>(null);
   const [probing, setProbing] = useState<string | null>(null);
@@ -13058,8 +13175,12 @@ function ModelsSection({
       launch: 0,
       daily: 86_400_000,
       "2days": 2 * 86_400_000,
+      "3days": 3 * 86_400_000,
       weekly: 7 * 86_400_000,
       "2weeks": 14 * 86_400_000,
+      monthly: 30 * 86_400_000,
+      "3months": 91 * 86_400_000,
+      "6months": 182 * 86_400_000,
       manual: Infinity,
     };
     const ms = periodMs[refreshPeriod] ?? 0;
@@ -13119,9 +13240,13 @@ function ModelsSection({
         >
           <option value="launch">Every launch</option>
           <option value="daily">Daily</option>
-          <option value="2days">Every 2 days</option>
+          <option value="2days">Every other day</option>
+          <option value="3days">Every 3 days</option>
           <option value="weekly">Weekly</option>
           <option value="2weeks">Every 2 weeks</option>
+          <option value="monthly">Monthly</option>
+          <option value="3months">Every 3 months</option>
+          <option value="6months">Every 6 months</option>
           <option value="manual">Manual only</option>
         </select>
         <button
@@ -13209,6 +13334,11 @@ function AgentsSection({
 }) {
   const detected = clis.filter((c) => c.available);
   const missing = clis.filter((c) => !c.available);
+  // Detected (the active set) opens by default; Not installed stays collapsed
+  // so the landing view shows only what's usable. Both are individually
+  // collapsible per the collapse-and-indent convention.
+  const [showDetected, setShowDetected] = useState(true);
+  const [showMissing, setShowMissing] = useState(false);
   return (
     <>
       {!embedded && (
@@ -13218,29 +13348,45 @@ function AgentsSection({
         />
       )}
       {detected.length > 0 && (
-        <section className="mb-8">
-          <GroupLabel>Detected · {detected.length}</GroupLabel>
-          <div className="flex flex-col gap-3">
-            {detected.map((c) => (
-              <AgentCard
-                key={c.id}
-                cli={c}
-                onStartChat={onStartChatWith}
-                isDefault={defaultChatCli === c.id}
-                onMakeDefault={onMakeDefault ? () => onMakeDefault(c.id) : undefined}
-              />
-            ))}
-          </div>
+        <section className="mb-6">
+          <button
+            onClick={() => setShowDetected((v) => !v)}
+            className="mb-2 flex w-full items-center gap-2 text-left"
+          >
+            <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${showDetected ? "rotate-90" : ""}`} strokeWidth={2.5} />
+            <GroupLabel className="mb-0">Detected · {detected.length}</GroupLabel>
+          </button>
+          {showDetected && (
+            <div className="flex flex-col gap-3 pl-5">
+              {detected.map((c) => (
+                <AgentCard
+                  key={c.id}
+                  cli={c}
+                  onStartChat={onStartChatWith}
+                  isDefault={defaultChatCli === c.id}
+                  onMakeDefault={onMakeDefault ? () => onMakeDefault(c.id) : undefined}
+                />
+              ))}
+            </div>
+          )}
         </section>
       )}
       {missing.length > 0 && (
         <section>
-          <GroupLabel>Not installed · {missing.length}</GroupLabel>
-          <div className="flex flex-col gap-3">
-            {missing.map((c) => (
-              <AgentCard key={c.id} cli={c} onStartChat={onStartChatWith} />
-            ))}
-          </div>
+          <button
+            onClick={() => setShowMissing((v) => !v)}
+            className="mb-2 flex w-full items-center gap-2 text-left"
+          >
+            <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${showMissing ? "rotate-90" : ""}`} strokeWidth={2.5} />
+            <GroupLabel className="mb-0">Not installed · {missing.length}</GroupLabel>
+          </button>
+          {showMissing && (
+            <div className="flex flex-col gap-3 pl-5">
+              {missing.map((c) => (
+                <AgentCard key={c.id} cli={c} onStartChat={onStartChatWith} />
+              ))}
+            </div>
+          )}
         </section>
       )}
     </>
@@ -14948,7 +15094,7 @@ function ConnectorIcon({ c }: { c: Connector }) {
 
 // Catalog shapes — mirror resources/connectors/catalog.json. The Rust command
 // returns it verbatim, so the frontend owns the type.
-type CatalogApp = { name: string; domain: string; pattern: string; fallback?: string; via?: string; note?: string; tier?: number; sources?: string[]; verified?: boolean; obscure?: boolean; iconSlug?: string };
+type CatalogApp = { name: string; domain: string; tags?: string[]; pattern: string; fallback?: string; via?: string; note?: string; tier?: number; sources?: string[]; verified?: boolean; obscure?: boolean; iconSlug?: string };
 const SOURCE_ABBR: Record<string, string> = { claude: "Cl", chatgpt: "GPT", gemini: "Gem" };
 type BrandLogo = { hex: string; path: string };
 // A REAL app as the engine sees it (community/vault app with live state),
@@ -15003,7 +15149,7 @@ const DOMAIN_LABEL: Record<string, string> = {
   media: "Media & Streaming", learning: "Learning", government: "Government & Civic",
   utilities: "Utilities", automotive: "Automotive", food: "Food & Dining",
   family: "Family & Home", giving: "Giving", legal: "Legal & Estate",
-  news: "News & Research", dev: "Developer",
+  news: "News & Research", dev: "Developer", tech: "Tech & Devices",
 };
 
 function PatternChip({ pattern }: { pattern: string }) {
@@ -15112,9 +15258,16 @@ function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string; focus
   const needle = q.trim().toLowerCase();
   // Default to the household-name core (tier 1). Searching or "Show all"
   // widens to the full catalog so nothing is ever truly hidden.
+  // An app's tags = its primary domain plus any extra cross-category tags it
+  // carries (e.g. Tesla: automotive + tech). Most apps have only their domain,
+  // so the chip set stays the union of every domain and every extra tag.
   const allTags = useMemo(() => {
-    const domains = new Set((cat?.apps ?? []).map((a) => a.domain));
-    return Array.from(domains)
+    const keys = new Set<string>();
+    for (const a of cat?.apps ?? []) {
+      keys.add(a.domain);
+      for (const t of a.tags ?? []) keys.add(t);
+    }
+    return Array.from(keys)
       .map((d) => ({ key: d, label: DOMAIN_LABEL[d] ?? titleCase(d) }))
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [cat]);
@@ -15122,10 +15275,13 @@ function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string; focus
   const flatApps = useMemo(() => {
     const all = cat?.apps ?? [];
     const base = needle || showAll ? all : all.filter((a) => a.tier === 1);
+    const appTags = (a: CatalogApp) => [a.domain, ...(a.tags ?? [])];
     let filtered = needle
-      ? base.filter((a) => a.name.toLowerCase().includes(needle) || a.domain.toLowerCase().includes(needle) || (DOMAIN_LABEL[a.domain] ?? "").toLowerCase().includes(needle))
+      ? base.filter((a) => a.name.toLowerCase().includes(needle) || appTags(a).some((t) => t.toLowerCase().includes(needle) || (DOMAIN_LABEL[t] ?? "").toLowerCase().includes(needle)))
       : base;
-    if (activeTags.size > 0) filtered = filtered.filter((a) => activeTags.has(a.domain));
+    // Tag filter is OR across an app's full tag set, so Tesla appears under
+    // both "automotive" and "tech" rather than being forced into one group.
+    if (activeTags.size > 0) filtered = filtered.filter((a) => appTags(a).some((t) => activeTags.has(t)));
     return filtered.slice().sort((a, b) => a.name.localeCompare(b.name));
   }, [cat, needle, showAll, activeTags]);
 
@@ -15358,7 +15514,9 @@ function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string; focus
                   {a.name}
                   {a.note && <span className="ml-2 text-[11px] font-normal text-text-muted">{a.note}</span>}
                 </span>
-                <span className="font-mono text-[10px] text-text-muted/60">{DOMAIN_LABEL[a.domain] ?? titleCase(a.domain)}</span>
+                <span className="font-mono text-[10px] text-text-muted/60">
+                  {[a.domain, ...(a.tags ?? [])].map((t) => DOMAIN_LABEL[t] ?? titleCase(t)).join(" · ")}
+                </span>
               </span>
               {a.via && <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">via {a.via}</span>}
               {a.fallback && <span className="shrink-0 font-mono text-[9px] text-text-muted/50" title={`falls back to ${a.fallback}`}>→ {PATTERN_LABEL[a.fallback] ?? a.fallback}</span>}
