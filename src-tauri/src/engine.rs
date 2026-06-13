@@ -232,9 +232,8 @@ pub fn run_engine_json_stdin(
 /// are forwarded raw under the same event with a string `data`. When the
 /// child exits, `<event_prefix>:done` fires with `{ "session", "code" }`.
 ///
-/// Provided as part of the seam for streaming engine commands (e.g. a
-/// future `prevail score --stream`). Not yet wired to a Tauri command.
-#[allow(dead_code)]
+/// The seam for streaming engine commands. Wired to `engine_score_stream`
+/// (`prevail score --all --stream`); reuse it for future streaming commands.
 pub async fn run_engine_stream(
     app: tauri::AppHandle,
     session: String,
@@ -1219,6 +1218,32 @@ pub fn engine_score_all(vault: String) -> Result<LifeReadiness, String> {
     }
 
     Err("unexpected shape from `prevail score --all`".to_string())
+}
+
+/// Streaming life-readiness score. Emits one `score:line` event per domain as it
+/// is computed (`{ session, data: { type: "domain", score } }`) and a final
+/// `{ type: "done", lifeReadiness, count }`, then `score:done` on child exit.
+/// Lets the readiness UI fill in progressively on a large vault instead of
+/// blocking on the whole `score --all` roll-up. Uses the run_engine_stream seam.
+#[tauri::command]
+pub async fn engine_score_stream(
+    app: tauri::AppHandle,
+    vault: String,
+    session: String,
+) -> Result<(), String> {
+    run_engine_stream(
+        app,
+        session,
+        vec![
+            "--vault".to_string(),
+            vault,
+            "score".to_string(),
+            "--all".to_string(),
+            "--stream".to_string(),
+        ],
+        "score",
+    )
+    .await
 }
 
 /// One historical context-score sample for a domain.

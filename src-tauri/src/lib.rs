@@ -4101,6 +4101,7 @@ pub fn run() {
             engine::engine_score,
             engine::engine_manifest_get,
             engine::engine_score_all,
+            engine::engine_score_stream,
             engine::engine_score_history,
             engine::engine_onboard_recommend,
             engine::engine_onboard_apply,
