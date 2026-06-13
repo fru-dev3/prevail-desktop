@@ -14540,6 +14540,22 @@ function ConnectorIcon({ c }: { c: Connector }) {
 type CatalogApp = { name: string; domain: string; pattern: string; fallback?: string; via?: string; note?: string; tier?: number; sources?: string[]; verified?: boolean; obscure?: boolean; iconSlug?: string };
 const SOURCE_ABBR: Record<string, string> = { claude: "Cl", chatgpt: "GPT", gemini: "Gem" };
 type BrandLogo = { hex: string; path: string };
+// A REAL app as the engine sees it (community/vault app with live state),
+// distinct from a catalog entry (a browseable directory listing).
+type EngineApp = {
+  id: string; title: string; integration: string; status: string; configured: boolean;
+  domains: string[]; lastSuccessTs: number | null; lastError: string | null;
+  account: { label?: string } | null; refresh: { every?: string } | null; community: boolean;
+};
+const STATUS_TINT: Record<string, string> = { connected: "#2fb87a", expired: "#d8a657", error: "#e06c75", "not-configured": "#9aa0a6" };
+function relTime(ts: number | null): string {
+  if (!ts) return "never";
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
 
 // Real brand SVG (simple-icons) when the app matched one at build time; else a
 // pattern-tinted dot. Keeps the row scannable for all 1,400+ apps.
@@ -14600,6 +14616,9 @@ function ConnectorsSection() {
   const [showAll, setShowAll] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
+  const [engineApps, setEngineApps] = useState<EngineApp[] | null>(null);
+  const [probing, setProbing] = useState<string | null>(null);
+  const [probeResult, setProbeResult] = useState<Record<string, string>>({});
 
   useEffect(() => {
     (async () => {
@@ -14607,8 +14626,20 @@ function ConnectorsSection() {
       catch (e) { setErr(String(e)); }
       try { setLogos(await invoke<Record<string, BrandLogo>>("ingestion_connector_logos")); }
       catch { /* logos optional */ }
+      try { setEngineApps(await invoke<EngineApp[]>("engine_apps_list")); }
+      catch { setEngineApps([]); }
     })();
   }, []);
+
+  async function testApp(id: string) {
+    setProbing(id);
+    try {
+      const r = await invoke<{ status?: string; message?: string }>("engine_app_probe", { id });
+      setProbeResult((m) => ({ ...m, [id]: `${r.status ?? "?"}${r.message ? " — " + r.message : ""}` }));
+      setEngineApps(await invoke<EngineApp[]>("engine_apps_list"));
+    } catch (e) { setProbeResult((m) => ({ ...m, [id]: `error: ${e}` })); }
+    setProbing(null);
+  }
 
   // Reuse the curated brand marks where an app name matches; everything else
   // shows a neutral pattern-tinted dot. Keeps CONNECTOR_GROUPS/ConnectorIcon live.
@@ -14649,6 +14680,51 @@ function ConnectorsSection() {
         title="Connectors"
         subtitle="Every app Prevail can pull from, pre-populated and tagged by how it connects. Pulled data lands in the matching domain's vault and feeds the intent ledger + memory."
       />
+
+      {/* Connected apps — the REAL apps the engine has wired up (with live auth
+          + sync state), distinct from the browseable catalog below. */}
+      {engineApps && engineApps.length > 0 && (
+        <div className="mb-6">
+          <div className="mb-2 flex items-baseline gap-2">
+            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Connected</span>
+            <span className="font-mono text-[10px] text-text-muted/60">{engineApps.length}</span>
+          </div>
+          <div className="space-y-2">
+            {engineApps.map((app) => {
+              const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
+              return (
+                <div key={app.id} className={`group ${SETTINGS_ROW} hover:border-accent-border hover:bg-surface-warm`}>
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: tint }} title={app.status} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
+                      <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">{app.integration}</span>
+                      {app.domains.length > 0 && <span className="shrink-0 font-mono text-[9px] text-text-muted/70">→ {app.domains.map(titleCase).join(", ")}</span>}
+                    </div>
+                    <div className="font-mono text-[10px] text-text-muted">
+                      {app.status}{app.refresh?.every ? ` · ${app.refresh.every}` : ""} · synced {relTime(app.lastSuccessTs)}
+                      {probeResult[app.id] && <span className="ml-2 text-text-secondary">{probeResult[app.id]}</span>}
+                      {app.lastError && !probeResult[app.id] && <span className="ml-2 text-warn">{app.lastError}</span>}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => testApp(app.id)}
+                    disabled={probing === app.id}
+                    className="shrink-0 rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
+                  >
+                    {probing === app.id ? "testing" : "test"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {engineApps && engineApps.length === 0 && (
+        <div className="mb-6 rounded-lg border border-border-subtle bg-surface px-4 py-3 text-xs text-text-muted">
+          No apps connected yet. Drop a manifest into <code className="text-accent">~/.prevail/apps/&lt;id&gt;/</code> or add one from the catalog below; it then appears here with live status and syncs into its domains.
+        </div>
+      )}
       {/* Connector hub */}
       <div className="mb-5 flex items-start gap-3 rounded-2xl border border-border bg-surface p-5 shadow-sm">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft">
