@@ -14665,6 +14665,19 @@ function ConnectorsSection({ vaultPath }: { vaultPath: string }) {
     setProbing(null);
   }
 
+  const [expandedApp, setExpandedApp] = useState<string | null>(null);
+  const [appSkills, setAppSkills] = useState<Record<string, { id: string; runner: string; trigger: string }[]>>({});
+  async function toggleApp(id: string) {
+    if (expandedApp === id) { setExpandedApp(null); return; }
+    setExpandedApp(id);
+    if (!appSkills[id]) {
+      try {
+        const sk = await invoke<{ id: string; runner: string; trigger: string }[]>("engine_app_skills", { id });
+        setAppSkills((s) => ({ ...s, [id]: sk }));
+      } catch { setAppSkills((s) => ({ ...s, [id]: [] })); }
+    }
+  }
+
   async function syncEngineApp(id: string) {
     setProbing("sync:" + id);
     try {
@@ -14759,38 +14772,59 @@ function ConnectorsSection({ vaultPath }: { vaultPath: string }) {
           <div className="space-y-2">
             {(triageOnly ? needsAttention : engineApps).map((app) => {
               const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
+              const open = expandedApp === app.id;
               return (
-                <div key={app.id} className={`group ${SETTINGS_ROW} hover:border-accent-border hover:bg-surface-warm`}>
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: tint }} title={app.status} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
-                      <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">{app.integration}</span>
-                      {app.domains.length > 0 && <span className="shrink-0 font-mono text-[9px] text-text-muted/70">→ {app.domains.map(titleCase).join(", ")}</span>}
-                    </div>
-                    <div className="font-mono text-[10px] text-text-muted">
-                      {app.status}{app.refresh?.every ? ` · ${app.refresh.every}` : ""} · synced {relTime(app.lastSuccessTs)}
-                      {probeResult[app.id] && <span className="ml-2 text-text-secondary">{probeResult[app.id]}</span>}
-                      {app.lastError && !probeResult[app.id] && <span className="ml-2 text-warn">{app.lastError}</span>}
+                <div key={app.id}>
+                  <div className={`group ${SETTINGS_ROW} hover:border-accent-border hover:bg-surface-warm`}>
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: tint }} title={app.status} />
+                    <button onClick={() => toggleApp(app.id)} className="min-w-0 flex-1 text-left" title="Show detail">
+                      <div className="flex items-center gap-2">
+                        <ChevronRight className={`h-3 w-3 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
+                        <span className="truncate text-sm font-medium text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
+                        <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">{app.integration}</span>
+                        {app.domains.length > 0 && <span className="shrink-0 font-mono text-[9px] text-text-muted/70">→ {app.domains.map(titleCase).join(", ")}</span>}
+                      </div>
+                      <div className="pl-5 font-mono text-[10px] text-text-muted">
+                        {app.status}{app.refresh?.every ? ` · ${app.refresh.every}` : ""} · synced {relTime(app.lastSuccessTs)}
+                        {probeResult[app.id] && <span className="ml-2 text-text-secondary">{probeResult[app.id]}</span>}
+                        {app.lastError && !probeResult[app.id] && <span className="ml-2 text-warn">{app.lastError}</span>}
+                      </div>
+                    </button>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button
+                        onClick={() => testApp(app.id)}
+                        disabled={probing === app.id}
+                        className="rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
+                      >
+                        {probing === app.id ? "testing" : "test"}
+                      </button>
+                      <button
+                        onClick={() => syncEngineApp(app.id)}
+                        disabled={probing === "sync:" + app.id}
+                        title="Sync this app now"
+                        className="rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
+                      >
+                        {probing === "sync:" + app.id ? "syncing" : "sync"}
+                      </button>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <button
-                      onClick={() => testApp(app.id)}
-                      disabled={probing === app.id}
-                      className="rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
-                    >
-                      {probing === app.id ? "testing" : "test"}
-                    </button>
-                    <button
-                      onClick={() => syncEngineApp(app.id)}
-                      disabled={probing === "sync:" + app.id}
-                      title="Sync this app now"
-                      className="rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
-                    >
-                      {probing === "sync:" + app.id ? "syncing" : "sync"}
-                    </button>
-                  </div>
+                  {open && (
+                    <div className="mb-1 ml-7 mt-1 rounded-lg border border-border-subtle bg-background px-3 py-2 text-xs">
+                      <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Skills</div>
+                      {appSkills[app.id] === undefined ? (
+                        <div className="text-text-muted">loading…</div>
+                      ) : appSkills[app.id].length === 0 ? (
+                        <div className="text-text-muted">No skills yet. Add a skill under the app's <code className="text-accent">skills/</code> folder to enable syncing.</div>
+                      ) : (
+                        <ul className="mt-0.5 space-y-0.5">
+                          {appSkills[app.id].map((s) => (
+                            <li key={s.id} className="font-mono text-[11px] text-text-secondary">▸ {s.id} <span className="text-text-muted">· {s.runner} · {s.trigger}</span></li>
+                          ))}
+                        </ul>
+                      )}
+                      {app.lastError && <div className="mt-1 text-warn">last error: {app.lastError}</div>}
+                    </div>
+                  )}
                 </div>
               );
             })}

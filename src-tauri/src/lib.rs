@@ -4010,6 +4010,7 @@ pub fn run() {
             engine::engine_app_add,
             engine::engine_app_sync,
             engine::engine_alignment,
+            engine::engine_app_skills,
             engine::engine_vault_embed,
             engine::engine_appmode_get,
             engine::engine_appmode_set,
