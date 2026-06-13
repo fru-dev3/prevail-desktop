@@ -2005,6 +2005,16 @@ export default function App() {
         : selectedDomain,
     [appView, selectedApp, selectedDomain],
   );
+  // True when an app is open in the canvas. An app is isolated: it does NOT
+  // borrow the active domain's chrome (hero header, "apps refreshing this
+  // domain" strip, Benchmark tab). Those are domain concepts; an app feeds
+  // domains, it isn't one.
+  const onApp = appView && !!selectedApp;
+  // Whether the app detail panel (which lists + edits the domains this app
+  // refreshes) is expanded. Lifted here so the top bar's "Domains" chip can
+  // toggle the same panel the breadcrumb chevron does. Persists across launches.
+  const [appDetailOpen, setAppDetailOpen] = useState<boolean>(() => lsGet("prevail.appDetail.open") === "1");
+  useEffect(() => { lsSet("prevail.appDetail.open", appDetailOpen ? "1" : "0"); }, [appDetailOpen]);
   // Open an app in the canvas. Shared by the sidebar and the per-domain Apps
   // strip so "click an app anywhere → jump to it" works the same everywhere.
   const openApp = useCallback((app: EngineApp) => {
@@ -2788,7 +2798,7 @@ export default function App() {
 
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="flex shrink-0 items-center gap-1 border-b border-border-subtle bg-background px-4">
-            {TABS.map((t) => {
+            {TABS.filter((t) => !(onApp && t.id === "benchmark")).map((t) => {
               const Icon = t.icon;
               const active = tab === t.id;
               return (
@@ -2850,7 +2860,22 @@ export default function App() {
               >
                 <SettingsIcon className="h-4 w-4" /> Preferences
               </button>
-              {selectedDomain && (
+              {onApp ? (
+                // On an app, the symmetric concept is the domains this app
+                // refreshes (not "apps refreshing a domain"). Toggle the detail
+                // panel, which lists + edits those domains.
+                <button
+                  onClick={() => { setTab("chat"); setAppDetailOpen((v) => !v); }}
+                  title="Domains this app refreshes"
+                  className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                    appDetailOpen
+                      ? "bg-accent-soft text-accent"
+                      : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                  }`}
+                >
+                  <Layers className="h-4 w-4" /> Domains
+                </button>
+              ) : selectedDomain && (
                 <button
                   onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "apps" ? "chat" : "apps"); }}
                   title="Apps that refresh this domain"
@@ -2884,6 +2909,8 @@ export default function App() {
               app={selectedApp}
               vaultPath={vaultPath}
               domains={domains}
+              open={appDetailOpen}
+              onToggleOpen={() => setAppDetailOpen((v) => !v)}
               onClose={() => { setSelectedApp(null); setAppView(false); }}
               onChanged={() => { void refreshThreads(); }}
             />
@@ -2894,6 +2921,7 @@ export default function App() {
                 domain={selectedDomain}
                 domainPath={selectedDomainPath}
                 threadDomain={threadScope}
+                isApp={onApp}
                 vaultPath={vaultPath}
                 clis={clis}
                 fwLens={fwLens}
@@ -4987,12 +5015,11 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
 // the vault paths it writes, and its skills. Collapsible so it gets out of the
 // way; the conversation below is the app's "conversations". Test/Sync reuse the
 // same engine commands the Settings → Apps detail uses.
-function AppDetailBar({ app, vaultPath, domains, onClose, onChanged }: { app: EngineApp; vaultPath: string; domains: Domain[]; onClose: () => void; onChanged: () => void }) {
-  // Collapsed by default — the header line already shows status + which domains
-  // it refreshes; expand only when you want schedule, the domain editor, and
-  // skills. Choice persists across launches.
-  const [open, setOpen] = useState<boolean>(() => lsGet("prevail.appDetail.open") === "1");
-  useEffect(() => { lsSet("prevail.appDetail.open", open ? "1" : "0"); }, [open]);
+function AppDetailBar({ app, vaultPath, domains, open, onToggleOpen, onClose, onChanged }: { app: EngineApp; vaultPath: string; domains: Domain[]; open: boolean; onToggleOpen: () => void; onClose: () => void; onChanged: () => void }) {
+  // Open/collapsed state is owned by App (so the top bar's "Domains" chip can
+  // toggle the same panel as the breadcrumb chevron). Collapsed by default —
+  // the header line already shows status + which domains it refreshes; expand
+  // for the schedule, the domain editor, and skills.
   const [skills, setSkills] = useState<{ id: string; runner: string; trigger: string }[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -5060,7 +5087,7 @@ function AppDetailBar({ app, vaultPath, domains, onClose, onChanged }: { app: En
     <div className="shrink-0 border-b border-border-subtle bg-surface px-4 py-2.5">
       <div className="flex items-center gap-2.5">
         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: tint }} title={app.status} />
-        <button onClick={() => setOpen((v) => !v)} className="flex min-w-0 flex-1 items-center gap-2 text-left" title="Show app detail">
+        <button onClick={onToggleOpen} className="flex min-w-0 flex-1 items-center gap-2 text-left" title="Show app detail">
           <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
           <span className="truncate text-base font-semibold text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
           <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">{app.integration}</span>
@@ -5415,6 +5442,7 @@ function DomainAppsStrip({ domain }: { domain: string }) {
 function DomainHome({
   domain,
   vaultPath,
+  isApp,
   onInjectContext,
   onPickPrompt,
   onInsertSkill,
@@ -5423,6 +5451,10 @@ function DomainHome({
 }: {
   domain: string;
   vaultPath: string;
+  // When an app is open we reuse DomainHome for the conversation body but hide
+  // the "apps refreshing this domain" strip — that's a domain view, and an app
+  // shouldn't list its sibling apps.
+  isApp?: boolean;
   onInjectContext: (body: string, label: string) => void;
   onPickPrompt: (text: string) => void;
   onInsertSkill: (name: string) => void;
@@ -5473,7 +5505,7 @@ function DomainHome({
   return (
     <div className="flex h-full w-full flex-col px-6 py-6">
       <div className="flex-1 overflow-y-auto">
-        <DomainAppsStrip domain={domain} />
+        {!isApp && <DomainAppsStrip domain={domain} />}
         {loading && <div className="text-sm text-text-muted">loading domain context…</div>}
         {!loading && ctx && (
           <div>
@@ -7243,6 +7275,7 @@ function ChatPanel({
   domain,
   domainPath,
   threadDomain,
+  isApp,
   vaultPath,
   clis,
   fwLens,
@@ -7268,6 +7301,10 @@ function ChatPanel({
   // independent of the (possibly many) domains it's bound to — while `domain`
   // above still drives model grounding.
   threadDomain?: string | null;
+  // True when an app (not a domain) is open. Suppresses domain-only chrome:
+  // the domain hero header and DomainHome's "apps refreshing this domain"
+  // strip. The app is isolated; it feeds domains, it isn't one.
+  isApp?: boolean;
   vaultPath: string;
   clis: CliInfo[];
   fwLens: ReturnType<typeof useFrameworkLens>;
@@ -8453,7 +8490,7 @@ function ChatPanel({
           archive moved up to the top tab bar; the score badge opens the
           context view. When no domain is active there's no header at all —
           the empty state owns the canvas. */}
-      {domain && (
+      {domain && !isApp && (
         <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-4 py-2">
           {(() => {
             const I = domainIcon(domain);
@@ -8618,6 +8655,7 @@ function ChatPanel({
           <DomainHome
             domain={domain}
             vaultPath={vaultPath}
+            isApp={isApp}
             onInjectContext={(body, label) => injectContext(body, label)}
             onPickPrompt={(text) => setInput(text)}
             onInsertSkill={(name) => insertSkillSlash(name)}
