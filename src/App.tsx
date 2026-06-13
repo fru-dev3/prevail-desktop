@@ -2171,13 +2171,18 @@ export default function App() {
   useEffect(() => {
     if (!vaultPath) return;
     if (isBrowser()) return;
+    (async () => {
+    // If the headless learn agent (launchd) is installed, it owns distillation —
+    // the in-app distiller defers so the two never double-run on the same vault.
+    const headless = await invoke<boolean>("headless_learn_status").catch(() => false);
     // Distill
-    const on = getPref(PREF.persistentMemory, "1") === "1" && getPref(PREF.autoCompression, "1") === "1";
+    const on = !headless && getPref(PREF.persistentMemory, "1") === "1" && getPref(PREF.autoCompression, "1") === "1";
     if (on) {
       invoke("distill_start", { cfg: distillCfgFromPrefs(vaultPath) }).catch((e) => console.error("distill_start", e));
     } else {
       invoke("distill_stop").catch(() => {});
     }
+    })();
     // Reminders
     const remInterval = Number(getPref(PREF.remindersIntervalSec, "900")) || 900;
     invoke("reminders_daemon_start", { vault: vaultPath, interval_sec: remInterval }).catch(() => {});
@@ -14009,6 +14014,45 @@ function DaemonCard({
 }
 
 // ── Daemons settings panel ────────────────────────────────────────────────────
+// Run the self-learning loop with the desktop CLOSED, via a launchd agent
+// (engine `daemon install`). When on, the in-app distiller defers to it.
+function HeadlessLearnCard({ vaultPath }: { vaultPath: string }) {
+  const [installed, setInstalled] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const refresh = () => invoke<boolean>("headless_learn_status").then(setInstalled).catch(() => setInstalled(false));
+  useEffect(() => { refresh(); }, []);
+  async function toggle() {
+    setBusy(true); setNote(null);
+    try {
+      const r = await invoke<string>("headless_learn_set", { vault: vaultPath, enabled: !installed });
+      setNote(r.slice(0, 200) || (installed ? "Stopped." : "Now learning at login."));
+      await refresh();
+      window.dispatchEvent(new Event("prevail:headless-changed"));
+    } catch (e) { setNote(`Failed: ${String(e).slice(0, 200)}`); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="mb-4 rounded-xl border border-border bg-surface p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <Cpu className="h-4 w-4 shrink-0 text-accent" />
+        <div className="min-w-0 flex-1">
+          <div className="font-display text-sm font-semibold tracking-tight">Keep learning with the app closed</div>
+          <div className="text-xs text-text-secondary">
+            Installs a login agent (launchd) that runs the distiller headlessly, so chats arriving via MCP, Telegram, or the CLI keep feeding your memory and state even when Prevail is not open. While on, the in-app distiller defers to it.
+            {installed === true && " Currently running at login."}
+          </div>
+        </div>
+        <button onClick={toggle} disabled={busy || installed === null}
+          className={`rounded-md border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider disabled:opacity-50 ${installed ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
+          {busy ? "…" : installed ? "On" : "Off"}
+        </button>
+      </div>
+      {note && <div className="mt-2 break-words font-mono text-[11px] text-text-secondary">{note}</div>}
+    </div>
+  );
+}
+
 function DaemonsSection({ vaultPath }: { vaultPath: string }) {
   const [distillSt, setDistillSt] = useState<DaemonStatus | null>(null);
   const [remindersSt, setRemindersSt] = useState<DaemonStatus | null>(null);
@@ -14121,6 +14165,8 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           onStart={async () => { await invoke("skillgen_start", { cfg: skillgenCfgFromPrefs(vaultPath) }); }}
         />
       </div>
+
+      <HeadlessLearnCard vaultPath={vaultPath} />
 
       <div className="rounded-lg border border-border bg-surface px-5">
         <Row title="Reminders interval" desc="How often the reminders daemon checks for due tasks (seconds)."
