@@ -1134,6 +1134,32 @@ function preferredLocalCli(clis: { id: string; available: boolean }[]): string |
   return clis.find((c) => isLocalCli(c.id) && c.available)?.id ?? null;
 }
 
+// Does a prompt look like a judgment call worth convening the council for, vs a
+// quick factual question a single model handles? Used by Auto-council's "smart"
+// mode (the user's expectation: spin off a council only when the question needs
+// it). Heuristic, deliberately transparent.
+function looksLikeJudgmentCall(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  if (t.length < 12) return false;
+  // Decision / comparison / tradeoff signals.
+  const signals = [
+    /\bshould (i|we|my|the)\b/, /\bshould\b.*\?/, /\b(vs|versus)\b/, /\bor (should|to|the|a|just)\b/,
+    /\bbetter to\b/, /\bworth (it|the)\b/, /\bpros and cons\b/, /\btrade[- ]?offs?\b/,
+    /\b(decide|decision|deciding)\b/, /\bwhich (one|option|is better|should)\b/,
+    /\b(do i|should i) (sell|buy|quit|move|invest|replace|hire|fire|switch|leave|take|accept|sign|refinance)\b/,
+    /\bhow should i\b/, /\bwhat would you (do|recommend)\b/, /\bis it (worth|smart|wise|a good idea)\b/,
+    /\b(now or|wait or|stay or)\b/, /\brisk(s|y)?\b.*\?/,
+    // Advice / brainstorm prompts the council is well-suited to (the user's own
+    // example: "can you suggest some actions?").
+    /\b(suggest|recommend|advise|advice)\b/, /\bwhat should i\b/, /\bhelp me (decide|choose|figure|think|plan)\b/,
+    /\bideas? (for|on|about)\b/, /\bwhat (are|would be) (some|the best)\b/, /\bhow (do|should) i (approach|handle|plan)\b/,
+  ];
+  if (signals.some((re) => re.test(t))) return true;
+  // High-stakes life words plus a question mark = likely a real decision.
+  const stakes = /\b(mortgage|rsu|vest|salary|comp|promotion|invest|retire|529|hvac|insurance|umbrella|surgery|diagnosis|relocat|tenant|lawsuit|equity|severance)\b/;
+  return stakes.test(t) && t.includes("?");
+}
+
 // ── CLI validation (app-wide) ───────────────────────────────────────────────
 // One live validity status per provider, auto-checked at launch so every
 // surface (Models page, chat picker) can show valid / not-valid immediately
@@ -4115,6 +4141,7 @@ function DomainStatusBar({
   const [save, setSave]           = useState(true);
   const [serendipity, setSeren]   = useState(false);
   const [auto, setAuto]           = useState(false);
+  const [autoMode, setAutoMode]   = useState(() => getPref(`prevail.domain.${domain}.autoMode`, "smart"));
   useEffect(() => {
     // Loads for General too (domain null → the __general__ bucket).
     setCouncil(getDomainToggle(domain, "council", false));
@@ -4122,6 +4149,7 @@ function DomainStatusBar({
     setSave(getDomainToggle(domain, "save", true));
     setSeren(getDomainToggle(domain, "serendipity", false));
     setAuto(getDomainToggle(domain, "auto", false));
+    setAutoMode(getPref(`prevail.domain.${domain}.autoMode`, "smart"));
   }, [domain]);
   // The per-domain modes (web/save/serendipity/auto) live in a popover so the
   // composer row stays focused on the per-prompt Framework + Lens controls.
@@ -4214,7 +4242,20 @@ function DomainStatusBar({
               <ModeRow glyph="◉" label="Serendipity" on={serendipity} onClick={() => flip("serendipity", serendipity, setSeren)}
                 desc="Invite lateral, off-topic angles. Off stays strictly on-topic." />
               <ModeRow glyph="◐" label="Auto-council" on={auto} onClick={() => flip("auto", auto, setAuto)}
-                desc="Every send in this domain convenes the full council instead of one model. (Off in Bunker Mode: panelists are cloud models.)" />
+                desc="Spin off the full council automatically. In Smart mode it convenes only for judgment calls (should-I / tradeoff / high-stakes questions); simple questions get one model. (Off in Bunker Mode: panelists are cloud models.)" />
+              {auto && (
+                <div className="flex items-center justify-between gap-2 px-3 py-2">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Trigger</span>
+                  <select
+                    value={autoMode}
+                    onChange={(e) => { setAutoMode(e.target.value); setPref(`prevail.domain.${domain}.autoMode`, e.target.value); }}
+                    className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary"
+                  >
+                    <option value="smart">Smart — only judgment calls</option>
+                    <option value="always">Always — every send</option>
+                  </select>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -7498,9 +7539,16 @@ function ChatPanel({
     // models, and chat auto-switches to a local provider instead.)
     if (domain && !isBunkerOn() && getDomainToggle(domain, "auto", false)) {
       const q = input.trim();
-      setInput("");
-      window.dispatchEvent(new CustomEvent("prevail:auto-council", { detail: { prompt: q } }));
-      return;
+      // Smart mode (default): only convene the council when the prompt looks
+      // like a judgment call; simple questions fall through to a single model.
+      // "always" mode convenes on every send.
+      const mode = getPref(`prevail.domain.${domain}.autoMode`, "smart");
+      if (mode === "always" || looksLikeJudgmentCall(q)) {
+        setInput("");
+        window.dispatchEvent(new CustomEvent("prevail:auto-council", { detail: { prompt: q } }));
+        return;
+      }
+      // else: not a judgment call → continue to the single-model chat below.
     }
     setDomainTab("chat"); // sending always shows the chat, even from Preferences
     // Bunker Mode: auto-switch a (stale) cloud selection to an available local
