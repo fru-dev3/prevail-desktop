@@ -3318,6 +3318,15 @@ function Sidebar({
         >
           <Pin className={`h-3 w-3 ${isPinned ? "fill-accent text-accent" : ""}`} />
         </button>
+        {app.path && (
+          <button
+            onClick={() => openInFinder(app.path ?? null)}
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${active ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+            title={`Open ${app.title} folder in Finder`}
+          >
+            <Folder className="h-3.5 w-3.5" />
+          </button>
+        )}
       </li>
     );
   };
@@ -15233,6 +15242,7 @@ type EngineApp = {
   id: string; title: string; integration: string; status: string; configured: boolean;
   domains: string[]; lastSuccessTs: number | null; lastError: string | null;
   account: { label?: string } | null; refresh: { every?: string } | null; community: boolean;
+  path?: string | null;
 };
 const STATUS_TINT: Record<string, string> = { connected: "#2fb87a", expired: "#d8a657", error: "#e06c75", "not-configured": "#2fb87a" };
 function relTime(ts: number | null): string {
