@@ -13774,19 +13774,10 @@ function skillgenCfgFromPrefs(vaultPath: string) {
   };
 }
 
-function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
+function MemoryContextSection(_props: { vaultPath: string }) {
   const [persistent, setPersistent] = useState(() => getPref(PREF.persistentMemory, "1") === "1");
   const [memBudget, setMemBudget] = useState(() => getPref(PREF.memoryBudgetChars, "4000"));
-  const [provider, setProvider] = useState(() => getPref(PREF.memoryProvider, "claude"));
-  const [model, setModel] = useState(() => getPref(PREF.distillModel, "claude-haiku-4-5"));
-  const [autoComp, setAutoComp] = useState(() => getPref(PREF.autoCompression, "1") === "1");
-  const [threshold, setThreshold] = useState(() => getPref(PREF.compressionThreshold, "0.5"));
-  const [target, setTarget] = useState(() => getPref(PREF.compressionTarget, "0.2"));
-  const [protectedRecent, setProtectedRecent] = useState(() => getPref(PREF.protectedRecent, "20"));
-  const [interval, setIntervalSec] = useState(() => getPref(PREF.distillIntervalSec, "900"));
   const [status, setStatus] = useState<{ running?: boolean; last_run_ts?: number | null; last_error?: string | null; lines_distilled?: number } | null>(null);
-  const [distilling, setDistilling] = useState(false);
-  const [distillMsg, setDistillMsg] = useState<string>("");
 
   useEffect(() => {
     let alive = true;
@@ -13797,16 +13788,6 @@ function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
     const id = window.setInterval(poll, 4000);
     return () => { alive = false; window.clearInterval(id); };
   }, []);
-
-  async function distillNow() {
-    setDistilling(true); setDistillMsg("");
-    try {
-      const lines = await invoke<number>("distill_run_once", { cfg: distillCfgFromPrefs(vaultPath) });
-      setDistillMsg(lines > 0 ? `Distilled ${lines} ledger entr${lines === 1 ? "y" : "ies"} into memory.` : "Nothing new to distill yet.");
-    } catch (e) {
-      setDistillMsg(`Distill failed: ${e}`);
-    } finally { setDistilling(false); }
-  }
 
   const Row = ({ title, desc, control }: { title: string; desc: string; control: React.ReactNode }) => (
     <div className="flex items-start justify-between gap-6 border-b border-border-subtle py-4 last:border-0">
@@ -13849,20 +13830,6 @@ function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
           control={<Toggle on={persistent} onChange={(v) => { setPersistent(v); setPref(PREF.persistentMemory, v ? "1" : "0"); }} />} />
         <Row title="Memory budget" desc="Hard cap (characters) on the distilled memory injected into each prompt."
           control={<Num value={memBudget} set={setMemBudget} pref={PREF.memoryBudgetChars} w="w-24" />} />
-        <Row title="Memory provider" desc="Which agent distills the ledger into memory (use a cheap, fast one)."
-          control={
-            <select value={provider} onChange={(e) => { setProvider(e.target.value); setPref(PREF.memoryProvider, e.target.value); }}
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none">
-              <option value="claude">Claude</option>
-              <option value="codex">Codex</option>
-              <option value="ollama">Ollama (local)</option>
-            </select>
-          } />
-        <Row title="Distill model" desc="Model id used for distillation, e.g. claude-haiku-4-5."
-          control={
-            <input value={model} onChange={(e) => { setModel(e.target.value); setPref(PREF.distillModel, e.target.value); }}
-              className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />
-          } />
         <Row title="Context engine" desc="Strategy for managing long conversations near the context limit."
           control={
             <select value={getPref(PREF.contextEngine, "compressor")} onChange={(e) => setPref(PREF.contextEngine, e.target.value)}
@@ -13870,42 +13837,9 @@ function MemoryContextSection({ vaultPath }: { vaultPath: string }) {
               <option value="compressor">Compressor</option>
             </select>
           } />
-        <Row title="Auto-compression" desc="Run the background distillation daemon on a timer."
-          control={<Toggle on={autoComp} onChange={(v) => { setAutoComp(v); setPref(PREF.autoCompression, v ? "1" : "0"); }} />} />
-        <Row title="Compression threshold" desc="Start distilling once new activity reaches this fraction of the memory budget."
-          control={<Num value={threshold} set={setThreshold} pref={PREF.compressionThreshold} step="0.1" />} />
-        <Row title="Compression target" desc="Compress memory toward this fraction of the budget."
-          control={<Num value={target} set={setTarget} pref={PREF.compressionTarget} step="0.1" />} />
-        <Row title="Protected recent messages" desc="Never distill the most-recent N ledger entries: keep them raw."
-          control={<Num value={protectedRecent} set={setProtectedRecent} pref={PREF.protectedRecent} />} />
-        <Row title="Distill interval" desc="How often the background daemon runs a pass."
-          control={<div className="flex items-center gap-1.5"><Num value={interval} set={setIntervalSec} pref={PREF.distillIntervalSec} /><span className="font-mono text-xs text-text-muted">s</span></div>} />
       </div>
-
-      {/* Daemon status + manual trigger */}
-      <div className="mt-6 rounded-lg border border-border bg-surface px-5 py-4">
-        <div className="mb-2 flex items-center justify-between">
-          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Distillation</div>
-          <div className="flex items-center gap-2">
-            <span className={`inline-block h-1.5 w-1.5 rounded-full ${status?.running ? "bg-ok" : "bg-text-muted/40"}`} />
-            <span className="font-mono text-xs text-text-secondary">{status?.running ? "daemon running" : "idle"}</span>
-          </div>
-        </div>
-        <div className="font-mono text-[11px] text-text-muted">
-          {status?.lines_distilled ? `${status.lines_distilled} entries distilled this session` : "no distillation yet this session"}
-          {status?.last_error ? ` · last error: ${status.last_error}` : ""}
-        </div>
-        <div className="mt-3 flex items-center gap-2">
-          <button onClick={distillNow} disabled={distilling}
-            className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
-            {distilling ? "distilling…" : "distill now"}
-          </button>
-          <button onClick={() => invoke("open_in_finder", { path: vaultPath }).catch(() => {})}
-            className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
-            open vault
-          </button>
-          {distillMsg && <span className="text-xs text-text-secondary">{distillMsg}</span>}
-        </div>
+      <div className="mt-3 rounded-lg border border-border-subtle bg-surface px-4 py-2.5 text-xs text-text-muted">
+        The distiller (its provider, interval, threshold, and a manual "distill now") is configured on the Daemons page. This page is what it produces.
       </div>
     </>
   );
@@ -14071,6 +14005,25 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
   const [remInterval, setRemInterval] = useState(() => getPref(PREF.remindersIntervalSec, "900"));
   const [taskgenMsg, setTaskgenMsg] = useState("");
   const [running, setRunning] = useState(false);
+  // Distill (memory) tuning — moved here from Memory & Context so all daemon
+  // operation lives in one place. These write the same prefs distillCfgFromPrefs reads.
+  const [dProvider, setDProvider] = useState(() => getPref(PREF.memoryProvider, "claude"));
+  const [dModel, setDModel] = useState(() => getPref(PREF.distillModel, "claude-haiku-4-5"));
+  const [dAuto, setDAuto] = useState(() => getPref(PREF.autoCompression, "1") === "1");
+  const [dThreshold, setDThreshold] = useState(() => getPref(PREF.compressionThreshold, "0.5"));
+  const [dTarget, setDTarget] = useState(() => getPref(PREF.compressionTarget, "0.2"));
+  const [dProtected, setDProtected] = useState(() => getPref(PREF.protectedRecent, "20"));
+  const [dInterval, setDInterval] = useState(() => getPref(PREF.distillIntervalSec, "900"));
+  const [distilling, setDistilling] = useState(false);
+  const [distillMsg, setDistillMsg] = useState("");
+  async function distillNow() {
+    setDistilling(true); setDistillMsg("");
+    try {
+      const lines = await invoke<number>("distill_run_once", { cfg: distillCfgFromPrefs(vaultPath) });
+      setDistillMsg(lines > 0 ? `Distilled ${lines} entr${lines === 1 ? "y" : "ies"} into memory.` : "Nothing new to distill yet.");
+    } catch (e) { setDistillMsg(`Failed: ${e}`); }
+    finally { setDistilling(false); }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -14167,6 +14120,40 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
       </div>
 
       <HeadlessLearnCard vaultPath={vaultPath} />
+
+      {/* Distill (memory) tuning + manual pass — the Distill card's controls. */}
+      <div className="mb-4 rounded-lg border border-border bg-surface px-5">
+        <Row title="Distill provider" desc="Which agent distills the intent ledger into memory (use a cheap, fast one)."
+          control={
+            <select value={dProvider} onChange={(e) => { setDProvider(e.target.value); setPref(PREF.memoryProvider, e.target.value); }}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none">
+              <option value="claude">Claude</option>
+              <option value="codex">Codex</option>
+              <option value="ollama">Ollama (local)</option>
+            </select>} />
+        <Row title="Distill model" desc="Model id used for distillation, e.g. claude-haiku-4-5."
+          control={<input value={dModel} onChange={(e) => { setDModel(e.target.value); setPref(PREF.distillModel, e.target.value); }}
+            className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
+        <Row title="Auto-compression" desc="Run the distill daemon on a timer (off = manual passes only)."
+          control={<Toggle on={dAuto} onChange={(v) => { setDAuto(v); setPref(PREF.autoCompression, v ? "1" : "0"); }} />} />
+        <Row title="Compression threshold" desc="Start distilling once new activity reaches this fraction of the memory budget."
+          control={<input type="number" step="0.1" value={dThreshold} onChange={(e) => { setDThreshold(e.target.value); setPref(PREF.compressionThreshold, e.target.value); }}
+            className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+        <Row title="Compression target" desc="Compress memory toward this fraction of the budget."
+          control={<input type="number" step="0.1" value={dTarget} onChange={(e) => { setDTarget(e.target.value); setPref(PREF.compressionTarget, e.target.value); }}
+            className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+        <Row title="Protected recent" desc="Never distill the most-recent N ledger entries: keep them raw."
+          control={<input type="number" value={dProtected} onChange={(e) => { setDProtected(e.target.value); setPref(PREF.protectedRecent, e.target.value); }}
+            className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+        <Row title="Distill interval" desc="How often the distill daemon runs a pass (seconds)."
+          control={<div className="flex items-center gap-1.5"><input type="number" value={dInterval} onChange={(e) => { setDInterval(e.target.value); setPref(PREF.distillIntervalSec, e.target.value); }}
+            className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" /><span className="font-mono text-xs text-text-muted">s</span></div>} />
+        <Row title="Distill now" desc="Run a distillation pass immediately."
+          control={<button onClick={distillNow} disabled={distilling}
+            className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
+            {distilling ? "distilling…" : "distill now"}</button>} />
+        {distillMsg && <div className="pb-3 text-xs text-text-secondary">{distillMsg}</div>}
+      </div>
 
       <div className="rounded-lg border border-border bg-surface px-5">
         <Row title="Reminders interval" desc="How often the reminders daemon checks for due tasks (seconds)."
