@@ -57,6 +57,7 @@
       "resources/automation/playwright_runner.js",
       "resources/automation/recipes.json",
       "resources/connectors/catalog.json",
+      "resources/connectors/logos.json",
       "resources/connectors/cli_providers.json",
       "resources/sample-vault/**/*"
     ],
