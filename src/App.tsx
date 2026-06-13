@@ -2320,7 +2320,15 @@ export default function App() {
       if (s) openSettingsAt(s);
     };
     window.addEventListener("prevail:open-settings", onOpen as EventListener);
-    return () => window.removeEventListener("prevail:open-settings", onOpen as EventListener);
+    // Count vault-affecting changes for the change-based backup trigger.
+    const bump = () => bumpBackupChangeCount();
+    window.addEventListener("prevail:context-changed", bump);
+    window.addEventListener("prevail:tasks-changed", bump);
+    return () => {
+      window.removeEventListener("prevail:open-settings", onOpen as EventListener);
+      window.removeEventListener("prevail:context-changed", bump);
+      window.removeEventListener("prevail:tasks-changed", bump);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Lifted from ChatPanel so the top bar owns the domain Insights / Preferences
@@ -6011,7 +6019,7 @@ function DomainContextDrawer({
                     {ctx.decisions.length > 1200 ? ctx.decisions.slice(0, 1200) + "\n…" : ctx.decisions}
                   </pre>
                 </>
-              ) : <div className="text-xs text-text-muted">No curated summary yet — it appears after the distiller's next pass over your recent decisions.</div>}
+              ) : <div className="text-xs text-text-muted">No curated summary yet. It appears after the distiller's next pass over your recent decisions.</div>}
               </>
             } />
             <Section keyName="journal" title="Journal" body={
@@ -10649,7 +10657,20 @@ const BACKUP_CFG = {
   freq: "prevail.backup.freq", // daily | weekly | monthly
   lastRun: "prevail.backup.lastRun",
   dest: "prevail.backup.dest", // optional custom directory
+  changeThreshold: "prevail.backup.changeThreshold", // back up after N vault changes ("0" = off)
+  changeCount: "prevail.backup.changeCount", // vault changes since the last backup
 };
+// Count a vault-affecting change. Fires a change-based backup when the count
+// crosses the configured threshold (the user's "every X changes" request).
+function bumpBackupChangeCount() {
+  const cur = (Number(lsGet(BACKUP_CFG.changeCount, "0")) || 0) + 1;
+  lsSet(BACKUP_CFG.changeCount, String(cur));
+  const threshold = Number(lsGet(BACKUP_CFG.changeThreshold, "0")) || 0;
+  const vault = lsGet(LS.vault);
+  if (lsGet(BACKUP_CFG.enabled, "0") === "1" && threshold > 0 && cur >= threshold && vault) {
+    void backupVaultNow(vault); // resets the counter on success
+  }
+}
 const BACKUP_FREQ_MS: Record<string, number> = {
   daily: 86_400_000,
   weekly: 7 * 86_400_000,
@@ -10661,6 +10682,7 @@ async function backupVaultNow(vault: string): Promise<boolean> {
     const dest = lsGet(BACKUP_CFG.dest) || null;
     await invoke("vault_backup_to", { vault, destDir: dest, keep: 10 });
     lsSet(BACKUP_CFG.lastRun, String(Date.now()));
+    lsSet(BACKUP_CFG.changeCount, "0");
     window.dispatchEvent(new Event("prevail:backup-done"));
     return true;
   } catch (e) {
@@ -14339,7 +14361,7 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
                 ))
               )}
               {!orQuery.trim() && orLive.length > 80 && (
-                <div className="px-3 py-1.5 font-mono text-[10px] text-text-muted">+{orLive.length - 80} more — search to find them</div>
+                <div className="px-3 py-1.5 font-mono text-[10px] text-text-muted">+{orLive.length - 80} more, search to find them</div>
               )}
             </div>
           )}
@@ -14855,7 +14877,7 @@ function McpSection({ vaultPath }: { vaultPath: string }) {
   const active = clients.find((c) => c.id === client) ?? clients[0];
   return (
     <>
-      <SettingsHeader title="MCP" icon={Wrench} subtitle="Use Prevail headlessly: expose your vault as an MCP server so Claude Code, Claude Desktop, Codex, or the Gemini CLI drive it — the same domains, routing, and self-learning, no UI required." />
+      <SettingsHeader title="MCP" icon={Wrench} subtitle="Use Prevail headlessly: expose your vault as an MCP server so Claude Code, Claude Desktop, Codex, or the Gemini CLI drive it: the same domains, routing, and self-learning, no UI required." />
       <div className="mb-5">
         <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Connected servers (Prevail consumes)</div>
         <McpCard />
@@ -14924,7 +14946,7 @@ function TasksCrossDomainSection({ vaultPath }: { vaultPath: string }) {
   }
   return (
     <>
-      <SettingsHeader title="Tasks" icon={Check} subtitle="Every task across every domain, in one place — triage what is piling up where. Per-domain lists live in each domain's Insights tab." />
+      <SettingsHeader title="Tasks" icon={Check} subtitle="Every task across every domain, in one place: triage what is piling up where. Per-domain lists live in each domain's Insights tab." />
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="font-mono text-[11px] text-text-secondary">{openCount} open{overdue > 0 ? ` · ${overdue} overdue` : ""}</span>
         <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] text-text-secondary">
@@ -15459,7 +15481,7 @@ function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPat
       {/* Action: in demo, the 3-step setup; in your own vault, a quiet way back. */}
       {isDemo && prodVault ? (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-warm p-4">
-          <p className="text-sm text-text-secondary">You have your own vault set up. Switch back to it any time — no re-setup.</p>
+          <p className="text-sm text-text-secondary">You have your own vault set up. Switch back to it any time, no re-setup.</p>
           <button
             onClick={switchToProduction}
             disabled={switchingMode}
@@ -15686,6 +15708,7 @@ function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { 
 function BackupAutomationCard({ vault, onChange }: { vault: string; onChange?: () => void }) {
   const [enabled, setEnabled] = useState(() => lsGet(BACKUP_CFG.enabled, "0") === "1");
   const [freq, setFreq] = useState(() => lsGet(BACKUP_CFG.freq, "weekly") || "weekly");
+  const [changeThreshold, setChangeThreshold] = useState(() => lsGet(BACKUP_CFG.changeThreshold, "0"));
   const [backups, setBackups] = useState<{ name: string; path: string; bytes: number; mtime: number }[]>([]);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -15718,6 +15741,17 @@ function BackupAutomationCard({ vault, onChange }: { vault: string; onChange?: (
           <option value="weekly">weekly</option>
           <option value="monthly">monthly</option>
         </select>
+        <label className="flex items-center gap-1.5 font-mono text-[11px] text-text-muted">
+          or every
+          <input
+            type="number" min="0" value={changeThreshold}
+            onChange={(e) => { setChangeThreshold(e.target.value); lsSet(BACKUP_CFG.changeThreshold, e.target.value); }}
+            disabled={!enabled}
+            title="Also back up after this many vault changes (0 = off)"
+            className="w-14 rounded-md border border-border bg-background px-2 py-1 text-right text-[11px] disabled:opacity-40"
+          />
+          changes
+        </label>
         <button onClick={() => { const v = !enabled; setEnabled(v); lsSet(BACKUP_CFG.enabled, v ? "1" : "0"); }}
           className={`rounded-md border px-3 py-1 font-mono text-[11px] uppercase tracking-wider ${enabled ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
           {enabled ? "On" : "Off"}
@@ -17066,7 +17100,7 @@ function AboutSection({ vaultPath }: { vaultPath: string }) {
       out.push({
         label: "Vault", status: exists ? (enc?.encrypted && !enc.unlocked ? "warn" : "ok") : "fail",
         detail: `${vaultPath}${encNote}`,
-        why: exists ? "Your data lives here. An encrypted+locked vault can't be read until you unlock it." : "The vault path doesn't exist — pick or restore it in Settings → Vault.",
+        why: exists ? "Your data lives here. An encrypted+locked vault can't be read until you unlock it." : "The vault path doesn't exist; pick or restore it in Settings → Vault.",
       });
     } else {
       out.push({ label: "Vault", status: "fail", detail: "no vault selected", why: "Set up a vault in Settings → Vault or Demo Mode." });
@@ -17080,7 +17114,7 @@ function AboutSection({ vaultPath }: { vaultPath: string }) {
     out.push({
       label: "Agents", status: valid.length > 0 ? "ok" : detected.length > 0 ? "warn" : "fail",
       detail: detected.length === 0 ? "none detected" : detected.map((c) => `${c.label}${verify.get(c.id)?.status === "ok" ? " ✓" : verify.get(c.id)?.status === "failed" ? " ✗" : " ?"}`).join(", "),
-      why: valid.length > 0 ? "These models are installed and answered a live test." : detected.length > 0 ? "Installed but not validated — open Settings → Models and re-check (often a login/token issue)." : "Install at least one CLI (claude, codex, ollama) to chat.",
+      why: valid.length > 0 ? "These models are installed and answered a live test." : detected.length > 0 ? "Installed but not validated; open Settings → Models and re-check (often a login/token issue)." : "Install at least one CLI (claude, codex, ollama) to chat.",
     });
 
     // Network + Bunker.
@@ -17089,7 +17123,7 @@ function AboutSection({ vaultPath }: { vaultPath: string }) {
     out.push({
       label: "Network", status: bunker ? "info" : online ? "ok" : "warn",
       detail: bunker ? "Bunker Mode ON (local-only by design)" : online ? "online" : "offline",
-      why: bunker ? "Cloud is intentionally blocked; only local models run." : online ? "Cloud models and updates are reachable." : "Offline — cloud models and update checks won't work until reconnected.",
+      why: bunker ? "Cloud is intentionally blocked; only local models run." : online ? "Cloud models and updates are reachable." : "Offline; cloud models and update checks won't work until reconnected.",
     });
 
     // Update check.
@@ -17257,7 +17291,7 @@ function AboutSection({ vaultPath }: { vaultPath: string }) {
           <div className={`mt-2 rounded-md border px-3 py-1.5 text-xs ${
             upToDate ? "border-accent-border bg-accent-soft text-accent" : "border-warn/40 bg-warn/10 text-warn"
           }`}>
-            {upToDate ? `Latest release (${latest}).` : newer ? `Update available: ${latest} — click Download & install.` : `Latest: ${latest}`}
+            {upToDate ? `Latest release (${latest}).` : newer ? `Update available: ${latest}. Click Download & install.` : `Latest: ${latest}`}
           </div>
         )}
         {checkErr && <div className="mt-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-xs text-warn">{checkErr}</div>}
@@ -17909,7 +17943,7 @@ function TelegramCard() {
                 className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none"
               >
                 {routableClis.length === 0 ? (
-                  <option value="">No validated provider — set one up in Models</option>
+                  <option value="">No validated provider; set one up in Models</option>
                 ) : (
                   routableClis.map((c) => (
                     <option key={c.id} value={c.id}>
