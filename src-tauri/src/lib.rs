@@ -2122,6 +2122,49 @@ async fn open_in_finder(app: tauri::AppHandle, path: String) -> Result<(), Strin
     Ok(())
 }
 
+// Copy Prevail.app to /Applications/. Tries a plain `cp -R` first; if that
+// fails (permissions), falls back to `osascript` which can prompt for admin.
+// The source path must end in ".app".
+#[tauri::command]
+async fn move_to_applications(app: tauri::AppHandle, source: String) -> Result<String, String> {
+    if !cfg!(target_os = "macos") {
+        return Err("move_to_applications is macOS-only".into());
+    }
+    let dest = "/Applications/Prevail.app";
+    if source.starts_with("/Applications/") {
+        return Ok("already in /Applications/".into());
+    }
+    // Remove existing copy first so cp -R succeeds cleanly.
+    let _ = std::fs::remove_dir_all(dest);
+    let out = app.shell()
+        .command("cp")
+        .args(["-R", &source, dest])
+        .output()
+        .await
+        .map_err(|e| format!("cp failed: {e}"))?;
+    if out.status.success() {
+        return Ok(format!("Copied to {dest}. Quit and relaunch from /Applications/."));
+    }
+    // Fallback: osascript with administrator privileges.
+    let script = format!(
+        r#"do shell script "cp -R '{}' '{}'" with administrator privileges"#,
+        source.replace('\'', "'\\''"),
+        dest
+    );
+    let out2 = app.shell()
+        .command("osascript")
+        .args(["-e", &script])
+        .output()
+        .await
+        .map_err(|e| format!("osascript failed: {e}"))?;
+    if out2.status.success() {
+        Ok(format!("Copied to {dest}. Quit and relaunch from /Applications/."))
+    } else {
+        let err = String::from_utf8_lossy(&out2.stderr).to_string();
+        Err(format!("Could not copy: {err}"))
+    }
+}
+
 // List skill folders detected for a given vault. Returns a flat list
 // where each entry has its parent domain inferred from the path.
 #[derive(Serialize, Clone)]
@@ -3986,6 +4029,7 @@ pub fn run() {
             read_file,
             telegram_send,
             open_in_finder,
+            move_to_applications,
             create_domain,
             domain_context,
             domain_tree,
