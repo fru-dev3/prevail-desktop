@@ -12746,7 +12746,7 @@ function SettingsPanel({
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {section === "connectors" && (
             <>
-              <ConnectorsSection />
+              <ConnectorsSection vaultPath={vaultPath} />
               {/* A2: Ingestion folded in — same concept (getting your data into
                   the vault), one section. */}
               <div className="mt-8 border-t border-border-subtle pt-8">
@@ -14609,7 +14609,7 @@ function PatternChip({ pattern }: { pattern: string }) {
   );
 }
 
-function ConnectorsSection() {
+function ConnectorsSection({ vaultPath }: { vaultPath: string }) {
   const [cat, setCat] = useState<ConnectorCatalog | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -14640,6 +14640,35 @@ function ConnectorsSection() {
     } catch (e) { setProbeResult((m) => ({ ...m, [id]: `error: ${e}` })); }
     setProbing(null);
   }
+
+  async function syncEngineApp(id: string) {
+    setProbing("sync:" + id);
+    try {
+      const r = await invoke<{ ok: boolean; artifacts?: number; error?: string }>("engine_app_sync", { id, vault: vaultPath });
+      setProbeResult((m) => ({ ...m, [id]: r.ok ? `synced — ${r.artifacts ?? 0} artifact(s)` : `sync failed: ${r.error}` }));
+      setEngineApps(await invoke<EngineApp[]>("engine_apps_list"));
+    } catch (e) { setProbeResult((m) => ({ ...m, [id]: `error: ${e}` })); }
+    setProbing(null);
+  }
+
+  // "Add" a catalog app: scaffold a real engine app folder, then refresh the
+  // Connected list so it appears with live status.
+  const [adding, setAdding] = useState<string | null>(null);
+  const [addMsg, setAddMsg] = useState<Record<string, string>>({});
+  async function addApp(a: CatalogApp) {
+    const id = a.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+    if (!id) return;
+    setAdding(a.name);
+    try {
+      const r = await invoke<{ ok: boolean; path?: string; error?: string }>("engine_app_add", {
+        id, title: a.name, integration: a.pattern, domains: [a.domain],
+      });
+      setAddMsg((m) => ({ ...m, [a.name]: r.ok ? "added" : (r.error ?? "failed") }));
+      if (r.ok) setEngineApps(await invoke<EngineApp[]>("engine_apps_list"));
+    } catch (e) { setAddMsg((m) => ({ ...m, [a.name]: `error: ${e}` })); }
+    setAdding(null);
+  }
+  const connectedIds = useMemo(() => new Set((engineApps ?? []).map((a) => a.id)), [engineApps]);
 
   // Reuse the curated brand marks where an app name matches; everything else
   // shows a neutral pattern-tinted dot. Keeps CONNECTOR_GROUPS/ConnectorIcon live.
@@ -14707,13 +14736,23 @@ function ConnectorsSection() {
                       {app.lastError && !probeResult[app.id] && <span className="ml-2 text-warn">{app.lastError}</span>}
                     </div>
                   </div>
-                  <button
-                    onClick={() => testApp(app.id)}
-                    disabled={probing === app.id}
-                    className="shrink-0 rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
-                  >
-                    {probing === app.id ? "testing" : "test"}
-                  </button>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button
+                      onClick={() => testApp(app.id)}
+                      disabled={probing === app.id}
+                      className="rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
+                    >
+                      {probing === app.id ? "testing" : "test"}
+                    </button>
+                    <button
+                      onClick={() => syncEngineApp(app.id)}
+                      disabled={probing === "sync:" + app.id}
+                      title="Sync this app now"
+                      className="rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
+                    >
+                      {probing === "sync:" + app.id ? "syncing" : "sync"}
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -14825,6 +14864,22 @@ function ConnectorsSection() {
                             ✓ {a.sources.map((s) => SOURCE_ABBR[s] ?? s).join("·")}
                           </span>
                         )}
+                        {(() => {
+                          const slug = a.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+                          const already = connectedIds.has(slug);
+                          return already ? (
+                            <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-accent" title="Already a connected app">added</span>
+                          ) : (
+                            <button
+                              onClick={() => addApp(a)}
+                              disabled={adding === a.name}
+                              title="Add as a connectable app"
+                              className="shrink-0 rounded border border-border bg-background px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted opacity-0 transition-opacity hover:border-accent-border hover:text-accent group-hover:opacity-100 disabled:opacity-50"
+                            >
+                              {adding === a.name ? "…" : addMsg[a.name] === "added" ? "added" : "add"}
+                            </button>
+                          );
+                        })()}
                         <PatternChip pattern={a.pattern} />
                       </div>
                     );
