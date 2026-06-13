@@ -4,6 +4,14 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.22] — 2026-06-13 · app folder shortcut in the sidebar
+
+### Added
+
+- **Open an app's folder from the sidebar.** Each app row now has a Folder button (hover-revealed, like Domains) that opens the app's folder in Finder, so you can see where the app lives on disk.
+
+---
+
 ## [0.7.21] — 2026-06-13 · sidebar nav: icons, indent, app favorites, active-app clarity
 
 ### Added
