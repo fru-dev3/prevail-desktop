@@ -4,6 +4,18 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.20] — 2026-06-13 · apps as first-class, multi-tag catalog, settings IA
+
+### Added
+
+- **Chat with an app.** Clicking an app in the sidebar now opens a conversation scoped to that app's data (e.g. talk to Tesla against your Tesla data), with an App detail bar above the thread: status, sync schedule, last run, the domains it refreshes, where it writes into the vault, and its runnable skills.
+- **Multi-tag catalog.** Apps can carry more than one tag beyond their primary domain (e.g. Tesla = automotive + tech + smarthome). Filter by any tag instead of being forced into a single group. Curated cross-tags live in `scripts/gen-tags.mjs` (29 apps tagged).
+- **Richer sync cadences.** The scheduler adds cron-style intervals: every other day, every 3 days, every 2 weeks, monthly, every 3 months, every 6 months.
+
+### Changed
+
+- **Collapse-and-indent across settings.** Models groups, Agents (Detected / Not installed), Frameworks, Skills, Gateway bridges and surfaces now collapse by default with only the active set expanded, and nested items are indented.
+
 ## [0.7.16] — 2026-06-12 · per-app detail, Gmail connector, engine hardening
 
 ### Added
