@@ -4808,6 +4808,29 @@ function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: str
   );
 }
 
+// Compact strip of the apps bound to this domain, with live status dots, shown
+// at the top of the domain view so you can see at a glance which feeds are fresh.
+function DomainAppsStrip({ domain }: { domain: string }) {
+  const [apps, setApps] = useState<EngineApp[]>([]);
+  useEffect(() => {
+    invoke<EngineApp[]>("engine_apps_list")
+      .then((all) => setApps((all ?? []).filter((a) => a.domains?.includes(domain))))
+      .catch(() => {});
+  }, [domain]);
+  if (apps.length === 0) return null;
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Apps</span>
+      {apps.map((a) => (
+        <span key={a.id} className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-2 py-0.5" title={`${a.status}${a.lastError ? " — " + a.lastError : ""}`}>
+          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: STATUS_TINT[a.status] ?? "#9aa0a6" }} />
+          <span className="text-[11px] text-text-secondary">{a.account?.label ? `${a.title} · ${a.account.label}` : a.title}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function DomainHome({
   domain,
   vaultPath,
@@ -4869,6 +4892,7 @@ function DomainHome({
   return (
     <div className="flex h-full w-full flex-col px-6 py-6">
       <div className="flex-1 overflow-y-auto">
+        <DomainAppsStrip domain={domain} />
         {loading && <div className="text-sm text-text-muted">loading domain context…</div>}
         {!loading && ctx && (
           <div>
