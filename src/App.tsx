@@ -12874,10 +12874,8 @@ function SettingsPanel({
     ]},
   ];
 
-  // Live-bridge counter — used to light up the Integrations row in
-  // the nav when one or more routers (currently just Telegram) is
-  // running. Polled here so the indicator follows you across pages,
-  // even when you're not on Integrations.
+  // Live-bridge counter — used to light up the Gateway row in the nav
+  // when one or more routers (currently just Telegram) is running.
   const [liveBridges, setLiveBridges] = useState(0);
   useEffect(() => {
     async function poll() {
@@ -12890,6 +12888,13 @@ function SettingsPanel({
     }
     void poll();
     const id = window.setInterval(() => void poll(), 4000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // MCP live indicator — read from localStorage; McpCard writes the same key.
+  const [mcpLive, setMcpLive] = useState(() => lsGet(LS.mcpEnabled) === "1");
+  useEffect(() => {
+    const id = window.setInterval(() => setMcpLive(lsGet(LS.mcpEnabled) === "1"), 2000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -12917,7 +12922,8 @@ function SettingsPanel({
             {group.items.map((it) => {
               const Icon = it.icon;
               const active = section === it.id;
-              const showLive = it.id === "gateway" && liveBridges > 0;
+              const showLiveGateway = it.id === "gateway" && liveBridges > 0;
+              const showLiveMcp = it.id === "mcp" && mcpLive;
               return (
                 <button
                   key={it.id}
@@ -12930,13 +12936,22 @@ function SettingsPanel({
                 >
                   <Icon className="h-4 w-4" />
                   <span className="flex-1">{it.label}</span>
-                  {showLive && (
+                  {showLiveGateway && (
                     <span
                       className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent"
                       title={`${liveBridges} bridge${liveBridges === 1 ? "" : "s"} live`}
                     >
                       <span className="pulse-soft inline-block h-1 w-1 rounded-full bg-accent" />
                       live{liveBridges > 1 ? ` ${liveBridges}` : ""}
+                    </span>
+                  )}
+                  {showLiveMcp && (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full bg-ai/15 px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-ai"
+                      title="MCP server enabled"
+                    >
+                      <span className="pulse-soft inline-block h-1 w-1 rounded-full bg-ai" />
+                      on
                     </span>
                   )}
                 </button>
@@ -13151,7 +13166,7 @@ function ModelsSection({
           id: "direct",
           label: "Direct Providers",
           icon: Globe,
-          desc: "Anthropic, OpenAI, Google — native API keys",
+          desc: "Anthropic, OpenAI, Google: native API keys",
           content: (
             <div className="rounded-lg border border-border-subtle bg-surface px-4 py-4 text-xs text-text-muted">
               Native single-vendor keys (Anthropic API, OpenAI API, Google AI) are coming next. Use OpenRouter above to access all of these today with one key.
