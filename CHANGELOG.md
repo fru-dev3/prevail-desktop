@@ -4,6 +4,17 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.7.14] — 2026-06-12 · add-app + sync-now loop, Tier D tests, engine integrity
+
+### Added
+
+- **Browse to connect loop.** Catalog rows get an "add" button that scaffolds a real connectable app (`~/.prevail/apps/<id>/` manifest, via the engine's `connectors add`); it then appears in the Connected panel and shows "added" in the catalog. Connected rows get a "sync" button (single-app sync via `connectors sync <id>`) next to "test".
+- **Tier D tests.** 6 Rust unit tests for the CLI runner (binary validation accept/reject, stdout capture, non-zero-exit error, unsafe-binary refusal, presence probe).
+
+### Fixed
+
+- **Engine integrity.** The apps-construct implementation (`daemon-sync.ts`, `runners.ts`, the `vault.ts` App-model additions) was untracked/uncommitted on disk while committed tests imported it — `origin/main` was broken on a fresh checkout. Now committed; a clean checkout runs the full suite (300+ pass). Also added `syncApp` (on-demand single-app sync) with a test.
+
 ## [0.7.13] — 2026-06-12 · real connector directories, logos, connected-apps view
 
 ### Added
