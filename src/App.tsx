@@ -5905,11 +5905,16 @@ function DomainContextDrawer({
             Context that spans your whole workspace: decisions you've made and what Prevail has learned. Pick a domain for its state, journal, and skills.
           </div>
         )}
-        {/* Recent decisions — read straight from the live ledger, so a council
-            verdict or saved decision appears here the instant it's written. */}
+        {/* Recent decisions = the raw live ledger (_decisions.jsonl). "Decisions"
+            below = the distiller's curated summary. The caption explains the
+            promotion so the two are never confused (always shown, not just empty). */}
         <Section keyName="recent" title="Recent decisions" count={decisionLog.length} body={
-          decisionLog.length === 0 ? (
-            <div className="text-xs text-text-muted">No decisions yet. Council verdicts and saved decisions land here the moment they happen; the distiller also extracts decisions from your chats on its next pass.</div>
+          <>
+          <div className="mb-2 text-[11px] leading-snug text-text-muted">
+            The live feed: council verdicts and saved decisions appear here the instant they happen (latest 15). The distiller later folds these into a curated <span className="font-semibold">Decisions</span> summary below.
+          </div>
+          {decisionLog.length === 0 ? (
+            <div className="text-xs text-text-muted">Nothing yet. Run a council or save a decision and it shows here immediately.</div>
           ) : (
             <ul className="flex flex-col gap-2">
               {decisionLog.map((d, i) => {
@@ -5936,7 +5941,8 @@ function DomainContextDrawer({
                 );
               })}
             </ul>
-          )
+          )}
+          </>
         } />
         <Section keyName="ideal" title="Ideal state" body={
           idealState.trim() ? (
@@ -5989,7 +5995,11 @@ function DomainContextDrawer({
               ) : <div className="text-xs text-text-muted">No state yet. The distiller derives a state snapshot from your activity in this domain; it appears after your first few chats here.</div>
             } />
             <Section keyName="decisions" title="Decisions" body={
-              ctx.decisions ? (
+              <>
+              <div className="mb-2 text-[11px] leading-snug text-text-muted">
+                The curated summary the distiller writes from your decision history (its file: <span className="font-mono">_journal/decisions.md</span>). A <span className="font-semibold">Recent decision</span> moves here on the distiller's next pass, condensed and deduplicated. Empty until that first pass runs.
+              </div>
+              {ctx.decisions ? (
                 <>
                   <button
                     onClick={() => onInjectContext(ctx.decisions!, `${titleCase(domain)}/decisions.md`)}
@@ -6001,7 +6011,8 @@ function DomainContextDrawer({
                     {ctx.decisions.length > 1200 ? ctx.decisions.slice(0, 1200) + "\n…" : ctx.decisions}
                   </pre>
                 </>
-              ) : <div className="text-xs text-text-muted">No decision history yet. This is the full ledger; "Recent decisions" above shows the latest 15 of the same ledger as they happen.</div>
+              ) : <div className="text-xs text-text-muted">No curated summary yet — it appears after the distiller's next pass over your recent decisions.</div>}
+              </>
             } />
             <Section keyName="journal" title="Journal" body={
               ctx.journal ? (
@@ -10450,6 +10461,7 @@ interface BenchQuestion {
   path: string;
   created?: string | null; // YYYY-MM-DD
   source?: string | null; // "user" | "ai"
+  edited?: string | null; // YYYY-MM-DD last edit (prior text preserved in _versions/)
   archived?: boolean;
 }
 interface MatrixDomainCell {
@@ -12405,7 +12417,7 @@ function BenchQuestions({
                   <div className="truncate text-sm text-text-primary">{q.prompt || <span className="text-text-muted">(empty prompt)</span>}</div>
                   {q.expected_decision && <div className="mt-0.5 truncate text-[11px] text-ok">→ {q.expected_decision}</div>}
                   <div className="mt-0.5 font-mono text-[9px] text-text-muted">
-                    {q.source === "ai" ? "AI-suggested" : "written by you"}{q.created ? ` · added ${q.created}` : ""}
+                    {q.source === "ai" ? "AI-suggested" : "written by you"}{q.created ? ` · added ${q.created}` : ""}{q.edited ? ` · edited ${q.edited} (prior version kept)` : ""}
                   </div>
                 </div>
                 {q.council && <Scale className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />}
@@ -17679,6 +17691,20 @@ function TelegramCard() {
   const [chatId, setChatId] = useState(lsGet(LS.telegramChatId));
   const [bridgeCli, setBridgeCli] = useState(lsGet("prevail.telegram.cli") || "claude");
   const [bridgeModel, setBridgeModel] = useState(lsGet("prevail.telegram.model"));
+  // Only route to providers that are detected AND validated (the user asked for
+  // the dropdown to list "the ones that have been validated and are actually
+  // active"). cliVerifyLive is the app-wide validation map.
+  const verify = useCliVerifyLive();
+  const [tgClis, setTgClis] = useState<CliInfo[]>([]);
+  useEffect(() => { invoke<CliInfo[]>("detect_clis").then(setTgClis).catch(() => {}); }, []);
+  const routableClis = tgClis.filter((c) => c.available && verify.get(c.id)?.status !== "failed");
+  // Keep the selection valid: if the chosen CLI isn't routable, fall back.
+  useEffect(() => {
+    if (routableClis.length > 0 && !routableClis.some((c) => c.id === bridgeCli)) {
+      setBridgeCli(routableClis[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tgClis, verify]);
   const [status, setStatus] = useState<{ kind: "idle" | "ok" | "err"; msg: string }>({ kind: "idle", msg: "" });
   const [bridge, setBridge] = useState<TgBridgeStatus | null>(null);
   const [feed, setFeed] = useState<Array<{ dir: "in" | "out"; text: string; ts: number }>>([]);
@@ -17882,10 +17908,15 @@ function TelegramCard() {
                 onChange={(e) => setBridgeCli(e.target.value)}
                 className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none"
               >
-                <option value="claude">Claude</option>
-                <option value="codex">Codex</option>
-                <option value="antigravity">Antigravity</option>
-                <option value="ollama">Ollama</option>
+                {routableClis.length === 0 ? (
+                  <option value="">No validated provider — set one up in Models</option>
+                ) : (
+                  routableClis.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}{verify.get(c.id)?.status === "ok" ? " ✓" : ""}
+                    </option>
+                  ))
+                )}
               </select>
             </label>
             <label className="block">
