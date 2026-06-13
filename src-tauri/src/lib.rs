@@ -4065,6 +4065,7 @@ pub fn run() {
             ingestion::ingestion_mcp_stderr,
             ingestion::ingestion_recipe_save,
             ingestion::ingestion_connector_catalog,
+            ingestion::ingestion_connector_logos,
             ingestion::ingestion_cli_providers,
             ingestion::ingestion_cli_probe,
             ingestion::ingestion_cli_run,

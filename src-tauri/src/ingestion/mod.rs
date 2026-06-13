@@ -449,6 +449,26 @@ pub fn ingestion_connector_catalog(app: tauri::AppHandle) -> Result<serde_json::
     serde_json::from_str(&raw).map_err(|e| format!("parse catalog.json: {e}"))
 }
 
+/// Bundled brand logos for catalog apps — `{ slug: { hex, path } }`, an SVG
+/// path per matched simple-icons brand. Apps reference a slug via `iconSlug`;
+/// unmatched apps fall back to a pattern-tinted dot in the UI.
+#[tauri::command]
+pub fn ingestion_connector_logos(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    use tauri::Manager;
+    let resource = app
+        .path()
+        .resolve(
+            "resources/connectors/logos.json",
+            tauri::path::BaseDirectory::Resource,
+        )
+        .map_err(|e| format!("resolve logos.json: {e}"))?;
+    if !resource.exists() {
+        return Ok(serde_json::json!({}));
+    }
+    let raw = std::fs::read_to_string(&resource).map_err(|e| format!("read logos.json: {e}"))?;
+    serde_json::from_str(&raw).map_err(|e| format!("parse logos.json: {e}"))
+}
+
 // ── Tier D — CLI connectors ──────────────────────────────────────────
 
 /// Load the bundled, allowlisted CLI providers. The JS surface can only
