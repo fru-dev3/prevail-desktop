@@ -13026,15 +13026,32 @@ function ModelsSection({
   // ones appear without a code change. Runs once on launch + a manual Refresh.
   const [refreshing, setRefreshing] = useState(false);
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
+  const [refreshPeriod, setRefreshPeriod] = useState(() => lsGet("prevail.models.refreshPeriod") || "daily");
   const verify = useCliVerifyLive();
   const discover = useCallback(async () => {
     setRefreshing(true);
     try {
       await refreshDiscoveredModels(["ollama", "lmstudio", "openrouter"]);
-      setRefreshedAt(Date.now());
+      const now = Date.now();
+      setRefreshedAt(now);
+      lsSet("prevail.models.lastRefreshed", String(now));
     } finally { setRefreshing(false); }
   }, []);
-  useEffect(() => { void discover(); }, [discover]);
+  // Auto-discover based on schedule: compare last refresh to the chosen period.
+  useEffect(() => {
+    const periodMs: Record<string, number> = {
+      launch: 0,
+      daily: 86_400_000,
+      "2days": 2 * 86_400_000,
+      weekly: 7 * 86_400_000,
+      "2weeks": 14 * 86_400_000,
+      manual: Infinity,
+    };
+    const ms = periodMs[refreshPeriod] ?? 0;
+    if (ms === Infinity) return;
+    const last = parseInt(lsGet("prevail.models.lastRefreshed") || "0", 10);
+    if (Date.now() - last >= ms) void discover();
+  }, [discover, refreshPeriod]);
   // Re-check = re-discover model lists AND re-validate every detected
   // provider; the status badges flip to "checking" live, so the click
   // visibly does something.
@@ -13077,8 +13094,21 @@ function ModelsSection({
         </div>
         <span className="font-mono text-[10px] text-text-muted">
           {okCount}/{detectedClis.length} providers valid
-          {refreshedAt ? ` · model lists updated ${Math.max(1, Math.round((Date.now() - refreshedAt) / 1000))}s ago` : ""}
+          {refreshedAt ? ` · lists updated ${Math.max(1, Math.round((Date.now() - refreshedAt) / 1000))}s ago` : ""}
         </span>
+        <select
+          value={refreshPeriod}
+          onChange={(e) => { setRefreshPeriod(e.target.value); lsSet("prevail.models.refreshPeriod", e.target.value); }}
+          className="rounded border border-border bg-background px-2 py-1 font-mono text-[10px] text-text-muted focus:border-accent-border focus:outline-none"
+          title="How often model lists auto-refresh"
+        >
+          <option value="launch">Every launch</option>
+          <option value="daily">Daily</option>
+          <option value="2days">Every 2 days</option>
+          <option value="weekly">Weekly</option>
+          <option value="2weeks">Every 2 weeks</option>
+          <option value="manual">Manual only</option>
+        </select>
         <button
           onClick={() => void recheck()}
           disabled={refreshing}
@@ -14771,8 +14801,8 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
         {/* Curated picks shown by default; search reveals the full live catalog. */}
         <div className="mt-4 border-t border-border-subtle pt-3">
           <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
-            <Layers className="h-3 w-3 text-accent" /> Models
-            {orLive.length > 0 && <span className="text-text-muted normal-case tracking-normal">· {orLive.length} live, refreshed automatically</span>}
+            <Layers className="h-3 w-3 text-accent" /> Prevail defaults
+            {orLive.length > 0 && <span className="text-text-muted normal-case tracking-normal">· full live catalog: {orLive.length} models, search to browse</span>}
           </div>
           <div className="mb-2 flex flex-wrap gap-1.5">
             {orCurated.map((m) => (
@@ -15157,20 +15187,45 @@ function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string; focus
                     </div>
                   </div>
                   {open && (
-                    <div className="mb-1 ml-7 mt-1 rounded-lg border border-border-subtle bg-background px-3 py-2 text-xs">
-                      <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Skills</div>
-                      {appSkills[app.id] === undefined ? (
-                        <div className="text-text-muted">loading…</div>
-                      ) : appSkills[app.id].length === 0 ? (
-                        <div className="text-text-muted">No skills yet. Add a skill under the app's <code className="text-accent">skills/</code> folder to enable syncing.</div>
-                      ) : (
-                        <ul className="mt-0.5 space-y-0.5">
-                          {appSkills[app.id].map((s) => (
-                            <li key={s.id} className="font-mono text-[11px] text-text-secondary">▸ {s.id} <span className="text-text-muted">· {s.runner} · {s.trigger}</span></li>
-                          ))}
-                        </ul>
+                    <div className="mb-1 ml-7 mt-1 space-y-2 rounded-lg border border-border-subtle bg-background px-3 py-2 text-xs">
+                      {/* Schedule */}
+                      {app.refresh?.every && (
+                        <div>
+                          <div className="mb-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Schedule</div>
+                          <div className="font-mono text-[11px] text-text-secondary">
+                            every {app.refresh.every} · last synced {relTime(app.lastSuccessTs)}
+                          </div>
+                        </div>
                       )}
-                      {app.lastError && <div className="mt-1 text-warn">last error: {app.lastError}</div>}
+                      {/* Domains and vault write paths */}
+                      {app.domains.length > 0 && (
+                        <div>
+                          <div className="mb-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Vault paths</div>
+                          <ul className="space-y-0.5">
+                            {app.domains.map((d) => (
+                              <li key={d} className="font-mono text-[11px] text-text-secondary">
+                                ▸ {titleCase(d)} <span className="text-text-muted/60">→ vault/{d}/</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {/* Skills */}
+                      <div>
+                        <div className="mb-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Skills</div>
+                        {appSkills[app.id] === undefined ? (
+                          <div className="text-text-muted">loading…</div>
+                        ) : appSkills[app.id].length === 0 ? (
+                          <div className="text-text-muted">No skills yet. Add one under <code className="text-accent">skills/</code> to enable syncing.</div>
+                        ) : (
+                          <ul className="space-y-0.5">
+                            {appSkills[app.id].map((s) => (
+                              <li key={s.id} className="font-mono text-[11px] text-text-secondary">▸ {s.id} <span className="text-text-muted">· {s.runner} · {s.trigger}</span></li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      {app.lastError && <div className="text-warn">last error: {app.lastError}</div>}
                     </div>
                   )}
                 </div>
