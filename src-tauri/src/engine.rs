@@ -683,6 +683,13 @@ pub fn engine_app_sync(id: String, vault: String) -> Result<serde_json::Value, S
     run_engine_json(&["connectors", "sync", &id, "--vault", &vault, "--json"])
 }
 
+/// Ideal-state alignment report: per-pillar fit score + rationale + actions.
+/// Signal mode (no model) by default; fast + side-effect-light.
+#[tauri::command]
+pub fn engine_alignment(vault: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["--vault", &vault, "alignment", "--json"])
+}
+
 /// App lock (Phase 0 passcode). The passcode is sent on the child's STDIN so it
 /// never appears in argv/process list. Desktop-only — deliberately NOT in
 /// WEBUI_ALLOWED; the WebUI has its own login.
