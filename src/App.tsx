@@ -11,10 +11,11 @@ import { scoreColor, formatFreshness, titleCase, relTime } from "./format";
 import { Toggle, Sparkline, ThinkingDisclosure } from "./ui";
 import type { AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Brand, BrandLogo, CatalogApp, ChatEvent, ChatMessage, CliInfo, Connector, ConnectorCatalog, ContextScore, DaemonStatus, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainToggle, EngineApp, IngestionArtifact, IngestionMcpServer, IngestionTierStatus, LifeReadiness, MatrixRow, Mode, ModelPick, ModelVerifyStatus, Palette, PanelistReply, PanelistSlot, RunDetail, SkillEntry, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn } from "./types";
 import { appScheduleText, bytesHuman, domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
-import { AUTONOMY_LABEL, AUTONOMY_TINT, DISCOVERED_MODELS, DOMAIN_LABEL, FRAMEWORKS, INTEGRATION_LABEL, LENSES, MODELS, MODEL_SEP, PALETTES, PATTERN_LABEL, PATTERN_TIER, SETTINGS_ROW, SKILL_TOKEN_RE, SOURCE_ABBR, STATUS_TINT, VENDOR_BRAND } from "./constants";
+import { AUTONOMY_LABEL, AUTONOMY_TINT, DISCOVERED_MODELS, DOMAIN_LABEL, FRAMEWORKS, INTEGRATION_LABEL, LENSES, MODELS, MODEL_SEP, PALETTES, PATTERN_LABEL, PATTERN_TIER, SETTINGS_ROW, SOURCE_ABBR, STATUS_TINT, VENDOR_BRAND } from "./constants";
 import { BUNKER_LS, LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet, setDomainToggle, setPref } from "./storage";
 import { AppCard, AppKV, BridgeStatusChips, CycleChip, DemoRibbon, FloatingChip, ResizeHandle } from "./widgets";
 import { ContextScorePanel, DomainAppsTab, IngestionTierCard, OnboardingModal, PaletteCard } from "./panels3";
+import { compareSemver, extractCliError, renderSkillTokens } from "./textutil";
 import { distillCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
 import { COUNCIL_CHAIR_KEY, COUNCIL_MEMBERS_KEY, councilModelsFor, councilSlotKey, readCouncilChair, readCouncilMembers } from "./council";
 import { autoVerifyClis, cliVerifyLive, loadVerifyMap, saveVerifyMap, setCliVerify, useCliVerifyLive, verifyCliDefaultModel } from "./verify";
@@ -444,76 +445,6 @@ function BunkerRibbon({ enabled }: { enabled: boolean }) {
 // silently dropped the most-recent completed exchange — so a follow-up that
 // referenced it (e.g. "was he any good?") reached the model with no context,
 // most visibly when switching models mid-thread. (feedback v0.4.1 B1)
-
-// Render plain text with `/skill` tokens highlighted like inline pills
-// — a small visual cue that the model will treat them as skill refs.
-function renderSkillTokens(text: string): React.ReactNode {
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let m: RegExpExecArray | null;
-  const re = new RegExp(SKILL_TOKEN_RE.source, "g");
-  while ((m = re.exec(text)) !== null) {
-    const [full, prefix, token] = m;
-    const start = m.index;
-    if (start > lastIndex) parts.push(text.slice(lastIndex, start));
-    if (prefix) parts.push(prefix);
-    parts.push(
-      <span
-        key={start}
-        className="rounded-md border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[13px] font-medium text-accent"
-      >
-        {token}
-      </span>,
-    );
-    lastIndex = start + full.length;
-  }
-  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
-  return <>{parts}</>;
-}
-
-// Vertical drag handle between rails. Calls `onChange(delta)` while
-// the user drags. Owner is responsible for clamping the resulting
-// width. Hover surfaces a subtle accent line so the affordance is
-// visible without dominating the UI.
-
-// Strip ANSI escape codes (CSI sequences) that some CLIs emit even in
-// non-TTY mode — ollama is the worst offender with its progress
-// spinner. Without this the chat shows garbage like `[4D[K`.
-// Safety: scrub obvious secrets (API keys, bearer tokens, key=value secrets)
-// before persisting to the intent ledger, when Redact Secrets is enabled.
-
-// Pull a concise, human-readable error out of a CLI's noisy stderr.
-// CLIs emit a startup banner (version, workdir, model, session id…) plus
-// the actual failure. We want only the failure. Codex emits structured
-// `ERROR: {json}` lines whose `.error.message` is the useful part; other
-// CLIs print a plain error line. Falls back to the last non-empty line.
-function extractCliError(stderr?: string): string | null {
-  if (!stderr) return null;
-  const lines = stderr.split("\n").map((l) => l.trim()).filter(Boolean);
-  if (lines.length === 0) return null;
-  // Prefer an explicit ERROR line; parse JSON payload when present.
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i];
-    if (/^ERROR[:\s]/i.test(line) || /\berror\b/i.test(line)) {
-      const braceAt = line.indexOf("{");
-      if (braceAt !== -1) {
-        try {
-          const obj = JSON.parse(line.slice(braceAt));
-          const msg = obj?.error?.message ?? obj?.message;
-          if (typeof msg === "string" && msg) return msg;
-        } catch { /* fall through to raw line */ }
-      }
-      return line.replace(/^ERROR[:\s]+/i, "");
-    }
-  }
-  // No explicit error marker — surface the last line of output.
-  return lines[lines.length - 1];
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Brand — official Prevail logo, byte-identical to the site
-
-// PrevailLogo (animated 3D mark) is imported from ./PrevailLogo.
 
 function Brand({ className = "", fill = false }: { className?: string; fill?: boolean }) {
   if (fill) {
@@ -14182,25 +14113,9 @@ function AboutSection({ vaultPath }: { vaultPath: string }) {
   );
 }
 
-// Tiny semver compare — returns -1 / 0 / +1 for left vs right.
-// "0.2.62" vs "0.2.62" → 0; "0.2.62" vs "0.2.59" → +1.
-function compareSemver(a: string, b: string): number {
-  const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
-  const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const da = pa[i] ?? 0;
-    const db = pb[i] ?? 0;
-    if (da !== db) return da > db ? 1 : -1;
-  }
-  return 0;
-}
-
-// Reusable row: label on left, control on right. Hermes pattern.
-
 // ─────────────────────────────────────────────────────────────────────
 // APPEARANCE SECTION — Color Mode toggle + 6 theme palette cards
 // Modeled after the Hermes desktop Appearance pane.
-
 function AppearanceSection({ appearance }: { appearance: ReturnType<typeof useAppearance> }) {
   return (
     <section className="mt-10">
@@ -14754,6 +14669,7 @@ function McpCard() {
 }
 
 // BriefingsCard removed — landing back in v0.3 when wired up.
+
 
 
 
