@@ -260,6 +260,7 @@ pub fn run() {
         .manage(webui::WebuiState::default())
         .invoke_handler(tauri::generate_handler![
             vault::scan_vault,
+            vault::vault_migrate_layout,
             clis::detect_clis,
             appcmds::log_fatal,
             appcmds::import_sample_vault,
