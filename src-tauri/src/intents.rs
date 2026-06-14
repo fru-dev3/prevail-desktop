@@ -83,11 +83,23 @@ pub(crate) fn journal_append(vault: String, domain: Option<String>, entry: Strin
 pub(crate) fn intents_read_all(vault: String, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
     let root = PathBuf::from(&vault);
     let mut dirs: Vec<(String, PathBuf)> = vec![("general".into(), root.clone())];
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // v3 layout first (<vault>/domains/<domain>); it wins on a name clash.
+    if let Ok(it) = read_dir_retry(&root.join("domains")) {
+        for e in it.flatten() {
+            let p = e.path();
+            let name = e.file_name().to_string_lossy().to_string();
+            if p.is_dir() && !name.starts_with('.') && !name.starts_with('_') && seen.insert(name.clone()) {
+                dirs.push((name, p));
+            }
+        }
+    }
+    // Legacy layout: domains directly under the vault root.
     if let Ok(it) = read_dir_retry(&root) {
         for e in it.flatten() {
             let p = e.path();
             let name = e.file_name().to_string_lossy().to_string();
-            if p.is_dir() && !name.starts_with('.') && !name.starts_with('_') {
+            if p.is_dir() && !name.starts_with('.') && !name.starts_with('_') && name != "domains" && name != "apps" && seen.insert(name.clone()) {
                 dirs.push((name, p));
             }
         }
