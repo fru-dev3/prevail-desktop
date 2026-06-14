@@ -85,7 +85,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
 
 ## Intent (needs a plan, then build)
 
-- [ ] **T10 — Intent: from raw-prompt log → distilled recommendations.**
+- [~] **T10 — Intent: from raw-prompt log → distilled recommendations.**
+  - DONE Phase A (engine): `intents_distill` + `intents_distilled_read` (intents.rs) — reads the
+    whole ledger, model lifts prompts into high-level intents (goal/need/domains/status/
+    confidence/open_questions/evidence/recommendations) → _meta/intents_distilled.json. cargo check green.
+  - DONE Phase B (UI): IntentsSection ladder — distilled cards + drill-down + Distill button;
+    raw log demoted to "Prompt history".
+  - REMAINING Phase C: wire a recommendation → "turn into task / loop" (taskgen + loops); and an
+    optional headless intent-distill daemon (mirror daemon-learn) for auto-refresh.
   - Today intents look like just a list of prompts. Define the bigger purpose.
   - Drill down into an intent → get recommendations/actions out of it.
   - Infer HIGH-LEVEL intent across sessions/domains (e.g. "Is Toyota better than Honda?"
