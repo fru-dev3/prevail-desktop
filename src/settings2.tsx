@@ -2,7 +2,7 @@
 // Tasks, Intents, Memory & Context, and Skills. vaultPath-driven; no App-root
 // state closure.
 import { useEffect, useMemo, useState } from "react";
-import { Bell, Brain, Check, ChevronRight, Folder, GraduationCap, Lightbulb, ListChecks, Sparkles } from "lucide-react";
+import { Bell, Brain, Check, ChevronRight, Folder, GraduationCap, Lightbulb, ListChecks, Pencil, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
@@ -11,7 +11,7 @@ import { PREF, getPref, setPref } from "./storage";
 import { Toggle } from "./ui";
 import { DaemonCard, HeadlessLearnCard } from "./panels";
 import { distillCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
-import { SettingsHeader, pickSkillColor } from "./sectionutil";
+import { SettingsHeader } from "./sectionutil";
 import type { DaemonStatus, SkillEntry } from "./types";
 
 // One collapsible card per daemon. Routes through the canonical CollapsibleSection
@@ -523,6 +523,7 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
   const [skills, setSkills] = useState<SkillEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("");
+  const [domainFilter, setDomainFilter] = useState<string>("all");
   const [listOpen, setListOpen] = useState(false);
 
   useEffect(() => {
@@ -535,14 +536,22 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
     return () => { mounted = false; };
   }, [vaultPath]);
 
+  // Domains present in the vault's skills, for the by-domain filter.
+  const domains = useMemo(
+    () => [...new Set(skills.map((s) => s.domain.toLowerCase()))].sort(),
+    [skills],
+  );
+
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return skills;
-    return skills.filter((s) =>
-      s.name.toLowerCase().includes(q) ||
-      s.domain.toLowerCase().includes(q) ||
-      (s.description ?? "").toLowerCase().includes(q));
-  }, [skills, filter]);
+    return skills.filter((s) => {
+      if (domainFilter !== "all" && s.domain.toLowerCase() !== domainFilter) return false;
+      if (!q) return true;
+      return s.name.toLowerCase().includes(q) ||
+        s.domain.toLowerCase().includes(q) ||
+        (s.description ?? "").toLowerCase().includes(q);
+    });
+  }, [skills, filter, domainFilter]);
 
   async function openSkill(p: string) {
     try { await invoke("open_in_finder", { path: p }); } catch {}
@@ -576,7 +585,17 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
             ↻
           </button>
           <div className="flex-1" />
-          <div className="relative w-64">
+          {/* Filter by domain — see only one domain's skills, or all. */}
+          <select
+            value={domainFilter}
+            onChange={(e) => { setDomainFilter(e.target.value); setListOpen(true); }}
+            title="Filter skills by domain"
+            className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-text-secondary focus:border-accent-border focus:outline-none"
+          >
+            <option value="all">All domains</option>
+            {domains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+          </select>
+          <div className="relative w-56">
             <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted">⌕</span>
             <input
               value={filter}
@@ -621,20 +640,16 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
               <ul className="ml-4 mt-1 flex flex-col gap-1 border-l border-border-subtle pl-3">
                 {filtered.map((s) => {
                   const cleaned = (s.description ?? "").replace(/^[>*\-\s]+/, "").trim();
-                  const color = pickSkillColor(s.name);
-                  const initial = (s.name || "·").charAt(0).toUpperCase();
                   return (
                     <li key={s.path}>
                       <button
                         onClick={() => openSkill(s.path)}
-                        title={s.path}
-                        className="group flex w-full items-start gap-4 rounded-xl px-3 py-3 text-left transition-colors hover:bg-surface-warm"
+                        title={`Open ${s.name} in Finder to edit`}
+                        className="group flex w-full items-start gap-3.5 rounded-xl px-3 py-3 text-left transition-colors hover:bg-surface-warm"
                       >
-                        <span
-                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg font-display text-xl font-bold ring-1 ring-black/5"
-                          style={{ background: color.bg, color: color.fg }}
-                        >
-                          {initial}
+                        {/* Calm, uniform tile (no per-skill rainbow). */}
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-warm text-text-secondary ring-1 ring-border-subtle group-hover:text-accent">
+                          <Sparkles className="h-4 w-4" />
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-baseline gap-2">
@@ -649,7 +664,9 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
                             </p>
                           )}
                         </div>
-                        <Folder className="mt-1.5 h-4 w-4 shrink-0 text-text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+                        <span className="mt-1 inline-flex shrink-0 items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-text-muted opacity-0 transition-opacity group-hover:opacity-100">
+                          <Pencil className="h-3.5 w-3.5" /> edit
+                        </span>
                       </button>
                     </li>
                   );
