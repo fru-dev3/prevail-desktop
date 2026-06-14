@@ -1,7 +1,7 @@
 // Domain-scoped panels extracted from App.tsx: the context drawer (right rail),
 // the agent picker rail, the pref-picker column, and the domain prefs panel.
 import { useCallback, useEffect, useState } from "react";
-import { Check, ChevronRight, Folder, MessageSquare, PanelRightClose, Pin, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Box, Check, ChevronRight, Compass, Cpu, Folder, Lock, MessageSquare, PanelRightClose, Pin, Share2, SlidersHorizontal, Terminal, ThumbsDown, ThumbsUp } from "lucide-react";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES, MODELS } from "./constants";
 import { formatFreshness, titleCase } from "./format";
@@ -507,16 +507,19 @@ export function PrefPickerColumn({
 // reads as a tidy list of sections; click the header (or expand the one you want)
 // to reveal its controls. `right` is an optional header-aligned action that does
 // not toggle the section.
-function PrefSection({ title, subtitle, right, defaultOpen = false, children }: { title: string; subtitle?: string; right?: React.ReactNode; defaultOpen?: boolean; children: React.ReactNode }) {
+function PrefSection({ title, subtitle, icon, right, defaultOpen = false, children }: { title: string; subtitle?: string; icon?: React.ReactNode; right?: React.ReactNode; defaultOpen?: boolean; children: React.ReactNode }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <section className="mb-3 overflow-hidden rounded-xl border border-border bg-surface">
       <div className="flex items-center gap-2 px-4 py-3">
-        <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+        <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
           <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
+          {icon && <span className="flex h-4 w-4 shrink-0 items-center justify-center text-text-muted">{icon}</span>}
           <span className="shrink-0 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">{title}</span>
-          {subtitle && <span className="truncate text-[12px] text-text-muted">{subtitle}</span>}
         </button>
+        {/* Right-side summary of what's inside, so the row reads at a glance
+            even while collapsed (founder ask: icon left, summary right). */}
+        {subtitle && <span className="min-w-0 truncate text-right font-mono text-[10px] uppercase tracking-wider text-text-muted">{subtitle}</span>}
         {right && <div className="shrink-0" onClick={(e) => e.stopPropagation()}>{right}</div>}
       </div>
       {open && <div className="border-t border-border-subtle px-4 py-4">{children}</div>}
@@ -745,6 +748,7 @@ export function DomainPrefsPanel({
       <PrefSection
         title="CLI"
         defaultOpen
+        icon={<Terminal className="h-4 w-4" />}
         subtitle={pickedCli ? titleCase(pickedCli) : "Global default"}
         right={pickedCli ? (
           <button
@@ -839,7 +843,7 @@ export function DomainPrefsPanel({
       </PrefSection>
 
       {/* Framework + Lens — stacked full-width, one per row */}
-      <PrefSection title="Framework & Lens" subtitle={[pickedFw && pickedFw !== "none" ? "framework" : "", pickedLens && pickedLens !== "none" ? "lens" : ""].filter(Boolean).join(" + ") || "none set"}>
+      <PrefSection title="Framework & Lens" icon={<Compass className="h-4 w-4" />} subtitle={[pickedFw && pickedFw !== "none" ? "framework" : "", pickedLens && pickedLens !== "none" ? "lens" : ""].filter(Boolean).join(" + ") || "none set"}>
         <div className="grid grid-cols-1 gap-4">
           <PrefPickerColumn
             glyph="◆"
@@ -914,7 +918,7 @@ export function DomainPrefsPanel({
       </section>
 
       {/* Behavior toggles */}
-      <PrefSection title="Behavior">
+      <PrefSection title="Behavior" icon={<SlidersHorizontal className="h-4 w-4" />} subtitle={autoState ? "Auto-attach on" : "Manual"}>
         <div className="flex items-center justify-between gap-3 py-2">
           <div>
             <div className="text-sm font-semibold text-text-primary">Auto-attach state.md</div>
@@ -933,7 +937,7 @@ export function DomainPrefsPanel({
       </PrefSection>
 
       {/* Privacy — local-only (Ollama) pin → manifest.privacy.localOnly */}
-      <PrefSection title="Privacy">
+      <PrefSection title="Privacy" icon={<Lock className="h-4 w-4" />} subtitle={localOnly ? "Local only" : "Standard"}>
         <div className="flex items-center justify-between gap-3 py-2">
           <div>
             <div className="text-sm font-semibold text-text-primary">Local-only (Ollama)</div>
@@ -956,7 +960,7 @@ export function DomainPrefsPanel({
       </PrefSection>
 
       {/* Sandbox — open | locked → manifest.sandbox.mode */}
-      <PrefSection title="Sandbox" subtitle={sandboxMode === "locked" ? "Locked: read-only" : "Open: read + write"}>
+      <PrefSection title="Sandbox" icon={<Box className="h-4 w-4" />} subtitle={sandboxMode === "locked" ? "Locked: read-only" : "Open: read + write"}>
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-text-secondary">
             {sandboxMode === "locked"
@@ -981,7 +985,11 @@ export function DomainPrefsPanel({
 
       {/* Channels / routing — domain name is always matched (A6); the input
           holds extra keywords → manifest.routing.keywords = [domain, ...extras] */}
-      <PrefSection title="Channels & routing">
+      <PrefSection
+        title="Channels & routing"
+        icon={<Share2 className="h-4 w-4" />}
+        subtitle={(() => { const n = 1 + keywordsRaw.split(",").map((s) => s.trim()).filter(Boolean).length; return `${n} keyword${n === 1 ? "" : "s"}`; })()}
+      >
         <p className="mb-3 text-sm text-text-secondary">
           When a bridge (e.g. Telegram) receives a message, these keywords route it to {titleCase(domain)}.
           The domain name always matches; add extras below. Saved to the domain manifest.
@@ -1019,7 +1027,7 @@ export function DomainPrefsPanel({
         </div>
       </PrefSection>
 
-      <PrefSection title="Daemons">
+      <PrefSection title="Daemons" icon={<Cpu className="h-4 w-4" />} subtitle={`${[daemonTaskgen, daemonReminders, daemonSkillgen].filter(Boolean).length}/3 on`}>
         <div className="flex flex-col gap-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
