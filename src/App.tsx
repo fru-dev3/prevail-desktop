@@ -8,7 +8,7 @@ import { PrevailLogo } from "./PrevailLogo";
 import { Markdown, StreamingPlain } from "./Markdown";
 import { scoreColor, formatFreshness, titleCase, relTime } from "./format";
 import { Toggle, Sparkline, ThinkingDisclosure } from "./ui";
-import type { AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Brand, ChatEvent, ChatMessage, CliInfo, ContextScore, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainToggle, EngineApp, LifeReadiness, MatrixRow, Mode, ModelPick, ModelVerifyStatus, PanelistReply, PanelistSlot, RunDetail, SkillEntry, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn } from "./types";
+import type { AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, ChatEvent, ChatMessage, CliInfo, ContextScore, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainToggle, EngineApp, LifeReadiness, MatrixRow, Mode, ModelPick, ModelVerifyStatus, PanelistReply, PanelistSlot, RunDetail, SkillEntry, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn } from "./types";
 import { appScheduleText, bytesHuman, domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
 import { AUTONOMY_LABEL, AUTONOMY_TINT, DISCOVERED_MODELS, FRAMEWORKS, INTEGRATION_LABEL, LENSES, MODELS, MODEL_SEP, PALETTES, SETTINGS_ROW, STATUS_TINT, VENDOR_BRAND } from "./constants";
 import { BUNKER_LS, LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet, setDomainToggle, setPref } from "./storage";
@@ -20,6 +20,7 @@ import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection, Ta
 import { FrameworksSection, IngestionSection, RemoteSection, ShortcutsSection } from "./settings1";
 import { BenchScheduleCard, SidebarBenchmarkRuns } from "./cards";
 import { ProviderMark } from "./marks";
+import { BrandMark } from "./brandmark";
 import { ThinkingDots, ThinkingWord, useAppearance, useFrameworkLens } from "./hooks";
 import { SettingsHeader, authLoginCmd, mcpCommandPath, pickSkillColor } from "./sectionutil";
 import { DOMAIN_ICONS, domainIcon } from "./icons";
@@ -268,31 +269,6 @@ function BunkerRibbon({ enabled }: { enabled: boolean }) {
 // silently dropped the most-recent completed exchange — so a follow-up that
 // referenced it (e.g. "was he any good?") reached the model with no context,
 // most visibly when switching models mid-thread. (feedback v0.4.1 B1)
-
-function Brand({ className = "", fill = false }: { className?: string; fill?: boolean }) {
-  if (fill) {
-    // Clean wordmark spread edge-to-edge. We spell it out (no embedded mark)
-    // so it reads instantly and the real wit — the "AI" hiding in prevAIl —
-    // carries the brand. The chevron+star mark lives where it has room: the
-    // app icon, the Council hero, the empty state.
-    return (
-      <span className={`flex w-full items-center justify-between ${className}`} aria-label="Prevail">
-        <span>P</span>
-        <span>R</span>
-        <span>E</span>
-        <span>V</span>
-        <span className="text-ai">A</span>
-        <span className="text-ai">I</span>
-        <span>L</span>
-      </span>
-    );
-  }
-  return (
-    <span className={className} style={{ letterSpacing: "inherit" }}>
-      PREV<span className="text-ai">AI</span>L
-    </span>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // App root — vault picker, sidebar, tabs.
@@ -1731,7 +1707,7 @@ function Sidebar({
           </div>
         ) : (
           <>
-            <Brand fill className="min-w-0 flex-1 font-display text-2xl font-bold text-white [text-shadow:0_2px_6px_rgba(0,0,0,0.5)]" />
+            <BrandMark fill className="min-w-0 flex-1 font-display text-2xl font-bold text-white [text-shadow:0_2px_6px_rgba(0,0,0,0.5)]" />
             <button
               onClick={() => setCollapsed(true)}
               title="Collapse sidebar"
@@ -2346,7 +2322,7 @@ function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLoadSampl
 
         <motion.div variants={item} className="relative mt-5 inline-block overflow-hidden px-1 py-1">
           <h1 className="font-display text-5xl font-semibold leading-[0.95] tracking-tight sm:text-6xl">
-            Welcome to <Brand />.
+            Welcome to <BrandMark />.
           </h1>
           {!reduce && (
             <motion.span
@@ -6976,7 +6952,7 @@ function CouncilPanel({
           <div className="flex h-full flex-col items-center justify-start px-6 py-6">
             <img src="/logo.png" alt="" className="h-10 w-10 rounded-2xl opacity-90" />
             <h2 className="mt-3 font-display text-2xl font-semibold tracking-tight">
-              <Brand /> Council
+              <BrandMark /> Council
             </h2>
             <p className="mt-1.5 max-w-md text-center text-[13px] text-text-muted">
               {panelistSlots.length === 0 ? (
@@ -11327,7 +11303,7 @@ function AboutSection({ vaultPath }: { vaultPath: string }) {
       <div className="flex flex-col items-center text-center">
         <img src="/logo.png" alt="Prevail" className="h-16 w-16 rounded-2xl shadow-md" />
         <h1 className="mt-3 font-display text-2xl font-extrabold tracking-tight">
-          <Brand className="[letter-spacing:0.12em]" />
+          <BrandMark className="[letter-spacing:0.12em]" />
         </h1>
         <p className="mt-1 text-xs text-text-secondary">One desktop. Your AI council, grounded in your domains.</p>
       </div>
@@ -12008,7 +11984,7 @@ function McpCard() {
         <Toggle on={enabled} onChange={setEnabled} label="Enable MCP server" />
       </div>
       <p className="mt-3 text-xs text-text-muted">
-        For full MCP coverage right now, run the <Brand /> CLI's <code className="text-accent">mcp-server</code> command: it ships read-only by default and is parent-process verified.
+        For full MCP coverage right now, run the <BrandMark /> CLI's <code className="text-accent">mcp-server</code> command: it ships read-only by default and is parent-process verified.
       </p>
     </div>
   );
