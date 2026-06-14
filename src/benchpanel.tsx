@@ -3,7 +3,7 @@
 // run registry + executor live in ./bench; this is the presentation layer.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm, open, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
-import { Activity, AlertTriangle, Archive, Check, ChevronDown, ChevronRight, Circle, Crown, Download, FileText, Layers, Loader2, MessagesSquare, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X } from "lucide-react";
+import { Activity, AlertTriangle, Archive, Check, ChevronRight, Circle, Crown, Download, FileText, Layers, Loader2, MessagesSquare, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X } from "lucide-react";
 import { invoke, listen } from "./bridge";
 import { MODELS, MODEL_SEP } from "./constants";
 import { scoreColor, titleCase } from "./format";
@@ -13,6 +13,7 @@ import { isBunkerOn, lsGet, lsSet } from "./storage";
 import { Sparkline } from "./ui";
 import { BenchCrumbs, Field, ScoreBar, SubsectionHeader } from "./panels";
 import { domainIcon } from "./icons";
+import { CollapsibleSection } from "./collapsible";
 import { BENCH_CLI_OPTIONS, benchBatches, benchNotify, cancelBenchBatch, executeBenchBatch, useBenchBatches } from "./bench";
 import { ProviderMark } from "./marks";
 import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Domain, MatrixRow, RunDetail } from "./types";
@@ -166,45 +167,73 @@ export function BenchQuestions({
 
   // AI-draft questions from each domain's own context, via the engine's
   // `bench suggest`. Drafts land in the list for review/editing.
+  // Generate `count` draft questions for ONE domain. Resolves to the exit code
+  // plus the net new question count for that domain (so "all domains" can verify
+  // every domain actually got drafts, not just an overall total).
+  async function suggestForDomain(target: string, cli: string, model: string): Promise<{ code: number | null; added: number; tail: string }> {
+    const before = questions.filter((q) => q.domain === target).length;
+    const session = `bench-suggest-${target}-${Date.now()}`;
+    let output = "";
+    let chunkUn: UnlistenFn | null = null;
+    listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
+      if (e.payload.session === session) output = (output + e.payload.data).slice(-2000);
+    }).then((u) => { chunkUn = u; });
+    const done = new Promise<number | null>((resolve) => {
+      let un: UnlistenFn | null = null;
+      listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
+        if (e.payload.session === session && e.payload.phase === "suggest") { un?.(); resolve(e.payload.code); }
+      }).then((u) => { un = u; });
+    });
+    await invoke("benchmark_suggest", {
+      args: { session_id: session, vault: vaultPath, domain: target, count: suggestCount, cli, model: model || null },
+    });
+    const code = await done;
+    (chunkUn as UnlistenFn | null)?.();
+    let added = 0;
+    try {
+      const fresh = await invoke<BenchQuestion[]>("benchmark_questions_list", { vault: vaultPath });
+      added = (fresh ?? []).filter((q) => q.domain === target).length - before;
+    } catch { /* counting is best-effort; exit code still drives success */ }
+    return { code, added, tail: output.trim().split("\n").filter(Boolean).slice(-2).join(" / ") };
+  }
+
   async function suggestWithAi() {
     const domain = suggestDomain.trim().toLowerCase();
     if (!domain) return;
     const [cli, model] = suggestModel.split(MODEL_SEP);
-    const session = `bench-suggest-${Date.now()}`;
     setSuggesting(true);
     setInfo(null);
-    let output = "";
-    let chunkUn: UnlistenFn | null = null;
     try {
-      listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
-        if (e.payload.session === session) output = (output + e.payload.data).slice(-2000);
-      }).then((u) => { chunkUn = u; });
-      const done = new Promise<number | null>((resolve) => {
-        let un: UnlistenFn | null = null;
-        listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
-          if (e.payload.session === session && e.payload.phase === "suggest") { un?.(); resolve(e.payload.code); }
-        }).then((u) => { un = u; });
-      });
-      await invoke("benchmark_suggest", {
-        args: { session_id: session, vault: vaultPath, domain, count: suggestCount, cli, model: model || null },
-      });
-      const code = await done;
-      if (code === 0 || code === null) {
+      // "all domains" must hit EVERY domain with its own request for `count`,
+      // not a single call that the engine spreads thin — that left some domains
+      // empty. Loop per domain (the path that works for a single domain) and
+      // verify each one actually received drafts.
+      const targets = domain === "all" ? allDomains.map((d) => d.toLowerCase()) : [domain];
+      const short: string[] = [];
+      const failed: string[] = [];
+      for (const t of targets) {
+        const { code, added } = await suggestForDomain(t, cli, model);
+        if (!(code === 0 || code === null)) failed.push(t);
+        else if (added < suggestCount) short.push(`${titleCase(t)} (${Math.max(0, added)}/${suggestCount})`);
+      }
+      onChanged();
+      if (failed.length === 0 && short.length === 0) {
         setInfo(
           domain === "all"
-            ? `Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} per domain, across all domains. Review the ground truth before trusting scores.`
+            ? `Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} for each of ${targets.length} domains. Review the ground truth before trusting scores.`
             : `Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} for ${titleCase(domain)}. Review the ground truth before trusting scores.`,
         );
         setSuggestOpen(false);
-        onChanged();
       } else {
-        const tail = output.trim().split("\n").filter(Boolean).slice(-2).join(" / ");
-        setInfo(`Suggest failed (exit ${code})${tail ? `: ${tail}` : ""}`);
+        const parts = [
+          failed.length ? `failed: ${failed.map(titleCase).join(", ")}` : "",
+          short.length ? `under target: ${short.join(", ")}` : "",
+        ].filter(Boolean).join(" · ");
+        setInfo(`Drafted across ${targets.length - failed.length}/${targets.length} domains — ${parts}. Re-run to fill the gaps.`);
       }
     } catch (e) {
       setInfo(`Suggest failed: ${e}`);
     } finally {
-      void (async () => { (chunkUn as UnlistenFn | null)?.(); })();
       setSuggesting(false);
     }
   }
@@ -330,30 +359,47 @@ export function BenchQuestions({
         </button>
       </div>
       {suggestOpen && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Draft from context:</span>
-          <select value={suggestDomain} onChange={(e) => setSuggestDomain(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
-            <option value="">pick a domain…</option>
-            <option value="all">All domains</option>
-            {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
-          </select>
-          <select value={suggestCount} onChange={(e) => setSuggestCount(Number(e.target.value))} className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
-            {[1, 2, 3, 5, 8].map((n) => <option key={n} value={n}>{n} question{n === 1 ? "" : "s"}{suggestDomain === "all" ? " per domain" : ""}</option>)}
-          </select>
-          <select value={suggestModel} onChange={(e) => setSuggestModel(e.target.value)} title="Model that drafts the questions" className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
-            {Object.entries(MODELS)
-              .filter(([cli]) => !isBunkerOn() || isLocalCli(cli))
-              .flatMap(([cli, models]) =>
-                models.map((m) => (
-                  <option key={`${cli}${MODEL_SEP}${m.id}`} value={`${cli}${MODEL_SEP}${m.id}`}>{titleCase(cli)} · {m.label}</option>
-                )),
-              )}
-          </select>
-          <button onClick={suggestWithAi} disabled={suggesting || !suggestDomain} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background hover:bg-accent-hover disabled:opacity-40">
-            {suggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-            {suggesting ? "Drafting…" : "Draft"}
-          </button>
-          <span className="text-[10px] text-text-muted">Reads each domain's state, goals, and decisions (fresh domains use goals/config). Drafts are marked for your review.</span>
+        <div className="mb-4 rounded-xl border border-accent-border bg-accent-soft/25 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-accent" />
+            <span className="text-sm font-semibold text-text-primary">Draft questions with AI</span>
+          </div>
+          {/* Labeled controls, not a cramped row of bare selects. */}
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Domain</span>
+              <select value={suggestDomain} onChange={(e) => setSuggestDomain(e.target.value)} className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-text-secondary focus:border-accent-border focus:outline-none">
+                <option value="">pick a domain…</option>
+                <option value="all">All domains</option>
+                {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">How many{suggestDomain === "all" ? " per domain" : ""}</span>
+              <select value={suggestCount} onChange={(e) => setSuggestCount(Number(e.target.value))} className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-text-secondary focus:border-accent-border focus:outline-none">
+                {[1, 2, 3, 5, 8].map((n) => <option key={n} value={n}>{n} question{n === 1 ? "" : "s"}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Drafting model</span>
+              <select value={suggestModel} onChange={(e) => setSuggestModel(e.target.value)} className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-text-secondary focus:border-accent-border focus:outline-none">
+                {Object.entries(MODELS)
+                  .filter(([cli]) => !isBunkerOn() || isLocalCli(cli))
+                  .flatMap(([cli, models]) =>
+                    models.map((m) => (
+                      <option key={`${cli}${MODEL_SEP}${m.id}`} value={`${cli}${MODEL_SEP}${m.id}`}>{titleCase(cli)} · {m.label}</option>
+                    )),
+                  )}
+              </select>
+            </label>
+            <button onClick={suggestWithAi} disabled={suggesting || !suggestDomain} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
+              {suggesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {suggesting ? "Drafting…" : "Draft"}
+            </button>
+          </div>
+          <p className="mt-3 text-xs text-text-muted">
+            Reads each domain's state, goals, and decisions (fresh domains use goals/config). Every domain you target gets the full count; drafts are marked for your review before they affect scores.
+          </p>
         </div>
       )}
       {info && (
@@ -657,7 +703,7 @@ export function BenchRunConfig({
                     onClick={() => toggleProvider(c.id)}
                     className="mb-1.5 flex w-full items-center gap-2 rounded-md py-0.5 text-left transition-colors hover:text-accent"
                   >
-                    {collapsed ? <ChevronRight className="h-3.5 w-3.5 text-text-muted" /> : <ChevronDown className="h-3.5 w-3.5 text-text-muted" />}
+                    <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${collapsed ? "" : "rotate-90"}`} strokeWidth={2.5} />
                     <ProviderMark vendor={c.id} size={16} />
                     <span className="font-display text-[13px] font-semibold tracking-tight">{c.label}</span>
                     {selectedHere > 0 && (
@@ -961,6 +1007,30 @@ export function BenchResults({
   }, [visibleRuns, matrix, domainFilter]);
   const [expandedModel, setExpandedModel] = useState<string | null>(initialModel ?? null);
 
+  // Accurate coverage counts, derived straight from the raw run records (the
+  // source of truth: each run lists the domains it covered and which model ran).
+  // This is what makes the History trustworthy — "how many times was THIS domain
+  // benchmarked, and by how many distinct models" — counted, never estimated.
+  const coverage = useMemo(() => {
+    const byDomain = new Map<string, { runs: number; models: Set<string> }>();
+    const allModels = new Set<string>();
+    for (const r of visibleRuns) {
+      const p = parseRunLabel(r.label);
+      const mk = `${p.vendor}::${p.model || r.label}`;
+      allModels.add(mk);
+      for (const d of r.domains) {
+        const e = byDomain.get(d) ?? { runs: 0, models: new Set<string>() };
+        e.runs += 1;
+        e.models.add(mk);
+        byDomain.set(d, e);
+      }
+    }
+    const rows = [...byDomain.entries()]
+      .map(([domain, v]) => ({ domain, runs: v.runs, models: v.models.size }))
+      .sort((a, b) => b.runs - a.runs || a.domain.localeCompare(b.domain));
+    return { rows, totalRuns: visibleRuns.length, modelCount: allModels.size };
+  }, [visibleRuns]);
+
 
   if (selected) {
     const p = parseRunLabel(selected.score.label);
@@ -1084,6 +1154,37 @@ export function BenchResults({
             ? <>No runs yet. Head to <span className="text-accent">Run</span> to kick one off.</>
             : <>No runs cover <span className="text-accent">{titleCase(domainFilter)}</span> yet. Run a benchmark scoped to it, or switch the filter to all domains.</>}
         </div>
+      )}
+
+      {/* Accurate coverage: counted from the run records, not estimated. Answers
+          "how many times has each domain been benchmarked, by how many models". */}
+      {visibleRuns.length > 0 && coverage.rows.length > 0 && (
+        <CollapsibleSection
+          icon={Target}
+          title="Coverage by domain"
+          subtitle="Counted directly from every run record."
+          summary={`${coverage.totalRuns} runs · ${coverage.modelCount} models · ${coverage.rows.length} domains`}
+          className="mb-4"
+        >
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border-subtle text-left font-mono text-[10px] uppercase tracking-wider text-text-muted">
+                <th className="py-1.5 pr-3 font-medium">Domain</th>
+                <th className="py-1.5 pr-3 text-right font-medium">Benchmark runs</th>
+                <th className="py-1.5 text-right font-medium">Distinct models</th>
+              </tr>
+            </thead>
+            <tbody>
+              {coverage.rows.map((r) => (
+                <tr key={r.domain} className="border-b border-border-subtle/40 last:border-0">
+                  <td className="py-1.5 pr-3 text-text-primary">{titleCase(r.domain)}</td>
+                  <td className="py-1.5 pr-3 text-right font-mono text-text-secondary">{r.runs}</td>
+                  <td className="py-1.5 text-right font-mono text-text-secondary">{r.models}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CollapsibleSection>
       )}
 
       {loadingDetail && <div className="mb-2 text-xs text-text-muted">loading…</div>}

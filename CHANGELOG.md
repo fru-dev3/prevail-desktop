@@ -4,6 +4,36 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.8.2] — 2026-06-14 · self-learning, proactive recommendations, apps that connect themselves, and a much faster engine
+
+### Added
+
+- **Recommendations** — a proactive feed (Settings → Recommendations, with a nav count badge) that watches how you use Prevail and proposes the next high-leverage moves: domains to create (from recurring intents), the best model per benchmarked domain, apps to connect, and domains whose context is thin — each one-click.
+- **Self-driving Domain Loops.** Loops now learn from their own history, create real tracked tasks, **ask permission** for steps that spend/contact/are irreversible, and can **execute approved actions through your connectors** — and they advance on their own (in-app + headless), compounding on your distilled high-level intents across domains.
+- **Apps, reimagined.** Connect an app by **describing the goal** ("AllTrails — my hikes into Health, weekly") and a Connection Agent researches the best method (MCP / API / CLI / Composio / browser) and sets it up. Every app shows one unmistakable status (Connected / Connecting / Needs attention / Not connected), the method, last/next sync, and which domains it feeds; an autonomous sync daemon keeps them fresh on schedule, and "re-evaluate" finds a better method if one appears.
+- **Intent distillation.** Your prompts are distilled into high-level intents with recommendations (drill in, turn a recommendation into a task) — automatically, via a background daemon.
+- **Context-window meter** above the composer: a minimal gauge of how full the conversation is, a token breakdown (conversation vs attached context), and **compaction** — summarize & continue (manual button + automatic when the window gets full) so responses never degrade from an overfull context.
+- **Context score** now shows its trend over time and feeds the recommendations loop (a thin domain proposes how to enrich it; the score climbs as Prevail learns).
+- **Privacy & telemetry** scaffolding (opt-in, default OFF, fully transparent — anonymous, no content/PII ever).
+
+### Changed
+
+- **One consistent collapsible everywhere** (icon + left/right summary, collapsed by default, chevron always on the left) across General, Daemons, Models, Configuration, Connectors, and more.
+- **Redesigns:** calmer Ideal State, a visual Council "round table" (crowned chair, animates), de-colored Skills with filter-by-domain, a calm collapsible Frameworks page, Gateway via the canonical collapsible, and Ingestion split into API&MCP / Composio / Browser tabs.
+- **Vault layout v3:** `apps/` and `domains/` are now siblings; existing vaults migrate safely on load.
+- **Flexible "every N days"** cadence for scheduled benchmarks and backups.
+- **Website** surfaces the Windows download up top.
+
+### Fixed
+
+- Benchmark "suggest for all domains" now guarantees N questions for every domain; added accurate "Coverage by domain".
+- Scheduled "Run now" reports back instead of silently doing nothing; fixed "just now ago" / future-time wording.
+
+### Performance
+
+- **Engine startup ~440ms → ~100ms** by lazy-loading the terminal UI — every engine-backed call (context score, recommendations, apps, sync) is ~340ms faster.
+- CLI roster cached + faster Ollama probe (snappier gateway chats); per-domain context score cached (instant domain re-open).
+
 ## [0.8.1] — 2026-06-14 · context mentions, clearer settings, and a fixed Enable toggle
 
 ### Added

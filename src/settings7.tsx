@@ -2,8 +2,9 @@
 // OpenRouter catalog) and Models (the per-provider model catalog), plus the
 // refreshDiscoveredModels helper they share (imported from helpers2).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Check, ChevronDown, ChevronRight, Clock, Globe, Layers, Loader2, RotateCw, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Clock, Globe, Layers, Loader2, RotateCw, Sparkles, Zap } from "lucide-react";
 import { invoke } from "./bridge";
+import { CollapsibleSection } from "./collapsible";
 import { DISCOVERED_MODELS, MODELS, SETTINGS_ROW } from "./constants";
 import { refreshDiscoveredModels } from "./helpers2";
 import { LS, lsGet, lsSet } from "./storage";
@@ -297,8 +298,6 @@ export function ModelsSection({
   onStartChatWith?: (cliId: string, modelId?: string) => void;
   onActivated?: () => Promise<CliInfo[]>;
 }) {
-  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
-  const toggleGroup = (id: string) => setOpenGroups((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const firstAvailable = useMemo(() => clis.find((c) => c.available)?.id ?? "", [clis]);
   const [defaultChatCli, setDefaultChatCli] = useState(() => lsGet(LS.defaultChatCli) || firstAvailable);
   useEffect(() => { if (defaultChatCli) lsSet(LS.defaultChatCli, defaultChatCli); }, [defaultChatCli]);
@@ -425,23 +424,11 @@ export function ModelsSection({
             </div>
           ),
         },
-      ] as const).map(({ id, label, icon: Icon, desc, content }) => {
-        const isOpen = openGroups.has(id);
-        return (
-          <div key={id} className="mb-2 overflow-hidden rounded-lg border border-border-subtle bg-surface">
-            <button
-              onClick={() => toggleGroup(id)}
-              className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-warm"
-            >
-              <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${isOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
-              <Icon className="h-4 w-4 shrink-0 text-text-muted" />
-              <span className="flex-1 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">{label}</span>
-              <span className="shrink-0 font-mono text-[10px] text-text-muted/60">{desc}</span>
-            </button>
-            {isOpen && <div className="border-t border-border-subtle px-4 py-4">{content}</div>}
-          </div>
-        );
-      })}
+      ] as const).map(({ id, label, icon: Icon, desc, content }) => (
+        <CollapsibleSection key={id} icon={Icon} title={label} summary={desc} storageKey={`prevail.settings.models.${id}`}>
+          {content}
+        </CollapsibleSection>
+      ))}
     </>
   );
 }

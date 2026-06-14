@@ -239,7 +239,7 @@ export function Sidebar({
           onClick={() => onOpenApp(app)}
           className={`flex flex-1 cursor-grab items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors active:cursor-grabbing ${
             active
-              ? "bg-surface-strong font-medium text-text-primary"
+              ? "bg-accent-soft font-semibold text-accent ring-1 ring-inset ring-accent-border/60"
               : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
           }`}
           title={`Click to open ${app.title} · drag into chat to attach as context${app.domains.length ? " · refreshes " + app.domains.map(titleCase).join(", ") : ""}`}
@@ -497,7 +497,7 @@ export function Sidebar({
                   title="Click to enter · drag to chat as context (plain: state · ⇧ full · ⌥ entire folder)"
                   className={`flex flex-1 cursor-grab items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors active:cursor-grabbing ${
                     active
-                      ? "bg-surface-strong text-text-primary font-medium"
+                      ? "bg-accent-soft text-accent font-semibold ring-1 ring-inset ring-accent-border/60"
                       : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
                   }`}
                 >
@@ -614,7 +614,7 @@ export function Sidebar({
             with nothing connected yet. Favorites expand by default; the full
             list stays collapsed so a long catalog never floods the rail. */}
         {!collapsed && (
-          <div className="mt-3 px-2">
+          <div className="mt-3">
             <button
               onClick={() => setAppsOpen((v) => !v)}
               className="group/h flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
@@ -625,7 +625,7 @@ export function Sidebar({
               <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{sidebarApps.length}</span>
             </button>
             {appsOpen && (sidebarApps.length > 0 ? (
-              <ul className="mt-0.5 space-y-0.5">
+              <ul className="mt-0.5 space-y-0.5 px-2">
                 {/* Favorites — pinned apps, expanded by default. */}
                 {pinnedSidebarApps.length > 0 && (
                   <>
@@ -673,14 +673,16 @@ export function Sidebar({
                 </li>
               </ul>
             ) : (
-              <button
-                onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
-                className="mt-0.5 flex w-full items-center gap-2 rounded-md py-1.5 pl-6 pr-2 text-left text-xs text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
-                title="Browse and connect apps"
-              >
-                <Plus className="h-3.5 w-3.5 shrink-0" />
-                add an app
-              </button>
+              <div className="px-2">
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
+                  className="mt-0.5 flex w-full items-center gap-2 rounded-md py-1.5 pl-4 pr-2 text-left text-xs text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+                  title="Browse and connect apps"
+                >
+                  <Plus className="h-3.5 w-3.5 shrink-0" />
+                  add an app
+                </button>
+              </div>
             ))}
           </div>
         )}

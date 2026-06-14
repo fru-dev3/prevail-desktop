@@ -24,7 +24,14 @@ pub(crate) fn resolve_domain_base(vault: &str, d: &str) -> PathBuf {
     if nu.exists() {
         return nu;
     }
-    PathBuf::from(vault).join(d)
+    // Preserve an existing legacy domain in place (never orphan its data by
+    // pointing at a fresh v3 path).
+    let legacy = PathBuf::from(vault).join(d);
+    if legacy.exists() {
+        return legacy;
+    }
+    // Brand-new domains default to the v3 layout (sibling of <vault>/apps/).
+    nu
 }
 
 pub(crate) fn domain_dir(vault: &str, domain: &Option<String>) -> PathBuf {
@@ -32,6 +39,42 @@ pub(crate) fn domain_dir(vault: &str, domain: &Option<String>) -> PathBuf {
         Some(d) if is_safe_domain(d) => resolve_domain_base(vault, d),
         _ => PathBuf::from(vault),
     }
+}
+
+/// Every domain directory across BOTH layouts — v3 (<vault>/domains/<d>) and
+/// legacy (<vault>/<d>) — deduped by name (v3 wins). Skips hidden/underscore
+/// entries and the structural "domains"/"apps" containers. The one place daemons
+/// (distill/taskgen/skillgen/intents) should enumerate domains, so none silently
+/// skip the v3 layout.
+pub(crate) fn enumerate_domain_dirs(vault: &Path) -> Vec<(String, PathBuf)> {
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut out: Vec<(String, PathBuf)> = Vec::new();
+    // v3 first so it wins on a name clash.
+    if let Ok(rd) = std::fs::read_dir(vault.join("domains")) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || name.starts_with('_') {
+                continue;
+            }
+            let p = e.path();
+            if p.is_dir() && seen.insert(name.clone()) {
+                out.push((name, p));
+            }
+        }
+    }
+    if let Ok(rd) = std::fs::read_dir(vault) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || name.starts_with('_') || name == "domains" || name == "apps" {
+                continue;
+            }
+            let p = e.path();
+            if p.is_dir() && seen.insert(name.clone()) {
+                out.push((name, p));
+            }
+        }
+    }
+    out
 }
 
 // Public wrapper for sibling modules (surface.rs, tasks.rs) — applies the same

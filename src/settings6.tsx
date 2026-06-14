@@ -2,8 +2,10 @@
 // Council defaults, Configuration (groups the memory/tasks/ideal sub-sections),
 // and the Agents catalog (AgentCard + AgentsSection).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Brain, Check, ChevronDown, ChevronRight, Cloud, CloudOff, Cpu, Crown, Globe, Search, Server, ShieldCheck, ShieldOff, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, Brain, Check, ChevronRight, Cloud, CloudOff, Compass, Cpu, Crown, Globe, ListChecks, Search, Server, ShieldCheck, ShieldOff, Wifi, WifiOff } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
+import { CollapsibleSection } from "./collapsible";
 import { VENDOR_BRAND } from "./constants";
 import { isLocalCli } from "./helpers";
 import { modelsFor } from "./helpers2";
@@ -210,6 +212,75 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
 // defaults. Exported helpers used at call sites (textarea, chat chunk
 // handlers, etc.) to read live.
 
+// A visual "round table": the panel drawn as seats around a ring, the chair
+// crowned at the top, spokes to a central emblem. New seats animate in as members
+// are added, so picking a council feels like assembling a table, not editing a
+// list. Why it matters: the council's value is the spread of independent minds —
+// seeing them arranged makes that legible at a glance.
+function CouncilCircle({ members, chair, clis }: { members: string[]; chair: string; clis: CliInfo[] }) {
+  const size = 232, R = 84, cx = size / 2, cy = size / 2, seat = 46;
+  // Chair first so it always takes the top seat; the rest fan around clockwise.
+  const ordered = [chair, ...members.filter((m) => m && m !== chair)].filter(Boolean);
+  const n = ordered.length;
+  const labelFor = (key: string) => {
+    const [cli, model] = key.split("::");
+    const c = clis.find((x) => x.id === cli);
+    const m = councilModelsFor(cli).find((x) => x.id === model);
+    return `${c?.label ?? cli} · ${m?.label ?? (model || "default")}`;
+  };
+  if (n === 0) {
+    return (
+      <div className="mb-5 flex h-[180px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface text-center">
+        <Crown className="h-7 w-7 text-text-muted" />
+        <div className="text-sm text-text-secondary">No one seated yet</div>
+        <div className="text-xs text-text-muted">Pick models below to assemble your council.</div>
+      </div>
+    );
+  }
+  return (
+    <div className="mb-5 flex justify-center rounded-xl border border-border bg-surface py-4">
+      <style>{`@keyframes councilSeatIn{from{opacity:0;transform:translate(-50%,-50%) scale(.4)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}`}</style>
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="absolute inset-0" aria-hidden>
+          <circle cx={cx} cy={cy} r={R} fill="none" className="stroke-border-subtle" strokeWidth={1} />
+          {ordered.map((key, i) => {
+            const a = -Math.PI / 2 + i * ((2 * Math.PI) / n);
+            return <line key={key} x1={cx} y1={cy} x2={cx + R * Math.cos(a)} y2={cy + R * Math.sin(a)} className="stroke-border-subtle" strokeWidth={1} />;
+          })}
+        </svg>
+        {/* Center emblem: the panel size at a glance. */}
+        <div className="absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border border-border bg-background">
+          <span className="font-display text-base font-bold leading-none text-text-primary">{members.length}</span>
+          <span className="font-mono text-[7px] uppercase tracking-wider text-text-muted">panel</span>
+        </div>
+        {ordered.map((key, i) => {
+          const a = -Math.PI / 2 + i * ((2 * Math.PI) / n);
+          const x = cx + R * Math.cos(a), y = cy + R * Math.sin(a);
+          const isChair = key === chair;
+          const cli = key.split("::")[0];
+          return (
+            <div
+              key={key}
+              title={`${labelFor(key)}${isChair ? " (chair)" : ""}`}
+              className="absolute"
+              style={{ left: x, top: y, width: seat, height: seat, transform: "translate(-50%,-50%)", animation: "councilSeatIn .3s cubic-bezier(0.22,1,0.36,1)" }}
+            >
+              <div className={`relative flex h-full w-full items-center justify-center rounded-full border bg-background ${isChair ? "border-accent ring-2 ring-accent/30" : "border-border"}`}>
+                <ProviderMark vendor={cli} size={26} />
+                {isChair && (
+                  <span className="absolute -top-2.5 left-1/2 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full bg-accent text-background shadow-sm">
+                    <Crown className="h-3 w-3" />
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   const available = useMemo(() => clis.filter((c) => c.available && (!isBunkerOn() || isLocalCli(c.id))), [clis]);
   const [members, setMembers] = useState<Set<string>>(() => new Set(readCouncilMembers()));
@@ -258,6 +329,8 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   return (
     <>
       <SettingsHeader title="Council" subtitle="Convene several models on one question: each answers independently, then a chair writes the verdict. Pick the exact models on your default panel (you can add several from the same provider)." />
+      {/* Visual round table — who's seated and who chairs, at a glance. */}
+      <CouncilCircle members={[...members]} chair={chair} clis={clis} />
       {/* Compact summary bar — what the panel is right now. */}
       <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-accent-border bg-accent-soft px-4 py-3 text-sm">
         <span className="font-semibold text-text-primary">{members.size} model{members.size === 1 ? "" : "s"} on the panel</span>
@@ -272,7 +345,7 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
           return (
             <div key={c.id} className={`overflow-hidden rounded-lg border bg-surface transition-colors ${isExp || picked > 0 ? "border-accent-border" : "border-border-subtle"}`}>
               <button onClick={() => setExpandedSet((e) => { const n = new Set(e); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })} className="flex w-full items-center gap-3 px-4 py-3 text-left">
-                {isExp ? <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" /> : <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />}
+                <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${isExp ? "rotate-90" : ""}`} strokeWidth={2.5} />
                 <ProviderMark vendor={c.id} size={26} />
                 <span className="flex-1 font-display text-sm font-semibold text-text-primary">{c.label}</span>
                 {picked > 0 && <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-background">{picked} on panel</span>}
@@ -335,26 +408,12 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
 // wrapper removed.
 
 export function ConfigurationSection({ vaultPath }: { vaultPath: string }) {
-  const [open, setOpen] = useState<"ideal-state" | "memory" | "tasks" | null>(null);
-  const toggle = (id: "ideal-state" | "memory" | "tasks") => setOpen((v) => (v === id ? null : id));
-  const Sub = ({ id, title, desc, children }: { id: "ideal-state" | "memory" | "tasks"; title: string; desc: string; children: React.ReactNode }) => (
-    <div className="rounded-lg border border-border bg-surface overflow-hidden">
-      <button
-        onClick={() => toggle(id)}
-        className="flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-surface-warm transition-colors"
-      >
-        <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${open === id ? "rotate-90" : ""}`} strokeWidth={2.5} />
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-text-primary">{title}</div>
-          <div className="mt-0.5 text-xs text-text-secondary">{desc}</div>
-        </div>
-      </button>
-      {open === id && (
-        <div className="border-t border-border-subtle px-4 py-5">
-          {children}
-        </div>
-      )}
-    </div>
+  // Configuration's sub-sections route through the canonical CollapsibleSection
+  // (icon + title/subtitle left, collapsed by default, persisted per section).
+  const Sub = ({ id, title, icon, desc, children }: { id: "ideal-state" | "memory" | "tasks"; title: string; icon: LucideIcon; desc: string; children: React.ReactNode }) => (
+    <CollapsibleSection icon={icon} title={title} subtitle={desc} storageKey={`prevail.settings.config.${id}`}>
+      {children}
+    </CollapsibleSection>
   );
   return (
     <>
@@ -364,13 +423,13 @@ export function ConfigurationSection({ vaultPath }: { vaultPath: string }) {
         subtitle="Your constitution, context windows, and task ledger in one place."
       />
       <div className="space-y-2">
-        <Sub id="ideal-state" title="Ideal State" desc="Your personal constitution: goals, values, and priorities injected into every model turn.">
+        <Sub id="ideal-state" title="Ideal State" icon={Compass} desc="Your personal constitution: goals, values, and priorities injected into every model turn.">
           <IdealStateSection vaultPath={vaultPath} />
         </Sub>
-        <Sub id="memory" title="Memory & Context" desc="Persistent memory, distillation, and what stays in context across sessions.">
+        <Sub id="memory" title="Memory & Context" icon={Brain} desc="Persistent memory, distillation, and what stays in context across sessions.">
           <MemoryContextSection vaultPath={vaultPath} />
         </Sub>
-        <Sub id="tasks" title="Tasks" desc="Cross-domain task ledger: every pending item across your vault in one view.">
+        <Sub id="tasks" title="Tasks" icon={ListChecks} desc="Cross-domain task ledger: every pending item across your vault in one view.">
           <TasksCrossDomainSection vaultPath={vaultPath} />
         </Sub>
       </div>
