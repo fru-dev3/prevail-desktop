@@ -8,7 +8,7 @@ import { ArrowUpRight, BookOpen, Check, ChevronRight, FileText, Folder, PanelRig
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
 import { MODELS } from "./constants";
-import { scoreColor, titleCase } from "./format";
+import { relTime, scoreColor, titleCase } from "./format";
 import { domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
 import { buildChatContext, buildIdealStatePreamble, buildQuickActions, loadPreferredSkills, maybeRedact, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getDomainToggle, getPref, isBunkerOn, lsGet, lsSet } from "./storage";
@@ -21,7 +21,7 @@ import { useFrameworkLens } from "./hooks";
 import { ProviderMark } from "./marks";
 import { DomainHome, DomainStatusBar, MessageList } from "./chatviews";
 import { AgentPickerRail, DomainContextDrawer, DomainPrefsPanel } from "./domainpanels";
-import type { ChatEvent, ChatMessage, CliInfo, ContextScore, Domain, DomainContextBundle, DomainTab, LifeReadiness, SkillEntry, ThreadMeta, ThreadTurn } from "./types";
+import type { ChatEvent, ChatMessage, CliInfo, ContextScore, Domain, DomainContextBundle, DomainTab, EngineApp, LifeReadiness, SkillEntry, ThreadMeta, ThreadTurn } from "./types";
 import type { UnlistenFn } from "./bridge";
 
 export function ChatPanel({
@@ -1197,14 +1197,42 @@ export function ChatPanel({
       }
     } catch (err) { console.error("attach domain", err); }
   }, [vaultPath, injectContext]);
-  // Test hook — expose on window so we can verify the inject flow
-  // without dispatching synthetic DragEvents through WebKit. Call
-  // window.__prevailAttach('tax') in DevTools to confirm the chip
-  // appears in the composer.
+  // Drag an app in as context — the mirror of attachDomainAsContext. An app
+  // isn't a folder of prose; what's useful to the model is what the app IS and
+  // the freshness of the data it feeds, so we attach a compact identity card
+  // (connector, status, the domains it refreshes, schedule, last sync).
+  const attachAppAsContext = useCallback(async (id: string) => {
+    if (!id) return;
+    try {
+      const all = await invoke<EngineApp[]>("engine_apps_list");
+      const app = all.find((a) => a.id === id);
+      if (!app) return;
+      const body = [
+        `# App: ${app.title}${app.account?.label ? ` (${app.account.label})` : ""}`,
+        `Connector: ${app.integration} · status: ${app.status}`,
+        app.domains.length
+          ? `Feeds these domains (data lands in vault/<domain>/): ${app.domains.map(titleCase).join(", ")}`
+          : "Not bound to any domain yet.",
+        app.refresh?.every ? `Syncs every ${app.refresh.every}.` : "Manual sync only.",
+        `Last synced ${relTime(app.lastSuccessTs)}.`,
+      ].join("\n");
+      injectContext(body, `app: ${app.title}`);
+    } catch (err) { console.error("attach app", err); }
+  }, [injectContext]);
+  // Test/drag hooks — exposed on window so the sidebar's manual drag (WebKit's
+  // HTML5 DnD is unreliable in WKWebView) can attach a domain or app on drop.
+  // Call window.__prevailAttach('tax') / __prevailAttachApp('gmail') in DevTools.
   useEffect(() => {
-    (window as unknown as { __prevailAttach?: (n: string, mode?: "light" | "full" | "folder") => void }).__prevailAttach = (n, mode) => void attachDomainAsContext(n, mode ?? "light");
-    return () => { try { delete (window as unknown as { __prevailAttach?: unknown }).__prevailAttach; } catch {} };
-  }, [attachDomainAsContext]);
+    const w = window as unknown as {
+      __prevailAttach?: (n: string, mode?: "light" | "full" | "folder") => void;
+      __prevailAttachApp?: (id: string) => void;
+    };
+    w.__prevailAttach = (n, mode) => void attachDomainAsContext(n, mode ?? "light");
+    w.__prevailAttachApp = (id) => void attachAppAsContext(id);
+    return () => {
+      try { delete w.__prevailAttach; delete w.__prevailAttachApp; } catch {}
+    };
+  }, [attachDomainAsContext, attachAppAsContext]);
   return (
     <div
       className="flex h-full"
