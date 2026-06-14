@@ -2,7 +2,13 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { invoke } from "./bridge";
 import App from "./App";
+import { APP_VERSION } from "./constants";
+import { osFamily, track } from "./telemetry";
 import "./index.css";
+
+// Anonymous, consent-gated, allowlisted. Logs locally always (transparency);
+// only transmitted when the user opts in AND build-time keys exist.
+track("app_opened", { version: APP_VERSION, os: osFamily() });
 
 // Surface fatal startup/render errors instead of a blank white window.
 function showFatal(msg: string) {
