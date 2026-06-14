@@ -26,6 +26,12 @@ import { AgentPickerRail, DomainContextDrawer, DomainPrefsPanel } from "./domain
 import type { ChatEvent, ChatMessage, CliInfo, ContextScore, Domain, DomainContextBundle, DomainTab, EngineApp, LifeReadiness, SkillEntry, ThreadMeta, ThreadTurn } from "./types";
 import type { UnlistenFn } from "./bridge";
 
+// Per-domain cache of the cheap (no-audit) context score. engine_score spawns the
+// engine binary; users switch domains often, so re-opening a domain within the TTL
+// should be instant (no spawn). Rescans (audit) refresh it.
+const _scoreCache = new Map<string, { at: number; score: ContextScore }>();
+const SCORE_CACHE_TTL_MS = 30_000;
+
 export function ChatPanel({
   domain,
   domainPath,
@@ -295,10 +301,17 @@ export function ChatPanel({
     setCtxScore(null);
     setCtxScoreError(null);
     if (!domain || !vaultPath) return;
+    // Instant from cache when a recent score exists — no engine spawn.
+    const key = `${vaultPath}:${domain}`;
+    const cached = _scoreCache.get(key);
+    if (cached && Date.now() - cached.at < SCORE_CACHE_TTL_MS) {
+      setCtxScore(cached.score);
+      return;
+    }
     let mounted = true;
     setCtxScoreLoading(true);
     invoke<ContextScore>("engine_score", { vault: vaultPath, domain, audit: false })
-      .then((s) => { if (mounted) setCtxScore(s); })
+      .then((s) => { if (mounted) setCtxScore(s); _scoreCache.set(key, { at: Date.now(), score: s }); })
       .catch((e) => { if (mounted) setCtxScoreError(String(e)); })
       .finally(() => { if (mounted) setCtxScoreLoading(false); });
     return () => { mounted = false; };
@@ -308,7 +321,7 @@ export function ChatPanel({
     setCtxScoreRescanning(true);
     setCtxScoreError(null);
     invoke<ContextScore>("engine_score", { vault: vaultPath, domain, audit: true })
-      .then((s) => setCtxScore(s))
+      .then((s) => { setCtxScore(s); _scoreCache.set(`${vaultPath}:${domain}`, { at: Date.now(), score: s }); })
       .catch((e) => setCtxScoreError(String(e)))
       .finally(() => setCtxScoreRescanning(false));
   }, [domain, vaultPath]);
