@@ -36,11 +36,11 @@ mod surface;
 mod skillgen;
 mod taskgen;
 mod tasks;
+mod telegram;
 mod telegram_bridge;
 mod watchdog;
 mod webui;
 
-use serde::Serialize;
 use std::fs;
 use std::path::Path;
 #[allow(unused_imports)]
@@ -148,62 +148,8 @@ pub(crate) fn read_to_string_retry<P: AsRef<Path>>(p: P) -> std::io::Result<Stri
 // domain_context, scan_skills, skill_create) lives in domain.rs.
 
 // ─────────────────────────────────────────────────────────────────────
-// Telegram bot integration — POST to /sendMessage on the Bot API.
-// The token + chat ID are passed from the frontend (stored in
-// localStorage). v0.2 uses `curl` via the shell plugin so we don't
-// need to add a new HTTP dependency; v0.3 will move to reqwest.
+// Telegram one-shot send (TelegramResult, telegram_send) lives in telegram.rs.
 
-#[derive(Serialize)]
-pub struct TelegramResult {
-    pub ok: bool,
-    pub description: Option<String>,
-}
-
-#[tauri::command]
-async fn telegram_send(
-    _app: tauri::AppHandle,
-    token: String,
-    chat_id: String,
-    text: String,
-) -> Result<TelegramResult, String> {
-    // Bunker Mode is a hard network kill-switch: every cloud egress path must
-    // consult it. This "Test" command POSTs to the Telegram cloud, so it gets
-    // the same guard the bridge has — closes the one path that skipped it.
-    bunker::guard_cloud()?;
-    // Resolve an empty token from the Keychain (the token is stored there, not
-    // localStorage) so "Test" works against the saved secret.
-    let token = if token.trim().is_empty() {
-        ingestion::keychain::get("prevail.providers", "telegram").unwrap_or_default()
-    } else {
-        token
-    };
-    if token.trim().is_empty() {
-        return Err("no Telegram token configured".into());
-    }
-    // In-process reqwest, NOT `curl`: the previous shell-plugin curl put the bot
-    // token in argv (readable via `ps`) and required `curl` in the shell
-    // allowlist (an arbitrary-exfil primitive). reqwest keeps the token
-    // in-process and lets us drop curl from the capability allowlist entirely.
-    let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
-    let body = serde_json::json!({
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "Markdown",
-    });
-    let resp = reqwest::Client::new()
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("telegram request failed: {e}"))?;
-    let v: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("parse response: {e}"))?;
-    let ok = v.get("ok").and_then(|x| x.as_bool()).unwrap_or(false);
-    let desc = v.get("description").and_then(|x| x.as_str()).map(String::from);
-    Ok(TelegramResult { ok, description: desc })
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // Native benchmark runner (BenchmarkRun/Score/SuggestArgs, benchmark_start /
@@ -380,7 +326,7 @@ pub fn run() {
             benchmark::benchmark_import_questions,
             benchmark::benchmark_matrix,
             appcmds::read_file,
-            telegram_send,
+            telegram::telegram_send,
             appcmds::open_in_finder,
             appcmds::move_to_applications,
             appcmds::create_domain,
