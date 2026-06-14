@@ -113,6 +113,132 @@ pub(crate) fn intents_read_all(vault: String, limit: Option<usize>) -> Result<Ve
     Ok(out)
 }
 
+// ── Intent distillation (T10) ────────────────────────────────────────────────
+// The raw ledger is provenance; on its own it's just a list of prompts. This
+// lifts it into the thing the user actually cares about: a small set of
+// HIGH-LEVEL intents (the goal behind the prompts — "Is Toyota better than
+// Honda?" → "evaluating a vehicle purchase; underlying need: transportation"),
+// each with the evidence prompts, the domains it spans, a status, and concrete
+// recommended next actions. Written to <vault>/_meta/intents_distilled.json so
+// the desktop can render a drill-down and (later) turn actions into tasks/loops.
+
+#[derive(serde::Deserialize)]
+pub(crate) struct IntentsDistillCfg {
+    pub vault: String,
+    pub provider: String, // cli used to distill: claude | codex | ollama | …
+    pub model: String,    // cheap model id, e.g. claude-haiku-4-5
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn build_intents_prompt(activity: &str) -> String {
+    format!(
+        "You are Prevail's intent analyst. Below is a chronological log of the user's \
+prompts across their life domains, one per line as `[domain] prompt`.\n\n\
+Your job is NOT to summarize the prompts. Infer the HIGH-LEVEL INTENTS behind \
+them — the real goals the user is pursuing — by clustering related prompts \
+across sessions and domains. Lift each cluster up a level of abstraction: e.g. \
+prompts comparing car models map to the intent \"Evaluating a vehicle purchase\" \
+with underlying need \"transportation\", not \"asked about Toyota vs Honda\".\n\n\
+Return ONLY a JSON array (no prose, no markdown fences). Each element:\n\
+{{\n  \"title\": short intent name,\n  \"goal\": one sentence — what they are really trying to achieve,\n  \"underlying_need\": the deeper need behind it,\n  \"domains\": [domains it spans],\n  \"status\": \"active\" | \"dormant\" | \"resolved\",\n  \"confidence\": 0.0-1.0,\n  \"open_questions\": [the next things to figure out],\n  \"evidence\": [2-4 short quoted snippets from the prompts that support this],\n  \"recommendations\": [concrete next actions Prevail could take or suggest]\n}}\n\n\
+Produce 3-8 intents, most important first. Be specific and genuinely useful; \
+never invent facts not supported by the prompts.\n\n\
+PROMPT LOG:\n{activity}\n"
+    )
+}
+
+/// Pull the JSON array out of a model's output (which may wrap it in prose or
+/// ```json fences). Returns the parsed array of intent objects.
+fn parse_intents_output(out: &str) -> Result<serde_json::Value, String> {
+    let start = out.find('[').ok_or("model output had no JSON array")?;
+    let end = out.rfind(']').ok_or("model output had no closing ]")?;
+    if end <= start {
+        return Err("malformed JSON array in model output".into());
+    }
+    let slice = &out[start..=end];
+    let v: serde_json::Value =
+        serde_json::from_str(slice).map_err(|e| format!("parse intents JSON: {e}"))?;
+    if !v.is_array() {
+        return Err("model output was not a JSON array".into());
+    }
+    Ok(v)
+}
+
+/// Distill the raw intent ledger into high-level intents + recommendations and
+/// persist them to <vault>/_meta/intents_distilled.json. Runs a single model
+/// pass (a cheap model is plenty). Returns the written document.
+#[tauri::command]
+pub(crate) async fn intents_distill(
+    cfg: IntentsDistillCfg,
+) -> Result<serde_json::Value, String> {
+    let intents = intents_read_all(cfg.vault.clone(), Some(cfg.limit.unwrap_or(200)))?;
+    if intents.is_empty() {
+        return Err("No intents captured yet — chat a bit first.".into());
+    }
+    // Oldest-first so the model reads the narrative in order; cap each line.
+    let mut activity = String::new();
+    for v in intents.iter().rev() {
+        let dom = v.get("domain").and_then(|d| d.as_str()).unwrap_or("general");
+        let msg = v.get("message").and_then(|m| m.as_str()).unwrap_or("");
+        if msg.trim().is_empty() {
+            continue;
+        }
+        let m: String = msg.chars().take(400).collect();
+        activity.push_str(&format!("[{dom}] {}\n", m.replace('\n', " ")));
+    }
+    if activity.trim().is_empty() {
+        return Err("No prompt text to analyze.".into());
+    }
+    let ideal = crate::ideal_state_preamble(std::path::Path::new(&cfg.vault));
+    let prompt = format!("{ideal}{}", build_intents_prompt(&activity));
+
+    // Local-only guarantee: distilling runs a model over vault content.
+    crate::bunker::guard_cli(&cfg.provider)?;
+    let model = if cfg.model.is_empty() {
+        None
+    } else {
+        Some(cfg.model.as_str())
+    };
+    let out = crate::telegram_bridge::run_cli(&cfg.provider, model, &prompt).await?;
+    if out.trim().is_empty() {
+        return Err("intent distiller produced no output".into());
+    }
+    let arr = parse_intents_output(&out)?;
+    let doc = serde_json::json!({
+        "generated_ts": now_secs(),
+        "source_count": intents.len(),
+        "intents": arr,
+    });
+    let meta_dir = PathBuf::from(&cfg.vault).join("_meta");
+    fs::create_dir_all(&meta_dir).map_err(|e| format!("mkdir _meta: {e}"))?;
+    let path = meta_dir.join("intents_distilled.json");
+    let body = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
+    fs::write(&path, engine::maybe_encrypt(&path, &body))
+        .map_err(|e| format!("write intents_distilled.json: {e}"))?;
+    Ok(doc)
+}
+
+/// Read the last distilled-intents document (empty shell if none yet).
+#[tauri::command]
+pub(crate) fn intents_distilled_read(vault: String) -> Result<serde_json::Value, String> {
+    let path = PathBuf::from(&vault).join("_meta").join("intents_distilled.json");
+    match read_to_string_retry(&path) {
+        Ok(raw) => {
+            let text = engine::maybe_decrypt(&path, raw);
+            serde_json::from_str(&text).map_err(|e| format!("parse intents_distilled.json: {e}"))
+        }
+        Err(_) => Ok(serde_json::json!({ "generated_ts": 0, "source_count": 0, "intents": [] })),
+    }
+}
+
 /// Append a DECISION to the domain's append-only decision log
 /// (`<domain>/_decisions.jsonl`). A council verdict, an accepted recommendation,
 /// or a user-stated preference ("make Mayo my favorite hospital") is a decision
