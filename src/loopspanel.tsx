@@ -59,14 +59,16 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
       )
     : [];
 
-  const dropPending = useCallback((loopId: string, text: string) => {
-    setRuntime((rt) => {
-      const entry = rt.loops[loopId];
-      if (!entry) return rt;
-      const next: LoopsRuntime = { ...rt, loops: { ...rt.loops, [loopId]: { ...entry, pending: entry.pending.filter((p) => p.text !== text) } } };
-      void writeLoopsRuntime(domainPath, next);
-      return next;
-    });
+  const dropPending = useCallback(async (loopId: string, text: string) => {
+    // Re-read fresh from disk before writing: the background loop daemon rewrites
+    // the whole runtime doc, so basing the write on stale in-memory state could
+    // clobber a just-added pending/history entry. Narrows the race to ~ms.
+    const fresh = await readLoopsRuntime(domainPath);
+    const entry = fresh.loops[loopId];
+    if (!entry) { setRuntime(fresh); return; }
+    const next: LoopsRuntime = { ...fresh, loops: { ...fresh.loops, [loopId]: { ...entry, pending: entry.pending.filter((p) => p.text !== text) } } };
+    await writeLoopsRuntime(domainPath, next);
+    setRuntime(next);
   }, [domainPath]);
 
   const resolvePending = useCallback(async (loopId: string, text: string, approve: boolean) => {
