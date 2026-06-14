@@ -416,6 +416,10 @@ export type EngineApp = {
   enabled?: boolean | null;
   community: boolean;
   path?: string | null;
+  // Sync-state surfaced for the Apps view: when the next scheduled sync is due,
+  // and the last few run-log entries (manual + autonomous).
+  nextDueTs?: number | null;
+  runs?: { ts: number; ok: boolean; skill?: string; summary?: string; error?: string; artifacts?: number }[];
 };
 
 export type ConnectorCatalog = { version: number; domains?: string[]; apps: CatalogApp[]; patterns?: Record<string, { tier: string; label: string }> };

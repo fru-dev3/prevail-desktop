@@ -738,6 +738,14 @@ pub fn engine_app_sync(id: String, vault: String) -> Result<serde_json::Value, S
     run_engine_json(&["connectors", "sync", &id, "--vault", &vault, "--json"])
 }
 
+/// Run one autonomous-sync pass over every DUE app (the in-app scheduler calls
+/// this on a tick; the headless `daemon --sync` runs the same on a loop).
+/// Returns { ran, ok, failed }.
+#[tauri::command]
+pub fn engine_apps_sync_due(vault: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "sync-due", "--vault", &vault, "--json"])
+}
+
 /// Connection Agent: given an app name + a plain-language goal, research the best
 /// available connection method (MCP/API/CLI/Composio/browser), scaffold the app,
 /// and return a plan { ok, plan:{integration, why, auth_step, schedule, domains,
