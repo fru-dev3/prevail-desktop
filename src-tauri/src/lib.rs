@@ -56,6 +56,7 @@ use tauri_plugin_shell::ShellExt;
 // Domain shape + scan_vault live in vault.rs.
 
 pub(crate) const NON_DOMAIN_DIRS: &[&str] = &[
+    "domains", // v3 container — its children are scanned separately, not it
     "benchmark",
     "apps",
     ".git",
