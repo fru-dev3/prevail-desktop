@@ -167,6 +167,10 @@ Loops were a stateless suggestion engine. Now genuinely autonomous:
   Loops panel "Needs your approval" → Approve (→ task) / Dismiss.
 - BEHIND THE SCENES: in-app startLoopsScheduler advances due loops on a cadence (default
   hourly, pref-gated default ON), not just the manual button.
+- EXECUTE (connectors): approvals queue now has "Execute" — runs the approved action FOR REAL
+  via the agent's tools/connectors (engine executeAction → `daemon --loops --exec`; non-bare
+  agent turn in the domain, refuses NO_CONNECTOR if nothing can do it). Outcome shown + recorded
+  as a domain decision. Approval is the gate; nothing fires without the explicit click.
 - Engine: prevail-cli/src/daemon-loops.ts (+ 4 unit tests). Desktop: loops.ts, loopspanel.tsx,
   App.tsx, storage.ts. tsc + build green; engine tests pass; 0 new typecheck errors.
 - FUTURE: richer in-app status (history timeline per loop); auto-propose loops/goals from state.
