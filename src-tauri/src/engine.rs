@@ -757,6 +757,8 @@ pub fn engine_app_connect(
     vault: String,
     provider: Option<String>,
     model: Option<String>,
+    reevaluate: Option<bool>,
+    current: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let mut args: Vec<String> = vec![
         "connectors".into(), "connect".into(),
@@ -766,6 +768,12 @@ pub fn engine_app_connect(
     ];
     if let Some(p) = provider { if !p.trim().is_empty() { args.push("--cli".into()); args.push(p); } }
     if let Some(m) = model { if !m.trim().is_empty() { args.push("--model".into()); args.push(m); } }
+    // Re-evaluate mode: research-only (don't re-scaffold an existing app), and
+    // tell the agent the current method so the comparison is meaningful.
+    if reevaluate.unwrap_or(false) {
+        args.push("--reevaluate".into());
+        if let Some(c) = current { if !c.trim().is_empty() { args.push("--current".into()); args.push(c); } }
+    }
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run_engine_json(&refs)
 }

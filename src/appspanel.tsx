@@ -207,7 +207,7 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
       const provider = getPref(PREF.memoryProvider, "claude");
       const model = getPref(PREF.distillModel, "claude-haiku-4-5");
       const r = await invoke<{ ok: boolean; plan?: { integration?: string; why?: string }; error?: string }>(
-        "engine_app_connect", { name: app.title || app.id, goal: "", vault: vaultPath, provider, model },
+        "engine_app_connect", { name: app.title || app.id, goal: "", vault: vaultPath, provider, model, reevaluate: true, current: app.integration },
       );
       if (r.ok && r.plan) {
         const m = methodLabel(r.plan.integration ?? "");
