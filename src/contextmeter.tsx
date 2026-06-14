@@ -40,12 +40,16 @@ export function ContextMeter({
   draftTokens,
   windowTokens,
   onReset,
+  onCompact,
+  compacting,
 }: {
   conversationTokens: number;
   attachedTokens: number;
   draftTokens: number;
   windowTokens: number;
   onReset: () => void;
+  onCompact?: () => void;
+  compacting?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const used = conversationTokens + attachedTokens + draftTokens;
@@ -94,13 +98,22 @@ export function ContextMeter({
                 {frac >= 0.9 ? "Nearly full — responses may degrade. Start fresh to reclaim space." : "Getting heavy. Consider starting fresh soon."}
               </p>
             )}
+            {onCompact && (
+              <button
+                onClick={() => { onCompact(); }}
+                disabled={compacting}
+                className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:opacity-50"
+              >
+                {compacting ? "Compacting…" : "Compact — summarize & continue"}
+              </button>
+            )}
             <button
               onClick={() => { onReset(); setOpen(false); }}
-              className="mt-3 w-full rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-border hover:bg-accent-soft hover:text-accent"
+              className="mt-2 w-full rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-border hover:bg-accent-soft hover:text-accent"
             >
               Start a fresh chat
             </button>
-            <p className="mt-1.5 text-[10px] text-text-muted">Long-term memory + your domain context carry over — only the running conversation resets.</p>
+            <p className="mt-1.5 text-[10px] text-text-muted">Compact keeps the gist as a summary; Start fresh clears it. Long-term memory + domain context carry over either way.</p>
           </div>
         </>
       )}
