@@ -650,7 +650,8 @@ mod usage_tests {
         intent_append(vault_s.clone(), None, serde_json::json!({ "kind": "intent", "session": "s2", "message": "hi" })).unwrap();
 
         // Domain ledger: two lines, both valid JSON, prompt + raw preserved verbatim.
-        let dom_ledger = read_to_string_retry(vault.join("wealth").join("_intents.jsonl")).expect("domain ledger written");
+        // New domains now default to the v3 layout (<vault>/domains/<domain>).
+        let dom_ledger = read_to_string_retry(vault.join("domains").join("wealth").join("_intents.jsonl")).expect("domain ledger written");
         let lines: Vec<&str> = dom_ledger.lines().filter(|l| !l.trim().is_empty()).collect();
         assert_eq!(lines.len(), 2);
         let intent: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
@@ -664,7 +665,7 @@ mod usage_tests {
         // Journal: header + newest-first ordering.
         journal_append(vault_s.clone(), Some("wealth".into()), "- 2026-06-07 09:00 · [opus] first".into()).unwrap();
         journal_append(vault_s.clone(), Some("wealth".into()), "- 2026-06-07 10:00 · [opus] second".into()).unwrap();
-        let journal = read_to_string_retry(vault.join("wealth").join("_journal.md")).unwrap();
+        let journal = read_to_string_retry(vault.join("domains").join("wealth").join("_journal.md")).unwrap();
         assert!(journal.starts_with("# Journal\n\n"));
         let i_first = journal.find("first").unwrap();
         let i_second = journal.find("second").unwrap();

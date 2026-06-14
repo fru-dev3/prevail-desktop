@@ -531,10 +531,21 @@ fn ledger_dirs(vault: &Path) -> Vec<PathBuf> {
     if vault.join("_intents.jsonl").exists() {
         dirs.push(vault.to_path_buf());
     }
+    // Legacy layout: domains directly under the vault root.
     if let Ok(rd) = std::fs::read_dir(vault) {
         for e in rd.flatten() {
             let p = e.path();
             if p.is_dir() && p.join("_intents.jsonl").exists() {
+                dirs.push(p);
+            }
+        }
+    }
+    // v3 layout: domains under <vault>/domains/. Without this the distiller
+    // silently skips every domain in the new (apps/ + domains/ siblings) layout.
+    if let Ok(rd) = std::fs::read_dir(vault.join("domains")) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() && p.join("_intents.jsonl").exists() && !dirs.contains(&p) {
                 dirs.push(p);
             }
         }
