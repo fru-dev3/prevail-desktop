@@ -8,6 +8,7 @@ import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } fro
 import { PrevailLogo } from "./PrevailLogo";
 import { Markdown, StreamingPlain } from "./Markdown";
 import { scoreColor, formatFreshness, titleCase, relTime } from "./format";
+import { Toggle, Sparkline, ThinkingDisclosure } from "./ui";
 
 // Single source of truth for the version chip in title bar.
 // Injected by Vite from package.json — never hand-stamp this again.
@@ -17,37 +18,6 @@ const APP_VERSION = __APP_VERSION__;
 // Canonical on/off toggle. Track 36×20px, thumb 16×16px, slides
 // 18px. Every switch in the app routes through this so we never
 // drift back into bespoke implementations that misalign the thumb.
-function Toggle({
-  on,
-  onChange,
-  label,
-  disabled = false,
-}: {
-  on: boolean;
-  onChange: (v: boolean) => void;
-  label?: string;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => onChange(!on)}
-      className={`inline-flex h-5 w-9 shrink-0 items-center overflow-hidden rounded-full px-0.5 transition-colors disabled:opacity-50 ${
-        on ? "bg-accent" : "bg-surface-strong"
-      }`}
-    >
-      <span
-        className={`h-4 w-4 rounded-full bg-white shadow-sm ring-1 ring-black/10 transition-transform duration-200 ${
-          on ? "translate-x-4" : "translate-x-0"
-        }`}
-      />
-    </button>
-  );
-}
 
 // VS Code-style quick switcher modal. Centered overlay, single
 // search input at the top, combined list of domains + recent
@@ -4792,21 +4762,6 @@ function splitThinking(raw: string): { thinking: string; answer: string } {
 
 // Collapsible "Thinking" disclosure. Native <details> — no per-card React
 // state. Gated by the Show-model-thinking preference at the call site.
-function ThinkingDisclosure({ text, open }: { text: string; open?: boolean }) {
-  if (!text) return null;
-  return (
-    <details open={open} className="group mb-3 rounded-lg border border-border-subtle bg-surface-warm/40">
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted [&::-webkit-details-marker]:hidden">
-        <Brain className="h-3.5 w-3.5" />
-        Thinking
-        <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform group-open:rotate-90" />
-      </summary>
-      <div className="whitespace-pre-wrap border-t border-border-subtle px-3 py-2 text-[13px] leading-relaxed text-text-secondary">
-        {text}
-      </div>
-    </details>
-  );
-}
 
 // Council is for "why" / "should I" / steelman / decision questions —
 // the kinds of asks where multiple model perspectives + a chair help.
@@ -4877,20 +4832,6 @@ interface SurfaceResult { questions: string[]; actions: string[]; generated_at: 
 
 // Tiny inline trend line: a model's judge scores over time, on a fixed 0-10
 // scale so two models' lines are visually comparable.
-function Sparkline({ values, width = 72, height = 20 }: { values: number[]; width?: number; height?: number }) {
-  if (values.length < 2) return null;
-  const pts = values
-    .map((v, i) => `${((i / (values.length - 1)) * (width - 4) + 2).toFixed(1)},${(height - 2 - (Math.max(0, Math.min(10, v)) / 10) * (height - 4)).toFixed(1)}`)
-    .join(" ");
-  const up = values[values.length - 1] >= values[0];
-  const [lx, ly] = pts.split(" ").pop()!.split(",");
-  return (
-    <svg width={width} height={height} className="shrink-0" aria-hidden>
-      <polyline points={pts} fill="none" strokeWidth="1.5" className={up ? "stroke-ok" : "stroke-warn"} />
-      <circle cx={lx} cy={ly} r="2" className={up ? "fill-ok" : "fill-warn"} />
-    </svg>
-  );
-}
 
 // Settings > Benchmark: scheduled re-runs of the latest batch, for tracking
 // model drift over time without manual runs.
