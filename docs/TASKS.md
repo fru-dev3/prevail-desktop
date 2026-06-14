@@ -183,6 +183,20 @@ Loops were a stateless suggestion engine. Now genuinely autonomous:
 - VERIFIED 2026-06-14: desktop tsc PASS · 51 cargo tests · frontend build · 337 engine
   tests (0 fail) · website build. Website (Windows-download fix) DEPLOYED to prevail.sh.
 
+## T21 — Self-learning / proactive deepening (founder, 2026-06-14 eve) — DONE
+- Intents now COMPOUND into loops: loop runner reads curated high-level intents
+  (_meta/intents_distilled.json) per domain and advances them. (daemon-loops.ts, tested)
+- Recommendations layer: engine `recommendations` + Settings→Recommendations feed —
+  proposes domains/models/apps/context-gaps, one-click. Count badge on nav. (tested)
+- Context score tied into self-learning: low-score gaps → recommendations; panel now
+  shows a TREND sparkline (engine_score_history) — visibly ever-improving.
+- Perf: engine CLI-roster cached 15s + Ollama probe concurrent/700ms (was 2×1500ms
+  every turn). Cached detect ~0ms. Helps MCP/Telegram/WebUI/daemon chat latency.
+- Palette: greenish/teal "vault" is ALREADY the launch default (#0d7a6e) — confirmed,
+  no change needed.
+- VERIFIED: 339 engine tests + 51 cargo tests (0 fail), all builds green. Unmerged on
+  ui-polish-post-081 / engine main; website already live.
+
 ## Decisions (founder, 2026-06-14)
 - T10 Intents: BUILD NOW, phased (daemon + storage → drill-down UI → wire into taskgen/loops).
 - Sequence: VISUAL CONSISTENCY FIRST (T1 canonical-collapsible migration) → per-page redesigns
