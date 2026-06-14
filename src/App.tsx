@@ -491,6 +491,10 @@ export default function App() {
     if (!vaultPath) return;
     if (isBrowser()) return;
     (async () => {
+    // One-time, idempotent: migrate a legacy vault to the v3 layout (apps/ +
+    // domains/ as siblings). Safe — only moves real domains, never overwrites,
+    // never deletes. New + already-migrated vaults are a no-op.
+    await invoke<number>("vault_migrate_layout", { path: vaultPath }).catch(() => 0);
     // If the headless learn agent (launchd) is installed, it owns distillation —
     // the in-app distiller defers so the two never double-run on the same vault.
     const headless = await invoke<boolean>("headless_learn_status").catch(() => false);
