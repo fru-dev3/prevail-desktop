@@ -15,6 +15,7 @@ import { AUTONOMY_LABEL, AUTONOMY_TINT, DISCOVERED_MODELS, DOMAIN_LABEL, FRAMEWO
 import { BUNKER_LS, LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet, setDomainToggle, setPref } from "./storage";
 import { AppCard, AppKV, BridgeStatusChips, CycleChip, DemoRibbon, FloatingChip, ResizeHandle } from "./widgets";
 import { ContextScorePanel, DomainAppsTab, IngestionTierCard, OnboardingModal, PaletteCard } from "./panels3";
+import { DOMAIN_ICONS, domainIcon } from "./icons";
 import { compareSemver, extractCliError, renderSkillTokens } from "./textutil";
 import { distillCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
 import { COUNCIL_CHAIR_KEY, COUNCIL_MEMBERS_KEY, councilModelsFor, councilSlotKey, readCouncilChair, readCouncilMembers } from "./council";
@@ -88,7 +89,6 @@ import {
   BookOpen,
   Brain,
   Briefcase,
-  Calendar as CalendarIcon,
   Check,
   ChevronDown,
   ChevronRight,
@@ -101,7 +101,6 @@ import {
   FileText,
 
   Folder,
-  Gift,
   GraduationCap,
   Heart,
   Home,
@@ -162,59 +161,7 @@ import {
   Clock,
   KeyRound,
   Power,
-  type LucideIcon,
 } from "lucide-react";
-
-// Context-relevant icons per life-domain slug. Anything not matched
-// falls back to the diamond glyph in render so unknown domains still
-// look intentional.
-const DOMAIN_ICONS: Record<string, LucideIcon> = {
-  tax: Receipt,
-  taxes: Receipt,
-  wealth: TrendingUp,
-  finance: TrendingUp,
-  finances: TrendingUp,
-  health: Heart,
-  fitness: Heart,
-  "real-estate": Home,
-  realestate: Home,
-  home: Home,
-  estate: Home,
-  insurance: Shield,
-  security: Shield,
-  business: Briefcase,
-  career: Briefcase,
-  work: Briefcase,
-  content: PenLine,
-  brand: Award,
-  benefits: Gift,
-  calendar: CalendarIcon,
-  schedule: CalendarIcon,
-  vision: Eye,
-  chief: Crown,
-  learning: GraduationCap,
-  learn: GraduationCap,
-  education: GraduationCap,
-  records: FileText,
-  logs: FileText,
-  social: Users,
-  family: Users,
-  intel: Brain,
-  intelligence: Brain,
-  explore: Compass,
-  exploration: Compass,
-  travel: Compass,
-  research: BookOpen,
-  books: BookOpen,
-  reading: BookOpen,
-  mail: Mail,
-  email: Mail,
-  inbox: Mail,
-};
-
-function domainIcon(name: string): LucideIcon | null {
-  return DOMAIN_ICONS[name.toLowerCase()] ?? null;
-}
 
 // Friendly one-line descriptions for the domain cards — plain, warm, no jargon.
 // Shown as the card subtitle; falls back to a generic line for unknown domains.
