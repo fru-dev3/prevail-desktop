@@ -121,6 +121,7 @@ import {
   
   ShieldCheck,
   RefreshCw,
+  Repeat,
   Power,
 } from "lucide-react";
 
@@ -1198,6 +1199,19 @@ export default function App() {
                   >
                     <SettingsIcon className="h-4 w-4" /> Preferences
                   </button>
+                  {selectedDomain && (
+                    <button
+                      onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "loops" ? "chat" : "loops"); }}
+                      title="Loops: the standing forces working to reach this domain's desired state"
+                      className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                        tab === "chat" && domainTab === "loops"
+                          ? "bg-accent-soft text-accent"
+                          : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                      }`}
+                    >
+                      <Repeat className="h-4 w-4" /> Loops
+                    </button>
+                  )}
                   {selectedDomain && (
                     <button
                       onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "apps" ? "chat" : "apps"); }}
