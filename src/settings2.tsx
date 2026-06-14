@@ -2,7 +2,7 @@
 // Tasks, Intents, Memory & Context, and Skills. vaultPath-driven; no App-root
 // state closure.
 import { useEffect, useMemo, useState } from "react";
-import { Bell, Brain, Check, ChevronRight, Folder, GraduationCap, Lightbulb, ListChecks, Pencil, Sparkles } from "lucide-react";
+import { ArrowRight, Bell, Brain, Check, ChevronRight, Folder, GraduationCap, Lightbulb, ListChecks, Loader2, Pencil, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
@@ -354,17 +354,54 @@ export function TasksCrossDomainSection({ vaultPath }: { vaultPath: string }) {
 // searchable browser. Each row is the exact ask plus the model settings in
 // effect (replayable provenance, kept on-device).
 
+type DistilledIntent = {
+  title?: string;
+  goal?: string;
+  underlying_need?: string;
+  domains?: string[];
+  status?: string;
+  confidence?: number;
+  open_questions?: string[];
+  evidence?: string[];
+  recommendations?: string[];
+};
+type DistilledDoc = { generated_ts: number; source_count: number; intents: DistilledIntent[] };
+
 export function IntentsSection({ vaultPath }: { vaultPath: string }) {
   type IntentRow = { message?: string; cli?: string; model?: string; ts?: number; domain?: string };
   const [intents, setIntents] = useState<IntentRow[]>([]);
   const [q, setQ] = useState("");
   const [domainFilter, setDomainFilter] = useState("all");
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  // Distilled layer: high-level intents + recommendations inferred from the log.
+  const [distilled, setDistilled] = useState<DistilledDoc>({ generated_ts: 0, source_count: 0, intents: [] });
+  const [distilling, setDistilling] = useState(false);
+  const [distillMsg, setDistillMsg] = useState<string | null>(null);
+  const [openIntent, setOpenIntent] = useState<number | null>(null);
   useEffect(() => {
     invoke<IntentRow[]>("intents_read_all", { vault: vaultPath, limit: 500 })
       .then((r) => setIntents(Array.isArray(r) ? r : []))
       .catch(() => setIntents([]));
+    invoke<DistilledDoc>("intents_distilled_read", { vault: vaultPath })
+      .then((d) => setDistilled(d ?? { generated_ts: 0, source_count: 0, intents: [] }))
+      .catch(() => {});
   }, [vaultPath]);
+  async function distillNow() {
+    setDistilling(true);
+    setDistillMsg(null);
+    try {
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      const doc = await invoke<DistilledDoc>("intents_distill", { cfg: { vault: vaultPath, provider, model, limit: 200 } });
+      setDistilled(doc);
+      setDistillMsg(`Distilled ${doc.intents?.length ?? 0} intent${(doc.intents?.length ?? 0) === 1 ? "" : "s"} from ${doc.source_count} prompts.`);
+    } catch (e) {
+      setDistillMsg(`Distill failed: ${e}`);
+    } finally {
+      setDistilling(false);
+    }
+  }
+  const statusTone = (s?: string) => s === "active" ? "text-accent" : s === "resolved" ? "text-ok" : "text-text-muted";
   const domains = useMemo(
     () => [...new Set(intents.map((i) => i.domain ?? "general"))].sort(),
     [intents],
@@ -379,8 +416,97 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
       <SettingsHeader
         title="Intents"
         icon={Lightbulb}
-        subtitle="Every question you've asked, across every domain: the exact ask plus the model settings in effect, kept on your machine as replayable provenance. Per-domain views live in each domain's Insights tab."
+        subtitle="Not just a list of prompts: Prevail reads across your sessions and domains and distills the high-level goals you're actually pursuing, with recommended next actions. The raw prompt history (replayable provenance) lives below."
       />
+
+      {/* Distilled intents — the high-level layer. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <span className="text-sm font-semibold text-text-primary">Distilled intents</span>
+        {distilled.generated_ts > 0 && (
+          <span className="font-mono text-[10px] text-text-muted">
+            {distilled.intents.length} from {distilled.source_count} prompts · {formatFreshness(Math.max(0, (Date.now() - distilled.generated_ts * 1000) / 1000))}
+          </span>
+        )}
+        <div className="flex-1" />
+        <button
+          onClick={distillNow}
+          disabled={distilling}
+          title="Read the prompt log and infer your high-level intents + next actions"
+          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
+        >
+          {distilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {distilling ? "Distilling…" : distilled.generated_ts > 0 ? "Re-distill" : "Distill intents"}
+        </button>
+      </div>
+      {distillMsg && <div className="mb-3 rounded-md border border-border-subtle bg-surface px-3 py-2 text-xs text-text-secondary">{distillMsg}</div>}
+      {distilled.intents.length === 0 ? (
+        <div className="mb-6 rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+          No distilled intents yet. Hit <span className="text-accent">Distill intents</span> to infer the goals behind your prompts and get recommended next actions.
+        </div>
+      ) : (
+        <div className="mb-6 space-y-2">
+          {distilled.intents.map((it, i) => {
+            const open = openIntent === i;
+            return (
+              <div key={i} className="overflow-hidden rounded-xl border border-border bg-surface">
+                <button onClick={() => setOpenIntent(open ? null : i)} className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-surface-warm">
+                  <ChevronRight className={`mt-0.5 h-4 w-4 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent"><Lightbulb className="h-4 w-4" /></span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-display text-base font-semibold tracking-tight text-text-primary">{it.title ?? "Intent"}</span>
+                      {it.status && <span className={`font-mono text-[9px] uppercase tracking-wider ${statusTone(it.status)}`}>{it.status}</span>}
+                      {typeof it.confidence === "number" && <span className="font-mono text-[9px] text-text-muted">{Math.round(it.confidence * 100)}%</span>}
+                    </div>
+                    {it.goal && <div className="mt-0.5 text-sm text-text-secondary">{it.goal}</div>}
+                  </div>
+                  <span className="hidden shrink-0 items-center gap-1 sm:flex">
+                    {(it.domains ?? []).slice(0, 3).map((d) => (
+                      <span key={d} className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">{titleCase(d)}</span>
+                    ))}
+                  </span>
+                </button>
+                {open && (
+                  <div className="space-y-3 border-t border-border-subtle px-4 py-4 pl-[60px] text-sm">
+                    {it.underlying_need && (
+                      <div><span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Underlying need</span><div className="mt-0.5 text-text-secondary">{it.underlying_need}</div></div>
+                    )}
+                    {(it.recommendations ?? []).length > 0 && (
+                      <div>
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-accent">Recommended next actions</span>
+                        <ul className="mt-1 space-y-1">
+                          {it.recommendations!.map((r, j) => (
+                            <li key={j} className="flex items-start gap-2 text-text-primary"><ArrowRight className="mt-1 h-3 w-3 shrink-0 text-accent" />{r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {(it.open_questions ?? []).length > 0 && (
+                      <div>
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Open questions</span>
+                        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-text-secondary">
+                          {it.open_questions!.map((qq, j) => <li key={j}>{qq}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {(it.evidence ?? []).length > 0 && (
+                      <div>
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Evidence ({it.evidence!.length} prompts)</span>
+                        <ul className="mt-1 space-y-0.5">
+                          {it.evidence!.map((e, j) => <li key={j} className="border-l-2 border-border-subtle pl-2 text-text-muted">{e}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Raw prompt history — provenance, collapsed by default. */}
+      <div className="mb-2 text-sm font-semibold text-text-primary">Prompt history</div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
           value={q}
