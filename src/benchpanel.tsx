@@ -359,30 +359,47 @@ export function BenchQuestions({
         </button>
       </div>
       {suggestOpen && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Draft from context:</span>
-          <select value={suggestDomain} onChange={(e) => setSuggestDomain(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
-            <option value="">pick a domain…</option>
-            <option value="all">All domains</option>
-            {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
-          </select>
-          <select value={suggestCount} onChange={(e) => setSuggestCount(Number(e.target.value))} className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
-            {[1, 2, 3, 5, 8].map((n) => <option key={n} value={n}>{n} question{n === 1 ? "" : "s"}{suggestDomain === "all" ? " per domain" : ""}</option>)}
-          </select>
-          <select value={suggestModel} onChange={(e) => setSuggestModel(e.target.value)} title="Model that drafts the questions" className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">
-            {Object.entries(MODELS)
-              .filter(([cli]) => !isBunkerOn() || isLocalCli(cli))
-              .flatMap(([cli, models]) =>
-                models.map((m) => (
-                  <option key={`${cli}${MODEL_SEP}${m.id}`} value={`${cli}${MODEL_SEP}${m.id}`}>{titleCase(cli)} · {m.label}</option>
-                )),
-              )}
-          </select>
-          <button onClick={suggestWithAi} disabled={suggesting || !suggestDomain} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background hover:bg-accent-hover disabled:opacity-40">
-            {suggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-            {suggesting ? "Drafting…" : "Draft"}
-          </button>
-          <span className="text-[10px] text-text-muted">Reads each domain's state, goals, and decisions (fresh domains use goals/config). Drafts are marked for your review.</span>
+        <div className="mb-4 rounded-xl border border-accent-border bg-accent-soft/25 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-accent" />
+            <span className="text-sm font-semibold text-text-primary">Draft questions with AI</span>
+          </div>
+          {/* Labeled controls, not a cramped row of bare selects. */}
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Domain</span>
+              <select value={suggestDomain} onChange={(e) => setSuggestDomain(e.target.value)} className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-text-secondary focus:border-accent-border focus:outline-none">
+                <option value="">pick a domain…</option>
+                <option value="all">All domains</option>
+                {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">How many{suggestDomain === "all" ? " per domain" : ""}</span>
+              <select value={suggestCount} onChange={(e) => setSuggestCount(Number(e.target.value))} className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-text-secondary focus:border-accent-border focus:outline-none">
+                {[1, 2, 3, 5, 8].map((n) => <option key={n} value={n}>{n} question{n === 1 ? "" : "s"}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Drafting model</span>
+              <select value={suggestModel} onChange={(e) => setSuggestModel(e.target.value)} className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-text-secondary focus:border-accent-border focus:outline-none">
+                {Object.entries(MODELS)
+                  .filter(([cli]) => !isBunkerOn() || isLocalCli(cli))
+                  .flatMap(([cli, models]) =>
+                    models.map((m) => (
+                      <option key={`${cli}${MODEL_SEP}${m.id}`} value={`${cli}${MODEL_SEP}${m.id}`}>{titleCase(cli)} · {m.label}</option>
+                    )),
+                  )}
+              </select>
+            </label>
+            <button onClick={suggestWithAi} disabled={suggesting || !suggestDomain} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
+              {suggesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {suggesting ? "Drafting…" : "Draft"}
+            </button>
+          </div>
+          <p className="mt-3 text-xs text-text-muted">
+            Reads each domain's state, goals, and decisions (fresh domains use goals/config). Every domain you target gets the full count; drafts are marked for your review before they affect scores.
+          </p>
         </div>
       )}
       {info && (
