@@ -15,6 +15,7 @@ import { AUTONOMY_LABEL, AUTONOMY_TINT, DISCOVERED_MODELS, DOMAIN_LABEL, FRAMEWO
 import { LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, lsGet, lsSet, setDomainToggle, setPref } from "./storage";
 import { AppCard, AppKV, BridgeStatusChips, CycleChip, DemoRibbon, FloatingChip, ResizeHandle } from "./widgets";
 import { ContextScorePanel, DomainAppsTab, IngestionTierCard, OnboardingModal, PaletteCard } from "./panels3";
+import { BACKUP_CFG, backupVaultNow, bumpBackupChangeCount, startBackupScheduler } from "./backup";
 import { buildChatContext, buildCouncilQuickActions, buildIdealStatePreamble, buildQuickActions, buildSynthesisPrompt, loadPreferredSkills, maybeRedact, maybeStripSycophancy, migrateModelPrefs, modelLabel, modelsFor, parseRunLabel, savePreferredSkills } from "./helpers2";
 import { IngestionBrowserRunner, InsightsPanel, PreambleColumn, UsageDashboard } from "./panels2";
 import { AlignmentCard, AppHeaderBar, AppLockCard, AppLogo, BenchCrumbs, ConnectorIcon, ContextScoreBadge, DaemonCard, DirectProviderMark, DomainActionsMenu, DomainAppsStrip, DrawerImportsSection, Field, GatewayMark, GroupLabel, HeadlessLearnCard, IngestionAuditPanel, LockScreen, NewSkillForm, PatternChip, PreamblePicker, QuickSwitcher, ScoreBar, SettingRow, SettingsRowLite, SidebarGatewayLive, SidebarMcpLive, SkillsList, SubsectionHeader, SurfacePanel, TasksPanel, ThreadsRail, WebLogin, WhatsAppCard } from "./panels";
@@ -8362,61 +8363,6 @@ let benchSchedTimer: number | null = null;
 // Automatic backups on a cadence (weekly default) plus change-awareness, so
 // the vault is protected without manual effort. Pre-event snapshots (before
 // encryption, mode switch, pack import, restore) call backupVaultNow directly.
-const BACKUP_CFG = {
-  enabled: "prevail.backup.enabled",
-  freq: "prevail.backup.freq", // daily | weekly | monthly
-  lastRun: "prevail.backup.lastRun",
-  dest: "prevail.backup.dest", // optional custom directory
-  changeThreshold: "prevail.backup.changeThreshold", // back up after N vault changes ("0" = off)
-  changeCount: "prevail.backup.changeCount", // vault changes since the last backup
-};
-// Count a vault-affecting change. Fires a change-based backup when the count
-// crosses the configured threshold (the user's "every X changes" request).
-function bumpBackupChangeCount() {
-  const cur = (Number(lsGet(BACKUP_CFG.changeCount, "0")) || 0) + 1;
-  lsSet(BACKUP_CFG.changeCount, String(cur));
-  const threshold = Number(lsGet(BACKUP_CFG.changeThreshold, "0")) || 0;
-  const vault = lsGet(LS.vault);
-  if (lsGet(BACKUP_CFG.enabled, "0") === "1" && threshold > 0 && cur >= threshold && vault) {
-    void backupVaultNow(vault); // resets the counter on success
-  }
-}
-const BACKUP_FREQ_MS: Record<string, number> = {
-  daily: 86_400_000,
-  weekly: 7 * 86_400_000,
-  monthly: 30 * 86_400_000,
-};
-async function backupVaultNow(vault: string): Promise<boolean> {
-  if (!vault) return false;
-  try {
-    const dest = lsGet(BACKUP_CFG.dest) || null;
-    await invoke("vault_backup_to", { vault, destDir: dest, keep: 10 });
-    lsSet(BACKUP_CFG.lastRun, String(Date.now()));
-    lsSet(BACKUP_CFG.changeCount, "0");
-    window.dispatchEvent(new Event("prevail:backup-done"));
-    return true;
-  } catch (e) {
-    console.error("vault backup", e);
-    return false;
-  }
-}
-let backupSchedTimer: number | null = null;
-function startBackupScheduler(vault: string) {
-  if (backupSchedTimer !== null) window.clearInterval(backupSchedTimer);
-  const tick = async () => {
-    try {
-      if (lsGet(BACKUP_CFG.enabled, "0") !== "1") return;
-      const freq = BACKUP_FREQ_MS[lsGet(BACKUP_CFG.freq, "weekly") || "weekly"] ?? BACKUP_FREQ_MS.weekly;
-      const last = Number(lsGet(BACKUP_CFG.lastRun, "0")) || 0;
-      if (Date.now() - last < freq) return;
-      await backupVaultNow(vault);
-    } catch (e) {
-      console.error("backup scheduler", e);
-    }
-  };
-  void tick();
-  backupSchedTimer = window.setInterval(() => void tick(), 30 * 60 * 1000);
-}
 
 function startBenchScheduler(vault: string) {
   if (benchSchedTimer !== null) window.clearInterval(benchSchedTimer);
@@ -15228,6 +15174,7 @@ function McpCard() {
 }
 
 // BriefingsCard removed — landing back in v0.3 when wired up.
+
 
 
 
