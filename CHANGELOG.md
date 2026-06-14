@@ -4,6 +4,25 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.8.1] — 2026-06-14 · context mentions, clearer settings, and a fixed Enable toggle
+
+### Added
+
+- **`$` context mentions in chat.** Type `$health` (or any domain or app name) in the composer to open a mention popover; pick one and its context attaches as a chip, exactly like dragging it in (a domain attaches its state.md, an app attaches its identity card). Mirrors how `/` brings in skills, with the same keyboard navigation.
+
+### Changed
+
+- **Collapsible Preferences sections** now lead with a section icon and show a one-glance summary on the right (chosen CLI, framework/lens, behavior, privacy, sandbox, keyword count, daemons N/3 on), so each row reads even while collapsed.
+- **Connectors page** groups each connector type (MCP, Composio, browser, CLI) into its own collapsible card with a type icon and status, open by default only when active, so you can focus on the one you use.
+- **Onboarding** proposes a starter set of domains automatically; you just pick what to keep (no questionnaire step).
+- **Vault settings** now has a single backup control (the automatic-backup card with restore points) instead of two redundant buttons.
+
+### Fixed
+
+- **App Enable/Disable toggle.** Toggling a bundled app did nothing because the enabled flag was written to a read-only manifest inside the app bundle. It now persists through a writable override, so the toggle sticks and the sync daemon honors it.
+
+---
+
 ## [0.8.0] — 2026-06-14 · Domain Loops, Windows, and a vault that is the source of truth
 
 ### Added
