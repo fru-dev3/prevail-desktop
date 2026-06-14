@@ -503,6 +503,27 @@ export function PrefPickerColumn({
   );
 }
 
+// Collapsible card for a Preferences section. Collapsed by default so the page
+// reads as a tidy list of sections; click the header (or expand the one you want)
+// to reveal its controls. `right` is an optional header-aligned action that does
+// not toggle the section.
+function PrefSection({ title, subtitle, right, defaultOpen = false, children }: { title: string; subtitle?: string; right?: React.ReactNode; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="mb-3 overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="flex items-center gap-2 px-4 py-3">
+        <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
+          <span className="shrink-0 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">{title}</span>
+          {subtitle && <span className="truncate text-[12px] text-text-muted">{subtitle}</span>}
+        </button>
+        {right && <div className="shrink-0" onClick={(e) => e.stopPropagation()}>{right}</div>}
+      </div>
+      {open && <div className="border-t border-border-subtle px-4 py-4">{children}</div>}
+    </section>
+  );
+}
+
 export function DomainPrefsPanel({
   domain,
   vaultPath,
@@ -721,21 +742,20 @@ export function DomainPrefsPanel({
       </div>
 
       {/* CLI picker — select a CLI to expand its models inline (collapse & indent) */}
-      <section className="mb-6 rounded-xl border border-border bg-surface p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">CLI</div>
-            <p className="mt-0.5 text-sm text-text-secondary">Which agent runs every prompt in {titleCase(domain)}. Pick one to choose its model.</p>
-          </div>
-          {pickedCli && (
-            <button
-              onClick={() => { setOverride(cliKey, ""); setOverride(modelKey, ""); }}
-              className="rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
-            >
-              use global
-            </button>
-          )}
-        </div>
+      <PrefSection
+        title="CLI"
+        defaultOpen
+        subtitle={pickedCli ? titleCase(pickedCli) : "Global default"}
+        right={pickedCli ? (
+          <button
+            onClick={() => { setOverride(cliKey, ""); setOverride(modelKey, ""); }}
+            className="rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+          >
+            use global
+          </button>
+        ) : undefined}
+      >
+        <p className="mb-3 text-sm text-text-secondary">Which agent runs every prompt in {titleCase(domain)}. Pick one to choose its model.</p>
         {/* List rows; the selected CLI expands to show its models indented below. */}
         <div className="flex flex-col gap-1.5">
           {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
@@ -816,27 +836,29 @@ export function DomainPrefsPanel({
             );
           })}
         </div>
-      </section>
+      </PrefSection>
 
       {/* Framework + Lens — stacked full-width, one per row */}
-      <section className="mb-6 grid grid-cols-1 gap-4">
-        <PrefPickerColumn
-          glyph="◆"
-          title="Framework"
-          options={FRAMEWORKS as readonly { id: string; label: string; blurb: string }[]}
-          selected={pickedFw}
-          onSelect={(id) => setOverride(fwKey, id)}
-          onClear={() => setOverride(fwKey, "")}
-        />
-        <PrefPickerColumn
-          glyph="◇"
-          title="Lens"
-          options={LENSES as readonly { id: string; label: string; blurb: string }[]}
-          selected={pickedLens}
-          onSelect={(id) => setOverride(lensKey, id)}
-          onClear={() => setOverride(lensKey, "")}
-        />
-      </section>
+      <PrefSection title="Framework & Lens" subtitle={[pickedFw && pickedFw !== "none" ? "framework" : "", pickedLens && pickedLens !== "none" ? "lens" : ""].filter(Boolean).join(" + ") || "none set"}>
+        <div className="grid grid-cols-1 gap-4">
+          <PrefPickerColumn
+            glyph="◆"
+            title="Framework"
+            options={FRAMEWORKS as readonly { id: string; label: string; blurb: string }[]}
+            selected={pickedFw}
+            onSelect={(id) => setOverride(fwKey, id)}
+            onClear={() => setOverride(fwKey, "")}
+          />
+          <PrefPickerColumn
+            glyph="◇"
+            title="Lens"
+            options={LENSES as readonly { id: string; label: string; blurb: string }[]}
+            selected={pickedLens}
+            onSelect={(id) => setOverride(lensKey, id)}
+            onClear={() => setOverride(lensKey, "")}
+          />
+        </div>
+      </PrefSection>
 
       {/* Skills — star-toggle list with avatars; collapsed by default, indented when open */}
       <section className="mb-6 rounded-xl border border-border bg-surface p-4">
@@ -892,8 +914,7 @@ export function DomainPrefsPanel({
       </section>
 
       {/* Behavior toggles */}
-      <section className="mb-6 rounded-xl border border-border bg-surface p-4">
-        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Behavior</div>
+      <PrefSection title="Behavior">
         <div className="flex items-center justify-between gap-3 py-2">
           <div>
             <div className="text-sm font-semibold text-text-primary">Auto-attach state.md</div>
@@ -909,11 +930,10 @@ export function DomainPrefsPanel({
             label="Auto-attach state.md"
           />
         </div>
-      </section>
+      </PrefSection>
 
       {/* Privacy — local-only (Ollama) pin → manifest.privacy.localOnly */}
-      <section className="mb-6 rounded-xl border border-border bg-surface p-4">
-        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Privacy</div>
+      <PrefSection title="Privacy">
         <div className="flex items-center justify-between gap-3 py-2">
           <div>
             <div className="text-sm font-semibold text-text-primary">Local-only (Ollama)</div>
@@ -933,19 +953,16 @@ export function DomainPrefsPanel({
             label="Local-only (Ollama)"
           />
         </div>
-      </section>
+      </PrefSection>
 
       {/* Sandbox — open | locked → manifest.sandbox.mode */}
-      <section className="mb-6 rounded-xl border border-border bg-surface p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Sandbox</div>
-            <p className="mt-0.5 text-sm text-text-secondary">
-              {sandboxMode === "locked"
-                ? "Locked: agents can read this domain but cannot write files or run shell side-effects."
-                : "Open: agents can read and write within this domain's folder."}
-            </p>
-          </div>
+      <PrefSection title="Sandbox" subtitle={sandboxMode === "locked" ? "Locked: read-only" : "Open: read + write"}>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-text-secondary">
+            {sandboxMode === "locked"
+              ? "Locked: agents can read this domain but cannot write files or run shell side-effects."
+              : "Open: agents can read and write within this domain's folder."}
+          </p>
           <select
             value={sandboxMode}
             onChange={(e) => {
@@ -960,12 +977,11 @@ export function DomainPrefsPanel({
             <option value="locked">locked</option>
           </select>
         </div>
-      </section>
+      </PrefSection>
 
       {/* Channels / routing — domain name is always matched (A6); the input
           holds extra keywords → manifest.routing.keywords = [domain, ...extras] */}
-      <section className="mb-6 rounded-xl border border-border bg-surface p-4">
-        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Channels &amp; routing</div>
+      <PrefSection title="Channels & routing">
         <p className="mb-3 text-sm text-text-secondary">
           When a bridge (e.g. Telegram) receives a message, these keywords route it to {titleCase(domain)}.
           The domain name always matches; add extras below. Saved to the domain manifest.
@@ -1001,10 +1017,9 @@ export function DomainPrefsPanel({
         <div className="mt-2 font-mono text-[10px] text-text-muted">
           Edits save when the field loses focus.
         </div>
-      </section>
+      </PrefSection>
 
-      <section className="mb-6 rounded-xl border border-border bg-surface p-4">
-        <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Daemons</div>
+      <PrefSection title="Daemons">
         <div className="flex flex-col gap-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
@@ -1028,7 +1043,7 @@ export function DomainPrefsPanel({
             <Toggle on={daemonSkillgen} onChange={(v) => { setDaemonSkillgen(v); saveDaemonCfg({ skillgen: v }); }} />
           </div>
         </div>
-      </section>
+      </PrefSection>
     </div>
   );
 }
