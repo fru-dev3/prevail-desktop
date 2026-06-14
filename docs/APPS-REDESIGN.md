@@ -83,9 +83,17 @@ a "Sync now" button, last/next sync timestamps, and pause. The user is in contro
   "Advanced". DONE P2: ConnectAppFlow (appconnect.tsx) + engine Connection Agent
   (`connectors connect`, engine_app_connect) — describe-the-goal, agent researches
   method + returns plan + one auth step. tsc/cargo/build green; engine 0 new errors.
-- NEXT P3: syncd daemon (headless per-app refresh on schedule, fully unattended;
-  sync log of what was pulled; error elevation → "Needs attention"). P4: method
-  re-evaluation/upgrade.
+- DONE P3: the autonomous-sync daemon (daemon-sync.ts) is now RUN — headless
+  `daemon --sync` + in-app startAppsScheduler (due-pass on a cadence, default ON).
+  Each app syncs on its own schedule, routes results into domain _intents.jsonl,
+  elevates 3x failures into _tasks.md, and the run-log + next-due are surfaced in
+  AppsPanel (next sync + Recent activity). Fully unattended once connected.
+- DONE P4: per-app "re-evaluate" re-runs the Connection Agent and reports if a
+  better method exists now (manual; no auto-swap of a working connection).
+- FOLLOW-UP: optionally add `daemon --sync` to the launchd agent (currently
+  installs --learn only) so apps also refresh when the app is fully closed.
+
+ALL PHASES (P1-P4) COMPLETE. tsc/cargo/build green; engine 0 new type errors.
 
 ## Build phases (proposed)
 - **P1 — Status + schedule clarity (UI on existing data).** Rebuild the Apps page
