@@ -30,6 +30,7 @@ pub(crate) use chat::{build_cli_env, ideal_state_preamble, resolve_bin_abs, scru
 pub(crate) use settings::close_to_tray_enabled;
 pub(crate) use appcmds::secs_to_ymdhms;
 mod engine;
+mod loops;
 mod ingestion;
 mod reminders;
 mod surface;
@@ -384,6 +385,7 @@ pub fn run() {
             engine::engine_manifest_get,
             engine::engine_score_all,
             engine::engine_score_stream,
+            loops::loops_run_once,
             engine::engine_score_history,
             engine::engine_onboard_recommend,
             engine::engine_onboard_apply,
