@@ -4,9 +4,10 @@
 // and current actions. The runner daemon (separate) evaluates enabled loops and
 // keeps their actions current; here you define and steer them.
 import { useCallback, useEffect, useState } from "react";
-import { Check, ChevronRight, Infinity as InfinityIcon, Plus, RefreshCw, ShieldQuestion, Target, Trash2, X } from "lucide-react";
+import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, Plus, RefreshCw, ShieldQuestion, Target, Trash2, X, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase } from "./format";
+import { PREF, getPref } from "./storage";
 import { Toggle } from "./ui";
 import {
   CADENCE_LABEL,
@@ -58,11 +59,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
       )
     : [];
 
-  const resolvePending = useCallback(async (loopId: string, text: string, approve: boolean) => {
-    if (approve) {
-      try { await invoke("tasks_add", { vault: vaultPath, domain, text, source: "loop" }); }
-      catch (e) { console.error("approve loop action → task", e); return; }
-    }
+  const dropPending = useCallback((loopId: string, text: string) => {
     setRuntime((rt) => {
       const entry = rt.loops[loopId];
       if (!entry) return rt;
@@ -70,7 +67,39 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
       void writeLoopsRuntime(domainPath, next);
       return next;
     });
-  }, [vaultPath, domain, domainPath]);
+  }, [domainPath]);
+
+  const resolvePending = useCallback(async (loopId: string, text: string, approve: boolean) => {
+    if (approve) {
+      try { await invoke("tasks_add", { vault: vaultPath, domain, text, source: "loop" }); }
+      catch (e) { console.error("approve loop action → task", e); return; }
+    }
+    dropPending(loopId, text);
+  }, [vaultPath, domain, dropPending]);
+
+  // Execute a pending action FOR REAL via the agent's connectors/tools. Records
+  // the outcome as a decision (provenance) and removes it from the queue.
+  const [execBusy, setExecBusy] = useState<string | null>(null);
+  const [execReport, setExecReport] = useState<{ action: string; report: string } | null>(null);
+  const executePending = useCallback(async (loopId: string, text: string) => {
+    setExecBusy(text);
+    setExecReport(null);
+    try {
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      const report = await invoke<string>("loop_execute_action", { vault: vaultPath, domain, action: text, provider, model });
+      // Record what was done as a domain decision (provenance the loop learns from).
+      try {
+        await invoke("decision_append", { vault: vaultPath, domain, record: { kind: "decision", source: "loop-exec", action: text, report, ts: Date.now() } });
+      } catch { /* best effort */ }
+      setExecReport({ action: text, report: report.trim() || "(no report)" });
+      dropPending(loopId, text);
+    } catch (e) {
+      setExecReport({ action: text, report: `Execution failed: ${e}` });
+    } finally {
+      setExecBusy(null);
+    }
+  }, [vaultPath, domain, dropPending]);
 
   // Single persistence path: update local state, then write the whole doc.
   const persist = useCallback(async (next: LoopsDoc) => {
@@ -154,18 +183,29 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
                   <div className="text-sm text-text-primary">{p.text}</div>
                   <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">{p.loopName}</div>
                 </div>
-                <button onClick={() => resolvePending(p.loopId, p.text, true)} title="Approve: file it as a task to act on"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:opacity-90">
-                  <Check className="h-3 w-3" /> approve
+                <button onClick={() => executePending(p.loopId, p.text)} disabled={execBusy !== null}
+                  title="Execute now via your connectors (email, calendar, etc.) — the agent actually does it"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:opacity-90 disabled:opacity-50">
+                  {execBusy === p.text ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />} {execBusy === p.text ? "running…" : "execute"}
                 </button>
-                <button onClick={() => resolvePending(p.loopId, p.text, false)} title="Dismiss this proposal"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn">
+                <button onClick={() => resolvePending(p.loopId, p.text, true)} disabled={execBusy !== null} title="Approve: file it as a task to do later"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+                  <Check className="h-3 w-3" /> task
+                </button>
+                <button onClick={() => resolvePending(p.loopId, p.text, false)} disabled={execBusy !== null} title="Dismiss this proposal"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn disabled:opacity-50">
                   <X className="h-3 w-3" />
                 </button>
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-[11px] text-text-muted">Approve to turn it into a task the system works on; dismiss to drop it. Loops keep running other steps automatically.</p>
+          <p className="mt-2 text-[11px] text-text-muted"><span className="text-accent">Execute</span> does it now via your connectors; <span className="text-text-secondary">task</span> files it for later; dismiss drops it. Loops keep running other steps automatically.</p>
+          {execReport && (
+            <div className="mt-2 rounded-lg border border-border-subtle bg-background px-3 py-2">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Executed: {execReport.action}</div>
+              <div className="mt-1 whitespace-pre-wrap text-xs text-text-secondary">{execReport.report}</div>
+            </div>
+          )}
         </section>
       )}
 
