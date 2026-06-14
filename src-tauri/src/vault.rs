@@ -63,6 +63,57 @@ fn meaningful_preview(md: &str) -> Option<String> {
     }
 }
 
+/// Migrate a legacy vault (domains directly under the root) to the v3 layout
+/// where `domains/` and `apps/` are siblings inside the vault. SAFE by design
+/// (Hard Rule: never lose user data):
+///   * only moves dirs that are clearly a domain (soul.md / _state.md / state.md),
+///   * uses fs::rename (a move, never a copy+delete),
+///   * SKIPS any name that already exists under domains/ (never overwrites),
+///   * idempotent: a vault already in v3 (no legacy domains) is a no-op.
+/// Returns the number of domains moved. Always ensures domains/ + apps/ exist.
+#[tauri::command]
+pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
+    let root = PathBuf::from(&path);
+    if !root.is_dir() {
+        return Err(format!("vault path does not exist: {}", path));
+    }
+    let domains_root = root.join("domains");
+    std::fs::create_dir_all(&domains_root).map_err(|e| format!("mkdir domains: {e}"))?;
+    std::fs::create_dir_all(root.join("apps")).map_err(|e| format!("mkdir apps: {e}"))?;
+
+    let mut moved = 0u64;
+    let entries = match read_dir_retry(&root) {
+        Ok(e) => e,
+        Err(e) => return Err(e.to_string()),
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') || name.starts_with('_') || NON_DOMAIN_DIRS.contains(&name.as_str()) {
+            continue;
+        }
+        let src = entry.path();
+        if !src.is_dir() {
+            continue;
+        }
+        // Only migrate things that are actually domains.
+        let is_domain = src.join("soul.md").exists()
+            || src.join("_state.md").exists()
+            || src.join("state.md").exists();
+        if !is_domain {
+            continue;
+        }
+        let dest = domains_root.join(&name);
+        if dest.exists() {
+            continue; // never overwrite an existing v3 domain
+        }
+        match std::fs::rename(&src, &dest) {
+            Ok(()) => moved += 1,
+            Err(e) => return Err(format!("move {name} into domains/: {e}")),
+        }
+    }
+    Ok(moved)
+}
+
 #[tauri::command]
 pub(crate) fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
     let root = PathBuf::from(&path);
@@ -134,4 +185,54 @@ pub(crate) fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
     }
     domains.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(domains)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn vault_migrate_layout_moves_domains_preserves_data_skips_conflicts() {
+        let vault = std::env::temp_dir().join(format!("prevail-migrate-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&vault);
+        let vs = vault.to_string_lossy().to_string();
+
+        // Legacy: a real domain at the root (has _state.md) with a ledger file.
+        let health = vault.join("health");
+        fs::create_dir_all(&health).unwrap();
+        fs::write(health.join("_state.md"), "# state").unwrap();
+        fs::write(health.join("_intents.jsonl"), "{\"kind\":\"intent\"}\n").unwrap();
+        // A non-domain dir at the root must NOT be moved.
+        fs::create_dir_all(vault.join("random")).unwrap();
+        fs::write(vault.join("random").join("note.txt"), "x").unwrap();
+        // A pre-existing v3 domain that clashes by name must NOT be overwritten.
+        let v3_wealth = vault.join("domains").join("wealth");
+        fs::create_dir_all(&v3_wealth).unwrap();
+        fs::write(v3_wealth.join("_state.md"), "KEEP ME").unwrap();
+        // A legacy domain with the same name as the v3 one — should be skipped.
+        let legacy_wealth = vault.join("wealth");
+        fs::create_dir_all(&legacy_wealth).unwrap();
+        fs::write(legacy_wealth.join("_state.md"), "legacy").unwrap();
+
+        let moved = vault_migrate_layout(vs.clone()).unwrap();
+        assert_eq!(moved, 1, "only 'health' should move");
+
+        // health moved into domains/, data intact.
+        assert!(vault.join("domains").join("health").join("_intents.jsonl").exists());
+        assert!(!vault.join("health").exists());
+        // non-domain left in place.
+        assert!(vault.join("random").join("note.txt").exists());
+        // v3 wealth untouched; legacy wealth left in place (conflict skipped).
+        assert_eq!(fs::read_to_string(v3_wealth.join("_state.md")).unwrap(), "KEEP ME");
+        assert!(vault.join("wealth").exists());
+        // apps/ + domains/ now exist as siblings.
+        assert!(vault.join("apps").is_dir());
+        assert!(vault.join("domains").is_dir());
+
+        // Idempotent: a second run moves nothing new.
+        assert_eq!(vault_migrate_layout(vs).unwrap(), 0);
+
+        let _ = fs::remove_dir_all(&vault);
+    }
 }

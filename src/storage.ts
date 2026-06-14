@@ -149,6 +149,29 @@ export const PREF = {
   webuiPort: "prevail.pref.webuiPort",                     // integer port
   webuiUser: "prevail.pref.webuiUser",                     // login username
   webuiPass: "prevail.pref.webuiPass",                     // login password (local only)
+  // Chat — auto-compact the conversation when the context window fills up
+  // (summarize & continue), default ON. Keeps responses sharp without manual action.
+  autoCompact: "prevail.pref.autoCompact",                 // "1" | "0"
+  // Apps — run the autonomous app-sync daemon behind the scenes, default ON. The
+  // tick just triggers a "due pass"; each app still syncs on its OWN schedule.
+  appsAutoSync: "prevail.pref.appsAutoSync",               // "1" | "0"
+  appsSyncIntervalSec: "prevail.pref.appsSyncIntervalSec", // how often to check for due apps
+  appsSyncLastRun: "prevail.pref.appsSyncLastRun",         // epoch ms of last due-pass
+  // Domain Loops — run the self-driving loop runner behind the scenes, default ON.
+  loopsAutoRun: "prevail.pref.loopsAutoRun",                // "1" | "0"
+  loopsIntervalSec: "prevail.pref.loopsIntervalSec",        // how often to advance due loops
+  loopsLastRun: "prevail.pref.loopsLastRun",                // epoch ms of last in-app pass
+  // Intent distillation daemon — automated, default ON. Re-distills high-level
+  // intents on a cadence and/or after enough new prompts, no manual click.
+  intentDaemonEnabled: "prevail.pref.intentDaemonEnabled",     // "1" | "0" (default on)
+  intentDaemonIntervalSec: "prevail.pref.intentDaemonIntervalSec", // how often to CHECK
+  intentDaemonMinNew: "prevail.pref.intentDaemonMinNew",       // distill after N new prompts
+  intentDaemonMaxAgeSec: "prevail.pref.intentDaemonMaxAgeSec", // OR if older than this (daily)
+  // Telemetry — anonymous, opt-in, default OFF. Independent crash vs usage
+  // sub-toggles. distinctId is a random local UUID, never tied to identity.
+  telemetryUsage: "prevail.pref.telemetryUsage",           // "1" | "0" — PostHog anonymous usage analytics
+  telemetryCrash: "prevail.pref.telemetryCrash",           // "1" | "0" — Sentry crash/error reports
+  telemetryDistinctId: "prevail.pref.telemetryDistinctId", // random anonymous UUID
 };
 export function getPref(key: string, fallback: string): string {
   const v = lsGet(key);

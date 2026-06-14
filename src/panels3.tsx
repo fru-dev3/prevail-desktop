@@ -7,6 +7,7 @@ import { PALETTES, SCORE_DIMENSIONS, SETTINGS_ROW, SEVERITY_LABEL, SEVERITY_ORDE
 import { formatFreshness, relTime, scoreColor, titleCase } from "./format";
 import { formatAuditedAt } from "./helpers";
 import { ScoreBar } from "./panels";
+import { Sparkline } from "./ui";
 import type { CliProvider, ContextScore, EngineApp, IngestionMcpServer, IngestionTierStatus, MissingItem, OnboardingRecommendation } from "./types";
 
 export function OnboardingModal({
@@ -335,13 +336,29 @@ export function ContextScorePanel({
   rescanning,
   error,
   onRescan,
+  vaultPath,
 }: {
   score: ContextScore | null;
   loading: boolean;
   rescanning: boolean;
   error: string | null;
   onRescan: () => void;
+  vaultPath: string;
 }) {
+  // The score over time — makes the "ever-improving" nature visible: it climbs on
+  // its own as apps sync, memory distills, and context is added. Refetched when
+  // the score changes (a new scan appended a point).
+  const [history, setHistory] = useState<number[]>([]);
+  useEffect(() => {
+    if (!score?.domain) { setHistory([]); return; }
+    let alive = true;
+    invoke<{ ts: number; score: number }[]>("engine_score_history", { vault: vaultPath, domain: score.domain })
+      .then((pts) => { if (alive) setHistory(Array.isArray(pts) ? pts.map((p) => p.score) : []); })
+      .catch(() => { if (alive) setHistory([]); });
+    return () => { alive = false; };
+  }, [vaultPath, score?.domain, score?.computed_at]);
+  const delta = history.length >= 2 ? history[history.length - 1] - history[0] : null;
+
   if (loading && !score) {
     return <div className="text-sm text-text-muted">computing context score…</div>;
   }
@@ -390,6 +407,20 @@ export function ContextScorePanel({
             updated {formatFreshness(score.freshness_secs)}
             {score.audit_source ? ` · ${score.audit_source}` : " · heuristic"}
           </div>
+          {/* Trend — the self-learning story: this climbs on its own as Prevail
+              syncs apps, distills memory, and you add context. */}
+          {history.length >= 2 ? (
+            <div className="mt-2 flex items-center gap-2">
+              <Sparkline values={history} width={84} height={22} />
+              {delta != null && (
+                <span className={`font-mono text-[11px] ${delta > 0 ? "text-ok" : delta < 0 ? "text-warn" : "text-text-muted"}`}>
+                  {delta > 0 ? "↑" : delta < 0 ? "↓" : "→"} {delta > 0 ? "+" : ""}{Math.round(delta)} over {history.length} scans
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="mt-2 text-[11px] text-text-muted">Climbs automatically as apps sync, memory builds, and you add context.</div>
+          )}
           <div className="mt-3">
             <button
               onClick={onRescan}

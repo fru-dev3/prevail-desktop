@@ -21,6 +21,20 @@ export function formatFreshness(secs: number): string {
   return "just now";
 }
 
+// Plain duration ("6 days", "3 hours") with NO "ago" — for future spans like
+// "Next run in ~X". formatFreshness always appends "ago", so it can't be used
+// for forward-looking times without reading wrong ("Next in ~6 days ago").
+export function formatDuration(secs: number): string {
+  if (secs < 0) return "unknown";
+  const d = Math.floor(secs / 86400);
+  if (d >= 1) return d === 1 ? "1 day" : `${d} days`;
+  const h = Math.floor(secs / 3600);
+  if (h >= 1) return h === 1 ? "1 hour" : `${h} hours`;
+  const m = Math.floor(secs / 60);
+  if (m >= 1) return m === 1 ? "1 minute" : `${m} minutes`;
+  return "under a minute";
+}
+
 // Slug ("real-estate") to Title Case ("Real Estate").
 export function titleCase(slug: string): string {
   return slug

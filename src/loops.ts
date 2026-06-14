@@ -11,6 +11,7 @@
 // append-only ledger. Stored at <vault>/<domain>/_loops.json and read/written
 // through the existing encryption-aware read_file / write_text_file commands.
 import { invoke } from "./bridge";
+import { PREF, getPref, lsGet, lsSet } from "./storage";
 
 export type LoopType = "open" | "closed";
 export type LoopCadence = "continuous" | "daily" | "weekly" | "monthly";
@@ -252,3 +253,56 @@ export const CADENCE_LABEL: Record<LoopCadence, string> = {
   weekly: "Weekly",
   monthly: "Monthly",
 };
+
+// ── Loop runtime: history + pending approvals (engine-owned) ─────────────────
+// Written by the engine loop runner (_loops_runtime.json). The desktop reads it
+// to show what each loop has been doing and to surface the steps a loop is ASKING
+// the user to approve before it acts.
+export interface LoopRun { ts: number; actions: string[]; note: string; done: boolean; tasksCreated: string[] }
+export interface LoopRtEntry { history: LoopRun[]; pending: { text: string; ts: number }[] }
+export interface LoopsRuntime { schema: 1; loops: Record<string, LoopRtEntry> }
+
+function runtimePath(domainPath: string): string {
+  return `${domainPath.replace(/\/+$/, "")}/_loops_runtime.json`;
+}
+export async function readLoopsRuntime(domainPath: string): Promise<LoopsRuntime> {
+  try {
+    const raw = await invoke<string>("read_file", { path: runtimePath(domainPath) });
+    const d = JSON.parse(raw) as LoopsRuntime;
+    if (d && d.loops) return d;
+  } catch { /* none yet */ }
+  return { schema: 1, loops: {} };
+}
+export async function writeLoopsRuntime(domainPath: string, rt: LoopsRuntime): Promise<void> {
+  await invoke("write_text_file", { path: runtimePath(domainPath), contents: JSON.stringify(rt, null, 2) }).catch(() => {});
+}
+
+// ── In-app loop runner (behind the scenes) ───────────────────────────────────
+// Loops should advance on their own, not only when the user clicks "Run loops
+// now". This is a module-level timer (same pattern as the benchmark/backup
+// schedulers): it wakes on a cadence and triggers one loop pass via the engine,
+// which advances every DUE loop (each loop still respects its own cadence). The
+// tick re-reads the prefs each time, so toggling needs no restart.
+let loopsSchedTimer: number | null = null;
+export function startLoopsScheduler(vault: string) {
+  if (loopsSchedTimer !== null) window.clearInterval(loopsSchedTimer);
+  const tick = async () => {
+    try {
+      if (getPref(PREF.loopsAutoRun, "1") !== "1") return;
+      const intervalMs = (Number(getPref(PREF.loopsIntervalSec, "3600")) || 3600) * 1000;
+      const last = Number(lsGet(PREF.loopsLastRun, "0")) || 0;
+      if (Date.now() - last < intervalMs) return;
+      // Stamp BEFORE running so a long pass can't trigger overlapping runs.
+      lsSet(PREF.loopsLastRun, String(Date.now()));
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      await invoke("loops_run_once", { vault, provider, model });
+      window.dispatchEvent(new Event("prevail:loops-advanced"));
+    } catch (e) {
+      console.error("loops scheduler tick", e);
+    }
+  };
+  // First check shortly after launch, then on a steady cadence.
+  loopsSchedTimer = window.setInterval(tick, 60_000);
+  window.setTimeout(tick, 8_000);
+}

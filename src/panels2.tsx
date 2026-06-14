@@ -207,6 +207,7 @@ export function PreambleColumn({
   active,
   selectedId,
   onSelect,
+  headerless = false,
 }: {
   glyph: string;
   title: string;
@@ -215,23 +216,28 @@ export function PreambleColumn({
   active: PreambleOption | undefined;
   selectedId: string;
   onSelect: (id: string) => void;
+  /** Omit the built-in header (when wrapped in a CollapsibleSection that already
+      supplies title + active-selection summary). */
+  headerless?: boolean;
 }) {
   return (
     <div className="flex min-w-0 flex-col">
-      {/* Prominent section header. The current selection is a small badge on
-          the right, not a giant card: the header is the focus. */}
-      <div className="mb-3 border-b border-border-subtle pb-3">
-        <div className="flex items-center gap-2.5">
-          <span className="text-lg text-accent">{glyph}</span>
-          <h3 className="font-display text-2xl font-bold tracking-tight">{title}</h3>
-          <span className="font-mono text-xs text-text-muted">{options.length}</span>
-          <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full border border-accent-border bg-accent-soft px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-            Active · {active?.label ?? "Off"}
-          </span>
+      {!headerless && (
+        // Prominent section header. The current selection is a small badge on
+        // the right, not a giant card: the header is the focus.
+        <div className="mb-3 border-b border-border-subtle pb-3">
+          <div className="flex items-center gap-2.5">
+            <span className="text-lg text-accent">{glyph}</span>
+            <h3 className="font-display text-2xl font-bold tracking-tight">{title}</h3>
+            <span className="font-mono text-xs text-text-muted">{options.length}</span>
+            <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full border border-accent-border bg-accent-soft px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
+              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+              Active · {active?.label ?? "Off"}
+            </span>
+          </div>
+          {tagline && <p className="mt-1.5 text-sm text-text-secondary">{tagline}</p>}
         </div>
-        {tagline && <p className="mt-1.5 text-sm text-text-secondary">{tagline}</p>}
-      </div>
+      )}
 
       {/* Option list */}
       <div className="flex flex-col gap-2">

@@ -5,9 +5,10 @@ import { useEffect, useState } from "react";
 import { confirm as tauriConfirm, open, save } from "@tauri-apps/plugin-dialog";
 import { check as checkUpdate } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { Check, ChevronRight, Folder, Loader2, Mail, MessageSquare, MessagesSquare, Network, Send, Wrench, Zap } from "lucide-react";
+import { Check, Folder, Loader2, Mail, MessageSquare, MessagesSquare, Network, Radio, Send, Sparkles, Wrench, Zap } from "lucide-react";
 import { siDiscord, siMatrix, siMattermost, siSignal, siTelegram } from "simple-icons";
 import { invoke, listen } from "./bridge";
+import { CollapsibleSection } from "./collapsible";
 import { APP_VERSION, SETTINGS_ROW } from "./constants";
 import { modelsFor } from "./helpers2";
 import { LS, isBunkerOn, lsGet, lsSet } from "./storage";
@@ -35,8 +36,6 @@ export const COMING_SOON_GATEWAYS: { name: string; icon?: { path: string; hex: s
 // double Telegram-card bug. Live bridges first, then coming-soon, evenly gridded.
 
 export function GatewaySection() {
-  const [bridgesOpen, setBridgesOpen] = useState(false);
-  const [surfacesOpen, setSurfacesOpen] = useState(false);
   const [liveTg, setLiveTg] = useState(false);
   const liveWa = false;
   useEffect(() => {
@@ -53,50 +52,37 @@ export function GatewaySection() {
     <>
       <SettingsHeader title="Gateway" icon={MessagesSquare} subtitle="Chat with your council from anywhere. Your vault stays local: these bridges relay messages to your domains and back." />
 
-      <div className="space-y-2">
-        <div className="rounded-lg border border-border bg-surface overflow-hidden">
-          <button
-            onClick={() => setBridgesOpen((v) => !v)}
-            className="flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-surface-warm transition-colors"
-          >
-            <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${bridgesOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
-            <span className="flex-1 text-sm font-semibold text-text-primary">Bridges</span>
-            {anyLive && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
-                <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full bg-accent" />
-                live{liveTg ? " · Telegram" : ""}
-              </span>
-            )}
-          </button>
-          {bridgesOpen && (
-            <div className="border-t border-border-subtle px-4 py-4 space-y-4">
-              <TelegramCard />
-              <WhatsAppCard />
-            </div>
-          )}
-        </div>
+      <div>
+        <CollapsibleSection
+          icon={Radio}
+          title="Bridges"
+          subtitle="Two-way relays: message your council from another app."
+          summary={anyLive ? `live${liveTg ? " · Telegram" : ""}` : "Telegram, WhatsApp"}
+          status={anyLive}
+          defaultOpen={anyLive}
+        >
+          <div className="space-y-4">
+            <TelegramCard />
+            <WhatsAppCard />
+          </div>
+        </CollapsibleSection>
 
-        <div className="rounded-lg border border-border bg-surface overflow-hidden">
-          <button
-            onClick={() => setSurfacesOpen((v) => !v)}
-            className="flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-surface-warm transition-colors"
-          >
-            <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${surfacesOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
-            <span className="flex-1 text-sm font-semibold text-text-primary">More surfaces</span>
-            <span className="font-mono text-[10px] text-text-muted">{COMING_SOON_GATEWAYS.length} coming</span>
-          </button>
-          {surfacesOpen && (
-            <div className="border-t border-border-subtle px-4 py-2 space-y-1">
-              {COMING_SOON_GATEWAYS.map((g) => (
-                <div key={g.name} className={SETTINGS_ROW}>
-                  <GatewayMark icon={g.icon} mono={g.mono} />
-                  <span className="flex-1 text-sm text-text-secondary">{g.name}</span>
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <CollapsibleSection
+          icon={Sparkles}
+          title="More surfaces"
+          subtitle="Other gateways on the way."
+          summary={`${COMING_SOON_GATEWAYS.length} coming`}
+        >
+          <div className="space-y-1">
+            {COMING_SOON_GATEWAYS.map((g) => (
+              <div key={g.name} className={SETTINGS_ROW}>
+                <GatewayMark icon={g.icon} mono={g.mono} />
+                <span className="flex-1 text-sm text-text-secondary">{g.name}</span>
+                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
+              </div>
+            ))}
+          </div>
+        </CollapsibleSection>
       </div>
     </>
   );

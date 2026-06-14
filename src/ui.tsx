@@ -58,9 +58,9 @@ export function ThinkingDisclosure({ text, open }: { text: string; open?: boolea
   return (
     <details open={open} className="group mb-3 rounded-lg border border-border-subtle bg-surface-warm/40">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-90" />
         <Brain className="h-3.5 w-3.5" />
         Thinking
-        <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform group-open:rotate-90" />
       </summary>
       <div className="whitespace-pre-wrap border-t border-border-subtle px-3 py-2 text-[13px] leading-relaxed text-text-secondary">
         {text}
