@@ -4,6 +4,28 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.8.0] — 2026-06-14 · Domain Loops, Windows, and a vault that is the source of truth
+
+### Added
+
+- **Domain Loops.** Domains now run on persistent control loops instead of one-off tasks. Each domain has a desired state plus loops in a universal schema (purpose, signals, condition, cadence, evaluation, actions; open vs closed). A new loop-runner daemon (`prevail daemon --loops`) evaluates enabled loops on their cadence, measures the gap to the desired state, and keeps each loop's next actions current. Every domain ships with hand-authored starter loops; a "Run loops now" button triggers a pass on demand.
+- **Windows build.** Prevail now builds for Windows (NSIS installer) from the same Tauri codebase, alongside macOS. Download links and the auto-updater feed cover both.
+- **Drag apps into chat.** Drag an app from the sidebar into the composer to attach it as context, mirroring domain-context drag.
+- **Add apps from the domain side.** The domain Apps tab now has an on-brand picker to bind apps, mirroring the app-side domain editor (the binding was previously one-directional).
+
+### Changed
+
+- **The vault is the single source of truth (v3 layout).** Domains live under `vault/domains/` and apps under `vault/apps/`. Fully backward-compatible: existing vaults keep working unchanged, and `scripts/migrate-vault-v3.ts` (dry-run by default, copy-verify-remove, idempotent) tidies a vault into the new shape on your terms.
+- **App connection clarity.** The Connection card explains how to connect per integration type (API key / OAuth / browser session / MCP / CLI) and shows a Demo Mode notice so sample apps no longer read as broken.
+- **Catalog logos.** Real brand glyphs for hundreds more apps (from simple-icons), with a clean monogram tile for the long tail instead of a blank dot.
+- **UI polish.** Redesigned domain-add picker (no native dropdown), collapsible Preferences sections, regrouped Settings nav, minimalist collapse chevrons, and a clearer General context drawer.
+
+### Performance
+
+- **App.tsx decomposed** from ~20,000 lines into 30+ focused modules; heavy panels are lazy-loaded and vendor libraries code-split. Initial JS chunk dropped from 1,109 kB to ~207 kB, which directly reduces the memory footprint behind the earlier high-RAM freezes.
+
+---
+
 ## [0.7.24] — 2026-06-13 · an open app is isolated from the domain it grounds in
 
 ### Changed
