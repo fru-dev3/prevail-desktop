@@ -69,7 +69,7 @@ fn split_meta(raw: &str) -> (String, Option<String>, Option<String>, Option<Stri
 }
 
 fn tasks_path(vault: &str, domain: &str) -> PathBuf {
-    crate::domain_dir_pub(vault, domain).join("_tasks.md")
+    crate::paths::domain_dir_pub(vault, domain).join("_tasks.md")
 }
 
 fn parse_tasks(md: &str) -> Vec<Task> {
