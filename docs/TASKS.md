@@ -53,7 +53,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
   "~6 days ago" time-wording glitches via new formatDuration. Deeper visual redesign of the
   card can still follow if wanted.
 
-- [ ] **T5 — Benchmark: suggest-questions design + all-domains guarantee.**
+- [x] **T5 — Benchmark: suggest-questions design + all-domains guarantee.** DONE (bug + T5b design).
   - [x] BUG FIXED (96de.. benchpanel.tsx): "all domains" loops per-domain so every domain
     gets N questions, verifies each, reports failures/shortfalls.
   - [x] T5b DONE: redesigned suggest panel as a titled card with labeled controls.
@@ -75,13 +75,9 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
   Composio / Browser) filters the tier cards; browser runner under Browser tab; audit+artifacts
   shared below. One focused mode at a time, as asked. (settings1.tsx IngestionSection)
 
-- [~] **T9 — Refresh-cadence picker flexibility.**
-  - DONE for model-refresh: `RefreshCadence` (settings7) is already a custom on-brand
-    popover with presets + an "every N days" field (1-365). Not a native dropdown. Meets the ask.
-  - REMAINING: the native daily/weekly/monthly `<select>`s on Scheduled Benchmarks (cards.tsx)
-    and Backup (settings8) are the other likely "amateurish dropdown". Applying a flexible
-    "every N days" there needs scheduler-logic changes (BENCH_FREQ_MS / backup freq keyed by
-    preset). Do deliberately; confirm which screen the founder meant if unsure.
+- [x] **T9 — Flexible cadence pickers.** DONE everywhere: model-refresh (RefreshCadence,
+  prior), plus T9b Scheduled Benchmarks (cards.tsx) and Backup (settings8) now accept
+  "every N days" (custom:N) via shared benchFreqMs/backupFreqMs used by card + scheduler.
 
 ## Intent (needs a plan, then build)
 
@@ -154,8 +150,8 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
     distill, intents, taskgen, skillgen all use it (they previously skipped v3 domains).
   - resolve_domain_base: new domains default to v3 (<vault>/domains/<d>); existing legacy domains
     preserved in place (never orphaned). 50/50 lib tests pass.
-  - OPTIONAL remaining: a bulk migrator that moves an OLD vault's root-level domains into
-    domains/ (safe rename + verify). Not required — both layouts work; new data is v3.
+  - DONE: bulk migrator `vault_migrate_layout` (safe rename, never overwrite/delete, idempotent,
+    unit-tested) runs once on vault load → existing vaults adopt apps/ + domains/ siblings. 51/51 tests.
 
 - [ ] **T17 — Mystery screenshot (image #17).** "Improve this design." Page unknown — ASK which
   screen this was before acting.
@@ -167,7 +163,20 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
 - Sequence: VISUAL CONSISTENCY FIRST (T1 canonical-collapsible migration) → per-page redesigns
   → benchmark accuracy (T6) → Intents build (T10).
 
+## Status (2026-06-14)
+ALL buildable items DONE: T1-T9 (incl. T9b), T10 (A+B+C, automated + recommendation→task),
+T11, T12, T14, T15, T16 (incl. migrator), T18 (scaffolding). Frontend builds; 51/51 Rust tests pass.
+
+BLOCKED ON FOUNDER (cannot build without input):
+- T17 — which screen was the "improve this design" screenshot? (only unidentified item)
+- T18 live wiring — provide PostHog key+host + Sentry DSN, then install posthog-js/@sentry/react
+  and flip the flush on (one spot). Currently inert/log-only by design.
+- Site deploy — to publish the Windows-download fix to prevail.sh.
+
 ## Log
 - 2026-06-14: Task list created from founder feedback batch.
 - 2026-06-14: Fixed T5 (all-domains suggest), T4 (Run now + time wording). Verified T11, T12.
-- 2026-06-14: Founder chose: build Intents (phased), visual consistency first. Starting T1 migration.
+- 2026-06-14: Founder chose: build Intents (phased), visual consistency first.
+- 2026-06-14: Worked the full list — collapsible consistency, all page redesigns (Ideal State,
+  Council, Skills, Frameworks, Gateway, Ingestion tabs), benchmark coverage, website Windows,
+  telemetry scaffolding, Intents end-to-end + automation, vault v3 layout + migrator, flexible cadences.
