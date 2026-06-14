@@ -149,6 +149,10 @@ export const PREF = {
   webuiPort: "prevail.pref.webuiPort",                     // integer port
   webuiUser: "prevail.pref.webuiUser",                     // login username
   webuiPass: "prevail.pref.webuiPass",                     // login password (local only)
+  // Domain Loops — run the self-driving loop runner behind the scenes, default ON.
+  loopsAutoRun: "prevail.pref.loopsAutoRun",                // "1" | "0"
+  loopsIntervalSec: "prevail.pref.loopsIntervalSec",        // how often to advance due loops
+  loopsLastRun: "prevail.pref.loopsLastRun",                // epoch ms of last in-app pass
   // Intent distillation daemon — automated, default ON. Re-distills high-level
   // intents on a cadence and/or after enough new prompts, no manual click.
   intentDaemonEnabled: "prevail.pref.intentDaemonEnabled",     // "1" | "0" (default on)
