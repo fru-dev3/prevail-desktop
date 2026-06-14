@@ -9,12 +9,13 @@ import { PrevailLogo } from "./PrevailLogo";
 import { Markdown, StreamingPlain } from "./Markdown";
 import { scoreColor, formatFreshness, titleCase, relTime } from "./format";
 import { Toggle, Sparkline, ThinkingDisclosure } from "./ui";
-import type { AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Brand, BrandLogo, CatalogApp, ChatEvent, ChatMessage, CliInfo, CliVerifyInfo, Connector, ConnectorCatalog, ContextScore, DaemonStatus, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainToggle, EngineApp, IngestionArtifact, IngestionMcpServer, IngestionTierStatus, LifeReadiness, MatrixRow, Mode, ModelPick, ModelVerifyStatus, Palette, PanelistReply, PanelistSlot, RunDetail, SkillEntry, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn } from "./types";
+import type { AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Brand, BrandLogo, CatalogApp, ChatEvent, ChatMessage, CliInfo, Connector, ConnectorCatalog, ContextScore, DaemonStatus, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainToggle, EngineApp, IngestionArtifact, IngestionMcpServer, IngestionTierStatus, LifeReadiness, MatrixRow, Mode, ModelPick, ModelVerifyStatus, Palette, PanelistReply, PanelistSlot, RunDetail, SkillEntry, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn } from "./types";
 import { appScheduleText, bytesHuman, domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
 import { AUTONOMY_LABEL, AUTONOMY_TINT, DISCOVERED_MODELS, DOMAIN_LABEL, FRAMEWORKS, INTEGRATION_LABEL, LENSES, MODELS, MODEL_SEP, PALETTES, PATTERN_LABEL, PATTERN_TIER, SETTINGS_ROW, SKILL_TOKEN_RE, SOURCE_ABBR, STATUS_TINT, VENDOR_BRAND } from "./constants";
 import { BUNKER_LS, LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet, setDomainToggle, setPref } from "./storage";
 import { AppCard, AppKV, BridgeStatusChips, CycleChip, DemoRibbon, FloatingChip, ResizeHandle } from "./widgets";
 import { ContextScorePanel, DomainAppsTab, IngestionTierCard, OnboardingModal, PaletteCard } from "./panels3";
+import { autoVerifyClis, cliVerifyLive, loadVerifyMap, saveVerifyMap, setCliVerify, useCliVerifyLive, verifyCliDefaultModel } from "./verify";
 import { BENCH_CLI_OPTIONS, BENCH_FREQ_MS, BENCH_SCHED, benchBatches, benchNotify, cancelBenchBatch, executeBenchBatch, rerunLatestBatch, startBenchScheduler, useBenchBatches } from "./bench";
 import { BACKUP_CFG, backupVaultNow, bumpBackupChangeCount, startBackupScheduler } from "./backup";
 import { buildChatContext, buildCouncilQuickActions, buildIdealStatePreamble, buildQuickActions, buildSynthesisPrompt, loadPreferredSkills, maybeRedact, maybeStripSycophancy, migrateModelPrefs, modelLabel, modelsFor, parseRunLabel, savePreferredSkills } from "./helpers2";
@@ -381,60 +382,6 @@ const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
 // mode (the user's expectation: spin off a council only when the question needs
 // it). Heuristic, deliberately transparent.
 
-// ── CLI validation (app-wide) ───────────────────────────────────────────────
-// One live validity status per provider, auto-checked at launch so every
-// surface (Models page, chat picker) can show valid / not-valid immediately
-// instead of waiting for a card to be expanded. Module scope + window event,
-// same pattern as the bunker mirror above.
-const cliVerifyLive = new Map<string, CliVerifyInfo>();
-function setCliVerify(cliId: string, info: CliVerifyInfo) {
-  cliVerifyLive.set(cliId, info);
-  window.dispatchEvent(new Event("prevail:verify-changed"));
-}
-function useCliVerifyLive(): Map<string, CliVerifyInfo> {
-  const [, force] = useState(0);
-  useEffect(() => {
-    const f = () => force((n) => n + 1);
-    window.addEventListener("prevail:verify-changed", f);
-    return () => window.removeEventListener("prevail:verify-changed", f);
-  }, []);
-  return cliVerifyLive;
-}
-// Verify a provider by running its default model once (a real end-to-end
-// call: binary + auth + model all have to work).
-async function verifyCliDefaultModel(cliId: string): Promise<void> {
-  const def = lsGet(`prevail.model.${cliId}`) || modelsFor(cliId)[0]?.id || "";
-  setCliVerify(cliId, { status: "verifying" });
-  try {
-    await invoke<string>("verify_cli_model", { args: { cli: cliId, model: def || null } });
-    setCliVerify(cliId, { status: "ok" });
-    const map = loadVerifyMap();
-    map[`${cliId}:${def}`] = "ok";
-    saveVerifyMap(map);
-  } catch (e) {
-    setCliVerify(cliId, { status: "failed", error: String(e).slice(0, 200) });
-  }
-}
-let cliAutoVerifyStarted = false;
-function autoVerifyClis(clis: { id: string; available: boolean }[], force = false) {
-  if (cliAutoVerifyStarted && !force) return;
-  cliAutoVerifyStarted = true;
-  const cached = loadVerifyMap();
-  for (const c of clis) {
-    if (!c.available) continue;
-    // Bunker Mode: verifying a cloud provider would call the cloud; leave it
-    // unknown rather than break the no-network guarantee.
-    if (isBunkerOn() && !isLocalCli(c.id)) continue;
-    if (!force && Object.keys(cached).some((k) => k.startsWith(`${c.id}:`))) {
-      setCliVerify(c.id, { status: "ok" }); // a model of this CLI verified before
-      continue;
-    }
-    void verifyCliDefaultModel(c.id);
-  }
-}
-
-// The always-visible Bunker Mode status bar. Never disappears while the app
-// runs, so the user always knows whether anything can leave their machine.
 function BunkerRibbon({ enabled }: { enabled: boolean }) {
   // High-contrast in BOTH modes: a clear tinted bar (not a translucent wash that
   // disappears over warm/cream themes) with dark text in light mode and light
@@ -10313,24 +10260,6 @@ function AgentsSection({
 }
 
 
-// Council uses the same localStorage key/shape — share the dict so
-// verification results carry across the Agents page and Council UI.
-const AGENT_VERIFY_KEY = "prevail.council.verifySlots";
-function loadVerifyMap(): Record<string, "ok"> {
-  try {
-    const raw = lsGet(AGENT_VERIFY_KEY);
-    if (!raw) return {};
-    const obj = JSON.parse(raw) as Record<string, "ok">;
-    return obj && typeof obj === "object" ? obj : {};
-  } catch { return {}; }
-}
-function saveVerifyMap(m: Record<string, "ok">) {
-  try { lsSet(AGENT_VERIFY_KEY, JSON.stringify(m)); } catch {}
-}
-
-// Terminal command that logs each CLI in. Prevail uses the CLIs already on
-// the machine and their own credentials — it can't authenticate them — so
-// when a verify fails on auth we point the user at the right login command.
 const CLI_LOGIN_CMD: Record<string, string> = {
   claude: "claude",
   codex: "codex login",
@@ -14875,6 +14804,7 @@ function McpCard() {
 }
 
 // BriefingsCard removed — landing back in v0.3 when wired up.
+
 
 
 
