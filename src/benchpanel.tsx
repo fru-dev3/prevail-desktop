@@ -166,45 +166,73 @@ export function BenchQuestions({
 
   // AI-draft questions from each domain's own context, via the engine's
   // `bench suggest`. Drafts land in the list for review/editing.
+  // Generate `count` draft questions for ONE domain. Resolves to the exit code
+  // plus the net new question count for that domain (so "all domains" can verify
+  // every domain actually got drafts, not just an overall total).
+  async function suggestForDomain(target: string, cli: string, model: string): Promise<{ code: number | null; added: number; tail: string }> {
+    const before = questions.filter((q) => q.domain === target).length;
+    const session = `bench-suggest-${target}-${Date.now()}`;
+    let output = "";
+    let chunkUn: UnlistenFn | null = null;
+    listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
+      if (e.payload.session === session) output = (output + e.payload.data).slice(-2000);
+    }).then((u) => { chunkUn = u; });
+    const done = new Promise<number | null>((resolve) => {
+      let un: UnlistenFn | null = null;
+      listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
+        if (e.payload.session === session && e.payload.phase === "suggest") { un?.(); resolve(e.payload.code); }
+      }).then((u) => { un = u; });
+    });
+    await invoke("benchmark_suggest", {
+      args: { session_id: session, vault: vaultPath, domain: target, count: suggestCount, cli, model: model || null },
+    });
+    const code = await done;
+    (chunkUn as UnlistenFn | null)?.();
+    let added = 0;
+    try {
+      const fresh = await invoke<BenchQuestion[]>("benchmark_questions_list", { vault: vaultPath });
+      added = (fresh ?? []).filter((q) => q.domain === target).length - before;
+    } catch { /* counting is best-effort; exit code still drives success */ }
+    return { code, added, tail: output.trim().split("\n").filter(Boolean).slice(-2).join(" / ") };
+  }
+
   async function suggestWithAi() {
     const domain = suggestDomain.trim().toLowerCase();
     if (!domain) return;
     const [cli, model] = suggestModel.split(MODEL_SEP);
-    const session = `bench-suggest-${Date.now()}`;
     setSuggesting(true);
     setInfo(null);
-    let output = "";
-    let chunkUn: UnlistenFn | null = null;
     try {
-      listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
-        if (e.payload.session === session) output = (output + e.payload.data).slice(-2000);
-      }).then((u) => { chunkUn = u; });
-      const done = new Promise<number | null>((resolve) => {
-        let un: UnlistenFn | null = null;
-        listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
-          if (e.payload.session === session && e.payload.phase === "suggest") { un?.(); resolve(e.payload.code); }
-        }).then((u) => { un = u; });
-      });
-      await invoke("benchmark_suggest", {
-        args: { session_id: session, vault: vaultPath, domain, count: suggestCount, cli, model: model || null },
-      });
-      const code = await done;
-      if (code === 0 || code === null) {
+      // "all domains" must hit EVERY domain with its own request for `count`,
+      // not a single call that the engine spreads thin — that left some domains
+      // empty. Loop per domain (the path that works for a single domain) and
+      // verify each one actually received drafts.
+      const targets = domain === "all" ? allDomains.map((d) => d.toLowerCase()) : [domain];
+      const short: string[] = [];
+      const failed: string[] = [];
+      for (const t of targets) {
+        const { code, added } = await suggestForDomain(t, cli, model);
+        if (!(code === 0 || code === null)) failed.push(t);
+        else if (added < suggestCount) short.push(`${titleCase(t)} (${Math.max(0, added)}/${suggestCount})`);
+      }
+      onChanged();
+      if (failed.length === 0 && short.length === 0) {
         setInfo(
           domain === "all"
-            ? `Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} per domain, across all domains. Review the ground truth before trusting scores.`
+            ? `Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} for each of ${targets.length} domains. Review the ground truth before trusting scores.`
             : `Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} for ${titleCase(domain)}. Review the ground truth before trusting scores.`,
         );
         setSuggestOpen(false);
-        onChanged();
       } else {
-        const tail = output.trim().split("\n").filter(Boolean).slice(-2).join(" / ");
-        setInfo(`Suggest failed (exit ${code})${tail ? `: ${tail}` : ""}`);
+        const parts = [
+          failed.length ? `failed: ${failed.map(titleCase).join(", ")}` : "",
+          short.length ? `under target: ${short.join(", ")}` : "",
+        ].filter(Boolean).join(" · ");
+        setInfo(`Drafted across ${targets.length - failed.length}/${targets.length} domains — ${parts}. Re-run to fill the gaps.`);
       }
     } catch (e) {
       setInfo(`Suggest failed: ${e}`);
     } finally {
-      void (async () => { (chunkUn as UnlistenFn | null)?.(); })();
       setSuggesting(false);
     }
   }
