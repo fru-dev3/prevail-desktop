@@ -40,3 +40,45 @@ pub(crate) async fn loops_run_once(
     .await
     .map_err(|e| format!("loops task failed: {e}"))?
 }
+
+/// Execute ONE user-approved loop action for real, via the engine agent's tools
+/// and connectors (`daemon --loops --exec`). Returns the agent's report of what
+/// it did. The action was explicitly approved in the UI before reaching here.
+#[tauri::command]
+pub(crate) async fn loop_execute_action(
+    vault: String,
+    domain: String,
+    action: String,
+    provider: Option<String>,
+    model: Option<String>,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut args: Vec<String> = vec![
+            "--vault".into(),
+            vault,
+            "daemon".into(),
+            "--loops".into(),
+            "--exec".into(),
+            "--domain".into(),
+            domain,
+            "--action".into(),
+            action,
+        ];
+        if let Some(p) = provider {
+            if !p.trim().is_empty() {
+                args.push("--cli".into());
+                args.push(p);
+            }
+        }
+        if let Some(m) = model {
+            if !m.trim().is_empty() {
+                args.push("--model".into());
+                args.push(m);
+            }
+        }
+        let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        engine::run_engine_raw(&refs)
+    })
+    .await
+    .map_err(|e| format!("loop exec task failed: {e}"))?
+}

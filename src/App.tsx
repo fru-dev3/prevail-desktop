@@ -17,10 +17,12 @@ const SettingsPanel = lazy(() => import("./settingspanel").then((m) => ({ defaul
 const BenchmarkPanel = lazy(() => import("./benchpanel").then((m) => ({ default: m.BenchmarkPanel })));
 import { Sidebar } from "./sidebar";
 import { useAppearance, useFrameworkLens } from "./hooks";
-import { distillCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
+import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
 import { autoVerifyClis } from "./verify";
 import { startBenchScheduler } from "./bench";
 import { bumpBackupChangeCount, startBackupScheduler } from "./backup";
+import { startLoopsScheduler } from "./loops";
+import { startAppsScheduler } from "./appspanel";
 import { migrateModelPrefs } from "./helpers2";
 import { AppHeaderBar, DomainActionsMenu, LockScreen, QuickSwitcher, ThreadsRail, WebLogin } from "./panels";
 
@@ -491,6 +493,10 @@ export default function App() {
     if (!vaultPath) return;
     if (isBrowser()) return;
     (async () => {
+    // One-time, idempotent: migrate a legacy vault to the v3 layout (apps/ +
+    // domains/ as siblings). Safe — only moves real domains, never overwrites,
+    // never deletes. New + already-migrated vaults are a no-op.
+    await invoke<number>("vault_migrate_layout", { path: vaultPath }).catch(() => 0);
     // If the headless learn agent (launchd) is installed, it owns distillation —
     // the in-app distiller defers so the two never double-run on the same vault.
     const headless = await invoke<boolean>("headless_learn_status").catch(() => false);
@@ -514,12 +520,25 @@ export default function App() {
     startBenchScheduler(vaultPath);
     // Scheduled vault backups (data protection) — same pattern.
     startBackupScheduler(vaultPath);
+    // Domain Loops — advance due loops behind the scenes (self-driving), not just
+    // on the "Run loops now" button. Tick re-reads the enabled pref.
+    startLoopsScheduler(vaultPath);
+    // Apps — keep connected apps fresh on their own schedule while open.
+    startAppsScheduler(vaultPath);
     // Skill generation (self-learning) — on by default so the app learns
     // skills from conversations out of the box; togglable in Settings.
     if (getPref(PREF.skillgenEnabled, "1") === "1") {
       invoke("skillgen_start", { cfg: skillgenCfgFromPrefs(vaultPath) }).catch((e) => console.error("skillgen_start", e));
     } else {
       invoke("skillgen_stop").catch(() => {});
+    }
+    // Intent distillation (self-learning) — on by default so high-level intents
+    // + recommendations stay fresh automatically (cadence + new-prompt trigger),
+    // with no manual button press.
+    if (getPref(PREF.intentDaemonEnabled, "1") === "1") {
+      invoke("intent_daemon_start", { cfg: intentDaemonCfgFromPrefs(vaultPath) }).catch((e) => console.error("intent_daemon_start", e));
+    } else {
+      invoke("intent_daemon_stop").catch(() => {});
     }
   }, [vaultPath]);
   useEffect(() => {
@@ -698,12 +717,24 @@ export default function App() {
       if (s) openSettingsAt(s);
     };
     window.addEventListener("prevail:open-settings", onOpen as EventListener);
+    // Jump straight to a domain (from the Recommendations "Open" action).
+    const onOpenDomain = (e: Event) => {
+      const d = (e as CustomEvent<string>).detail;
+      if (d) openDomain(d);
+    };
+    window.addEventListener("prevail:open-domain", onOpenDomain as EventListener);
+    // Fresh chat — reset the running conversation (context meter "start fresh").
+    // Long-term memory + domain context carry over; only the thread resets.
+    const onNewChat = () => { setActiveThreadPath(null); setChatViewNonce((n) => n + 1); };
+    window.addEventListener("prevail:new-chat", onNewChat);
     // Count vault-affecting changes for the change-based backup trigger.
     const bump = () => bumpBackupChangeCount();
     window.addEventListener("prevail:context-changed", bump);
     window.addEventListener("prevail:tasks-changed", bump);
     return () => {
       window.removeEventListener("prevail:open-settings", onOpen as EventListener);
+      window.removeEventListener("prevail:open-domain", onOpenDomain as EventListener);
+      window.removeEventListener("prevail:new-chat", onNewChat);
       window.removeEventListener("prevail:context-changed", bump);
       window.removeEventListener("prevail:tasks-changed", bump);
     };

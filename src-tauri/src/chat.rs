@@ -206,6 +206,26 @@ pub(crate) fn resolve_bin_abs(bin: &str) -> String {
     bin.to_string()
 }
 
+/// Compact a running conversation: one-shot model call that summarizes the
+/// transcript into a dense brief preserving the key facts, decisions, open
+/// questions, and context — so a fresh chat can continue seamlessly with far
+/// fewer tokens. Used by the context-window meter's "Compact" action.
+#[tauri::command]
+pub(crate) async fn summarize_conversation(
+    cli: String,
+    model: Option<String>,
+    text: String,
+) -> Result<String, String> {
+    if text.trim().is_empty() {
+        return Err("nothing to summarize".into());
+    }
+    let prompt = format!(
+        "You are compacting a chat so it can continue with fewer tokens. Summarize the conversation below into a DENSE brief that preserves everything needed to continue seamlessly: key facts, the user's goals, decisions made, open questions, and any concrete details (names, numbers, dates). Be concise but lose nothing important. Output ONLY the summary, no preamble.\n\nCONVERSATION:\n{text}"
+    );
+    let m = model.as_deref().filter(|s| !s.trim().is_empty());
+    crate::telegram_bridge::run_cli(&cli, m, &prompt).await
+}
+
 #[tauri::command]
 pub(crate) async fn chat_send(
     app: tauri::AppHandle,

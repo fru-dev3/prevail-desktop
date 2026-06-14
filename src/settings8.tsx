@@ -3,7 +3,20 @@
 // card).
 import { Fragment, useEffect, useState } from "react";
 import { confirm as tauriConfirm, open } from "@tauri-apps/plugin-dialog";
-import { ArrowRight, Check, Download, Folder, Loader2, Monitor, Moon, RotateCw, ShieldCheck, Sparkles, Sun } from "lucide-react";
+import { ArrowRight, Briefcase, Check, Download, Folder, GraduationCap, Home, Loader2, Monitor, Moon, Package, RotateCw, ShieldCheck, Sparkles, Sun, TrendingUp, Users } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+// Pick a glyph for a starter pack from its name, so the list reads visually.
+function packIcon(name: string): LucideIcon {
+  const n = name.toLowerCase();
+  if (n.includes("business")) return Briefcase;
+  if (n.includes("family")) return Users;
+  if (n.includes("student")) return GraduationCap;
+  if (n.includes("income") || n.includes("wealth") || n.includes("invest")) return TrendingUp;
+  if (n.includes("home") || n.includes("household")) return Home;
+  if (n.includes("general")) return Sparkles;
+  return Package;
+}
 import { invoke } from "./bridge";
 import { PALETTES } from "./constants";
 import { formatFreshness } from "./format";
@@ -243,43 +256,17 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { v
         title="Demo Mode"
         subtitle="Explore Prevail with sample data, then set up your own vault when you're ready."
       />
-      {/* Visual stage: Demo -> Your Vault. The current stage glows. */}
-      <div className="mb-5 flex items-stretch gap-3">
-        <div className={`flex-1 rounded-xl border p-4 text-center transition-colors ${isDemo ? "border-accent-border bg-accent-soft ring-2 ring-accent/30" : "border-border bg-surface opacity-60"}`}>
-          <Sparkles className={`mx-auto h-6 w-6 ${isDemo ? "text-accent" : "text-text-muted"}`} />
-          <div className={`mt-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] ${isDemo ? "text-accent" : "text-text-muted"}`}>Demo</div>
-          <div className="mt-0.5 text-xs text-text-secondary">Sample data to explore</div>
-          {isDemo && <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-wider text-accent">You are here</div>}
+      {/* Current vault — one compact strip (which mode you're in + its path),
+          instead of two oversized stage cards plus duplicate path rows. */}
+      <div className="mb-5">
+        <div className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 ${isDemo ? "border-accent-border bg-accent-soft" : prodVault ? "border-warn/40 bg-warn/5" : "border-border bg-surface"}`}>
+          {isDemo ? <Sparkles className="h-4 w-4 shrink-0 text-accent" /> : <ShieldCheck className={`h-4 w-4 shrink-0 ${prodVault ? "text-warn" : "text-text-muted"}`} />}
+          <span className={`shrink-0 font-mono text-[10px] font-bold uppercase tracking-[0.16em] ${isDemo ? "text-accent" : "text-text-secondary"}`}>{isDemo ? "Demo" : "Your vault"}</span>
+          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary" title={isDemo ? vaultPath : (prodVault || "not set up yet")}>{isDemo ? vaultPath : (prodVault || "not set up yet")}</span>
+          <span className={`shrink-0 font-mono text-[9px] font-bold uppercase tracking-wider ${isDemo ? "text-accent" : prodVault ? "text-warn" : "text-text-muted"}`}>{isDemo ? "sample · re-seeded" : prodVault ? "real data" : ""}</span>
         </div>
-        <div className="flex items-center text-text-muted"><ArrowRight className="h-5 w-5" /></div>
-        <div className={`flex-1 rounded-xl border p-4 text-center transition-colors ${!isDemo && appMode ? "border-border bg-surface-warm ring-2 ring-text-muted/20" : "border-border bg-surface opacity-60"}`}>
-          <ShieldCheck className={`mx-auto h-6 w-6 ${!isDemo && appMode ? "text-text-primary" : "text-text-muted"}`} />
-          <div className={`mt-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] ${!isDemo && appMode ? "text-text-primary" : "text-text-muted"}`}>Your Vault</div>
-          <div className="mt-0.5 text-xs text-text-secondary">Your own private workspace</div>
-          {!isDemo && appMode && <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-wider text-text-secondary">You are here</div>}
-        </div>
-      </div>
-      {/* Where each vault lives — demo (read-only) and production (the real
-          data, a danger zone). Always visible so the two are never confused. */}
-      <div className="mb-5 space-y-2">
-        <div className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface px-3 py-2">
-          <Sparkles className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">Demo vault</span>
-          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary" title={isDemo ? vaultPath : "~/.prevail/demo-vault"}>{isDemo ? vaultPath : "~/.prevail/demo-vault"}</span>
-          <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">sample · re-seeded</span>
-        </div>
-        <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${prodVault ? "border-warn/40 bg-warn/5" : "border-dashed border-border bg-surface"}`}>
-          <ShieldCheck className={`h-3.5 w-3.5 shrink-0 ${prodVault ? "text-warn" : "text-text-muted"}`} />
-          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">Your vault</span>
-          {prodVault ? (
-            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-primary" title={prodVault}>{prodVault}</span>
-          ) : (
-            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-muted">not set up yet</span>
-          )}
-          {prodVault && <span className="shrink-0 font-mono text-[9px] font-bold uppercase tracking-wider text-warn">real data · do not move/delete</span>}
-        </div>
-        {prodVault && (
-          <p className="px-1 text-[10px] text-text-muted">
+        {!isDemo && prodVault && (
+          <p className="mt-1 px-1 text-[10px] text-text-muted">
             This folder holds your real vault. Switching to demo never touches it; do not delete or move it from Finder, or Prevail will lose track of it.
           </p>
         )}
@@ -362,6 +349,9 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { v
               const busy = importingPack === p.name;
               return (
                 <div key={p.file} className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${imported ? "border-accent-border bg-accent-soft" : "border-border bg-surface"}`}>
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${imported ? "bg-accent text-background" : "bg-surface-warm text-text-secondary"}`}>
+                    {(() => { const PI = packIcon(p.name); return <PI className="h-4 w-4" />; })()}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
                       {p.name}
@@ -427,12 +417,25 @@ export function BackupAutomationCard({ vault, onChange }: { vault: string; onCha
             {enabled && last > 0 && ` Last backup ${formatFreshness(Math.max(0, (Date.now() - last) / 1000))} ago.`}
           </div>
         </div>
-        <select value={freq} onChange={(e) => { setFreq(e.target.value); lsSet(BACKUP_CFG.freq, e.target.value); }} disabled={!enabled}
-          className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary disabled:opacity-40">
-          <option value="daily">daily</option>
-          <option value="weekly">weekly</option>
-          <option value="monthly">monthly</option>
-        </select>
+        <div className="flex items-center gap-1.5">
+          <select value={/^custom:/.test(freq) ? "custom" : freq}
+            onChange={(e) => { const v = e.target.value === "custom" ? `custom:${/^custom:(\d+)$/.exec(freq)?.[1] ?? "3"}` : e.target.value; setFreq(v); lsSet(BACKUP_CFG.freq, v); }}
+            disabled={!enabled}
+            className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary disabled:opacity-40">
+            <option value="daily">daily</option>
+            <option value="weekly">weekly</option>
+            <option value="monthly">monthly</option>
+            <option value="custom">every N days</option>
+          </select>
+          {/^custom:/.test(freq) && (
+            <div className="flex items-center gap-1">
+              <input type="number" min={1} max={365} value={/^custom:(\d+)$/.exec(freq)?.[1] ?? "3"} disabled={!enabled}
+                onChange={(e) => { const v = `custom:${Math.max(1, Math.min(365, parseInt(e.target.value, 10) || 1))}`; setFreq(v); lsSet(BACKUP_CFG.freq, v); }}
+                className="w-14 rounded-md border border-border bg-background px-2 py-1 text-right font-mono text-[11px] text-text-secondary disabled:opacity-40" />
+              <span className="font-mono text-[10px] text-text-muted">days</span>
+            </div>
+          )}
+        </div>
         <label className="flex items-center gap-1.5 font-mono text-[11px] text-text-muted">
           or every
           <input

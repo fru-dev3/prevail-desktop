@@ -160,20 +160,8 @@ async fn run_once_inner(cfg: &TaskGenConfig, force: bool) -> Result<(u64, u64), 
     let mut domains_done = 0u64;
     let mut tasks_done = 0u64;
 
-    let Ok(entries) = std::fs::read_dir(&vault) else {
-        return Ok((0, 0));
-    };
-
-    for entry in entries.flatten() {
-        let domain = entry.file_name().to_string_lossy().to_string();
-        if domain.starts_with('.') || domain.starts_with('_') {
-            continue;
-        }
-        if !entry.path().is_dir() {
-            continue;
-        }
-        let domain_dir = entry.path();
-
+    // Both layouts: v3 (<vault>/domains/<d>) + legacy (<vault>/<d>).
+    for (domain, domain_dir) in crate::paths::enumerate_domain_dirs(std::path::Path::new(&vault)) {
         if !domain_daemon_enabled(&domain_dir, "taskgen") {
             continue;
         }

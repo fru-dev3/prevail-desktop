@@ -3,7 +3,10 @@
 // start-on-boot, embedded Shortcuts).
 import { useEffect, useMemo, useState } from "react";
 import { disable as autostartDisable, enable as autostartEnable, isEnabled as autostartIsEnabled } from "@tauri-apps/plugin-autostart";
-import { ChevronRight, Compass, Eye, Monitor, Moon, PenLine, Sun } from "lucide-react";
+import { Activity, Compass, Eye, History, Keyboard, Monitor, Moon, Palette, PenLine, ShieldCheck, SlidersHorizontal, Sun } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { CollapsibleSection } from "./collapsible";
+import { ALLOWED_EVENTS, clearTelemetryLog, crashOn, setCrash, setUsage, telemetryConfigured, telemetryLog, usageOn } from "./telemetry";
 import { invoke } from "./bridge";
 import { PALETTES } from "./constants";
 import { PREF, getPref, setPref } from "./storage";
@@ -52,7 +55,72 @@ export function SafetySection({ vaultPath }: { vaultPath: string }) {
         <SettingsRowLite title="File checkpoints" desc="Snapshot files before the agent edits them so changes can be rolled back."
           control={<Toggle on={checkpoints} onChange={(v) => { setCheckpoints(v); setPref(PREF.fileCheckpoints, v ? "1" : "0"); }} />} />
       </div>
+      <TelemetrySettings />
     </>
+  );
+}
+
+// Anonymous, opt-in telemetry governance. Default OFF, two independent consents,
+// and a fully transparent "what we collect" list + local log. See telemetry.ts
+// and docs/TELEMETRY-PLAN.md. Network sends stay inert until build-time keys exist.
+function TelemetrySettings() {
+  const [usage, setUsageState] = useState(() => usageOn());
+  const [crash, setCrashState] = useState(() => crashOn());
+  const [showLog, setShowLog] = useState(false);
+  const [, force] = useState(0);
+  const log = telemetryLog();
+  return (
+    <div className="mt-5">
+      <SettingsHeader title="Privacy & telemetry" icon={ShieldCheck}
+        subtitle="Anonymous, opt-in, and never includes your prompts, vault, names you created, or any personal data. Off by default. Turn it on only if you want to help improve Prevail." />
+      <div className="mb-3 rounded-lg border border-border bg-surface px-5">
+        <SettingsRowLite title="Usage analytics (anonymous)" desc="Coarse, anonymous events (app opened, which features are used, OS) via PostHog. No content, ever."
+          control={<Toggle on={usage} onChange={(v) => { setUsage(v); setUsageState(v); }} />} />
+        <SettingsRowLite title="Crash & error reports" desc="Send anonymized crash stack traces (scrubbed of paths/PII) via Sentry so bugs get fixed faster."
+          control={<Toggle on={crash} onChange={(v) => { setCrash(v); setCrashState(v); }} />} />
+      </div>
+      {!telemetryConfigured() && (usage || crash) && (
+        <p className="mb-3 px-1 text-[11px] text-text-muted">
+          Telemetry is enabled but no analytics keys are built into this release, so nothing is transmitted yet. Events are still recorded to the local log below so you can see exactly what would be sent.
+        </p>
+      )}
+      <CollapsibleSection icon={Activity} title="What we collect" summary={`${ALLOWED_EVENTS.length} event types`}
+        subtitle="The complete, exhaustive list. Anything not here is never sent.">
+        <ul className="space-y-1.5 text-xs text-text-secondary">
+          <li><span className="font-mono text-text-primary">app_opened</span> — app version, OS family (mac/win)</li>
+          <li><span className="font-mono text-text-primary">feature_used</span> — which feature area (chat, council, benchmark…), nothing typed</li>
+          <li><span className="font-mono text-text-primary">benchmark_run</span> — counts only (number of models, number of domains)</li>
+          <li><span className="font-mono text-text-primary">provider_configured</span> — provider name (e.g. openrouter), never the key</li>
+          <li><span className="font-mono text-text-primary">daemon_toggled</span> — which daemon, on/off</li>
+          <li><span className="font-mono text-text-primary">crash reports</span> — error type + scrubbed stack trace + app version</li>
+        </ul>
+        <div className="mt-3 rounded-md border border-border-subtle bg-background p-2 text-[11px] text-text-muted">
+          Never collected: prompts, replies, vault contents, file paths, names of domains/apps/skills you created, API keys, email, name, machine name, or precise location.
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <button onClick={() => setShowLog((s) => !s)}
+            className="rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">
+            {showLog ? "Hide" : "View"} local log · {log.length}
+          </button>
+          {log.length > 0 && (
+            <button onClick={() => { clearTelemetryLog(); force((n) => n + 1); }}
+              className="rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-danger hover:text-danger">
+              Clear log
+            </button>
+          )}
+        </div>
+        {showLog && (
+          <div className="mt-2 max-h-48 overflow-auto rounded-md border border-border-subtle bg-background p-2 font-mono text-[10px] text-text-secondary">
+            {log.length === 0 ? <div className="text-text-muted">No events recorded.</div> : log.slice().reverse().map((e, i) => (
+              <div key={i} className="border-b border-border-subtle/40 py-0.5 last:border-0">
+                <span className={e.sent ? "text-accent" : "text-text-muted"}>{e.sent ? "sent" : "local"}</span>{" "}
+                <span className="text-text-primary">{e.event}</span> {JSON.stringify(e.props)}
+              </div>
+            ))}
+          </div>
+        )}
+      </CollapsibleSection>
+    </div>
   );
 }
 
@@ -180,22 +248,56 @@ export function IdealStateSection({ vaultPath }: { vaultPath: string }) {
         </div>
       ) : (
         <div>
+          {/* Lead: the constitution's title + intro as a calm document header,
+              not a heavy accent box. */}
           {parsed.title && (
-            <h2 className="font-display text-lg font-bold tracking-tight">{parsed.title}</h2>
+            <h2 className="font-display text-xl font-bold tracking-tight text-text-primary">{parsed.title}</h2>
           )}
           {parsed.intro && (
-            <div className="mt-2 rounded-xl border border-accent-border bg-accent-soft/40 p-4 text-sm leading-relaxed text-text-primary">
+            <div className="mt-1.5 border-l-2 border-accent-border pl-3 text-sm leading-relaxed text-text-secondary">
               <Markdown source={parsed.intro} compact />
             </div>
           )}
+          {/* Sections: a clean single-column stack of cards. Each card leads with
+              an icon chip + title (clear hierarchy), then its content. */}
+          {parsed.sections.length > 0 ? (
+            <div className="mt-5 space-y-2.5">
+              {parsed.sections.map((s) => {
+                const Icon = idealSectionIcon(s.title);
+                return (
+                  <div key={s.title} className="rounded-xl border border-border bg-surface p-4">
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="font-display text-base font-semibold tracking-tight text-text-primary">{s.title}</span>
+                    </div>
+                    {s.body && (
+                      <div className="mt-2.5 pl-[38px] text-sm leading-relaxed text-text-secondary">
+                        <Markdown source={s.body} compact />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mt-5 rounded-xl border border-border bg-surface p-4 text-sm leading-relaxed text-text-secondary">
+              <Markdown source={body} compact />
+            </div>
+          )}
+          {/* Version history: the one canonical collapsible, collapsed by default. */}
           {versions.length > 0 && (
-            <details className="mb-3 rounded-lg border border-border-subtle bg-surface px-3 py-2">
-              <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
-                History · {versions.length} version{versions.length === 1 ? "" : "s"} · every edit is snapshotted, nothing is ever lost
-              </summary>
-              <div className="mt-2 flex flex-col gap-1">
+            <CollapsibleSection
+              icon={History}
+              title="History"
+              subtitle="Every edit is snapshotted: nothing is ever lost."
+              summary={`${versions.length} version${versions.length === 1 ? "" : "s"}`}
+              className="mt-4"
+            >
+              <div className="flex flex-col gap-1">
                 {versions.map((v) => (
-                  <div key={v.path} className="flex items-center gap-2 px-1 py-1">
+                  <div key={v.path} className="flex items-center gap-2 py-1">
                     <span className="flex-1 font-mono text-[11px] text-text-secondary">{v.name.replace("_", " · ")}</span>
                     <button
                       onClick={async () => {
@@ -216,36 +318,7 @@ export function IdealStateSection({ vaultPath }: { vaultPath: string }) {
                   </div>
                 ))}
               </div>
-            </details>
-          )}
-          {parsed.sections.length > 0 ? (
-            <div className="relative mt-4">
-              <div className="absolute bottom-4 left-[17px] top-4 w-px bg-border" aria-hidden />
-              <div className="space-y-3">
-                {parsed.sections.map((s) => {
-                  const Icon = idealSectionIcon(s.title);
-                  return (
-                    <div key={s.title} className="relative flex gap-3.5">
-                      <div className="relative z-10 mt-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent-border bg-accent-soft">
-                        <Icon className="h-4 w-4 text-accent" />
-                      </div>
-                      <div className="min-w-0 flex-1 rounded-xl border border-border bg-surface p-4">
-                        <div className="font-display text-sm font-semibold tracking-tight">{s.title}</div>
-                        {s.body && (
-                          <div className="mt-2 text-sm leading-relaxed text-text-secondary">
-                            <Markdown source={s.body} compact />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="mt-4 rounded-xl border border-border bg-surface p-4 text-sm leading-relaxed text-text-secondary">
-              <Markdown source={body} compact />
-            </div>
+            </CollapsibleSection>
           )}
         </div>
       )}
@@ -314,23 +387,13 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
     <Toggle on={on} onChange={onChange} />
   );
 
-  const [genSubOpen, setGenSubOpen] = useState<"main" | "appearance" | "shortcuts" | null>("main");
-  const toggleSub = (id: "main" | "appearance" | "shortcuts") => setGenSubOpen((v) => (v === id ? null : id));
-  const GenSub = ({ id, title, children }: { id: "main" | "appearance" | "shortcuts"; title: string; children: React.ReactNode }) => (
-    <div className="rounded-lg border border-border bg-surface overflow-hidden">
-      <button
-        onClick={() => toggleSub(id)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-warm transition-colors"
-      >
-        <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${genSubOpen === id ? "rotate-90" : ""}`} strokeWidth={2.5} />
-        <span className="text-sm font-semibold text-text-primary">{title}</span>
-      </button>
-      {genSubOpen === id && (
-        <div className="border-t border-border-subtle px-4 py-5">
-          {children}
-        </div>
-      )}
-    </div>
+  // General's three sub-sections route through the canonical CollapsibleSection
+  // so they match every other collapsible in the app (icon + title left, summary
+  // right, collapsed by default, open state persisted per section).
+  const GenSub = ({ id, title, icon, summary, children }: { id: "main" | "appearance" | "shortcuts"; title: string; icon: LucideIcon; summary?: string; children: React.ReactNode }) => (
+    <CollapsibleSection icon={icon} title={title} summary={summary} defaultOpen={id === "main"} storageKey={`prevail.settings.general.${id}`}>
+      {children}
+    </CollapsibleSection>
   );
 
   return (
@@ -340,7 +403,7 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
         subtitle="App-wide behavior, appearance, and keyboard shortcuts."
       />
       <div className="space-y-2">
-      <GenSub id="main" title="Main">
+      <GenSub id="main" title="Main" icon={SlidersHorizontal} summary="behavior & defaults">
       <div className="rounded-lg border border-border bg-surface px-5">
         <Row
           title="Start on boot"
@@ -445,7 +508,7 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
       </div>
       </GenSub>
       {appearance && (
-        <GenSub id="appearance" title="Appearance">
+        <GenSub id="appearance" title="Appearance" icon={Palette} summary={appearance?.mode ? `${appearance.mode} theme` : "theme & palette"}>
           <div className="mb-6 rounded-xl border border-border bg-surface p-5">
             <div className="mb-1 font-medium">Color Mode</div>
             <div className="mb-4 text-sm text-text-secondary">Pick a fixed mode or let Prevail follow your system setting.</div>
@@ -472,7 +535,7 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
           </div>
         </GenSub>
       )}
-      <GenSub id="shortcuts" title="Shortcuts">
+      <GenSub id="shortcuts" title="Shortcuts" icon={Keyboard} summary="keyboard">
         <ShortcutsSection />
       </GenSub>
       </div>

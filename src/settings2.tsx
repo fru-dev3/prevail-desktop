@@ -2,15 +2,35 @@
 // Tasks, Intents, Memory & Context, and Skills. vaultPath-driven; no App-root
 // state closure.
 import { useEffect, useMemo, useState } from "react";
-import { Brain, Check, ChevronRight, Folder, Lightbulb, Sparkles } from "lucide-react";
+import { ArrowRight, Bell, Brain, Check, ChevronRight, Folder, GraduationCap, Lightbulb, ListChecks, Loader2, Pencil, Sparkles } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
+import { CollapsibleSection } from "./collapsible";
 import { formatFreshness, titleCase } from "./format";
 import { PREF, getPref, setPref } from "./storage";
 import { Toggle } from "./ui";
 import { DaemonCard, HeadlessLearnCard } from "./panels";
-import { distillCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
-import { SettingsHeader, pickSkillColor } from "./sectionutil";
+import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
+import { SettingsHeader } from "./sectionutil";
 import type { DaemonStatus, SkillEntry } from "./types";
+
+// One collapsible card per daemon. Routes through the canonical CollapsibleSection
+// (icon + title left, summary + running dot right, collapsed by default) so the
+// Daemons page looks identical to every other collapsible in the app.
+function DaemonGroup({ icon, title, summary, running, defaultOpen = false, children }: {
+  icon: LucideIcon;
+  title: string;
+  summary?: string;
+  running?: boolean;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <CollapsibleSection icon={icon} title={title} summary={summary} status={running} defaultOpen={defaultOpen}>
+      {children}
+    </CollapsibleSection>
+  );
+}
 
 export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
   const [distillSt, setDistillSt] = useState<DaemonStatus | null>(null);
@@ -30,6 +50,11 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
   const [remInterval, setRemInterval] = useState(() => getPref(PREF.remindersIntervalSec, "900"));
   const [taskgenMsg, setTaskgenMsg] = useState("");
   const [running, setRunning] = useState(false);
+  // Intent distillation daemon (automated, default ON).
+  const [intentSt, setIntentSt] = useState<{ running?: boolean; last_run_ts?: number | null; distills?: number; last_intent_count?: number } | null>(null);
+  const [intentEnabled, setIntentEnabled] = useState(() => getPref(PREF.intentDaemonEnabled, "1") === "1");
+  const [intentMinNew, setIntentMinNew] = useState(() => getPref(PREF.intentDaemonMinNew, "10"));
+  const [intentInterval, setIntentInterval] = useState(() => getPref(PREF.intentDaemonIntervalSec, "1800"));
   // Distill (memory) tuning — moved here from Memory & Context so all daemon
   // operation lives in one place. These write the same prefs distillCfgFromPrefs reads.
   const [dProvider, setDProvider] = useState(() => getPref(PREF.memoryProvider, "claude"));
@@ -57,6 +82,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
       try { const s = await invoke<DaemonStatus>("reminders_daemon_status"); if (alive) setRemindersSt(s); } catch {}
       try { const s = await invoke<DaemonStatus>("taskgen_status"); if (alive) setTaskgenSt(s); } catch {}
       try { const s = await invoke<DaemonStatus>("skillgen_status"); if (alive) setSkillgenSt(s); } catch {}
+      try { const s = await invoke<typeof intentSt>("intent_daemon_status"); if (alive) setIntentSt(s); } catch {}
     };
     poll();
     const id = window.setInterval(poll, 2000);
@@ -106,7 +132,14 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         <span className="ml-auto font-mono text-[10px] text-accent">Distilled memory & budget in Memory & Context →</span>
       </button>
 
-      <div className="mb-4 flex flex-col gap-2">
+      {/* One collapsible group per daemon: status + tuning + run-now together. */}
+      <DaemonGroup
+        icon={Brain}
+        title="Distill · memory"
+        running={!!distillSt?.running}
+        summary={distillSt?.lines_distilled ? `${distillSt.lines_distilled} lines distilled` : dAuto ? `auto · every ${dInterval}s` : "manual only"}
+        defaultOpen
+      >
         <DaemonCard
           name="Distill"
           status={distillSt}
@@ -114,6 +147,46 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           onStop={async () => { await invoke("distill_stop"); }}
           onStart={async () => { await invoke("distill_start", { cfg: distillCfgFromPrefs(vaultPath) }); }}
         />
+        <div className="mt-3 rounded-lg border border-border-subtle bg-background px-5">
+          <Row title="Distill provider" desc="Which agent distills the intent ledger into memory (use a cheap, fast one)."
+            control={
+              <select value={dProvider} onChange={(e) => { setDProvider(e.target.value); setPref(PREF.memoryProvider, e.target.value); }}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none">
+                <option value="claude">Claude</option>
+                <option value="codex">Codex</option>
+                <option value="ollama">Ollama (local)</option>
+              </select>} />
+          <Row title="Distill model" desc="Model id used for distillation, e.g. claude-haiku-4-5."
+            control={<input value={dModel} onChange={(e) => { setDModel(e.target.value); setPref(PREF.distillModel, e.target.value); }}
+              className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Auto-compression" desc="Run the distill daemon on a timer (off = manual passes only)."
+            control={<Toggle on={dAuto} onChange={(v) => { setDAuto(v); setPref(PREF.autoCompression, v ? "1" : "0"); }} />} />
+          <Row title="Compression threshold" desc="Start distilling once new activity reaches this fraction of the memory budget."
+            control={<input type="number" step="0.1" value={dThreshold} onChange={(e) => { setDThreshold(e.target.value); setPref(PREF.compressionThreshold, e.target.value); }}
+              className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Compression target" desc="Compress memory toward this fraction of the budget."
+            control={<input type="number" step="0.1" value={dTarget} onChange={(e) => { setDTarget(e.target.value); setPref(PREF.compressionTarget, e.target.value); }}
+              className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Protected recent" desc="Never distill the most-recent N ledger entries: keep them raw."
+            control={<input type="number" value={dProtected} onChange={(e) => { setDProtected(e.target.value); setPref(PREF.protectedRecent, e.target.value); }}
+              className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Distill interval" desc="How often the distill daemon runs a pass (seconds)."
+            control={<div className="flex items-center gap-1.5"><input type="number" value={dInterval} onChange={(e) => { setDInterval(e.target.value); setPref(PREF.distillIntervalSec, e.target.value); }}
+              className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" /><span className="font-mono text-xs text-text-muted">s</span></div>} />
+          <Row title="Distill now" desc="Run a distillation pass immediately."
+            control={<button onClick={distillNow} disabled={distilling}
+              className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
+              {distilling ? "distilling…" : "distill now"}</button>} />
+          {distillMsg && <div className="pb-3 text-xs text-text-secondary">{distillMsg}</div>}
+        </div>
+      </DaemonGroup>
+
+      <DaemonGroup
+        icon={Bell}
+        title="Reminders"
+        running={!!remindersSt?.running}
+        summary={remindersSt?.last_due_count != null ? (remindersSt.last_due_count > 0 ? `${remindersSt.last_due_count} due` : "none due") : `every ${remInterval}s`}
+      >
         <DaemonCard
           name="Reminders"
           status={remindersSt}
@@ -128,6 +201,24 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
             await invoke("reminders_daemon_start", { vault: vaultPath, interval_sec: sec });
           }}
         />
+        <div className="mt-3 rounded-lg border border-border-subtle bg-background px-5">
+          <Row title="Reminders interval" desc="How often the reminders daemon checks for due tasks (seconds)."
+            control={
+              <div className="flex items-center gap-1.5">
+                <input type="number" value={remInterval} onChange={(e) => { setRemInterval(e.target.value); setPref(PREF.remindersIntervalSec, e.target.value); }}
+                  className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
+                <span className="font-mono text-xs text-text-muted">s</span>
+              </div>
+            } />
+        </div>
+      </DaemonGroup>
+
+      <DaemonGroup
+        icon={ListChecks}
+        title="Task generation"
+        running={!!taskgenSt?.running}
+        summary={taskgenSt?.tasks_generated ? `${taskgenSt.tasks_generated} generated` : taskgenEnabled ? "on" : "off"}
+      >
         <DaemonCard
           name="Task Gen"
           status={taskgenSt}
@@ -135,6 +226,39 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           onStop={async () => { await invoke("taskgen_stop"); }}
           onStart={async () => { await invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }); }}
         />
+        <div className="mt-3 rounded-lg border border-border-subtle bg-background px-5">
+          <Row title="Task generation" desc="Proactively generate new tasks from your goals, memory, and domain state once per day."
+            control={<Toggle on={taskgenEnabled} onChange={(v) => { setTaskgenEnabled(v); setPref(PREF.taskgenEnabled, v ? "1" : "0"); if (!v) invoke("taskgen_stop").catch(() => {}); else invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch(() => {}); }} />} />
+          <Row title="Task gen model" desc="Model used to generate task suggestions (use a cheap, fast model)."
+            control={<input value={taskgenModel} onChange={(e) => { setTaskgenModel(e.target.value); setPref(PREF.taskgenModel, e.target.value); }}
+              className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Tasks per domain" desc="Maximum tasks generated per domain per day."
+            control={<input type="number" value={taskgenMax} onChange={(e) => { setTaskgenMax(e.target.value); setPref(PREF.taskgenMaxPerDomain, e.target.value); }}
+              className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Task gen interval" desc="How often the task-gen daemon checks for domains that need new tasks (seconds)."
+            control={
+              <div className="flex items-center gap-1.5">
+                <input type="number" value={taskgenInterval} onChange={(e) => { setTaskgenInterval(e.target.value); setPref(PREF.taskgenIntervalSec, e.target.value); }}
+                  className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
+                <span className="font-mono text-xs text-text-muted">s</span>
+              </div>
+            } />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button onClick={runTaskgenNow} disabled={running}
+            className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
+            {running ? "generating…" : "generate tasks now"}
+          </button>
+          {taskgenMsg && <span className="text-xs text-text-secondary">{taskgenMsg}</span>}
+        </div>
+      </DaemonGroup>
+
+      <DaemonGroup
+        icon={GraduationCap}
+        title="Skill learning"
+        running={!!skillgenSt?.running}
+        summary={skillgenSt?.skills_created ? `${skillgenSt.skills_created} learned` : skillgenEnabled ? "on" : "off"}
+      >
         <DaemonCard
           name="Skill Gen"
           status={skillgenSt}
@@ -142,99 +266,60 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           onStop={async () => { await invoke("skillgen_stop"); }}
           onStart={async () => { await invoke("skillgen_start", { cfg: skillgenCfgFromPrefs(vaultPath) }); }}
         />
-      </div>
+        <div className="mt-3 rounded-lg border border-border-subtle bg-background px-5">
+          <Row title="Skill learning" desc="Self-learning: distill reusable skills (playbooks, checklists, decision frameworks) from each domain's conversations, once per day."
+            control={<Toggle on={skillgenEnabled} onChange={(v) => { setSkillgenEnabled(v); setPref(PREF.skillgenEnabled, v ? "1" : "0"); if (!v) invoke("skillgen_stop").catch(() => {}); else invoke("skillgen_start", { cfg: skillgenCfgFromPrefs(vaultPath) }).catch(() => {}); }} />} />
+          <Row title="Skill gen model" desc="Model used to learn skills from conversations (use a cheap, fast model)."
+            control={<input value={skillgenModel} onChange={(e) => { setSkillgenModel(e.target.value); setPref(PREF.skillgenModel, e.target.value); }}
+              className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Skills per domain" desc="Maximum new skills learned per domain per day."
+            control={<input type="number" value={skillgenMax} onChange={(e) => { setSkillgenMax(e.target.value); setPref(PREF.skillgenMaxPerDomain, e.target.value); }}
+              className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Skill gen interval" desc="How often the skill-learning daemon scans domains for new lessons (seconds; default 6h)."
+            control={
+              <div className="flex items-center gap-1.5">
+                <input type="number" value={skillgenInterval} onChange={(e) => { setSkillgenInterval(e.target.value); setPref(PREF.skillgenIntervalSec, e.target.value); }}
+                  className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
+                <span className="font-mono text-xs text-text-muted">s</span>
+              </div>
+            } />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button onClick={runSkillgenNow} disabled={skillgenRunning}
+            className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
+            {skillgenRunning ? "learning…" : "learn skills now"}
+          </button>
+          {skillgenMsg && <span className="text-xs text-text-secondary">{skillgenMsg}</span>}
+        </div>
+      </DaemonGroup>
+
+      <DaemonGroup
+        icon={Lightbulb}
+        title="Intent distillation"
+        running={!!intentSt?.running}
+        summary={intentSt?.last_intent_count ? `${intentSt.last_intent_count} intents` : intentEnabled ? "auto" : "off"}
+      >
+        <div className="rounded-lg border border-border-subtle bg-background px-5">
+          <Row title="Automatic intent distillation"
+            desc="Infer your high-level intents + recommended actions automatically, with no manual click. Runs on a cadence and whenever enough new prompts pile up."
+            control={<Toggle on={intentEnabled} onChange={(v) => {
+              setIntentEnabled(v); setPref(PREF.intentDaemonEnabled, v ? "1" : "0");
+              if (v) invoke("intent_daemon_start", { cfg: intentDaemonCfgFromPrefs(vaultPath) }).catch(() => {});
+              else invoke("intent_daemon_stop").catch(() => {});
+            }} />} />
+          <Row title="Distill after N new prompts"
+            desc="Re-distill once this many new prompts have been logged since the last pass."
+            control={<input type="number" value={intentMinNew} onChange={(e) => { setIntentMinNew(e.target.value); setPref(PREF.intentDaemonMinNew, e.target.value); }}
+              className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Check interval"
+            desc="How often the daemon checks whether a re-distill is due (a check with nothing new costs no model call). It also re-distills at least daily."
+            control={<div className="flex items-center gap-1.5"><input type="number" value={intentInterval} onChange={(e) => { setIntentInterval(e.target.value); setPref(PREF.intentDaemonIntervalSec, e.target.value); }}
+              className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" /><span className="font-mono text-xs text-text-muted">s</span></div>} />
+        </div>
+        <p className="mt-2 px-1 text-[11px] text-text-muted">View the distilled intents in Configuration → Intents. Uses the same provider/model as Distill.</p>
+      </DaemonGroup>
 
       <HeadlessLearnCard vaultPath={vaultPath} />
-
-      {/* Distill (memory) tuning + manual pass — the Distill card's controls. */}
-      <div className="mb-4 rounded-lg border border-border bg-surface px-5">
-        <Row title="Distill provider" desc="Which agent distills the intent ledger into memory (use a cheap, fast one)."
-          control={
-            <select value={dProvider} onChange={(e) => { setDProvider(e.target.value); setPref(PREF.memoryProvider, e.target.value); }}
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none">
-              <option value="claude">Claude</option>
-              <option value="codex">Codex</option>
-              <option value="ollama">Ollama (local)</option>
-            </select>} />
-        <Row title="Distill model" desc="Model id used for distillation, e.g. claude-haiku-4-5."
-          control={<input value={dModel} onChange={(e) => { setDModel(e.target.value); setPref(PREF.distillModel, e.target.value); }}
-            className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Auto-compression" desc="Run the distill daemon on a timer (off = manual passes only)."
-          control={<Toggle on={dAuto} onChange={(v) => { setDAuto(v); setPref(PREF.autoCompression, v ? "1" : "0"); }} />} />
-        <Row title="Compression threshold" desc="Start distilling once new activity reaches this fraction of the memory budget."
-          control={<input type="number" step="0.1" value={dThreshold} onChange={(e) => { setDThreshold(e.target.value); setPref(PREF.compressionThreshold, e.target.value); }}
-            className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Compression target" desc="Compress memory toward this fraction of the budget."
-          control={<input type="number" step="0.1" value={dTarget} onChange={(e) => { setDTarget(e.target.value); setPref(PREF.compressionTarget, e.target.value); }}
-            className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Protected recent" desc="Never distill the most-recent N ledger entries: keep them raw."
-          control={<input type="number" value={dProtected} onChange={(e) => { setDProtected(e.target.value); setPref(PREF.protectedRecent, e.target.value); }}
-            className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Distill interval" desc="How often the distill daemon runs a pass (seconds)."
-          control={<div className="flex items-center gap-1.5"><input type="number" value={dInterval} onChange={(e) => { setDInterval(e.target.value); setPref(PREF.distillIntervalSec, e.target.value); }}
-            className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" /><span className="font-mono text-xs text-text-muted">s</span></div>} />
-        <Row title="Distill now" desc="Run a distillation pass immediately."
-          control={<button onClick={distillNow} disabled={distilling}
-            className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
-            {distilling ? "distilling…" : "distill now"}</button>} />
-        {distillMsg && <div className="pb-3 text-xs text-text-secondary">{distillMsg}</div>}
-      </div>
-
-      <div className="rounded-lg border border-border bg-surface px-5">
-        <Row title="Reminders interval" desc="How often the reminders daemon checks for due tasks (seconds)."
-          control={
-            <div className="flex items-center gap-1.5">
-              <input type="number" value={remInterval} onChange={(e) => { setRemInterval(e.target.value); setPref(PREF.remindersIntervalSec, e.target.value); }}
-                className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
-              <span className="font-mono text-xs text-text-muted">s</span>
-            </div>
-          } />
-        <Row title="Task generation" desc="Proactively generate new tasks from your goals, memory, and domain state once per day."
-          control={<Toggle on={taskgenEnabled} onChange={(v) => { setTaskgenEnabled(v); setPref(PREF.taskgenEnabled, v ? "1" : "0"); if (!v) invoke("taskgen_stop").catch(() => {}); else invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch(() => {}); }} />} />
-        <Row title="Task gen model" desc="Model used to generate task suggestions (use a cheap, fast model)."
-          control={<input value={taskgenModel} onChange={(e) => { setTaskgenModel(e.target.value); setPref(PREF.taskgenModel, e.target.value); }}
-            className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Tasks per domain" desc="Maximum tasks generated per domain per day."
-          control={<input type="number" value={taskgenMax} onChange={(e) => { setTaskgenMax(e.target.value); setPref(PREF.taskgenMaxPerDomain, e.target.value); }}
-            className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Task gen interval" desc="How often the task-gen daemon checks for domains that need new tasks (seconds)."
-          control={
-            <div className="flex items-center gap-1.5">
-              <input type="number" value={taskgenInterval} onChange={(e) => { setTaskgenInterval(e.target.value); setPref(PREF.taskgenIntervalSec, e.target.value); }}
-                className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
-              <span className="font-mono text-xs text-text-muted">s</span>
-            </div>
-          } />
-        <Row title="Skill learning" desc="Self-learning: distill reusable skills (playbooks, checklists, decision frameworks) from each domain's conversations, once per day."
-          control={<Toggle on={skillgenEnabled} onChange={(v) => { setSkillgenEnabled(v); setPref(PREF.skillgenEnabled, v ? "1" : "0"); if (!v) invoke("skillgen_stop").catch(() => {}); else invoke("skillgen_start", { cfg: skillgenCfgFromPrefs(vaultPath) }).catch(() => {}); }} />} />
-        <Row title="Skill gen model" desc="Model used to learn skills from conversations (use a cheap, fast model)."
-          control={<input value={skillgenModel} onChange={(e) => { setSkillgenModel(e.target.value); setPref(PREF.skillgenModel, e.target.value); }}
-            className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Skills per domain" desc="Maximum new skills learned per domain per day."
-          control={<input type="number" value={skillgenMax} onChange={(e) => { setSkillgenMax(e.target.value); setPref(PREF.skillgenMaxPerDomain, e.target.value); }}
-            className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Skill gen interval" desc="How often the skill-learning daemon scans domains for new lessons (seconds; default 6h)."
-          control={
-            <div className="flex items-center gap-1.5">
-              <input type="number" value={skillgenInterval} onChange={(e) => { setSkillgenInterval(e.target.value); setPref(PREF.skillgenIntervalSec, e.target.value); }}
-                className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
-              <span className="font-mono text-xs text-text-muted">s</span>
-            </div>
-          } />
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <button onClick={runTaskgenNow} disabled={running}
-          className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
-          {running ? "generating…" : "generate tasks now"}
-        </button>
-        {taskgenMsg && <span className="text-xs text-text-secondary">{taskgenMsg}</span>}
-        <button onClick={runSkillgenNow} disabled={skillgenRunning}
-          className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
-          {skillgenRunning ? "learning…" : "learn skills now"}
-        </button>
-        {skillgenMsg && <span className="text-xs text-text-secondary">{skillgenMsg}</span>}
-      </div>
     </>
   );
 }
@@ -301,17 +386,65 @@ export function TasksCrossDomainSection({ vaultPath }: { vaultPath: string }) {
 // searchable browser. Each row is the exact ask plus the model settings in
 // effect (replayable provenance, kept on-device).
 
+type DistilledIntent = {
+  title?: string;
+  goal?: string;
+  underlying_need?: string;
+  domains?: string[];
+  status?: string;
+  confidence?: number;
+  open_questions?: string[];
+  evidence?: string[];
+  recommendations?: string[];
+};
+type DistilledDoc = { generated_ts: number; source_count: number; intents: DistilledIntent[] };
+
 export function IntentsSection({ vaultPath }: { vaultPath: string }) {
   type IntentRow = { message?: string; cli?: string; model?: string; ts?: number; domain?: string };
   const [intents, setIntents] = useState<IntentRow[]>([]);
   const [q, setQ] = useState("");
   const [domainFilter, setDomainFilter] = useState("all");
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  // Distilled layer: high-level intents + recommendations inferred from the log.
+  const [distilled, setDistilled] = useState<DistilledDoc>({ generated_ts: 0, source_count: 0, intents: [] });
+  const [distilling, setDistilling] = useState(false);
+  const [distillMsg, setDistillMsg] = useState<string | null>(null);
+  const [openIntent, setOpenIntent] = useState<number | null>(null);
+  // Recommendations that have been turned into tracked tasks (keyed intent:rec).
+  const [addedRecs, setAddedRecs] = useState<Set<string>>(new Set());
+  async function addRecAsTask(intent: DistilledIntent, rec: string, key: string) {
+    const domain = (intent.domains && intent.domains[0]) || "general";
+    try {
+      await invoke("tasks_add", { vault: vaultPath, domain, text: rec, source: "intent" });
+      setAddedRecs((s) => new Set(s).add(key));
+    } catch (e) {
+      console.error("tasks_add from intent", e);
+    }
+  }
   useEffect(() => {
     invoke<IntentRow[]>("intents_read_all", { vault: vaultPath, limit: 500 })
       .then((r) => setIntents(Array.isArray(r) ? r : []))
       .catch(() => setIntents([]));
+    invoke<DistilledDoc>("intents_distilled_read", { vault: vaultPath })
+      .then((d) => setDistilled(d ?? { generated_ts: 0, source_count: 0, intents: [] }))
+      .catch(() => {});
   }, [vaultPath]);
+  async function distillNow() {
+    setDistilling(true);
+    setDistillMsg(null);
+    try {
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      const doc = await invoke<DistilledDoc>("intents_distill", { cfg: { vault: vaultPath, provider, model, limit: 200 } });
+      setDistilled(doc);
+      setDistillMsg(`Distilled ${doc.intents?.length ?? 0} intent${(doc.intents?.length ?? 0) === 1 ? "" : "s"} from ${doc.source_count} prompts.`);
+    } catch (e) {
+      setDistillMsg(`Distill failed: ${e}`);
+    } finally {
+      setDistilling(false);
+    }
+  }
+  const statusTone = (s?: string) => s === "active" ? "text-accent" : s === "resolved" ? "text-ok" : "text-text-muted";
   const domains = useMemo(
     () => [...new Set(intents.map((i) => i.domain ?? "general"))].sort(),
     [intents],
@@ -326,8 +459,112 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
       <SettingsHeader
         title="Intents"
         icon={Lightbulb}
-        subtitle="Every question you've asked, across every domain: the exact ask plus the model settings in effect, kept on your machine as replayable provenance. Per-domain views live in each domain's Insights tab."
+        subtitle="Not just a list of prompts: Prevail reads across your sessions and domains and distills the high-level goals you're actually pursuing, with recommended next actions. The raw prompt history (replayable provenance) lives below."
       />
+
+      {/* Distilled intents — the high-level layer. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <span className="text-sm font-semibold text-text-primary">Distilled intents</span>
+        {distilled.generated_ts > 0 && (
+          <span className="font-mono text-[10px] text-text-muted">
+            {distilled.intents.length} from {distilled.source_count} prompts · {formatFreshness(Math.max(0, (Date.now() - distilled.generated_ts * 1000) / 1000))}
+          </span>
+        )}
+        <div className="flex-1" />
+        <button
+          onClick={distillNow}
+          disabled={distilling}
+          title="Read the prompt log and infer your high-level intents + next actions"
+          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
+        >
+          {distilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {distilling ? "Distilling…" : distilled.generated_ts > 0 ? "Re-distill" : "Distill intents"}
+        </button>
+      </div>
+      {distillMsg && <div className="mb-3 rounded-md border border-border-subtle bg-surface px-3 py-2 text-xs text-text-secondary">{distillMsg}</div>}
+      {distilled.intents.length === 0 ? (
+        <div className="mb-6 rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+          No distilled intents yet. Hit <span className="text-accent">Distill intents</span> to infer the goals behind your prompts and get recommended next actions.
+        </div>
+      ) : (
+        <div className="mb-6 space-y-2">
+          {distilled.intents.map((it, i) => {
+            const open = openIntent === i;
+            return (
+              <div key={i} className="overflow-hidden rounded-xl border border-border bg-surface">
+                <button onClick={() => setOpenIntent(open ? null : i)} className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-surface-warm">
+                  <ChevronRight className={`mt-0.5 h-4 w-4 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent"><Lightbulb className="h-4 w-4" /></span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-display text-base font-semibold tracking-tight text-text-primary">{it.title ?? "Intent"}</span>
+                      {it.status && <span className={`font-mono text-[9px] uppercase tracking-wider ${statusTone(it.status)}`}>{it.status}</span>}
+                      {typeof it.confidence === "number" && <span className="font-mono text-[9px] text-text-muted">{Math.round(it.confidence * 100)}%</span>}
+                    </div>
+                    {it.goal && <div className="mt-0.5 text-sm text-text-secondary">{it.goal}</div>}
+                  </div>
+                  <span className="hidden shrink-0 items-center gap-1 sm:flex">
+                    {(it.domains ?? []).slice(0, 3).map((d) => (
+                      <span key={d} className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">{titleCase(d)}</span>
+                    ))}
+                  </span>
+                </button>
+                {open && (
+                  <div className="space-y-3 border-t border-border-subtle px-4 py-4 pl-[60px] text-sm">
+                    {it.underlying_need && (
+                      <div><span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Underlying need</span><div className="mt-0.5 text-text-secondary">{it.underlying_need}</div></div>
+                    )}
+                    {(it.recommendations ?? []).length > 0 && (
+                      <div>
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-accent">Recommended next actions</span>
+                        <ul className="mt-1 space-y-1">
+                          {it.recommendations!.map((r, j) => {
+                            const key = `${i}:${j}`;
+                            const added = addedRecs.has(key);
+                            return (
+                              <li key={j} className="group/rec flex items-start gap-2">
+                                <ArrowRight className="mt-1 h-3 w-3 shrink-0 text-accent" />
+                                <span className="flex-1 text-text-primary">{r}</span>
+                                <button
+                                  onClick={() => addRecAsTask(it, r, key)}
+                                  disabled={added}
+                                  title={added ? "Added to your tasks" : `Add as a task in ${titleCase((it.domains && it.domains[0]) || "general")}`}
+                                  className={`shrink-0 rounded-md border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider transition-colors ${added ? "border-ok/40 text-ok" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}
+                                >
+                                  {added ? "added ✓" : "+ task"}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                    {(it.open_questions ?? []).length > 0 && (
+                      <div>
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Open questions</span>
+                        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-text-secondary">
+                          {it.open_questions!.map((qq, j) => <li key={j}>{qq}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {(it.evidence ?? []).length > 0 && (
+                      <div>
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Evidence ({it.evidence!.length} prompts)</span>
+                        <ul className="mt-1 space-y-0.5">
+                          {it.evidence!.map((e, j) => <li key={j} className="border-l-2 border-border-subtle pl-2 text-text-muted">{e}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Raw prompt history — provenance, collapsed by default. */}
+      <div className="mb-2 text-sm font-semibold text-text-primary">Prompt history</div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
           value={q}
@@ -470,6 +707,7 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
   const [skills, setSkills] = useState<SkillEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("");
+  const [domainFilter, setDomainFilter] = useState<string>("all");
   const [listOpen, setListOpen] = useState(false);
 
   useEffect(() => {
@@ -482,14 +720,22 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
     return () => { mounted = false; };
   }, [vaultPath]);
 
+  // Domains present in the vault's skills, for the by-domain filter.
+  const domains = useMemo(
+    () => [...new Set(skills.map((s) => s.domain.toLowerCase()))].sort(),
+    [skills],
+  );
+
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return skills;
-    return skills.filter((s) =>
-      s.name.toLowerCase().includes(q) ||
-      s.domain.toLowerCase().includes(q) ||
-      (s.description ?? "").toLowerCase().includes(q));
-  }, [skills, filter]);
+    return skills.filter((s) => {
+      if (domainFilter !== "all" && s.domain.toLowerCase() !== domainFilter) return false;
+      if (!q) return true;
+      return s.name.toLowerCase().includes(q) ||
+        s.domain.toLowerCase().includes(q) ||
+        (s.description ?? "").toLowerCase().includes(q);
+    });
+  }, [skills, filter, domainFilter]);
 
   async function openSkill(p: string) {
     try { await invoke("open_in_finder", { path: p }); } catch {}
@@ -523,7 +769,17 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
             ↻
           </button>
           <div className="flex-1" />
-          <div className="relative w-64">
+          {/* Filter by domain — see only one domain's skills, or all. */}
+          <select
+            value={domainFilter}
+            onChange={(e) => { setDomainFilter(e.target.value); setListOpen(true); }}
+            title="Filter skills by domain"
+            className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-text-secondary focus:border-accent-border focus:outline-none"
+          >
+            <option value="all">All domains</option>
+            {domains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+          </select>
+          <div className="relative w-56">
             <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted">⌕</span>
             <input
               value={filter}
@@ -568,20 +824,16 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
               <ul className="ml-4 mt-1 flex flex-col gap-1 border-l border-border-subtle pl-3">
                 {filtered.map((s) => {
                   const cleaned = (s.description ?? "").replace(/^[>*\-\s]+/, "").trim();
-                  const color = pickSkillColor(s.name);
-                  const initial = (s.name || "·").charAt(0).toUpperCase();
                   return (
                     <li key={s.path}>
                       <button
                         onClick={() => openSkill(s.path)}
-                        title={s.path}
-                        className="group flex w-full items-start gap-4 rounded-xl px-3 py-3 text-left transition-colors hover:bg-surface-warm"
+                        title={`Open ${s.name} in Finder to edit`}
+                        className="group flex w-full items-start gap-3.5 rounded-xl px-3 py-3 text-left transition-colors hover:bg-surface-warm"
                       >
-                        <span
-                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg font-display text-xl font-bold ring-1 ring-black/5"
-                          style={{ background: color.bg, color: color.fg }}
-                        >
-                          {initial}
+                        {/* Calm, uniform tile (no per-skill rainbow). */}
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-warm text-text-secondary ring-1 ring-border-subtle group-hover:text-accent">
+                          <Sparkles className="h-4 w-4" />
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-baseline gap-2">
@@ -596,7 +848,9 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
                             </p>
                           )}
                         </div>
-                        <Folder className="mt-1.5 h-4 w-4 shrink-0 text-text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+                        <span className="mt-1 inline-flex shrink-0 items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-text-muted opacity-0 transition-opacity group-hover:opacity-100">
+                          <Pencil className="h-3.5 w-3.5" /> edit
+                        </span>
                       </button>
                     </li>
                   );

@@ -9,9 +9,10 @@ import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
 import { MODELS } from "./constants";
 import { relTime, scoreColor, titleCase } from "./format";
+import { ContextMeter, contextWindowFor, estimateTokens } from "./contextmeter";
 import { domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
 import { buildChatContext, buildIdealStatePreamble, buildQuickActions, loadPreferredSkills, maybeRedact, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
-import { LS, PREF, getDomainToggle, getPref, isBunkerOn, lsGet, lsSet } from "./storage";
+import { LS, PREF, getDomainToggle, getPref, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
 import { ContextScoreBadge, NewSkillForm, SkillsList } from "./panels";
 import { InsightsPanel, UsageDashboard } from "./panels2";
@@ -24,6 +25,12 @@ import { LoopsPanel } from "./loopspanel";
 import { AgentPickerRail, DomainContextDrawer, DomainPrefsPanel } from "./domainpanels";
 import type { ChatEvent, ChatMessage, CliInfo, ContextScore, Domain, DomainContextBundle, DomainTab, EngineApp, LifeReadiness, SkillEntry, ThreadMeta, ThreadTurn } from "./types";
 import type { UnlistenFn } from "./bridge";
+
+// Per-domain cache of the cheap (no-audit) context score. engine_score spawns the
+// engine binary; users switch domains often, so re-opening a domain within the TTL
+// should be instant (no spawn). Rescans (audit) refresh it.
+const _scoreCache = new Map<string, { at: number; score: ContextScore }>();
+const SCORE_CACHE_TTL_MS = 30_000;
 
 export function ChatPanel({
   domain,
@@ -294,10 +301,17 @@ export function ChatPanel({
     setCtxScore(null);
     setCtxScoreError(null);
     if (!domain || !vaultPath) return;
+    // Instant from cache when a recent score exists — no engine spawn.
+    const key = `${vaultPath}:${domain}`;
+    const cached = _scoreCache.get(key);
+    if (cached && Date.now() - cached.at < SCORE_CACHE_TTL_MS) {
+      setCtxScore(cached.score);
+      return;
+    }
     let mounted = true;
     setCtxScoreLoading(true);
     invoke<ContextScore>("engine_score", { vault: vaultPath, domain, audit: false })
-      .then((s) => { if (mounted) setCtxScore(s); })
+      .then((s) => { if (mounted) setCtxScore(s); _scoreCache.set(key, { at: Date.now(), score: s }); })
       .catch((e) => { if (mounted) setCtxScoreError(String(e)); })
       .finally(() => { if (mounted) setCtxScoreLoading(false); });
     return () => { mounted = false; };
@@ -307,7 +321,7 @@ export function ChatPanel({
     setCtxScoreRescanning(true);
     setCtxScoreError(null);
     invoke<ContextScore>("engine_score", { vault: vaultPath, domain, audit: true })
-      .then((s) => setCtxScore(s))
+      .then((s) => { setCtxScore(s); _scoreCache.set(`${vaultPath}:${domain}`, { at: Date.now(), score: s }); })
       .catch((e) => setCtxScoreError(String(e)))
       .finally(() => setCtxScoreRescanning(false));
   }, [domain, vaultPath]);
@@ -545,6 +559,65 @@ export function ChatPanel({
     setHistIdx(-1);
   }
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Compaction: summarize the running conversation into a dense brief, then start
+  // a fresh chat seeded with that summary — continuity preserved, tokens reclaimed.
+  // The summary is stashed in localStorage so it survives the new-chat remount.
+  const COMPACT_KEY = `prevail.compact.${domain ?? "_root"}`;
+  const [compacting, setCompacting] = useState(false);
+  const compactConversation = useCallback(async () => {
+    if (messages.length === 0) return;
+    setCompacting(true);
+    try {
+      const text = messages
+        .map((mm) => `${mm.role === "user" ? "User" : "Assistant"}: ${mm.content}`)
+        .join("\n\n")
+        .slice(-40000);
+      const activeModel = selectedCli ? (modelByCli[selectedCli] ?? null) : null;
+      const summary = await invoke<string>("summarize_conversation", { cli: selectedCli ?? "claude", model: activeModel, text });
+      if (summary && summary.trim()) {
+        lsSet(COMPACT_KEY, summary.trim());
+        window.dispatchEvent(new Event("prevail:new-chat"));
+      }
+    } catch (e) {
+      console.error("compact conversation", e);
+    } finally {
+      setCompacting(false);
+    }
+  }, [messages, selectedCli, modelByCli, COMPACT_KEY]);
+  // After a compaction's new-chat reset, seed the summary as attached context so
+  // the fresh conversation keeps the gist. Runs on the remount (chatViewNonce).
+  useEffect(() => {
+    const pending = lsGet(COMPACT_KEY);
+    if (pending && pending.trim()) {
+      setPrimedContext((cur) => [{ label: "Summary so far", body: pending }, ...cur.filter((c) => c.label !== "Summary so far")]);
+      lsSet(COMPACT_KEY, "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatViewNonce, COMPACT_KEY]);
+  // Token accounting for the context meter + auto-compaction (shared so both use
+  // the same numbers).
+  const conversationTokens = useMemo(() => messages.reduce((a, mm) => a + estimateTokens(mm.content), 0), [messages]);
+  const attachedTokens = useMemo(() => primedContext.reduce((a, c) => a + estimateTokens(c.body), 0), [primedContext]);
+  const ctxWindowTokens = useMemo(
+    () => contextWindowFor(selectedCli, selectedCli ? (modelByCli[selectedCli] ?? null) : null),
+    [selectedCli, modelByCli],
+  );
+  // AUTO-COMPACTION: when the window crosses ~85% and the turn is idle, summarize
+  // & continue on its own so responses don't degrade from an overfull context.
+  // Self-limiting — compaction resets the conversation, dropping the fill below
+  // the threshold. Off-switchable from the meter (PREF.autoCompact).
+  const [autoCompacted, setAutoCompacted] = useState(false);
+  useEffect(() => {
+    if (getPref(PREF.autoCompact, "1") !== "1") return;
+    if (compacting) return;
+    if (messages.length < 3) return;                  // need a real conversation
+    if (messages.some((mm) => mm.streaming)) return;  // never mid-response
+    if ((conversationTokens + attachedTokens) / Math.max(1, ctxWindowTokens) < 0.85) return;
+    setAutoCompacted(true);
+    window.setTimeout(() => setAutoCompacted(false), 6000);
+    void compactConversation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, conversationTokens, attachedTokens, ctxWindowTokens]);
   // Use a ref for the active thread path so async saves don't capture
   // a stale closure value. Without this, every streaming chunk after
   // the first save still saw activeThreadPath=null and created a new
@@ -1519,6 +1592,7 @@ export function ChatPanel({
                 rescanning={ctxScoreRescanning}
                 error={ctxScoreError}
                 onRescan={rescanContextScore}
+                vaultPath={vaultPath}
               />
             )}
             {domainTab === "insights" && (
@@ -1614,6 +1688,24 @@ export function ChatPanel({
           readability; only the composer goes edge-to-edge. */}
       <div className="shrink-0 px-6 pb-6 pt-2">
         <div className="relative rounded-2xl border border-border bg-surface p-3 shadow-sm">
+          {/* Context-window meter — minimal gauge of how full the running
+              conversation is, where tokens go, and a one-click fresh start. */}
+          <div className="mb-1 flex items-center justify-end gap-2">
+            {(autoCompacted || compacting) && (
+              <span className="font-mono text-[10px] text-accent">{compacting ? "compacting…" : "auto-compacted ✓"}</span>
+            )}
+            <ContextMeter
+              conversationTokens={conversationTokens}
+              attachedTokens={attachedTokens}
+              draftTokens={estimateTokens(input)}
+              windowTokens={ctxWindowTokens}
+              onReset={() => window.dispatchEvent(new Event("prevail:new-chat"))}
+              onCompact={messages.length > 1 ? compactConversation : undefined}
+              compacting={compacting}
+              autoCompact={getPref(PREF.autoCompact, "1") === "1"}
+              onToggleAutoCompact={(v) => setPref(PREF.autoCompact, v ? "1" : "0")}
+            />
+          </div>
           {/* Context pills — auto-loaded + dragged-in domains */}
           {primedContext.length > 0 && (
             <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2">

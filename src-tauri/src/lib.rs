@@ -18,6 +18,7 @@ mod chat;
 mod children;
 mod clis;
 mod distill;
+mod intent_daemon;
 mod domain;
 mod intents;
 mod idealstate;
@@ -252,12 +253,14 @@ pub fn run() {
         .manage(ingestion::OrchestratorState::default())
         .manage(telegram_bridge::BridgeState::new())
         .manage(distill::DistillState::new())
+        .manage(intent_daemon::IntentDaemonState::new())
         .manage(reminders::RemindersState::new())
         .manage(taskgen::TaskGenState::new())
         .manage(skillgen::SkillGenState::new())
         .manage(webui::WebuiState::default())
         .invoke_handler(tauri::generate_handler![
             vault::scan_vault,
+            vault::vault_migrate_layout,
             clis::detect_clis,
             appcmds::log_fatal,
             appcmds::import_sample_vault,
@@ -269,6 +272,7 @@ pub fn run() {
             settings::ui_prefs_set,
             settings::ui_settings_set,
             chat::chat_send,
+            chat::summarize_conversation,
             benchmark::benchmark_runs,
             benchmark::benchmark_run_detail,
             usage::usage_append,
@@ -277,6 +281,11 @@ pub fn run() {
             intents::intent_append,
             intents::intents_read,
             intents::intents_read_all,
+            intents::intents_distill,
+            intents::intents_distilled_read,
+            intent_daemon::intent_daemon_start,
+            intent_daemon::intent_daemon_stop,
+            intent_daemon::intent_daemon_status,
             intents::journal_append,
             intents::decision_append,
             intents::decisions_read,
@@ -357,6 +366,9 @@ pub fn run() {
             engine::engine_app_set_enabled,
             engine::engine_app_runs,
             engine::engine_app_sync,
+            engine::engine_apps_sync_due,
+            engine::engine_app_connect,
+            engine::engine_recommendations,
             engine::engine_alignment,
             engine::engine_app_skills,
             engine::engine_vault_embed,
@@ -387,6 +399,7 @@ pub fn run() {
             engine::engine_score_all,
             engine::engine_score_stream,
             loops::loops_run_once,
+            loops::loop_execute_action,
             engine::engine_score_history,
             engine::engine_onboard_recommend,
             engine::engine_onboard_apply,
@@ -643,7 +656,8 @@ mod usage_tests {
         intent_append(vault_s.clone(), None, serde_json::json!({ "kind": "intent", "session": "s2", "message": "hi" })).unwrap();
 
         // Domain ledger: two lines, both valid JSON, prompt + raw preserved verbatim.
-        let dom_ledger = read_to_string_retry(vault.join("wealth").join("_intents.jsonl")).expect("domain ledger written");
+        // New domains now default to the v3 layout (<vault>/domains/<domain>).
+        let dom_ledger = read_to_string_retry(vault.join("domains").join("wealth").join("_intents.jsonl")).expect("domain ledger written");
         let lines: Vec<&str> = dom_ledger.lines().filter(|l| !l.trim().is_empty()).collect();
         assert_eq!(lines.len(), 2);
         let intent: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
@@ -657,7 +671,7 @@ mod usage_tests {
         // Journal: header + newest-first ordering.
         journal_append(vault_s.clone(), Some("wealth".into()), "- 2026-06-07 09:00 · [opus] first".into()).unwrap();
         journal_append(vault_s.clone(), Some("wealth".into()), "- 2026-06-07 10:00 · [opus] second".into()).unwrap();
-        let journal = read_to_string_retry(vault.join("wealth").join("_journal.md")).unwrap();
+        let journal = read_to_string_retry(vault.join("domains").join("wealth").join("_journal.md")).unwrap();
         assert!(journal.starts_with("# Journal\n\n"));
         let i_first = journal.find("first").unwrap();
         let i_second = journal.find("second").unwrap();
