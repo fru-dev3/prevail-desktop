@@ -91,8 +91,11 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
     confidence/open_questions/evidence/recommendations) → _meta/intents_distilled.json. cargo check green.
   - DONE Phase B (UI): IntentsSection ladder — distilled cards + drill-down + Distill button;
     raw log demoted to "Prompt history".
-  - REMAINING Phase C: wire a recommendation → "turn into task / loop" (taskgen + loops); and an
-    optional headless intent-distill daemon (mirror daemon-learn) for auto-refresh.
+  - DONE Phase C (AUTOMATION): intent_daemon.rs — auto re-distills with NO manual click, on a
+    cadence (default check 30min, at least daily) OR after N new prompts (default 10); idempotent
+    via _meta/intents_distill_cursor.json. On by default, auto-starts with other daemons. Toggle +
+    tuning on the Daemons settings page. Manual Distill button still available. cargo + build green.
+  - OPTIONAL future: a per-recommendation "turn into task / loop" button (taskgen + loops wiring).
   - Today intents look like just a list of prompts. Define the bigger purpose.
   - Drill down into an intent → get recommendations/actions out of it.
   - Infer HIGH-LEVEL intent across sessions/domains (e.g. "Is Toyota better than Honda?"
