@@ -12,7 +12,7 @@ import { Toggle, Sparkline, ThinkingDisclosure } from "./ui";
 import type { AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Brand, BrandLogo, CatalogApp, ChatEvent, ChatMessage, CliInfo, CliVerifyInfo, Connector, ConnectorCatalog, ContextScore, DaemonStatus, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainToggle, EngineApp, IngestionArtifact, IngestionMcpServer, IngestionTierStatus, LifeReadiness, MatrixRow, Mode, ModelPick, ModelVerifyStatus, Palette, PanelistReply, PanelistSlot, RunDetail, SkillEntry, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn } from "./types";
 import { appScheduleText, bytesHuman, domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
 import { AUTONOMY_LABEL, AUTONOMY_TINT, DISCOVERED_MODELS, DOMAIN_LABEL, FRAMEWORKS, INTEGRATION_LABEL, LENSES, MODELS, MODEL_SEP, PALETTES, PATTERN_LABEL, PATTERN_TIER, SETTINGS_ROW, SKILL_TOKEN_RE, SOURCE_ABBR, STATUS_TINT, VENDOR_BRAND } from "./constants";
-import { LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, lsGet, lsSet, setDomainToggle, setPref } from "./storage";
+import { BUNKER_LS, LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet, setDomainToggle, setPref } from "./storage";
 import { AppCard, AppKV, BridgeStatusChips, CycleChip, DemoRibbon, FloatingChip, ResizeHandle } from "./widgets";
 import { ContextScorePanel, DomainAppsTab, IngestionTierCard, OnboardingModal, PaletteCard } from "./panels3";
 import { BACKUP_CFG, backupVaultNow, bumpBackupChangeCount, startBackupScheduler } from "./backup";
@@ -369,15 +369,6 @@ const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
 
 
 // ── Bunker Mode (app-wide local-only trust mode) ──
-// The backend (bunker.rs) is the source of truth and enforces at the execution
-// layer; this mirror lets deeply-nested components (the composer, model pickers,
-// send/convene) read the flag synchronously without prop-threading through the
-// 12k-line tree. Kept in sync from bunker_status on mount and on every toggle.
-// Default ON: absent flag ⇒ locked down. (matches bunker.rs default)
-const BUNKER_LS = "prevail.pref.bunkerMode";
-function isBunkerOn(): boolean {
-  return lsGet(BUNKER_LS, "1") !== "0";
-}
 // Providers that serve models from this machine only — mirror bunker.rs LOCAL_CLIS.
 // Bunker Mode auto-switch target: the local provider to fall back to when a
 // cloud CLI is selected. First *available* local CLI, or null if none is

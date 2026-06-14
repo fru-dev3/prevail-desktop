@@ -40,6 +40,16 @@ export function lsSet(key: string, value: string): void {
   if (typeof key === "string" && key.startsWith("prevail.")) scheduleUiPrefsPush();
 }
 
+// Bunker Mode mirror. The backend (bunker.rs) is the source of truth and enforces
+// at the execution layer; this localStorage mirror lets deeply-nested components
+// (composer, model pickers, send/convene) read the flag synchronously without
+// prop-threading through the tree. Kept in sync from bunker_status on mount and on
+// every toggle. Default ON: absent flag ⇒ locked down (matches bunker.rs default).
+export const BUNKER_LS = "prevail.pref.bunkerMode";
+export function isBunkerOn(): boolean {
+  return lsGet(BUNKER_LS, "1") !== "0";
+}
+
 // ── Cross-device UI prefs sync ───────────────────────────────────────────────
 // Pins, model picks, and per-domain toggles live in per-surface localStorage,
 // so the WebUI used to start blank versus the desktop. We mirror the syncable
