@@ -738,6 +738,30 @@ pub fn engine_app_sync(id: String, vault: String) -> Result<serde_json::Value, S
     run_engine_json(&["connectors", "sync", &id, "--vault", &vault, "--json"])
 }
 
+/// Connection Agent: given an app name + a plain-language goal, research the best
+/// available connection method (MCP/API/CLI/Composio/browser), scaffold the app,
+/// and return a plan { ok, plan:{integration, why, auth_step, schedule, domains,
+/// data}, error? }. This is the describe-the-goal alternative to catalog forms.
+#[tauri::command]
+pub fn engine_app_connect(
+    name: String,
+    goal: String,
+    vault: String,
+    provider: Option<String>,
+    model: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let mut args: Vec<String> = vec![
+        "connectors".into(), "connect".into(),
+        "--name".into(), name,
+        "--goal".into(), goal,
+        "--vault".into(), vault,
+    ];
+    if let Some(p) = provider { if !p.trim().is_empty() { args.push("--cli".into()); args.push(p); } }
+    if let Some(m) = model { if !m.trim().is_empty() { args.push("--model".into()); args.push(m); } }
+    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_engine_json(&refs)
+}
+
 /// Ideal-state alignment report: per-pillar fit score + rationale + actions.
 /// Signal mode (no model) by default; fast + side-effect-light.
 #[tauri::command]
