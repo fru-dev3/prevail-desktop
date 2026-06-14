@@ -172,14 +172,22 @@ fn parse_intents_output(out: &str) -> Result<serde_json::Value, String> {
     Ok(v)
 }
 
-/// Distill the raw intent ledger into high-level intents + recommendations and
-/// persist them to <vault>/_meta/intents_distilled.json. Runs a single model
-/// pass (a cheap model is plenty). Returns the written document.
-#[tauri::command]
-pub(crate) async fn intents_distill(
-    cfg: IntentsDistillCfg,
+/// Count every intent record across the vault. Cheap signal the daemon uses to
+/// decide whether enough NEW prompts have arrived to be worth a model pass.
+pub(crate) fn count_intents(vault: &str) -> usize {
+    intents_read_all(vault.to_string(), None).map(|v| v.len()).unwrap_or(0)
+}
+
+/// The reusable distillation core — called by both the manual command and the
+/// background daemon. Reads the ledger, runs one model pass, writes
+/// <vault>/_meta/intents_distilled.json, and returns the document.
+pub(crate) async fn distill_intents_core(
+    vault: &str,
+    provider: &str,
+    model: &str,
+    limit: usize,
 ) -> Result<serde_json::Value, String> {
-    let intents = intents_read_all(cfg.vault.clone(), Some(cfg.limit.unwrap_or(200)))?;
+    let intents = intents_read_all(vault.to_string(), Some(limit))?;
     if intents.is_empty() {
         return Err("No intents captured yet — chat a bit first.".into());
     }
@@ -197,17 +205,12 @@ pub(crate) async fn intents_distill(
     if activity.trim().is_empty() {
         return Err("No prompt text to analyze.".into());
     }
-    let ideal = crate::ideal_state_preamble(std::path::Path::new(&cfg.vault));
+    let ideal = crate::ideal_state_preamble(std::path::Path::new(vault));
     let prompt = format!("{ideal}{}", build_intents_prompt(&activity));
 
-    // Local-only guarantee: distilling runs a model over vault content.
-    crate::bunker::guard_cli(&cfg.provider)?;
-    let model = if cfg.model.is_empty() {
-        None
-    } else {
-        Some(cfg.model.as_str())
-    };
-    let out = crate::telegram_bridge::run_cli(&cfg.provider, model, &prompt).await?;
+    crate::bunker::guard_cli(provider)?;
+    let model_opt = if model.is_empty() { None } else { Some(model) };
+    let out = crate::telegram_bridge::run_cli(provider, model_opt, &prompt).await?;
     if out.trim().is_empty() {
         return Err("intent distiller produced no output".into());
     }
@@ -217,13 +220,23 @@ pub(crate) async fn intents_distill(
         "source_count": intents.len(),
         "intents": arr,
     });
-    let meta_dir = PathBuf::from(&cfg.vault).join("_meta");
+    let meta_dir = PathBuf::from(vault).join("_meta");
     fs::create_dir_all(&meta_dir).map_err(|e| format!("mkdir _meta: {e}"))?;
     let path = meta_dir.join("intents_distilled.json");
     let body = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
     fs::write(&path, engine::maybe_encrypt(&path, &body))
         .map_err(|e| format!("write intents_distilled.json: {e}"))?;
     Ok(doc)
+}
+
+/// Distill the raw intent ledger into high-level intents + recommendations and
+/// persist them to <vault>/_meta/intents_distilled.json. Runs a single model
+/// pass (a cheap model is plenty). Returns the written document.
+#[tauri::command]
+pub(crate) async fn intents_distill(
+    cfg: IntentsDistillCfg,
+) -> Result<serde_json::Value, String> {
+    distill_intents_core(&cfg.vault, &cfg.provider, &cfg.model, cfg.limit.unwrap_or(200)).await
 }
 
 /// Read the last distilled-intents document (empty shell if none yet).

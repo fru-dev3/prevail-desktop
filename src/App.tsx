@@ -17,7 +17,7 @@ const SettingsPanel = lazy(() => import("./settingspanel").then((m) => ({ defaul
 const BenchmarkPanel = lazy(() => import("./benchpanel").then((m) => ({ default: m.BenchmarkPanel })));
 import { Sidebar } from "./sidebar";
 import { useAppearance, useFrameworkLens } from "./hooks";
-import { distillCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
+import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
 import { autoVerifyClis } from "./verify";
 import { startBenchScheduler } from "./bench";
 import { bumpBackupChangeCount, startBackupScheduler } from "./backup";
@@ -520,6 +520,14 @@ export default function App() {
       invoke("skillgen_start", { cfg: skillgenCfgFromPrefs(vaultPath) }).catch((e) => console.error("skillgen_start", e));
     } else {
       invoke("skillgen_stop").catch(() => {});
+    }
+    // Intent distillation (self-learning) — on by default so high-level intents
+    // + recommendations stay fresh automatically (cadence + new-prompt trigger),
+    // with no manual button press.
+    if (getPref(PREF.intentDaemonEnabled, "1") === "1") {
+      invoke("intent_daemon_start", { cfg: intentDaemonCfgFromPrefs(vaultPath) }).catch((e) => console.error("intent_daemon_start", e));
+    } else {
+      invoke("intent_daemon_stop").catch(() => {});
     }
   }, [vaultPath]);
   useEffect(() => {

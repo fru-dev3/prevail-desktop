@@ -18,6 +18,7 @@ mod chat;
 mod children;
 mod clis;
 mod distill;
+mod intent_daemon;
 mod domain;
 mod intents;
 mod idealstate;
@@ -252,6 +253,7 @@ pub fn run() {
         .manage(ingestion::OrchestratorState::default())
         .manage(telegram_bridge::BridgeState::new())
         .manage(distill::DistillState::new())
+        .manage(intent_daemon::IntentDaemonState::new())
         .manage(reminders::RemindersState::new())
         .manage(taskgen::TaskGenState::new())
         .manage(skillgen::SkillGenState::new())
@@ -279,6 +281,9 @@ pub fn run() {
             intents::intents_read_all,
             intents::intents_distill,
             intents::intents_distilled_read,
+            intent_daemon::intent_daemon_start,
+            intent_daemon::intent_daemon_stop,
+            intent_daemon::intent_daemon_status,
             intents::journal_append,
             intents::decision_append,
             intents::decisions_read,

@@ -149,6 +149,12 @@ export const PREF = {
   webuiPort: "prevail.pref.webuiPort",                     // integer port
   webuiUser: "prevail.pref.webuiUser",                     // login username
   webuiPass: "prevail.pref.webuiPass",                     // login password (local only)
+  // Intent distillation daemon — automated, default ON. Re-distills high-level
+  // intents on a cadence and/or after enough new prompts, no manual click.
+  intentDaemonEnabled: "prevail.pref.intentDaemonEnabled",     // "1" | "0" (default on)
+  intentDaemonIntervalSec: "prevail.pref.intentDaemonIntervalSec", // how often to CHECK
+  intentDaemonMinNew: "prevail.pref.intentDaemonMinNew",       // distill after N new prompts
+  intentDaemonMaxAgeSec: "prevail.pref.intentDaemonMaxAgeSec", // OR if older than this (daily)
   // Telemetry — anonymous, opt-in, default OFF. Independent crash vs usage
   // sub-toggles. distinctId is a random local UUID, never tied to identity.
   telemetryUsage: "prevail.pref.telemetryUsage",           // "1" | "0" — PostHog anonymous usage analytics
