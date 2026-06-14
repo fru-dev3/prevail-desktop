@@ -10,6 +10,7 @@ import { Markdown, StreamingPlain } from "./Markdown";
 import { scoreColor, formatFreshness, titleCase, relTime } from "./format";
 import { Toggle, Sparkline, ThinkingDisclosure } from "./ui";
 import type { AlignmentReport, AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Brand, BrandLogo, CatalogApp, ChatEvent, ChatMessage, CliInfo, CliProvider, CliVerifyInfo, Connector, ConnectorCatalog, ContextScore, DaemonStatus, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainTask, DomainToggle, EngineApp, Framework, IngestionAction, IngestionArtifact, IngestionAuditEntry, IngestionMcpServer, IngestionTierStatus, Lens, LifeReadiness, MatrixRow, MissingItem, Mode, ModelPick, ModelVerifyStatus, OnboardingRecommendation, Palette, PanelistReply, PanelistSlot, PortalRecipe, PreambleOption, RunDetail, ScoreBreakdown, SkillEntry, SurfaceResult, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn, UsageBucket, UsageSummary } from "./types";
+import { bytesHuman, formatAuditedAt, splitThinking, appScheduleText, compactNum, fmtCost } from "./helpers";
 
 // Single source of truth for the version chip in title bar.
 // Injected by Vite from package.json — never hand-stamp this again.
@@ -628,12 +629,6 @@ const ONBOARDING_QUESTIONS: {
   { id: "other", prompt: "Anything else you'd like a domain for?", placeholder: "learning, relationships, travel, side projects…" },
 ];
 
-function bytesHuman(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
 
 // The six dimensions, in display order, with friendly labels. Frozen to
 // match the engine's ScoreBreakdown shape.
@@ -647,14 +642,6 @@ const SCORE_DIMENSIONS: { key: keyof ScoreBreakdown; label: string }[] = [
 ];
 
 // Color thresholds: green >=75, amber 50-74, red <50. Returns a CSS color.
-function formatAuditedAt(ms: number | null): string {
-  if (!ms) return "never audited";
-  try {
-    return new Date(ms).toLocaleString();
-  } catch {
-    return "unknown";
-  }
-}
 const SEVERITY_ORDER: Record<string, number> = { critical: 0, warn: 1, info: 2 };
 const SEVERITY_LABEL: Record<string, string> = {
   critical: "Critical",
@@ -4505,15 +4492,6 @@ function CycleChip({
 // Pull <think>…</think> / <thinking>…</thinking> reasoning blocks out of a
 // model's output so they can render in a collapsible disclosure instead of
 // polluting the answer. Tolerates an unclosed trailing block during streaming.
-function splitThinking(raw: string): { thinking: string; answer: string } {
-  if (!raw || raw.indexOf("<think") === -1) return { thinking: "", answer: raw };
-  let thinking = "";
-  const answer = raw.replace(/<think(?:ing)?>([\s\S]*?)(?:<\/think(?:ing)?>|$)/gi, (_m, inner: string) => {
-    thinking += inner;
-    return "";
-  });
-  return { thinking: thinking.trim(), answer: answer.trim() };
-}
 
 // Collapsible "Thinking" disclosure. Native <details> — no per-card React
 // state. Gated by the Show-model-thinking preference at the call site.
@@ -4734,13 +4712,6 @@ const AUTONOMY_TINT: Record<string, string> = {
   "read-only": "#2fb87a", draft: "#d8a657", act: "#e06c75",
 };
 // Human-readable cadence from the refresh block (every / on / at).
-function appScheduleText(app: EngineApp): string {
-  if (!app.refresh?.every) return "Manual. No schedule set.";
-  const parts = [`Every ${app.refresh.every}`];
-  if (app.refresh.on) parts.push(titleCase(app.refresh.on));
-  if (app.refresh.at) parts.push(`at ${app.refresh.at}`);
-  return parts.join(" · ");
-}
 
 // Small labelled section card used across the app facets. Keeps each block
 // visually distinct without the old wall-of-monospace look.
@@ -6834,16 +6805,6 @@ function DomainActionsMenu({
 // at least one captured turn, so new vaults stay clean.
 
 
-function compactNum(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
-  return `${n}`;
-}
-function fmtCost(n: number): string {
-  if (n === 0) return "$0";
-  if (n < 0.01) return "<$0.01";
-  return `$${n.toFixed(2)}`;
-}
 
 // The user's Ideal State (constitution) framed as highest-precedence law and
 // prepended to chat/council prompts the desktop sends directly. Mirrors the
@@ -19408,4 +19369,5 @@ function McpCard() {
 }
 
 // BriefingsCard removed — landing back in v0.3 when wired up.
+
 
