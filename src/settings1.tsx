@@ -241,6 +241,7 @@ export function IngestionSection() {
   const [mcp, setMcp] = useState<IngestionMcpServer[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [artifacts, setArtifacts] = useState<IngestionArtifact[]>([]);
+  const [ingestionTab, setIngestionTab] = useState<"api" | "composio" | "browser">("api");
 
   async function refresh() {
     try {
@@ -292,25 +293,62 @@ export function IngestionSection() {
         <div className="mb-4 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{err}</div>
       )}
 
-      <div className="space-y-6">
-        {tiers.map((t) => (
-          <IngestionTierCard
-            key={t.id}
-            tier={t}
-            mcp={t.id === "tier_a_mcp" ? mcp : undefined}
-            onRefresh={refresh}
-            onOpenMcpConfig={openMcpConfig}
-            onReloadMcp={reloadMcp}
-          />
-        ))}
-        {tiers.length === 0 && (
-          <div className="rounded border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
-            Loading tier status…
+      {/* Separate the tiers into clear tabs by HOW they connect, so the page is
+          one focused mode at a time instead of a long mixed stack: programmatic
+          (API/MCP), the Composio tool gateway, or a headed browser. */}
+      {(() => {
+        const TABS = [
+          { id: "api", label: "API & MCP", match: (id: string) => /mcp|cli/.test(id), hint: "Programmatic connectors and MCP servers." },
+          { id: "composio", label: "Composio", match: (id: string) => /composio/.test(id), hint: "The Composio tool gateway: one integration, many apps." },
+          { id: "browser", label: "Browser", match: (id: string) => /browser/.test(id), hint: "Manual, headed browser automation." },
+        ] as const;
+        const active = ingestionTab;
+        const activeDef = TABS.find((t) => t.id === active) ?? TABS[0];
+        const shown = tiers.filter((t) => activeDef.match(t.id));
+        return (
+          <div className="space-y-4">
+            <div className="flex gap-1 rounded-lg border border-border bg-surface p-1">
+              {TABS.map((t) => {
+                const count = tiers.filter((x) => t.match(x.id)).length;
+                const on = t.id === active;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setIngestionTab(t.id)}
+                    className={`flex-1 rounded-md px-3 py-1.5 text-center text-sm font-medium transition-colors ${on ? "bg-accent-soft text-accent" : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"}`}
+                  >
+                    {t.label}{count > 0 && <span className="ml-1.5 font-mono text-[10px] text-text-muted">{count}</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="px-1 text-xs text-text-muted">{activeDef.hint}</p>
+            {shown.map((t) => (
+              <IngestionTierCard
+                key={t.id}
+                tier={t}
+                mcp={t.id === "tier_a_mcp" ? mcp : undefined}
+                onRefresh={refresh}
+                onOpenMcpConfig={openMcpConfig}
+                onReloadMcp={reloadMcp}
+              />
+            ))}
+            {tiers.length === 0 && (
+              <div className="rounded border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+                Loading tier status…
+              </div>
+            )}
+            {tiers.length > 0 && shown.length === 0 && active !== "browser" && (
+              <div className="rounded border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+                Nothing configured in this tier yet.
+              </div>
+            )}
+            {active === "browser" && <IngestionBrowserRunner />}
           </div>
-        )}
+        );
+      })()}
 
-        <IngestionBrowserRunner />
-
+      <div className="mt-6 space-y-6">
         <IngestionAuditPanel />
 
         {artifacts.length > 0 && (
