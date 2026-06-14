@@ -10,8 +10,8 @@ import { Markdown, StreamingPlain } from "./Markdown";
 import { scoreColor, formatFreshness, titleCase, relTime } from "./format";
 import { Toggle, Sparkline, ThinkingDisclosure } from "./ui";
 import type { AlignmentReport, AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Brand, BrandLogo, CatalogApp, ChatEvent, ChatMessage, CliInfo, CliProvider, CliVerifyInfo, Connector, ConnectorCatalog, ContextScore, DaemonStatus, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainTask, DomainToggle, EngineApp, Framework, IngestionAction, IngestionArtifact, IngestionAuditEntry, IngestionMcpServer, IngestionTierStatus, Lens, LifeReadiness, MatrixRow, MissingItem, Mode, ModelPick, ModelVerifyStatus, OnboardingRecommendation, Palette, PanelistReply, PanelistSlot, PortalRecipe, PreambleOption, RunDetail, ScoreBreakdown, SkillEntry, SurfaceResult, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn, UsageBucket, UsageSummary } from "./types";
-import { bytesHuman, formatAuditedAt, splitThinking, appScheduleText, compactNum, fmtCost } from "./helpers";
-import { ANSI_RE, AUTONOMY_LABEL, AUTONOMY_TINT, DOMAIN_BLURBS, DOMAIN_LABEL, DOMAIN_PALETTE, INTEGRATION_LABEL, LOCAL_CLI_IDS, PATTERN_LABEL, PATTERN_TIER, PATTERN_TINT, SEVERITY_LABEL, SEVERITY_ORDER, SKILL_TOKEN_RE, SOURCE_ABBR, STATUS_TINT, SYCOPHANCY_RE, VENDOR_BRAND } from "./constants";
+import { appScheduleText, bytesHuman, compactNum, domainBlurb, domainColor, domainTogglesKey, fmtCost, formatAuditedAt, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
+import { AUTONOMY_LABEL, AUTONOMY_TINT, DOMAIN_LABEL, INTEGRATION_LABEL, PATTERN_LABEL, PATTERN_TIER, PATTERN_TINT, SEVERITY_LABEL, SEVERITY_ORDER, SKILL_TOKEN_RE, SOURCE_ABBR, STATUS_TINT, SYCOPHANCY_RE, VENDOR_BRAND } from "./constants";
 
 // Single source of truth for the version chip in title bar.
 // Injected by Vite from package.json — never hand-stamp this again.
@@ -451,9 +451,6 @@ function domainIcon(name: string): LucideIcon | null {
 // Friendly one-line descriptions for the domain cards — plain, warm, no jargon.
 // Shown as the card subtitle; falls back to a generic line for unknown domains.
 
-function domainBlurb(name: string): string {
-  return DOMAIN_BLURBS[name.toLowerCase()] ?? "A space to track and work on this part of your life.";
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // Provider brand marks. Real SVG glyphs from simple-icons (MIT) for
@@ -485,10 +482,6 @@ const siOllama = siOllamaRaw as { path: string };
 
 // Brand accent for a vendor, safe for text/border use. Returns the hex
 // plus a low-alpha tint suitable for a subtle bubble background.
-function vendorAccent(vendor: string): { accent: string; tint: string } {
-  const v = VENDOR_BRAND[vendor] ?? VENDOR_BRAND.other;
-  return { accent: v.accent, tint: `${v.accent}14` }; // 14 ≈ 8% alpha
-}
 
 function ProviderMark({ vendor, size = 28 }: { vendor: string; size?: number }) {
   const v = VENDOR_BRAND[vendor] ?? VENDOR_BRAND.other;
@@ -671,9 +664,6 @@ const LS = {
 // council on/off · web access · save replies · serendipity · auto-council.
 // `null` / "" domain means General — it gets its own bucket so the modes
 // persist there too.
-function domainTogglesKey(domain: string | null, t: DomainToggle): string {
-  return `prevail.desktop.domain.${domain || "__general__"}.${t}`;
-}
 function getDomainToggle(domain: string | null, t: DomainToggle, fallback: boolean): boolean {
   const raw = lsGet(domainTogglesKey(domain, t));
   if (raw === "") return fallback;
@@ -748,42 +738,15 @@ function isBunkerOn(): boolean {
   return lsGet(BUNKER_LS, "1") !== "0";
 }
 // Providers that serve models from this machine only — mirror bunker.rs LOCAL_CLIS.
-function isLocalCli(id: string): boolean {
-  return LOCAL_CLI_IDS.has(id.toLowerCase());
-}
 // Bunker Mode auto-switch target: the local provider to fall back to when a
 // cloud CLI is selected. First *available* local CLI, or null if none is
 // installed/running. Mirrors bunker.rs `preferred_local_cli` (Ollama today;
 // LM Studio / MLX detection is a recorded deferred refinement).
-function preferredLocalCli(clis: { id: string; available: boolean }[]): string | null {
-  return clis.find((c) => isLocalCli(c.id) && c.available)?.id ?? null;
-}
 
 // Does a prompt look like a judgment call worth convening the council for, vs a
 // quick factual question a single model handles? Used by Auto-council's "smart"
 // mode (the user's expectation: spin off a council only when the question needs
 // it). Heuristic, deliberately transparent.
-function looksLikeJudgmentCall(text: string): boolean {
-  const t = text.toLowerCase().trim();
-  if (t.length < 12) return false;
-  // Decision / comparison / tradeoff signals.
-  const signals = [
-    /\bshould (i|we|my|the)\b/, /\bshould\b.*\?/, /\b(vs|versus)\b/, /\bor (should|to|the|a|just)\b/,
-    /\bbetter to\b/, /\bworth (it|the)\b/, /\bpros and cons\b/, /\btrade[- ]?offs?\b/,
-    /\b(decide|decision|deciding)\b/, /\bwhich (one|option|is better|should)\b/,
-    /\b(do i|should i) (sell|buy|quit|move|invest|replace|hire|fire|switch|leave|take|accept|sign|refinance)\b/,
-    /\bhow should i\b/, /\bwhat would you (do|recommend)\b/, /\bis it (worth|smart|wise|a good idea)\b/,
-    /\b(now or|wait or|stay or)\b/, /\brisk(s|y)?\b.*\?/,
-    // Advice / brainstorm prompts the council is well-suited to (the user's own
-    // example: "can you suggest some actions?").
-    /\b(suggest|recommend|advise|advice)\b/, /\bwhat should i\b/, /\bhelp me (decide|choose|figure|think|plan)\b/,
-    /\bideas? (for|on|about)\b/, /\bwhat (are|would be) (some|the best)\b/, /\bhow (do|should) i (approach|handle|plan)\b/,
-  ];
-  if (signals.some((re) => re.test(t))) return true;
-  // High-stakes life words plus a question mark = likely a real decision.
-  const stakes = /\b(mortgage|rsu|vest|salary|comp|promotion|invest|retire|529|hvac|insurance|umbrella|surgery|diagnosis|relocat|tenant|lawsuit|equity|severance)\b/;
-  return stakes.test(t) && t.includes("?");
-}
 
 // ── CLI validation (app-wide) ───────────────────────────────────────────────
 // One live validity status per provider, auto-checked at launch so every
@@ -1054,9 +1017,6 @@ function ResizeHandle({ onChange, ariaLabel }: { onChange: (deltaPx: number) => 
 // Strip ANSI escape codes (CSI sequences) that some CLIs emit even in
 // non-TTY mode — ollama is the worst offender with its progress
 // spinner. Without this the chat shows garbage like `[4D[K`.
-function stripAnsi(s: string): string {
-  return s.replace(ANSI_RE, "");
-}
 // Safety: scrub obvious secrets (API keys, bearer tokens, key=value secrets)
 // before persisting to the intent ledger, when Redact Secrets is enabled.
 function maybeRedact(s: string): string {
@@ -1448,11 +1408,6 @@ function OnboardingModal({
 
 // Deterministic per-domain accent color — turns the monochrome card grid
 // into a colorful, scannable board. Muted, on-brand palette.
-function domainColor(name: string): string {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return DOMAIN_PALETTE[h % DOMAIN_PALETTE.length];
-}
 // Browser login screen for the WebUI. Authenticates against the bridge
 // server's /api/login, stores the token, then lets the real app mount.
 // Desktop passcode gate. For a plaintext vault with an app lock (Phase 0) it
@@ -19285,6 +19240,7 @@ function McpCard() {
 }
 
 // BriefingsCard removed — landing back in v0.3 when wired up.
+
 
 
 
