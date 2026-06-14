@@ -13,6 +13,7 @@ import { isBunkerOn, lsGet, lsSet } from "./storage";
 import { Sparkline } from "./ui";
 import { BenchCrumbs, Field, ScoreBar, SubsectionHeader } from "./panels";
 import { domainIcon } from "./icons";
+import { CollapsibleSection } from "./collapsible";
 import { BENCH_CLI_OPTIONS, benchBatches, benchNotify, cancelBenchBatch, executeBenchBatch, useBenchBatches } from "./bench";
 import { ProviderMark } from "./marks";
 import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Domain, MatrixRow, RunDetail } from "./types";
@@ -989,6 +990,30 @@ export function BenchResults({
   }, [visibleRuns, matrix, domainFilter]);
   const [expandedModel, setExpandedModel] = useState<string | null>(initialModel ?? null);
 
+  // Accurate coverage counts, derived straight from the raw run records (the
+  // source of truth: each run lists the domains it covered and which model ran).
+  // This is what makes the History trustworthy — "how many times was THIS domain
+  // benchmarked, and by how many distinct models" — counted, never estimated.
+  const coverage = useMemo(() => {
+    const byDomain = new Map<string, { runs: number; models: Set<string> }>();
+    const allModels = new Set<string>();
+    for (const r of visibleRuns) {
+      const p = parseRunLabel(r.label);
+      const mk = `${p.vendor}::${p.model || r.label}`;
+      allModels.add(mk);
+      for (const d of r.domains) {
+        const e = byDomain.get(d) ?? { runs: 0, models: new Set<string>() };
+        e.runs += 1;
+        e.models.add(mk);
+        byDomain.set(d, e);
+      }
+    }
+    const rows = [...byDomain.entries()]
+      .map(([domain, v]) => ({ domain, runs: v.runs, models: v.models.size }))
+      .sort((a, b) => b.runs - a.runs || a.domain.localeCompare(b.domain));
+    return { rows, totalRuns: visibleRuns.length, modelCount: allModels.size };
+  }, [visibleRuns]);
+
 
   if (selected) {
     const p = parseRunLabel(selected.score.label);
@@ -1112,6 +1137,37 @@ export function BenchResults({
             ? <>No runs yet. Head to <span className="text-accent">Run</span> to kick one off.</>
             : <>No runs cover <span className="text-accent">{titleCase(domainFilter)}</span> yet. Run a benchmark scoped to it, or switch the filter to all domains.</>}
         </div>
+      )}
+
+      {/* Accurate coverage: counted from the run records, not estimated. Answers
+          "how many times has each domain been benchmarked, by how many models". */}
+      {visibleRuns.length > 0 && coverage.rows.length > 0 && (
+        <CollapsibleSection
+          icon={Target}
+          title="Coverage by domain"
+          subtitle="Counted directly from every run record."
+          summary={`${coverage.totalRuns} runs · ${coverage.modelCount} models · ${coverage.rows.length} domains`}
+          className="mb-4"
+        >
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border-subtle text-left font-mono text-[10px] uppercase tracking-wider text-text-muted">
+                <th className="py-1.5 pr-3 font-medium">Domain</th>
+                <th className="py-1.5 pr-3 text-right font-medium">Benchmark runs</th>
+                <th className="py-1.5 text-right font-medium">Distinct models</th>
+              </tr>
+            </thead>
+            <tbody>
+              {coverage.rows.map((r) => (
+                <tr key={r.domain} className="border-b border-border-subtle/40 last:border-0">
+                  <td className="py-1.5 pr-3 text-text-primary">{titleCase(r.domain)}</td>
+                  <td className="py-1.5 pr-3 text-right font-mono text-text-secondary">{r.runs}</td>
+                  <td className="py-1.5 text-right font-mono text-text-secondary">{r.models}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CollapsibleSection>
       )}
 
       {loadingDetail && <div className="mb-2 text-xs text-text-muted">loading…</div>}
