@@ -19,6 +19,14 @@ export const BACKUP_FREQ_MS: Record<string, number> = {
   monthly: 30 * 86_400_000,
 };
 
+// Resolve a backup schedule value to ms, supporting an arbitrary "every N days"
+// cadence ("custom:N") on top of the presets. Shared by the card + scheduler.
+export function backupFreqMs(freq: string): number {
+  const m = /^custom:(\d+)$/.exec(freq);
+  if (m) return Math.max(1, parseInt(m[1], 10)) * 86_400_000;
+  return BACKUP_FREQ_MS[freq] ?? BACKUP_FREQ_MS.weekly;
+}
+
 export let backupSchedTimer: number | null = null;
 
 export function bumpBackupChangeCount() {
@@ -51,7 +59,7 @@ export function startBackupScheduler(vault: string) {
   const tick = async () => {
     try {
       if (lsGet(BACKUP_CFG.enabled, "0") !== "1") return;
-      const freq = BACKUP_FREQ_MS[lsGet(BACKUP_CFG.freq, "weekly") || "weekly"] ?? BACKUP_FREQ_MS.weekly;
+      const freq = backupFreqMs(lsGet(BACKUP_CFG.freq, "weekly") || "weekly");
       const last = Number(lsGet(BACKUP_CFG.lastRun, "0")) || 0;
       if (Date.now() - last < freq) return;
       await backupVaultNow(vault);
