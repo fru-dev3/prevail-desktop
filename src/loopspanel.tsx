@@ -4,7 +4,7 @@
 // and current actions. The runner daemon (separate) evaluates enabled loops and
 // keeps their actions current; here you define and steer them.
 import { useCallback, useEffect, useState } from "react";
-import { ChevronRight, Infinity as InfinityIcon, Plus, RefreshCw, Target, Trash2 } from "lucide-react";
+import { Check, ChevronRight, Infinity as InfinityIcon, Plus, RefreshCw, ShieldQuestion, Target, Trash2, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase } from "./format";
 import { Toggle } from "./ui";
@@ -14,11 +14,14 @@ import {
   type LoopCadence,
   type LoopType,
   type LoopsDoc,
+  type LoopsRuntime,
   hasSeed,
   makeLoop,
   readLoops,
+  readLoopsRuntime,
   seedLoopsFor,
   writeLoops,
+  writeLoopsRuntime,
 } from "./loops";
 
 const CADENCES: LoopCadence[] = ["continuous", "daily", "weekly", "monthly"];
@@ -31,12 +34,43 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
   const [newType, setNewType] = useState<LoopType>("open");
   const [newCadence, setNewCadence] = useState<LoopCadence>("weekly");
   const [savedAt, setSavedAt] = useState(0);
+  const [runtime, setRuntime] = useState<LoopsRuntime>({ schema: 1, loops: {} });
 
   useEffect(() => {
     let alive = true;
     readLoops(domainPath).then((d) => { if (alive) setDoc(d); });
-    return () => { alive = false; };
+    readLoopsRuntime(domainPath).then((rt) => { if (alive) setRuntime(rt); });
+    // The background loop runner advances loops + queues approvals; refresh when
+    // it reports a pass so new actions/proposals appear without a manual reload.
+    const onAdvanced = () => {
+      readLoops(domainPath).then((d) => { if (alive) setDoc(d); });
+      readLoopsRuntime(domainPath).then((rt) => { if (alive) setRuntime(rt); });
+    };
+    window.addEventListener("prevail:loops-advanced", onAdvanced);
+    return () => { alive = false; window.removeEventListener("prevail:loops-advanced", onAdvanced); };
   }, [domainPath]);
+
+  // Pending approvals across all of this domain's loops (the steps a loop is
+  // ASKING the user to OK before it acts).
+  const pending = doc
+    ? doc.loops.flatMap((l) =>
+        (runtime.loops[l.id]?.pending ?? []).map((p) => ({ loopId: l.id, loopName: l.name, text: p.text, ts: p.ts })),
+      )
+    : [];
+
+  const resolvePending = useCallback(async (loopId: string, text: string, approve: boolean) => {
+    if (approve) {
+      try { await invoke("tasks_add", { vault: vaultPath, domain, text, source: "loop" }); }
+      catch (e) { console.error("approve loop action → task", e); return; }
+    }
+    setRuntime((rt) => {
+      const entry = rt.loops[loopId];
+      if (!entry) return rt;
+      const next: LoopsRuntime = { ...rt, loops: { ...rt.loops, [loopId]: { ...entry, pending: entry.pending.filter((p) => p.text !== text) } } };
+      void writeLoopsRuntime(domainPath, next);
+      return next;
+    });
+  }, [vaultPath, domain, domainPath]);
 
   // Single persistence path: update local state, then write the whole doc.
   const persist = useCallback(async (next: LoopsDoc) => {
@@ -73,6 +107,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
     try {
       await invoke("loops_run_once", { vault: vaultPath });
       setDoc(await readLoops(domainPath));
+      setRuntime(await readLoopsRuntime(domainPath));
     } catch (e) { console.error("run loops", e); }
     finally { setRunning(false); }
   }, [vaultPath, domainPath]);
@@ -103,6 +138,36 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
           </button>
         )}
       </div>
+
+      {/* Needs your approval — steps a loop wants to take but that need your OK
+          first (spend money, contact someone, irreversible, or a decision only
+          you can make). This is the loop "asking for permission". */}
+      {pending.length > 0 && (
+        <section className="rounded-xl border border-accent-border bg-accent-soft/30 p-4">
+          <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-accent">
+            <ShieldQuestion className="h-3.5 w-3.5" /> Needs your approval · {pending.length}
+          </div>
+          <ul className="space-y-1.5">
+            {pending.map((p, i) => (
+              <li key={`${p.loopId}-${i}`} className="flex items-start gap-2 rounded-lg border border-border-subtle bg-background px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm text-text-primary">{p.text}</div>
+                  <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">{p.loopName}</div>
+                </div>
+                <button onClick={() => resolvePending(p.loopId, p.text, true)} title="Approve: file it as a task to act on"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:opacity-90">
+                  <Check className="h-3 w-3" /> approve
+                </button>
+                <button onClick={() => resolvePending(p.loopId, p.text, false)} title="Dismiss this proposal"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn">
+                  <X className="h-3 w-3" />
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[11px] text-text-muted">Approve to turn it into a task the system works on; dismiss to drop it. Loops keep running other steps automatically.</p>
+        </section>
+      )}
 
       {/* Desired state */}
       <section className="rounded-xl border border-border bg-surface p-4">
