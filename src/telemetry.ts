@@ -91,8 +91,43 @@ export function clearTelemetryLog() { lsSet(LOG_KEY, "[]"); }
 
 // ── Build-time keys (inert if absent) ────────────────────────────────────────
 const POSTHOG_KEY = (import.meta as { env?: Record<string, string> }).env?.VITE_POSTHOG_KEY ?? "";
+const POSTHOG_HOST = (import.meta as { env?: Record<string, string> }).env?.VITE_POSTHOG_HOST ?? "https://us.i.posthog.com";
 const SENTRY_DSN = (import.meta as { env?: Record<string, string> }).env?.VITE_SENTRY_DSN ?? "";
 export function telemetryConfigured(): boolean { return !!POSTHOG_KEY || !!SENTRY_DSN; }
+
+// ── PostHog (lazy) ────────────────────────────────────────────────────────────
+// The SDK is only imported on the first transmitted event — never at module load
+// — so a user who never opts in pays zero bytes for it. Privacy-hardened init:
+// no autocapture, no pageviews, no session recording, identified-only profiles,
+// and IP/geo collection disabled server-side via the property below.
+type PostHogLike = { capture: (e: string, p?: Record<string, unknown>) => void };
+let _posthog: PostHogLike | null = null;
+let _posthogInit: Promise<PostHogLike | null> | null = null;
+function ensurePosthog(): Promise<PostHogLike | null> {
+  if (_posthog) return Promise.resolve(_posthog);
+  if (_posthogInit) return _posthogInit;
+  if (!POSTHOG_KEY) return Promise.resolve(null);
+  _posthogInit = import("posthog-js")
+    .then(({ default: posthog }) => {
+      posthog.init(POSTHOG_KEY, {
+        api_host: POSTHOG_HOST,
+        autocapture: false,          // never scrape DOM clicks/inputs
+        capture_pageview: false,     // no URL/route capture
+        capture_pageleave: false,
+        disable_session_recording: true,
+        disable_surveys: true,
+        person_profiles: "identified_only",
+        persistence: "localStorage",
+        bootstrap: { distinctID: distinctId() },
+        ip: false,                   // no IP collection
+        property_blacklist: ["$current_url", "$pathname", "$host", "$referrer", "$referring_domain"],
+      });
+      _posthog = posthog as unknown as PostHogLike;
+      return _posthog;
+    })
+    .catch(() => null);
+  return _posthogInit;
+}
 
 // ── Public API ───────────────────────────────────────────────────────────────
 /**
@@ -105,9 +140,10 @@ export function track(event: TelemetryEvent, props?: Record<string, unknown>) {
   const willSend = usageOn() && !!POSTHOG_KEY;
   appendLog({ ts: Date.now(), event, props: clean, sent: willSend });
   if (!willSend) return;
-  // TODO(creds): forward to PostHog here once VITE_POSTHOG_KEY + posthog-js are
-  // wired — posthog.capture(event, { ...clean, distinct_id: distinctId() }).
-  // IP/geo disabled, autocapture off, distinct_id = distinctId().
+  // Forward to PostHog. Lazy-inits the SDK on first send; the scrubbed `clean`
+  // object is the ONLY payload — distinct_id is the random local UUID, IP/geo
+  // and autocapture are disabled in init(). Fire-and-forget; never throws.
+  void ensurePosthog().then((ph) => ph?.capture(event, clean)).catch(() => {});
 }
 
 /** Coarse OS family for the `os` property (never the full UA/machine name). */
