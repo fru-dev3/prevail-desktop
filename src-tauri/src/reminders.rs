@@ -96,7 +96,14 @@ pub fn today_str() -> String {
     unsafe {
         let t = libc::time(std::ptr::null_mut());
         let mut tm: libc::tm = std::mem::zeroed();
+        // localtime_r is POSIX-only; the MSVC CRT provides localtime_s with the
+        // arguments reversed. Both fill `tm` with local time.
+        #[cfg(not(windows))]
         libc::localtime_r(&t, &mut tm);
+        #[cfg(windows)]
+        {
+            let _ = libc::localtime_s(&mut tm, &t);
+        }
         format!(
             "{:04}-{:02}-{:02}",
             tm.tm_year + 1900,
