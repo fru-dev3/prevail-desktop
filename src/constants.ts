@@ -1,6 +1,11 @@
 // Pure data constants extracted from App.tsx.
 import type { Framework, Lens, ModelPick, Palette, ScoreBreakdown } from "./types";
 
+// App version, injected by Vite at build time. Shared so any surface (the
+// Bunker ribbon, the About section) shows the same string.
+declare const __APP_VERSION__: string;
+export const APP_VERSION = __APP_VERSION__;
+
 export const DOMAIN_BLURBS: Record<string, string> = {
   wealth: "Your money, savings, and the path to financial freedom.",
   finance: "Your money, savings, and the path to financial freedom.",
