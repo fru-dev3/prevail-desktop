@@ -1,0 +1,377 @@
+// Self-contained Settings sections extracted from App.tsx: Shortcuts, Frameworks
+// & Lenses, Remote/WebUI, and Ingestion. Each renders shared panel components and
+// the SettingsHeader; none close over App root state.
+import { Fragment, useEffect, useState } from "react";
+import { ArrowRight, Globe, Lightbulb, MessageSquare, Sparkles } from "lucide-react";
+import { invoke, listen } from "./bridge";
+import { FRAMEWORKS, LENSES } from "./constants";
+import { PREF, getPref, setPref } from "./storage";
+import { Toggle } from "./ui";
+import { IngestionAuditPanel, SettingsRowLite } from "./panels";
+import { IngestionBrowserRunner, PreambleColumn } from "./panels2";
+import { IngestionTierCard } from "./panels3";
+import { useFrameworkLens } from "./hooks";
+import { SettingsHeader } from "./sectionutil";
+import type { IngestionArtifact, IngestionMcpServer, IngestionTierStatus } from "./types";
+import type { UnlistenFn } from "./bridge";
+
+export function ShortcutsSection() {
+  type Entry = { keys: string[]; label: string; desc: string };
+  const groups: Array<{ name: string; entries: Entry[] }> = [
+    {
+      name: "Navigation",
+      entries: [
+        { keys: ["⌘", "K"], label: "New chat", desc: "Drops the current domain + thread, lands on the no-domain dashboard." },
+        { keys: ["⌘", "P"], label: "Quick switcher", desc: "Fuzzy finder over every domain and every saved thread." },
+        { keys: ["⌘", "B"], label: "Toggle sidebar", desc: "Collapses or expands the domain rail." },
+        { keys: ["⌘", ","], label: "Open Settings", desc: "Jumps to the settings panel from anywhere." },
+      ],
+    },
+    {
+      name: "Composer",
+      entries: [
+        { keys: ["↵"], label: "Send (Enter mode)", desc: "Default. Switch to ⌘+↵ in Settings → General → Send messages with." },
+        { keys: ["⇧", "↵"], label: "New line", desc: "Insert a hard newline without sending." },
+        { keys: ["↑"], label: "Recall last prompt", desc: "Walk backward through this domain's prompt history." },
+        { keys: ["↓"], label: "Recall next prompt", desc: "Walk forward; ↓ past the newest clears the composer." },
+        { keys: ["/"], label: "Skill autocomplete", desc: "Type / and a few letters to fuzzy-match a skill in this domain." },
+      ],
+    },
+    {
+      name: "Thread rail",
+      entries: [
+        { keys: ["double-click"], label: "Rename", desc: "Edit the thread's title inline. ↵ to confirm." },
+        { keys: ["+"], label: "New thread", desc: "Creates an empty thread file immediately: rename it before typing." },
+      ],
+    },
+  ];
+
+  const Key = ({ children }: { children: React.ReactNode }) => (
+    <kbd className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded border border-border bg-background px-1.5 font-mono text-[11px] font-medium text-text-primary shadow-sm">
+      {children}
+    </kbd>
+  );
+
+  return (
+    <>
+      <SettingsHeader title="Shortcuts" subtitle="Keyboard surface for common actions. Most are global: they work even while you're typing." />
+      <div className="space-y-6">
+        {groups.map((g) => (
+          <section key={g.name} className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+            <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
+              {g.name}
+            </div>
+            <ul className="flex flex-col divide-y divide-border-subtle">
+              {g.entries.map((e, i) => (
+                <li key={i} className="flex items-center justify-between gap-4 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-text-primary">{e.label}</div>
+                    <div className="mt-0.5 text-xs text-text-secondary">{e.desc}</div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {e.keys.map((k, j) => (
+                      <Fragment key={j}>
+                        <Key>{k}</Key>
+                        {j < e.keys.length - 1 && e.keys.length > 1 && k.length === 1 && e.keys[j+1].length === 1 && (
+                          <span className="text-[11px] text-text-muted">+</span>
+                        )}
+                      </Fragment>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </>
+  );
+}
+
+export function FrameworksSection() {
+  const fwLens = useFrameworkLens();
+  const activeFramework = FRAMEWORKS.find((f) => f.id === fwLens.framework);
+  const activeLens = LENSES.find((l) => l.id === fwLens.lens);
+  return (
+    <>
+      <SettingsHeader
+        title="Frameworks & Lenses"
+        subtitle="The bracketed preamble Prevail prepends to every prompt. A framework shapes the structure of the answer; a lens shapes the perspective it comes from."
+      />
+
+      {/* Why this matters, shown visually rather than as a paragraph. */}
+      <div className="mb-7 rounded-2xl border border-accent-border bg-accent-soft/40 p-5">
+        <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-accent">
+          <Lightbulb className="h-3.5 w-3.5" /> Why this matters
+        </div>
+
+        {/* The flow: raw question, wrapped in framework + lens, sharper answer. */}
+        <div className="mt-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-1 flex-col items-center rounded-xl border border-border-subtle bg-background px-3 py-3 text-center">
+            <MessageSquare className="h-5 w-5 text-text-muted" />
+            <div className="mt-1.5 text-sm font-semibold text-text-primary">Your question</div>
+            <div className="text-[11px] text-text-muted">as you'd type it</div>
+          </div>
+          <ArrowRight className="mx-auto h-4 w-4 shrink-0 rotate-90 text-accent sm:rotate-0" />
+          <div className="flex flex-1 flex-col items-center rounded-xl border border-accent-border bg-accent-soft px-3 py-3 text-center">
+            <div className="flex items-center gap-1.5 text-lg text-accent">◆<span className="text-text-muted">+</span>◇</div>
+            <div className="mt-1.5 text-sm font-semibold text-accent">Framework + Lens</div>
+            <div className="text-[11px] text-text-muted">a deliberate shape</div>
+          </div>
+          <ArrowRight className="mx-auto h-4 w-4 shrink-0 rotate-90 text-accent sm:rotate-0" />
+          <div className="flex flex-1 flex-col items-center rounded-xl border border-border-subtle bg-background px-3 py-3 text-center">
+            <Sparkles className="h-5 w-5 text-accent" />
+            <div className="mt-1.5 text-sm font-semibold text-text-primary">Sharper answer</div>
+            <div className="text-[11px] text-text-muted">structured, on-angle</div>
+          </div>
+        </div>
+
+        {/* What each control does. */}
+        <div className="mt-3 grid grid-cols-1 gap-3">
+          <div className="rounded-xl border border-border-subtle bg-background p-3.5">
+            <div className="flex items-center gap-2"><span className="text-accent">◆</span><span className="text-sm font-semibold text-text-primary">Framework</span></div>
+            <p className="mt-1 text-[13px] leading-snug text-text-secondary">Shapes the structure. BLUF leads with the answer; SCQA walks situation to recommendation.</p>
+          </div>
+          <div className="rounded-xl border border-border-subtle bg-background p-3.5">
+            <div className="flex items-center gap-2"><span className="text-accent">◇</span><span className="text-sm font-semibold text-text-primary">Lens</span></div>
+            <p className="mt-1 text-[13px] leading-snug text-text-secondary">Shapes the perspective. First principles, steelman, or an outsider's eye.</p>
+          </div>
+        </div>
+
+        <p className="mt-3 text-[13px] text-text-muted">Stack a framework with a lens to pressure-test one decision from several angles at once.</p>
+      </div>
+
+      {/* One full-width column, stacked: Frameworks, then Lenses. */}
+      <div className="space-y-8">
+        <PreambleColumn
+          glyph="◆"
+          title="Frameworks"
+          tagline="Structure: how the answer is shaped."
+          options={FRAMEWORKS}
+          active={activeFramework}
+          selectedId={fwLens.framework}
+          onSelect={fwLens.setFramework}
+        />
+        <PreambleColumn
+          glyph="◇"
+          title="Lenses"
+          tagline="Perspective: the angle the answer comes from."
+          options={LENSES}
+          active={activeLens}
+          selectedId={fwLens.lens}
+          onSelect={fwLens.setLens}
+        />
+      </div>
+
+      {/* More coming soon + feedback + website. */}
+      <div className="mt-8 rounded-2xl border border-border-subtle bg-surface p-5">
+        <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
+          <Sparkles className="h-3.5 w-3.5 text-accent" /> More coming soon
+        </div>
+        <p className="mt-2 max-w-3xl text-sm text-text-secondary">
+          Custom frameworks and lenses (write and save your own) are on the way. Today's set ships with Prevail. Have a
+          framework or lens you'd want built in? Tell us, it shapes what we add next.
+        </p>
+        <div className="mt-3.5 flex flex-wrap gap-2">
+          <a
+            href="https://github.com/fru-dev3/prevail-desktop/issues/new"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
+          >
+            <MessageSquare className="h-3.5 w-3.5" /> Suggestions & feedback
+          </a>
+          <a
+            href="https://prevail.sh"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
+          >
+            <Globe className="h-3.5 w-3.5" /> prevail.sh
+          </a>
+        </div>
+      </div>
+    </>
+  );
+}
+
+
+
+
+
+// Stable color picker for the first-letter skill avatars. Same skill
+// name always lands on the same swatch so the grid feels consistent.
+
+export function RemoteSection() {
+  const [running, setRunning] = useState(false);
+  const [port, setPort] = useState(() => getPref(PREF.webuiPort, "8787"));
+  const [user, setUser] = useState(() => getPref(PREF.webuiUser, "admin"));
+  const [pass, setPass] = useState(() => {
+    let p = getPref(PREF.webuiPass, "");
+    if (!p) { p = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6); setPref(PREF.webuiPass, p); }
+    return p;
+  });
+  const [showPass, setShowPass] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    invoke<{ running: boolean }>("webui_status").then((s) => setRunning(!!s.running)).catch(() => {});
+  }, []);
+  async function toggle(on: boolean) {
+    setErr("");
+    try {
+      if (on) {
+        await invoke("webui_start", { port: Number(port) || 8787, user, pass });
+        setRunning(true);
+      } else {
+        await invoke("webui_stop");
+        setRunning(false);
+      }
+    } catch (e) { setErr(String(e)); }
+  }
+  return (
+    <>
+      <SettingsHeader title="Remote (WebUI)" subtitle="Serve this exact app to a browser: same UI, no rebuild. Then reach it from your phone or laptop, anywhere, via Tailscale or Cloudflare." />
+      <div className="rounded-lg border border-border bg-surface px-5">
+        <SettingsRowLite title="Enable WebUI" desc="Run the bridge server so a browser can use Prevail. This Mac must stay on."
+          control={<Toggle on={running} onChange={toggle} />} />
+        <SettingsRowLite title="Port" desc="Local port the WebUI listens on."
+          control={<input type="number" value={port} disabled={running} onChange={(e) => { setPort(e.target.value); setPref(PREF.webuiPort, e.target.value); }} className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />} />
+        <SettingsRowLite title="Username" desc="Login for the WebUI."
+          control={<input value={user} disabled={running} onChange={(e) => { setUser(e.target.value); setPref(PREF.webuiUser, e.target.value); }} className="w-40 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />} />
+        <SettingsRowLite title="Password" desc="Keep this private: anyone with it and the URL can use your agent."
+          control={
+            <div className="flex items-center gap-2">
+              <input type={showPass ? "text" : "password"} value={pass} disabled={running} onChange={(e) => { setPass(e.target.value); setPref(PREF.webuiPass, e.target.value); }} className="w-40 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />
+              <button onClick={() => setShowPass((v) => !v)} className="font-mono text-[11px] text-text-muted hover:text-accent">{showPass ? "hide" : "show"}</button>
+            </div>
+          } />
+      </div>
+      {running && (
+        <div className="mt-4 rounded-lg border border-accent-border bg-accent-soft px-5 py-4">
+          <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-accent">Live</div>
+          <div className="text-sm text-text-primary">Open <a href={`http://localhost:${port}`} target="_blank" rel="noreferrer" className="font-mono text-accent hover:underline">http://localhost:{port}</a> in a browser, or from another device use this Mac's Tailscale/LAN address on port {port}.</div>
+        </div>
+      )}
+      {err && <div className="mt-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{err}</div>}
+    </>
+  );
+}
+
+// The MCP "expose" config is pasted into Claude Desktop and used long-term, so
+// it must reference a STABLE absolute path — not the transient location the app
+// happens to be running from. When launched straight off the mounted DMG
+// (/Volumes/…) or under macOS App Translocation (/private/var/folders/…), the
+// bundled-sidecar path would vanish the moment the volume ejects. Normalize
+// those to the canonical installed location. (feedback v0.4.1 B9)
+
+export function IngestionSection() {
+  const [tiers, setTiers] = useState<IngestionTierStatus[]>([]);
+  const [mcp, setMcp] = useState<IngestionMcpServer[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [artifacts, setArtifacts] = useState<IngestionArtifact[]>([]);
+
+  async function refresh() {
+    try {
+      const [t, m] = await Promise.all([
+        invoke<IngestionTierStatus[]>("ingestion_status"),
+        invoke<IngestionMcpServer[]>("ingestion_mcp_list"),
+      ]);
+      setTiers(t);
+      setMcp(m);
+      setErr(null);
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+  useEffect(() => {
+    void refresh();
+    const id = window.setInterval(() => void refresh(), 4000);
+    let unl: UnlistenFn | null = null;
+    (async () => {
+      unl = await listen<IngestionArtifact>(
+        "ingestion:artifact",
+        (e) => setArtifacts((cur) => [e.payload, ...cur].slice(0, 50)),
+      );
+    })();
+    return () => { window.clearInterval(id); if (unl) unl(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function openMcpConfig() {
+    try {
+      const p = await invoke<string>("ingestion_mcp_config_init");
+      await invoke("open_in_finder", { path: p });
+    } catch (e) { console.error(e); }
+  }
+  async function reloadMcp() {
+    try {
+      await invoke("ingestion_mcp_reload");
+      await refresh();
+    } catch (e) { console.error(e); }
+  }
+
+  return (
+    <>
+      <SettingsHeader
+        title="Ingestion"
+        subtitle="Triple-tier data engine. Pull artifacts from MCP servers, the Composio gateway, or a headed browser into the right domain folder: without leaving the app."
+      />
+      {err && (
+        <div className="mb-4 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{err}</div>
+      )}
+
+      <div className="space-y-6">
+        {tiers.map((t) => (
+          <IngestionTierCard
+            key={t.id}
+            tier={t}
+            mcp={t.id === "tier_a_mcp" ? mcp : undefined}
+            onRefresh={refresh}
+            onOpenMcpConfig={openMcpConfig}
+            onReloadMcp={reloadMcp}
+          />
+        ))}
+        {tiers.length === 0 && (
+          <div className="rounded border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+            Loading tier status…
+          </div>
+        )}
+
+        <IngestionBrowserRunner />
+
+        <IngestionAuditPanel />
+
+        {artifacts.length > 0 && (
+          <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="font-display text-base font-semibold tracking-tight">Recent artifacts</div>
+              <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-secondary">{artifacts.length}</span>
+            </div>
+            <ul className="flex flex-col gap-1.5">
+              {artifacts.map((a, i) => (
+                <li key={`${a.path}_${i}`} className="flex items-center gap-3 rounded-md border border-border-subtle bg-background px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-mono text-sm text-text-primary">{a.original}</span>
+                      <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] text-accent">{a.domain}</span>
+                      <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] text-text-secondary">{a.source}</span>
+                    </div>
+                    <div className="mt-0.5 truncate font-mono text-[10px] text-text-muted">
+                      {a.path} · {a.sha256.slice(0, 12)}… · {(a.size / 1024).toFixed(1)} KB
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => invoke("open_in_finder", { path: a.path })}
+                    className="shrink-0 rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                  >
+                    reveal
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
