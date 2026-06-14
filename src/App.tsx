@@ -1088,7 +1088,11 @@ export default function App() {
 
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="flex shrink-0 items-center gap-1 border-b border-border-subtle bg-background px-4">
-            {TABS.filter((t) => !(onApp && t.id === "benchmark")).map((t) => {
+            {/* An open app is isolated: it shows only its own facet chips
+                (Chat / Runs / Settings / Domains) on the right, so the global
+                domain tabs (Chat | Council) are hidden to avoid a duplicate
+                "Chat" and an out-of-context Council. */}
+            {(onApp ? [] : TABS).map((t) => {
               const Icon = t.icon;
               const active = tab === t.id;
               return (

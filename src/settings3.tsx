@@ -256,6 +256,13 @@ export function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string
                     </button>
                     <div className="flex shrink-0 items-center gap-1.5">
                       <button
+                        onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }))}
+                        title={`Open ${app.title} — its chat, runs, settings, and domains`}
+                        className="rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent"
+                      >
+                        open
+                      </button>
+                      <button
                         onClick={() => testApp(app.id)}
                         disabled={probing === app.id}
                         className="rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
