@@ -25,6 +25,18 @@ export function taskgenCfgFromPrefs(vaultPath: string) {
   };
 }
 
+export function intentDaemonCfgFromPrefs(vaultPath: string) {
+  return {
+    vault: vaultPath,
+    provider: getPref(PREF.memoryProvider, "claude"),
+    model: getPref(PREF.distillModel, "claude-haiku-4-5"),
+    interval_sec: Number(getPref(PREF.intentDaemonIntervalSec, "1800")) || 1800, // check every 30 min
+    min_new_prompts: Number(getPref(PREF.intentDaemonMinNew, "10")) || 10,
+    max_age_sec: Number(getPref(PREF.intentDaemonMaxAgeSec, "86400")) || 86400, // daily
+    limit: 200,
+  };
+}
+
 export function skillgenCfgFromPrefs(vaultPath: string) {
   return {
     vault: vaultPath,
