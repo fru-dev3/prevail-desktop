@@ -149,6 +149,11 @@ export const PREF = {
   webuiPort: "prevail.pref.webuiPort",                     // integer port
   webuiUser: "prevail.pref.webuiUser",                     // login username
   webuiPass: "prevail.pref.webuiPass",                     // login password (local only)
+  // Telemetry — anonymous, opt-in, default OFF. Independent crash vs usage
+  // sub-toggles. distinctId is a random local UUID, never tied to identity.
+  telemetryUsage: "prevail.pref.telemetryUsage",           // "1" | "0" — PostHog anonymous usage analytics
+  telemetryCrash: "prevail.pref.telemetryCrash",           // "1" | "0" — Sentry crash/error reports
+  telemetryDistinctId: "prevail.pref.telemetryDistinctId", // random anonymous UUID
 };
 export function getPref(key: string, fallback: string): string {
   const v = lsGet(key);

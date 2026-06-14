@@ -3,9 +3,10 @@
 // start-on-boot, embedded Shortcuts).
 import { useEffect, useMemo, useState } from "react";
 import { disable as autostartDisable, enable as autostartEnable, isEnabled as autostartIsEnabled } from "@tauri-apps/plugin-autostart";
-import { Compass, Eye, History, Keyboard, Monitor, Moon, Palette, PenLine, SlidersHorizontal, Sun } from "lucide-react";
+import { Activity, Compass, Eye, History, Keyboard, Monitor, Moon, Palette, PenLine, ShieldCheck, SlidersHorizontal, Sun } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { CollapsibleSection } from "./collapsible";
+import { ALLOWED_EVENTS, clearTelemetryLog, crashOn, setCrash, setUsage, telemetryConfigured, telemetryLog, usageOn } from "./telemetry";
 import { invoke } from "./bridge";
 import { PALETTES } from "./constants";
 import { PREF, getPref, setPref } from "./storage";
@@ -54,7 +55,72 @@ export function SafetySection({ vaultPath }: { vaultPath: string }) {
         <SettingsRowLite title="File checkpoints" desc="Snapshot files before the agent edits them so changes can be rolled back."
           control={<Toggle on={checkpoints} onChange={(v) => { setCheckpoints(v); setPref(PREF.fileCheckpoints, v ? "1" : "0"); }} />} />
       </div>
+      <TelemetrySettings />
     </>
+  );
+}
+
+// Anonymous, opt-in telemetry governance. Default OFF, two independent consents,
+// and a fully transparent "what we collect" list + local log. See telemetry.ts
+// and docs/TELEMETRY-PLAN.md. Network sends stay inert until build-time keys exist.
+function TelemetrySettings() {
+  const [usage, setUsageState] = useState(() => usageOn());
+  const [crash, setCrashState] = useState(() => crashOn());
+  const [showLog, setShowLog] = useState(false);
+  const [, force] = useState(0);
+  const log = telemetryLog();
+  return (
+    <div className="mt-5">
+      <SettingsHeader title="Privacy & telemetry" icon={ShieldCheck}
+        subtitle="Anonymous, opt-in, and never includes your prompts, vault, names you created, or any personal data. Off by default. Turn it on only if you want to help improve Prevail." />
+      <div className="mb-3 rounded-lg border border-border bg-surface px-5">
+        <SettingsRowLite title="Usage analytics (anonymous)" desc="Coarse, anonymous events (app opened, which features are used, OS) via PostHog. No content, ever."
+          control={<Toggle on={usage} onChange={(v) => { setUsage(v); setUsageState(v); }} />} />
+        <SettingsRowLite title="Crash & error reports" desc="Send anonymized crash stack traces (scrubbed of paths/PII) via Sentry so bugs get fixed faster."
+          control={<Toggle on={crash} onChange={(v) => { setCrash(v); setCrashState(v); }} />} />
+      </div>
+      {!telemetryConfigured() && (usage || crash) && (
+        <p className="mb-3 px-1 text-[11px] text-text-muted">
+          Telemetry is enabled but no analytics keys are built into this release, so nothing is transmitted yet. Events are still recorded to the local log below so you can see exactly what would be sent.
+        </p>
+      )}
+      <CollapsibleSection icon={Activity} title="What we collect" summary={`${ALLOWED_EVENTS.length} event types`}
+        subtitle="The complete, exhaustive list. Anything not here is never sent.">
+        <ul className="space-y-1.5 text-xs text-text-secondary">
+          <li><span className="font-mono text-text-primary">app_opened</span> — app version, OS family (mac/win)</li>
+          <li><span className="font-mono text-text-primary">feature_used</span> — which feature area (chat, council, benchmark…), nothing typed</li>
+          <li><span className="font-mono text-text-primary">benchmark_run</span> — counts only (number of models, number of domains)</li>
+          <li><span className="font-mono text-text-primary">provider_configured</span> — provider name (e.g. openrouter), never the key</li>
+          <li><span className="font-mono text-text-primary">daemon_toggled</span> — which daemon, on/off</li>
+          <li><span className="font-mono text-text-primary">crash reports</span> — error type + scrubbed stack trace + app version</li>
+        </ul>
+        <div className="mt-3 rounded-md border border-border-subtle bg-background p-2 text-[11px] text-text-muted">
+          Never collected: prompts, replies, vault contents, file paths, names of domains/apps/skills you created, API keys, email, name, machine name, or precise location.
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <button onClick={() => setShowLog((s) => !s)}
+            className="rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">
+            {showLog ? "Hide" : "View"} local log · {log.length}
+          </button>
+          {log.length > 0 && (
+            <button onClick={() => { clearTelemetryLog(); force((n) => n + 1); }}
+              className="rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-danger hover:text-danger">
+              Clear log
+            </button>
+          )}
+        </div>
+        {showLog && (
+          <div className="mt-2 max-h-48 overflow-auto rounded-md border border-border-subtle bg-background p-2 font-mono text-[10px] text-text-secondary">
+            {log.length === 0 ? <div className="text-text-muted">No events recorded.</div> : log.slice().reverse().map((e, i) => (
+              <div key={i} className="border-b border-border-subtle/40 py-0.5 last:border-0">
+                <span className={e.sent ? "text-accent" : "text-text-muted"}>{e.sent ? "sent" : "local"}</span>{" "}
+                <span className="text-text-primary">{e.event}</span> {JSON.stringify(e.props)}
+              </div>
+            ))}
+          </div>
+        )}
+      </CollapsibleSection>
+    </div>
   );
 }
 
