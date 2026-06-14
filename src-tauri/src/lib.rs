@@ -15,7 +15,10 @@ mod bunker;
 mod children;
 mod clis;
 mod distill;
+mod intents;
+mod paths;
 mod usage;
+use paths::{domain_dir, guard_managed_path, safe_domain_subdir};
 mod engine;
 mod ingestion;
 mod reminders;
@@ -62,7 +65,7 @@ const NON_DOMAIN_DIRS: &[&str] = &[
 
 // Retry I/O on EINTR (os error 4). macOS sandboxing + Tauri's runtime
 // can interrupt syscalls; the fix is the standard retry-on-EINTR loop.
-fn read_dir_retry(p: &Path) -> std::io::Result<fs::ReadDir> {
+pub(crate) fn read_dir_retry(p: &Path) -> std::io::Result<fs::ReadDir> {
     for _ in 0..5 {
         match fs::read_dir(p) {
             Ok(it) => return Ok(it),
@@ -799,267 +802,9 @@ fn benchmark_run_detail(run_dir: String) -> Result<serde_json::Value, String> {
 // domain, model, and every preference in effect, so a future (better) model
 // can be re-run against the original intent and the result rebuilt.
 
-// A domain name is safe to join into a path only if it's a plain segment:
-// no separators, no "..", no leading dot, reasonable length. Anything else
-// (a traversal attempt, incl. via the WebUI) falls back to the vault root.
-fn is_safe_domain(d: &str) -> bool {
-    !d.is_empty()
-        && d.len() <= 64
-        && !d.starts_with('.')
-        && d.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-}
-
-fn domain_dir(vault: &str, domain: &Option<String>) -> PathBuf {
-    match domain {
-        Some(d) if is_safe_domain(d) => PathBuf::from(vault).join(d),
-        _ => PathBuf::from(vault),
-    }
-}
-
-// Public wrapper for sibling modules (surface.rs) — applies the same
-// safe-domain validation.
-pub(crate) fn domain_dir_pub(vault: &str, domain: &str) -> PathBuf {
-    domain_dir(vault, &Some(domain.to_string()))
-}
-
-// Strict variant for WebUI-reachable WRITE commands (save_thread, save_session,
-// list_threads): an unsafe domain is REJECTED, not silently redirected to the
-// vault root (audit #3). `<vault>/<domain>/<sub>` for a safe domain, `<vault>/<sub>`
-// for the no-domain General space.
-fn safe_domain_subdir(vault: &str, domain: &Option<String>, sub: &str) -> Result<PathBuf, String> {
-    match domain {
-        Some(d) if is_safe_domain(d) => Ok(PathBuf::from(vault).join(d).join(sub)),
-        Some(d) => Err(format!("invalid domain: {d}")),
-        None => Ok(PathBuf::from(vault).join(sub)),
-    }
-}
-
-// Guard a frontend-supplied path before reading/writing it. Blocks traversal
-// and confines the operation to a Prevail-managed file shape (e.g. a thread
-// markdown under "/_threads/"). Critical now that some commands are reachable
-// over the WebUI. Returns Ok(()) only if the path looks legitimate.
-fn guard_managed_path(path: &str, must_contain: &str, ext: &str) -> Result<(), String> {
-    if path.contains("..") {
-        return Err("invalid path".into());
-    }
-    let p = std::path::Path::new(path);
-    if !p.is_absolute() {
-        return Err("path must be absolute".into());
-    }
-    if !path.contains(must_contain) || !path.ends_with(ext) {
-        return Err(format!("path must be a Prevail {must_contain} {ext} file"));
-    }
-    // Symlink-escape defense (audit #3): resolve the real path — or, for a target
-    // that doesn't exist yet, its real parent plus the final component — and
-    // re-assert the managed shape on the RESOLVED path. A symlink named `x.md`
-    // that points at /etc/passwd resolves to a path that no longer ends in `.md`
-    // or contains the managed segment, so it's rejected.
-    let resolved = match p.canonicalize() {
-        Ok(rp) => rp,
-        Err(_) => match (p.parent(), p.file_name()) {
-            (Some(par), Some(name)) => par
-                .canonicalize()
-                .map(|c| c.join(name))
-                .map_err(|e| format!("invalid path: {e}"))?,
-            _ => return Err("invalid path".into()),
-        },
-    };
-    let resolved_str = resolved.to_string_lossy();
-    if !resolved_str.contains(must_contain) || !resolved_str.ends_with(ext) {
-        return Err("path resolves outside a Prevail-managed location".into());
-    }
-    Ok(())
-}
-
-#[tauri::command]
-fn intent_append(
-    vault: String,
-    domain: Option<String>,
-    record: serde_json::Value,
-) -> Result<(), String> {
-    let dir = domain_dir(&vault, &domain);
-    fs::create_dir_all(&dir).map_err(|e| format!("mkdir intents: {e}"))?;
-    let file = dir.join("_intents.jsonl");
-    let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
-    engine::vault_append_line(&file, &format!("{line}\n")).map_err(|e| format!("write intent: {e}"))?;
-    Ok(())
-}
-
-/// I6: read back the intents ledger so the desktop can surface it (newest
-/// first). Each line is an "intent" record written by `intent_append` the
-/// instant a chat is sent — what the user asked + the prefs in effect.
-#[tauri::command]
-fn intents_read(
-    vault: String,
-    domain: Option<String>,
-    limit: Option<usize>,
-) -> Result<Vec<serde_json::Value>, String> {
-    let dir = domain_dir(&vault, &domain);
-    let file = dir.join("_intents.jsonl");
-    let text = match read_to_string_retry(&file) {
-        Ok(t) => t,
-        Err(_) => return Ok(vec![]),
-    };
-    let mut out: Vec<serde_json::Value> = text
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .filter_map(|l| serde_json::from_str(l).ok())
-        // Only the "intent" kind (the ledger also carries other record kinds).
-        .filter(|v: &serde_json::Value| v.get("kind").and_then(|k| k.as_str()) == Some("intent"))
-        .collect();
-    out.reverse(); // newest first
-    if let Some(n) = limit {
-        out.truncate(n);
-    }
-    Ok(out)
-}
-
-/// Append a human-readable line to the domain journal so the journal is
-/// built automatically from every conversation — not only when the user
-/// manually clicks "New chat". Newest entries go directly under the header.
-#[tauri::command]
-fn journal_append(vault: String, domain: Option<String>, entry: String) -> Result<(), String> {
-    let dir = domain_dir(&vault, &domain);
-    fs::create_dir_all(&dir).map_err(|e| format!("mkdir journal: {e}"))?;
-    let path = dir.join("_journal.md");
-    const HEADER: &str = "# Journal\n\n";
-    let existing = read_to_string_retry(&path).unwrap_or_default();
-    let body = existing.strip_prefix(HEADER).unwrap_or(&existing).to_string();
-    let merged = format!("{HEADER}{}\n{body}", entry.trim_end());
-    fs::write(&path, engine::maybe_encrypt(&path, &merged)).map_err(|e| format!("write journal: {e}"))?;
-    Ok(())
-}
-
-/// Append a DECISION to the domain's append-only decision log
-/// (`<domain>/_decisions.jsonl`). A council verdict, an accepted recommendation,
-/// or a user-stated preference ("make Mayo my favorite hospital") is a decision
-/// — durable, provenance-tagged, and fed into state derivation + scoring so the
-/// domain actually learns. Mirrors `intent_append`. (feedback v0.4.1 I1/I5)
-/// Every intent across the whole vault (each domain's _intents.jsonl plus the
-/// vault-root general ledger), tagged with its domain, newest first. Powers the
-/// Settings > Intents browser.
-#[tauri::command]
-fn intents_read_all(vault: String, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
-    let root = PathBuf::from(&vault);
-    let mut dirs: Vec<(String, PathBuf)> = vec![("general".into(), root.clone())];
-    if let Ok(it) = read_dir_retry(&root) {
-        for e in it.flatten() {
-            let p = e.path();
-            let name = e.file_name().to_string_lossy().to_string();
-            if p.is_dir() && !name.starts_with('.') && !name.starts_with('_') {
-                dirs.push((name, p));
-            }
-        }
-    }
-    let mut out: Vec<serde_json::Value> = Vec::new();
-    for (dom, dir) in dirs {
-        let Ok(text) = read_to_string_retry(&dir.join("_intents.jsonl")) else { continue };
-        for l in text.lines().filter(|l| !l.trim().is_empty()) {
-            let Ok(mut v) = serde_json::from_str::<serde_json::Value>(l) else { continue };
-            if v.get("kind").and_then(|k| k.as_str()) != Some("intent") {
-                continue;
-            }
-            if let Some(obj) = v.as_object_mut() {
-                obj.insert("domain".into(), serde_json::json!(dom));
-            }
-            out.push(v);
-        }
-    }
-    out.sort_by_key(|v| std::cmp::Reverse(v.get("ts").and_then(|t| t.as_i64()).unwrap_or(0)));
-    if let Some(n) = limit {
-        out.truncate(n);
-    }
-    Ok(out)
-}
-
-#[tauri::command]
-fn decision_append(
-    vault: String,
-    domain: Option<String>,
-    record: serde_json::Value,
-) -> Result<(), String> {
-    let dir = domain_dir(&vault, &domain);
-    fs::create_dir_all(&dir).map_err(|e| format!("mkdir decisions: {e}"))?;
-    let file = dir.join("_decisions.jsonl");
-    let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
-    engine::vault_append_line(&file, &format!("{line}\n")).map_err(|e| format!("write decision: {e}"))?;
-    Ok(())
-}
-
-/// Read the domain's decision log (newest first), capped at `limit`. Used by
-/// the Insights surface + to attach a feedback rating to a prior verdict.
-#[tauri::command]
-fn decisions_read(
-    vault: String,
-    domain: Option<String>,
-    limit: Option<usize>,
-) -> Result<Vec<serde_json::Value>, String> {
-    let dir = domain_dir(&vault, &domain);
-    let file = dir.join("_decisions.jsonl");
-    let text = match read_to_string_retry(&file) {
-        Ok(t) => t,
-        Err(_) => return Ok(vec![]),
-    };
-    let mut out: Vec<serde_json::Value> = text
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .filter_map(|l| serde_json::from_str(l).ok())
-        .collect();
-    out.reverse(); // newest first
-    if let Some(n) = limit {
-        out.truncate(n);
-    }
-    Ok(out)
-}
-
-/// Attach a thumbs up/down (and optional note) to a recorded decision, keyed by
-/// its `id`. Rewrites the JSONL with the matching record's `feedback` set so the
-/// distiller/learning loop can prefer the model+framework+lens combos that
-/// produced liked verdicts. (feedback v0.4.1 I5)
-#[tauri::command]
-fn decision_feedback(
-    vault: String,
-    domain: Option<String>,
-    id: String,
-    rating: String, // "up" | "down" | "clear"
-    note: Option<String>,
-) -> Result<(), String> {
-    let dir = domain_dir(&vault, &domain);
-    let file = dir.join("_decisions.jsonl");
-    let text = read_to_string_retry(&file).map_err(|e| format!("read _decisions.jsonl: {e}"))?;
-    let mut lines: Vec<serde_json::Value> = text
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .filter_map(|l| serde_json::from_str(l).ok())
-        .collect();
-    let mut found = false;
-    for rec in lines.iter_mut() {
-        if rec.get("id").and_then(|v| v.as_str()) == Some(id.as_str()) {
-            if let Some(obj) = rec.as_object_mut() {
-                if rating == "clear" {
-                    obj.remove("feedback");
-                } else {
-                    obj.insert(
-                        "feedback".into(),
-                        serde_json::json!({ "rating": rating, "note": note }),
-                    );
-                }
-            }
-            found = true;
-            break;
-        }
-    }
-    if !found {
-        return Err(format!("decision not found: {id}"));
-    }
-    let body: String = lines
-        .iter()
-        .filter_map(|r| serde_json::to_string(r).ok())
-        .collect::<Vec<_>>()
-        .join("\n");
-    fs::write(&file, engine::maybe_encrypt(&file, &format!("{body}\n"))).map_err(|e| format!("write _decisions.jsonl: {e}"))?;
-    Ok(())
-}
+// The intent/decision/journal commands (intent_append, intents_read[_all],
+// journal_append, decision_append, decisions_read, decision_feedback) live in
+// intents.rs.
 
 // ─────────────────────────────────────────────────────────────────────
 // Benchmark questions — CRUD over <vault>/benchmark/questions/*.md. The
@@ -3620,13 +3365,13 @@ pub fn run() {
             usage::usage_append,
             usage::usage_summary,
             usage::usage_summary_domain,
-            intent_append,
-            intents_read,
-            intents_read_all,
-            journal_append,
-            decision_append,
-            decisions_read,
-            decision_feedback,
+            intents::intent_append,
+            intents::intents_read,
+            intents::intents_read_all,
+            intents::journal_append,
+            intents::decision_append,
+            intents::decisions_read,
+            intents::decision_feedback,
             bunker::bunker_status,
             bunker::bunker_set,
             read_memory_md,
@@ -3785,6 +3530,7 @@ pub fn run() {
 #[cfg(test)]
 mod path_safety_tests {
     use super::*;
+    use crate::paths::{guard_managed_path, is_safe_domain, safe_domain_subdir};
 
     #[test]
     fn safe_domain_rejects_traversal_and_separators() {
@@ -3858,6 +3604,7 @@ mod env_scrub_tests {
 #[cfg(test)]
 mod usage_tests {
     use super::*;
+    use crate::intents::{decision_append, decision_feedback, decisions_read, intent_append, intents_read, journal_append};
     use crate::usage::{
         map_eng_summary, migrate_legacy_usage, usage_record_payload, EngBucket, EngSummary,
         UsageRecord,
