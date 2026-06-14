@@ -158,6 +158,19 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
 
 ---
 
+## T19 — Self-driving Domain Loops (founder: "that's the whole point") — DONE
+Loops were a stateless suggestion engine. Now genuinely autonomous:
+- LEARN/EVOLVE/PERSIST: each run reads its own history (engine _loops_runtime.json),
+  fed into the prompt → no repeats, judges if the gap is closing, escalates when stalled.
+- CREATE TASKS: concrete steps filed as real tasks in <domain>/_tasks.md (deduped).
+- ASK PERMISSION: spend/contact/irreversible/decision steps queued as pending approvals;
+  Loops panel "Needs your approval" → Approve (→ task) / Dismiss.
+- BEHIND THE SCENES: in-app startLoopsScheduler advances due loops on a cadence (default
+  hourly, pref-gated default ON), not just the manual button.
+- Engine: prevail-cli/src/daemon-loops.ts (+ 4 unit tests). Desktop: loops.ts, loopspanel.tsx,
+  App.tsx, storage.ts. tsc + build green; engine tests pass; 0 new typecheck errors.
+- FUTURE: richer in-app status (history timeline per loop); auto-propose loops/goals from state.
+
 ## Decisions (founder, 2026-06-14)
 - T10 Intents: BUILD NOW, phased (daemon + storage → drill-down UI → wire into taskgen/loops).
 - Sequence: VISUAL CONSISTENCY FIRST (T1 canonical-collapsible migration) → per-page redesigns
