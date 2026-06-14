@@ -78,27 +78,32 @@ export function SettingsPanel({
   // labeled sections so related settings sit together and the redundancy reads
   // as intentional structure.
   type NavItem = { id: Section; label: string; icon: typeof Folder };
+  // Grouped by function, not feature soup: how the AI thinks (Intelligence),
+  // how it runs itself (Memory & Automation), what it reaches (Connections),
+  // the guardrails (Privacy & Safety), where data lives (Vault), and the app.
   const navGroups: Array<{ heading: string; items: NavItem[] }> = [
-    { heading: "Models & AI", items: [
+    { heading: "Intelligence", items: [
       { id: "models", label: "Models", icon: Layers },
-      { id: "benchmark", label: "Benchmark", icon: Target },
       { id: "council", label: "Council", icon: Scale },
-      { id: "frameworks", label: "Frameworks", icon: Scale },
+      { id: "frameworks", label: "Frameworks", icon: Lightbulb },
       { id: "skills", label: "Skills", icon: Sparkles },
+      { id: "benchmark", label: "Benchmark", icon: Target },
+    ]},
+    { heading: "Memory & Automation", items: [
+      { id: "configuration", label: "Configuration", icon: Brain },
+      { id: "intents", label: "Intents", icon: Lightbulb },
+      { id: "daemons", label: "Daemons", icon: Zap },
+    ]},
+    { heading: "Connections", items: [
+      { id: "connectors", label: "Apps", icon: Plug },
+      { id: "gateway", label: "Gateway", icon: MessagesSquare },
+      { id: "mcp", label: "MCP", icon: Wrench },
     ]},
     { heading: "Privacy & Safety", items: [
       { id: "privacy", label: "Privacy", icon: ShieldCheck },
       { id: "safety", label: "Safety", icon: Shield },
     ]},
-    { heading: "Apps", items: [
-      { id: "connectors", label: "Apps", icon: Plug },
-      { id: "gateway", label: "Gateway", icon: MessagesSquare },
-      { id: "mcp", label: "MCP", icon: Wrench },
-    ]},
-    { heading: "You & Vault", items: [
-      { id: "configuration", label: "Configuration", icon: Brain },
-      { id: "intents", label: "Intents", icon: Lightbulb },
-      { id: "daemons", label: "Daemons", icon: Zap },
+    { heading: "Vault", items: [
       { id: "vault", label: "Vault", icon: Folder },
       { id: "demo", label: "Demo Mode", icon: Sparkles },
     ]},
