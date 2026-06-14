@@ -10,7 +10,7 @@ import { formatFreshness, titleCase } from "./format";
 import { PREF, getPref, setPref } from "./storage";
 import { Toggle } from "./ui";
 import { DaemonCard, HeadlessLearnCard } from "./panels";
-import { distillCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
+import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
 import { SettingsHeader } from "./sectionutil";
 import type { DaemonStatus, SkillEntry } from "./types";
 
@@ -50,6 +50,11 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
   const [remInterval, setRemInterval] = useState(() => getPref(PREF.remindersIntervalSec, "900"));
   const [taskgenMsg, setTaskgenMsg] = useState("");
   const [running, setRunning] = useState(false);
+  // Intent distillation daemon (automated, default ON).
+  const [intentSt, setIntentSt] = useState<{ running?: boolean; last_run_ts?: number | null; distills?: number; last_intent_count?: number } | null>(null);
+  const [intentEnabled, setIntentEnabled] = useState(() => getPref(PREF.intentDaemonEnabled, "1") === "1");
+  const [intentMinNew, setIntentMinNew] = useState(() => getPref(PREF.intentDaemonMinNew, "10"));
+  const [intentInterval, setIntentInterval] = useState(() => getPref(PREF.intentDaemonIntervalSec, "1800"));
   // Distill (memory) tuning — moved here from Memory & Context so all daemon
   // operation lives in one place. These write the same prefs distillCfgFromPrefs reads.
   const [dProvider, setDProvider] = useState(() => getPref(PREF.memoryProvider, "claude"));
@@ -77,6 +82,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
       try { const s = await invoke<DaemonStatus>("reminders_daemon_status"); if (alive) setRemindersSt(s); } catch {}
       try { const s = await invoke<DaemonStatus>("taskgen_status"); if (alive) setTaskgenSt(s); } catch {}
       try { const s = await invoke<DaemonStatus>("skillgen_status"); if (alive) setSkillgenSt(s); } catch {}
+      try { const s = await invoke<typeof intentSt>("intent_daemon_status"); if (alive) setIntentSt(s); } catch {}
     };
     poll();
     const id = window.setInterval(poll, 2000);
@@ -285,6 +291,32 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           </button>
           {skillgenMsg && <span className="text-xs text-text-secondary">{skillgenMsg}</span>}
         </div>
+      </DaemonGroup>
+
+      <DaemonGroup
+        icon={Lightbulb}
+        title="Intent distillation"
+        running={!!intentSt?.running}
+        summary={intentSt?.last_intent_count ? `${intentSt.last_intent_count} intents` : intentEnabled ? "auto" : "off"}
+      >
+        <div className="rounded-lg border border-border-subtle bg-background px-5">
+          <Row title="Automatic intent distillation"
+            desc="Infer your high-level intents + recommended actions automatically, with no manual click. Runs on a cadence and whenever enough new prompts pile up."
+            control={<Toggle on={intentEnabled} onChange={(v) => {
+              setIntentEnabled(v); setPref(PREF.intentDaemonEnabled, v ? "1" : "0");
+              if (v) invoke("intent_daemon_start", { cfg: intentDaemonCfgFromPrefs(vaultPath) }).catch(() => {});
+              else invoke("intent_daemon_stop").catch(() => {});
+            }} />} />
+          <Row title="Distill after N new prompts"
+            desc="Re-distill once this many new prompts have been logged since the last pass."
+            control={<input type="number" value={intentMinNew} onChange={(e) => { setIntentMinNew(e.target.value); setPref(PREF.intentDaemonMinNew, e.target.value); }}
+              className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Check interval"
+            desc="How often the daemon checks whether a re-distill is due (a check with nothing new costs no model call). It also re-distills at least daily."
+            control={<div className="flex items-center gap-1.5"><input type="number" value={intentInterval} onChange={(e) => { setIntentInterval(e.target.value); setPref(PREF.intentDaemonIntervalSec, e.target.value); }}
+              className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" /><span className="font-mono text-xs text-text-muted">s</span></div>} />
+        </div>
+        <p className="mt-2 px-1 text-[11px] text-text-muted">View the distilled intents in Configuration → Intents. Uses the same provider/model as Distill.</p>
       </DaemonGroup>
 
       <HeadlessLearnCard vaultPath={vaultPath} />
