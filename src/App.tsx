@@ -31,7 +31,7 @@ import { COUNCIL_CHAIR_KEY, readCouncilChair, readCouncilMembers } from "./counc
 import { autoVerifyClis, setCliVerify, useCliVerifyLive } from "./verify";
 import { BENCH_CLI_OPTIONS, benchBatches, benchNotify, cancelBenchBatch, executeBenchBatch, startBenchScheduler, useBenchBatches } from "./bench";
 import { BACKUP_CFG, backupVaultNow, bumpBackupChangeCount, startBackupScheduler } from "./backup";
-import { buildChatContext, buildCouncilQuickActions, buildIdealStatePreamble, buildQuickActions, buildSynthesisPrompt, loadPreferredSkills, maybeRedact, maybeStripSycophancy, migrateModelPrefs, modelLabel, parseRunLabel, savePreferredSkills } from "./helpers2";
+import { buildChatContext, buildCouncilQuickActions, buildIdealStatePreamble, buildQuickActions, buildSynthesisPrompt, loadPreferredSkills, maybeRedact, maybeStripSycophancy, migrateModelPrefs, modelLabel, parseRunLabel, refreshDiscoveredModels, savePreferredSkills } from "./helpers2";
 import { InsightsPanel, UsageDashboard } from "./panels2";
 import { AppHeaderBar, BenchCrumbs, ContextScoreBadge, DirectProviderMark, DomainActionsMenu, DomainAppsStrip, DrawerImportsSection, Field, LockScreen, NewSkillForm, PreamblePicker, QuickSwitcher, ScoreBar, SettingRow, SidebarGatewayLive, SidebarMcpLive, SkillsList, SubsectionHeader, SurfacePanel, TasksPanel, ThreadsRail, WebLogin } from "./panels";
 
@@ -63,21 +63,6 @@ import { AppHeaderBar, BenchCrumbs, ContextScoreBadge, DirectProviderMark, Domai
 /** Curated catalog for a provider, plus any live-discovered models not already
  *  in it. OpenRouter stays curated inline (search surfaces the rest). */
 
-/** Best-effort live discovery for the given providers; fills DISCOVERED_MODELS
- *  and notifies listeners. Never throws. Returns the count discovered. */
-async function refreshDiscoveredModels(providers: string[]): Promise<number> {
-  let total = 0;
-  await Promise.all(
-    providers.map(async (id) => {
-      try {
-        const r = await invoke<{ models: ModelPick[] }>("engine_discover_models", { provider: id });
-        if (r?.models?.length) { DISCOVERED_MODELS[id] = r.models; total += r.models.length; }
-      } catch { /* best-effort; falls back to curated */ }
-    }),
-  );
-  window.dispatchEvent(new Event("prevail:models-refreshed"));
-  return total;
-}
 
 // Models a ChatGPT-login Codex account rejects (verified). A previously
 // saved pick like "gpt-5-codex" persists in localStorage and keeps
