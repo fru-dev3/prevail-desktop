@@ -195,13 +195,54 @@ export function Sidebar({
     return (
       <li key={app.id} className="group flex items-center gap-1 pl-6">
         <button
+          onMouseDown={(e) => {
+            // Manual drag (WKWebView's HTML5 DnD is unreliable): on mouseup
+            // after moving, call the chat panel's global app-attach hook so the
+            // app drops into the composer as a context chip. Mirror of the
+            // domain-row drag below.
+            if (e.button !== 0) return;
+            const startX = e.clientX;
+            const startY = e.clientY;
+            let dragging = false;
+            let pill: HTMLDivElement | null = null;
+            const onMove = (ev: MouseEvent) => {
+              if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
+              if (!dragging) {
+                dragging = true;
+                pill = document.createElement("div");
+                pill.textContent = `◆ ${app.title}`;
+                pill.style.cssText =
+                  "position:fixed;z-index:9999;pointer-events:none;padding:6px 10px;" +
+                  "border-radius:9999px;background:var(--color-accent,#0d7a6e);color:#fff;" +
+                  "font-family:ui-monospace,monospace;font-size:11px;" +
+                  "box-shadow:0 6px 20px rgba(0,0,0,0.2);transform:translate(-50%,-50%);";
+                document.body.appendChild(pill);
+                document.body.style.userSelect = "none";
+              }
+              if (pill) { pill.style.left = ev.clientX + "px"; pill.style.top = ev.clientY + "px"; }
+            };
+            const onUp = (ev: MouseEvent) => {
+              window.removeEventListener("mousemove", onMove);
+              window.removeEventListener("mouseup", onUp);
+              document.body.style.userSelect = "";
+              if (pill) { pill.remove(); pill = null; }
+              if (!dragging) return; // a click, not a drag — let onClick fire
+              ev.preventDefault();
+              ev.stopPropagation();
+              const hook = (window as unknown as { __prevailAttachApp?: (id: string) => void }).__prevailAttachApp;
+              if (hook) hook(app.id);
+              else console.warn("[prevail/drag] no app-attach hook: drop fell outside chat panel");
+            };
+            window.addEventListener("mousemove", onMove);
+            window.addEventListener("mouseup", onUp);
+          }}
           onClick={() => onOpenApp(app)}
-          className={`flex flex-1 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
+          className={`flex flex-1 cursor-grab items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors active:cursor-grabbing ${
             active
               ? "bg-surface-strong font-medium text-text-primary"
               : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
           }`}
-          title={`Open ${app.title}${app.domains.length ? " · refreshes " + app.domains.map(titleCase).join(", ") : ""}`}
+          title={`Click to open ${app.title} · drag into chat to attach as context${app.domains.length ? " · refreshes " + app.domains.map(titleCase).join(", ") : ""}`}
         >
           <span
             className="h-2 w-2 shrink-0 rounded-full"
