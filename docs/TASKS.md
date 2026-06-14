@@ -149,11 +149,13 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
   CollapsibleSection (Radio/Sparkles icons, live summary + status dot, opens when a bridge is
   live). (settings5.tsx)
 
-- [ ] **T16 — Vault folder layout.** In the vault folder, `apps/` and `domains/` should be
-  siblings at the same level inside the vault folder.
-  - ENGINE-LEVEL: changes where the vault writes apps vs domains on disk (Rust storage + engine
-    + any migration of existing vaults). Needs care (Hard Rule: never lose user data) + a
-    migration path. Confirm current layout first; build with a one-time migrator. Next session.
+- [~] **T16 — Vault folder layout: apps/ + domains/ siblings.** DONE end-to-end:
+  - paths::enumerate_domain_dirs walks BOTH layouts (v3 <vault>/domains/<d> + legacy), deduped;
+    distill, intents, taskgen, skillgen all use it (they previously skipped v3 domains).
+  - resolve_domain_base: new domains default to v3 (<vault>/domains/<d>); existing legacy domains
+    preserved in place (never orphaned). 50/50 lib tests pass.
+  - OPTIONAL remaining: a bulk migrator that moves an OLD vault's root-level domains into
+    domains/ (safe rename + verify). Not required — both layouts work; new data is v3.
 
 - [ ] **T17 — Mystery screenshot (image #17).** "Improve this design." Page unknown — ASK which
   screen this was before acting.
