@@ -2,7 +2,8 @@
 // Tasks, Intents, Memory & Context, and Skills. vaultPath-driven; no App-root
 // state closure.
 import { useEffect, useMemo, useState } from "react";
-import { Brain, Check, ChevronRight, Folder, Lightbulb, Sparkles } from "lucide-react";
+import { Bell, Brain, Check, ChevronRight, Folder, GraduationCap, Lightbulb, ListChecks, Sparkles } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { formatFreshness, titleCase } from "./format";
 import { PREF, getPref, setPref } from "./storage";
@@ -11,6 +12,35 @@ import { DaemonCard, HeadlessLearnCard } from "./panels";
 import { distillCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
 import { SettingsHeader, pickSkillColor } from "./sectionutil";
 import type { DaemonStatus, SkillEntry } from "./types";
+
+// One collapsible card per daemon: chevron + icon + name on the left, a status
+// summary + a running/idle dot on the right. The daemon's start/stop, tuning,
+// and run-now controls all live inside its own group, instead of being spread
+// across shared cards.
+function DaemonGroup({ icon: Icon, title, summary, running, defaultOpen = false, children }: {
+  icon: LucideIcon;
+  title: string;
+  summary?: string;
+  running?: boolean;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="mb-3 overflow-hidden rounded-xl border border-border bg-surface">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2.5 px-4 py-3 text-left">
+        <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
+        <Icon className="h-4 w-4 shrink-0 text-text-muted" />
+        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">{title}</span>
+        <span className="ml-auto flex min-w-0 items-center gap-2">
+          {summary && <span className="truncate font-mono text-[10px] uppercase tracking-wider text-text-muted">{summary}</span>}
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${running ? "bg-accent" : "bg-text-muted/40"}`} title={running ? "running" : "stopped"} />
+        </span>
+      </button>
+      {open && <div className="border-t border-border-subtle px-4 py-4">{children}</div>}
+    </section>
+  );
+}
 
 export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
   const [distillSt, setDistillSt] = useState<DaemonStatus | null>(null);
@@ -106,7 +136,14 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         <span className="ml-auto font-mono text-[10px] text-accent">Distilled memory & budget in Memory & Context →</span>
       </button>
 
-      <div className="mb-4 flex flex-col gap-2">
+      {/* One collapsible group per daemon: status + tuning + run-now together. */}
+      <DaemonGroup
+        icon={Brain}
+        title="Distill · memory"
+        running={!!distillSt?.running}
+        summary={distillSt?.lines_distilled ? `${distillSt.lines_distilled} lines distilled` : dAuto ? `auto · every ${dInterval}s` : "manual only"}
+        defaultOpen
+      >
         <DaemonCard
           name="Distill"
           status={distillSt}
@@ -114,6 +151,46 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           onStop={async () => { await invoke("distill_stop"); }}
           onStart={async () => { await invoke("distill_start", { cfg: distillCfgFromPrefs(vaultPath) }); }}
         />
+        <div className="mt-3 rounded-lg border border-border-subtle bg-background px-5">
+          <Row title="Distill provider" desc="Which agent distills the intent ledger into memory (use a cheap, fast one)."
+            control={
+              <select value={dProvider} onChange={(e) => { setDProvider(e.target.value); setPref(PREF.memoryProvider, e.target.value); }}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none">
+                <option value="claude">Claude</option>
+                <option value="codex">Codex</option>
+                <option value="ollama">Ollama (local)</option>
+              </select>} />
+          <Row title="Distill model" desc="Model id used for distillation, e.g. claude-haiku-4-5."
+            control={<input value={dModel} onChange={(e) => { setDModel(e.target.value); setPref(PREF.distillModel, e.target.value); }}
+              className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Auto-compression" desc="Run the distill daemon on a timer (off = manual passes only)."
+            control={<Toggle on={dAuto} onChange={(v) => { setDAuto(v); setPref(PREF.autoCompression, v ? "1" : "0"); }} />} />
+          <Row title="Compression threshold" desc="Start distilling once new activity reaches this fraction of the memory budget."
+            control={<input type="number" step="0.1" value={dThreshold} onChange={(e) => { setDThreshold(e.target.value); setPref(PREF.compressionThreshold, e.target.value); }}
+              className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Compression target" desc="Compress memory toward this fraction of the budget."
+            control={<input type="number" step="0.1" value={dTarget} onChange={(e) => { setDTarget(e.target.value); setPref(PREF.compressionTarget, e.target.value); }}
+              className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Protected recent" desc="Never distill the most-recent N ledger entries: keep them raw."
+            control={<input type="number" value={dProtected} onChange={(e) => { setDProtected(e.target.value); setPref(PREF.protectedRecent, e.target.value); }}
+              className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Distill interval" desc="How often the distill daemon runs a pass (seconds)."
+            control={<div className="flex items-center gap-1.5"><input type="number" value={dInterval} onChange={(e) => { setDInterval(e.target.value); setPref(PREF.distillIntervalSec, e.target.value); }}
+              className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" /><span className="font-mono text-xs text-text-muted">s</span></div>} />
+          <Row title="Distill now" desc="Run a distillation pass immediately."
+            control={<button onClick={distillNow} disabled={distilling}
+              className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
+              {distilling ? "distilling…" : "distill now"}</button>} />
+          {distillMsg && <div className="pb-3 text-xs text-text-secondary">{distillMsg}</div>}
+        </div>
+      </DaemonGroup>
+
+      <DaemonGroup
+        icon={Bell}
+        title="Reminders"
+        running={!!remindersSt?.running}
+        summary={remindersSt?.last_due_count != null ? (remindersSt.last_due_count > 0 ? `${remindersSt.last_due_count} due` : "none due") : `every ${remInterval}s`}
+      >
         <DaemonCard
           name="Reminders"
           status={remindersSt}
@@ -128,6 +205,24 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
             await invoke("reminders_daemon_start", { vault: vaultPath, interval_sec: sec });
           }}
         />
+        <div className="mt-3 rounded-lg border border-border-subtle bg-background px-5">
+          <Row title="Reminders interval" desc="How often the reminders daemon checks for due tasks (seconds)."
+            control={
+              <div className="flex items-center gap-1.5">
+                <input type="number" value={remInterval} onChange={(e) => { setRemInterval(e.target.value); setPref(PREF.remindersIntervalSec, e.target.value); }}
+                  className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
+                <span className="font-mono text-xs text-text-muted">s</span>
+              </div>
+            } />
+        </div>
+      </DaemonGroup>
+
+      <DaemonGroup
+        icon={ListChecks}
+        title="Task generation"
+        running={!!taskgenSt?.running}
+        summary={taskgenSt?.tasks_generated ? `${taskgenSt.tasks_generated} generated` : taskgenEnabled ? "on" : "off"}
+      >
         <DaemonCard
           name="Task Gen"
           status={taskgenSt}
@@ -135,6 +230,39 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           onStop={async () => { await invoke("taskgen_stop"); }}
           onStart={async () => { await invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }); }}
         />
+        <div className="mt-3 rounded-lg border border-border-subtle bg-background px-5">
+          <Row title="Task generation" desc="Proactively generate new tasks from your goals, memory, and domain state once per day."
+            control={<Toggle on={taskgenEnabled} onChange={(v) => { setTaskgenEnabled(v); setPref(PREF.taskgenEnabled, v ? "1" : "0"); if (!v) invoke("taskgen_stop").catch(() => {}); else invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch(() => {}); }} />} />
+          <Row title="Task gen model" desc="Model used to generate task suggestions (use a cheap, fast model)."
+            control={<input value={taskgenModel} onChange={(e) => { setTaskgenModel(e.target.value); setPref(PREF.taskgenModel, e.target.value); }}
+              className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Tasks per domain" desc="Maximum tasks generated per domain per day."
+            control={<input type="number" value={taskgenMax} onChange={(e) => { setTaskgenMax(e.target.value); setPref(PREF.taskgenMaxPerDomain, e.target.value); }}
+              className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Task gen interval" desc="How often the task-gen daemon checks for domains that need new tasks (seconds)."
+            control={
+              <div className="flex items-center gap-1.5">
+                <input type="number" value={taskgenInterval} onChange={(e) => { setTaskgenInterval(e.target.value); setPref(PREF.taskgenIntervalSec, e.target.value); }}
+                  className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
+                <span className="font-mono text-xs text-text-muted">s</span>
+              </div>
+            } />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button onClick={runTaskgenNow} disabled={running}
+            className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
+            {running ? "generating…" : "generate tasks now"}
+          </button>
+          {taskgenMsg && <span className="text-xs text-text-secondary">{taskgenMsg}</span>}
+        </div>
+      </DaemonGroup>
+
+      <DaemonGroup
+        icon={GraduationCap}
+        title="Skill learning"
+        running={!!skillgenSt?.running}
+        summary={skillgenSt?.skills_created ? `${skillgenSt.skills_created} learned` : skillgenEnabled ? "on" : "off"}
+      >
         <DaemonCard
           name="Skill Gen"
           status={skillgenSt}
@@ -142,99 +270,34 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           onStop={async () => { await invoke("skillgen_stop"); }}
           onStart={async () => { await invoke("skillgen_start", { cfg: skillgenCfgFromPrefs(vaultPath) }); }}
         />
-      </div>
+        <div className="mt-3 rounded-lg border border-border-subtle bg-background px-5">
+          <Row title="Skill learning" desc="Self-learning: distill reusable skills (playbooks, checklists, decision frameworks) from each domain's conversations, once per day."
+            control={<Toggle on={skillgenEnabled} onChange={(v) => { setSkillgenEnabled(v); setPref(PREF.skillgenEnabled, v ? "1" : "0"); if (!v) invoke("skillgen_stop").catch(() => {}); else invoke("skillgen_start", { cfg: skillgenCfgFromPrefs(vaultPath) }).catch(() => {}); }} />} />
+          <Row title="Skill gen model" desc="Model used to learn skills from conversations (use a cheap, fast model)."
+            control={<input value={skillgenModel} onChange={(e) => { setSkillgenModel(e.target.value); setPref(PREF.skillgenModel, e.target.value); }}
+              className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Skills per domain" desc="Maximum new skills learned per domain per day."
+            control={<input type="number" value={skillgenMax} onChange={(e) => { setSkillgenMax(e.target.value); setPref(PREF.skillgenMaxPerDomain, e.target.value); }}
+              className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
+          <Row title="Skill gen interval" desc="How often the skill-learning daemon scans domains for new lessons (seconds; default 6h)."
+            control={
+              <div className="flex items-center gap-1.5">
+                <input type="number" value={skillgenInterval} onChange={(e) => { setSkillgenInterval(e.target.value); setPref(PREF.skillgenIntervalSec, e.target.value); }}
+                  className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
+                <span className="font-mono text-xs text-text-muted">s</span>
+              </div>
+            } />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button onClick={runSkillgenNow} disabled={skillgenRunning}
+            className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
+            {skillgenRunning ? "learning…" : "learn skills now"}
+          </button>
+          {skillgenMsg && <span className="text-xs text-text-secondary">{skillgenMsg}</span>}
+        </div>
+      </DaemonGroup>
 
       <HeadlessLearnCard vaultPath={vaultPath} />
-
-      {/* Distill (memory) tuning + manual pass — the Distill card's controls. */}
-      <div className="mb-4 rounded-lg border border-border bg-surface px-5">
-        <Row title="Distill provider" desc="Which agent distills the intent ledger into memory (use a cheap, fast one)."
-          control={
-            <select value={dProvider} onChange={(e) => { setDProvider(e.target.value); setPref(PREF.memoryProvider, e.target.value); }}
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none">
-              <option value="claude">Claude</option>
-              <option value="codex">Codex</option>
-              <option value="ollama">Ollama (local)</option>
-            </select>} />
-        <Row title="Distill model" desc="Model id used for distillation, e.g. claude-haiku-4-5."
-          control={<input value={dModel} onChange={(e) => { setDModel(e.target.value); setPref(PREF.distillModel, e.target.value); }}
-            className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Auto-compression" desc="Run the distill daemon on a timer (off = manual passes only)."
-          control={<Toggle on={dAuto} onChange={(v) => { setDAuto(v); setPref(PREF.autoCompression, v ? "1" : "0"); }} />} />
-        <Row title="Compression threshold" desc="Start distilling once new activity reaches this fraction of the memory budget."
-          control={<input type="number" step="0.1" value={dThreshold} onChange={(e) => { setDThreshold(e.target.value); setPref(PREF.compressionThreshold, e.target.value); }}
-            className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Compression target" desc="Compress memory toward this fraction of the budget."
-          control={<input type="number" step="0.1" value={dTarget} onChange={(e) => { setDTarget(e.target.value); setPref(PREF.compressionTarget, e.target.value); }}
-            className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Protected recent" desc="Never distill the most-recent N ledger entries: keep them raw."
-          control={<input type="number" value={dProtected} onChange={(e) => { setDProtected(e.target.value); setPref(PREF.protectedRecent, e.target.value); }}
-            className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Distill interval" desc="How often the distill daemon runs a pass (seconds)."
-          control={<div className="flex items-center gap-1.5"><input type="number" value={dInterval} onChange={(e) => { setDInterval(e.target.value); setPref(PREF.distillIntervalSec, e.target.value); }}
-            className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" /><span className="font-mono text-xs text-text-muted">s</span></div>} />
-        <Row title="Distill now" desc="Run a distillation pass immediately."
-          control={<button onClick={distillNow} disabled={distilling}
-            className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
-            {distilling ? "distilling…" : "distill now"}</button>} />
-        {distillMsg && <div className="pb-3 text-xs text-text-secondary">{distillMsg}</div>}
-      </div>
-
-      <div className="rounded-lg border border-border bg-surface px-5">
-        <Row title="Reminders interval" desc="How often the reminders daemon checks for due tasks (seconds)."
-          control={
-            <div className="flex items-center gap-1.5">
-              <input type="number" value={remInterval} onChange={(e) => { setRemInterval(e.target.value); setPref(PREF.remindersIntervalSec, e.target.value); }}
-                className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
-              <span className="font-mono text-xs text-text-muted">s</span>
-            </div>
-          } />
-        <Row title="Task generation" desc="Proactively generate new tasks from your goals, memory, and domain state once per day."
-          control={<Toggle on={taskgenEnabled} onChange={(v) => { setTaskgenEnabled(v); setPref(PREF.taskgenEnabled, v ? "1" : "0"); if (!v) invoke("taskgen_stop").catch(() => {}); else invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch(() => {}); }} />} />
-        <Row title="Task gen model" desc="Model used to generate task suggestions (use a cheap, fast model)."
-          control={<input value={taskgenModel} onChange={(e) => { setTaskgenModel(e.target.value); setPref(PREF.taskgenModel, e.target.value); }}
-            className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Tasks per domain" desc="Maximum tasks generated per domain per day."
-          control={<input type="number" value={taskgenMax} onChange={(e) => { setTaskgenMax(e.target.value); setPref(PREF.taskgenMaxPerDomain, e.target.value); }}
-            className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Task gen interval" desc="How often the task-gen daemon checks for domains that need new tasks (seconds)."
-          control={
-            <div className="flex items-center gap-1.5">
-              <input type="number" value={taskgenInterval} onChange={(e) => { setTaskgenInterval(e.target.value); setPref(PREF.taskgenIntervalSec, e.target.value); }}
-                className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
-              <span className="font-mono text-xs text-text-muted">s</span>
-            </div>
-          } />
-        <Row title="Skill learning" desc="Self-learning: distill reusable skills (playbooks, checklists, decision frameworks) from each domain's conversations, once per day."
-          control={<Toggle on={skillgenEnabled} onChange={(v) => { setSkillgenEnabled(v); setPref(PREF.skillgenEnabled, v ? "1" : "0"); if (!v) invoke("skillgen_stop").catch(() => {}); else invoke("skillgen_start", { cfg: skillgenCfgFromPrefs(vaultPath) }).catch(() => {}); }} />} />
-        <Row title="Skill gen model" desc="Model used to learn skills from conversations (use a cheap, fast model)."
-          control={<input value={skillgenModel} onChange={(e) => { setSkillgenModel(e.target.value); setPref(PREF.skillgenModel, e.target.value); }}
-            className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Skills per domain" desc="Maximum new skills learned per domain per day."
-          control={<input type="number" value={skillgenMax} onChange={(e) => { setSkillgenMax(e.target.value); setPref(PREF.skillgenMaxPerDomain, e.target.value); }}
-            className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
-        <Row title="Skill gen interval" desc="How often the skill-learning daemon scans domains for new lessons (seconds; default 6h)."
-          control={
-            <div className="flex items-center gap-1.5">
-              <input type="number" value={skillgenInterval} onChange={(e) => { setSkillgenInterval(e.target.value); setPref(PREF.skillgenIntervalSec, e.target.value); }}
-                className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
-              <span className="font-mono text-xs text-text-muted">s</span>
-            </div>
-          } />
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <button onClick={runTaskgenNow} disabled={running}
-          className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
-          {running ? "generating…" : "generate tasks now"}
-        </button>
-        {taskgenMsg && <span className="text-xs text-text-secondary">{taskgenMsg}</span>}
-        <button onClick={runSkillgenNow} disabled={skillgenRunning}
-          className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40">
-          {skillgenRunning ? "learning…" : "learn skills now"}
-        </button>
-        {skillgenMsg && <span className="text-xs text-text-secondary">{skillgenMsg}</span>}
-      </div>
     </>
   );
 }
