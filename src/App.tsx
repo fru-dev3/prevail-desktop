@@ -11,6 +11,7 @@ import { scoreColor, formatFreshness, titleCase, relTime } from "./format";
 import { Toggle, Sparkline, ThinkingDisclosure } from "./ui";
 import type { AlignmentReport, AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Brand, BrandLogo, CatalogApp, ChatEvent, ChatMessage, CliInfo, CliProvider, CliVerifyInfo, Connector, ConnectorCatalog, ContextScore, DaemonStatus, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainTask, DomainToggle, EngineApp, Framework, IngestionAction, IngestionArtifact, IngestionAuditEntry, IngestionMcpServer, IngestionTierStatus, Lens, LifeReadiness, MatrixRow, MissingItem, Mode, ModelPick, ModelVerifyStatus, OnboardingRecommendation, Palette, PanelistReply, PanelistSlot, PortalRecipe, PreambleOption, RunDetail, ScoreBreakdown, SkillEntry, SurfaceResult, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn, UsageBucket, UsageSummary } from "./types";
 import { bytesHuman, formatAuditedAt, splitThinking, appScheduleText, compactNum, fmtCost } from "./helpers";
+import { ANSI_RE, AUTONOMY_LABEL, AUTONOMY_TINT, DOMAIN_BLURBS, DOMAIN_LABEL, DOMAIN_PALETTE, INTEGRATION_LABEL, LOCAL_CLI_IDS, PATTERN_LABEL, PATTERN_TIER, PATTERN_TINT, SEVERITY_LABEL, SEVERITY_ORDER, SKILL_TOKEN_RE, SOURCE_ABBR, STATUS_TINT, SYCOPHANCY_RE, VENDOR_BRAND } from "./constants";
 
 // Single source of truth for the version chip in title bar.
 // Injected by Vite from package.json — never hand-stamp this again.
@@ -449,41 +450,6 @@ function domainIcon(name: string): LucideIcon | null {
 
 // Friendly one-line descriptions for the domain cards — plain, warm, no jargon.
 // Shown as the card subtitle; falls back to a generic line for unknown domains.
-const DOMAIN_BLURBS: Record<string, string> = {
-  wealth: "Your money, savings, and the path to financial freedom.",
-  finance: "Your money, savings, and the path to financial freedom.",
-  health: "Your energy, fitness, and long-term wellbeing.",
-  fitness: "Your energy, fitness, and long-term wellbeing.",
-  tax: "Filings, deadlines, and keeping more of what you earn.",
-  taxes: "Filings, deadlines, and keeping more of what you earn.",
-  career: "Your work, growth, and where you're headed next.",
-  work: "Your work, growth, and where you're headed next.",
-  business: "Your ventures, clients, and what you're building.",
-  insurance: "Coverage, renewals, and protecting what matters.",
-  estate: "Your legacy, documents, and looking after your people.",
-  calendar: "What's coming up, and making time for what counts.",
-  schedule: "What's coming up, and making time for what counts.",
-  benefits: "Perks, plans, and everything your employer offers.",
-  brand: "Your name, your voice, and how the world sees you.",
-  content: "Ideas, posts, and the things you create.",
-  "real-estate": "Property, home, and the roof over your head.",
-  realestate: "Property, home, and the roof over your head.",
-  home: "Your space, your projects, and daily life at home.",
-  records: "Important documents, kept safe and easy to find.",
-  vision: "The big picture: where you're going, and why.",
-  social: "Friends, connections, and staying in touch.",
-  family: "The people closest to you, and staying connected.",
-  learning: "Skills, courses, and growing your mind.",
-  learn: "Skills, courses, and growing your mind.",
-  intel: "Research, signals, and staying in the know.",
-  intelligence: "Research, signals, and staying in the know.",
-  explore: "Curiosities, trips, and things worth discovering.",
-  travel: "Curiosities, trips, and things worth discovering.",
-  chief: "Your command center for today's priorities and what matters now.",
-  mail: "Your inbox: important threads handled, noise filtered, nothing dropped.",
-  email: "Your inbox: important threads handled, noise filtered, nothing dropped.",
-  inbox: "Your inbox: important threads handled, noise filtered, nothing dropped.",
-};
 
 function domainBlurb(name: string): string {
   return DOMAIN_BLURBS[name.toLowerCase()] ?? "A space to track and work on this part of your life.";
@@ -516,16 +482,6 @@ const siOllama = siOllamaRaw as { path: string };
 // `hex` = icon-tile background (true brand color). `accent` = a
 // display-safe variant used for text/borders that must stay legible on
 // both light and dark surfaces (white/black brand marks would vanish).
-const VENDOR_BRAND: Record<string, { hex: string; accent: string; name: string }> = {
-  claude:      { hex: "#cc785c", accent: "#cc785c", name: "Anthropic Claude" },
-  codex:       { hex: "#10a37f", accent: "#10a37f", name: "OpenAI Codex" },
-  antigravity: { hex: "#ffffff", accent: "#4285f4", name: "Google Antigravity" },
-  ollama:      { hex: "#0a0a0a", accent: "#6b7280", name: "Ollama (local)" },
-  lmstudio:    { hex: "#4f46e5", accent: "#6366f1", name: "LM Studio (local)" },
-  mlx:         { hex: "#1f2937", accent: "#9ca3af", name: "oMLX (local)" },
-  openrouter:  { hex: "#6566f1", accent: "#6566f1", name: "OpenRouter" },
-  other:       { hex: "#6b7280", accent: "#6b7280", name: "-" },
-};
 
 // Brand accent for a vendor, safe for text/border use. Returns the hex
 // plus a low-alpha tint suitable for a subtle bubble background.
@@ -642,12 +598,6 @@ const SCORE_DIMENSIONS: { key: keyof ScoreBreakdown; label: string }[] = [
 ];
 
 // Color thresholds: green >=75, amber 50-74, red <50. Returns a CSS color.
-const SEVERITY_ORDER: Record<string, number> = { critical: 0, warn: 1, info: 2 };
-const SEVERITY_LABEL: Record<string, string> = {
-  critical: "Critical",
-  warn: "Warnings",
-  info: "Suggestions",
-};
 
 
 
@@ -798,7 +748,6 @@ function isBunkerOn(): boolean {
   return lsGet(BUNKER_LS, "1") !== "0";
 }
 // Providers that serve models from this machine only — mirror bunker.rs LOCAL_CLIS.
-const LOCAL_CLI_IDS = new Set(["ollama", "lmstudio", "mlx"]);
 function isLocalCli(id: string): boolean {
   return LOCAL_CLI_IDS.has(id.toLowerCase());
 }
@@ -1040,7 +989,6 @@ function buildChatContext(
 
 // Render plain text with `/skill` tokens highlighted like inline pills
 // — a small visual cue that the model will treat them as skill refs.
-const SKILL_TOKEN_RE = /(^|\s)(\/[a-zA-Z][a-zA-Z0-9_-]*)/g;
 function renderSkillTokens(text: string): React.ReactNode {
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
@@ -1106,8 +1054,6 @@ function ResizeHandle({ onChange, ariaLabel }: { onChange: (deltaPx: number) => 
 // Strip ANSI escape codes (CSI sequences) that some CLIs emit even in
 // non-TTY mode — ollama is the worst offender with its progress
 // spinner. Without this the chat shows garbage like `[4D[K`.
-const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
-const SYCOPHANCY_RE = /\b(you're absolutely right!?|you are absolutely right!?|great question!?|excellent question!?|that's a great point!?)\b\s*/gi;
 function stripAnsi(s: string): string {
   return s.replace(ANSI_RE, "");
 }
@@ -1502,10 +1448,6 @@ function OnboardingModal({
 
 // Deterministic per-domain accent color — turns the monochrome card grid
 // into a colorful, scannable board. Muted, on-brand palette.
-const DOMAIN_PALETTE = [
-  "#cc785c", "#2d7fe4", "#5fae74", "#2dd4bf", "#a78bfa", "#e0823d",
-  "#3fa6a0", "#c44e8a", "#7c83ff", "#6b8e23", "#d2674f", "#b8860b",
-];
 function domainColor(name: string): string {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
@@ -4701,16 +4643,7 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
 }
 
 // How an app talks to its third party — human label for the Settings facet.
-const INTEGRATION_LABEL: Record<string, string> = {
-  api: "Direct API", oauth: "OAuth", browser: "Browser", mcp: "MCP server", manual: "Manual drop",
-};
 // What the app is allowed to DO on your behalf.
-const AUTONOMY_LABEL: Record<string, string> = {
-  "read-only": "Read only", draft: "Can draft", act: "Can act",
-};
-const AUTONOMY_TINT: Record<string, string> = {
-  "read-only": "#2fb87a", draft: "#d8a657", act: "#e06c75",
-};
 // Human-readable cadence from the refresh block (every / on / at).
 
 // Small labelled section card used across the app facets. Keeps each block
@@ -15131,10 +15064,8 @@ function ConnectorIcon({ c }: { c: Connector }) {
 
 // Catalog shapes — mirror resources/connectors/catalog.json. The Rust command
 // returns it verbatim, so the frontend owns the type.
-const SOURCE_ABBR: Record<string, string> = { claude: "Cl", chatgpt: "GPT", gemini: "Gem" };
 // A REAL app as the engine sees it (community/vault app with live state),
 // distinct from a catalog entry (a browseable directory listing).
-const STATUS_TINT: Record<string, string> = { connected: "#2fb87a", expired: "#d8a657", error: "#e06c75", "not-configured": "#2fb87a" };
 // Real brand SVG (simple-icons) when the app matched one at build time; else a
 // pattern-tinted dot. Keeps the row scannable for all 1,400+ apps.
 function AppLogo({ app, logos }: { app: CatalogApp; logos: Record<string, BrandLogo> }) {
@@ -15154,23 +15085,8 @@ function AppLogo({ app, logos }: { app: CatalogApp; logos: Record<string, BrandL
 
 // Each connector PATTERN maps to one ingestion tier. Short label + tint so a
 // row scans at a glance without per-brand icons (the catalog has hundreds).
-const PATTERN_LABEL: Record<string, string> = { api: "API", oauth: "OAuth", cli: "CLI", browser: "Web" };
-const PATTERN_TINT: Record<string, string> = { api: "#2fb87a", oauth: "#C4A35A", cli: "#6b7cff", browser: "#9aa0a6" };
-const PATTERN_TIER: Record<string, string> = { api: "Tier A · API/MCP", oauth: "Tier B · OAuth gateway", cli: "Tier D · CLI", browser: "Tier C · browser" };
 
 // Friendly domain headings. Falls back to titleCase for anything unmapped.
-const DOMAIN_LABEL: Record<string, string> = {
-  money: "Money & Banking", credit: "Credit & Debt", investing: "Investing & Wealth",
-  taxes: "Taxes & Accounting", insurance: "Insurance", realestate: "Real Estate & Home",
-  health: "Health & Medical", fitness: "Fitness & Wellness", email: "Email",
-  communication: "Communication", productivity: "Productivity", calendar: "Calendar",
-  files: "Files & Storage", security: "Security & Identity", career: "Career & Work",
-  shopping: "Shopping", travel: "Travel", smarthome: "Smart Home", social: "Social",
-  media: "Media & Streaming", learning: "Learning", government: "Government & Civic",
-  utilities: "Utilities", automotive: "Automotive", food: "Food & Dining",
-  family: "Family & Home", giving: "Giving", legal: "Legal & Estate",
-  news: "News & Research", dev: "Developer", tech: "Tech & Devices",
-};
 
 function PatternChip({ pattern }: { pattern: string }) {
   const label = PATTERN_LABEL[pattern] ?? pattern;
@@ -19369,5 +19285,6 @@ function McpCard() {
 }
 
 // BriefingsCard removed — landing back in v0.3 when wired up.
+
 
 
