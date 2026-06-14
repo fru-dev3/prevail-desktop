@@ -143,8 +143,8 @@ export function DomainContextDrawer({
         {loading && <div className="p-4 text-xs text-text-muted">loading…</div>}
         {err && <div className="m-2 rounded border border-warn/40 bg-warn/10 p-3 text-xs text-warn">{err}</div>}
         {!domain && (
-          <div className="border-b border-border-subtle px-4 py-2.5 text-[11px] text-text-muted">
-            Context that spans your whole workspace: decisions you've made and what Prevail has learned. Pick a domain for its state, journal, and skills.
+          <div className="border-b border-border-subtle px-4 py-2.5 text-[11px] leading-relaxed text-text-muted">
+            General is your no-domain workspace, so it shows only what spans everything: recent decisions, your ideal state, and long-term memory. State, journal, session logs, and skills live inside each domain's own folder, so open a domain to see those.
           </div>
         )}
         {/* Recent decisions = the raw live ledger (_decisions.jsonl). "Decisions"
