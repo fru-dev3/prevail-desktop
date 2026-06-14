@@ -9,6 +9,7 @@ import { PrevailLogo } from "./PrevailLogo";
 import { Markdown, StreamingPlain } from "./Markdown";
 import { scoreColor, formatFreshness, titleCase, relTime } from "./format";
 import { Toggle, Sparkline, ThinkingDisclosure } from "./ui";
+import type { AlignmentReport, AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Brand, BrandLogo, CatalogApp, ChatEvent, ChatMessage, CliInfo, CliProvider, CliVerifyInfo, Connector, ConnectorCatalog, ContextScore, DaemonStatus, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainTask, DomainToggle, EngineApp, Framework, IngestionAction, IngestionArtifact, IngestionAuditEntry, IngestionMcpServer, IngestionTierStatus, Lens, LifeReadiness, MatrixRow, MissingItem, Mode, ModelPick, ModelVerifyStatus, OnboardingRecommendation, Palette, PanelistReply, PanelistSlot, PortalRecipe, PreambleOption, RunDetail, ScoreBreakdown, SkillEntry, SurfaceResult, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn, UsageBucket, UsageSummary } from "./types";
 
 // Single source of truth for the version chip in title bar.
 // Injected by Vite from package.json — never hand-stamp this again.
@@ -182,11 +183,6 @@ function QuickSwitcher({
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
 // through to the CLI's --model flag.
-interface ModelPick {
-  id: string;
-  label: string;
-  blurb?: string;
-}
 const MODELS: Record<string, ModelPick[]> = {
   claude: [
     // One entry per model: the alias id (auto-upgrades) carries the resolved
@@ -515,7 +511,6 @@ const siClaude = siClaudeRaw as { path: string };
 const siOllama = siOllamaRaw as { path: string };
 
 // A simple-icons brand mark (real SVG path + brand hex).
-type Brand = { path: string; hex: string; title: string };
 
 // `hex` = icon-tile background (true brand color). `accent` = a
 // display-safe variant used for text/borders that must stay legible on
@@ -603,149 +598,20 @@ function ProviderMark({ vendor, size = 28 }: { vendor: string; size?: number }) 
 // Types matching the Rust commands in src-tauri/src/lib.rs
 
 // Thread types — match Rust ThreadMeta / ThreadTurn / ThreadFull.
-interface ThreadMeta {
-  path: string;
-  slug: string;
-  title: string;
-  domain: string | null;
-  created: number;
-  updated: number;
-  turn_count: number;
-  preview: string;
-}
-interface ThreadTurn {
-  role: "user" | "assistant";
-  cli: string | null;
-  model: string | null;
-  content: string;
-}
 
-interface DomainLogEntry {
-  name: string;
-  path: string;
-  mtime_secs: number;
-  preview: string;
-}
-interface DomainContextBundle {
-  state: string | null;
-  decisions: string | null;
-  journal: string | null;
-  recent_logs: DomainLogEntry[];
-  skills: { domain: string; name: string; path: string; description: string | null }[];
-}
 
 // ── Context Score (mirrors engine.rs ContextScore / ContextScore.json) ──
-interface ScoreDimension {
-  score: number;
-  detail: string;
-}
-interface ScoreBreakdown {
-  coverage: ScoreDimension;
-  density: ScoreDimension;
-  freshness: ScoreDimension;
-  structure: ScoreDimension;
-  activity: ScoreDimension;
-  config_completeness: ScoreDimension;
-}
-interface MissingItem {
-  label: string;
-  severity: string; // info | warn | critical
-  kind: string;
-}
-interface RelevanceItem {
-  id: string;
-  label: string;
-  present: boolean;
-  stale: boolean;
-  severity: string; // info | warn | critical
-  detail: string;
-  recommend: string;
-}
-interface DomainRelevance {
-  matched: string;
-  score: number;
-  detail: string;
-  items: RelevanceItem[];
-}
-interface ContextScore {
-  domain: string;
-  score: number;
-  breakdown: ScoreBreakdown;
-  relevance: DomainRelevance | null;
-  missing: MissingItem[];
-  freshness_secs: number;
-  assessment: string | null;
-  audit_source: string | null;
-  computed_at: string;
-  audited_at: number | null;
-}
-interface LifeReadiness {
-  life_readiness: number | null;
-  domains: ContextScore[];
-  computed_at: string | null;
-}
 
 // ── Onboarding (mirrors engine.rs / OnboardingRecommendation.json) ──
-interface ProposedDomain {
-  name: string;
-  label: string;
-  emoji: string;
-  summary: string;
-  reason: string;
-  recommended: boolean;
-  starterGoals?: string[];
-  suggestedSkills?: string[];
-}
-interface OnboardingRecommendation {
-  domains: ProposedDomain[];
-  rationale: string;
-  generated_at: string;
-}
 
 // ── Domain manifest config (subset mirrors DomainManifest.json config) ──
 // Only the fields the desktop reads/writes for per-domain prefs. Kept
 // lenient so the engine can carry extra fields without breaking us.
-interface ManifestConfig {
-  cli?: string;
-  model?: string;
-  framework?: string | null;
-  lens?: string | null;
-  skills?: string[];
-  autoState?: boolean;
-}
 // Per-domain privacy block (mirrors DomainManifest.json privacy).
-interface ManifestPrivacy {
-  localOnly?: boolean;
-}
 // Per-domain sandbox block (mirrors DomainManifest.json sandbox).
-interface ManifestSandbox {
-  mode?: string; // "open" | "locked"
-}
 // Per-domain routing block (mirrors DomainManifest.json routing).
-interface ManifestRouting {
-  keywords?: string[];
-  channels?: string[];
-  default?: boolean;
-}
-interface DomainManifest {
-  config?: ManifestConfig;
-  privacy?: ManifestPrivacy;
-  sandbox?: ManifestSandbox;
-  routing?: ManifestRouting;
-  [k: string]: unknown;
-}
 
 // ── Backup (mirrors engine.rs / BackupResult.json) ──
-interface BackupResult {
-  ok: boolean;
-  archive_path: string | null;
-  scope: "vault" | "domain";
-  domains: string[];
-  file_count: number;
-  bytes: number;
-  created_at: string;
-  error?: string | null;
-}
 
 // The ~6 onboarding questions. Free-form answers are bundled into a single
 // JSON document ({ answers: { ... } }) sent to `engine_onboard_recommend`.
@@ -796,68 +662,10 @@ const SEVERITY_LABEL: Record<string, string> = {
   info: "Suggestions",
 };
 
-interface Domain {
-  name: string;
-  path: string;
-  has_state: boolean;
-  state_preview: string | null;
-}
 
-interface CliInfo {
-  id: string;
-  label: string;
-  bin: string;
-  available: boolean;
-  version?: string | null;
-}
 
-interface BenchmarkRun {
-  label: string;
-  run_dir: string;
-  judge_avg: number | null;
-  keyword_avg: number | null;
-  questions: number;
-  date: string;
-  domains: string[];
-  scored: boolean;
-  batch_id?: string | null;
-  batch_label?: string | null;
-  created_ms: number;
-  cli?: string | null;
-  model?: string | null;
-  council?: boolean | null;
-}
 
-interface QuestionScore {
-  id: string;
-  domain: string;
-  keyword_score: number | null;
-  keyword_hits: string[];
-  keyword_misses: string[];
-  judge_score: number | null;
-  judge_rationale: string | null;
-}
 
-interface RunDetail {
-  records: Array<{
-    id: string;
-    prompt: string;
-    reply: string;
-    expected_decision?: string;
-    expected_verdict_keywords?: string[];
-    ms: number;
-    cli?: string;
-    model?: string;
-    ok: boolean;
-  }>;
-  score: {
-    label: string;
-    runDir: string;
-    questionScores: QuestionScore[];
-    keyword_avg: number | null;
-    judge_avg: number | null;
-  };
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // Frameworks + Lenses — kept in sync with the CLI's src/framework.ts
@@ -865,12 +673,6 @@ interface RunDetail {
 // prepended to every prompt as a bracketed preamble before the CLI
 // is spawned.
 
-interface Framework {
-  id: string;
-  label: string;
-  blurb: string;
-  instruction: string;
-}
 const FRAMEWORKS: Framework[] = [
   { id: "none", label: "OFF", blurb: "No framework, model's default response shape", instruction: "" },
   { id: "bluf", label: "BLUF", blurb: "Bottom Line Up Front, lead with the answer", instruction: "Apply the BLUF framework. Your first sentence MUST be the bottom line: the single most important conclusion or recommendation. Then provide supporting context in 1-3 short paragraphs. Never bury the conclusion under context." },
@@ -882,12 +684,6 @@ const FRAMEWORKS: Framework[] = [
   { id: "steelman", label: "STEELMAN", blurb: "Strongest version of the other side first", instruction: "Steelman the opposing position first: give it the strongest framing you can. Then give your verdict." },
 ];
 
-interface Lens {
-  id: string;
-  label: string;
-  blurb: string;
-  instruction: string;
-}
 const LENSES: Lens[] = [
   { id: "none", label: "OFF", blurb: "No lens, single response, default angle", instruction: "" },
   { id: "first-principles", label: "FIRST PRINCIPLES", blurb: "Strip the problem to fundamentals", instruction: "Approach this problem from first principles. Forget conventional wisdom, prior advice, industry best practice, or what 'most people do.' Strip the problem to its fundamental mechanics and rebuild the answer from there." },
@@ -906,12 +702,10 @@ const LENSES: Lens[] = [
 // Top-level tabs. Council is NOT its own tab — it's a mode toggle
 // inside Chat. Tools is NOT its own tab — it's a section inside
 // Settings. Keeps the surface count low so each tab has a clear job.
-type TabId = "chat" | "council" | "benchmark" | "settings";
 // Which view the Chat surface shows for the active domain. Lifted to App so the
 // top bar can own the Insights / Preferences toggles (and the domain header
 // shrinks to just the title). "chat" = the conversation; the rest are domain
 // sub-views rendered in place of the transcript.
-type DomainTab = "chat" | "context" | "insights" | "usage" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs" | "apps";
 const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
   { id: "chat", label: "Chat", icon: MessageSquare },
   { id: "council", label: "Council", icon: Scale },
@@ -938,7 +732,6 @@ const LS = {
 
 // Per-domain toggles mirroring the CLI status bar:
 // council on/off · web access · save replies · serendipity · auto-council.
-type DomainToggle = "council" | "web" | "save" | "serendipity" | "auto";
 // `null` / "" domain means General — it gets its own bucket so the modes
 // persist there too.
 function domainTogglesKey(domain: string | null, t: DomainToggle): string {
@@ -1061,7 +854,6 @@ function looksLikeJudgmentCall(text: string): boolean {
 // surface (Models page, chat picker) can show valid / not-valid immediately
 // instead of waiting for a card to be expanded. Module scope + window event,
 // same pattern as the bunker mirror above.
-type CliVerifyInfo = { status: "unknown" | "verifying" | "ok" | "failed"; error?: string };
 const cliVerifyLive = new Map<string, CliVerifyInfo>();
 function setCliVerify(cliId: string, info: CliVerifyInfo) {
   cliVerifyLive.set(cliId, info);
@@ -1408,8 +1200,6 @@ function Brand({ className = "", fill = false }: { className?: string; fill?: bo
 // Theme = Mode (light / dark / system) + Palette (vault / midnight / ember / mono / cyberpunk / slate)
 // Mode controls brightness; palette controls accent + surface styling.
 
-type Mode = "light" | "dark" | "system";
-type Palette = "vault" | "midnight" | "ember" | "mono" | "cyberpunk" | "slate";
 
 const PALETTES: { id: Palette; name: string; blurb: string; swatch: { bg: string; surface: string; accent: string; ai: string } }[] = [
   { id: "vault",     name: "Vault",     blurb: "Cream + teal, focused, calm",                       swatch: { bg: "#faf8f1", surface: "#ffffff", accent: "#0d7a6e", ai: "#60a8c0" } },
@@ -4706,46 +4496,11 @@ function CycleChip({
 // ─────────────────────────────────────────────────────────────────────
 // CHAT PANEL
 
-interface ChatMessage {
-  role: "user" | "assistant";
-  cli?: string;
-  // Model id that produced an assistant turn (e.g. "claude-opus-4-8").
-  // Persisted with the thread so a conversation records WHICH model
-  // answered — needed to replay/rebuild an intent against a better model.
-  model?: string;
-  content: string;
-  ts: number;
-  streaming?: boolean;
-  // Captured stderr from the CLI. Surfaced in the "No output" panel so
-  // the real failure reason (e.g. "model not supported on ChatGPT
-  // account", quota, auth) is visible instead of a generic message.
-  stderr?: string;
-  // Token / cost accounting from the engine's `usage` ChatEvent, when the
-  // reply came through the unified engine chat path (Track D5). Null on
-  // replies that came through the native chat_send path.
-  usage?: { input_tokens?: number; output_tokens?: number; cost_usd?: number };
-  // I9: the framework + lens in effect when this turn was sent, so each message
-  // records HOW it was produced (not just which model). Shown in the bubble.
-  framework?: string;
-  lens?: string;
-}
 
 // Mirrors fd-apps-prevail-cli/docs/schemas/ChatEvent.json — a single
 // NDJSON event on the `prevail chat --json` stream. Consumers MUST
 // tolerate unknown `type` values for forward compatibility, so `type`
 // stays a bare string and every payload field is optional.
-interface ChatEvent {
-  type: string; // start | user | delta | assistant | tool | usage | done | error
-  thread?: string;
-  ts?: number;
-  domain?: string;
-  role?: "user" | "assistant" | "system" | "tool";
-  text?: string;
-  tool?: { name?: string; input?: unknown; output?: unknown };
-  usage?: { input_tokens?: number; output_tokens?: number; cost_usd?: number };
-  engine?: string;
-  error?: string;
-}
 
 // Pull <think>…</think> / <thinking>…</thinking> reasoning blocks out of a
 // model's output so they can render in a collapsible disclosure instead of
@@ -4828,7 +4583,6 @@ function buildQuickActions(domain: string | null): { glyph: string; label: strin
 // before asking. Clicking a tab item primes it into the next prompt.
 // Proactive surfacing for a domain — questions worth asking + suggested next
 // actions, generated from the vault (cached). Click one to seed the composer.
-interface SurfaceResult { questions: string[]; actions: string[]; generated_at: number; stale: boolean }
 
 // Tiny inline trend line: a model's judge scores over time, on a fixed 0-10
 // scale so two models' lines are visually comparable.
@@ -4907,7 +4661,6 @@ function InsightsDisclosure({
     </div>
   );
 }
-interface DomainTask { text: string; done: boolean; due?: string | null; added?: string | null; source?: string | null }
 function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: string; nonce: number }) {
   const [tasks, setTasks] = useState<DomainTask[]>([]);
   const [adding, setAdding] = useState("");
@@ -5050,8 +4803,6 @@ function AppHeaderBar({ app, enabled, onOpenDomain, onClose }: { app: EngineApp;
 // scroll area when the matching top-bar chip is active. Owns the domain-binding
 // editor (the cross-link), the skills list, and the Test / Sync actions.
 // One recorded sync run, mirroring the engine's sync-state.json `runs` ring.
-type AppRun = { ts: number; ok: boolean; skill: string; summary?: string; error?: string; duration_ms: number; artifacts: number };
-type AppRunHistory = { runs: AppRun[]; nextDueTs: number | null; consecutiveFailures: number };
 
 function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, onChanged }: { app: EngineApp; vaultPath: string; domains: Domain[]; appTab: "runs" | "settings" | "domains"; onOpenDomain: (d: string) => void; onChanged: () => void }) {
   const [skills, setSkills] = useState<{ id: string; runner: string; trigger: string }[] | null>(null);
@@ -7082,23 +6833,6 @@ function DomainActionsMenu({
 // strip. Surfaced on the no-domain landing; renders nothing until there's
 // at least one captured turn, so new vaults stay clean.
 
-interface UsageBucket {
-  key: string;
-  turns: number;
-  input_tokens: number;
-  output_tokens: number;
-  cost_usd: number;
-}
-interface UsageSummary {
-  total_turns: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_cost_usd: number;
-  by_cli: UsageBucket[];
-  by_model: UsageBucket[];
-  by_domain: UsageBucket[];
-  by_day: UsageBucket[];
-}
 
 function compactNum(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
@@ -9611,25 +9345,10 @@ function ThinkingDots() {
 // ─────────────────────────────────────────────────────────────────────
 // COUNCIL PANEL
 
-interface PanelistReply {
-  cli: string;
-  content: string;
-  streaming: boolean;
-  startedAt: number;
-  stderr?: string;
-}
 
 // One panelist slot = a (CLI, model) pair. Multiple slots can share the
 // same CLI but different models (e.g. Opus 4.7 + Sonnet 4.6 side by
 // side). Slot key encodes both so the reply map keeps them separate.
-interface PanelistSlot {
-  key: string;          // "<cli>::<model>"
-  cli: string;
-  cliLabel: string;
-  model: string;        // empty string = CLI default
-  modelLabel: string;
-  blurb?: string;
-}
 
 function CouncilPanel({
   domain,
@@ -11275,52 +10994,7 @@ const BENCH_CLI_OPTIONS = [
 // (by-model leaderboard + model×domain effectiveness matrix), and a
 // questions manager. Replaces the old leaderboard+popup. No modals.
 
-interface BenchQuestion {
-  id: string;
-  domain: string;
-  prompt: string;
-  context: string;
-  notes: string;
-  council: boolean;
-  expected_decision: string;
-  expected_verdict_keywords: string[];
-  path: string;
-  created?: string | null; // YYYY-MM-DD
-  source?: string | null; // "user" | "ai"
-  edited?: string | null; // YYYY-MM-DD last edit (prior text preserved in _versions/)
-  archived?: boolean;
-}
-interface MatrixDomainCell {
-  judge_avg: number | null;
-  keyword_avg: number | null;
-  count: number;
-}
-interface MatrixRow {
-  label: string;
-  run_dir: string;
-  judge_avg: number | null;
-  keyword_avg: number | null;
-  per_domain: Record<string, MatrixDomainCell>;
-}
 
-type BenchJobStatus = "queued" | "running" | "scoring" | "done" | "error" | "cancelled";
-interface BenchJob {
-  key: string;
-  cli: string;
-  model: string;
-  label: string;
-  status: BenchJobStatus;
-  note?: string;
-  /// Per-question progress, parsed live from the engine's output lines.
-  done: number;
-  total: number;
-  /// The scoped question ids this job will answer, in run order.
-  qids: string[];
-  /// id -> completion info ("Claude·opus", "council · 3 panelists", "✗ …").
-  qdone: Record<string, string>;
-  /// The question currently in flight, when detectable.
-  qcur?: string;
-}
 
 const MODEL_SEP = "::";
 
@@ -11330,21 +11004,6 @@ const MODEL_SEP = "::";
 // domain switches, settings navigation, or panel remounts never lose one.
 // Panels and the sidebar subscribe via useBenchBatches(); cancelBenchBatch
 // signals the engine processes through abort_sessions.
-interface BenchBatch {
-  id: string;
-  label: string;
-  scopeLabel: string; // human-readable scope ("All domains", "Wealth", …)
-  scopeKey: string; // lowercase csv of scoped domains; "" = all
-  scopeDomains: string[]; // titlecased, for chips + nav targeting
-  vault: string;
-  councilMode: boolean;
-  jobs: BenchJob[];
-  running: boolean;
-  log: string;
-  sessions: string[]; // engine session ids (jobs + scoring) for cancel
-  cancelled: boolean;
-  consumed: boolean; // a panel already showed the finished banner
-}
 const benchBatches = new Map<string, BenchBatch>();
 const benchSubs = new Set<() => void>();
 function benchNotify() {
@@ -13814,7 +13473,6 @@ function AgentsSection({
   );
 }
 
-type ModelVerifyStatus = "unknown" | "verifying" | "ok" | "failed";
 
 // Council uses the same localStorage key/shape — share the dict so
 // verification results carry across the Agents page and Council UI.
@@ -14824,7 +14482,6 @@ function MemoryContextSection(_props: { vaultPath: string }) {
 }
 
 // ── Daemon card ───────────────────────────────────────────────────────────────
-type DaemonStatus = { running?: boolean; last_run_ts?: number | null; last_error?: string | null; lines_distilled?: number; tasks_generated?: number; skills_created?: number; domains_processed?: number; last_due_count?: number };
 
 function DaemonCard({
   name,
@@ -15212,7 +14869,6 @@ const OPENAI_PATH = "M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0
 // Direct API providers on the roadmap — shown with real brand marks. `path`+`hex`
 // render the company logo on a white tile; `mono` is a fallback for brands with
 // no official simple-icon yet.
-type DirectProvider = { name: string; path?: string; hex?: string; mono?: string };
 // Safe accessor: if a simple-icon resolves undefined (e.g. stale dep cache),
 // fall back to the monogram instead of throwing and taking down the page.
 const brandIcon = (icon: { path?: string; hex?: string } | undefined, mono: string): Partial<DirectProvider> =>
@@ -15446,7 +15102,6 @@ function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promi
 // Connectors — data sources that auto-build per-domain context, routed through
 // a connector hub (Composio). Real brand marks (simple-icons) where available,
 // else a tinted lucide fallback. Placeholders for now; live wiring next.
-type Connector = { name: string; domain: string; brand?: Brand; icon?: LucideIcon; color?: string };
 const CONNECTOR_GROUPS: { category: string; items: Connector[] }[] = [
   { category: "Finance", items: [
     { name: "Plaid (banks & cards)", domain: "wealth", icon: Landmark, color: "#111111" },
@@ -15515,23 +15170,9 @@ function ConnectorIcon({ c }: { c: Connector }) {
 
 // Catalog shapes — mirror resources/connectors/catalog.json. The Rust command
 // returns it verbatim, so the frontend owns the type.
-type CatalogApp = { name: string; domain: string; tags?: string[]; pattern: string; fallback?: string; via?: string; note?: string; tier?: number; sources?: string[]; verified?: boolean; obscure?: boolean; iconSlug?: string };
 const SOURCE_ABBR: Record<string, string> = { claude: "Cl", chatgpt: "GPT", gemini: "Gem" };
-type BrandLogo = { hex: string; path: string };
 // A REAL app as the engine sees it (community/vault app with live state),
 // distinct from a catalog entry (a browseable directory listing).
-type EngineApp = {
-  id: string; title: string; integration: string; status: string; configured: boolean;
-  domains: string[]; lastSuccessTs: number | null; lastError: string | null;
-  account: { label?: string; address?: string } | null;
-  refresh: { every?: string; at?: string; on?: string } | null;
-  autonomy?: string | null;
-  connections?: { kind: string; description?: string }[] | null;
-  // Whether the sync daemon may run this app. Absent / true = enabled.
-  enabled?: boolean | null;
-  community: boolean;
-  path?: string | null;
-};
 const STATUS_TINT: Record<string, string> = { connected: "#2fb87a", expired: "#d8a657", error: "#e06c75", "not-configured": "#2fb87a" };
 // Real brand SVG (simple-icons) when the app matched one at build time; else a
 // pattern-tinted dot. Keeps the row scannable for all 1,400+ apps.
@@ -15549,7 +15190,6 @@ function AppLogo({ app, logos }: { app: CatalogApp; logos: Record<string, BrandL
     </span>
   );
 }
-type ConnectorCatalog = { version: number; domains?: string[]; apps: CatalogApp[]; patterns?: Record<string, { tier: string; label: string }> };
 
 // Each connector PATTERN maps to one ingestion tier. Short label + tint so a
 // row scans at a glance without per-brand icons (the catalog has hundreds).
@@ -16690,7 +16330,6 @@ function idealSectionIcon(title: string) {
 
 // Alignment readout — how close each life pillar is to the ideal state. Reads
 // the engine's alignment report (signal mode); shown on the Ideal State page.
-type AlignmentReport = { method: string; overall: number; pillars: { pillar: string; score: number; trend: string; rationale: string }[]; actions: string[] };
 function AlignmentCard({ vaultPath }: { vaultPath: string }) {
   const [rep, setRep] = useState<AlignmentReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -17560,7 +17199,6 @@ function FrameworksSection() {
   );
 }
 
-type PreambleOption = { id: string; label: string; blurb: string; instruction?: string };
 
 function PreambleColumn({
   glyph,
@@ -17670,12 +17308,6 @@ function PreambleCard({
   );
 }
 
-interface SkillEntry {
-  domain: string;
-  name: string;
-  path: string;
-  description: string | null;
-}
 
 // Stable color picker for the first-letter skill avatars. Same skill
 // name always lands on the same swatch so the grid feels consistent.
@@ -17854,32 +17486,7 @@ function SkillsSection({ vaultPath }: { vaultPath: string }) {
 // All three speak to commands defined in src-tauri/src/ingestion/.
 // Status is polled every 4s while the section is mounted.
 
-interface IngestionTierStatus {
-  id: string;
-  label: string;
-  state: string;
-  active: boolean;
-  running: number;
-  last_error: string | null;
-}
-interface IngestionMcpServer {
-  name: string;
-  command: string;
-  args: string[];
-  running: boolean;
-  pid: number | null;
-}
 
-interface IngestionArtifact {
-  tier_id: string;
-  domain: string;
-  source: string;
-  path: string;
-  sha256: string;
-  size: number;
-  original: string;
-  ts: number;
-}
 
 function IngestionSection() {
   const [tiers, setTiers] = useState<IngestionTierStatus[]>([]);
@@ -17994,7 +17601,6 @@ function IngestionSection() {
 }
 
 // Tier D — one allowlisted CLI integration (mirrors the Rust CliProvider).
-type CliProvider = { id: string; label: string; app: string; domain: string; binary: string; version_args: string[]; fetch_args: string[] };
 
 function IngestionTierCard({
   tier,
@@ -18264,39 +17870,12 @@ function IngestionTierCard({
 
 // Post-login automation step the Tier C engine executes. The shape
 // mirrors the Rust PostLoginAction enum (serde tag = "type").
-type IngestionAction =
-  | { type: "goto"; url: string; wait_until?: string }
-  | { type: "click"; selector: string; timeout_sec?: number }
-  | { type: "wait_for"; selector: string; timeout_sec?: number }
-  | { type: "select_option"; selector: string; value: string }
-  | { type: "download_all_links"; selector: string; max?: number }
-  | { type: "sleep"; seconds: number };
 
-interface PortalRecipe {
-  id: string;
-  label: string;
-  domain_hint: string;
-  start_url: string;
-  success_url_contains: string | null;
-  notes: string | null;
-  actions?: IngestionAction[];
-}
 
 // Audit log surface. Reads the appended JSON lines from
 // ~/Library/Application Support/Prevail/ingestion.log via Tauri.
 // Collapsed by default to avoid noise; expand on click. Each ingest
 // row offers a "reveal" button when the path still exists on disk.
-interface IngestionAuditEntry {
-  type: string;
-  tier_id?: string;
-  source?: string;
-  domain?: string;
-  sha256?: string;
-  size?: number;
-  ts?: number;
-  path?: string;
-  older_than_days?: number;
-}
 function IngestionAuditPanel() {
   const [entries, setEntries] = useState<IngestionAuditEntry[]>([]);
   const [open, setOpen] = useState(false);
@@ -18794,7 +18373,6 @@ function ShortcutsSection() {
   );
 }
 
-type DiagCheck = { label: string; status: "ok" | "warn" | "fail" | "info"; detail: string; why: string };
 function AboutSection({ vaultPath }: { vaultPath: string }) {
   const verify = useCliVerifyLive();
   const [checking, setChecking] = useState(false);
@@ -19439,15 +19017,6 @@ function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
 // rendered directly inside Settings → Integrations. Old ToolsPanel
 // wrapper removed.
 
-interface TgBridgeStatus {
-  running: boolean;
-  last_update_id: number;
-  last_inbound_ts: number | null;
-  last_outbound_ts: number | null;
-  last_error: string | null;
-  inbound_count: number;
-  outbound_count: number;
-}
 
 function TelegramCard() {
   // Audit #7: the bot token is a secret — it lives in the Keychain, never in
@@ -19839,3 +19408,4 @@ function McpCard() {
 }
 
 // BriefingsCard removed — landing back in v0.3 when wired up.
+
