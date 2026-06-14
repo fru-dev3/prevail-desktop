@@ -153,8 +153,8 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
   - DONE: bulk migrator `vault_migrate_layout` (safe rename, never overwrite/delete, idempotent,
     unit-tested) runs once on vault load → existing vaults adopt apps/ + domains/ siblings. 51/51 tests.
 
-- [ ] **T17 — Mystery screenshot (image #17).** "Improve this design." Page unknown — ASK which
-  screen this was before acting.
+- [~] **T17 — Mystery screenshot (image #17).** DEFERRED by founder (2026-06-14): unsure which
+  screen it was. Will retest and bring it back later with the specific page. Do not act until then.
 
 ---
 
@@ -167,8 +167,10 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
 ALL buildable items DONE: T1-T9 (incl. T9b), T10 (A+B+C, automated + recommendation→task),
 T11, T12, T14, T15, T16 (incl. migrator), T18 (scaffolding). Frontend builds; 51/51 Rust tests pass.
 
-BLOCKED ON FOUNDER (cannot build without input):
-- T17 — which screen was the "improve this design" screenshot? (only unidentified item)
+DEFERRED:
+- T17 — founder unsure which screen; will retest and bring it back later. Parked.
+
+NEEDS FOUNDER (when ready):
 - T18 live wiring — provide PostHog key+host + Sentry DSN, then install posthog-js/@sentry/react
   and flip the flush on (one spot). Currently inert/log-only by design.
 - Site deploy — to publish the Windows-download fix to prevail.sh.
