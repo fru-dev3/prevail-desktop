@@ -82,10 +82,13 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
   - Sections collapsible so user can focus on their chosen mode.
   - Rethink design + positioning fundamentally.
 
-- [ ] **T9 — Refresh-cadence picker flexibility.**
-  - Current dropdown looks basic/amateurish — replace with a more robust selector.
-  - Must support arbitrary cadences like "every 3 days" (not a fixed preset list).
-  - (Commit eecf0b3 added a "flexible refresh-cadence picker" — verify it meets this.)
+- [~] **T9 — Refresh-cadence picker flexibility.**
+  - DONE for model-refresh: `RefreshCadence` (settings7) is already a custom on-brand
+    popover with presets + an "every N days" field (1-365). Not a native dropdown. Meets the ask.
+  - REMAINING: the native daily/weekly/monthly `<select>`s on Scheduled Benchmarks (cards.tsx)
+    and Backup (settings8) are the other likely "amateurish dropdown". Applying a flexible
+    "every N days" there needs scheduler-logic changes (BENCH_FREQ_MS / backup freq keyed by
+    preset). Do deliberately; confirm which screen the founder meant if unsure.
 
 ## Intent (needs a plan, then build)
 
@@ -107,11 +110,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
   "Also for <other OS>" link, nav Download scrolls to #install (both platform cards). Builds clean.
   NOTE: committed in prevail-web; needs a SITE DEPLOY (founder trigger) to go live.
 
-- [ ] **T18 — Telemetry: PostHog + Sentry (privacy-first, opt-in, transparent).**
-  Founder wants product analytics (downloads, usage, features) via PostHog + crash reporting
-  via Sentry, but STRICTLY: anonymous, no user/vault data, fully transparent, governance-managed,
-  easy opt-out. Plan in docs/TELEMETRY-PLAN.md. Build consent scaffolding first (default OFF),
-  wire live once founder provides PostHog key + Sentry DSN. NO PII, NO prompt/vault content ever.
+- [~] **T18 — Telemetry: PostHog + Sentry (privacy-first, opt-in, transparent).**
+  - DONE: plan (docs/TELEMETRY-PLAN.md) + scaffolding (telemetry.ts allowlist/scrubber/local-log,
+    Settings -> Safety -> "Privacy & telemetry" consent UI default-OFF, "what we collect" page,
+    app_opened wired). Inert (log-only) until build-time keys exist.
+  - REMAINING (needs founder): PostHog project key + host, Sentry DSN(s). Then install posthog-js
+    + @sentry/react, wire the send in telemetry.ts flush + Rust panic hook, add more track() call
+    sites (feature_used, benchmark_run, etc.), and the website PostHog (downloads/pageviews) +
+    consent banner. Confirm opt-in-default-OFF (recommended).
 
 - [x] **T13 — Versioning policy.** Stay in 0.8.x (patch-forever) up to 0.8.100/200/1000
   before 0.9. Never advance minor without explicit go. (Recorded in memory; reaffirmed.)
