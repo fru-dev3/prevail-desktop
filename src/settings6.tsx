@@ -2,8 +2,10 @@
 // Council defaults, Configuration (groups the memory/tasks/ideal sub-sections),
 // and the Agents catalog (AgentCard + AgentsSection).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, Globe, Search, Server, ShieldCheck, ShieldOff, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, Brain, Check, ChevronRight, Cloud, CloudOff, Compass, Cpu, Crown, Globe, ListChecks, Search, Server, ShieldCheck, ShieldOff, Wifi, WifiOff } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
+import { CollapsibleSection } from "./collapsible";
 import { VENDOR_BRAND } from "./constants";
 import { isLocalCli } from "./helpers";
 import { modelsFor } from "./helpers2";
@@ -335,26 +337,12 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
 // wrapper removed.
 
 export function ConfigurationSection({ vaultPath }: { vaultPath: string }) {
-  const [open, setOpen] = useState<"ideal-state" | "memory" | "tasks" | null>(null);
-  const toggle = (id: "ideal-state" | "memory" | "tasks") => setOpen((v) => (v === id ? null : id));
-  const Sub = ({ id, title, desc, children }: { id: "ideal-state" | "memory" | "tasks"; title: string; desc: string; children: React.ReactNode }) => (
-    <div className="rounded-lg border border-border bg-surface overflow-hidden">
-      <button
-        onClick={() => toggle(id)}
-        className="flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-surface-warm transition-colors"
-      >
-        <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${open === id ? "rotate-90" : ""}`} strokeWidth={2.5} />
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-text-primary">{title}</div>
-          <div className="mt-0.5 text-xs text-text-secondary">{desc}</div>
-        </div>
-      </button>
-      {open === id && (
-        <div className="border-t border-border-subtle px-4 py-5">
-          {children}
-        </div>
-      )}
-    </div>
+  // Configuration's sub-sections route through the canonical CollapsibleSection
+  // (icon + title/subtitle left, collapsed by default, persisted per section).
+  const Sub = ({ id, title, icon, desc, children }: { id: "ideal-state" | "memory" | "tasks"; title: string; icon: LucideIcon; desc: string; children: React.ReactNode }) => (
+    <CollapsibleSection icon={icon} title={title} subtitle={desc} storageKey={`prevail.settings.config.${id}`}>
+      {children}
+    </CollapsibleSection>
   );
   return (
     <>
@@ -364,13 +352,13 @@ export function ConfigurationSection({ vaultPath }: { vaultPath: string }) {
         subtitle="Your constitution, context windows, and task ledger in one place."
       />
       <div className="space-y-2">
-        <Sub id="ideal-state" title="Ideal State" desc="Your personal constitution: goals, values, and priorities injected into every model turn.">
+        <Sub id="ideal-state" title="Ideal State" icon={Compass} desc="Your personal constitution: goals, values, and priorities injected into every model turn.">
           <IdealStateSection vaultPath={vaultPath} />
         </Sub>
-        <Sub id="memory" title="Memory & Context" desc="Persistent memory, distillation, and what stays in context across sessions.">
+        <Sub id="memory" title="Memory & Context" icon={Brain} desc="Persistent memory, distillation, and what stays in context across sessions.">
           <MemoryContextSection vaultPath={vaultPath} />
         </Sub>
-        <Sub id="tasks" title="Tasks" desc="Cross-domain task ledger: every pending item across your vault in one view.">
+        <Sub id="tasks" title="Tasks" icon={ListChecks} desc="Cross-domain task ledger: every pending item across your vault in one view.">
           <TasksCrossDomainSection vaultPath={vaultPath} />
         </Sub>
       </div>
