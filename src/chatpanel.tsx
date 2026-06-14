@@ -20,6 +20,7 @@ import { DOMAIN_ICONS, domainIcon } from "./icons";
 import { useFrameworkLens } from "./hooks";
 import { ProviderMark } from "./marks";
 import { DomainHome, DomainStatusBar, MessageList } from "./chatviews";
+import { LoopsPanel } from "./loopspanel";
 import { AgentPickerRail, DomainContextDrawer, DomainPrefsPanel } from "./domainpanels";
 import type { ChatEvent, ChatMessage, CliInfo, ContextScore, Domain, DomainContextBundle, DomainTab, EngineApp, LifeReadiness, SkillEntry, ThreadMeta, ThreadTurn } from "./types";
 import type { UnlistenFn } from "./bridge";
@@ -1479,7 +1480,10 @@ export function ChatPanel({
             {domainTab === "apps" && domain && (
               <DomainAppsTab domain={domain} vaultPath={vaultPath} />
             )}
-            {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && domainTab !== "insights" && domainTab !== "usage" && domainTab !== "apps" && <div className="text-sm text-text-muted">loading…</div>}
+            {domainTab === "loops" && domain && (
+              <LoopsPanel domain={domain} vaultPath={vaultPath} />
+            )}
+            {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && domainTab !== "insights" && domainTab !== "usage" && domainTab !== "apps" && domainTab !== "loops" && <div className="text-sm text-text-muted">loading…</div>}
             {domainCtx && domainTab === "state" && (domainCtx.state ? <Markdown source={domainCtx.state} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">state.md</code> in this domain.</div>)}
             {domainCtx && domainTab === "decisions" && (domainCtx.decisions ? <Markdown source={domainCtx.decisions} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">decisions.md</code> yet.</div>)}
             {domainCtx && domainTab === "journal" && (domainCtx.journal ? <Markdown source={domainCtx.journal} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no journal entries yet.</div>)}
