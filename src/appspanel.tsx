@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, ChevronRight, Loader2, Plug, Plus, RefreshCw } from "lucide-react";
 import { invoke } from "./bridge";
 import { relTime, titleCase } from "./format";
+import { PREF, getPref, lsGet, lsSet } from "./storage";
 import { Toggle } from "./ui";
 import { SettingsHeader } from "./sectionutil";
 import { ConnectAppFlow } from "./appconnect";
@@ -51,6 +52,28 @@ function scheduleLabel(r: EngineApp["refresh"]): string {
   return "scheduled";
 }
 
+// In-app autonomous sync: trigger a "due pass" on a cadence so connected apps
+// refresh on their own schedule while the app is open (the headless
+// `daemon --sync` does the same when the app is closed). The tick re-reads the
+// enabled pref, and the engine respects each app's own schedule + the file lock.
+let appsSyncTimer: number | null = null;
+export function startAppsScheduler(vault: string) {
+  if (appsSyncTimer !== null) window.clearInterval(appsSyncTimer);
+  const tick = async () => {
+    try {
+      if (getPref(PREF.appsAutoSync, "1") !== "1") return;
+      const intervalMs = (Number(getPref(PREF.appsSyncIntervalSec, "300")) || 300) * 1000;
+      const last = Number(lsGet(PREF.appsSyncLastRun, "0")) || 0;
+      if (Date.now() - last < intervalMs) return;
+      lsSet(PREF.appsSyncLastRun, String(Date.now()));
+      await invoke("engine_apps_sync_due", { vault });
+      window.dispatchEvent(new Event("prevail:apps-synced"));
+    } catch (e) { console.error("apps sync scheduler tick", e); }
+  };
+  appsSyncTimer = window.setInterval(tick, 60_000);
+  window.setTimeout(tick, 12_000);
+}
+
 export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   const [apps, setApps] = useState<EngineApp[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -63,7 +86,12 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       setApps(Array.isArray(list) ? list : []);
     } catch { setApps([]); }
   }, []);
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    void reload();
+    const onSynced = () => { void reload(); };
+    window.addEventListener("prevail:apps-synced", onSynced);
+    return () => window.removeEventListener("prevail:apps-synced", onSynced);
+  }, [reload]);
 
   const syncNow = useCallback(async (id: string) => {
     setBusy(id);
@@ -138,6 +166,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                 <AppCard
                   key={a.id}
                   app={a}
+                  vaultPath={vaultPath}
                   status={appStatus(a)}
                   open={expanded === a.id}
                   busy={busy === a.id}
@@ -154,8 +183,9 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   );
 }
 
-function AppCard({ app, status, open, busy, onToggle, onSync, onSetEnabled }: {
+function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEnabled }: {
   app: EngineApp;
+  vaultPath: string;
   status: AppStatus;
   open: boolean;
   busy: boolean;
@@ -166,6 +196,27 @@ function AppCard({ app, status, open, busy, onToggle, onSync, onSetEnabled }: {
   const meta = STATUS_META[status];
   const enabled = app.enabled !== false;
   const initial = (app.title || app.id || "·").charAt(0).toUpperCase();
+  const runs = app.runs ?? [];
+  // P4 — re-evaluate the connection method: maybe a better one exists now.
+  const [reEval, setReEval] = useState<string | null>(null);
+  const [reEvalBusy, setReEvalBusy] = useState(false);
+  const reevaluate = async () => {
+    setReEvalBusy(true);
+    setReEval(null);
+    try {
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      const r = await invoke<{ ok: boolean; plan?: { integration?: string; why?: string }; error?: string }>(
+        "engine_app_connect", { name: app.title || app.id, goal: "", vault: vaultPath, provider, model },
+      );
+      if (r.ok && r.plan) {
+        const m = methodLabel(r.plan.integration ?? "");
+        const same = (r.plan.integration ?? "").toLowerCase() === (app.integration ?? "").toLowerCase();
+        setReEval(same ? `Still best via ${m}.` : `Better now: ${m}${r.plan.why ? ` — ${r.plan.why}` : ""}`);
+      } else setReEval(r.error ?? "Could not re-evaluate.");
+    } catch (e) { setReEval(`Re-evaluate failed: ${e}`); }
+    finally { setReEvalBusy(false); }
+  };
   return (
     <div className={`overflow-hidden rounded-xl border bg-surface ${meta.ring}`}>
       <div className="flex items-center gap-3 px-4 py-3">
@@ -186,6 +237,7 @@ function AppCard({ app, status, open, busy, onToggle, onSync, onSetEnabled }: {
               {status === "attention" && <span className="text-danger">{app.lastError ? app.lastError.slice(0, 60) : "needs re-auth"}</span>}
               {status === "disconnected" && <span>not set up</span>}
               {status === "connected" && <span>· {scheduleLabel(app.refresh)}</span>}
+              {status === "connected" && app.nextDueTs ? <span>· next {relTime(app.nextDueTs)}</span> : null}
               {(app.domains ?? []).length > 0 && <span>· feeds {app.domains.map(titleCase).join(", ")}</span>}
             </span>
           </span>
@@ -204,12 +256,35 @@ function AppCard({ app, status, open, busy, onToggle, onSync, onSetEnabled }: {
       {open && (
         <div className="space-y-3 border-t border-border-subtle px-4 py-4 pl-[60px] text-[13px]">
           {app.account?.label && <Detail label="Account">{app.account.label}{app.account.address ? ` · ${app.account.address}` : ""}</Detail>}
-          <Detail label="Method">{methodLabel(app.integration)}{app.connections?.length ? ` · ${app.connections.map((c) => c.kind).join(", ")}` : ""}</Detail>
+          <Detail label="Method">
+            {methodLabel(app.integration)}{app.connections?.length ? ` · ${app.connections.map((c) => c.kind).join(", ")}` : ""}
+            <button onClick={reevaluate} disabled={reEvalBusy}
+              title="Check whether a better way to connect this app exists now"
+              className="ml-2 inline-flex items-center gap-1 rounded border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
+              {reEvalBusy ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <RefreshCw className="h-2.5 w-2.5" />} re-evaluate
+            </button>
+          </Detail>
+          {reEval && <div className="rounded-md border border-border-subtle bg-background px-3 py-1.5 text-xs text-text-secondary">{reEval}</div>}
           <Detail label="Schedule">{scheduleLabel(app.refresh)}</Detail>
+          {app.nextDueTs ? <Detail label="Next sync">{relTime(app.nextDueTs)}</Detail> : null}
           <Detail label="Domains fed">{(app.domains ?? []).length ? app.domains.map(titleCase).join(", ") : "none yet"}</Detail>
           {app.lastError && (
             <div className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {app.lastError}
+            </div>
+          )}
+          {runs.length > 0 && (
+            <div>
+              <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">Recent activity</div>
+              <ul className="space-y-0.5">
+                {[...runs].reverse().map((r, i) => (
+                  <li key={i} className="flex items-center gap-2 font-mono text-[11px]">
+                    <span className={r.ok ? "text-ok" : "text-danger"}>{r.ok ? "✓" : "✗"}</span>
+                    <span className="text-text-muted">{relTime(r.ts)}</span>
+                    <span className="min-w-0 flex-1 truncate text-text-secondary">{r.ok ? (r.summary || `${r.artifacts ?? 0} item(s)`) : (r.error || "failed")}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           <div className="flex items-center justify-between border-t border-border-subtle pt-2.5">

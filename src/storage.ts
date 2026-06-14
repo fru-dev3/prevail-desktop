@@ -149,6 +149,11 @@ export const PREF = {
   webuiPort: "prevail.pref.webuiPort",                     // integer port
   webuiUser: "prevail.pref.webuiUser",                     // login username
   webuiPass: "prevail.pref.webuiPass",                     // login password (local only)
+  // Apps — run the autonomous app-sync daemon behind the scenes, default ON. The
+  // tick just triggers a "due pass"; each app still syncs on its OWN schedule.
+  appsAutoSync: "prevail.pref.appsAutoSync",               // "1" | "0"
+  appsSyncIntervalSec: "prevail.pref.appsSyncIntervalSec", // how often to check for due apps
+  appsSyncLastRun: "prevail.pref.appsSyncLastRun",         // epoch ms of last due-pass
   // Domain Loops — run the self-driving loop runner behind the scenes, default ON.
   loopsAutoRun: "prevail.pref.loopsAutoRun",                // "1" | "0"
   loopsIntervalSec: "prevail.pref.loopsIntervalSec",        // how often to advance due loops
