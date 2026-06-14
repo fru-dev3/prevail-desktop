@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { motion } from "framer-motion";
-import { ArrowUpRight, BookOpen, Check, ChevronRight, FileText, Folder, PanelRightOpen, Paperclip, Plus, Scale, Sparkles } from "lucide-react";
+import { ArrowUpRight, BookOpen, Boxes, Check, ChevronRight, FileText, Folder, Layers, PanelRightOpen, Paperclip, Plus, Scale, Sparkles } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
 import { MODELS } from "./constants";
@@ -417,6 +417,8 @@ export function ChatPanel({
   const [plusOpen, setPlusOpen] = useState(false);
   const plusMenuRef = useRef<HTMLDivElement>(null);
   const [skillsCache, setSkillsCache] = useState<SkillEntry[]>([]);
+  // Apps cache powers the `$` context-mention popover (alongside domains).
+  const [appsCache, setAppsCache] = useState<EngineApp[]>([]);
   useEffect(() => {
     if (!plusOpen) return;
     const onClick = (e: MouseEvent) => {
@@ -438,6 +440,15 @@ export function ChatPanel({
       .then((s) => setSkillsCache(s.filter((sk) => sk.domain === domain)))
       .catch(() => setSkillsCache([]));
   }, [domain, vaultPath]);
+  // Pre-fetch apps so the `$` mention can offer them as context alongside
+  // domains. Refreshed when the vault changes or apps are added/removed.
+  useEffect(() => {
+    if (!vaultPath) { setAppsCache([]); return; }
+    const load = () => invoke<EngineApp[]>("engine_apps_list").then(setAppsCache).catch(() => setAppsCache([]));
+    void load();
+    window.addEventListener("prevail:apps-changed", load);
+    return () => window.removeEventListener("prevail:apps-changed", load);
+  }, [vaultPath]);
   // Slash autocomplete — detect `/<word>` at the caret position and
   // expose the filtered skills + a completer for the textarea below.
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -470,6 +481,49 @@ export function ChatPanel({
     const next = `${head}${head && tail && !tail.startsWith(" ") ? " " : ""}${tail}`;
     setInput(next);
     insertSkillSlash(name);
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(head.length, head.length);
+    });
+  }
+  // `$<word>` context mention — the mirror of `/` for skills. Detect a
+  // trailing `$word` at the caret and offer matching domains + apps; picking
+  // one attaches its context (state.md for a domain, identity card for an app)
+  // as a chip, exactly like dragging it in, then strips the `$token`.
+  type DollarItem = { kind: "domain" | "app"; id: string; label: string; sub?: string };
+  const dollarMatch = useMemo(() => {
+    const ta = taRef.current;
+    if (!ta) return null;
+    const caret = ta.selectionStart ?? input.length;
+    const before = input.slice(0, caret);
+    const m = before.match(/(^|\s)\$([a-zA-Z0-9_-]*)$/);
+    if (!m) return null;
+    const start = caret - m[2].length - 1; // index of the `$`
+    return { token: m[2], start, end: caret };
+  }, [input]);
+  const dollarCandidates = useMemo<DollarItem[]>(() => {
+    if (!dollarMatch) return [];
+    const q = dollarMatch.token.toLowerCase();
+    const doms: DollarItem[] = domains
+      .map((d) => ({ kind: "domain" as const, id: d.name, label: titleCase(d.name) }))
+      .filter((d) => d.id.toLowerCase().includes(q) || d.label.toLowerCase().includes(q));
+    const apps: DollarItem[] = appsCache
+      .map((a) => ({ kind: "app" as const, id: a.id, label: a.title, sub: a.integration }))
+      .filter((a) => a.id.toLowerCase().includes(q) || a.label.toLowerCase().includes(q));
+    return [...doms, ...apps].slice(0, 6);
+  }, [dollarMatch, domains, appsCache]);
+  const [dollarIdx, setDollarIdx] = useState(0);
+  useEffect(() => { setDollarIdx(0); }, [dollarMatch?.token]);
+  function applyDollarCompletion(item: DollarItem) {
+    if (!dollarMatch) return;
+    const head = input.slice(0, dollarMatch.start).replace(/\s$/, "");
+    const tail = input.slice(dollarMatch.end);
+    const next = `${head}${head && tail && !tail.startsWith(" ") ? " " : ""}${tail}`;
+    setInput(next);
+    if (item.kind === "domain") void attachDomainAsContext(item.id, "light");
+    else void attachAppAsContext(item.id);
     requestAnimationFrame(() => {
       const ta = taRef.current;
       if (!ta) return;
@@ -1605,6 +1659,35 @@ export function ChatPanel({
               ))}
             </div>
           )}
+          {/* Context-mention popover for `$<domain|app>` */}
+          {dollarMatch && dollarCandidates.length > 0 && (
+            <div className="absolute bottom-full left-3 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-border bg-surface shadow-xl">
+              <div className="border-b border-border-subtle bg-surface-warm px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+                Add context · enter to attach
+              </div>
+              {dollarCandidates.map((c, i) => (
+                <button
+                  key={`${c.kind}:${c.id}`}
+                  onMouseDown={(e) => { e.preventDefault(); applyDollarCompletion(c); }}
+                  className={`flex w-full items-start gap-2 px-3 py-1.5 text-left ${
+                    i === dollarIdx ? "bg-accent-soft" : "hover:bg-surface-warm"
+                  }`}
+                >
+                  {c.kind === "domain"
+                    ? <Layers className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />
+                    : <Boxes className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />}
+                  <div className="min-w-0">
+                    <div className={`font-mono text-xs ${i === dollarIdx ? "text-accent" : "text-text-primary"}`}>
+                      ${c.id}
+                    </div>
+                    <div className="line-clamp-1 text-[10px] text-text-muted">
+                      {c.kind === "domain" ? "domain · attaches state.md" : `app · ${c.sub ?? "context card"}`}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
           <textarea
             ref={taRef}
             value={input}
@@ -1669,6 +1752,29 @@ export function ChatPanel({
                   return;
                 }
               }
+              // If the `$` context-mention popover is open, route nav keys to it.
+              if (dollarMatch && dollarCandidates.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setDollarIdx((i) => (i + 1) % dollarCandidates.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setDollarIdx((i) => (i - 1 + dollarCandidates.length) % dollarCandidates.length);
+                  return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault();
+                  applyDollarCompletion(dollarCandidates[dollarIdx]);
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setInput((cur) => cur + " ");
+                  return;
+                }
+              }
               const wantCmd = getPref(PREF.sendKey, "enter") === "cmd-enter";
               const cmd = e.metaKey || e.ctrlKey;
               const fires = e.key === "Enter" && !e.shiftKey && !e.altKey && (wantCmd ? cmd : !cmd);
@@ -1699,7 +1805,7 @@ export function ChatPanel({
                 }
               }
             }}
-            placeholder={history.length > 0 ? "ask anything · enter to send · ↑ history · / skills" : "ask anything · enter to send · / skills · shift+enter for newline"}
+            placeholder={history.length > 0 ? "ask anything · enter to send · ↑ history · / skills · $ context" : "ask anything · enter to send · / skills · $ context · shift+enter for newline"}
             rows={2}
             className="w-full resize-none bg-transparent px-2 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
           />
