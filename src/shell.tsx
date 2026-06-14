@@ -14,6 +14,25 @@ import { domainIcon } from "./icons";
 import { BrandMark } from "./brandmark";
 import type { AppRunHistory, Domain, EngineApp } from "./types";
 
+// Plain-language guidance for what "connect" means per integration pattern, so
+// "not-configured" is actionable instead of a dead end.
+function connectHelp(integration: string): string {
+  switch (integration) {
+    case "api":
+      return "Uses an API key. Test shows which keys it needs; set them as environment variables, then Test verifies the connection.";
+    case "oauth":
+      return "Uses OAuth. Sign in to the provider when prompted; the token is stored in your OS keychain, never in plain text.";
+    case "browser":
+      return "Drives a real browser session (no public API). Sign in once in the automation browser and Prevail reuses that session. These can't always self-verify, so Test may be inconclusive even when it works.";
+    case "mcp":
+      return "Runs through an MCP server. Configure its command or endpoint under Settings : Connections : MCP.";
+    case "cli":
+      return "Uses a CLI already installed on this machine and its own login. No key needed here.";
+    default:
+      return "Configure this app's credentials, then use Test to verify and Sync to pull its data into the mapped domains.";
+  }
+}
+
 export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, onChanged }: { app: EngineApp; vaultPath: string; domains: Domain[]; appTab: "runs" | "settings" | "domains"; onOpenDomain: (d: string) => void; onChanged: () => void }) {
   const [skills, setSkills] = useState<{ id: string; runner: string; trigger: string }[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -22,6 +41,12 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
   const [savingDoms, setSavingDoms] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addValue, setAddValue] = useState("");
+  // Demo mode means these are sample apps that don't really connect — surface
+  // that on the Connection card so "not-configured" reads as expected, not broken.
+  const [demoMode, setDemoMode] = useState(false);
+  useEffect(() => {
+    invoke<{ mode: "demo" | "production" }>("engine_appmode_get").then((m) => setDemoMode(m.mode === "demo")).catch(() => {});
+  }, []);
   useEffect(() => { setDoms(app.domains); setAddOpen(false); setAddValue(""); }, [app.id, app.domains]);
   useEffect(() => {
     setSkills(null);
@@ -177,6 +202,17 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
             <AppKV k="Autonomy"><span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ backgroundColor: `${AUTONOMY_TINT[autonomy] ?? "#9aa0a6"}1a`, color: AUTONOMY_TINT[autonomy] ?? "#9aa0a6" }}><ShieldCheck className="h-3 w-3" />{AUTONOMY_LABEL[autonomy] ?? autonomy}</span></AppKV>
             {app.connections && app.connections.length > 0 && (
               <AppKV k="Strategies">{app.connections.map((c) => c.kind).join(" → ")}</AppKV>
+            )}
+            {/* Pattern-specific "how to connect" so the user knows what
+                "configure" actually means for this app's integration type. */}
+            <div className="mt-2 rounded-lg border border-border-subtle bg-background px-3 py-2 text-[12px] leading-relaxed text-text-secondary">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">How to connect</span>
+              <p className="mt-1">{connectHelp(app.integration)}</p>
+            </div>
+            {demoMode && (
+              <div className="mt-2 rounded-lg border border-ai/40 bg-ai/10 px-3 py-2 text-[12px] leading-relaxed text-text-secondary">
+                You're in <span className="font-semibold">Demo Mode</span>, so this is a sample app and won't make a real connection. Switch to your own vault (Settings : Vault : Demo Mode) to connect real accounts.
+              </div>
             )}
             {note && <div className="mt-2 rounded-lg bg-surface-warm px-3 py-1.5 font-mono text-[11px] text-text-secondary">{note}</div>}
           </AppCard>
