@@ -410,6 +410,17 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
   const [distilling, setDistilling] = useState(false);
   const [distillMsg, setDistillMsg] = useState<string | null>(null);
   const [openIntent, setOpenIntent] = useState<number | null>(null);
+  // Recommendations that have been turned into tracked tasks (keyed intent:rec).
+  const [addedRecs, setAddedRecs] = useState<Set<string>>(new Set());
+  async function addRecAsTask(intent: DistilledIntent, rec: string, key: string) {
+    const domain = (intent.domains && intent.domains[0]) || "general";
+    try {
+      await invoke("tasks_add", { vault: vaultPath, domain, text: rec, source: "intent" });
+      setAddedRecs((s) => new Set(s).add(key));
+    } catch (e) {
+      console.error("tasks_add from intent", e);
+    }
+  }
   useEffect(() => {
     invoke<IntentRow[]>("intents_read_all", { vault: vaultPath, limit: 500 })
       .then((r) => setIntents(Array.isArray(r) ? r : []))
@@ -507,9 +518,24 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
                       <div>
                         <span className="font-mono text-[10px] uppercase tracking-wider text-accent">Recommended next actions</span>
                         <ul className="mt-1 space-y-1">
-                          {it.recommendations!.map((r, j) => (
-                            <li key={j} className="flex items-start gap-2 text-text-primary"><ArrowRight className="mt-1 h-3 w-3 shrink-0 text-accent" />{r}</li>
-                          ))}
+                          {it.recommendations!.map((r, j) => {
+                            const key = `${i}:${j}`;
+                            const added = addedRecs.has(key);
+                            return (
+                              <li key={j} className="group/rec flex items-start gap-2">
+                                <ArrowRight className="mt-1 h-3 w-3 shrink-0 text-accent" />
+                                <span className="flex-1 text-text-primary">{r}</span>
+                                <button
+                                  onClick={() => addRecAsTask(it, r, key)}
+                                  disabled={added}
+                                  title={added ? "Added to your tasks" : `Add as a task in ${titleCase((it.domains && it.domains[0]) || "general")}`}
+                                  className={`shrink-0 rounded-md border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider transition-colors ${added ? "border-ok/40 text-ok" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}
+                                >
+                                  {added ? "added ✓" : "+ task"}
+                                </button>
+                              </li>
+                            );
+                          })}
                         </ul>
                       </div>
                     )}
