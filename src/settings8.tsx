@@ -14,7 +14,7 @@ import { PaletteCard } from "./panels3";
 import { useAppearance } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
 import { BACKUP_CFG, backupVaultNow } from "./backup";
-import type { BackupResult, Mode } from "./types";
+import type { Mode } from "./types";
 
 export function AppearanceSection({ appearance }: { appearance: ReturnType<typeof useAppearance> }) {
   return (
@@ -496,8 +496,6 @@ export function BackupAutomationCard({ vault, onChange }: { vault: string; onCha
 }
 
 export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void }) {
-  const [backingUp, setBackingUp] = useState(false);
-  const [backupNote, setBackupNote] = useState<string | null>(null);
   // "Move vault into the app" — copy the current vault into the app-owned
   // location (~/.prevail/vault) via the engine, non-destructively, then repoint.
   const [moving, setMoving] = useState(false);
@@ -523,26 +521,6 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
       setMoveNote(`Move failed: ${String(e)}`);
     } finally {
       setMoving(false);
-    }
-  }
-  async function backupVault() {
-    setBackingUp(true);
-    setBackupNote(null);
-    try {
-      const res = await invoke<BackupResult>("engine_vault_backup", { vault: vaultPath, domainOpt: null });
-      if (res.ok) {
-        const nDomains = res.domains?.length ?? 0;
-        const files = res.file_count ?? 0;
-        setBackupNote(
-          `Backed up ${nDomains} domain${nDomains === 1 ? "" : "s"} · ${files} file${files === 1 ? "" : "s"} · ${bytesHuman(res.bytes ?? 0)}${res.archive_path ? ` → ${res.archive_path}` : ""}`,
-        );
-      } else {
-        setBackupNote(`Backup failed: ${res.error ?? "unknown error"}`);
-      }
-    } catch (e) {
-      setBackupNote(`Backup failed: ${String(e)}`);
-    } finally {
-      setBackingUp(false);
     }
   }
   return (
@@ -585,21 +563,6 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
       )}
       {moveNote && (
         <div className="mt-1 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{moveNote}</div>
-      )}
-      <SettingRow label="Back up vault" desc="Write a compressed archive of the entire vault. Nothing is deleted.">
-        <button
-          onClick={backupVault}
-          disabled={backingUp}
-          className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50"
-        >
-          {backingUp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-          {backingUp ? "Backing up…" : "Back up vault"}
-        </button>
-      </SettingRow>
-      {backupNote && (
-        <div className="mt-1 break-all rounded-lg border border-border-subtle bg-surface px-3 py-2 font-mono text-[11px] text-text-secondary">
-          {backupNote}
-        </div>
       )}
       <BackupAutomationCard vault={vaultPath} onChange={onChange} />
     </>
