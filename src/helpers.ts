@@ -1,6 +1,7 @@
 // Pure cross-component helpers extracted from App.tsx.
 import { titleCase } from "./format";
-import type { EngineApp } from "./types";
+import type { EngineApp, DomainToggle } from "./types";
+import { DOMAIN_BLURBS, VENDOR_BRAND, DOMAIN_PALETTE, ANSI_RE, LOCAL_CLI_IDS } from "./constants";
 
 export function bytesHuman(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -46,4 +47,57 @@ export function fmtCost(n: number): string {
   if (n === 0) return "$0";
   if (n < 0.01) return "<$0.01";
   return `$${n.toFixed(2)}`;
+}
+
+export function domainBlurb(name: string): string {
+  return DOMAIN_BLURBS[name.toLowerCase()] ?? "A space to track and work on this part of your life.";
+}
+
+export function vendorAccent(vendor: string): { accent: string; tint: string } {
+  const v = VENDOR_BRAND[vendor] ?? VENDOR_BRAND.other;
+  return { accent: v.accent, tint: `${v.accent}14` }; // 14 ≈ 8% alpha
+}
+
+export function domainColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return DOMAIN_PALETTE[h % DOMAIN_PALETTE.length];
+}
+
+export function stripAnsi(s: string): string {
+  return s.replace(ANSI_RE, "");
+}
+
+export function isLocalCli(id: string): boolean {
+  return LOCAL_CLI_IDS.has(id.toLowerCase());
+}
+
+export function preferredLocalCli(clis: { id: string; available: boolean }[]): string | null {
+  return clis.find((c) => isLocalCli(c.id) && c.available)?.id ?? null;
+}
+
+export function looksLikeJudgmentCall(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  if (t.length < 12) return false;
+  // Decision / comparison / tradeoff signals.
+  const signals = [
+    /\bshould (i|we|my|the)\b/, /\bshould\b.*\?/, /\b(vs|versus)\b/, /\bor (should|to|the|a|just)\b/,
+    /\bbetter to\b/, /\bworth (it|the)\b/, /\bpros and cons\b/, /\btrade[- ]?offs?\b/,
+    /\b(decide|decision|deciding)\b/, /\bwhich (one|option|is better|should)\b/,
+    /\b(do i|should i) (sell|buy|quit|move|invest|replace|hire|fire|switch|leave|take|accept|sign|refinance)\b/,
+    /\bhow should i\b/, /\bwhat would you (do|recommend)\b/, /\bis it (worth|smart|wise|a good idea)\b/,
+    /\b(now or|wait or|stay or)\b/, /\brisk(s|y)?\b.*\?/,
+    // Advice / brainstorm prompts the council is well-suited to (the user's own
+    // example: "can you suggest some actions?").
+    /\b(suggest|recommend|advise|advice)\b/, /\bwhat should i\b/, /\bhelp me (decide|choose|figure|think|plan)\b/,
+    /\bideas? (for|on|about)\b/, /\bwhat (are|would be) (some|the best)\b/, /\bhow (do|should) i (approach|handle|plan)\b/,
+  ];
+  if (signals.some((re) => re.test(t))) return true;
+  // High-stakes life words plus a question mark = likely a real decision.
+  const stakes = /\b(mortgage|rsu|vest|salary|comp|promotion|invest|retire|529|hvac|insurance|umbrella|surgery|diagnosis|relocat|tenant|lawsuit|equity|severance)\b/;
+  return stakes.test(t) && t.includes("?");
+}
+
+export function domainTogglesKey(domain: string | null, t: DomainToggle): string {
+  return `prevail.desktop.domain.${domain || "__general__"}.${t}`;
 }
