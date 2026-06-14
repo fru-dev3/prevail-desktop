@@ -15,6 +15,7 @@ import { AUTONOMY_LABEL, AUTONOMY_TINT, DISCOVERED_MODELS, DOMAIN_LABEL, FRAMEWO
 import { BUNKER_LS, LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet, setDomainToggle, setPref } from "./storage";
 import { AppCard, AppKV, BridgeStatusChips, CycleChip, DemoRibbon, FloatingChip, ResizeHandle } from "./widgets";
 import { ContextScorePanel, DomainAppsTab, IngestionTierCard, OnboardingModal, PaletteCard } from "./panels3";
+import { ProviderMark } from "./marks";
 import { ThinkingDots, ThinkingWord, useAppearance, useFrameworkLens } from "./hooks";
 import { authLoginCmd, idealSectionIcon, mcpCommandPath, pickSkillColor, settingsHeaderIcon } from "./sectionutil";
 import { DOMAIN_ICONS, domainIcon } from "./icons";
@@ -173,8 +174,6 @@ import {
 // Google's CLI, so we render the multicolor "G" wordmark.
 
 import {
-  siClaude as siClaudeRaw,
-  siOllama as siOllamaRaw,
   siGmail, siGooglecalendar, siGoogledrive, siGooglesheets, siDropbox, siNotion,
   siDiscord, siGithub, siGitlab, siLinear, siStripe, siShopify, siCoinbase,
   siTelegram, siWhatsapp, siReddit, siYoutube, siSpotify, siZoom, siAirtable,
@@ -185,130 +184,9 @@ import {
   siAnthropic, siGooglegemini, siHuggingface, siX as siXRaw, siDeepseek, siQwen, siMinimax, siMeta, siMistralai,
 } from "simple-icons";
 
-const siClaude = siClaudeRaw as { path: string };
-const siOllama = siOllamaRaw as { path: string };
-
-// A simple-icons brand mark (real SVG path + brand hex).
-
-// `hex` = icon-tile background (true brand color). `accent` = a
-// display-safe variant used for text/borders that must stay legible on
-// both light and dark surfaces (white/black brand marks would vanish).
-
-// Brand accent for a vendor, safe for text/border use. Returns the hex
-// plus a low-alpha tint suitable for a subtle bubble background.
-
-function ProviderMark({ vendor, size = 28 }: { vendor: string; size?: number }) {
-  const v = VENDOR_BRAND[vendor] ?? VENDOR_BRAND.other;
-  const glyphSize = Math.round(size * 0.62);
-  let inner: React.ReactNode;
-  let bg = v.hex;
-  switch (vendor) {
-    case "claude":
-      inner = (
-        <svg viewBox="0 0 24 24" width={glyphSize} height={glyphSize} fill="white" aria-hidden="true">
-          <path d={siClaude.path} />
-        </svg>
-      );
-      break;
-    case "codex":
-      inner = (
-        <svg viewBox="0 0 24 24" width={glyphSize} height={glyphSize} fill="white" aria-hidden="true">
-          <path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973l-.001.142v5.518a.79.79 0 0 0 .388.677l5.815 3.354-2.02 1.168a.075.075 0 0 1-.071 0l-4.83-2.788a4.504 4.504 0 0 1-1.647-6.098zm16.597 3.855L13.116 8.38 15.131 7.22a.071.071 0 0 1 .07 0l4.83 2.792a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.394-.674zm2.01-3.023l-.142-.085-4.774-2.781a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.659 4.139l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z"/>
-        </svg>
-      );
-      break;
-    case "antigravity":
-      // White tile with the four-color Google G so the brand stays
-      // true on any background.
-      bg = "#ffffff";
-      inner = (
-        <svg viewBox="0 0 48 48" width={glyphSize} height={glyphSize} aria-hidden="true">
-          <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8a12 12 0 1 1 0-24 11.9 11.9 0 0 1 8.5 3.3l5.7-5.7A20 20 0 1 0 24 44a20 20 0 0 0 19.6-23.5z"/>
-          <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8A12 12 0 0 1 24 12a11.9 11.9 0 0 1 8.5 3.3l5.7-5.7A20 20 0 0 0 6.3 14.7z"/>
-          <path fill="#4CAF50" d="M24 44a20 20 0 0 0 13.5-5.2l-6.2-5.3a11.9 11.9 0 0 1-7.3 2.5 12 12 0 0 1-11.3-8L6.1 33A20 20 0 0 0 24 44z"/>
-          <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3a12.1 12.1 0 0 1-4.1 5.5l6.2 5.3c.4-.4 6.6-4.8 6.6-14.8 0-1.3-.1-2.4-.4-3.5z"/>
-        </svg>
-      );
-      break;
-    case "ollama":
-      inner = (
-        <svg viewBox="0 0 24 24" width={glyphSize} height={glyphSize} fill="white" aria-hidden="true">
-          <path d={siOllama.path} />
-        </svg>
-      );
-      break;
-    case "lmstudio":
-      // No official simple-icons glyph; use a clean monogram on the brand tile.
-      inner = <span className="font-mono font-semibold text-white" style={{ fontSize: Math.round(size * 0.34) }}>LM</span>;
-      break;
-    case "mlx":
-      inner = <span className="font-mono font-semibold text-white" style={{ fontSize: Math.round(size * 0.3) }}>MLX</span>;
-      break;
-    default:
-      inner = <span className="font-mono text-white">·</span>;
-  }
-  return (
-    <span
-      className="flex shrink-0 items-center justify-center rounded-md ring-1 ring-black/5"
-      style={{ background: bg, height: size, width: size }}
-      title={v.name}
-    >
-      {inner}
-    </span>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Types matching the Rust commands in src-tauri/src/lib.rs
-
-// Thread types — match Rust ThreadMeta / ThreadTurn / ThreadFull.
-
-
-// ── Context Score (mirrors engine.rs ContextScore / ContextScore.json) ──
-
-// ── Onboarding (mirrors engine.rs / OnboardingRecommendation.json) ──
-
-// ── Domain manifest config (subset mirrors DomainManifest.json config) ──
-// Only the fields the desktop reads/writes for per-domain prefs. Kept
-// lenient so the engine can carry extra fields without breaking us.
-// Per-domain privacy block (mirrors DomainManifest.json privacy).
-// Per-domain sandbox block (mirrors DomainManifest.json sandbox).
-// Per-domain routing block (mirrors DomainManifest.json routing).
-
-// ── Backup (mirrors engine.rs / BackupResult.json) ──
-
-// The ~6 onboarding questions. Free-form answers are bundled into a single
-// JSON document ({ answers: { ... } }) sent to `engine_onboard_recommend`.
-
-
-// The six dimensions, in display order, with friendly labels. Frozen to
-// match the engine's ScoreBreakdown shape.
-
-// Color thresholds: green >=75, amber 50-74, red <50. Returns a CSS color.
-
-
-
-
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Frameworks + Lenses — kept in sync with the CLI's src/framework.ts
-// and src/lens.ts. When the user picks one, the instruction gets
-// prepended to every prompt as a bracketed preamble before the CLI
-// is spawned.
-
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Top-level tabs
-
-// Top-level tabs. Council is NOT its own tab — it's a mode toggle
-// inside Chat. Tools is NOT its own tab — it's a section inside
-// Settings. Keeps the surface count low so each tab has a clear job.
-// Which view the Chat surface shows for the active domain. Lifted to App so the
-// top bar can own the Insights / Preferences toggles (and the domain header
-// shrinks to just the title). "chat" = the conversation; the rest are domain
-// sub-views rendered in place of the transcript.
+// Top-level tabs. Council is NOT its own tab (a mode toggle inside Chat) and
+// Tools is NOT its own tab (a section inside Settings), keeping the surface
+// count low so each tab has a clear job.
 const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
   { id: "chat", label: "Chat", icon: MessageSquare },
   { id: "council", label: "Council", icon: Scale },
@@ -14390,6 +14268,7 @@ function McpCard() {
 }
 
 // BriefingsCard removed — landing back in v0.3 when wired up.
+
 
 
 
