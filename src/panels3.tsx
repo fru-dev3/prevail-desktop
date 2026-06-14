@@ -1,6 +1,6 @@
 // Components extracted from App.tsx.
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, Circle, Loader2, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Check, Circle, Loader2, Plus, Sparkles, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { ONBOARDING_QUESTIONS, PALETTES, SCORE_DIMENSIONS, SETTINGS_ROW, SEVERITY_LABEL, SEVERITY_ORDER, STATUS_TINT } from "./constants";
@@ -230,10 +230,15 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
   const [apps, setApps] = useState<EngineApp[] | null>(null);
   const [probing, setProbing] = useState<string | null>(null);
   const [probeResult, setProbeResult] = useState<Record<string, string>>({});
+  const [addOpen, setAddOpen] = useState(false);
+  const [addValue, setAddValue] = useState("");
+  const [binding, setBinding] = useState<string | null>(null);
   useEffect(() => {
     invoke<EngineApp[]>("engine_apps_list").then(setApps).catch(() => setApps([]));
   }, []);
   const domainApps = useMemo(() => (apps ?? []).filter((a) => a.domains.includes(domain)), [apps, domain]);
+  // Apps NOT yet feeding this domain — the candidates the picker offers.
+  const available = useMemo(() => (apps ?? []).filter((a) => !a.domains.includes(domain)), [apps, domain]);
 
   async function sync(id: string) {
     setProbing(id);
@@ -245,17 +250,78 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
     setProbing(null);
   }
 
+  // Bind an app to THIS domain — the mirror of the app-side domain editor. Same
+  // engine_app_set_domains backend, just adding `domain` to the app's set.
+  async function bindApp(app: EngineApp) {
+    setBinding(app.id);
+    try {
+      const r = await invoke<{ ok: boolean; domains?: string[]; error?: string }>("engine_app_set_domains", { id: app.id, domains: [...app.domains, domain] });
+      if (r.ok) {
+        window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+        const next = await invoke<EngineApp[]>("engine_apps_list").catch(() => apps ?? []);
+        setApps(next);
+        setAddValue("");
+      }
+    } catch { /* leave open to retry */ }
+    finally { setBinding(null); }
+  }
+
+  // The add-app picker, shared by the populated and empty states.
+  const q = addValue.trim().toLowerCase();
+  const matches = available.filter((a) => a.title.toLowerCase().includes(q) || a.id.toLowerCase().includes(q));
+  const addPicker = addOpen ? (
+    <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface-warm/40">
+      <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2">
+        <Plus className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+        <input
+          autoFocus value={addValue} onChange={(e) => setAddValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && matches[0]) bindApp(matches[0]); if (e.key === "Escape") { setAddOpen(false); setAddValue(""); } }}
+          placeholder="Filter apps to feed this domain"
+          className="min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted/60"
+        />
+        <button onClick={() => { setAddOpen(false); setAddValue(""); }} title="Close" className="shrink-0 rounded p-0.5 text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
+      </div>
+      <ul className="max-h-56 overflow-y-auto p-1">
+        {matches.map((a) => {
+          const tint = STATUS_TINT[a.status] ?? "#9aa0a6";
+          return (
+            <li key={a.id}>
+              <button onClick={() => bindApp(a)} disabled={binding === a.id} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-accent-soft disabled:opacity-40">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: tint }} />
+                <span className="text-sm font-medium text-text-primary">{a.title}</span>
+                <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{a.integration}</span>
+                <span className="ml-auto font-mono text-[10px] text-text-muted/60">{binding === a.id ? "adding…" : ""}</span>
+              </button>
+            </li>
+          );
+        })}
+        {matches.length === 0 && (
+          <li className="px-2.5 py-3 text-center text-[12px] text-text-muted">
+            {available.length === 0 ? "Every app already feeds this domain." : "No matching app."}
+          </li>
+        )}
+      </ul>
+    </div>
+  ) : (
+    <button onClick={() => setAddOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"><Plus className="h-3.5 w-3.5" /> add app</button>
+  );
+
   if (!apps) return <div className="text-sm text-text-muted">loading…</div>;
   if (domainApps.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
-        No apps are refreshing this domain yet. Add one from Settings → Apps.
+      <div className="space-y-3">
+        <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+          No apps are refreshing this domain yet. Add one below, or from Settings → Apps.
+        </div>
+        {addPicker}
       </div>
     );
   }
   return (
     <div className="space-y-2">
-      <div className="mb-3 font-mono text-[10px] uppercase tracking-wider text-text-muted">{domainApps.length} app{domainApps.length !== 1 ? "s" : ""} refreshing {domain}</div>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{domainApps.length} app{domainApps.length !== 1 ? "s" : ""} refreshing {domain}</span>
+      </div>
       {domainApps.map((app) => {
         const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
         return (
@@ -282,6 +348,7 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
           </div>
         );
       })}
+      <div className="pt-1">{addPicker}</div>
     </div>
   );
 }
