@@ -12,6 +12,7 @@
 // signing complexity for the first release.
 
 mod benchmark;
+mod appcmds;
 mod bunker;
 mod chat;
 mod children;
@@ -25,10 +26,9 @@ mod settings;
 mod threads;
 mod usage;
 mod vault;
-use paths::safe_domain_subdir;
-use vault::Domain;
 pub(crate) use chat::{build_cli_env, ideal_state_preamble, resolve_bin_abs, scrubbed_env_pairs};
 pub(crate) use settings::close_to_tray_enabled;
+pub(crate) use appcmds::secs_to_ymdhms;
 mod engine;
 mod ingestion;
 mod reminders;
@@ -40,9 +40,9 @@ mod telegram_bridge;
 mod watchdog;
 mod webui;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 #[allow(unused_imports)]
 use tauri_plugin_shell::ShellExt;
 
@@ -136,483 +136,9 @@ pub(crate) fn read_to_string_retry<P: AsRef<Path>>(p: P) -> std::io::Result<Stri
 // benchmark.rs.
 
 // ─────────────────────────────────────────────────────────────────────
-// Read state.md / log files for a domain
+// App-shell commands (read_file, import_sample_vault, create_domain, OS
+// integration, diagnostics, uninstall, save_session, …) live in appcmds.rs.
 
-#[tauri::command]
-fn read_file(path: String) -> Result<String, String> {
-    read_to_string_retry(&path).map_err(|e| format!("read {}: {}", path, e))
-}
-
-// Diagnostic: the frontend's fatal-error handler writes the crash here so
-// production render failures (blank window) are inspectable from disk.
-#[tauri::command]
-fn log_fatal(msg: String) {
-    let _ = fs::write("/tmp/prevail-fatal.log", msg);
-}
-
-fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let from = entry.path();
-        let to = dst.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            copy_dir_recursive(&from, &to)?;
-        } else {
-            fs::copy(&from, &to)?;
-        }
-    }
-    Ok(())
-}
-
-// Where we remember the last-chosen vault so it survives a webview-cache
-// wipe (which clears localStorage). Read on boot as a fallback.
-fn bootstrap_vault_path() -> Option<std::path::PathBuf> {
-    let home = std::env::var("HOME").ok()?;
-    Some(Path::new(&home).join("Library/Application Support/sh.prevail.desktop/bootstrap-vault.txt"))
-}
-
-fn write_bootstrap_vault(path: &str) {
-    if let Some(bf) = bootstrap_vault_path() {
-        if let Some(p) = bf.parent() {
-            let _ = fs::create_dir_all(p);
-        }
-        let _ = fs::write(&bf, path);
-    }
-}
-
-/// Copy the bundled sample vault into the user's Documents and return its
-/// path, so a new user can explore every feature without creating domains.
-#[tauri::command]
-fn import_sample_vault(app: tauri::AppHandle) -> Result<String, String> {
-    use tauri::Manager;
-    let src = app
-        .path()
-        .resolve("resources/sample-vault", tauri::path::BaseDirectory::Resource)
-        .map_err(|e| format!("resolve sample resource: {e}"))?;
-    if !src.exists() {
-        return Err(format!("bundled sample vault not found at {}", src.display()));
-    }
-    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
-    // App-managed demo sandbox (NOT ~/Documents): the switch-to-production flow
-    // and any re-seed only ever touch a folder WE own and have marked as demo,
-    // so real user data is never at risk. (DEMO-MODE-PLAN: demo lives in app
-    // storage, not dumped into the user's Documents.)
-    let dest = Path::new(&home).join(".prevail/demo-vault");
-    let marker = dest.join(".prevail-demo");
-    // Non-destructive refresh: only wipe a path that carries our own demo
-    // marker. Never remove a folder we didn't create (hard rule: never delete
-    // user data).
-    if dest.exists() && marker.exists() {
-        let _ = fs::remove_dir_all(&dest);
-    }
-    if !dest.exists() {
-        if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("create demo dir: {e}"))?;
-        }
-        copy_dir_recursive(&src, &dest).map_err(|e| format!("copy sample vault: {e}"))?;
-    }
-    // Stamp the demo marker so future re-seeds and the switch-to-production flow
-    // can safely identify (and only then clear) this app-owned sandbox.
-    let _ = fs::write(&marker, "demo sandbox — safe to clear on switch-to-production\n");
-    let dest_str = dest.to_string_lossy().to_string();
-    write_bootstrap_vault(&dest_str);
-    Ok(dest_str)
-}
-
-/// True if `path` is an existing directory — used on launch to detect a stale
-/// remembered vault (e.g. a demo vault the user deleted) so we can re-seed.
-#[tauri::command]
-fn vault_exists(path: String) -> bool {
-    !path.is_empty() && Path::new(&path).is_dir()
-}
-
-/// Persist the chosen vault path so it survives a cache wipe.
-#[tauri::command]
-fn remember_vault(path: String) {
-    write_bootstrap_vault(&path);
-}
-
-/// Boot fallback: the last vault we remembered (when localStorage was wiped).
-#[tauri::command]
-fn bootstrap_vault() -> Option<String> {
-    let bf = bootstrap_vault_path()?;
-    let s = read_to_string_retry(&bf).ok()?;
-    let s = s.trim();
-    if s.is_empty() || !Path::new(s).exists() {
-        return None;
-    }
-    Some(s.to_string())
-}
-
-
-// Create a new domain folder under the vault root. Writes a minimal
-// state.md skeleton so scan_vault picks it up immediately.
-#[tauri::command]
-fn create_domain(vault: String, name: String) -> Result<Domain, String> {
-    let slug: String = name
-        .trim()
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join("-");
-    if slug.is_empty() {
-        return Err("name cannot be empty".into());
-    }
-    let root = PathBuf::from(&vault);
-    if !root.exists() {
-        return Err(format!("vault not found: {vault}"));
-    }
-    let domain_dir = root.join(&slug);
-    if domain_dir.exists() {
-        return Err(format!("domain '{slug}' already exists"));
-    }
-    fs::create_dir_all(&domain_dir).map_err(|e| format!("mkdir failed: {e}"))?;
-    let title = slug
-        .split('-')
-        .map(|p| {
-            let mut c = p.chars();
-            match c.next() {
-                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ");
-    let stub = format!(
-        "# {title}\n\n_State for the {title} domain. Edit freely._\n\n## Current focus\n\n- (none yet)\n\n## Open decisions\n\n- (none yet)\n"
-    );
-    let state_path = domain_dir.join("state.md");
-    fs::write(&state_path, &stub).map_err(|e| format!("write state.md failed: {e}"))?;
-    Ok(Domain {
-        name: slug,
-        path: domain_dir.to_string_lossy().to_string(),
-        has_state: true,
-        state_preview: Some(stub.chars().take(120).collect()),
-    })
-}
-
-// Open a path in the OS default file manager (Finder on macOS).
-#[tauri::command]
-async fn open_in_finder(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    let bin = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
-    app.shell()
-        .command(bin)
-        .args([&path])
-        .output()
-        .await
-        .map_err(|e| format!("open failed: {e}"))?;
-    Ok(())
-}
-
-// Copy Prevail.app to /Applications/. Tries a plain `cp -R` first; if that
-// fails (permissions), falls back to `osascript` which can prompt for admin.
-// The source path must end in ".app".
-#[tauri::command]
-async fn move_to_applications(app: tauri::AppHandle, source: String) -> Result<String, String> {
-    if !cfg!(target_os = "macos") {
-        return Err("move_to_applications is macOS-only".into());
-    }
-    let dest = "/Applications/Prevail.app";
-    if source.starts_with("/Applications/") {
-        return Ok("already in /Applications/".into());
-    }
-    // Remove existing copy first so cp -R succeeds cleanly.
-    let _ = std::fs::remove_dir_all(dest);
-    let out = app.shell()
-        .command("cp")
-        .args(["-R", &source, dest])
-        .output()
-        .await
-        .map_err(|e| format!("cp failed: {e}"))?;
-    if out.status.success() {
-        return Ok(format!("Copied to {dest}. Quit and relaunch from /Applications/."));
-    }
-    // Fallback: osascript with administrator privileges.
-    let script = format!(
-        r#"do shell script "cp -R '{}' '{}'" with administrator privileges"#,
-        source.replace('\'', "'\\''"),
-        dest
-    );
-    let out2 = app.shell()
-        .command("osascript")
-        .args(["-e", &script])
-        .output()
-        .await
-        .map_err(|e| format!("osascript failed: {e}"))?;
-    if out2.status.success() {
-        Ok(format!("Copied to {dest}. Quit and relaunch from /Applications/."))
-    } else {
-        let err = String::from_utf8_lossy(&out2.stderr).to_string();
-        Err(format!("Could not copy: {err}"))
-    }
-}
-
-// SkillEntry + skill-description parsing live in domain.rs.
-
-
-// Read the full content of a single skill (SKILL.md, README.md, or
-// skill.md — whichever is present). Used by the Skills tab to expand
-// a skill inline so the user can read its contents.
-#[tauri::command]
-fn read_skill(path: String) -> Result<String, String> {
-    let dir = PathBuf::from(&path);
-    for candidate in &["SKILL.md", "README.md", "skill.md"] {
-        let f = dir.join(candidate);
-        if f.exists() {
-            return read_to_string_retry(&f).map_err(|e| e.to_string());
-        }
-    }
-    Err(format!("no SKILL.md/README.md/skill.md in {}", dir.display()))
-}
-
-// CLI model verification (VerifyArgs, verify_cli_model) lives in chat.rs.
-
-
-// Ideal State / user.md / memory.md commands live in idealstate.rs.
-
-// Generic text file read/write — used by config export/import (the frontend
-// picks a path via the dialog plugin, then calls these). Kept generic so
-// other features can reuse them.
-
-/// Defense-in-depth for the generic write primitive. The frontend is the only
-/// caller (deliberately NOT in the WebUI allowlist), and there is no XSS vector
-/// today (react-markdown renders untrusted content without raw HTML, behind a
-/// `script-src 'self'` CSP). But a "write any absolute path" command is exactly
-/// what injected code would reach for to gain persistence, so refuse the
-/// classic auto-run / credential targets regardless of caller. Legitimate
-/// config export (Documents/Downloads, the app-support tree) is unaffected.
-fn reject_sensitive_write(path: &str) -> Result<(), String> {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let blocked_suffixes = [
-        "/.zshrc", "/.zshenv", "/.zprofile", "/.bashrc", "/.bash_profile",
-        "/.profile", "/.config/fish/config.fish",
-    ];
-    let blocked_dirs = [
-        format!("{home}/.ssh/"),
-        format!("{home}/Library/LaunchAgents/"),
-        format!("{home}/.config/autostart/"),
-    ];
-    let lower = path.to_lowercase();
-    if blocked_suffixes.iter().any(|s| path.ends_with(s))
-        || blocked_dirs.iter().any(|d| path.starts_with(d.as_str()))
-        || lower.contains("/launchdaemons/")
-    {
-        return Err("refused: writing to a sensitive system location is not allowed".into());
-    }
-    Ok(())
-}
-
-#[tauri::command]
-fn write_text_file(path: String, contents: String) -> Result<(), String> {
-    reject_sensitive_write(&path)?;
-    fs::write(&path, contents).map_err(|e| format!("write {path}: {e}"))
-}
-#[tauri::command]
-fn read_text_file(path: String) -> Result<String, String> {
-    read_to_string_retry(&path).map_err(|e| format!("read {path}: {e}"))
-}
-
-// Diagnostics for the About → Run Diagnosis / Debug Dump panel. Gathers the
-// app + engine versions, key paths, and OS so support issues are one copy away.
-#[tauri::command]
-fn app_diagnostics() -> serde_json::Value {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let engine_bin = engine::resolve_prevail_bin();
-    let engine_version = std::process::Command::new(&engine_bin)
-        .arg("--version")
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .filter(|s| !s.is_empty());
-    serde_json::json!({
-        "desktop_version": env!("CARGO_PKG_VERSION"),
-        "engine_bin": engine_bin,
-        "engine_version": engine_version,
-        "engine_bundled": engine_bin.contains(".app/Contents/MacOS"),
-        "os": std::env::consts::OS,
-        "arch": std::env::consts::ARCH,
-        "app_support": format!("{home}/Library/Application Support/sh.prevail.desktop"),
-        "home": home,
-    })
-}
-
-// (close-to-tray flag moved to settings.rs)
-
-// Uninstall — spawns a detached cleanup script (so it can delete the running
-// app bundle after we quit) and exits. scope "app" removes just the .app;
-// "data" also removes app data, caches, and stored secrets. The user's VAULT
-// is NEVER touched (hard rule: never delete user data).
-#[tauri::command]
-fn app_uninstall(app: tauri::AppHandle, scope: String) -> Result<(), String> {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let mut script = String::from("#!/bin/bash\nsleep 2\n");
-    if scope == "data" {
-        for p in [
-            format!("{home}/Library/Application Support/sh.prevail.desktop"),
-            format!("{home}/Library/WebKit/sh.prevail.desktop"),
-            format!("{home}/Library/Caches/sh.prevail.desktop"),
-            format!("{home}/Library/Caches/prevail-desktop"),
-            format!("{home}/Library/WebKit/prevail-desktop"),
-        ] {
-            script.push_str(&format!("rm -rf \"{p}\"\n"));
-        }
-        // Stored secrets (best-effort; one item per call).
-        script.push_str("security delete-generic-password -s prevail.providers >/dev/null 2>&1\n");
-        script.push_str("security delete-generic-password -s prevail.ingestion >/dev/null 2>&1\n");
-    }
-    script.push_str("rm -rf \"/Applications/Prevail.app\"\n");
-    let tmp = std::env::temp_dir().join("prevail-uninstall.sh");
-    fs::write(&tmp, &script).map_err(|e| format!("write uninstaller: {e}"))?;
-    std::process::Command::new("bash")
-        .arg(tmp.to_string_lossy().to_string())
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("spawn uninstaller: {e}"))?;
-    app.exit(0);
-    Ok(())
-}
-
-// read_memory_md lives in idealstate.rs.
-
-#[tauri::command]
-fn write_paste_attachment(vault: String, body: String) -> Result<String, String> {
-    let dir = PathBuf::from(&vault).join("_paste");
-    fs::create_dir_all(&dir).map_err(|e| format!("mkdir _paste: {e}"))?;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let (y, m, d, hh, mm, ss) = secs_to_ymdhms(now as i64);
-    let name = format!("{y:04}-{m:02}-{d:02}_{hh:02}-{mm:02}-{ss:02}.txt");
-    let p = dir.join(&name);
-    fs::write(&p, body).map_err(|e| format!("write paste: {e}"))?;
-    Ok(p.to_string_lossy().to_string())
-}
-
-// Save a chat session as a markdown transcript under <domain>/_log/.
-// Filename format: YYYY-MM-DD_HH-MM-SS_session.md so directory listings
-// sort newest-last and the user can scan when each happened. Nothing is
-// thrown away — every prompt + reply is appended.
-#[derive(Deserialize)]
-pub struct SessionTurn {
-    pub role: String,
-    pub cli: Option<String>,
-    pub model: Option<String>,
-    pub content: String,
-}
-#[tauri::command]
-fn save_session(
-    vault: String,
-    domain: Option<String>,
-    title: Option<String>,
-    turns: Vec<SessionTurn>,
-) -> Result<String, String> {
-    if turns.is_empty() {
-        return Err("session is empty".into());
-    }
-    let log_dir = safe_domain_subdir(&vault, &domain, "_log")?;
-    fs::create_dir_all(&log_dir).map_err(|e| format!("mkdir _log: {e}"))?;
-    // Use chrono-free timestamp by formatting from std time.
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    // YYYY-MM-DD_HH-MM-SS via a tiny formatter.
-    let secs = now as i64;
-    let (year, month, day, hh, mm, ss) = secs_to_ymdhms(secs);
-    let stem = format!("{year:04}-{month:02}-{day:02}_{hh:02}-{mm:02}-{ss:02}");
-    // Two saves within the same second (e.g. an auto-save racing a manual
-    // "save & clear") would otherwise collide on the same filename. Add a
-    // numeric suffix so neither is silently overwritten. (feedback v0.4.1 B10)
-    let mut file = log_dir.join(format!("{stem}_session.md"));
-    let mut dup = 2;
-    while file.exists() {
-        file = log_dir.join(format!("{stem}-{dup}_session.md"));
-        dup += 1;
-    }
-    let mut body = String::new();
-    body.push_str("---\n");
-    if let Some(t) = &title { body.push_str(&format!("title: {t}\n")); }
-    if let Some(d) = &domain { body.push_str(&format!("domain: {d}\n")); }
-    body.push_str(&format!("turns: {}\n", turns.len()));
-    body.push_str("---\n\n");
-    for t in &turns {
-        let speaker = if t.role == "user" {
-            "You".to_string()
-        } else {
-            let cli = t.cli.as_deref().unwrap_or("assistant");
-            let model = t.model.as_deref().map(|m| format!(" · {m}")).unwrap_or_default();
-            format!("{cli}{model}")
-        };
-        body.push_str(&format!("## {speaker}\n\n{}\n\n", t.content.trim()));
-    }
-    fs::write(&file, &body).map_err(|e| format!("write session: {e}"))?;
-
-    // Append a one-line summary to _journal.md so the user has a
-    // running record of every session without having to open _log/.
-    if let Some(d) = &domain {
-        let journal_path = PathBuf::from(&vault).join(d).join("_journal.md");
-        let first_user = turns.iter()
-            .find(|t| t.role == "user")
-            .map(|t| t.content.lines().next().unwrap_or("").trim().to_string())
-            .unwrap_or_else(|| title.clone().unwrap_or_else(|| "session".into()));
-        let truncated: String = first_user.chars().take(140).collect();
-        let entry = format!(
-            "- {year:04}-{month:02}-{day:02} {hh:02}:{mm:02} · [{file}](_log/{file}) · {turns} turns · {snippet}\n",
-            year = year, month = month, day = day, hh = hh, mm = mm,
-            file = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
-            turns = turns.len(),
-            snippet = truncated,
-        );
-        let existing = read_to_string_retry(&journal_path).unwrap_or_else(|_| "# Journal\n\n".into());
-        let merged = if existing.contains("# Journal") {
-            format!("{existing}{entry}")
-        } else {
-            format!("# Journal\n\n{entry}")
-        };
-        let _ = fs::write(&journal_path, merged);
-    }
-    Ok(file.to_string_lossy().to_string())
-}
-
-// Days-since-epoch → date. Good enough for log filenames, no chrono.
-pub(crate) fn secs_to_ymdhms(secs: i64) -> (i32, u32, u32, u32, u32, u32) {
-    let day_secs = 86_400i64;
-    let mut days = secs.div_euclid(day_secs);
-    let mut rem = secs.rem_euclid(day_secs);
-    let hh = (rem / 3600) as u32; rem %= 3600;
-    let mm = (rem / 60) as u32;
-    let ss = (rem % 60) as u32;
-    // Convert days from 1970-01-01 to ymd (Gregorian).
-    let mut year = 1970i32;
-    loop {
-        let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-        let ydays = if leap { 366 } else { 365 };
-        if days < ydays as i64 { break; }
-        days -= ydays as i64;
-        year += 1;
-    }
-    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-    let month_lens = if leap {
-        [31u32,29,31,30,31,30,31,31,30,31,30,31]
-    } else {
-        [31u32,28,31,30,31,30,31,31,30,31,30,31]
-    };
-    let mut month = 0u32;
-    for (i, &ml) in month_lens.iter().enumerate() {
-        if days < ml as i64 { month = i as u32 + 1; break; }
-        days -= ml as i64;
-    }
-    let day = days as u32 + 1;
-    (year, month, day, hh, mm, ss)
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // Threads (ThreadMeta/Turn/Full, list_threads/load_thread/save_thread/
@@ -785,11 +311,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             vault::scan_vault,
             clis::detect_clis,
-            log_fatal,
-            import_sample_vault,
-            remember_vault,
-            vault_exists,
-            bootstrap_vault,
+            appcmds::log_fatal,
+            appcmds::import_sample_vault,
+            appcmds::remember_vault,
+            appcmds::vault_exists,
+            appcmds::bootstrap_vault,
             settings::ui_settings_get,
             settings::ui_prefs_get,
             settings::ui_prefs_set,
@@ -810,10 +336,10 @@ pub fn run() {
             bunker::bunker_status,
             bunker::bunker_set,
             idealstate::read_memory_md,
-            write_text_file,
-            read_text_file,
-            app_diagnostics,
-            app_uninstall,
+            appcmds::write_text_file,
+            appcmds::read_text_file,
+            appcmds::app_diagnostics,
+            appcmds::app_uninstall,
             settings::set_close_to_tray,
             settings::provider_key_set,
             settings::provider_key_exists,
@@ -853,11 +379,11 @@ pub fn run() {
             benchmark::benchmark_export_questions,
             benchmark::benchmark_import_questions,
             benchmark::benchmark_matrix,
-            read_file,
+            appcmds::read_file,
             telegram_send,
-            open_in_finder,
-            move_to_applications,
-            create_domain,
+            appcmds::open_in_finder,
+            appcmds::move_to_applications,
+            appcmds::create_domain,
             domain::domain_context,
             domain::domain_tree,
             domain::read_domain_prompts,
@@ -868,10 +394,10 @@ pub fn run() {
             idealstate::write_user_md,
             idealstate::read_ideal_state,
             idealstate::write_ideal_state,
-            write_paste_attachment,
-            save_session,
+            appcmds::write_paste_attachment,
+            appcmds::save_session,
             chat::verify_cli_model,
-            read_skill,
+            appcmds::read_skill,
             benchmark::benchmark_start,
             benchmark::benchmark_score,
             benchmark::benchmark_suggest,
