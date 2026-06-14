@@ -1,0 +1,114 @@
+// Shared React hooks extracted from App.tsx: theme/palette appearance,
+// framework+lens selection (Chat & Council), and the honest "thinking" status
+// word with its dot/word indicators.
+import { useEffect, useRef, useState } from "react";
+import { invoke } from "./bridge";
+import { FRAMEWORKS, LENSES, PALETTES } from "./constants";
+import { LS, lsGet, lsSet } from "./storage";
+import type { Mode, Palette } from "./types";
+
+export function useAppearance() {
+  const [mode, setMode] = useState<Mode>(() => {
+    const saved = lsGet(LS.theme);
+    if (saved === "light" || saved === "dark" || saved === "system") return saved;
+    return "light";
+  });
+  const [palette, setPalette] = useState<Palette>(() => {
+    const saved = lsGet(LS.palette) as Palette;
+    return PALETTES.some((p) => p.id === saved) ? saved : "vault";
+  });
+  // Track system preference for "system" mode
+  const [systemDark, setSystemDark] = useState<boolean>(() =>
+    typeof window !== "undefined" && window.matchMedia
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+      : false,
+  );
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  // Cross-device hydrate: theme + palette are persisted on the desktop (see
+  // ui_settings_get), so the WebUI — and a re-installed desktop — inherit the
+  // same look instead of starting from an empty browser localStorage. Runs once
+  // and overrides the local defaults if the backend has a saved value.
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await invoke<string>("ui_settings_get");
+        const s = JSON.parse(raw || "{}") as { theme?: string; palette?: string };
+        if (s.theme === "light" || s.theme === "dark" || s.theme === "system") setMode(s.theme);
+        if (s.palette && PALETTES.some((p) => p.id === s.palette)) setPalette(s.palette as Palette);
+      } catch { /* offline / first run: keep localStorage values */ }
+      hydratedRef.current = true;
+    })();
+  }, []);
+  // Apply to <html>, cache locally, and write-through to the cross-device store.
+  useEffect(() => {
+    const effectiveDark = mode === "dark" || (mode === "system" && systemDark);
+    document.documentElement.setAttribute("data-theme", effectiveDark ? "dark" : "light");
+    document.documentElement.setAttribute("data-palette", palette);
+    lsSet(LS.theme, mode);
+    lsSet(LS.palette, palette);
+    // Only persist after the initial hydrate so we never clobber saved settings
+    // with the boot defaults before they've loaded.
+    if (hydratedRef.current) {
+      void invoke("ui_settings_set", { json: JSON.stringify({ theme: mode, palette }) }).catch(() => {});
+    }
+  }, [mode, palette, systemDark]);
+  return { mode, setMode, palette, setPalette };
+}
+
+// Active framework + lens (shared between Chat and Council).
+export function useFrameworkLens() {
+  const [framework, setFramework] = useState<string>(() => lsGet(LS.framework, "none"));
+  const [lens, setLens] = useState<string>(() => lsGet(LS.lens, "none"));
+  useEffect(() => { lsSet(LS.framework, framework); }, [framework]);
+  useEffect(() => { lsSet(LS.lens, lens); }, [lens]);
+
+  function buildPrompt(raw: string): string {
+    const fw = FRAMEWORKS.find((f) => f.id === framework);
+    const ln = LENSES.find((l) => l.id === lens);
+    const parts: string[] = [];
+    if (fw?.instruction) parts.push(`[FRAMEWORK]\n${fw.instruction}`);
+    if (ln?.instruction) parts.push(`[LENS]\n${ln.instruction}`);
+    parts.push(raw);
+    return parts.join("\n\n");
+  }
+
+  return { framework, setFramework, lens, setLens, buildPrompt };
+}
+
+// The status word shown while a CLI spins up and hasn't streamed its first token.
+// I9: replaced a random whimsical verb (rotated every 2.4s, implied false meaning)
+// with an HONEST progression keyed to elapsed wait time.
+export function useThinkingWord() {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setSecs((s) => s + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  if (secs < 4) return "Thinking";
+  if (secs < 12) return "Still thinking";
+  if (secs < 30) return "Working on it";
+  return "Taking a while";
+}
+
+export function ThinkingWord() {
+  return <>{useThinkingWord()}</>;
+}
+
+export function ThinkingDots() {
+  const word = useThinkingWord();
+  return (
+    <span className="inline-flex items-center gap-1 font-mono">
+      <span className="thinking-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "0ms" }} />
+      <span className="thinking-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "150ms" }} />
+      <span className="thinking-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "300ms" }} />
+      <span className="ml-1.5 text-xs text-text-muted">{word}…</span>
+    </span>
+  );
+}

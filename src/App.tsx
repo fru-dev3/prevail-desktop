@@ -9,12 +9,13 @@ import { PrevailLogo } from "./PrevailLogo";
 import { Markdown, StreamingPlain } from "./Markdown";
 import { scoreColor, formatFreshness, titleCase, relTime } from "./format";
 import { Toggle, Sparkline, ThinkingDisclosure } from "./ui";
-import type { AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Brand, BrandLogo, CatalogApp, ChatEvent, ChatMessage, CliInfo, Connector, ConnectorCatalog, ContextScore, DaemonStatus, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainToggle, EngineApp, IngestionArtifact, IngestionMcpServer, IngestionTierStatus, LifeReadiness, MatrixRow, Mode, ModelPick, ModelVerifyStatus, Palette, PanelistReply, PanelistSlot, RunDetail, SkillEntry, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn } from "./types";
+import type { AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Brand, BrandLogo, CatalogApp, ChatEvent, ChatMessage, CliInfo, Connector, ConnectorCatalog, ContextScore, DaemonStatus, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainToggle, EngineApp, IngestionArtifact, IngestionMcpServer, IngestionTierStatus, LifeReadiness, MatrixRow, Mode, ModelPick, ModelVerifyStatus, PanelistReply, PanelistSlot, RunDetail, SkillEntry, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn } from "./types";
 import { appScheduleText, bytesHuman, domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
 import { AUTONOMY_LABEL, AUTONOMY_TINT, DISCOVERED_MODELS, DOMAIN_LABEL, FRAMEWORKS, INTEGRATION_LABEL, LENSES, MODELS, MODEL_SEP, PALETTES, PATTERN_LABEL, PATTERN_TIER, SETTINGS_ROW, SOURCE_ABBR, STATUS_TINT, VENDOR_BRAND } from "./constants";
 import { BUNKER_LS, LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet, setDomainToggle, setPref } from "./storage";
 import { AppCard, AppKV, BridgeStatusChips, CycleChip, DemoRibbon, FloatingChip, ResizeHandle } from "./widgets";
 import { ContextScorePanel, DomainAppsTab, IngestionTierCard, OnboardingModal, PaletteCard } from "./panels3";
+import { ThinkingDots, ThinkingWord, useAppearance, useFrameworkLens } from "./hooks";
 import { authLoginCmd, idealSectionIcon, mcpCommandPath, pickSkillColor, settingsHeaderIcon } from "./sectionutil";
 import { DOMAIN_ICONS, domainIcon } from "./icons";
 import { compareSemver, extractCliError, renderSkillTokens } from "./textutil";
@@ -417,108 +418,7 @@ function Brand({ className = "", fill = false }: { className?: string; fill?: bo
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Theme = Mode (light / dark / system) + Palette (vault / midnight / ember / mono / cyberpunk / slate)
-// Mode controls brightness; palette controls accent + surface styling.
-
-
-
-function useAppearance() {
-  const [mode, setMode] = useState<Mode>(() => {
-    const saved = lsGet(LS.theme);
-    if (saved === "light" || saved === "dark" || saved === "system") return saved;
-    return "light";
-  });
-  const [palette, setPalette] = useState<Palette>(() => {
-    const saved = lsGet(LS.palette) as Palette;
-    return PALETTES.some((p) => p.id === saved) ? saved : "vault";
-  });
-  // Track system preference for "system" mode
-  const [systemDark, setSystemDark] = useState<boolean>(() =>
-    typeof window !== "undefined" && window.matchMedia
-      ? window.matchMedia("(prefers-color-scheme: dark)").matches
-      : false,
-  );
-  useEffect(() => {
-    if (!window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-  // Cross-device hydrate: theme + palette are persisted on the desktop (see
-  // ui_settings_get), so the WebUI — and a re-installed desktop — inherit the
-  // same look instead of starting from an empty browser localStorage. Runs once
-  // and overrides the local defaults if the backend has a saved value.
-  const hydratedRef = useRef(false);
-  useEffect(() => {
-    (async () => {
-      try {
-        const raw = await invoke<string>("ui_settings_get");
-        const s = JSON.parse(raw || "{}") as { theme?: string; palette?: string };
-        if (s.theme === "light" || s.theme === "dark" || s.theme === "system") setMode(s.theme);
-        if (s.palette && PALETTES.some((p) => p.id === s.palette)) setPalette(s.palette as Palette);
-      } catch { /* offline / first run: keep localStorage values */ }
-      hydratedRef.current = true;
-    })();
-  }, []);
-  // Apply to <html>, cache locally, and write-through to the cross-device store.
-  useEffect(() => {
-    const effectiveDark = mode === "dark" || (mode === "system" && systemDark);
-    document.documentElement.setAttribute("data-theme", effectiveDark ? "dark" : "light");
-    document.documentElement.setAttribute("data-palette", palette);
-    lsSet(LS.theme, mode);
-    lsSet(LS.palette, palette);
-    // Only persist after the initial hydrate so we never clobber saved settings
-    // with the boot defaults before they've loaded.
-    if (hydratedRef.current) {
-      void invoke("ui_settings_set", { json: JSON.stringify({ theme: mode, palette }) }).catch(() => {});
-    }
-  }, [mode, palette, systemDark]);
-  return { mode, setMode, palette, setPalette };
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Active framework + lens (shared between Chat and Council)
-
-function useFrameworkLens() {
-  const [framework, setFramework] = useState<string>(() => lsGet(LS.framework, "none"));
-  const [lens, setLens] = useState<string>(() => lsGet(LS.lens, "none"));
-  useEffect(() => { lsSet(LS.framework, framework); }, [framework]);
-  useEffect(() => { lsSet(LS.lens, lens); }, [lens]);
-
-  function buildPrompt(raw: string): string {
-    const fw = FRAMEWORKS.find((f) => f.id === framework);
-    const ln = LENSES.find((l) => l.id === lens);
-    const parts: string[] = [];
-    if (fw?.instruction) parts.push(`[FRAMEWORK]\n${fw.instruction}`);
-    if (ln?.instruction) parts.push(`[LENS]\n${ln.instruction}`);
-    parts.push(raw);
-    return parts.join("\n\n");
-  }
-
-  return { framework, setFramework, lens, setLens, buildPrompt };
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Onboarding flow — shown when the vault has zero domains (or via the
-// "Set up domains" button). Three steps:
-//   1. answer ~6 questions  → engine_onboard_recommend (answers on stdin)
-//   2. pick from a checkbox list of recommended domains
-//   3. engine_onboard_apply (picks on stdin) → caller refreshes scan_vault
-
-// ─────────────────────────────────────────────────────────────────────
-// App root — vault picker, sidebar, tabs
-
-// Deterministic per-domain accent color — turns the monochrome card grid
-// into a colorful, scannable board. Muted, on-brand palette.
-// Browser login screen for the WebUI. Authenticates against the bridge
-// server's /api/login, stores the token, then lets the real app mount.
-// Desktop passcode gate. For a plaintext vault with an app lock (Phase 0) it
-// verifies against the Argon2id verifier. For an ENCRYPTED vault (Phase 1) it
-// unlocks the keyring, which holds the DEK in the engine process so the vault
-// becomes readable. Same screen, right mechanism.
-
-
+// App root — vault picker, sidebar, tabs.
 export default function App() {
   const appearance = useAppearance();
   // WebUI login gate — in a browser tab the app must authenticate to the
@@ -6703,47 +6603,8 @@ function ChatBubble({
   );
 }
 
-// Animated three-dot indicator shown while a CLI is spinning up and
-// hasn't streamed its first token yet. Replaces the dead "…" feel
-// with something that obviously "ticks".
-// I9: the status word used to be a random whimsical verb ("Puzzling",
-// "Ruminating") that rotated every 2.4s — which read as if it meant something
-// about the model's state when it didn't. Replaced with an HONEST progression
-// keyed to elapsed wait time, so it actually conveys "this is taking a while".
-function useThinkingWord() {
-  const [secs, setSecs] = useState(0);
-  useEffect(() => {
-    const id = window.setInterval(() => setSecs((s) => s + 1), 1000);
-    return () => window.clearInterval(id);
-  }, []);
-  if (secs < 4) return "Thinking";
-  if (secs < 12) return "Still thinking";
-  if (secs < 30) return "Working on it";
-  return "Taking a while";
-}
-function ThinkingWord() {
-  return <>{useThinkingWord()}</>;
-}
-function ThinkingDots() {
-  const word = useThinkingWord();
-  return (
-    <span className="inline-flex items-center gap-1 font-mono">
-      <span className="thinking-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "0ms" }} />
-      <span className="thinking-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "150ms" }} />
-      <span className="thinking-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "300ms" }} />
-      <span className="ml-1.5 text-xs text-text-muted">{word}…</span>
-    </span>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────
 // COUNCIL PANEL
-
-
-// One panelist slot = a (CLI, model) pair. Multiple slots can share the
-// same CLI but different models (e.g. Opus 4.7 + Sonnet 4.6 side by
-// side). Slot key encodes both so the reply map keeps them separate.
-
 function CouncilPanel({
   domain,
   domainPath,
@@ -14529,6 +14390,7 @@ function McpCard() {
 }
 
 // BriefingsCard removed — landing back in v0.3 when wired up.
+
 
 
 
