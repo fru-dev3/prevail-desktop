@@ -723,6 +723,10 @@ export default function App() {
       if (d) openDomain(d);
     };
     window.addEventListener("prevail:open-domain", onOpenDomain as EventListener);
+    // Fresh chat — reset the running conversation (context meter "start fresh").
+    // Long-term memory + domain context carry over; only the thread resets.
+    const onNewChat = () => { setActiveThreadPath(null); setChatViewNonce((n) => n + 1); };
+    window.addEventListener("prevail:new-chat", onNewChat);
     // Count vault-affecting changes for the change-based backup trigger.
     const bump = () => bumpBackupChangeCount();
     window.addEventListener("prevail:context-changed", bump);
@@ -730,6 +734,7 @@ export default function App() {
     return () => {
       window.removeEventListener("prevail:open-settings", onOpen as EventListener);
       window.removeEventListener("prevail:open-domain", onOpenDomain as EventListener);
+      window.removeEventListener("prevail:new-chat", onNewChat);
       window.removeEventListener("prevail:context-changed", bump);
       window.removeEventListener("prevail:tasks-changed", bump);
     };

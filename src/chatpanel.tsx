@@ -9,6 +9,7 @@ import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
 import { MODELS } from "./constants";
 import { relTime, scoreColor, titleCase } from "./format";
+import { ContextMeter, contextWindowFor, estimateTokens } from "./contextmeter";
 import { domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
 import { buildChatContext, buildIdealStatePreamble, buildQuickActions, loadPreferredSkills, maybeRedact, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getDomainToggle, getPref, isBunkerOn, lsGet, lsSet } from "./storage";
@@ -1615,6 +1616,17 @@ export function ChatPanel({
           readability; only the composer goes edge-to-edge. */}
       <div className="shrink-0 px-6 pb-6 pt-2">
         <div className="relative rounded-2xl border border-border bg-surface p-3 shadow-sm">
+          {/* Context-window meter — minimal gauge of how full the running
+              conversation is, where tokens go, and a one-click fresh start. */}
+          <div className="mb-1 flex items-center justify-end">
+            <ContextMeter
+              conversationTokens={messages.reduce((a, mm) => a + estimateTokens(mm.content), 0)}
+              attachedTokens={primedContext.reduce((a, c) => a + estimateTokens(c.body), 0)}
+              draftTokens={estimateTokens(input)}
+              windowTokens={contextWindowFor(selectedCli, selectedCli ? (modelByCli[selectedCli] ?? null) : null)}
+              onReset={() => window.dispatchEvent(new Event("prevail:new-chat"))}
+            />
+          </div>
           {/* Context pills — auto-loaded + dragged-in domains */}
           {primedContext.length > 0 && (
             <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2">
