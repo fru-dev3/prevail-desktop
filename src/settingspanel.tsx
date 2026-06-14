@@ -134,6 +134,19 @@ export function SettingsPanel({
     return () => window.clearInterval(id);
   }, []);
 
+  // Proactive recommendation count — a badge so the user notices suggestions
+  // without digging into the section. Refreshed on a slow cadence.
+  const [recCount, setRecCount] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const poll = () => invoke<{ recommendations?: unknown[] }>("engine_recommendations", { vault: vaultPath })
+      .then((r) => { if (alive) setRecCount(Array.isArray(r?.recommendations) ? r.recommendations.length : 0); })
+      .catch(() => {});
+    void poll();
+    const id = window.setInterval(poll, 60000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, [vaultPath]);
+
   // MCP live indicator — read from localStorage; McpCard writes the same key.
   const [mcpLive, setMcpLive] = useState(() => lsGet(LS.mcpEnabled) === "1");
   useEffect(() => {
@@ -167,6 +180,7 @@ export function SettingsPanel({
               const active = section === it.id;
               const showLiveGateway = it.id === "gateway" && liveBridges > 0;
               const showLiveMcp = it.id === "mcp" && mcpLive;
+              const showRecCount = it.id === "recommendations" && recCount > 0;
               return (
                 <button
                   key={it.id}
@@ -195,6 +209,14 @@ export function SettingsPanel({
                     >
                       <span className="pulse-soft inline-block h-1 w-1 rounded-full bg-ai" />
                       on
+                    </span>
+                  )}
+                  {showRecCount && (
+                    <span
+                      className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1.5 py-0 font-mono text-[9px] font-bold text-background"
+                      title={`${recCount} recommendation${recCount === 1 ? "" : "s"}`}
+                    >
+                      {recCount}
                     </span>
                   )}
                 </button>
