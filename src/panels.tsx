@@ -1584,9 +1584,9 @@ export function HeadlessLearnCard({ vaultPath }: { vaultPath: string }) {
       <div className="flex flex-wrap items-center gap-3">
         <Cpu className="h-4 w-4 shrink-0 text-accent" />
         <div className="min-w-0 flex-1">
-          <div className="font-display text-sm font-semibold tracking-tight">Keep learning with the app closed</div>
+          <div className="font-display text-sm font-semibold tracking-tight">Keep working with the app closed</div>
           <div className="text-xs text-text-secondary">
-            Installs a login agent (launchd) that runs the distiller headlessly, so chats arriving via MCP, Telegram, or the CLI keep feeding your memory and state even when Prevail is not open. While on, the in-app distiller defers to it.
+            Installs login agents (launchd) that keep Prevail working headlessly when it is not open: self-learning (distill chats from MCP/Telegram/CLI into memory + state), domain loops, and app sync (apps refresh on their schedule). While on, the in-app distiller defers to it.
             {installed === true && " Currently running at login."}
           </div>
         </div>
