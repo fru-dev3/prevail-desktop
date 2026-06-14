@@ -75,6 +75,18 @@ a "Sync now" button, last/next sync timestamps, and pause. The user is in contro
 - **Status** = connector-probe result + last-sync success, folded into the one
   status enum above.
 
+## Status (2026-06-14)
+- DECISIONS: build P1+P2 together; browser one-time login allowed; syncs run fully
+  unattended once connected.
+- DONE P1: AppsPanel (appspanel.tsx) — 4-state status, method badge, last sync,
+  schedule, domain chips, Sync now, scheduled-sync toggle; old catalog+tiers under
+  "Advanced". DONE P2: ConnectAppFlow (appconnect.tsx) + engine Connection Agent
+  (`connectors connect`, engine_app_connect) — describe-the-goal, agent researches
+  method + returns plan + one auth step. tsc/cargo/build green; engine 0 new errors.
+- NEXT P3: syncd daemon (headless per-app refresh on schedule, fully unattended;
+  sync log of what was pulled; error elevation → "Needs attention"). P4: method
+  re-evaluation/upgrade.
+
 ## Build phases (proposed)
 - **P1 — Status + schedule clarity (UI on existing data).** Rebuild the Apps page
   around the 4-state status model + method badge + last/next sync + domain chips +
