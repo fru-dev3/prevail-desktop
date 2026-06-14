@@ -1,0 +1,602 @@
+// Chat-display leaf components extracted from App.tsx: ChatBubble (one rendered
+// turn), MessageList (windowed transcript), DomainStatusBar, and DomainHome.
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, SlidersHorizontal, Sparkles } from "lucide-react";
+import { invoke } from "./bridge";
+import { FRAMEWORKS, LENSES } from "./constants";
+import { titleCase } from "./format";
+import { splitThinking, vendorAccent } from "./helpers";
+import { buildQuickActions, modelLabel } from "./helpers2";
+import { PREF, getDomainToggle, getPref, isBunkerOn, setDomainToggle, setPref } from "./storage";
+import { ThinkingDisclosure } from "./ui";
+import { Markdown, StreamingPlain } from "./Markdown";
+import { DomainAppsStrip, PreamblePicker, SkillsList, SurfacePanel, TasksPanel } from "./panels";
+import { domainIcon } from "./icons";
+import { ThinkingDots, ThinkingWord, useFrameworkLens } from "./hooks";
+import { extractCliError, renderSkillTokens } from "./textutil";
+import { ProviderMark } from "./marks";
+import type { ChatMessage, DomainContextBundle, DomainToggle } from "./types";
+
+export const MESSAGE_WINDOW = 80;
+
+export function ChatBubble({
+  msg,
+  onCopy,
+  onRetry,
+  onEdit,
+}: {
+  msg: ChatMessage;
+  onCopy?: (text: string) => void;
+  onRetry?: () => void;
+  onEdit?: (text: string) => void;
+}) {
+  // Small inline action button used on bubble hover. Stays muted by
+  // default so the chat stays calm; lights up on hover.
+  const ActionButton = ({
+    label,
+    title,
+    onClick,
+    icon,
+  }: {
+    label?: string;
+    title: string;
+    onClick: () => void;
+    icon: React.ReactNode;
+  }) => (
+    <button
+      onClick={onClick}
+      title={title}
+      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+    >
+      {icon}
+      {label && <span>{label}</span>}
+    </button>
+  );
+
+  if (msg.role === "user") {
+    // Right-aligned card with accent tint + tail. Hover reveals
+    // Copy + Edit actions in a thin tray below the bubble.
+    return (
+      <div className="group mb-6 flex flex-col items-end">
+        <div className="max-w-[78%] rounded-2xl rounded-br-md border border-accent-border/50 bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-text-primary shadow-sm">
+          <div className="whitespace-pre-wrap">{renderSkillTokens(msg.content)}</div>
+        </div>
+        <div className="mt-1 flex h-5 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <ActionButton
+            title="Copy message"
+            label="Copy"
+            onClick={() => onCopy?.(msg.content)}
+            icon={<svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.5}><rect x="4" y="4" width="9" height="10" rx="1.5" /><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10" /></svg>}
+          />
+          {onEdit && (
+            <ActionButton
+              title="Edit and resend"
+              label="Edit"
+              onClick={() => onEdit(msg.content)}
+              icon={<svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M11.5 2.5l2 2-7 7-2.5.5.5-2.5 7-7z" /></svg>}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+  // Assistant: left-aligned avatar + body. Hover reveals Copy + Retry.
+  const vendor = msg.cli ?? "claude";
+  const vendorName =
+    vendor === "claude" ? "Claude"
+    : vendor === "codex" ? "Codex"
+    : vendor === "antigravity" ? "Antigravity"
+    : vendor === "ollama" ? "Ollama"
+    : vendor === "lmstudio" ? "LM Studio"
+    : vendor === "mlx" ? "oMLX"
+    : vendor;
+  const empty = !msg.content && !msg.streaming;
+  // Per-provider brand color for the name + bubble accent so each
+  // model's turns are visually distinguishable at a glance.
+  const { accent, tint } = vendorAccent(vendor);
+  // The real failure reason from the CLI's stderr, if any.
+  const cliError = empty ? extractCliError(msg.stderr) : null;
+  // Brand styling only on normal replies — error bubbles keep the warn
+  // palette so failures still read as failures.
+  const bubbleStyle: React.CSSProperties = empty
+    ? {}
+    : { borderLeftColor: accent, borderLeftWidth: 3, background: tint };
+  return (
+    <div className="group mb-8 flex items-start gap-3">
+      <ProviderMark vendor={vendor} size={32} />
+      <div className="min-w-0 flex-1">
+        <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-text-secondary">
+          <span className="font-display font-semibold tracking-tight" style={{ color: accent }}>{vendorName}</span>
+          {/* I9: which model + how it was shaped (framework/lens) — so each turn
+              is self-describing, not a mystery. */}
+          {msg.role === "assistant" && msg.model && (
+            <span className="font-mono text-[10px] lowercase text-text-muted" title={`Model: ${msg.model}`}>{modelLabel(msg.cli, msg.model)}</span>
+          )}
+          {msg.role === "assistant" && msg.framework && (
+            <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Reasoning framework in effect">{msg.framework}</span>
+          )}
+          {msg.role === "assistant" && msg.lens && (
+            <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Lens in effect">{msg.lens}</span>
+          )}
+          {msg.streaming && (
+            <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider" style={{ color: accent, background: tint }}>
+              <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
+              {msg.content ? "writing" : <ThinkingWord />}
+            </span>
+          )}
+        </div>
+        <div
+          className={`rounded-2xl rounded-tl-md border px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
+            empty
+              ? "border-warn/40 bg-warn/5"
+              : "border-border-subtle bg-surface"
+          }`}
+          style={bubbleStyle}
+        >
+          {msg.content ? (
+            msg.role === "assistant" ? (() => {
+              const showThinking = getPref(PREF.showThinking, "1") === "1";
+              const { thinking, answer } = splitThinking(msg.content);
+              return (
+                <>
+                  {showThinking && thinking && <ThinkingDisclosure text={thinking} open={!answer} />}
+                  {answer ? (msg.streaming ? <StreamingPlain source={answer} /> : <Markdown source={answer} />) : (!thinking && msg.streaming ? <ThinkingDots /> : null)}
+                </>
+              );
+            })() : (
+              <Markdown source={msg.content} />
+            )
+          ) : msg.streaming ? (
+            <ThinkingDots />
+          ) : (
+            // Empty-reply fallback — explain + offer Retry instead of
+            // dead "(empty reply)" text.
+            <div className="flex items-start gap-3">
+              <div className="flex-1">
+                <div className="font-mono text-[11px] uppercase tracking-wider text-warn">
+                  No output
+                </div>
+                {cliError ? (
+                  <>
+                    <p className="mt-1 text-sm text-text-secondary">
+                      {vendorName} returned an error instead of a reply:
+                    </p>
+                    <pre className="mt-1.5 whitespace-pre-wrap rounded-md bg-warn/10 px-2 py-1.5 font-mono text-[11px] leading-snug text-warn">
+                      {cliError}
+                    </pre>
+                  </>
+                ) : (
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {vendorName} finished without producing any text. This usually means
+                    the model rejected the prompt, hit a quota, or returned an error.
+                  </p>
+                )}
+                {onRetry && (
+                  <button
+                    onClick={onRetry}
+                    className="mt-2 inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+                  >
+                    Retry
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          {msg.streaming && msg.content && <span className="cursor-blink text-accent">▌</span>}
+        </div>
+        {msg.content && (
+          <div className="mt-1 flex h-5 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <ActionButton
+              title="Copy reply"
+              label="Copy"
+              onClick={() => onCopy?.(msg.content)}
+              icon={<svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.5}><rect x="4" y="4" width="9" height="10" rx="1.5" /><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10" /></svg>}
+            />
+            {onRetry && (
+              <ActionButton
+                title="Regenerate from the previous prompt"
+                label="Retry"
+                onClick={onRetry}
+                icon={<svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M14 8a6 6 0 1 1-1.76-4.24" /><path d="M14 2v4h-4" /></svg>}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// COUNCIL PANEL
+
+export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit }: {
+  messages: ChatMessage[];
+  resetKey: number;
+  onCopy: (text: string) => void;
+  onRetry: (i: number) => void;
+  onEdit: (text: string, i: number) => void;
+}) {
+  const [limit, setLimit] = useState(MESSAGE_WINDOW);
+  // Reset the window when the thread changes (switched/cleared) so a new thread
+  // always opens at the latest messages, never inheriting a huge expanded window.
+  useEffect(() => { setLimit(MESSAGE_WINDOW); }, [resetKey]);
+  const start = Math.max(0, messages.length - limit);
+  const shown = messages.slice(start);
+  return (
+    <>
+      {start > 0 && (
+        <div className="mb-4 flex justify-center">
+          <button
+            onClick={() => setLimit((l) => l + MESSAGE_WINDOW)}
+            className="rounded-full border border-border bg-surface px-4 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+          >
+            Show earlier messages ({start} hidden)
+          </button>
+        </div>
+      )}
+      {shown.map((m, idx) => {
+        const i = start + idx;
+        return (
+          <ChatBubble
+            key={i}
+            msg={m}
+            onCopy={onCopy}
+            onRetry={m.role === "assistant" ? () => onRetry(i) : undefined}
+            onEdit={m.role === "user" ? (text) => onEdit(text, i) : undefined}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+export function DomainStatusBar({
+  domain,
+  fwLens,
+}: {
+  domain: string | null;
+  fwLens: ReturnType<typeof useFrameworkLens>;
+}) {
+  // Hooks must be top-level — initialize state from localStorage once
+  // per domain, then keep React state as the source of truth so toggles
+  // re-render reliably.
+  const [council, setCouncil]     = useState(false);
+  const [web, setWeb]             = useState(true);
+  const [save, setSave]           = useState(true);
+  const [serendipity, setSeren]   = useState(false);
+  const [auto, setAuto]           = useState(false);
+  const [autoMode, setAutoMode]   = useState(() => getPref(`prevail.domain.${domain}.autoMode`, "smart"));
+  useEffect(() => {
+    // Loads for General too (domain null → the __general__ bucket).
+    setCouncil(getDomainToggle(domain, "council", false));
+    setWeb(getDomainToggle(domain, "web", true));
+    setSave(getDomainToggle(domain, "save", true));
+    setSeren(getDomainToggle(domain, "serendipity", false));
+    setAuto(getDomainToggle(domain, "auto", false));
+    setAutoMode(getPref(`prevail.domain.${domain}.autoMode`, "smart"));
+  }, [domain]);
+  // The per-domain modes (web/save/serendipity/auto) live in a popover so the
+  // composer row stays focused on the per-prompt Framework + Lens controls.
+  const [modesOpen, setModesOpen] = useState(false);
+  const modesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!modesOpen) return;
+    const onDoc = (e: MouseEvent) => { if (modesRef.current && !modesRef.current.contains(e.target as Node)) setModesOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [modesOpen]);
+  // Bunker Mode forbids any request leaving the device, so Web access can never
+  // be on while it's active. We show it off and locked regardless of the stored
+  // preference (which is preserved for when Bunker Mode is turned back off). The
+  // send path enforces the same coercion independently (see `web:` in prefs).
+  const bunker = isBunkerOn();
+  const webShown = bunker ? false : web;
+  const activeModes = [webShown, save, serendipity, auto].filter(Boolean).length;
+
+  const flip = (
+    t: DomainToggle,
+    cur: boolean,
+    set: (v: boolean) => void,
+  ) => {
+    const next = !cur;
+    set(next);
+    setDomainToggle(domain, t, next);
+  };
+  // One row of the Modes popover: a glyph, the name + on/off badge, and a
+  // one-line description, so the control explains itself.
+  const ModeRow = ({
+    glyph, label, on, desc, onClick,
+  }: { glyph: string; label: string; on: boolean; desc: string; onClick: () => void }) => (
+    <button
+      onClick={onClick}
+      className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-surface-warm"
+    >
+      <span className={`mt-0.5 font-mono text-sm ${on ? "text-accent" : "text-text-muted"}`}>{glyph}</span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-text-primary">{label}</span>
+          <span className={`ml-auto shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider ${on ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>{on ? "On" : "Off"}</span>
+        </span>
+        <span className="mt-0.5 block text-[11px] leading-snug text-text-secondary">{desc}</span>
+      </span>
+    </button>
+  );
+  // The composer's "Council" pill is the action button — this strip is
+  // for persistent per-domain settings only. Silence unused-var warnings.
+  void council; void setCouncil;
+  // Returns the pills as a fragment so they participate in the parent
+  // composer toolbar's flex-wrap layout (no wrapper div). Framework
+  // and Lens are global (always shown). Web / Save / Serendipity /
+  // Auto are per-domain so they only render when a domain is selected.
+  return (
+    <>
+      {/* Per-prompt reasoning controls — change often, so they sit inline.
+          Each opens a labelled list so you pick directly. */}
+      <PreamblePicker glyph="◆" label="Framework" options={FRAMEWORKS} selectedId={fwLens.framework} onSelect={fwLens.setFramework} />
+      <PreamblePicker glyph="◇" label="Lens" options={LENSES} selectedId={fwLens.lens} onSelect={fwLens.setLens} />
+      <div ref={modesRef} className="relative inline-flex items-center">
+          <span className="mx-1 select-none text-text-muted/40">·</span>
+          {/* Modes — set once, rarely changed, so they're tucked in a popover
+              with an active-count badge instead of crowding the row. Available
+              everywhere, including General (stored in its own bucket). */}
+          <button
+            onClick={() => setModesOpen((v) => !v)}
+            title="Modes: web access, save history, serendipity, auto-council"
+            className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
+              modesOpen
+                ? "border-accent-border bg-accent-soft text-accent"
+                : "border-border bg-surface text-text-muted hover:bg-surface-warm hover:text-text-secondary"
+            }`}
+          >
+            <SlidersHorizontal className="h-3 w-3" /> Modes
+            {activeModes > 0 && (
+              <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[9px] font-bold text-background">{activeModes}</span>
+            )}
+          </button>
+          {modesOpen && (
+            <div className="absolute bottom-full left-0 z-50 mb-2 w-80 rounded-xl border border-border bg-surface p-1.5 shadow-xl">
+              <div className="px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Modes</div>
+              <ModeRow glyph="○" label={bunker ? "Web access · locked" : "Web access"} on={webShown}
+                onClick={() => { if (bunker) return; flip("web", web, setWeb); }}
+                desc={bunker
+                  ? "Locked off by Bunker Mode: no request may leave this device. Turn off Bunker Mode to allow web access."
+                  : "Let the model fetch URLs and web-search while replying. Off keeps the reply offline."} />
+              <ModeRow glyph="▣" label="Save history" on={save} onClick={() => flip("save", save, setSave)}
+                desc="Log every reply to history so you can re-read it later. Off makes the turn ephemeral." />
+              <ModeRow glyph="◉" label="Serendipity" on={serendipity} onClick={() => flip("serendipity", serendipity, setSeren)}
+                desc="Invite lateral, off-topic angles. Off stays strictly on-topic." />
+              <ModeRow glyph="◐" label="Auto-council" on={auto} onClick={() => flip("auto", auto, setAuto)}
+                desc="Spin off the full council automatically. In Smart mode it convenes only for judgment calls (should-I / tradeoff / high-stakes questions); simple questions get one model. (Off in Bunker Mode: panelists are cloud models.)" />
+              {auto && (
+                <div className="flex items-center justify-between gap-2 px-3 py-2">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Trigger</span>
+                  <select
+                    value={autoMode}
+                    onChange={(e) => { setAutoMode(e.target.value); setPref(`prevail.domain.${domain}.autoMode`, e.target.value); }}
+                    className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary"
+                  >
+                    <option value="smart">Smart: only judgment calls</option>
+                    <option value="always">Always: every send</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+    </>
+  );
+}
+
+export function DomainHome({
+  domain,
+  vaultPath,
+  isApp,
+  onInjectContext,
+  onPickPrompt,
+  onInsertSkill,
+  preferredSet,
+  onTogglePreferred,
+}: {
+  domain: string;
+  vaultPath: string;
+  // When an app is open we reuse DomainHome for the conversation body but hide
+  // the "apps refreshing this domain" strip — that's a domain view, and an app
+  // shouldn't list its sibling apps.
+  isApp?: boolean;
+  onInjectContext: (body: string, label: string) => void;
+  onPickPrompt: (text: string) => void;
+  onInsertSkill: (name: string) => void;
+  preferredSet: Set<string>;
+  onTogglePreferred: (name: string) => void;
+}) {
+  type Tab = "chat" | "state" | "decisions" | "journal" | "logs" | "skills";
+  // Chat is the default — state is already auto-loaded as context, so
+  // we don't dump the user into the state doc on entry.
+  const [tab, setTab] = useState<Tab>("chat");
+  const [ctx, setCtx] = useState<DomainContextBundle | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [taskNonce, setTaskNonce] = useState(0); // bump to reload the tasks panel
+  // Starter prompts from the domain's PROMPTS.md (written by pack import) — the
+  // one-click conversation starters that make an imported pack chat-ready.
+  const [starterPrompts, setStarterPrompts] = useState<string[]>([]);
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain })
+      .then((c) => { if (mounted) setCtx(c); })
+      .catch(() => { if (mounted) setCtx(null); })
+      .finally(() => { if (mounted) setLoading(false); });
+    invoke<string[]>("read_domain_prompts", { vault: vaultPath, domain })
+      .then((ps) => { if (mounted) setStarterPrompts(ps); })
+      .catch(() => { if (mounted) setStarterPrompts([]); });
+    return () => { mounted = false; };
+  }, [vaultPath, domain]);
+
+  const counts = {
+    state: ctx?.state ? 1 : 0,
+    decisions: ctx?.decisions ? 1 : 0,
+    journal: ctx?.journal ? 1 : 0,
+    logs: ctx?.recent_logs.length ?? 0,
+    skills: ctx?.skills.length ?? 0,
+  };
+  const Icon = domainIcon(domain);
+
+  // Suppress unused warning — kept for future read-only views.
+  void onInjectContext;
+  void Icon;
+  // Domain title lives in the ChatPanel header above; here we go
+  // straight to the tab strip. Avoids the duplicate "Estate · Estate"
+  // problem the user flagged.
+  // ChatPanel owns the persistent tab strip now; DomainHome just
+  // renders the body for whichever tab the user has selected.
+  void tab; void setTab; void counts;
+  return (
+    <div className="flex h-full w-full flex-col px-6 py-6">
+      <div className="flex-1 overflow-y-auto">
+        {!isApp && <DomainAppsStrip domain={domain} />}
+        {loading && <div className="text-sm text-text-muted">loading domain context…</div>}
+        {!loading && ctx && (
+          <div>
+            {tab === "chat" && (
+              <div className="w-full">
+                {starterPrompts.length > 0 && (
+                  <div className="mb-4 rounded-xl border border-accent-border bg-accent-soft p-4">
+                    <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-accent">
+                      <Sparkles className="h-3.5 w-3.5" /> Start a conversation
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      {starterPrompts.map((p, i) => (
+                        <button
+                          key={i}
+                          onClick={() => onPickPrompt(p)}
+                          className="group flex items-center gap-2 rounded-lg border border-accent-border/60 bg-background px-3 py-2 text-left text-sm text-text-secondary hover:border-accent hover:text-text-primary"
+                        >
+                          <ArrowRight className="h-3.5 w-3.5 shrink-0 text-accent opacity-60 group-hover:opacity-100" />
+                          <span>{p}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <SurfacePanel vaultPath={vaultPath} domain={domain} onPick={onPickPrompt}
+                  onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t, source: "surface" }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }} />
+                <TasksPanel vaultPath={vaultPath} domain={domain} nonce={taskNonce} />
+                <ul className="flex flex-col gap-2">
+                {buildQuickActions(domain).map((q) => (
+                  <li key={q.label}>
+                    <button
+                      onClick={() => q.council
+                        ? window.dispatchEvent(new CustomEvent("prevail:council-seed", { detail: { domain, prompt: q.prompt } }))
+                        : onPickPrompt(q.prompt)}
+                      className="block w-full rounded-xl border border-border bg-surface px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-px hover:border-accent-border hover:shadow-md"
+                    >
+                      <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-accent">
+                        <span><span className="mr-1">{q.glyph}</span>{q.label}</span>
+                        {q.council && <span className="rounded-full border border-accent-border bg-accent-soft px-1.5 py-0 text-[9px] normal-case tracking-normal">→ Council</span>}
+                      </div>
+                      <div className="mt-1 text-sm leading-relaxed text-text-secondary">
+                        {q.prompt}
+                      </div>
+                    </button>
+                  </li>
+                ))}
+                </ul>
+              </div>
+            )}
+            {tab === "state" && (
+              ctx.state ? (
+                <Markdown source={ctx.state} />
+              ) : (
+                <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+                  no <code className="text-accent">state.md</code> in this domain.
+                </div>
+              )
+            )}
+            {tab === "decisions" && (
+              ctx.decisions ? (
+                <Markdown source={ctx.decisions} />
+              ) : (
+                <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+                  no <code className="text-accent">decisions.md</code> yet.
+                </div>
+              )
+            )}
+            {tab === "journal" && (
+              ctx.journal ? (
+                <Markdown source={ctx.journal} />
+              ) : (
+                <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+                  no journal entries yet: they accumulate as you save sessions.
+                </div>
+              )
+            )}
+            {tab === "logs" && (
+              ctx.recent_logs.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+                  no past sessions. Start chatting: each "New chat" saves a session to _log/.
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {ctx.recent_logs.map((l) => (
+                    <li key={l.path}>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const body = await invoke<string>("read_file", { path: l.path });
+                            onInjectContext(body, l.name);
+                            setTab("chat");
+                          } catch (e) { console.error(e); }
+                        }}
+                        className="block w-full rounded-lg border border-border bg-surface p-3 text-left hover:border-accent-border hover:bg-surface-warm"
+                      >
+                        <div className="font-mono text-sm text-text-primary">{l.name}</div>
+                        {l.preview && <div className="mt-1 line-clamp-2 text-xs text-text-muted">{l.preview}</div>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            )}
+            {tab === "skills" && (
+              ctx.skills.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+                  no skills in <code className="text-accent">{titleCase(domain)}/skills/</code>.
+                </div>
+              ) : (
+                <SkillsList
+                  skills={ctx.skills}
+                  onInsert={(name) => { onInsertSkill(name); setTab("chat"); }}
+                  preferredSet={preferredSet}
+                  onTogglePreferred={onTogglePreferred}
+                />
+              )
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* The "Quick prompts" block below was a duplicate; tab-driven
+          UI above now hosts them under the Chat tab. Keep an empty
+          render for backward compat. */}
+      <div className="hidden">
+        <div className="grid w-full grid-cols-1 gap-2">
+          {buildQuickActions(domain).map((q) => (
+            <button
+              key={q.label}
+              onClick={() => onPickPrompt(q.prompt)}
+              className="rounded-lg border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-accent-border hover:bg-surface-warm"
+            >
+              <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-accent">
+                <span>{q.glyph}</span> {q.label}
+              </div>
+              <div className="mt-1 line-clamp-2 text-sm text-text-secondary">
+                {q.prompt}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -103,6 +103,42 @@ pub(crate) fn resolve_prevail_bin() -> String {
 // ─────────────────────────────────────────────────────────────────────
 // Generic helpers
 
+/// Spawn `prevail <args>` (no `--json`), capture trimmed stdout as text.
+/// For engine subcommands that emit plain logs rather than JSON (e.g. the
+/// loop runner's `daemon --loops --once`). Same enriched env + vault key as
+/// `run_engine_json`. Empty stdout is allowed (returns "").
+pub fn run_engine_raw(args: &[&str]) -> Result<String, String> {
+    use std::process::Command;
+
+    let bin = resolve_prevail_bin();
+    let (combined_path, user, logname) = crate::build_cli_env();
+
+    let mut cmd = Command::new(&bin);
+    cmd.args(args)
+        .env_clear()
+        .envs(crate::scrubbed_env_pairs())
+        .env("PATH", combined_path)
+        .env("USER", user)
+        .env("LOGNAME", logname)
+        .stdin(std::process::Stdio::null());
+    if let Some(k) = vault_key() {
+        cmd.env("PREVAIL_VAULT_KEY", k);
+    }
+    for (k, v) in provider_env_pairs() {
+        cmd.env(k, v);
+    }
+    if let Some(r) = vault_root() {
+        cmd.env("PREVAIL_VAULT_ROOT", r);
+    }
+    let out = cmd.output().map_err(|e| format!("spawn {bin} failed: {e}"))?;
+    if !out.status.success() {
+        let code = out.status.code().unwrap_or(-1);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(format!("prevail exited {code}: {}", stderr.trim()));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
 /// Spawn `prevail <args> --json`, capture stdout, parse it as JSON.
 ///
 /// Always appends `--json` so the CLI emits machine-readable output.
@@ -232,9 +268,8 @@ pub fn run_engine_json_stdin(
 /// are forwarded raw under the same event with a string `data`. When the
 /// child exits, `<event_prefix>:done` fires with `{ "session", "code" }`.
 ///
-/// Provided as part of the seam for streaming engine commands (e.g. a
-/// future `prevail score --stream`). Not yet wired to a Tauri command.
-#[allow(dead_code)]
+/// The seam for streaming engine commands. Wired to `engine_score_stream`
+/// (`prevail score --all --stream`); reuse it for future streaming commands.
 pub async fn run_engine_stream(
     app: tauri::AppHandle,
     session: String,
@@ -677,6 +712,26 @@ pub fn engine_app_add(
     ])
 }
 
+/// Rewrite an app's many-to-many domain binding. Pass the full desired list;
+/// the engine normalizes/validates/dedups and writes only the manifest's
+/// `domains` array. Returns { ok, path?, domains?, error? }.
+#[tauri::command]
+pub fn engine_app_set_domains(id: String, domains: Vec<String>) -> Result<serde_json::Value, String> {
+    let doms = domains.join(",");
+    run_engine_json(&["connectors", "set", &id, "domains", &doms, "--json"])
+}
+
+/// Enable / disable an app's autonomous sync. A disabled app stays configured
+/// and chattable; only the sync daemon's scheduled tick skips it (an explicit
+/// "Sync now" still runs). Returns { ok, path?, enabled?, error? }.
+#[tauri::command]
+pub fn engine_app_set_enabled(id: String, enabled: bool) -> Result<serde_json::Value, String> {
+    run_engine_json(&[
+        "connectors", "set", &id, "enabled",
+        if enabled { "true" } else { "false" }, "--json",
+    ])
+}
+
 /// Sync one app on demand ("Sync now"). Returns { ok, artifacts, error? }.
 #[tauri::command]
 pub fn engine_app_sync(id: String, vault: String) -> Result<serde_json::Value, String> {
@@ -694,6 +749,14 @@ pub fn engine_alignment(vault: String) -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub fn engine_app_skills(id: String) -> Result<serde_json::Value, String> {
     run_engine_json(&["connectors", "skills", &id, "--json"])
+}
+
+/// One app's run history (last ~20 runs) for the per-app Runs facet. Returns
+/// { lastRunTs, lastOkTs, lastRunOk, lastError, nextDueTs, consecutiveFailures,
+/// runs: [{ ts, ok, skill, summary?, error?, duration_ms, artifacts }] }.
+#[tauri::command]
+pub fn engine_app_runs(id: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "runs", &id, "--json"])
 }
 
 /// App lock (Phase 0 passcode). The passcode is sent on the child's STDIN so it
@@ -1191,6 +1254,32 @@ pub fn engine_score_all(vault: String) -> Result<LifeReadiness, String> {
     }
 
     Err("unexpected shape from `prevail score --all`".to_string())
+}
+
+/// Streaming life-readiness score. Emits one `score:line` event per domain as it
+/// is computed (`{ session, data: { type: "domain", score } }`) and a final
+/// `{ type: "done", lifeReadiness, count }`, then `score:done` on child exit.
+/// Lets the readiness UI fill in progressively on a large vault instead of
+/// blocking on the whole `score --all` roll-up. Uses the run_engine_stream seam.
+#[tauri::command]
+pub async fn engine_score_stream(
+    app: tauri::AppHandle,
+    vault: String,
+    session: String,
+) -> Result<(), String> {
+    run_engine_stream(
+        app,
+        session,
+        vec![
+            "--vault".to_string(),
+            vault,
+            "score".to_string(),
+            "--all".to_string(),
+            "--stream".to_string(),
+        ],
+        "score",
+    )
+    .await
 }
 
 /// One historical context-score sample for a domain.
