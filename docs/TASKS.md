@@ -40,17 +40,13 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
 
 ## Page redesigns
 
-- [ ] **T2 — Council redesign (creative).** Make it visually compelling, not a list.
-  - Visual circle/diagram of who is in the council
-  - Clearly show who the CHAIR is
-  - Animate / visually update when members are added
-  - Be genuinely creative with the design; explain why the council matters.
+- [x] **T2 — Council redesign (creative).** DONE: CouncilCircle "round table" — members
+  seated around a ring with spokes to a central panel-size emblem, chair crowned + accent-ringed
+  at top, new seats animate in. Renders above the Council picker summary. (settings6.tsx)
 
-- [ ] **T3 — Skills page.** 
-  - Too colorful — tone it down.
-  - Add filter to view skills BY DOMAIN (don't force showing skills for only one domain).
-  - Make "edit a skill" make sense / better workflow.
-  - Keep skill auto-suggest in chat (he likes it) but improve the design.
+- [x] **T3 — Skills page.** DONE: removed rainbow per-skill tiles (calm uniform tile);
+  added filter-by-domain dropdown (auto-expands on select); clearer hover "edit" affordance;
+  chat auto-suggest untouched. (settings2.tsx)
 
 - [x] **T4 — "Run now" broken (Scheduled runs).** FIXED (96de.. cards.tsx): silent no-op
   now reports back (busy state + success/empty/error messages); fixed "just now ago" /
@@ -62,25 +58,22 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
     gets N questions, verifies each, reports failures/shortfalls.
   - [ ] Improve the design/layout of the suggest-questions UI.
 
-- [ ] **T6 — Benchmark history/statistics accuracy.**
-  - Stats look inaccurate (ran ~50 questions across all domains; numbers seem wrong).
-  - Track EVERY benchmark run per domain accurately.
-  - Show all batches that have been run.
-  - Domain view: how many times benchmarked, against how many models.
-  - Model view: how many benchmarks run against it, across how many domains.
-  - Audit all angles; fix the counting.
+- [~] **T6 — Benchmark history/statistics accuracy.**
+  - DONE: added "Coverage by domain" computed DIRECTLY from raw run records (each run's
+    `domains` + model) — per domain: # runs + # distinct models; summary = total runs/models/
+    domains for the current filter. Accurate by construction. (benchpanel.tsx)
+  - Model view already folds runs per model (runs count + domains). History groups by batch.
+  - REMAINING: if a specific number still looks wrong, needs a real dataset to reproduce; the
+    counts are now derived from source-of-truth records so any remaining gap is in how the
+    ENGINE writes a run's `domains`/`batch_id` (investigate engine if it recurs).
 
 - [x] **T7 — Ideal State page formatting.** REDESIGNED: calm single-column section cards
   (icon chip + title, indented body), quiet left-border intro lead, prominent title, version
   history via canonical CollapsibleSection. (settings4.tsx)
 
-- [ ] **T8 — Apps/Connectors page redesign.**
-  - Separate into clear sections/tabs by connectivity tier:
-    - API / MCP connectors
-    - Tool-based (Composio, etc.)
-    - Manual browser automation
-  - Sections collapsible so user can focus on their chosen mode.
-  - Rethink design + positioning fundamentally.
+- [x] **T8 — Ingestion/Connectors tiers split by type.** DONE: tab switcher (API & MCP /
+  Composio / Browser) filters the tier cards; browser runner under Browser tab; audit+artifacts
+  shared below. One focused mode at a time, as asked. (settings1.tsx IngestionSection)
 
 - [~] **T9 — Refresh-cadence picker flexibility.**
   - DONE for model-refresh: `RefreshCadence` (settings7) is already a custom on-brand
@@ -124,11 +117,13 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
 
 ## Added from prior-session screenshots (not in the pasted text batch)
 
-- [ ] **T14 — Frameworks / Ingestion page.** "Too big, too noisy." Convert into collapsible
-  sections following the canonical collapsible rules; clear + intuitive on landing, not busy.
-  (settings1.tsx FrameworksSection/IngestionSection.)
+- [x] **T14 — Frameworks page.** DONE: "Why this matters" + "More coming soon" collapsed by
+  default; Frameworks/Lenses each in canonical CollapsibleSection with active-selection summary;
+  added PreambleColumn `headerless` prop. Calm landing. (settings1.tsx, panels2.tsx)
 
-- [ ] **T15 — Telegram / Gateway page redesign.** Improve design (image #6 prior session).
+- [x] **T15 — Gateway page redesign.** DONE: Bridges + More surfaces now use the canonical
+  CollapsibleSection (Radio/Sparkles icons, live summary + status dot, opens when a bridge is
+  live). (settings5.tsx)
 
 - [ ] **T16 — Vault folder layout.** In the vault folder, `apps/` and `domains/` should be
   siblings at the same level inside the vault folder.
