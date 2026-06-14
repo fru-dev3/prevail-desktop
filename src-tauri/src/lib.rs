@@ -277,6 +277,8 @@ pub fn run() {
             intents::intent_append,
             intents::intents_read,
             intents::intents_read_all,
+            intents::intents_distill,
+            intents::intents_distilled_read,
             intents::journal_append,
             intents::decision_append,
             intents::decisions_read,
