@@ -21,6 +21,7 @@ import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, ta
 import { autoVerifyClis } from "./verify";
 import { startBenchScheduler } from "./bench";
 import { bumpBackupChangeCount, startBackupScheduler } from "./backup";
+import { startLoopsScheduler } from "./loops";
 import { migrateModelPrefs } from "./helpers2";
 import { AppHeaderBar, DomainActionsMenu, LockScreen, QuickSwitcher, ThreadsRail, WebLogin } from "./panels";
 
@@ -518,6 +519,9 @@ export default function App() {
     startBenchScheduler(vaultPath);
     // Scheduled vault backups (data protection) — same pattern.
     startBackupScheduler(vaultPath);
+    // Domain Loops — advance due loops behind the scenes (self-driving), not just
+    // on the "Run loops now" button. Tick re-reads the enabled pref.
+    startLoopsScheduler(vaultPath);
     // Skill generation (self-learning) — on by default so the app learns
     // skills from conversations out of the box; togglable in Settings.
     if (getPref(PREF.skillgenEnabled, "1") === "1") {
