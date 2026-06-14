@@ -1519,6 +1519,7 @@ export function ChatPanel({
                 rescanning={ctxScoreRescanning}
                 error={ctxScoreError}
                 onRescan={rescanContextScore}
+                vaultPath={vaultPath}
               />
             )}
             {domainTab === "insights" && (
