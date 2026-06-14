@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, listen, isBrowser, type UnlistenFn } from "./bridge";
 import { open } from "@tauri-apps/plugin-dialog";
 import { titleCase } from "./format";
@@ -7,10 +7,14 @@ import { BUNKER_LS, LS, PREF, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet 
 import { BridgeStatusChips, DemoRibbon, ResizeHandle } from "./widgets";
 import { OnboardingModal } from "./panels3";
 import { AppFacetPanel, BunkerRibbon, VaultWizard } from "./shell";
-import { ChatPanel } from "./chatpanel";
-import { CouncilPanel } from "./councilpanel";
-import { SettingsPanel } from "./settingspanel";
-import { BenchmarkPanel } from "./benchpanel";
+// Heavy surfaces are code-split: each loads its own chunk on first use instead of
+// inflating the initial bundle (and the live memory footprint). SettingsPanel
+// alone transitively pulls in every settings section, so deferring it is the
+// biggest single win. Mirrors how the engine spawns work lazily.
+const ChatPanel = lazy(() => import("./chatpanel").then((m) => ({ default: m.ChatPanel })));
+const CouncilPanel = lazy(() => import("./councilpanel").then((m) => ({ default: m.CouncilPanel })));
+const SettingsPanel = lazy(() => import("./settingspanel").then((m) => ({ default: m.SettingsPanel })));
+const BenchmarkPanel = lazy(() => import("./benchpanel").then((m) => ({ default: m.BenchmarkPanel })));
 import { Sidebar } from "./sidebar";
 import { useAppearance, useFrameworkLens } from "./hooks";
 import { distillCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
@@ -133,6 +137,17 @@ const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
   { id: "council", label: "Council", icon: Scale },
   { id: "benchmark", label: "Benchmark", icon: Sparkles },
 ];
+
+// Suspense fallback for the code-split panels. Quiet and centered — a lazy chunk
+// loads in a few ms off local disk, so this should flash only on the very first
+// open of a surface.
+function PanelLoading() {
+  return (
+    <div className="flex h-full w-full items-center justify-center">
+      <span className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-accent" aria-label="Loading" />
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // localStorage keys + helpers
@@ -719,6 +734,12 @@ export default function App() {
   // A domain can launch a scoped benchmark; it dispatches this event and we
   // jump to the Benchmark page pre-scoped to that domain.
   const [benchScope, setBenchScope] = useState<string | null>(null);
+  // The Benchmark panel stays mounted (hidden) on other tabs so an in-flight run
+  // keeps its live progress when you navigate away. But it's a heavy lazy chunk,
+  // so don't load it until the tab is first opened — if it was never visited,
+  // there's no run to preserve. Once true, it stays mounted for the session.
+  const [benchEverVisited, setBenchEverVisited] = useState(false);
+  useEffect(() => { if (tab === "benchmark") setBenchEverVisited(true); }, [tab]);
   useEffect(() => {
     const onBench = (e: Event) => {
       const d = (e as CustomEvent<string>).detail || null;
@@ -930,6 +951,7 @@ export default function App() {
   if (tab === "settings") {
     return (
       <div className="relative flex h-screen flex-col bg-background text-text-primary">
+        <Suspense fallback={<PanelLoading />}>
         <SettingsPanel
           appearance={appearance}
           vaultPath={vaultPath}
@@ -954,6 +976,7 @@ export default function App() {
             setTab("chat");
           }}
         />
+        </Suspense>
         <BunkerRibbon enabled={bunkerEnabled} />
         <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
       </div>
@@ -1212,6 +1235,7 @@ export default function App() {
             />
           )}
           <div className="min-h-0 flex-1 overflow-y-auto">
+            <Suspense fallback={<PanelLoading />}>
             {tab === "chat" && onApp && selectedApp && appTab !== "chat" ? (
               <AppFacetPanel
                 app={selectedApp}
@@ -1269,13 +1293,16 @@ export default function App() {
                 re-scopes cleanly. STAYS MOUNTED (hidden) on other tabs so an
                 in-flight run keeps its live progress when you navigate away
                 and back. The global cockpit lives in the configuration page. */}
-            <div className={tab === "benchmark" ? "h-full" : "hidden"}>
-              <BenchmarkPanel
-                key={selectedDomain || benchScope || "all"}
-                vaultPath={vaultPath}
-                initialDomain={selectedDomain || benchScope}
-              />
-            </div>
+            {benchEverVisited && (
+              <div className={tab === "benchmark" ? "h-full" : "hidden"}>
+                <BenchmarkPanel
+                  key={selectedDomain || benchScope || "all"}
+                  vaultPath={vaultPath}
+                  initialDomain={selectedDomain || benchScope}
+                />
+              </div>
+            )}
+            </Suspense>
           </div>
         </main>
       </div>
