@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.8.2",
   "description": "Prevail desktop \u2014 native macOS cockpit for AI council deliberation",
+  "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite",
