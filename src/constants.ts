@@ -1,4 +1,5 @@
 // Pure data constants extracted from App.tsx.
+import type { Framework, Lens, ModelPick, Palette, ScoreBreakdown } from "./types";
 
 export const DOMAIN_BLURBS: Record<string, string> = {
   wealth: "Your money, savings, and the path to financial freedom.",
@@ -85,3 +86,120 @@ export const DOMAIN_LABEL: Record<string, string> = {
 };
 export const SOURCE_ABBR: Record<string, string> = { claude: "Cl", chatgpt: "GPT", gemini: "Gem" };
 export const LOCAL_CLI_IDS = new Set(["ollama", "lmstudio", "mlx"]);
+
+export const MODELS: Record<string, ModelPick[]> = {
+  claude: [
+    // One entry per model: the alias id (auto-upgrades) carries the resolved
+    // version in its label, so "Opus 4.8 (latest)" and a separate "Opus 4.8"
+    // never coexist. Bump these labels when Anthropic ships a new version.
+    { id: "opus",            label: "Opus 4.8 (latest)",   blurb: "auto-upgrades to the newest Opus" },
+    { id: "claude-opus-4-7", label: "Opus 4.7",            blurb: "pinned · previous flagship" },
+    { id: "claude-opus-4-6", label: "Opus 4.6",            blurb: "pinned · legacy flagship" },
+    { id: "claude-fable-5",  label: "Fable 5",             blurb: "newest · most capable" },
+    { id: "sonnet",          label: "Sonnet 4.6 (latest)", blurb: "auto-upgrades · balanced" },
+    { id: "haiku",           label: "Haiku 4.5 (latest)",  blurb: "auto-upgrades · fast + cheap" },
+  ],
+  codex: [
+    // gpt-5.5 is the ONLY model Codex accepts on a ChatGPT-login
+    // account — every gpt-5 / gpt-5-codex / gpt-5-mini / o-series
+    // variant returns 400 "model not supported when using Codex with a
+    // ChatGPT account". Verified empirically against `codex exec`.
+    // The "@<effort>" suffix is parsed in cli_args() (lib.rs) into
+    // `-c model_reasoning_effort=<effort>`; minimal effort 400s, so
+    // only default / medium / high are offered. All three are tested
+    // working.
+    { id: "gpt-5.5",        label: "GPT-5.5",          blurb: "flagship · fast (default)" },
+    { id: "gpt-5.5@medium", label: "GPT-5.5 (medium)", blurb: "balanced reasoning" },
+    { id: "gpt-5.5@high",   label: "GPT-5.5 (high)",   blurb: "max reasoning · slower" },
+  ],
+  antigravity: [
+    { id: "Gemini 3.1 Pro (High)",        label: "Gemini 3.1 Pro (High)",        blurb: "extra reasoning" },
+    { id: "Gemini 3.1 Pro (Low)",         label: "Gemini 3.1 Pro (Low)",         blurb: "flagship · less reasoning" },
+    { id: "Gemini 3.5 Flash (High)",      label: "Gemini 3.5 Flash (High)",      blurb: "fast + reasoning" },
+    { id: "Gemini 3.5 Flash (Medium)",    label: "Gemini 3.5 Flash (Medium)",    blurb: "balanced" },
+    { id: "Gemini 3.5 Flash (Low)",       label: "Gemini 3.5 Flash (Low)",       blurb: "fastest" },
+    { id: "Claude Sonnet 4.6 (Thinking)", label: "Claude Sonnet 4.6 (Thinking)", blurb: "via Antigravity" },
+    { id: "Claude Opus 4.6 (Thinking)",   label: "Claude Opus 4.6 (Thinking)",   blurb: "via Antigravity" },
+    { id: "GPT-OSS 120B (Medium)",        label: "GPT-OSS 120B (Medium)",        blurb: "open model" },
+  ],
+  ollama: [
+    { id: "llama3.2", label: "Llama 3.2",  blurb: "local · meta" },
+    { id: "qwen2.5",  label: "Qwen 2.5",   blurb: "local · alibaba" },
+    { id: "mistral",  label: "Mistral 7B", blurb: "local · mistral" },
+  ],
+  openrouter: [
+    { id: "anthropic/claude-opus-4.1",       label: "Claude Opus 4.1",   blurb: "via OpenRouter" },
+    { id: "anthropic/claude-sonnet-4.5",     label: "Claude Sonnet 4.5", blurb: "via OpenRouter" },
+    { id: "openai/gpt-5.1",                  label: "GPT-5.1",           blurb: "via OpenRouter" },
+    { id: "google/gemini-2.5-pro",           label: "Gemini 2.5 Pro",    blurb: "via OpenRouter" },
+    { id: "x-ai/grok-4",                     label: "Grok 4",            blurb: "via OpenRouter" },
+    { id: "deepseek/deepseek-chat",          label: "DeepSeek",          blurb: "via OpenRouter" },
+    { id: "qwen/qwen-2.5-72b-instruct",      label: "Qwen 2.5 72B",      blurb: "via OpenRouter" },
+    { id: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B",   blurb: "via OpenRouter" },
+  ],
+};
+
+export const DISCOVERED_MODELS: Record<string, ModelPick[]> = {};
+
+export const DEAD_MODELS = new Set([
+  "gpt-5-codex", "gpt-5", "gpt-5-high", "gpt-5-mini", "gpt-5.1",
+  "gpt-5.5-codex", "gpt-4o", "o3", "o4-mini",
+]);
+
+export const FRAMEWORKS: Framework[] = [
+  { id: "none", label: "OFF", blurb: "No framework, model's default response shape", instruction: "" },
+  { id: "bluf", label: "BLUF", blurb: "Bottom Line Up Front, lead with the answer", instruction: "Apply the BLUF framework. Your first sentence MUST be the bottom line: the single most important conclusion or recommendation. Then provide supporting context in 1-3 short paragraphs. Never bury the conclusion under context." },
+  { id: "win", label: "WIN", blurb: "What's Important Now, name the ONE next move", instruction: "Apply the WIN (What's Important Now) framework. Identify the ONE most important next move the user should make. State that move in the first sentence. Drop everything that doesn't directly serve that next step." },
+  { id: "scqa", label: "SCQA", blurb: "Situation → Complication → Question → Answer", instruction: "Structure your response as SCQA: a one-line Situation, a one-line Complication, a one-line Question, then a decisive Answer." },
+  { id: "sbar", label: "SBAR", blurb: "Situation · Background · Assessment · Recommendation", instruction: "Structure your response as SBAR: Situation, Background, Assessment, Recommendation. Each in 1-2 lines max." },
+  { id: "ooda", label: "OODA", blurb: "Observe → Orient → Decide → Act", instruction: "Structure your response as an OODA loop: Observe, Orient, Decide, Act. Each step labelled and one line." },
+  { id: "proscons", label: "PROS/CONS", blurb: "Structured trade-off with weight", instruction: "Structure your response as a PROS/CONS analysis. Two columns. End with a one-line Weight verdict naming the winner." },
+  { id: "steelman", label: "STEELMAN", blurb: "Strongest version of the other side first", instruction: "Steelman the opposing position first: give it the strongest framing you can. Then give your verdict." },
+];
+
+export const LENSES: Lens[] = [
+  { id: "none", label: "OFF", blurb: "No lens, single response, default angle", instruction: "" },
+  { id: "first-principles", label: "FIRST PRINCIPLES", blurb: "Strip the problem to fundamentals", instruction: "Approach this problem from first principles. Forget conventional wisdom, prior advice, industry best practice, or what 'most people do.' Strip the problem to its fundamental mechanics and rebuild the answer from there." },
+  { id: "outsider", label: "OUTSIDER", blurb: "Challenge the thinking; ignore prior context", instruction: "Approach this as a complete outsider with no prior context. Challenge every assumption that the question seems to bake in." },
+  { id: "contrarian", label: "CONTRARIAN", blurb: "Argue the strongest case against the obvious answer", instruction: "Argue the strongest possible case against the obvious or expected answer. Don't be devil's advocate: actually pressure-test the consensus until something cracks." },
+  { id: "expansionist", label: "EXPANSIONIST", blurb: "What's the bigger version of this question?", instruction: "Don't answer the question as asked. First ask: what's the bigger version of this question? Then answer THAT." },
+  { id: "executor", label: "EXECUTOR", blurb: "Skip the framing, literal next step today", instruction: "Skip all framing. The user wants the literal next step they should take today. State the action in one imperative sentence, then list 2-3 concrete tasks." },
+  { id: "alien", label: "ALIEN", blurb: "An outsider notices what's obvious to you", instruction: "You are an alien observer with no familiarity with this user's biases. State what is plainly obvious about their situation that they themselves are too close to see." },
+  { id: "mom", label: "MOM", blurb: "Plain English, what would she actually do?", instruction: "Answer as a wise mom would: plain English, no jargon, sentimentally honest, practical. What would she actually tell her child to do?" },
+  { id: "dad", label: "DAD", blurb: "Hard-nosed, what's the trap you're not seeing?", instruction: "Answer as a hard-nosed dad would: direct, no coddling. Name the trap the user is not seeing. Tell them what they will regret in 10 years if they get this wrong." },
+];
+
+export const PALETTES: { id: Palette; name: string; blurb: string; swatch: { bg: string; surface: string; accent: string; ai: string } }[] = [
+  { id: "vault",     name: "Vault",     blurb: "Cream + teal, focused, calm",                       swatch: { bg: "#faf8f1", surface: "#ffffff", accent: "#0d7a6e", ai: "#60a8c0" } },
+  { id: "midnight",  name: "Midnight",  blurb: "Deep blue-violet with cool accents",                  swatch: { bg: "#0a0d1f", surface: "#131730", accent: "#818cf8", ai: "#60a8c0" } },
+  { id: "ember",     name: "Ember",     blurb: "Warm crimson and bronze, forge vibes",               swatch: { bg: "#1a0a06", surface: "#2a130c", accent: "#ef6c4a", ai: "#60a8c0" } },
+  { id: "mono",      name: "Mono",      blurb: "Clean grayscale, minimal and focused",               swatch: { bg: "#f7f7f8", surface: "#ffffff", accent: "#18181b", ai: "#60a8c0" } },
+  { id: "cyberpunk", name: "Cyberpunk", blurb: "Neon green on black, matrix terminal",               swatch: { bg: "#030a06", surface: "#08130c", accent: "#22ff77", ai: "#60a8c0" } },
+  { id: "slate",     name: "Slate",     blurb: "Cool slate blue, focused developer theme",           swatch: { bg: "#0c1220", surface: "#131b2e", accent: "#38bdf8", ai: "#60a8c0" } },
+];
+
+export const MODEL_SEP = "::";
+
+export const SETTINGS_ROW = "flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-4 py-3 transition-colors";
+
+export const SCORE_DIMENSIONS: { key: keyof ScoreBreakdown; label: string }[] = [
+  { key: "coverage", label: "Coverage" },
+  { key: "density", label: "Density" },
+  { key: "freshness", label: "Freshness" },
+  { key: "structure", label: "Structure" },
+  { key: "activity", label: "Activity" },
+  { key: "config_completeness", label: "Config" },
+];
+
+export const ONBOARDING_QUESTIONS: {
+  id: string;
+  prompt: string;
+  placeholder: string;
+}[] = [
+  { id: "focus", prompt: "What are you focused on right now?", placeholder: "building ventures, getting healthier, managing money…" },
+  { id: "roles", prompt: "What roles or hats do you wear?", placeholder: "founder, parent, investor, creator…" },
+  { id: "money", prompt: "How do you want to handle money & wealth?", placeholder: "track net worth, taxes, investing, real estate…" },
+  { id: "health", prompt: "Anything around health, fitness, or wellbeing?", placeholder: "fitness goals, sleep, mental health… (leave blank to skip)" },
+  { id: "work", prompt: "What does your work or business look like?", placeholder: "company, clients, content, career…" },
+  { id: "other", prompt: "Anything else you'd like a domain for?", placeholder: "learning, relationships, travel, side projects…" },
+];
