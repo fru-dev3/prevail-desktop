@@ -96,14 +96,67 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
       )}
       <div className="mt-2">
         {addOpen ? (
-          <div className="flex items-center gap-1.5">
-            <input list={`app-doms-${app.id}`} autoFocus value={addValue} onChange={(e) => setAddValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") addDomain(addValue); if (e.key === "Escape") { setAddOpen(false); setAddValue(""); } }}
-              placeholder="domain name" className="w-44 rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] text-text-primary outline-none focus:border-accent-border" />
-            <datalist id={`app-doms-${app.id}`}>{addable.map((n) => <option key={n} value={n}>{titleCase(n)}</option>)}</datalist>
-            <button onClick={() => addDomain(addValue)} disabled={savingDoms || !addValue.trim()} className="rounded-lg border border-border bg-background px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-40">add</button>
-            <button onClick={() => { setAddOpen(false); setAddValue(""); }} className="rounded p-1.5 text-text-muted hover:text-text-primary"><X className="h-4 w-4" /></button>
-          </div>
+          (() => {
+            const q = addValue.trim().toLowerCase();
+            const matches = addable.filter((n) => n.includes(q));
+            const isNew = q.length > 0 && !addable.includes(q) && !doms.includes(q);
+            return (
+              <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface-warm/40">
+                <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2">
+                  <Plus className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                  <input
+                    autoFocus
+                    value={addValue}
+                    onChange={(e) => setAddValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addDomain(matches[0] ?? addValue);
+                      if (e.key === "Escape") { setAddOpen(false); setAddValue(""); }
+                    }}
+                    placeholder="Filter domains, or type a new one"
+                    className="min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted/60"
+                  />
+                  <button onClick={() => { setAddOpen(false); setAddValue(""); }} title="Close" className="shrink-0 rounded p-0.5 text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
+                </div>
+                <ul className="max-h-56 overflow-y-auto p-1">
+                  {matches.map((n) => {
+                    const I = domainIcon(n);
+                    return (
+                      <li key={n}>
+                        <button
+                          onClick={() => addDomain(n)}
+                          disabled={savingDoms}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-accent-soft disabled:opacity-40"
+                        >
+                          {I ? <I className="h-4 w-4 shrink-0 text-accent" /> : <span className="text-accent">◆</span>}
+                          <span className="text-sm font-medium text-text-primary">{titleCase(n)}</span>
+                          <span className="ml-auto font-mono text-[10px] text-text-muted/60">vault/{n}/</span>
+                          <Plus className="h-3.5 w-3.5 shrink-0 text-text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                  {isNew && (
+                    <li>
+                      <button
+                        onClick={() => addDomain(addValue)}
+                        disabled={savingDoms}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-accent-soft disabled:opacity-40"
+                      >
+                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-accent-soft text-accent"><Plus className="h-3 w-3" /></span>
+                        <span className="text-sm text-text-secondary">Create new domain</span>
+                        <span className="ml-1 text-sm font-semibold text-accent">{titleCase(q)}</span>
+                      </button>
+                    </li>
+                  )}
+                  {matches.length === 0 && !isNew && (
+                    <li className="px-2.5 py-3 text-center text-[12px] text-text-muted">
+                      {addable.length === 0 ? "This app already feeds every domain." : "No match. Keep typing to create a new domain."}
+                    </li>
+                  )}
+                </ul>
+              </div>
+            );
+          })()
         ) : (
           <button onClick={() => setAddOpen(true)} disabled={savingDoms} className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40"><Plus className="h-3.5 w-3.5" /> add domain</button>
         )}

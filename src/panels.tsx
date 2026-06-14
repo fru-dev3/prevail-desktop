@@ -1,7 +1,7 @@
 // Components extracted from App.tsx.
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
-import { Archive, ArrowRight, Check, ChevronDown, ChevronRight, Cpu, Download, Folder, Lightbulb, Loader2, LucideIcon, Mail, MessagesSquare, PanelRightClose, PanelRightOpen, PenLine, Pencil, Plus, Shield, Sparkles, Wrench, X } from "lucide-react";
+import { Archive, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Cpu, Download, Folder, Lightbulb, Loader2, LucideIcon, Mail, MessagesSquare, PenLine, Pencil, Plus, Shield, Sparkles, Wrench, X } from "lucide-react";
 import { siWhatsapp } from "simple-icons";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke, setWebToken } from "./bridge";
@@ -406,7 +406,7 @@ export function ThreadsRail({
           title="Expand threads rail"
           className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
         >
-          <PanelRightOpen className="h-4 w-4" />
+          <ChevronRight className="h-4 w-4" strokeWidth={2} />
         </button>
         <button
           onClick={onNew}
@@ -475,7 +475,7 @@ export function ThreadsRail({
             title="Collapse threads rail"
             className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
           >
-            <PanelRightClose className="h-4 w-4" />
+            <ChevronLeft className="h-4 w-4" strokeWidth={2} />
           </button>
         </div>
       </div>
@@ -1638,17 +1638,43 @@ export function ConnectorIcon({ c }: { c: Connector }) {
   );
 }
 
+// Deterministic monogram colors from an app name — a tasteful per-brand hue
+// (low-saturation tinted tile + darker same-hue letters) so apps without a real
+// logo still look intentional and stay scannable. The catalog has hundreds of
+// apps; most have no brand glyph, so the fallback has to carry its weight.
+function appMonoColor(name: string): { bg: string; fg: string } {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  return { bg: `hsl(${hue} 42% 91%)`, fg: `hsl(${hue} 58% 34%)` };
+}
+function appInitials(name: string): string {
+  const words = name.replace(/[^A-Za-z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
 export function AppLogo({ app, logos }: { app: CatalogApp; logos: Record<string, BrandLogo> }) {
   const logo = app.iconSlug ? logos[app.iconSlug] : undefined;
-  return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-white">
-      {logo ? (
+  if (logo) {
+    return (
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-white">
         <svg width={16} height={16} viewBox="0 0 24 24" fill={`#${logo.hex}`} aria-hidden>
           <path d={logo.path} />
         </svg>
-      ) : (
-        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: PATTERN_TINT[app.pattern] ?? "#9aa0a6" }} />
-      )}
+      </span>
+    );
+  }
+  const { bg, fg } = appMonoColor(app.name);
+  return (
+    <span
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md font-display text-[11px] font-bold leading-none"
+      style={{ backgroundColor: bg, color: fg }}
+      title={app.name}
+      aria-hidden
+    >
+      {appInitials(app.name)}
     </span>
   );
 }
