@@ -11,6 +11,7 @@ import { FrameworksSection, IngestionSection, RemoteSection, ShortcutsSection } 
 import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection, TasksCrossDomainSection } from "./settings2";
 import { ConnectorsSection } from "./settings3";
 import { AppsPanel } from "./appspanel";
+import { RecommendationsPanel } from "./recommendationspanel";
 import { CollapsibleSection } from "./collapsible";
 import { GeneralSection, IdealStateSection, SafetySection } from "./settings4";
 import { AboutSection, GatewaySection, McpSection } from "./settings5";
@@ -47,7 +48,7 @@ export function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "memory" | "intents" | "tasks" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "memory" | "intents" | "tasks" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
@@ -92,6 +93,7 @@ export function SettingsPanel({
       { id: "benchmark", label: "Benchmark", icon: Target },
     ]},
     { heading: "Memory & Automation", items: [
+      { id: "recommendations", label: "Recommendations", icon: Sparkles },
       { id: "configuration", label: "Configuration", icon: Brain },
       { id: "intents", label: "Intents", icon: Lightbulb },
       { id: "daemons", label: "Daemons", icon: Zap },
@@ -229,6 +231,7 @@ export function SettingsPanel({
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
           {section === "intents" && <IntentsSection vaultPath={vaultPath} />}
           {section === "tasks" && <TasksCrossDomainSection vaultPath={vaultPath} />}
+          {section === "recommendations" && <RecommendationsPanel vaultPath={vaultPath} />}
           {section === "daemons" && <DaemonsSection vaultPath={vaultPath} />}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {section === "connectors" && (
