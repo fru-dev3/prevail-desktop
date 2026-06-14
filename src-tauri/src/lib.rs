@@ -367,6 +367,7 @@ pub fn run() {
             engine::engine_app_sync,
             engine::engine_apps_sync_due,
             engine::engine_app_connect,
+            engine::engine_recommendations,
             engine::engine_alignment,
             engine::engine_app_skills,
             engine::engine_vault_embed,

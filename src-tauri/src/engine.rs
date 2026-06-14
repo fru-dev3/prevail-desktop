@@ -738,6 +738,14 @@ pub fn engine_app_sync(id: String, vault: String) -> Result<serde_json::Value, S
     run_engine_json(&["connectors", "sync", &id, "--vault", &vault, "--json"])
 }
 
+/// The proactive Recommendations feed: domains to create (from recurring
+/// intents), best model per benchmarked domain, and domains with no app feeding
+/// them. Computed from existing vault signals. Returns { ok, recommendations }.
+#[tauri::command]
+pub fn engine_recommendations(vault: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["recommendations", "--vault", &vault, "--json"])
+}
+
 /// Run one autonomous-sync pass over every DUE app (the in-app scheduler calls
 /// this on a tick; the headless `daemon --sync` runs the same on a loop).
 /// Returns { ran, ok, failed }.
