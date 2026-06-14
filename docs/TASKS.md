@@ -20,10 +20,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
 
 ## Cross-cutting (highest leverage — touches many pages)
 
-- [~] **T1 — Collapsible component consistency.** ONE canonical collapsible used everywhere.
-  Component BUILT (`src/collapsible.tsx`). REMAINING: migrate all hand-rolled call sites
-  (benchpanel, settings7, settings4, settings6, settings8, panels, ui, councilpanel, sidebar)
-  to it so every page looks identical.
+- [~] **T1 — Collapsible component consistency.** ONE canonical collapsible everywhere.
+  DONE: section-level collapsibles on General (GenSub), Daemons (DaemonGroup), Models
+  (provider groups), Configuration (Sub) all delegate to CollapsibleSection now (icons +
+  summary/subtitle, left chevron, collapsed by default, persisted). Preferences/Connectors/MCP
+  were unified in the prior session. Chat "Thinking" + provider expanders' chevrons standardized
+  to left ChevronRight+rotate-90.
+  REMAINING (lower priority): benchpanel detail rows + councilpanel <details> are inline
+  list-item disclosures — already left-chevron, not page sections. Migrate only if they look off.
   Requirements (apply site-wide, every page):
   - Icon on the header (left side)
   - Summary of contents shown in the header — on BOTH the left and the right side
@@ -48,15 +52,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
   - Make "edit a skill" make sense / better workflow.
   - Keep skill auto-suggest in chat (he likes it) but improve the design.
 
-- [ ] **T4 — "Run now" broken + redesign (Daemons/Scheduled).**
-  - BUG: clicking "Run now" does nothing even when the daemon is toggled on. Fix it.
-  - Make it clear what SHOULD happen when clicked (feedback/progress).
-  - Redesign — current design is weak.
+- [x] **T4 — "Run now" broken (Scheduled runs).** FIXED (96de.. cards.tsx): silent no-op
+  now reports back (busy state + success/empty/error messages); fixed "just now ago" /
+  "~6 days ago" time-wording glitches via new formatDuration. Deeper visual redesign of the
+  card can still follow if wanted.
 
 - [ ] **T5 — Benchmark: suggest-questions design + all-domains guarantee.**
-  - [~] BUG (in progress, uncommitted in benchpanel.tsx): "all domains" must generate N
-    questions for EVERY domain. If user says 8, every domain gets 8. Per-domain loop +
-    verify each domain received its count. (Finish + commit.)
+  - [x] BUG FIXED (96de.. benchpanel.tsx): "all domains" loops per-domain so every domain
+    gets N questions, verifies each, reports failures/shortfalls.
   - [ ] Improve the design/layout of the suggest-questions UI.
 
 - [ ] **T6 — Benchmark history/statistics accuracy.**
@@ -67,7 +70,9 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
   - Model view: how many benchmarks run against it, across how many domains.
   - Audit all angles; fix the counting.
 
-- [ ] **T7 — Ideal State page formatting.** Current formatting looks bad. Redesign cleanly.
+- [x] **T7 — Ideal State page formatting.** REDESIGNED: calm single-column section cards
+  (icon chip + title, indented body), quiet left-border intro lead, prominent title, version
+  history via canonical CollapsibleSection. (settings4.tsx)
 
 - [ ] **T8 — Apps/Connectors page redesign.**
   - Separate into clear sections/tabs by connectivity tier:
@@ -94,11 +99,19 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
 
 ## Verify / smaller
 
-- [ ] **T11 — Backup: two buttons?** Why two backup buttons — same backup? Consolidate / improve.
-  - (Commit 2b77d42 "one backup control, not two" — VERIFY this is actually resolved.)
+- [x] **T11 — Backup: two buttons?** VERIFIED resolved (2b77d42). VaultSettings now has one
+  On/Off auto-backup toggle + one "Back up now" + a restore-points list. Not two redundant buttons.
 
-- [ ] **T12 — Website: Windows version.** Confirm the Windows build is listed on prevail.sh.
-  Add it if missing.
+- [x] **T12 — Website: Windows (Microsoft) download visibility.** FIXED in prevail-web:
+  hero CTA is now platform-aware (Windows visitors get "Download for Windows"), always shows
+  "Also for <other OS>" link, nav Download scrolls to #install (both platform cards). Builds clean.
+  NOTE: committed in prevail-web; needs a SITE DEPLOY (founder trigger) to go live.
+
+- [ ] **T18 — Telemetry: PostHog + Sentry (privacy-first, opt-in, transparent).**
+  Founder wants product analytics (downloads, usage, features) via PostHog + crash reporting
+  via Sentry, but STRICTLY: anonymous, no user/vault data, fully transparent, governance-managed,
+  easy opt-out. Plan in docs/TELEMETRY-PLAN.md. Build consent scaffolding first (default OFF),
+  wire live once founder provides PostHog key + Sentry DSN. NO PII, NO prompt/vault content ever.
 
 - [x] **T13 — Versioning policy.** Stay in 0.8.x (patch-forever) up to 0.8.100/200/1000
   before 0.9. Never advance minor without explicit go. (Recorded in memory; reaffirmed.)
@@ -119,5 +132,12 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
 
 ---
 
+## Decisions (founder, 2026-06-14)
+- T10 Intents: BUILD NOW, phased (daemon + storage → drill-down UI → wire into taskgen/loops).
+- Sequence: VISUAL CONSISTENCY FIRST (T1 canonical-collapsible migration) → per-page redesigns
+  → benchmark accuracy (T6) → Intents build (T10).
+
 ## Log
 - 2026-06-14: Task list created from founder feedback batch.
+- 2026-06-14: Fixed T5 (all-domains suggest), T4 (Run now + time wording). Verified T11, T12.
+- 2026-06-14: Founder chose: build Intents (phased), visual consistency first. Starting T1 migration.
