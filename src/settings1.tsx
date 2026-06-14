@@ -2,8 +2,9 @@
 // & Lenses, Remote/WebUI, and Ingestion. Each renders shared panel components and
 // the SettingsHeader; none close over App root state.
 import { Fragment, useEffect, useState } from "react";
-import { ArrowRight, Globe, Lightbulb, MessageSquare, Sparkles } from "lucide-react";
+import { Aperture, ArrowRight, Diamond, Globe, Lightbulb, MessageSquare, Sparkles } from "lucide-react";
 import { invoke, listen } from "./bridge";
+import { CollapsibleSection } from "./collapsible";
 import { FRAMEWORKS, LENSES } from "./constants";
 import { PREF, getPref, setPref } from "./storage";
 import { Toggle } from "./ui";
@@ -99,14 +100,10 @@ export function FrameworksSection() {
         subtitle="The bracketed preamble Prevail prepends to every prompt. A framework shapes the structure of the answer; a lens shapes the perspective it comes from."
       />
 
-      {/* Why this matters, shown visually rather than as a paragraph. */}
-      <div className="mb-7 rounded-2xl border border-accent-border bg-accent-soft/40 p-5">
-        <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-accent">
-          <Lightbulb className="h-3.5 w-3.5" /> Why this matters
-        </div>
-
-        {/* The flow: raw question, wrapped in framework + lens, sharper answer. */}
-        <div className="mt-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+      {/* Why this matters — collapsed by default so landing isn't noisy. */}
+      <CollapsibleSection icon={Lightbulb} title="Why this matters" summary="how it works"
+        subtitle="A framework shapes the structure; a lens shapes the perspective.">
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
           <div className="flex flex-1 flex-col items-center rounded-xl border border-border-subtle bg-background px-3 py-3 text-center">
             <MessageSquare className="h-5 w-5 text-text-muted" />
             <div className="mt-1.5 text-sm font-semibold text-text-primary">Your question</div>
@@ -125,50 +122,25 @@ export function FrameworksSection() {
             <div className="text-[11px] text-text-muted">structured, on-angle</div>
           </div>
         </div>
-
-        {/* What each control does. */}
-        <div className="mt-3 grid grid-cols-1 gap-3">
-          <div className="rounded-xl border border-border-subtle bg-background p-3.5">
-            <div className="flex items-center gap-2"><span className="text-accent">◆</span><span className="text-sm font-semibold text-text-primary">Framework</span></div>
-            <p className="mt-1 text-[13px] leading-snug text-text-secondary">Shapes the structure. BLUF leads with the answer; SCQA walks situation to recommendation.</p>
-          </div>
-          <div className="rounded-xl border border-border-subtle bg-background p-3.5">
-            <div className="flex items-center gap-2"><span className="text-accent">◇</span><span className="text-sm font-semibold text-text-primary">Lens</span></div>
-            <p className="mt-1 text-[13px] leading-snug text-text-secondary">Shapes the perspective. First principles, steelman, or an outsider's eye.</p>
-          </div>
-        </div>
-
         <p className="mt-3 text-[13px] text-text-muted">Stack a framework with a lens to pressure-test one decision from several angles at once.</p>
-      </div>
+      </CollapsibleSection>
 
-      {/* One full-width column, stacked: Frameworks, then Lenses. */}
-      <div className="space-y-8">
-        <PreambleColumn
-          glyph="◆"
-          title="Frameworks"
-          tagline="Structure: how the answer is shaped."
-          options={FRAMEWORKS}
-          active={activeFramework}
-          selectedId={fwLens.framework}
-          onSelect={fwLens.setFramework}
-        />
-        <PreambleColumn
-          glyph="◇"
-          title="Lenses"
-          tagline="Perspective: the angle the answer comes from."
-          options={LENSES}
-          active={activeLens}
-          selectedId={fwLens.lens}
-          onSelect={fwLens.setLens}
-        />
-      </div>
+      {/* The controls themselves — collapsible, each header showing the active
+          selection so the page is calm but the current state is obvious. */}
+      <CollapsibleSection icon={Diamond} title="Frameworks" summary={`Active · ${activeFramework?.label ?? "Off"}`}
+        subtitle="Structure: how the answer is shaped." storageKey="prevail.settings.fw.frameworks" defaultOpen>
+        <PreambleColumn headerless glyph="◆" title="Frameworks" options={FRAMEWORKS}
+          active={activeFramework} selectedId={fwLens.framework} onSelect={fwLens.setFramework} />
+      </CollapsibleSection>
+      <CollapsibleSection icon={Aperture} title="Lenses" summary={`Active · ${activeLens?.label ?? "Off"}`}
+        subtitle="Perspective: the angle the answer comes from." storageKey="prevail.settings.fw.lenses">
+        <PreambleColumn headerless glyph="◇" title="Lenses" options={LENSES}
+          active={activeLens} selectedId={fwLens.lens} onSelect={fwLens.setLens} />
+      </CollapsibleSection>
 
-      {/* More coming soon + feedback + website. */}
-      <div className="mt-8 rounded-2xl border border-border-subtle bg-surface p-5">
-        <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
-          <Sparkles className="h-3.5 w-3.5 text-accent" /> More coming soon
-        </div>
-        <p className="mt-2 max-w-3xl text-sm text-text-secondary">
+      {/* More coming soon + feedback — collapsed, secondary. */}
+      <CollapsibleSection icon={Sparkles} title="More coming soon" summary="custom + feedback">
+        <p className="max-w-3xl text-sm text-text-secondary">
           Custom frameworks and lenses (write and save your own) are on the way. Today's set ships with Prevail. Have a
           framework or lens you'd want built in? Tell us, it shapes what we add next.
         </p>
@@ -190,7 +162,7 @@ export function FrameworksSection() {
             <Globe className="h-3.5 w-3.5" /> prevail.sh
           </a>
         </div>
-      </div>
+      </CollapsibleSection>
     </>
   );
 }
