@@ -44,16 +44,18 @@ export function emptyLoopsDoc(): LoopsDoc {
   return { schema: 1, desiredState: "", loops: [] };
 }
 
-function loopsPath(vaultPath: string, domain: string): string {
-  // Domains live at <vault>/<domain>/ ; loops sit alongside the other engine
-  // files (_state.md, _decisions.jsonl) as _loops.json.
-  return `${vaultPath.replace(/\/+$/, "")}/${domain}/_loops.json`;
+function loopsPath(domainPath: string): string {
+  // Loops sit alongside the other engine files (_state.md, _decisions.jsonl) as
+  // _loops.json. We take the already-resolved domain path (which the backend
+  // resolves to the v3 vault/domains/<d> or legacy vault/<d> location) so this
+  // works regardless of layout.
+  return `${domainPath.replace(/\/+$/, "")}/_loops.json`;
 }
 
 // Read a domain's loops. Returns an empty doc when none exist yet (first run).
-export async function readLoops(vaultPath: string, domain: string): Promise<LoopsDoc> {
+export async function readLoops(domainPath: string): Promise<LoopsDoc> {
   try {
-    const raw = await invoke<string>("read_file", { path: loopsPath(vaultPath, domain) });
+    const raw = await invoke<string>("read_file", { path: loopsPath(domainPath) });
     if (!raw || !raw.trim()) return emptyLoopsDoc();
     const doc = JSON.parse(raw) as Partial<LoopsDoc>;
     return {
@@ -69,9 +71,9 @@ export async function readLoops(vaultPath: string, domain: string): Promise<Loop
 
 // Persist a domain's loops (full-document write, matching how _state.md and the
 // manifest are written).
-export async function writeLoops(vaultPath: string, domain: string, doc: LoopsDoc): Promise<void> {
+export async function writeLoops(domainPath: string, doc: LoopsDoc): Promise<void> {
   await invoke("write_text_file", {
-    path: loopsPath(vaultPath, domain),
+    path: loopsPath(domainPath),
     contents: JSON.stringify({ ...doc, schema: 1 }, null, 2),
   });
 }

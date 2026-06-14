@@ -15,9 +15,21 @@ pub(crate) fn is_safe_domain(d: &str) -> bool {
         && d.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
+// Resolve a domain's base directory. v3 nests domains under <vault>/domains/<d>;
+// for backward compatibility we still read legacy domains at <vault>/<d>. Prefer
+// the v3 home, fall back to an existing legacy dir, default new domains to v3.
+// Mirrors the engine's resolveDomainDir so both stacks agree.
+pub(crate) fn resolve_domain_base(vault: &str, d: &str) -> PathBuf {
+    let nu = PathBuf::from(vault).join("domains").join(d);
+    if nu.exists() {
+        return nu;
+    }
+    PathBuf::from(vault).join(d)
+}
+
 pub(crate) fn domain_dir(vault: &str, domain: &Option<String>) -> PathBuf {
     match domain {
-        Some(d) if is_safe_domain(d) => PathBuf::from(vault).join(d),
+        Some(d) if is_safe_domain(d) => resolve_domain_base(vault, d),
         _ => PathBuf::from(vault),
     }
 }
@@ -34,7 +46,7 @@ pub(crate) fn domain_dir_pub(vault: &str, domain: &str) -> PathBuf {
 // for the no-domain General space.
 pub(crate) fn safe_domain_subdir(vault: &str, domain: &Option<String>, sub: &str) -> Result<PathBuf, String> {
     match domain {
-        Some(d) if is_safe_domain(d) => Ok(PathBuf::from(vault).join(d).join(sub)),
+        Some(d) if is_safe_domain(d) => Ok(resolve_domain_base(vault, d).join(sub)),
         Some(d) => Err(format!("invalid domain: {d}")),
         None => Ok(PathBuf::from(vault).join(sub)),
     }

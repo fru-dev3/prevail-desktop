@@ -69,17 +69,38 @@ pub(crate) fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
     if !root.exists() {
         return Err(format!("vault path does not exist: {}", path));
     }
-    let entries = read_dir_retry(&root).map_err(|e| e.to_string())?;
-    let mut domains: Vec<Domain> = Vec::new();
-    for entry in entries.flatten() {
+    // Domain candidates from BOTH the legacy root layout (<vault>/<domain>) and
+    // the v3 container (<vault>/domains/<domain>); v3 wins on a name clash.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut candidates: Vec<(String, PathBuf)> = Vec::new();
+    let domains_root = root.join("domains");
+    if domains_root.is_dir() {
+        if let Ok(es) = read_dir_retry(&domains_root) {
+            for entry in es.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') {
+                    continue;
+                }
+                let p = entry.path();
+                if p.is_dir() && seen.insert(name.clone()) {
+                    candidates.push((name, p));
+                }
+            }
+        }
+    }
+    for entry in read_dir_retry(&root).map_err(|e| e.to_string())?.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') || NON_DOMAIN_DIRS.contains(&name.as_str()) {
             continue;
         }
         let p = entry.path();
-        if !p.is_dir() {
-            continue;
+        if p.is_dir() && seen.insert(name.clone()) {
+            candidates.push((name, p));
         }
+    }
+
+    let mut domains: Vec<Domain> = Vec::new();
+    for (name, p) in candidates {
         // Domain detection — forward + backward compatible across the v1→v2
         // migration. v2: a folder is a domain because the human declared intent
         // (`soul.md`). v1: detected by hand-written `state.md`. Transition: the

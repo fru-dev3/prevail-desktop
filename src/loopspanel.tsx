@@ -23,7 +23,7 @@ import {
 
 const CADENCES: LoopCadence[] = ["continuous", "daily", "weekly", "monthly"];
 
-export function LoopsPanel({ domain, vaultPath }: { domain: string; vaultPath: string }) {
+export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; vaultPath: string; domainPath: string }) {
   const [doc, setDoc] = useState<LoopsDoc | null>(null);
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
@@ -34,16 +34,16 @@ export function LoopsPanel({ domain, vaultPath }: { domain: string; vaultPath: s
 
   useEffect(() => {
     let alive = true;
-    readLoops(vaultPath, domain).then((d) => { if (alive) setDoc(d); });
+    readLoops(domainPath).then((d) => { if (alive) setDoc(d); });
     return () => { alive = false; };
-  }, [vaultPath, domain]);
+  }, [domainPath]);
 
   // Single persistence path: update local state, then write the whole doc.
   const persist = useCallback(async (next: LoopsDoc) => {
     setDoc(next);
-    try { await writeLoops(vaultPath, domain, next); setSavedAt(Date.now()); }
+    try { await writeLoops(domainPath, next); setSavedAt(Date.now()); }
     catch (e) { console.error("write loops", e); }
-  }, [vaultPath, domain]);
+  }, [domainPath]);
 
   const mutateLoop = useCallback((id: string, patch: Partial<Loop>) => {
     if (!doc) return;
@@ -72,10 +72,10 @@ export function LoopsPanel({ domain, vaultPath }: { domain: string; vaultPath: s
     setRunning(true);
     try {
       await invoke("loops_run_once", { vault: vaultPath });
-      setDoc(await readLoops(vaultPath, domain));
+      setDoc(await readLoops(domainPath));
     } catch (e) { console.error("run loops", e); }
     finally { setRunning(false); }
-  }, [vaultPath, domain]);
+  }, [vaultPath, domainPath]);
 
   if (!doc) return <div className="text-sm text-text-muted">loading loops…</div>;
 

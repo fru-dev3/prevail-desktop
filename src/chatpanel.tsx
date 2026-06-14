@@ -1480,8 +1480,8 @@ export function ChatPanel({
             {domainTab === "apps" && domain && (
               <DomainAppsTab domain={domain} vaultPath={vaultPath} />
             )}
-            {domainTab === "loops" && domain && (
-              <LoopsPanel domain={domain} vaultPath={vaultPath} />
+            {domainTab === "loops" && domain && domainPath && (
+              <LoopsPanel domain={domain} vaultPath={vaultPath} domainPath={domainPath} />
             )}
             {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && domainTab !== "insights" && domainTab !== "usage" && domainTab !== "apps" && domainTab !== "loops" && <div className="text-sm text-text-muted">loading…</div>}
             {domainCtx && domainTab === "state" && (domainCtx.state ? <Markdown source={domainCtx.state} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">state.md</code> in this domain.</div>)}
