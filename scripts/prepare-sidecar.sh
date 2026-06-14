@@ -20,9 +20,13 @@ if [ -z "${CLI:-}" ] || [ ! -f "$CLI/package.json" ]; then
 fi
 
 TRIPLE="$(rustc -Vv | sed -n 's/host: //p')"
+# Windows binaries need a .exe extension — both what Bun emits and what Tauri
+# expects for the externalBin sidecar (prevail-<triple>.exe).
+EXT=""
+case "$TRIPLE" in *windows*) EXT=".exe" ;; esac
 echo "prepare-sidecar: building prevail engine for $TRIPLE"
-( cd "$CLI" && bun build --compile --outfile=dist/prevail src/index.tsx )
+( cd "$CLI" && bun build --compile --outfile="dist/prevail$EXT" src/index.tsx )
 
 mkdir -p "$HERE/src-tauri/binaries"
-cp "$CLI/dist/prevail" "$HERE/src-tauri/binaries/prevail-$TRIPLE"
-echo "prepare-sidecar: sidecar ready -> src-tauri/binaries/prevail-$TRIPLE ($(du -h "$HERE/src-tauri/binaries/prevail-$TRIPLE" | cut -f1))"
+cp "$CLI/dist/prevail$EXT" "$HERE/src-tauri/binaries/prevail-$TRIPLE$EXT"
+echo "prepare-sidecar: sidecar ready -> src-tauri/binaries/prevail-$TRIPLE$EXT ($(du -h "$HERE/src-tauri/binaries/prevail-$TRIPLE$EXT" | cut -f1))"
