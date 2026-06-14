@@ -10,8 +10,9 @@ import { Markdown, StreamingPlain } from "./Markdown";
 import { scoreColor, formatFreshness, titleCase, relTime } from "./format";
 import { Toggle, Sparkline, ThinkingDisclosure } from "./ui";
 import type { AlignmentReport, AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Brand, BrandLogo, CatalogApp, ChatEvent, ChatMessage, CliInfo, CliProvider, CliVerifyInfo, Connector, ConnectorCatalog, ContextScore, DaemonStatus, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainTask, DomainToggle, EngineApp, Framework, IngestionAction, IngestionArtifact, IngestionAuditEntry, IngestionMcpServer, IngestionTierStatus, Lens, LifeReadiness, MatrixRow, MissingItem, Mode, ModelPick, ModelVerifyStatus, OnboardingRecommendation, Palette, PanelistReply, PanelistSlot, PortalRecipe, PreambleOption, RunDetail, ScoreBreakdown, SkillEntry, SurfaceResult, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn, UsageBucket, UsageSummary } from "./types";
-import { appScheduleText, bytesHuman, compactNum, domainBlurb, domainColor, domainTogglesKey, fmtCost, formatAuditedAt, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
+import { appScheduleText, bytesHuman, compactNum, domainBlurb, domainColor, fmtCost, formatAuditedAt, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
 import { AUTONOMY_LABEL, AUTONOMY_TINT, DOMAIN_LABEL, INTEGRATION_LABEL, PATTERN_LABEL, PATTERN_TIER, PATTERN_TINT, SEVERITY_LABEL, SEVERITY_ORDER, SKILL_TOKEN_RE, SOURCE_ABBR, STATUS_TINT, SYCOPHANCY_RE, VENDOR_BRAND } from "./constants";
+import { LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, lsGet, lsSet, setDomainToggle, setPref } from "./storage";
 
 // Single source of truth for the version chip in title bar.
 // Injected by Vite from package.json — never hand-stamp this again.
@@ -645,87 +646,6 @@ const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
 // ─────────────────────────────────────────────────────────────────────
 // localStorage keys + helpers
 
-const LS = {
-  vault: "prevail.desktop.vaultPath",
-  theme: "prevail.desktop.theme",
-  palette: "prevail.desktop.palette",
-  framework: "prevail.desktop.framework",
-  lens: "prevail.desktop.lens",
-  defaultChatCli: "prevail.desktop.defaultChatCli",
-  defaultChairCli: "prevail.desktop.defaultChairCli",
-  telegramToken: "prevail.desktop.telegramToken",
-  telegramChatId: "prevail.desktop.telegramChatId",
-  whatsappNumber: "prevail.desktop.whatsappNumber",
-  mcpEnabled: "prevail.desktop.mcpEnabled",
-  vaultProduction: "prevail.desktop.vaultProduction", // remembered own-vault path for demo<->production round-trips
-} as const;
-
-// Per-domain toggles mirroring the CLI status bar:
-// council on/off · web access · save replies · serendipity · auto-council.
-// `null` / "" domain means General — it gets its own bucket so the modes
-// persist there too.
-function getDomainToggle(domain: string | null, t: DomainToggle, fallback: boolean): boolean {
-  const raw = lsGet(domainTogglesKey(domain, t));
-  if (raw === "") return fallback;
-  return raw === "1";
-}
-function setDomainToggle(domain: string | null, t: DomainToggle, v: boolean): void {
-  lsSet(domainTogglesKey(domain, t), v ? "1" : "0");
-}
-
-function lsGet(key: string, fallback: string = ""): string {
-  return localStorage.getItem(key) ?? fallback;
-}
-function lsSet(key: string, value: string): void {
-  if (value) localStorage.setItem(key, value);
-  else localStorage.removeItem(key);
-  if (typeof key === "string" && key.startsWith("prevail.")) scheduleUiPrefsPush();
-}
-
-// ── Cross-device UI prefs sync ───────────────────────────────────────────────
-// Pins, model picks, and per-domain toggles live in per-surface localStorage,
-// so the WebUI used to start blank versus the desktop. We mirror the syncable
-// prevail.* keys through a backend blob (ui_prefs_get/set): the desktop pushes
-// its working state; the browser hydrates from it on boot. Device-specific and
-// sensitive keys are excluded.
-const UI_PREFS_EXCLUDE_PREFIX = [
-  "prevail.desktop.vaultPath", "prevail.desktop.vaultProduction", "prevail.web.",
-  "prevail.about.", "prevail.backup.", "prevail.bench.schedule.", "prevail.desktop.theme",
-  "prevail.desktop.palette",
-];
-function isSyncablePrefKey(k: string): boolean {
-  if (!k.startsWith("prevail.")) return false;
-  return !UI_PREFS_EXCLUDE_PREFIX.some((p) => k.startsWith(p));
-}
-function snapshotUiPrefs(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && isSyncablePrefKey(k)) out[k] = localStorage.getItem(k) ?? "";
-  }
-  return out;
-}
-let uiPrefsPushTimer: number | null = null;
-// Desktop: debounce-push the syncable prefs whenever they change.
-function scheduleUiPrefsPush() {
-  if (isBrowser()) return;
-  if (uiPrefsPushTimer !== null) window.clearTimeout(uiPrefsPushTimer);
-  uiPrefsPushTimer = window.setTimeout(() => {
-    void invoke("ui_prefs_set", { json: JSON.stringify(snapshotUiPrefs()) }).catch(() => {});
-  }, 1500);
-}
-// Browser: hydrate localStorage from the desktop's pushed prefs before the app
-// reads them. Returns a promise so boot can await it.
-async function hydrateUiPrefs(): Promise<void> {
-  if (!isBrowser()) return;
-  try {
-    const raw = await invoke<string>("ui_prefs_get");
-    const obj = JSON.parse(raw || "{}") as Record<string, string>;
-    for (const [k, v] of Object.entries(obj)) {
-      if (isSyncablePrefKey(k) && localStorage.getItem(k) === null) localStorage.setItem(k, v);
-    }
-  } catch { /* offline / first run */ }
-}
 
 // ── Bunker Mode (app-wide local-only trust mode) ──
 // The backend (bunker.rs) is the source of truth and enforces at the execution
@@ -13896,66 +13816,6 @@ function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; o
 // Read/write small boolean + string prefs to localStorage with sensible
 // defaults. Exported helpers used at call sites (textarea, chat chunk
 // handlers, etc.) to read live.
-const PREF = {
-  sendKey: "prevail.pref.sendKey",                  // "enter" | "cmd-enter"
-  desktopNotif: "prevail.pref.desktopNotif",        // "1" | "0"
-  closeToTray: "prevail.pref.closeToTray",          // "1" | "0" — hide to tray on window close
-  soundOnDone: "prevail.pref.soundOnDone",          // "1" | "0"
-  autoConvertLongPaste: "prevail.pref.autoConvertLongPaste", // "1" | "0"
-  stripSycophancy: "prevail.pref.stripSycophancy",  // "1" | "0"
-  alwaysShowContextUsage: "prevail.pref.alwaysShowContextUsage", // "1" | "0"
-  dontCollapseToolCalls: "prevail.pref.dontCollapseToolCalls",   // "1" | "0"
-  showThinking: "prevail.pref.showThinking",        // "1" | "0" — show model <think> reasoning
-  // System — hard caps on CLI runs so a stuck process doesn't hang
-  // the UI forever. Read by send() and passed to the Rust spawner.
-  llmPromptTimeoutSec: "prevail.pref.llmPromptTimeoutSec",   // integer seconds
-  streamStallTimeoutSec: "prevail.pref.streamStallTimeoutSec", // integer seconds — no chunks for this long → kill
-  // Budget — a soft monthly USD cap the user sets, plus the running spend
-  // estimate. Display-only until the engine exposes a budget status command.
-  budgetMonthlyCapUsd: "prevail.pref.budgetMonthlyCapUsd", // decimal USD, "" = no cap
-  budgetSpentUsd: "prevail.pref.budgetSpentUsd",           // decimal USD estimate
-  // Memory & Context — the self-learning layer. Persistent memory distills the
-  // intent ledger into <vault>/<domain>/_memory.md and prepends it to prompts.
-  persistentMemory: "prevail.pref.persistentMemory",       // "1" | "0" — master switch
-  userProfile: "prevail.pref.userProfile",                 // "1" | "0" — prepend user.md
-  memoryBudgetChars: "prevail.pref.memoryBudgetChars",     // integer chars cap on _memory.md
-  profileBudgetChars: "prevail.pref.profileBudgetChars",   // integer chars cap on user.md preamble
-  memoryProvider: "prevail.pref.memoryProvider",           // cli used to distill (claude/ollama/…)
-  distillModel: "prevail.pref.distillModel",               // cheap model id, e.g. claude-haiku-4-5
-  contextEngine: "prevail.pref.contextEngine",             // "compressor" (only one wired)
-  autoCompression: "prevail.pref.autoCompression",         // "1" | "0" — run the distill daemon
-  compressionThreshold: "prevail.pref.compressionThreshold", // 0..1 of budget before distilling
-  compressionTarget: "prevail.pref.compressionTarget",     // 0..1 of budget to compress toward
-  protectedRecent: "prevail.pref.protectedRecent",         // keep most-recent N ledger records raw
-  distillIntervalSec: "prevail.pref.distillIntervalSec",   // daemon tick cadence
-  remindersIntervalSec: "prevail.pref.remindersIntervalSec", // reminders daemon cadence
-  taskgenEnabled: "prevail.pref.taskgenEnabled",           // "1" | "0" — proactive task gen
-  taskgenModel: "prevail.pref.taskgenModel",               // model for task generation
-  taskgenIntervalSec: "prevail.pref.taskgenIntervalSec",   // task-gen daemon cadence (seconds)
-  taskgenMaxPerDomain: "prevail.pref.taskgenMaxPerDomain", // max tasks generated per domain per day
-  skillgenEnabled: "prevail.pref.skillgenEnabled",         // "1" | "0" — self-learning skill gen
-  skillgenModel: "prevail.pref.skillgenModel",             // model for skill generation
-  skillgenIntervalSec: "prevail.pref.skillgenIntervalSec", // skill-gen daemon cadence (seconds)
-  skillgenMaxPerDomain: "prevail.pref.skillgenMaxPerDomain", // max skills learned per domain per day
-  // Safety — guardrails. Most are read by the engine/ingestion; redactSecrets
-  // is enforced desktop-side in the intent-ledger capture path.
-  approvalMode: "prevail.pref.approvalMode",               // "manual" | "auto"
-  approvalTimeoutSec: "prevail.pref.approvalTimeoutSec",   // seconds before an approval prompt times out
-  confirmMcpReloads: "prevail.pref.confirmMcpReloads",     // "1" | "0"
-  commandAllowlist: "prevail.pref.commandAllowlist",       // comma-separated allowed commands
-  redactSecrets: "prevail.pref.redactSecrets",             // "1" | "0" — scrub secrets from saved content
-  allowPrivateUrls: "prevail.pref.allowPrivateUrls",       // "1" | "0"
-  fileCheckpoints: "prevail.pref.fileCheckpoints",         // "1" | "0" — snapshot before file edits
-  // Remote / WebUI — serve the same UI to a browser via the bridge server.
-  webuiPort: "prevail.pref.webuiPort",                     // integer port
-  webuiUser: "prevail.pref.webuiUser",                     // login username
-  webuiPass: "prevail.pref.webuiPass",                     // login password (local only)
-};
-function getPref(key: string, fallback: string): string {
-  const v = lsGet(key);
-  return v === "" ? fallback : v;
-}
-function setPref(key: string, v: string): void { lsSet(key, v); }
 
 function GeneralSection({ appearance }: { appearance?: ReturnType<typeof useAppearance> }) {
   const [startOnBoot, setStartOnBoot] = useState(false);
@@ -19240,6 +19100,7 @@ function McpCard() {
 }
 
 // BriefingsCard removed — landing back in v0.3 when wired up.
+
 
 
 
