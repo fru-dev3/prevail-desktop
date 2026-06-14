@@ -559,6 +559,41 @@ export function ChatPanel({
     setHistIdx(-1);
   }
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Compaction: summarize the running conversation into a dense brief, then start
+  // a fresh chat seeded with that summary — continuity preserved, tokens reclaimed.
+  // The summary is stashed in localStorage so it survives the new-chat remount.
+  const COMPACT_KEY = `prevail.compact.${domain ?? "_root"}`;
+  const [compacting, setCompacting] = useState(false);
+  const compactConversation = useCallback(async () => {
+    if (messages.length === 0) return;
+    setCompacting(true);
+    try {
+      const text = messages
+        .map((mm) => `${mm.role === "user" ? "User" : "Assistant"}: ${mm.content}`)
+        .join("\n\n")
+        .slice(-40000);
+      const activeModel = selectedCli ? (modelByCli[selectedCli] ?? null) : null;
+      const summary = await invoke<string>("summarize_conversation", { cli: selectedCli ?? "claude", model: activeModel, text });
+      if (summary && summary.trim()) {
+        lsSet(COMPACT_KEY, summary.trim());
+        window.dispatchEvent(new Event("prevail:new-chat"));
+      }
+    } catch (e) {
+      console.error("compact conversation", e);
+    } finally {
+      setCompacting(false);
+    }
+  }, [messages, selectedCli, modelByCli, COMPACT_KEY]);
+  // After a compaction's new-chat reset, seed the summary as attached context so
+  // the fresh conversation keeps the gist. Runs on the remount (chatViewNonce).
+  useEffect(() => {
+    const pending = lsGet(COMPACT_KEY);
+    if (pending && pending.trim()) {
+      setPrimedContext((cur) => [{ label: "Summary so far", body: pending }, ...cur.filter((c) => c.label !== "Summary so far")]);
+      lsSet(COMPACT_KEY, "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatViewNonce, COMPACT_KEY]);
   // Use a ref for the active thread path so async saves don't capture
   // a stale closure value. Without this, every streaming chunk after
   // the first save still saw activeThreadPath=null and created a new
@@ -1638,6 +1673,8 @@ export function ChatPanel({
               draftTokens={estimateTokens(input)}
               windowTokens={contextWindowFor(selectedCli, selectedCli ? (modelByCli[selectedCli] ?? null) : null)}
               onReset={() => window.dispatchEvent(new Event("prevail:new-chat"))}
+              onCompact={messages.length > 1 ? compactConversation : undefined}
+              compacting={compacting}
             />
           </div>
           {/* Context pills — auto-loaded + dragged-in domains */}

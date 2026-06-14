@@ -272,6 +272,7 @@ pub fn run() {
             settings::ui_prefs_set,
             settings::ui_settings_set,
             chat::chat_send,
+            chat::summarize_conversation,
             benchmark::benchmark_runs,
             benchmark::benchmark_run_detail,
             usage::usage_append,
