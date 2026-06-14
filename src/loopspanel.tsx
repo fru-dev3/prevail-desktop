@@ -4,7 +4,8 @@
 // and current actions. The runner daemon (separate) evaluates enabled loops and
 // keeps their actions current; here you define and steer them.
 import { useCallback, useEffect, useState } from "react";
-import { ChevronRight, Infinity as InfinityIcon, Plus, Target, Trash2 } from "lucide-react";
+import { ChevronRight, Infinity as InfinityIcon, Plus, RefreshCw, Target, Trash2 } from "lucide-react";
+import { invoke } from "./bridge";
 import { titleCase } from "./format";
 import { Toggle } from "./ui";
 import {
@@ -64,6 +65,18 @@ export function LoopsPanel({ domain, vaultPath }: { domain: string; vaultPath: s
 
   const toggleOpen = (id: string) => setOpenIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  // Trigger one engine pass over this domain's due loops, then reload so the
+  // refreshed actions show up. The same runner also runs in the background.
+  const [running, setRunning] = useState(false);
+  const runNow = useCallback(async () => {
+    setRunning(true);
+    try {
+      await invoke("loops_run_once", { vault: vaultPath });
+      setDoc(await readLoops(vaultPath, domain));
+    } catch (e) { console.error("run loops", e); }
+    finally { setRunning(false); }
+  }, [vaultPath, domain]);
+
   if (!doc) return <div className="text-sm text-text-muted">loading loops…</div>;
 
   const active = doc.loops.filter((l) => l.status !== "done");
@@ -72,11 +85,23 @@ export function LoopsPanel({ domain, vaultPath }: { domain: string; vaultPath: s
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4">
       {/* Header */}
-      <div>
-        <h2 className="font-display text-2xl font-semibold tracking-tight">Loops</h2>
-        <p className="mt-1 max-w-2xl text-sm text-text-secondary">
-          Standing forces on {titleCase(domain)}, not one-off tasks. Each loop watches signals and works to close the gap to your desired state. Open loops run forever; closed loops finish when their condition is met.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-display text-2xl font-semibold tracking-tight">Loops</h2>
+          <p className="mt-1 max-w-2xl text-sm text-text-secondary">
+            Standing forces on {titleCase(domain)}, not one-off tasks. Each loop watches signals and works to close the gap to your desired state. Open loops run forever; closed loops finish when their condition is met.
+          </p>
+        </div>
+        {doc.loops.length > 0 && (
+          <button
+            onClick={runNow}
+            disabled={running}
+            title="Run every due loop now: the engine measures the gap and refreshes each loop's actions. Also runs in the background on each loop's cadence."
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${running ? "animate-spin" : ""}`} /> {running ? "running…" : "run loops now"}
+          </button>
+        )}
       </div>
 
       {/* Desired state */}

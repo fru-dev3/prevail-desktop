@@ -103,6 +103,42 @@ pub(crate) fn resolve_prevail_bin() -> String {
 // ─────────────────────────────────────────────────────────────────────
 // Generic helpers
 
+/// Spawn `prevail <args>` (no `--json`), capture trimmed stdout as text.
+/// For engine subcommands that emit plain logs rather than JSON (e.g. the
+/// loop runner's `daemon --loops --once`). Same enriched env + vault key as
+/// `run_engine_json`. Empty stdout is allowed (returns "").
+pub fn run_engine_raw(args: &[&str]) -> Result<String, String> {
+    use std::process::Command;
+
+    let bin = resolve_prevail_bin();
+    let (combined_path, user, logname) = crate::build_cli_env();
+
+    let mut cmd = Command::new(&bin);
+    cmd.args(args)
+        .env_clear()
+        .envs(crate::scrubbed_env_pairs())
+        .env("PATH", combined_path)
+        .env("USER", user)
+        .env("LOGNAME", logname)
+        .stdin(std::process::Stdio::null());
+    if let Some(k) = vault_key() {
+        cmd.env("PREVAIL_VAULT_KEY", k);
+    }
+    for (k, v) in provider_env_pairs() {
+        cmd.env(k, v);
+    }
+    if let Some(r) = vault_root() {
+        cmd.env("PREVAIL_VAULT_ROOT", r);
+    }
+    let out = cmd.output().map_err(|e| format!("spawn {bin} failed: {e}"))?;
+    if !out.status.success() {
+        let code = out.status.code().unwrap_or(-1);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(format!("prevail exited {code}: {}", stderr.trim()));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
 /// Spawn `prevail <args> --json`, capture stdout, parse it as JSON.
 ///
 /// Always appends `--json` so the CLI emits machine-readable output.
