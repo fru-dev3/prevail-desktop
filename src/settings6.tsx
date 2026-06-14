@@ -212,6 +212,75 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
 // defaults. Exported helpers used at call sites (textarea, chat chunk
 // handlers, etc.) to read live.
 
+// A visual "round table": the panel drawn as seats around a ring, the chair
+// crowned at the top, spokes to a central emblem. New seats animate in as members
+// are added, so picking a council feels like assembling a table, not editing a
+// list. Why it matters: the council's value is the spread of independent minds —
+// seeing them arranged makes that legible at a glance.
+function CouncilCircle({ members, chair, clis }: { members: string[]; chair: string; clis: CliInfo[] }) {
+  const size = 232, R = 84, cx = size / 2, cy = size / 2, seat = 46;
+  // Chair first so it always takes the top seat; the rest fan around clockwise.
+  const ordered = [chair, ...members.filter((m) => m && m !== chair)].filter(Boolean);
+  const n = ordered.length;
+  const labelFor = (key: string) => {
+    const [cli, model] = key.split("::");
+    const c = clis.find((x) => x.id === cli);
+    const m = councilModelsFor(cli).find((x) => x.id === model);
+    return `${c?.label ?? cli} · ${m?.label ?? (model || "default")}`;
+  };
+  if (n === 0) {
+    return (
+      <div className="mb-5 flex h-[180px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface text-center">
+        <Crown className="h-7 w-7 text-text-muted" />
+        <div className="text-sm text-text-secondary">No one seated yet</div>
+        <div className="text-xs text-text-muted">Pick models below to assemble your council.</div>
+      </div>
+    );
+  }
+  return (
+    <div className="mb-5 flex justify-center rounded-xl border border-border bg-surface py-4">
+      <style>{`@keyframes councilSeatIn{from{opacity:0;transform:translate(-50%,-50%) scale(.4)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}`}</style>
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="absolute inset-0" aria-hidden>
+          <circle cx={cx} cy={cy} r={R} fill="none" className="stroke-border-subtle" strokeWidth={1} />
+          {ordered.map((key, i) => {
+            const a = -Math.PI / 2 + i * ((2 * Math.PI) / n);
+            return <line key={key} x1={cx} y1={cy} x2={cx + R * Math.cos(a)} y2={cy + R * Math.sin(a)} className="stroke-border-subtle" strokeWidth={1} />;
+          })}
+        </svg>
+        {/* Center emblem: the panel size at a glance. */}
+        <div className="absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border border-border bg-background">
+          <span className="font-display text-base font-bold leading-none text-text-primary">{members.length}</span>
+          <span className="font-mono text-[7px] uppercase tracking-wider text-text-muted">panel</span>
+        </div>
+        {ordered.map((key, i) => {
+          const a = -Math.PI / 2 + i * ((2 * Math.PI) / n);
+          const x = cx + R * Math.cos(a), y = cy + R * Math.sin(a);
+          const isChair = key === chair;
+          const cli = key.split("::")[0];
+          return (
+            <div
+              key={key}
+              title={`${labelFor(key)}${isChair ? " (chair)" : ""}`}
+              className="absolute"
+              style={{ left: x, top: y, width: seat, height: seat, transform: "translate(-50%,-50%)", animation: "councilSeatIn .3s cubic-bezier(0.22,1,0.36,1)" }}
+            >
+              <div className={`relative flex h-full w-full items-center justify-center rounded-full border bg-background ${isChair ? "border-accent ring-2 ring-accent/30" : "border-border"}`}>
+                <ProviderMark vendor={cli} size={26} />
+                {isChair && (
+                  <span className="absolute -top-2.5 left-1/2 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full bg-accent text-background shadow-sm">
+                    <Crown className="h-3 w-3" />
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   const available = useMemo(() => clis.filter((c) => c.available && (!isBunkerOn() || isLocalCli(c.id))), [clis]);
   const [members, setMembers] = useState<Set<string>>(() => new Set(readCouncilMembers()));
@@ -260,6 +329,8 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   return (
     <>
       <SettingsHeader title="Council" subtitle="Convene several models on one question: each answers independently, then a chair writes the verdict. Pick the exact models on your default panel (you can add several from the same provider)." />
+      {/* Visual round table — who's seated and who chairs, at a glance. */}
+      <CouncilCircle members={[...members]} chair={chair} clis={clis} />
       {/* Compact summary bar — what the panel is right now. */}
       <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-accent-border bg-accent-soft px-4 py-3 text-sm">
         <span className="font-semibold text-text-primary">{members.size} model{members.size === 1 ? "" : "s"} on the panel</span>
