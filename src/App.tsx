@@ -15,6 +15,8 @@ import { AUTONOMY_LABEL, AUTONOMY_TINT, DISCOVERED_MODELS, DOMAIN_LABEL, FRAMEWO
 import { BUNKER_LS, LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet, setDomainToggle, setPref } from "./storage";
 import { AppCard, AppKV, BridgeStatusChips, CycleChip, DemoRibbon, FloatingChip, ResizeHandle } from "./widgets";
 import { ContextScorePanel, DomainAppsTab, IngestionTierCard, OnboardingModal, PaletteCard } from "./panels3";
+import { distillCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
+import { COUNCIL_CHAIR_KEY, COUNCIL_MEMBERS_KEY, councilModelsFor, councilSlotKey, readCouncilChair, readCouncilMembers } from "./council";
 import { autoVerifyClis, cliVerifyLive, loadVerifyMap, saveVerifyMap, setCliVerify, useCliVerifyLive, verifyCliDefaultModel } from "./verify";
 import { BENCH_CLI_OPTIONS, BENCH_FREQ_MS, BENCH_SCHED, benchBatches, benchNotify, cancelBenchBatch, executeBenchBatch, rerunLatestBatch, startBenchScheduler, useBenchBatches } from "./bench";
 import { BACKUP_CFG, backupVaultNow, bumpBackupChangeCount, startBackupScheduler } from "./backup";
@@ -11010,42 +11012,6 @@ function GeneralSection({ appearance }: { appearance?: ReturnType<typeof useAppe
   );
 }
 
-// Build a DistillConfig (snake_case keys for the Rust serde struct) from prefs.
-function distillCfgFromPrefs(vaultPath: string) {
-  return {
-    vault: vaultPath,
-    provider: getPref(PREF.memoryProvider, "claude"),
-    model: getPref(PREF.distillModel, "claude-haiku-4-5"),
-    memory_budget_chars: Number(getPref(PREF.memoryBudgetChars, "4000")) || 4000,
-    threshold: Number(getPref(PREF.compressionThreshold, "0.5")) || 0.5,
-    target: Number(getPref(PREF.compressionTarget, "0.2")) || 0.2,
-    protected_recent: Number(getPref(PREF.protectedRecent, "20")) || 20,
-    interval_sec: Number(getPref(PREF.distillIntervalSec, "900")) || 900,
-  };
-}
-
-function taskgenCfgFromPrefs(vaultPath: string) {
-  return {
-    vault: vaultPath,
-    provider: getPref(PREF.memoryProvider, "claude"),
-    model: getPref(PREF.taskgenModel, "claude-haiku-4-5"),
-    interval_sec: Number(getPref(PREF.taskgenIntervalSec, "3600")) || 3600,
-    max_tasks_per_domain: Number(getPref(PREF.taskgenMaxPerDomain, "3")) || 3,
-  };
-}
-
-function skillgenCfgFromPrefs(vaultPath: string) {
-  return {
-    vault: vaultPath,
-    provider: getPref(PREF.memoryProvider, "claude"),
-    model: getPref(PREF.skillgenModel, "claude-haiku-4-5"),
-    // Skills change slowly — tick every 6h; a per-domain daily cursor caps it
-    // to one learning pass per domain per day regardless of tick cadence.
-    interval_sec: Number(getPref(PREF.skillgenIntervalSec, "21600")) || 21600,
-    max_skills_per_domain: Number(getPref(PREF.skillgenMaxPerDomain, "2")) || 2,
-  };
-}
-
 function ConfigurationSection({ vaultPath }: { vaultPath: string }) {
   const [open, setOpen] = useState<"ideal-state" | "memory" | "tasks" | null>(null);
   const toggle = (id: "ideal-state" | "memory" | "tasks") => setOpen((v) => (v === id ? null : id));
@@ -14305,22 +14271,6 @@ function AppearanceSection({ appearance }: { appearance: ReturnType<typeof useAp
 }
 
 
-// Default council membership — stored as SLOT KEYS (`${cli}::${model}`) so the
-// panel can hold specific models, e.g. three different Claude models plus two
-// Codex models. The chair is one slot key. Council sessions seed from these.
-const COUNCIL_MEMBERS_KEY = "prevail.council.defaultMembers";
-const COUNCIL_CHAIR_KEY = "prevail.council.defaultChair";
-function councilSlotKey(cliId: string, modelId: string): string { return `${cliId}::${modelId}`; }
-function councilModelsFor(cliId: string): ModelPick[] {
-  return MODELS[cliId] ?? [{ id: "", label: "Default", blurb: "" } as ModelPick];
-}
-function readCouncilMembers(): string[] {
-  // Only accept slot-key-shaped entries (`cli::model`). Older builds stored bare
-  // CLI ids here; those are ignored so the panel re-seeds with real slots.
-  try { const a = JSON.parse(lsGet(COUNCIL_MEMBERS_KEY) || "[]"); return Array.isArray(a) ? a.filter((x) => typeof x === "string" && x.includes("::")) : []; } catch { return []; }
-}
-function readCouncilChair(): string { return lsGet(COUNCIL_CHAIR_KEY) || ""; }
-
 // Council config — its own first-class section. You pick the EXACT models on the
 // default panel (per-provider, multiple models allowed) and which one chairs.
 function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
@@ -14804,6 +14754,8 @@ function McpCard() {
 }
 
 // BriefingsCard removed — landing back in v0.3 when wired up.
+
+
 
 
 
