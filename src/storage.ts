@@ -149,6 +149,9 @@ export const PREF = {
   webuiPort: "prevail.pref.webuiPort",                     // integer port
   webuiUser: "prevail.pref.webuiUser",                     // login username
   webuiPass: "prevail.pref.webuiPass",                     // login password (local only)
+  // Chat — auto-compact the conversation when the context window fills up
+  // (summarize & continue), default ON. Keeps responses sharp without manual action.
+  autoCompact: "prevail.pref.autoCompact",                 // "1" | "0"
   // Apps — run the autonomous app-sync daemon behind the scenes, default ON. The
   // tick just triggers a "due pass"; each app still syncs on its OWN schedule.
   appsAutoSync: "prevail.pref.appsAutoSync",               // "1" | "0"

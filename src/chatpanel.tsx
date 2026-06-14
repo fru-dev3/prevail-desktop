@@ -12,7 +12,7 @@ import { relTime, scoreColor, titleCase } from "./format";
 import { ContextMeter, contextWindowFor, estimateTokens } from "./contextmeter";
 import { domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
 import { buildChatContext, buildIdealStatePreamble, buildQuickActions, loadPreferredSkills, maybeRedact, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
-import { LS, PREF, getDomainToggle, getPref, isBunkerOn, lsGet, lsSet } from "./storage";
+import { LS, PREF, getDomainToggle, getPref, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
 import { ContextScoreBadge, NewSkillForm, SkillsList } from "./panels";
 import { InsightsPanel, UsageDashboard } from "./panels2";
@@ -594,6 +594,30 @@ export function ChatPanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatViewNonce, COMPACT_KEY]);
+  // Token accounting for the context meter + auto-compaction (shared so both use
+  // the same numbers).
+  const conversationTokens = useMemo(() => messages.reduce((a, mm) => a + estimateTokens(mm.content), 0), [messages]);
+  const attachedTokens = useMemo(() => primedContext.reduce((a, c) => a + estimateTokens(c.body), 0), [primedContext]);
+  const ctxWindowTokens = useMemo(
+    () => contextWindowFor(selectedCli, selectedCli ? (modelByCli[selectedCli] ?? null) : null),
+    [selectedCli, modelByCli],
+  );
+  // AUTO-COMPACTION: when the window crosses ~85% and the turn is idle, summarize
+  // & continue on its own so responses don't degrade from an overfull context.
+  // Self-limiting — compaction resets the conversation, dropping the fill below
+  // the threshold. Off-switchable from the meter (PREF.autoCompact).
+  const [autoCompacted, setAutoCompacted] = useState(false);
+  useEffect(() => {
+    if (getPref(PREF.autoCompact, "1") !== "1") return;
+    if (compacting) return;
+    if (messages.length < 3) return;                  // need a real conversation
+    if (messages.some((mm) => mm.streaming)) return;  // never mid-response
+    if ((conversationTokens + attachedTokens) / Math.max(1, ctxWindowTokens) < 0.85) return;
+    setAutoCompacted(true);
+    window.setTimeout(() => setAutoCompacted(false), 6000);
+    void compactConversation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, conversationTokens, attachedTokens, ctxWindowTokens]);
   // Use a ref for the active thread path so async saves don't capture
   // a stale closure value. Without this, every streaming chunk after
   // the first save still saw activeThreadPath=null and created a new
@@ -1666,15 +1690,20 @@ export function ChatPanel({
         <div className="relative rounded-2xl border border-border bg-surface p-3 shadow-sm">
           {/* Context-window meter — minimal gauge of how full the running
               conversation is, where tokens go, and a one-click fresh start. */}
-          <div className="mb-1 flex items-center justify-end">
+          <div className="mb-1 flex items-center justify-end gap-2">
+            {(autoCompacted || compacting) && (
+              <span className="font-mono text-[10px] text-accent">{compacting ? "compacting…" : "auto-compacted ✓"}</span>
+            )}
             <ContextMeter
-              conversationTokens={messages.reduce((a, mm) => a + estimateTokens(mm.content), 0)}
-              attachedTokens={primedContext.reduce((a, c) => a + estimateTokens(c.body), 0)}
+              conversationTokens={conversationTokens}
+              attachedTokens={attachedTokens}
               draftTokens={estimateTokens(input)}
-              windowTokens={contextWindowFor(selectedCli, selectedCli ? (modelByCli[selectedCli] ?? null) : null)}
+              windowTokens={ctxWindowTokens}
               onReset={() => window.dispatchEvent(new Event("prevail:new-chat"))}
               onCompact={messages.length > 1 ? compactConversation : undefined}
               compacting={compacting}
+              autoCompact={getPref(PREF.autoCompact, "1") === "1"}
+              onToggleAutoCompact={(v) => setPref(PREF.autoCompact, v ? "1" : "0")}
             />
           </div>
           {/* Context pills — auto-loaded + dragged-in domains */}

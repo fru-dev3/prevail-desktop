@@ -42,6 +42,8 @@ export function ContextMeter({
   onReset,
   onCompact,
   compacting,
+  autoCompact,
+  onToggleAutoCompact,
 }: {
   conversationTokens: number;
   attachedTokens: number;
@@ -50,6 +52,8 @@ export function ContextMeter({
   onReset: () => void;
   onCompact?: () => void;
   compacting?: boolean;
+  autoCompact?: boolean;
+  onToggleAutoCompact?: (v: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const used = conversationTokens + attachedTokens + draftTokens;
@@ -114,6 +118,17 @@ export function ContextMeter({
               Start a fresh chat
             </button>
             <p className="mt-1.5 text-[10px] text-text-muted">Compact keeps the gist as a summary; Start fresh clears it. Long-term memory + domain context carry over either way.</p>
+            {onToggleAutoCompact && (
+              <label className="mt-2.5 flex cursor-pointer items-center gap-2 border-t border-border-subtle pt-2.5 text-[11px] text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={!!autoCompact}
+                  onChange={(e) => onToggleAutoCompact(e.target.checked)}
+                  className="h-3 w-3 accent-[var(--color-accent)]"
+                />
+                Auto-compact when the window gets full
+              </label>
+            )}
           </div>
         </>
       )}
