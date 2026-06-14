@@ -13,8 +13,9 @@ import type { AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus,
 import { appScheduleText, bytesHuman, domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
 import { AUTONOMY_LABEL, AUTONOMY_TINT, DISCOVERED_MODELS, DOMAIN_LABEL, FRAMEWORKS, INTEGRATION_LABEL, LENSES, MODELS, MODEL_SEP, PALETTES, PATTERN_LABEL, PATTERN_TIER, SETTINGS_ROW, SOURCE_ABBR, STATUS_TINT, VENDOR_BRAND } from "./constants";
 import { BUNKER_LS, LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet, setDomainToggle, setPref } from "./storage";
-import { AppCard, AppKV, BridgeStatusChips, CycleChip, DemoRibbon, FloatingChip, ResizeHandle } from "./widgets";
+import { AppCard, AppKV, BridgeStatusChips, DemoRibbon, FloatingChip, ResizeHandle } from "./widgets";
 import { ContextScorePanel, DomainAppsTab, IngestionTierCard, OnboardingModal, PaletteCard } from "./panels3";
+import { BenchScheduleCard, SidebarBenchmarkRuns } from "./cards";
 import { ProviderMark } from "./marks";
 import { ThinkingDots, ThinkingWord, useAppearance, useFrameworkLens } from "./hooks";
 import { authLoginCmd, idealSectionIcon, mcpCommandPath, pickSkillColor, settingsHeaderIcon } from "./sectionutil";
@@ -23,7 +24,7 @@ import { compareSemver, extractCliError, renderSkillTokens } from "./textutil";
 import { distillCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
 import { COUNCIL_CHAIR_KEY, COUNCIL_MEMBERS_KEY, councilModelsFor, councilSlotKey, readCouncilChair, readCouncilMembers } from "./council";
 import { autoVerifyClis, cliVerifyLive, loadVerifyMap, saveVerifyMap, setCliVerify, useCliVerifyLive, verifyCliDefaultModel } from "./verify";
-import { BENCH_CLI_OPTIONS, BENCH_FREQ_MS, BENCH_SCHED, benchBatches, benchNotify, cancelBenchBatch, executeBenchBatch, rerunLatestBatch, startBenchScheduler, useBenchBatches } from "./bench";
+import { BENCH_CLI_OPTIONS, benchBatches, benchNotify, cancelBenchBatch, executeBenchBatch, startBenchScheduler, useBenchBatches } from "./bench";
 import { BACKUP_CFG, backupVaultNow, bumpBackupChangeCount, startBackupScheduler } from "./backup";
 import { buildChatContext, buildCouncilQuickActions, buildIdealStatePreamble, buildQuickActions, buildSynthesisPrompt, loadPreferredSkills, maybeRedact, maybeStripSycophancy, migrateModelPrefs, modelLabel, modelsFor, parseRunLabel, savePreferredSkills } from "./helpers2";
 import { IngestionBrowserRunner, InsightsPanel, PreambleColumn, UsageDashboard } from "./panels2";
@@ -1477,67 +1478,6 @@ export default function App() {
 // One row per live benchmark run, pinned above the Settings strip. The data
 // lives in the module-scope registry, so the rows persist (and progress)
 // across every navigation; each row can cancel its run.
-function SidebarBenchmarkRuns({ collapsed }: { collapsed: boolean }) {
-  const runningBatches = useBenchBatches().filter((b) => b.running);
-  if (runningBatches.length === 0) return null;
-  if (collapsed) {
-    return (
-      <div
-        className="flex items-center justify-center gap-1 border-t border-border-subtle px-2 py-2"
-        title={runningBatches.map((b) => `Benchmarking ${b.scopeLabel}`).join("\n")}
-      >
-        <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
-        </span>
-        {runningBatches.length > 1 && (
-          <span className="font-mono text-[10px] text-accent">{runningBatches.length}</span>
-        )}
-      </div>
-    );
-  }
-  return (
-    <div className="border-t border-border-subtle">
-      {runningBatches.map((b) => {
-        const done = b.jobs.reduce(
-          (a, j) => a + (j.status === "done" || j.status === "scoring" ? j.total : j.done),
-          0,
-        );
-        const total = b.jobs.reduce((a, j) => a + j.total, 0);
-        return (
-          <div key={b.id} className="px-3 py-2">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-1.5 w-1.5 shrink-0">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
-              </span>
-              <span
-                className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-accent"
-                title={b.label}
-              >
-                {b.scopeLabel}
-              </span>
-              <span className="font-mono text-[10px] text-text-muted">{done}/{total}</span>
-              <button
-                onClick={() => void cancelBenchBatch(b.id)}
-                title="Cancel this benchmark run"
-                className="shrink-0 rounded px-1 font-mono text-[10px] text-text-muted hover:bg-surface-strong hover:text-danger"
-              >
-                ✗
-              </button>
-            </div>
-            <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-surface-strong">
-              <div
-                className="h-full rounded-full bg-accent transition-all duration-500"
-                style={{ width: total > 0 ? `${Math.round((done / total) * 100)}%` : "0%" }}
-              />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 function Sidebar({
   collapsed,
@@ -2622,186 +2562,6 @@ function DomainStatusBar({
     </>
   );
 }
-
-// Kept for potential reuse but currently unused — the DomainStatusBar
-// owns the framework/lens controls now.
-// @ts-expect-error noUnusedLocals
-function FwLensRow({
-  fwLens,
-  inline = false,
-}: {
-  fwLens: ReturnType<typeof useFrameworkLens>;
-  inline?: boolean;
-}) {
-  const fw = FRAMEWORKS.find((f) => f.id === fwLens.framework);
-  const ln = LENSES.find((l) => l.id === fwLens.lens);
-  if (inline) {
-    return (
-      <div className="flex items-center gap-1.5 text-xs">
-        <CycleChip
-          label="◆"
-          value={fw?.label ?? "OFF"}
-          active={fwLens.framework !== "none"}
-          title={`Framework: ${fw?.blurb ?? "(off)"}`}
-          onClick={() => {
-            const idx = FRAMEWORKS.findIndex((f) => f.id === fwLens.framework);
-            fwLens.setFramework(FRAMEWORKS[(idx + 1) % FRAMEWORKS.length].id);
-          }}
-        />
-        <CycleChip
-          label="◇"
-          value={ln?.label ?? "OFF"}
-          active={fwLens.lens !== "none"}
-          title={`Lens: ${ln?.blurb ?? "(off)"}`}
-          onClick={() => {
-            const idx = LENSES.findIndex((l) => l.id === fwLens.lens);
-            fwLens.setLens(LENSES[(idx + 1) % LENSES.length].id);
-          }}
-        />
-      </div>
-    );
-  }
-  return (
-    <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-      <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">defaults</span>
-
-      <CycleChip
-        label="◆ Framework"
-        value={fw?.label ?? "OFF"}
-        active={fwLens.framework !== "none"}
-        title={fw?.blurb ?? ""}
-        onClick={() => {
-          const idx = FRAMEWORKS.findIndex((f) => f.id === fwLens.framework);
-          fwLens.setFramework(FRAMEWORKS[(idx + 1) % FRAMEWORKS.length].id);
-        }}
-      />
-      <CycleChip
-        label="◇ Lens"
-        value={ln?.label ?? "OFF"}
-        active={fwLens.lens !== "none"}
-        title={ln?.blurb ?? ""}
-        onClick={() => {
-          const idx = LENSES.findIndex((l) => l.id === fwLens.lens);
-          fwLens.setLens(LENSES[(idx + 1) % LENSES.length].id);
-        }}
-      />
-      <span className="ml-auto text-[10px] text-text-muted">
-        click chips to cycle · these prepend to every prompt
-      </span>
-    </div>
-  );
-}
-
-
-// ─────────────────────────────────────────────────────────────────────
-// CHAT PANEL
-
-
-// Mirrors fd-apps-prevail-cli/docs/schemas/ChatEvent.json — a single
-// NDJSON event on the `prevail chat --json` stream. Consumers MUST
-// tolerate unknown `type` values for forward compatibility, so `type`
-// stays a bare string and every payload field is optional.
-
-// Pull <think>…</think> / <thinking>…</thinking> reasoning blocks out of a
-// model's output so they can render in a collapsible disclosure instead of
-// polluting the answer. Tolerates an unclosed trailing block during streaming.
-
-// Collapsible "Thinking" disclosure. Native <details> — no per-card React
-// state. Gated by the Show-model-thinking preference at the call site.
-
-// Council is for "why" / "should I" / steelman / decision questions —
-// the kinds of asks where multiple model perspectives + a chair help.
-// These hints surface when the council is idle so the user knows what
-// it's good at.
-
-// I4: high-stakes cards (Decision, Risks) are flagged `council: true` so a click
-// routes to the multi-model Council instead of a single-model chat — a decision
-// or a risk audit benefits from independent panelists + a synthesized verdict.
-
-// Full domain home view — shown when a domain is selected but the
-// chat hasn't started yet. Surfaces state / decisions / journal /
-// session logs / skills as tabs so the user can read the domain
-// before asking. Clicking a tab item primes it into the next prompt.
-// Proactive surfacing for a domain — questions worth asking + suggested next
-// actions, generated from the vault (cached). Click one to seed the composer.
-
-// Tiny inline trend line: a model's judge scores over time, on a fixed 0-10
-// scale so two models' lines are visually comparable.
-
-// Settings > Benchmark: scheduled re-runs of the latest batch, for tracking
-// model drift over time without manual runs.
-function BenchScheduleCard({ vault }: { vault: string }) {
-  const [enabled, setEnabled] = useState(() => lsGet(BENCH_SCHED.enabled, "0") === "1");
-  const [freq, setFreq] = useState(() => lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
-  const [, force] = useState(0);
-  useEffect(() => {
-    const f = () => force((n) => n + 1);
-    window.addEventListener("prevail:bench-sched", f);
-    return () => window.removeEventListener("prevail:bench-sched", f);
-  }, []);
-  const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
-  const freqMs = BENCH_FREQ_MS[freq] ?? BENCH_FREQ_MS.weekly;
-  const next = last ? last + freqMs : Date.now();
-  return (
-    <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
-      <RotateCw className="h-4 w-4 shrink-0 text-accent" />
-      <div className="min-w-0 flex-1">
-        <div className="font-display text-sm font-semibold tracking-tight">Scheduled runs</div>
-        <div className="text-xs text-text-secondary">
-          Re-runs your most recent batch (same models, same scope) so drift shows up in the leaderboard and History without manual runs. Runs while the app is open.
-          {enabled && last > 0 && ` Last ran ${formatFreshness(Math.max(0, (Date.now() - last) / 1000))} ago.`}
-          {enabled && ` Next ${next <= Date.now() ? "within 30 minutes" : `in ~${formatFreshness(Math.max(0, (next - Date.now()) / 1000))}`}.`}
-        </div>
-      </div>
-      <select
-        value={freq}
-        onChange={(e) => { setFreq(e.target.value); lsSet(BENCH_SCHED.freq, e.target.value); }}
-        disabled={!enabled}
-        className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary disabled:opacity-40"
-      >
-        <option value="daily">daily</option>
-        <option value="weekly">weekly</option>
-        <option value="monthly">monthly</option>
-      </select>
-      <button
-        onClick={() => { const v = !enabled; setEnabled(v); lsSet(BENCH_SCHED.enabled, v ? "1" : "0"); }}
-        className={`rounded-md border px-3 py-1 font-mono text-[11px] uppercase tracking-wider ${
-          enabled ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"
-        }`}
-      >
-        {enabled ? "On" : "Off"}
-      </button>
-      <button
-        onClick={async () => { if (await rerunLatestBatch(vault)) { lsSet(BENCH_SCHED.lastRun, String(Date.now())); window.dispatchEvent(new Event("prevail:bench-sched")); } }}
-        title="Re-run the latest batch right now"
-        className="rounded-md border border-border px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
-      >
-        Run now
-      </button>
-    </div>
-  );
-}
-
-// Collapsed-by-default section row for the Insights page: the summary line
-// carries the count (and optional meta) so a collapsed page still reads as a
-// dashboard; expanding indents the body.
-
-// How an app talks to its third party — human label for the Settings facet.
-// What the app is allowed to DO on your behalf.
-// Human-readable cadence from the refresh block (every / on / at).
-
-// Small labelled section card used across the app facets. Keeps each block
-// visually distinct without the old wall-of-monospace look.
-// One key/value row inside an AppCard.
-
-// Slim, always-visible identity bar for an open app. Status, name + account,
-// integration, and the domains it feeds (each a link into that domain's chat).
-// The rich detail lives in the Runs / Settings / Domains facets below.
-
-// The app's Runs / Settings / Domains facet bodies. Rendered in the canvas
-// scroll area when the matching top-bar chip is active. Owns the domain-binding
-// editor (the cross-link), the skills list, and the Test / Sync actions.
-// One recorded sync run, mirroring the engine's sync-state.json `runs` ring.
 
 function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, onChanged }: { app: EngineApp; vaultPath: string; domains: Domain[]; appTab: "runs" | "settings" | "domains"; onOpenDomain: (d: string) => void; onChanged: () => void }) {
   const [skills, setSkills] = useState<{ id: string; runner: string; trigger: string }[] | null>(null);
@@ -14268,6 +14028,7 @@ function McpCard() {
 }
 
 // BriefingsCard removed — landing back in v0.3 when wired up.
+
 
 
 
