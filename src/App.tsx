@@ -1,5 +1,5 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke, listen, isBrowser, setWebToken, type UnlistenFn } from "./bridge";
+import { invoke, listen, isBrowser, type UnlistenFn } from "./bridge";
 import { open, save, save as saveFileDialog, confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
 import { enable as autostartEnable, disable as autostartDisable, isEnabled as autostartIsEnabled } from "@tauri-apps/plugin-autostart";
 import { check as checkUpdate } from "@tauri-apps/plugin-updater";
@@ -9,11 +9,12 @@ import { PrevailLogo } from "./PrevailLogo";
 import { Markdown, StreamingPlain } from "./Markdown";
 import { scoreColor, formatFreshness, titleCase, relTime } from "./format";
 import { Toggle, Sparkline, ThinkingDisclosure } from "./ui";
-import type { AlignmentReport, AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Brand, BrandLogo, CatalogApp, ChatEvent, ChatMessage, CliInfo, CliProvider, CliVerifyInfo, Connector, ConnectorCatalog, ContextScore, DaemonStatus, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainTask, DomainToggle, EngineApp, Framework, IngestionAction, IngestionArtifact, IngestionAuditEntry, IngestionMcpServer, IngestionTierStatus, Lens, LifeReadiness, MatrixRow, MissingItem, Mode, ModelPick, ModelVerifyStatus, OnboardingRecommendation, Palette, PanelistReply, PanelistSlot, PortalRecipe, PreambleOption, RunDetail, ScoreBreakdown, SkillEntry, SurfaceResult, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn, UsageBucket, UsageSummary } from "./types";
+import type { AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Brand, BrandLogo, CatalogApp, ChatEvent, ChatMessage, CliInfo, CliProvider, CliVerifyInfo, Connector, ConnectorCatalog, ContextScore, DaemonStatus, DiagCheck, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainToggle, EngineApp, Framework, IngestionAction, IngestionArtifact, IngestionMcpServer, IngestionTierStatus, Lens, LifeReadiness, MatrixRow, MissingItem, Mode, ModelPick, ModelVerifyStatus, OnboardingRecommendation, Palette, PanelistReply, PanelistSlot, PortalRecipe, PreambleOption, RunDetail, ScoreBreakdown, SkillEntry, TabId, TgBridgeStatus, ThreadMeta, ThreadTurn, UsageSummary } from "./types";
 import { appScheduleText, bytesHuman, compactNum, domainBlurb, domainColor, fmtCost, formatAuditedAt, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
-import { AUTONOMY_LABEL, AUTONOMY_TINT, DOMAIN_LABEL, INTEGRATION_LABEL, PATTERN_LABEL, PATTERN_TIER, PATTERN_TINT, SEVERITY_LABEL, SEVERITY_ORDER, SKILL_TOKEN_RE, SOURCE_ABBR, STATUS_TINT, SYCOPHANCY_RE, VENDOR_BRAND } from "./constants";
+import { AUTONOMY_LABEL, AUTONOMY_TINT, DOMAIN_LABEL, INTEGRATION_LABEL, PATTERN_LABEL, PATTERN_TIER, SEVERITY_LABEL, SEVERITY_ORDER, SKILL_TOKEN_RE, SOURCE_ABBR, STATUS_TINT, SYCOPHANCY_RE, VENDOR_BRAND } from "./constants";
 import { LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, lsGet, lsSet, setDomainToggle, setPref } from "./storage";
 import { AppCard, AppKV, BridgeStatusChips, CycleChip, DemoRibbon, FloatingChip, InsightsDisclosure, ResizeHandle } from "./widgets";
+import { AlignmentCard, AppHeaderBar, AppLockCard, AppLogo, BenchCrumbs, ConnectorIcon, ContextScoreBadge, DaemonCard, DirectProviderMark, DomainActionsMenu, DomainAppsStrip, DrawerImportsSection, Field, GatewayMark, GroupLabel, HeadlessLearnCard, IngestionAuditPanel, LockScreen, NewSkillForm, PatternChip, PreambleCard, PreamblePicker, QuickSwitcher, RecipeActionEditor, ScoreBar, SettingRow, SettingsRowLite, SidebarGatewayLive, SidebarMcpLive, SkillsList, SubsectionHeader, SurfacePanel, TasksPanel, ThreadsRail, UsageBreakdown, WebLogin, WhatsAppCard } from "./panels";
 
 // Single source of truth for the version chip in title bar.
 // Injected by Vite from package.json — never hand-stamp this again.
@@ -31,158 +32,6 @@ const APP_VERSION = __APP_VERSION__;
 // Arrow keys navigate, Enter picks, Esc dismisses. Click outside
 // also dismisses. Items are sorted: domains first, then threads
 // newest-first, with fuzzy substring filtering.
-function QuickSwitcher({
-  vaultPath,
-  domains,
-  onClose,
-  onPickDomain,
-  onPickThread,
-}: {
-  vaultPath: string;
-  domains: Domain[];
-  onClose: () => void;
-  onPickDomain: (name: string) => void;
-  onPickThread: (domain: string | null, path: string) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [allThreads, setAllThreads] = useState<Array<{ domain: string | null; meta: ThreadMeta }>>([]);
-  const [cursor, setCursor] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-
-  // Load every domain's threads once on mount. Vault-root threads
-  // (no-domain) are loaded with domain=null.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const collected: Array<{ domain: string | null; meta: ThreadMeta }> = [];
-      const tasks: Promise<void>[] = [];
-      const fetchOne = async (name: string | null) => {
-        try {
-          const rows = await invoke<ThreadMeta[]>("list_threads", { vault: vaultPath, domain: name });
-          for (const r of rows) collected.push({ domain: name, meta: r });
-        } catch { /* ignore: empty dir is fine */ }
-      };
-      tasks.push(fetchOne(null));
-      for (const d of domains) tasks.push(fetchOne(d.name));
-      await Promise.all(tasks);
-      if (cancelled) return;
-      collected.sort((a, b) => b.meta.updated - a.meta.updated);
-      setAllThreads(collected);
-    })();
-    return () => { cancelled = true; };
-  }, [vaultPath, domains]);
-
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
-  // Combined filtered list. Domains first, then threads. Each item
-  // gets a stable id so cursor highlight survives filter changes.
-  type Item =
-    | { kind: "domain"; id: string; label: string; sub: string }
-    | { kind: "thread"; id: string; label: string; sub: string; domain: string | null; path: string };
-  const items: Item[] = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const matches = (s: string) => !q || s.toLowerCase().includes(q);
-    const out: Item[] = [];
-    for (const d of domains) {
-      const label = titleCase(d.name);
-      const sub = d.state_preview ? d.state_preview.slice(0, 80).replace(/\n/g, " ") : "domain";
-      if (matches(label) || matches(d.name) || matches(sub)) {
-        out.push({ kind: "domain", id: `d:${d.name}`, label, sub });
-      }
-    }
-    for (const t of allThreads) {
-      const label = t.meta.title || t.meta.slug;
-      const where = t.domain ? titleCase(t.domain) : "no domain";
-      const sub = `${where} · ${t.meta.turn_count} turns`;
-      if (matches(label) || matches(t.meta.preview) || matches(where)) {
-        out.push({ kind: "thread", id: `t:${t.meta.path}`, label, sub, domain: t.domain, path: t.meta.path });
-      }
-    }
-    return out;
-  }, [query, domains, allThreads]);
-
-  useEffect(() => { setCursor(0); }, [query]);
-  useEffect(() => {
-    // Scroll selected into view.
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${cursor}"]`);
-    el?.scrollIntoView({ block: "nearest" });
-  }, [cursor]);
-
-  function pick(it: Item) {
-    if (it.kind === "domain") onPickDomain(it.id.slice(2));
-    else onPickThread(it.domain, it.path);
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-background/70 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") { e.preventDefault(); onClose(); }
-        else if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.min(items.length - 1, c + 1)); }
-        else if (e.key === "ArrowUp") { e.preventDefault(); setCursor((c) => Math.max(0, c - 1)); }
-        else if (e.key === "Enter") { e.preventDefault(); const it = items[cursor]; if (it) pick(it); }
-      }}
-    >
-      <div className="mt-24 w-[560px] max-w-[90vw] overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
-        <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5">
-          <span className="text-text-muted">⌕</span>
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Jump to a domain or thread…"
-            className="w-full bg-transparent text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
-          />
-          <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">⌘P</span>
-        </div>
-        <div ref={listRef} className="max-h-[60vh] overflow-y-auto py-1">
-          {items.length === 0 && (
-            <div className="px-4 py-6 text-center text-sm text-text-muted">
-              {allThreads.length === 0 && domains.length === 0 ? "loading…" : "no matches"}
-            </div>
-          )}
-          {items.map((it, i) => {
-            const active = i === cursor;
-            return (
-              <button
-                key={it.id}
-                data-idx={i}
-                onClick={() => pick(it)}
-                onMouseEnter={() => setCursor(i)}
-                className={`flex w-full items-center gap-3 px-4 py-2 text-left transition-colors ${
-                  active ? "bg-accent-soft" : "hover:bg-surface-warm"
-                }`}
-              >
-                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md font-mono text-[11px] ${
-                  it.kind === "domain"
-                    ? "bg-accent-soft text-accent"
-                    : "bg-surface-warm text-text-secondary"
-                }`}>
-                  {it.kind === "domain" ? "◆" : "▶"}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className={`truncate font-display text-sm font-semibold tracking-tight ${active ? "text-accent" : "text-text-primary"}`}>
-                    {it.label}
-                  </div>
-                  <div className="truncate font-mono text-[10px] text-text-muted">{it.sub}</div>
-                </div>
-                <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">
-                  {it.kind}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex items-center justify-between border-t border-border-subtle px-4 py-1.5 font-mono text-[10px] text-text-muted">
-          <span>↑↓ navigate · ↵ open · ⎋ close</span>
-          <span>{items.length} {items.length === 1 ? "result" : "results"}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // Per-CLI model quickpicks. Picked in Settings → Defaults and per-
 // session in Council. Display labels are friendly, ids are passed
@@ -362,7 +211,6 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
-  Pencil,
   Target,
   SlidersHorizontal,
   ShieldOff,
@@ -1247,107 +1095,7 @@ function OnboardingModal({
 // verifies against the Argon2id verifier. For an ENCRYPTED vault (Phase 1) it
 // unlocks the keyring, which holds the DEK in the engine process so the vault
 // becomes readable. Same screen, right mechanism.
-function LockScreen({ vault, encrypted, onUnlock }: { vault: string | null; encrypted: boolean; onUnlock: () => void }) {
-  const [pass, setPass] = useState("");
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-  // Touch ID is offered only for the plaintext app lock — it authenticates the
-  // user but doesn't release an encryption key, so an encrypted vault still
-  // needs the passcode to derive the DEK.
-  const touchIdOn = !encrypted && lsGet("prevail.pref.touchIdLock") === "1";
-  async function tryTouchId() {
-    setErr("");
-    try {
-      const ok = await invoke<boolean>("engine_biometric_authenticate", { reason: "unlock Prevail" });
-      if (ok) onUnlock();
-      else setErr("Touch ID didn't match.");
-    } catch (e) { setErr(`Touch ID unavailable: ${String(e)}`); }
-  }
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setErr("");
-    try {
-      const r = encrypted
-        ? await invoke<{ ok: boolean }>("engine_vault_unlock", { vault, passcode: pass })
-        : await invoke<{ ok: boolean }>("engine_lock_verify", { passcode: pass });
-      if (r.ok) onUnlock();
-      else setErr("Incorrect passcode.");
-    } catch (e2) {
-      setErr(`Could not verify: ${String(e2)}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <div className="flex h-screen flex-col items-center justify-center bg-background text-text-primary">
-      <PrevailLogo size={64} src="/logo-512.png" />
-      <h1 className="mt-5 font-display text-2xl font-semibold">Locked</h1>
-      <p className="mt-1 text-sm text-text-muted">
-        {encrypted ? "Enter your passcode to unlock your encrypted vault." : "Enter your passcode to open Prevail."}
-      </p>
-      <form onSubmit={submit} className="mt-6 flex w-72 flex-col gap-3">
-        <input
-          type="password"
-          autoFocus
-          value={pass}
-          onChange={(e) => setPass(e.target.value)}
-          placeholder="Passcode"
-          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent-border focus:outline-none"
-        />
-        {err && <div className="text-xs text-err">{err}</div>}
-        <button
-          type="submit"
-          disabled={busy || !pass}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-background hover:opacity-90 disabled:opacity-50"
-        >
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          Unlock
-        </button>
-        {touchIdOn && (
-          <button
-            type="button"
-            onClick={tryTouchId}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-warm"
-          >
-            <Shield className="h-4 w-4" /> Use Touch ID
-          </button>
-        )}
-      </form>
-    </div>
-  );
-}
 
-function WebLogin({ onAuthed }: { onAuthed: () => void }) {
-  const [user, setUser] = useState("");
-  const [pass, setPass] = useState("");
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-  async function login() {
-    setBusy(true); setErr("");
-    try {
-      const res = await fetch("/api/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ user, pass }) });
-      if (!res.ok) { setErr("Invalid username or password"); return; }
-      const j = (await res.json()) as { token?: string };
-      if (!j.token) { setErr("Login failed"); return; }
-      setWebToken(j.token);
-      onAuthed();
-    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
-  }
-  return (
-    <div className="flex h-screen flex-col items-center justify-center bg-background px-6">
-      <PrevailLogo size={64} src="/logo-512.png" animated={false} />
-      <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">Prevail Web</h1>
-      <p className="mt-1 text-sm text-text-muted">Sign in to your remote agent.</p>
-      <div className="mt-6 w-full max-w-xs space-y-2">
-        <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="Username" className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus:border-accent-border focus:outline-none" />
-        <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void login(); }} placeholder="Password" className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus:border-accent-border focus:outline-none" />
-        <button onClick={login} disabled={busy || !user || !pass} className="w-full rounded-md bg-accent py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50">{busy ? "Signing in…" : "Sign in"}</button>
-        {err && <div className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{err}</div>}
-      </div>
-    </div>
-  );
-}
 
 export default function App() {
   const appearance = useAppearance();
@@ -2524,95 +2272,7 @@ export default function App() {
 // Always-visible "the gateway is live" indicator: external messages can
 // reach this app right now. Polls the bridge every 30s; click jumps to the
 // Gateway settings.
-function SidebarGatewayLive({ collapsed }: { collapsed: boolean }) {
-  const [live, setLive] = useState(false);
-  const [webLive, setWebLive] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    const check = async () => {
-      try {
-        const t = await invoke<{ running: boolean }>("telegram_bridge_status");
-        if (alive) setLive(!!t.running);
-      } catch { if (alive) setLive(false); }
-      try {
-        const w = await invoke<{ running: boolean }>("webui_status");
-        if (alive) setWebLive(!!w.running);
-      } catch { if (alive) setWebLive(false); }
-    };
-    void check();
-    const id = window.setInterval(() => void check(), 30_000);
-    return () => { alive = false; window.clearInterval(id); };
-  }, []);
-  if (!live && !webLive) return null;
-  const goGateway = () => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: live ? "gateway" : "remote" }));
-  const label = [live ? "Telegram" : null, webLive ? "WebUI" : null].filter(Boolean).join(" + ");
-  const dot = (
-    <span className="relative flex h-2 w-2 shrink-0">
-      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ai opacity-60" />
-      <span className="relative inline-flex h-2 w-2 rounded-full bg-ai" />
-    </span>
-  );
-  if (collapsed) {
-    return (
-      <button onClick={goGateway} title={`LIVE: ${label} can reach this app externally. Click for settings.`} className="flex w-full justify-center border-t border-border-subtle px-2 py-2">
-        {dot}
-      </button>
-    );
-  }
-  return (
-    <button onClick={goGateway} className="flex w-full items-center gap-2 border-t border-border-subtle px-3 py-2 text-left hover:bg-surface-warm" title="External messages can reach this app right now. Click for Gateway settings.">
-      {dot}
-      <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-ai">Live · {label}</span>
-      <MessagesSquare className="h-3 w-3 shrink-0 text-text-muted" />
-    </button>
-  );
-}
 
-function SidebarMcpLive({ collapsed, setTab }: { collapsed: boolean; setTab: (t: TabId) => void }) {
-  const [live, setLive] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    const check = async () => {
-      try {
-        const s = await invoke<{ running: boolean }>("mcp_server_status");
-        if (alive) setLive(!!s.running);
-      } catch {
-        try {
-          const h = await invoke<{ ok: boolean }>("mcp_test_handshake", { vault: "" });
-          if (alive) setLive(!!h.ok);
-        } catch { if (alive) setLive(false); }
-      }
-    };
-    void check();
-    const id = window.setInterval(() => void check(), 30_000);
-    return () => { alive = false; window.clearInterval(id); };
-  }, []);
-  if (!live) return null;
-  const goMcp = () => {
-    setTab("settings");
-    window.setTimeout(() => window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: "mcp" })), 50);
-  };
-  const dot = (
-    <span className="relative flex h-2 w-2 shrink-0">
-      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
-      <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
-    </span>
-  );
-  if (collapsed) {
-    return (
-      <button onClick={goMcp} title="MCP server is live. Click for settings." className="flex w-full justify-center border-t border-border-subtle px-2 py-2">
-        {dot}
-      </button>
-    );
-  }
-  return (
-    <button onClick={goMcp} className="flex w-full items-center gap-2 border-t border-border-subtle px-3 py-2 text-left hover:bg-surface-warm" title="MCP server live. Click for MCP settings.">
-      {dot}
-      <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-accent">Live · MCP</span>
-      <Wrench className="h-3 w-3 shrink-0 text-text-muted" />
-    </button>
-  );
-}
 
 // One row per live benchmark run, pinned above the Settings strip. The data
 // lives in the module-scope registry, so the rows persist (and progress)
@@ -3444,247 +3104,6 @@ function Sidebar({
   );
 }
 
-function ThreadsRail({
-  threads,
-  activePath,
-  selectedDomain,
-  scopeLabel,
-  vaultPath,
-  onPick,
-  onNew,
-  onRefresh,
-  runningThreadPaths,
-  railWidth,
-}: {
-  threads: ThreadMeta[];
-  activePath: string | null;
-  selectedDomain: string | null;
-  // When set (e.g. an open app's title), the rail header labels the scope with
-  // this instead of the domain — the conversations belong to the app, not a
-  // domain.
-  scopeLabel?: string | null;
-  vaultPath: string;
-  onPick: (path: string) => void;
-  onNew: () => void;
-  onRefresh: () => void;
-  runningThreadPaths: Set<string>;
-  railWidth: number;
-}) {
-  void vaultPath;
-  // Collapse state persisted across launches.
-  const [collapsed, setCollapsed] = useState<boolean>(() => lsGet("prevail.threadsRail.collapsed") === "1");
-  useEffect(() => { lsSet("prevail.threadsRail.collapsed", collapsed ? "1" : "0"); }, [collapsed]);
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const [threadFilter, setThreadFilter] = useState("");
-  const filteredThreads = useMemo(() => {
-    const q = threadFilter.trim().toLowerCase();
-    if (!q) return threads;
-    return threads.filter((t) =>
-      t.title.toLowerCase().includes(q) ||
-      t.preview.toLowerCase().includes(q));
-  }, [threads, threadFilter]);
-  const [renameInput, setRenameInput] = useState("");
-  if (collapsed) {
-    return (
-      <aside className="flex w-7 shrink-0 flex-col items-center gap-1 border-r border-border-subtle bg-surface-warm py-2">
-        <button
-          onClick={() => setCollapsed(false)}
-          title="Expand threads rail"
-          className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
-        >
-          <PanelRightOpen className="h-4 w-4" />
-        </button>
-        <button
-          onClick={onNew}
-          title="New thread"
-          className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
-        <div className="mt-1 flex flex-col gap-1">
-          {threads.slice(0, 12).map((t) => (
-            <button
-              key={t.path}
-              onClick={() => onPick(t.path)}
-              title={t.title}
-              className={`flex h-5 w-5 items-center justify-center rounded text-[9px] font-mono ${
-                t.path === activePath
-                  ? "bg-accent-soft text-accent"
-                  : "text-text-muted hover:bg-surface-warm hover:text-text-primary"
-              }`}
-            >
-              {(t.title || "·").charAt(0).toUpperCase()}
-            </button>
-          ))}
-        </div>
-      </aside>
-    );
-  }
-  async function applyRename(path: string) {
-    if (!renameInput.trim()) { setRenaming(null); return; }
-    try {
-      await invoke("rename_thread", { path, newTitle: renameInput.trim() });
-      onRefresh();
-    } catch (e) { console.error("rename_thread", e); }
-    setRenaming(null);
-  }
-  async function deleteThread(path: string) {
-    try {
-      await invoke("delete_thread", { path });
-      onRefresh();
-    } catch (e) { console.error("delete_thread", e); }
-  }
-  function fmtRelative(secs: number): string {
-    const delta = Date.now() / 1000 - secs;
-    if (delta < 60) return "just now";
-    if (delta < 3600) return `${Math.floor(delta / 60)}m ago`;
-    if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
-    if (delta < 86400 * 7) return `${Math.floor(delta / 86400)}d ago`;
-    return new Date(secs * 1000).toLocaleDateString();
-  }
-  return (
-    <aside className="flex shrink-0 flex-col border-r border-border-subtle bg-surface-warm" style={{ width: railWidth }}>
-      <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-3 py-2.5">
-        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
-          Threads · {scopeLabel ?? (selectedDomain ? titleCase(selectedDomain) : "General")}
-        </span>
-        <div className="flex items-center gap-0.5">
-          <button
-            onClick={onNew}
-            title="New thread"
-            className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => setCollapsed(true)}
-            title="Collapse threads rail"
-            className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
-          >
-            <PanelRightClose className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-      {threads.length > 0 && (
-        <div className="border-b border-border-subtle px-2 py-1.5">
-          <div className="relative">
-            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-text-muted">⌕</span>
-            <input
-              value={threadFilter}
-              onChange={(e) => setThreadFilter(e.target.value)}
-              placeholder="filter threads…"
-              className="w-full rounded-md border border-border-subtle bg-background py-1 pl-6 pr-2 font-mono text-[11px] text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
-            />
-            {threadFilter && (
-              <button
-                onClick={() => setThreadFilter("")}
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-[12px] text-text-muted hover:text-warn"
-                title="Clear filter"
-              >×</button>
-            )}
-          </div>
-        </div>
-      )}
-      <div className="flex-1 overflow-y-auto px-1.5 py-1.5">
-        {threads.length === 0 && (
-          <div className="px-2 py-3 text-xs text-text-muted">
-            no threads yet. Click + to start one.
-          </div>
-        )}
-        {threads.length > 0 && filteredThreads.length === 0 && (
-          <div className="px-2 py-3 text-xs text-text-muted">
-            no matches for <code className="text-accent">{threadFilter}</code>
-          </div>
-        )}
-        <ul className="space-y-0.5">
-          {filteredThreads.map((t) => {
-            const active = t.path === activePath;
-            const isRenaming = renaming === t.path;
-            return (
-              <li key={t.path} className="group">
-                <div
-                  className={`relative rounded-md px-2 py-1.5 transition-colors ${
-                    active ? "bg-surface-strong" : "hover:bg-surface-warm"
-                  }`}
-                >
-                  {isRenaming ? (
-                    <input
-                      autoFocus
-                      value={renameInput}
-                      onChange={(e) => setRenameInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") applyRename(t.path);
-                        if (e.key === "Escape") setRenaming(null);
-                      }}
-                      onBlur={() => applyRename(t.path)}
-                      className="w-full rounded border border-accent-border bg-background px-1 py-0.5 text-sm focus:outline-none"
-                    />
-                  ) : (
-                    <button
-                      onClick={() => onPick(t.path)}
-                      onDoubleClick={() => { setRenameInput(t.title); setRenaming(t.path); }}
-                      className="block w-full text-left"
-                      title="double-click to rename"
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span className={`truncate text-sm ${active ? "font-medium text-text-primary" : "text-text-secondary"}`}>
-                          {t.title}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-text-muted">
-                        {runningThreadPaths.has(t.path) ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent">
-                            <span className="pulse-soft inline-block h-1 w-1 rounded-full bg-accent" />
-                            writing
-                          </span>
-                        ) : (
-                          <>
-                            <span>{t.turn_count} turns</span>
-                            <span>·</span>
-                            <span>{fmtRelative(t.updated)}</span>
-                          </>
-                        )}
-                      </div>
-                      {t.preview && (
-                        <div className="mt-0.5 line-clamp-1 text-[11px] text-text-muted">
-                          {t.preview}
-                        </div>
-                      )}
-                    </button>
-                  )}
-                  {!isRenaming && (
-                    <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 group-hover:opacity-100">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setRenameInput(t.title); setRenaming(t.path); }}
-                        title="Rename"
-                        className="flex h-5 w-5 items-center justify-center rounded bg-background/80 text-text-muted hover:text-accent"
-                      >
-                        <PenLine className="h-3 w-3" />
-                      </button>
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          try {
-                            const ok = await tauriConfirm(`Delete "${t.title}"?`, { title: "Delete thread", kind: "warning" });
-                            if (ok) deleteThread(t.path);
-                          } catch (err) { console.error("confirm delete", err); }
-                        }}
-                        title="Delete"
-                        className="flex h-5 w-5 items-center justify-center rounded bg-background/80 text-text-muted hover:text-err"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-    </aside>
-  );
-}
 
 // One floating life-domain chip: parallaxes with the cursor (via shared
 // springs) and gently bobs. Icons only — never emojis.
@@ -3866,78 +3285,6 @@ function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLoadSampl
 
 // A composer pill that opens a popover listing every framework (or lens) with
 // a one-line description, so you pick directly instead of cycling blind.
-function PreamblePicker({
-  glyph,
-  label,
-  options,
-  selectedId,
-  onSelect,
-}: {
-  glyph: string;
-  label: string;
-  options: readonly { id: string; label: string; blurb: string }[];
-  selectedId: string;
-  onSelect: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-  const active = options.find((o) => o.id === selectedId);
-  const on = selectedId !== "none";
-  return (
-    <div ref={ref} className="relative inline-flex">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        title={`${label}: ${active?.blurb ?? "off"}`}
-        className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] transition-colors ${
-          on || open
-            ? "border-accent-border bg-accent-soft text-accent"
-            : "border-border bg-surface text-text-muted hover:bg-surface-warm hover:text-text-secondary"
-        }`}
-      >
-        <span>{glyph}</span>
-        {on ? (
-          <span className="tracking-wider">
-            <span className="opacity-60">{label}:</span> <span className="uppercase">{active?.label}</span>
-          </span>
-        ) : (
-          <span className="uppercase tracking-wider">{label}</span>
-        )}
-        <ChevronDown className="h-3 w-3 opacity-60" />
-      </button>
-      {open && (
-        <div className="absolute bottom-full left-0 z-50 mb-2 max-h-[60vh] w-80 overflow-y-auto rounded-xl border border-border bg-surface p-1.5 shadow-xl">
-          <div className="px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">
-            <span className="text-accent">{glyph}</span> {label}
-          </div>
-          {options.map((o) => {
-            const sel = o.id === selectedId;
-            return (
-              <button
-                key={o.id}
-                onClick={() => { onSelect(o.id); setOpen(false); }}
-                className={`flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${sel ? "bg-accent-soft" : "hover:bg-surface-warm"}`}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <span className={`font-mono text-sm font-semibold ${sel ? "text-accent" : "text-text-primary"}`}>{o.label}</span>
-                    {sel && <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={3} />}
-                  </span>
-                  <span className="mt-0.5 block text-[11px] leading-snug text-text-secondary">{o.blurb}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function DomainStatusBar({
   domain,
@@ -4288,66 +3635,6 @@ function BenchScheduleCard({ vault }: { vault: string }) {
 // Collapsed-by-default section row for the Insights page: the summary line
 // carries the count (and optional meta) so a collapsed page still reads as a
 // dashboard; expanding indents the body.
-function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: string; nonce: number }) {
-  const [tasks, setTasks] = useState<DomainTask[]>([]);
-  const [adding, setAdding] = useState("");
-  useEffect(() => {
-    invoke<DomainTask[]>("tasks_read", { vault: vaultPath, domain }).then(setTasks).catch(() => {});
-  }, [vaultPath, domain, nonce]);
-  async function persist(next: DomainTask[]) {
-    setTasks(next);
-    try {
-      await invoke("tasks_set", { vault: vaultPath, domain, tasks: next });
-      window.dispatchEvent(new Event("prevail:tasks-changed"));
-    } catch (e) { console.error("tasks_set", e); }
-  }
-  if (tasks.length === 0 && !adding) {
-    return (
-      <div className="mb-4">
-        <button onClick={() => setAdding(" ")} className="font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-accent">+ add a goal / task for {titleCase(domain)}</button>
-      </div>
-    );
-  }
-  const openCount = tasks.filter((t) => !t.done).length;
-  return (
-    <div className="mb-4">
-      <InsightsDisclosure
-        title={`Tasks · ${titleCase(domain)}`}
-        icon={Check}
-        count={openCount}
-        meta={tasks.length > openCount ? `${tasks.length - openCount} done` : undefined}
-      >
-      <div className="flex flex-col gap-1">
-        {tasks.map((t, i) => (
-          <label
-            key={i}
-            title={`${t.added ? `added ${t.added}` : "added before tracking"} · by ${t.source === "daemon" ? "the task daemon" : t.source === "surface" ? "an accepted suggestion" : "you"}${t.due ? ` · due ${t.due}` : ""}`}
-            className="flex cursor-pointer items-center gap-2 text-sm"
-          >
-            <input type="checkbox" checked={t.done} onChange={() => persist(tasks.map((x, j) => j === i ? { ...x, done: !x.done } : x))} />
-            <span className={t.done ? "text-text-muted line-through" : "text-text-primary"}>{t.text}</span>
-            {t.source && t.source !== "user" && (
-              <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] text-text-muted">{t.source === "daemon" ? "auto" : "suggested"}</span>
-            )}
-            {t.due && !t.done && (() => {
-              const today = new Date().toISOString().slice(0, 10);
-              const overdue = t.due < today, due = t.due === today;
-              return <span className={`rounded px-1.5 py-0.5 font-mono text-[9px] ${overdue ? "bg-warn/15 text-warn" : due ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>{overdue ? "overdue" : due ? "today" : t.due}</span>;
-            })()}
-            <span className="ml-auto shrink-0 font-mono text-[9px] text-text-muted/60">{t.added ?? ""}</span>
-            <button onClick={() => persist(tasks.filter((_, j) => j !== i))} className="shrink-0 text-text-muted/50 hover:text-warn">✕</button>
-          </label>
-        ))}
-      </div>
-      <div className="mt-2 flex gap-2">
-        <input value={adding} placeholder="add a task…  (optional due: @2026-04-15)" onChange={(e) => setAdding(e.target.value)}
-          onKeyDown={async (e) => { if (e.key === "Enter" && adding.trim()) { const txt = adding.trim(); setAdding(""); try { const next = await invoke<DomainTask[]>("tasks_add", { vault: vaultPath, domain, text: txt, source: "user" }); setTasks(next); } catch (err) { console.error("tasks_add", err); } } }}
-          className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm focus:border-accent-border focus:outline-none" />
-      </div>
-      </InsightsDisclosure>
-    </div>
-  );
-}
 
 // How an app talks to its third party — human label for the Settings facet.
 // What the app is allowed to DO on your behalf.
@@ -4360,35 +3647,6 @@ function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; domain: s
 // Slim, always-visible identity bar for an open app. Status, name + account,
 // integration, and the domains it feeds (each a link into that domain's chat).
 // The rich detail lives in the Runs / Settings / Domains facets below.
-function AppHeaderBar({ app, enabled, onOpenDomain, onClose }: { app: EngineApp; enabled: boolean; onOpenDomain: (d: string) => void; onClose: () => void }) {
-  const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
-  return (
-    <div className="shrink-0 border-b border-border-subtle bg-surface px-4 py-2.5">
-      <div className="flex items-center gap-2.5">
-        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: enabled ? tint : "#9aa0a6" }} title={enabled ? app.status : "disabled"} />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-base font-semibold text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
-            <span className="shrink-0 rounded-full border border-border-subtle px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">{INTEGRATION_LABEL[app.integration] ?? app.integration}</span>
-            {!enabled && <span className="shrink-0 rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-warn">disabled</span>}
-          </div>
-          {app.domains.length > 0 && (
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted/70">feeds</span>
-              {app.domains.map((d, i) => (
-                <span key={d} className="inline-flex items-center gap-1.5">
-                  <button onClick={() => onOpenDomain(d)} className="rounded px-1 text-[12px] font-medium text-accent hover:bg-accent-soft hover:underline" title={`Open ${titleCase(d)} and chat there`}>{titleCase(d)}</button>
-                  {i < app.domains.length - 1 && <span className="text-text-muted/40">·</span>}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        <button onClick={onClose} title="Close app view" className="shrink-0 rounded p-1 text-text-muted hover:bg-surface-warm hover:text-text-primary"><X className="h-4 w-4" /></button>
-      </div>
-    </div>
-  );
-}
 
 // The app's Runs / Settings / Domains facet bodies. Rendered in the canvas
 // scroll area when the matching top-bar chip is active. Owns the domain-binding
@@ -4691,149 +3949,9 @@ function InsightsPanel({ vaultPath, domain, onSeed }: { vaultPath: string; domai
   );
 }
 
-function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPath: string; domain: string; onPick: (t: string) => void; onAddTask: (t: string) => void }) {
-  const [data, setData] = useState<SurfaceResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string>("");
-  // Dismissed insights stay hidden (persisted per domain).
-  const DISMISS_KEY = `prevail.surface.dismissed.${domain}`;
-  const [dismissed, setDismissed] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(lsGet(DISMISS_KEY) || "[]")); } catch { return new Set(); }
-  });
-  const dismiss = (item: string) => setDismissed((d) => { const n = new Set(d); n.add(item); lsSet(DISMISS_KEY, JSON.stringify([...n])); return n; });
-  const [saved, setSaved] = useState<Set<string>>(() => new Set());
-  const load = useCallback(async (force: boolean) => {
-    // Off when persistent memory is disabled (it's the proactive layer).
-    if (getPref(PREF.persistentMemory, "1") !== "1") return;
-    setLoading(true); setErr("");
-    try {
-      const r = await invoke<SurfaceResult>("domain_surface", {
-        vault: vaultPath,
-        domain,
-        provider: getPref(PREF.memoryProvider, "claude"),
-        model: getPref(PREF.distillModel, "claude-haiku-4-5"),
-        force,
-      });
-      setData(r);
-    } catch (e) { setErr(String(e)); } finally { setLoading(false); }
-  }, [vaultPath, domain]);
-  useEffect(() => { void load(false); }, [load]);
-
-  if (getPref(PREF.persistentMemory, "1") !== "1") return null;
-  const hasContent = data && (data.questions.length > 0 || data.actions.length > 0);
-  if (!hasContent && !loading && !err) return null;
-
-  const freshMeta = data?.generated_at
-    ? `refreshed ${formatFreshness(Math.max(0, (Date.now() - data.generated_at) / 1000))} ago · auto every 6h`
-    : "";
-  return (
-    <div className="mb-4 rounded-xl border border-accent-border/40 bg-accent-soft/40 px-4 py-3">
-      <div className="mb-2 flex items-baseline gap-2.5">
-        <Sparkles className="h-4 w-4 shrink-0 self-center text-accent" />
-        <span className="font-display text-lg font-bold tracking-tight text-text-primary">For you · {titleCase(domain)}</span>
-        {freshMeta && <span className="font-mono text-[9px] text-text-muted">{freshMeta}</span>}
-        <button onClick={() => void load(true)} disabled={loading}
-          className="ml-auto font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-accent disabled:opacity-40">
-          {loading ? "thinking…" : "refresh"}
-        </button>
-      </div>
-      {err && <div className="text-xs text-text-muted">{/Bunker/i.test(err)
-        ? "Bunker Mode is on. Start a local model (Ollama) and insights will surface on-device."
-        : `Couldn't surface insights (${err.slice(0, 80)}). Needs a working agent.`}</div>}
-      {hasContent && (() => {
-        const questions = data!.questions.filter((q) => !dismissed.has(q));
-        const actions = data!.actions.filter((a) => !dismissed.has(a));
-        if (questions.length === 0 && actions.length === 0) {
-          return <div className="py-2 text-xs text-text-muted">All caught up: nothing surfaced right now. <button onClick={() => void load(true)} className="text-accent hover:underline">Refresh</button> for more.</div>;
-        }
-        return (
-          <div className="flex flex-col gap-2">
-            {questions.length > 0 && (
-              <InsightsDisclosure title="Questions worth asking" icon={Lightbulb} count={questions.length}>
-                <div className="flex flex-col gap-2">
-                  {questions.map((q, i) => (
-                    <div key={i} className="group flex items-start gap-3 rounded-lg border border-border-subtle bg-surface p-3 transition-colors hover:border-accent-border">
-                      <p className="min-w-0 flex-1 text-sm leading-snug text-text-primary">{q}</p>
-                      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <button onClick={() => onPick(q)} title="Ask this in chat" className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-background hover:bg-accent-hover">Ask <ArrowRight className="h-2.5 w-2.5" /></button>
-                        <button onClick={() => dismiss(q)} title="Dismiss" className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-warn"><X className="h-3.5 w-3.5" /></button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </InsightsDisclosure>
-            )}
-            {actions.length > 0 && (
-              <InsightsDisclosure title="Suggested next steps" icon={ArrowRight} count={actions.length}>
-                <div className="flex flex-col gap-2">
-                  {actions.map((a, i) => (
-                    <div key={i} className="group flex items-start gap-3 rounded-lg border border-border-subtle bg-surface p-3 transition-colors hover:border-accent-border">
-                      <p className="min-w-0 flex-1 text-sm leading-snug text-text-primary">{a}</p>
-                      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <button onClick={() => { onAddTask(a); setSaved((s) => new Set(s).add(a)); }} title="Save as task" className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[9px] uppercase tracking-wider ${saved.has(a) ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
-                          {saved.has(a) ? <><Check className="h-2.5 w-2.5" /> Saved</> : <><Plus className="h-2.5 w-2.5" /> Task</>}
-                        </button>
-                        <button onClick={() => onPick(a)} title="Work on this in chat" className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-background hover:bg-accent-hover">Do <ArrowRight className="h-2.5 w-2.5" /></button>
-                        <button onClick={() => dismiss(a)} title="Dismiss" className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-warn"><X className="h-3.5 w-3.5" /></button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </InsightsDisclosure>
-            )}
-          </div>
-        );
-      })()}
-    </div>
-  );
-}
 
 // Compact strip of the apps bound to this domain, with live status dots, shown
 // at the top of the domain view so you can see at a glance which feeds are fresh.
-function DomainAppsStrip({ domain }: { domain: string }) {
-  const [apps, setApps] = useState<EngineApp[]>([]);
-  // Mirror the sidebar's active-app highlight here so it's obvious which app
-  // (if any) you're currently inside while standing in this domain.
-  const [activeId, setActiveId] = useState<string | null>(null);
-  useEffect(() => {
-    invoke<EngineApp[]>("engine_apps_list")
-      .then((all) => setApps((all ?? []).filter((a) => a.domains?.includes(domain))))
-      .catch(() => {});
-  }, [domain]);
-  useEffect(() => {
-    const onActive = (e: Event) => setActiveId(((e as CustomEvent).detail as string | null) ?? null);
-    window.addEventListener("prevail:active-app", onActive);
-    return () => window.removeEventListener("prevail:active-app", onActive);
-  }, []);
-  if (apps.length === 0) return null;
-  return (
-    <div className="mb-4 flex flex-wrap items-center gap-2">
-      <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Apps</span>
-      {apps.map((a) => {
-        const tint = STATUS_TINT[a.status] ?? "#9aa0a6";
-        const active = activeId === a.id;
-        return (
-          <button
-            key={a.id}
-            onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: a }))}
-            title={`Open ${a.title} · ${a.status}${a.lastError ? ": " + a.lastError : ""}`}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 transition-colors ${
-              active
-                ? "border-accent-border bg-accent-soft text-text-primary"
-                : "border-border-subtle bg-surface text-text-secondary hover:border-accent-border hover:bg-surface-warm"
-            }`}
-          >
-            <span
-              className="h-1.5 w-1.5 rounded-full"
-              style={active ? { backgroundColor: tint, boxShadow: `0 0 0 3px color-mix(in srgb, ${tint} 28%, transparent)` } : { backgroundColor: tint }}
-            />
-            <span className="text-[11px]">{a.account?.label ? `${a.title} · ${a.account.label}` : a.title}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function DomainHome({
   domain,
@@ -5712,165 +4830,7 @@ function AgentPickerRail({
 // I7: create a reusable skill from the UI — the "build skills over time" path.
 // A skill is just a named, reusable prompt the model runs on demand (slash
 // `/name` in chat). Seeded from the composer's "Save as skill" or written here.
-function NewSkillForm({ vaultPath, domain, seed, onCreated }: { vaultPath: string; domain: string; seed?: string | null; onCreated: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [body, setBody] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
-  // Open + pre-fill when a "Save as skill" seed arrives from the composer.
-  useEffect(() => {
-    if (seed != null) { setOpen(true); setBody(seed); }
-  }, [seed]);
-  async function create() {
-    setErr("");
-    if (!name.trim() || !body.trim()) { setErr("Give the skill a name and a body."); return; }
-    setSaving(true);
-    try {
-      await invoke("skill_create", { vault: vaultPath, domain, name: name.trim(), body: body.trim() });
-      setName(""); setBody(""); setOpen(false);
-      onCreated();
-    } catch (e) { setErr(String(e)); }
-    finally { setSaving(false); }
-  }
-  if (!open) {
-    return (
-      <div className="mb-3 flex w-full items-center justify-between">
-        <p className="text-xs text-text-muted">Skills are reusable prompts Prevail runs on demand (<span className="font-mono text-accent">/name</span> in chat). Pin your favorites to auto-attach.</p>
-        <button onClick={() => setOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:bg-accent-soft hover:text-accent">
-          <Sparkles className="h-3 w-3" /> New skill
-        </button>
-      </div>
-    );
-  }
-  return (
-    <div className="mb-3 w-full rounded-xl border border-accent-border bg-surface p-4">
-      <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">New skill · {titleCase(domain)}</div>
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Skill name (e.g. Weekly review)"
-        className="mb-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-accent-border focus:outline-none"
-      />
-      <textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        rows={5}
-        placeholder="What should this skill do? Write it as a prompt the model will follow."
-        className="mb-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-accent-border focus:outline-none"
-      />
-      {err && <div className="mb-2 text-xs text-warn">{err}</div>}
-      <div className="flex items-center gap-2">
-        <button onClick={create} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Create skill
-        </button>
-        <button onClick={() => setOpen(false)} className="rounded-md border border-border px-3 py-1.5 text-sm text-text-muted hover:bg-surface-warm">Cancel</button>
-      </div>
-    </div>
-  );
-}
 
-function SkillsList({
-  skills,
-  onInsert,
-  preferredSet,
-  onTogglePreferred,
-}: {
-  skills: SkillEntry[];
-  onInsert: (name: string) => void;
-  preferredSet?: Set<string>;
-  onTogglePreferred?: (name: string) => void;
-}) {
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [content, setContent] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState<string | null>(null);
-  async function toggle(path: string) {
-    if (expanded === path) { setExpanded(null); return; }
-    setExpanded(path);
-    if (!content[path]) {
-      setLoading(path);
-      try {
-        const body = await invoke<string>("read_skill", { path });
-        setContent((c) => ({ ...c, [path]: body }));
-      } catch (e) {
-        setContent((c) => ({ ...c, [path]: `(error reading: ${e})` }));
-      } finally {
-        setLoading(null);
-      }
-    }
-  }
-  async function openFolder(path: string) {
-    try { await invoke("open_in_finder", { path }); } catch {}
-  }
-  return (
-    <ul className="flex w-full flex-col gap-2">
-      {skills.map((s) => {
-        const open = expanded === s.path;
-        return (
-          <li key={s.path}>
-            <div className={`rounded-lg border bg-surface transition-colors ${open ? "border-accent-border" : "border-border-subtle"}`}>
-              {/* Single-line row — same dimensions as every other settings list. */}
-              <div className="flex w-full items-center gap-2">
-                <button
-                  onClick={() => toggle(s.path)}
-                  className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left hover:bg-surface-warm rounded-l-lg"
-                >
-                  <Sparkles className="h-4 w-4 shrink-0 text-accent" />
-                  <span className="shrink-0 font-mono text-sm font-semibold text-accent">/{s.name}</span>
-                  {(() => {
-                    const cleaned = (s.description ?? "").replace(/^[>*\-\s]+/, "").trim();
-                    if (cleaned.length < 3) return null;
-                    return <span className="truncate text-xs text-text-muted">{cleaned}</span>;
-                  })()}
-                  <span className="ml-auto shrink-0 text-xs text-text-muted">{open ? "▾" : "▸"}</span>
-                </button>
-                {onTogglePreferred && (
-                  <button
-                    onClick={() => onTogglePreferred(s.name)}
-                    title={preferredSet?.has(s.name) ? "Unpin: won't auto-attach to new chats" : "Pin: auto-attach to new chats in this domain"}
-                    className={`mr-2 mt-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
-                      preferredSet?.has(s.name)
-                        ? "border-accent-border bg-accent-soft text-accent"
-                        : "border-border bg-background text-text-muted hover:border-accent-border hover:text-accent"
-                    }`}
-                  >
-                    {preferredSet?.has(s.name) ? "★" : "☆"}
-                  </button>
-                )}
-              </div>
-              {open && (
-                <div className="border-t border-border-subtle px-4 py-3">
-                  {loading === s.path ? (
-                    <div className="text-xs text-text-muted">loading…</div>
-                  ) : content[s.path] ? (
-                    <div className="max-h-80 overflow-y-auto rounded-md border border-border-subtle bg-background px-3 py-2">
-                      <Markdown source={content[s.path]} compact />
-                    </div>
-                  ) : null}
-                  <div className="mt-3 flex items-center gap-2">
-                    <button
-                      onClick={() => onInsert(s.name)}
-                      className="rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
-                    >
-                      insert /{s.name}
-                    </button>
-                    <button
-                      onClick={() => openFolder(s.path)}
-                      className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
-                    >
-                      <Folder className="h-3 w-3" />
-                      open folder
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
 
 // Side drawer that shows the current domain's state.md, decisions,
 // journal, recent session logs, and skills. Loaded on-demand via the
@@ -6203,219 +5163,11 @@ function DomainContextDrawer({
 // to load the first chunk into the chat as primed context, or
 // "reveal" to open in Finder. Read-only — toggling for attachment
 // happens via the chips above the composer.
-function DrawerImportsSection({
-  domain,
-  onInject,
-}: {
-  domain: string;
-  onInject: (body: string, label: string) => void;
-}) {
-  const [items, setItems] = useState<{ path: string; name: string; size: number; mtime: number }[]>([]);
-  useEffect(() => {
-    let mounted = true;
-    invoke<{ path: string; name: string; size: number; mtime: number }[]>(
-      "ingestion_list_artifacts",
-      { domain },
-    )
-      .then((rows) => { if (mounted) setItems(rows); })
-      .catch(() => { if (mounted) setItems([]); });
-    return () => { mounted = false; };
-  }, [domain]);
-
-  async function vacuum(days: number) {
-    const ok = await tauriConfirm(`Delete imports older than ${days} days from ${titleCase(domain)}?`, { title: "Prune imports", kind: "warning" }).catch(() => false);
-    if (!ok) return;
-    try {
-      const n = await invoke<number>("ingestion_vacuum_imports", { domain, olderThanDays: days });
-      if (n > 0) {
-        // Reload the list — easier than diffing.
-        const next = await invoke<{ path: string; name: string; size: number; mtime: number }[]>(
-          "ingestion_list_artifacts", { domain },
-        );
-        setItems(next);
-      }
-    } catch (e) { console.error(e); }
-  }
-  if (items.length === 0) return null;
-  return (
-    <div className="border-b border-border-subtle">
-      <div className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left">
-        <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary">
-          <span className="text-accent">▾</span> Imports
-          <span className="text-text-muted">· {items.length}</span>
-        </span>
-        <button
-          onClick={() => void vacuum(90)}
-          title="Delete imports older than 90 days"
-          className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn"
-        >
-          vacuum 90d
-        </button>
-      </div>
-      <div className="px-4 pb-2">
-        <ul className="space-y-1">
-          {items.slice(0, 12).map((it) => (
-            <li key={it.path} className="flex items-stretch gap-1">
-              <button
-                onClick={async () => {
-                  try {
-                    const body = await invoke<string>("read_file", { path: it.path });
-                    onInject(body.slice(0, 6000), it.name);
-                  } catch (e) { console.error(e); }
-                }}
-                className="flex-1 rounded border border-border-subtle bg-background px-2 py-1.5 text-left hover:border-accent-border hover:bg-surface-warm"
-              >
-                <div className="truncate font-mono text-[11px] text-text-primary">{it.name}</div>
-                <div className="font-mono text-[10px] text-text-muted">
-                  {(it.size / 1024).toFixed(1)} KB
-                </div>
-              </button>
-              <button
-                onClick={() => invoke("open_in_finder", { path: it.path })}
-                title="Reveal in Finder"
-                className="shrink-0 rounded border border-border-subtle bg-background px-2 font-mono text-[10px] text-text-muted hover:border-accent-border hover:text-accent"
-              >
-                ↗
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
-}
 
 // Domain actions menu — "Back up" and "Archive" for a single domain.
 // Used in the domain header. Backs up via engine_vault_backup(domainOpt),
 // archives via engine_vault_archive. Archive never deletes data; it just
 // flips the manifest flag and hides the domain from the active sidebar.
-function DomainActionsMenu({
-  domain,
-  vaultPath,
-  onArchived,
-  label,
-  canArchive = true,
-}: {
-  domain: string;
-  vaultPath: string;
-  onArchived: (name: string) => void;
-  label?: string;
-  canArchive?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState<null | "backup" | "archive">(null);
-  const [note, setNote] = useState<string | null>(null);
-  const [confirmArchive, setConfirmArchive] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setConfirmArchive(false);
-      }
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
-  async function backup() {
-    setBusy("backup");
-    setNote(null);
-    try {
-      const res = await invoke<BackupResult>("engine_vault_backup", {
-        vault: vaultPath,
-        domainOpt: domain,
-      });
-      const files = res.file_count ?? 0;
-      setNote(
-        res.ok
-          ? `Backed up ${files} file${files === 1 ? "" : "s"} (${bytesHuman(res.bytes ?? 0)})`
-          : `Backup failed: ${res.error ?? "unknown error"}`,
-      );
-    } catch (e) {
-      setNote(`Backup failed: ${String(e)}`);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function archive() {
-    setBusy("archive");
-    setNote(null);
-    try {
-      await invoke("engine_vault_archive", { vault: vaultPath, domain });
-      setOpen(false);
-      setConfirmArchive(false);
-      onArchived(domain);
-    } catch (e) {
-      setNote(`Archive failed: ${String(e)}`);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        title="Back up / Archive domain"
-        className={`flex items-center gap-1.5 rounded text-text-muted transition-colors hover:bg-surface-warm hover:text-accent ${
-          label ? "px-2.5 py-1.5 text-[13px]" : "h-6 w-6 justify-center"
-        }`}
-      >
-        <Archive className="h-3.5 w-3.5" />
-        {label}
-      </button>
-      {open && (
-        <div className="absolute right-0 top-7 z-40 w-56 rounded-lg border border-border bg-surface p-1.5 shadow-xl">
-          <button
-            onClick={backup}
-            disabled={busy !== null}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-text-primary hover:bg-surface-warm disabled:opacity-50"
-          >
-            {busy === "backup" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            {canArchive ? "Back up this domain" : "Back up the workspace"}
-          </button>
-          {canArchive && (!confirmArchive ? (
-            <button
-              onClick={() => setConfirmArchive(true)}
-              disabled={busy !== null}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-text-primary hover:bg-surface-warm disabled:opacity-50"
-            >
-              <Archive className="h-3.5 w-3.5" />
-              Archive domain…
-            </button>
-          ) : (
-            <div className="rounded-md border border-border-subtle bg-background p-2">
-              <div className="mb-1.5 text-xs text-text-secondary">
-                Hide <span className="font-semibold">{titleCase(domain)}</span> from the active list? Nothing is deleted: restore it any time.
-              </div>
-              <div className="flex gap-1.5">
-                <button
-                  onClick={archive}
-                  disabled={busy !== null}
-                  className="flex items-center gap-1 rounded bg-warn px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:opacity-90 disabled:opacity-50"
-                >
-                  {busy === "archive" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
-                  archive
-                </button>
-                <button
-                  onClick={() => setConfirmArchive(false)}
-                  disabled={busy !== null}
-                  className="rounded border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:bg-surface-warm"
-                >
-                  cancel
-                </button>
-              </div>
-            </div>
-          ))}
-          {note && <div className="mt-1 px-2 py-1 text-[11px] text-text-muted">{note}</div>}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // Usage dashboard (P4.7 Phase 4) — reads the aggregated <vault>/usage
@@ -6444,53 +5196,6 @@ function buildIdealStatePreamble(idealMd: string): string {
   );
 }
 
-function UsageBreakdown({
-  title,
-  icon: Icon,
-  rows,
-}: {
-  title: string;
-  icon: LucideIcon;
-  rows: UsageBucket[];
-}) {
-  if (rows.length === 0) return null;
-  const max = Math.max(1, ...rows.map((r) => r.turns));
-  return (
-    <div className="flex flex-col rounded-xl border border-border-subtle bg-surface p-4">
-      <div className="mb-3 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
-        <Icon className="h-3.5 w-3.5" />
-        {title}
-      </div>
-      {/* Each row spans the full card width: name + metrics on one baseline,
-          a full-width proportional bar beneath. Reads cleanly and fills the
-          horizontal space instead of hugging the left edge. */}
-      <div className="flex flex-1 flex-col gap-3">
-        {rows.slice(0, 6).map((r) => (
-          <div key={r.key} className="flex flex-col gap-1.5">
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="min-w-0 truncate font-mono text-xs text-text-primary" title={r.key}>
-                {r.key}
-              </span>
-              <span className="shrink-0 font-mono text-[11px] tabular-nums text-text-muted">
-                <span className="text-text-secondary">{r.turns}</span> {r.turns === 1 ? "turn" : "turns"}
-                <span className="mx-1.5 text-border">·</span>
-                {compactNum(r.input_tokens + r.output_tokens)} tok
-                <span className="mx-1.5 text-border">·</span>
-                <span className="text-text-secondary">{fmtCost(r.cost_usd)}</span>
-              </span>
-            </div>
-            <div className="relative h-2 w-full overflow-hidden rounded-full bg-surface-warm">
-              <span
-                className="absolute inset-y-0 left-0 rounded-full bg-accent"
-                style={{ width: `${(r.turns / max) * 100}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // Fetches the engine-backed usage roll-up (whole-vault, or scoped to one domain
 // when `domain` is set) and renders it. On the no-domain landing we pass
@@ -10259,74 +8964,9 @@ function parseRunLabel(label: string): { vendor: string; model: string; ts?: str
   return { vendor, model: stripped || label, ts };
 }
 
-function ScoreBar({ value, max, color = "var(--color-accent)" }: { value: number | null; max: number; color?: string }) {
-  const pct = value === null ? 0 : Math.min(100, (value / max) * 100);
-  return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-strong">
-      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
-    </div>
-  );
-}
 
 // Small color-coded Context Score pill for the domain header. Click jumps
 // to the Context tab. Tooltip shows freshness + audit recency.
-function ContextScoreBadge({
-  score,
-  onClick,
-}: {
-  score: ContextScore | null;
-  onClick?: () => void;
-}) {
-  if (!score) return null;
-  const color = scoreColor(score.score);
-  const tier = score.score >= 80 ? "Strong" : score.score >= 60 ? "Solid" : score.score >= 40 ? "Thin" : "Sparse";
-  return (
-    <div className="group relative inline-flex">
-      <button
-        onClick={onClick}
-        className="inline-flex cursor-pointer items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide transition-colors hover:bg-surface-warm"
-      >
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
-          <span style={{ color }}>{score.score}<span className="opacity-50">/100</span></span>
-        </span>
-        {/* Edit affordance is hidden until hover, so the header stays calm. */}
-        <Pencil
-          className="h-2.5 w-2.5 max-w-0 overflow-hidden text-text-muted opacity-0 transition-all duration-150 group-hover:ml-1.5 group-hover:max-w-[14px] group-hover:opacity-100"
-          style={{ color }}
-        />
-      </button>
-      {/* Formatted hover card — replaces the flat native title tooltip. */}
-      <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-60 translate-y-1 rounded-xl border border-border bg-surface p-3 text-left opacity-0 shadow-xl transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Context score</span>
-          <span className="rounded-full px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider" style={{ color, background: `${color}1a` }}>{tier}</span>
-        </div>
-        <div className="mb-2 flex items-baseline gap-1 font-mono">
-          <span className="text-2xl font-bold leading-none" style={{ color }}>{score.score}</span>
-          <span className="text-sm text-text-muted">/ 100</span>
-        </div>
-        <div className="mb-2.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-warm">
-          <div className="h-full rounded-full" style={{ width: `${score.score}%`, background: color }} />
-        </div>
-        <div className="space-y-1 text-[11px]">
-          <div className="flex items-center justify-between">
-            <span className="text-text-muted">Updated</span>
-            <span className="text-text-secondary">{formatFreshness(score.freshness_secs)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-text-muted">{score.audited_at ? "Audited" : "Source"}</span>
-            <span className="text-text-secondary">{score.audited_at ? formatAuditedAt(score.audited_at) : "heuristic estimate"}</span>
-          </div>
-        </div>
-        <div className="mt-2.5 flex items-center gap-1.5 border-t border-border-subtle pt-2 text-[10px] text-text-muted">
-          <Pencil className="h-2.5 w-2.5" />
-          Click to review and rescan
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // Full Context tab: big score ring, the six dimensions as ScoreBars, the
 // what's-missing list grouped by severity, the LLM assessment + last
@@ -11243,39 +9883,6 @@ function BenchmarkPanel({
 // The ONE breadcrumb used by every benchmark view: same place, same format,
 // every level of the tree clickable on every page. `meta` is the right-hand
 // counts slot so each page's numbers also live in a consistent spot.
-function BenchCrumbs({
-  items,
-  meta,
-}: {
-  items: { label: string; onClick?: () => void }[];
-  meta?: React.ReactNode;
-}) {
-  return (
-    <nav className="mb-4 flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
-      {items.map((it, i) => {
-        const isLast = i === items.length - 1;
-        return (
-          <Fragment key={`${it.label}-${i}`}>
-            {i > 0 && <ChevronRight className={`shrink-0 ${isLast ? "h-4 w-4 text-text-muted/50" : "h-3.5 w-3.5 text-text-muted/40"}`} />}
-            {it.onClick ? (
-              <button
-                onClick={it.onClick}
-                className="font-mono text-sm text-text-muted underline underline-offset-2 decoration-text-muted/40 hover:text-accent hover:decoration-accent transition-colors"
-              >
-                {it.label}
-              </button>
-            ) : isLast ? (
-              <span className="font-mono text-sm text-text-primary">{it.label}</span>
-            ) : (
-              <span className="font-mono text-sm text-text-muted">{it.label}</span>
-            )}
-          </Fragment>
-        );
-      })}
-      {meta != null && <span className="ml-auto shrink-0 font-mono text-xs text-text-muted">{meta}</span>}
-    </nav>
-  );
-}
 
 function BenchRunConfig({
   mode, setMode, selModels, toggleModel, allDomains, scope, toggleScope,
@@ -12550,14 +11157,6 @@ function BenchQuestions({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-text-muted">{label}</span>
-      {children}
-    </label>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // SETTINGS PANEL — vault, theme, defaults, about
@@ -13401,38 +12000,10 @@ function SettingsHeader({ title, subtitle, icon }: { title: string; subtitle?: s
 // below the big SettingsHeader (level 1) and above the small mono group labels
 // (level 3), so the eye reads page -> subsection -> group without guessing.
 // Display-weight, sentence case, with a hairline rule underneath.
-function SubsectionHeader({
-  icon: Icon,
-  children,
-  hint,
-  className = "",
-}: {
-  icon?: LucideIcon;
-  children: React.ReactNode;
-  hint?: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={`mb-3 flex items-center gap-2 border-b border-border-subtle/70 pb-2 ${className}`}>
-      {Icon && <Icon className="h-4 w-4 shrink-0 text-accent" />}
-      <h3 className="font-display text-[15px] font-semibold leading-tight tracking-tight text-text-primary">
-        {children}
-      </h3>
-      {hint != null && <span className="ml-auto font-mono text-[11px] text-text-muted">{hint}</span>}
-    </div>
-  );
-}
 
 // Header hierarchy, level 3: a small group label inside a subsection (e.g.
 // "Detected · 2"). The quietest of the three so it never competes with a
 // level-2 SubsectionHeader.
-function GroupLabel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`mb-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-muted ${className}`}>
-      {children}
-    </div>
-  );
-}
 
 // Privacy & Connectivity — the Bunker Mode control surface. The toggle + status
 // card here reflect the BACKEND policy (bunker.rs), which is the real source of
@@ -14004,144 +12575,10 @@ function MemoryContextSection(_props: { vaultPath: string }) {
 
 // ── Daemon card ───────────────────────────────────────────────────────────────
 
-function DaemonCard({
-  name,
-  status,
-  extra,
-  onStart,
-  onStop,
-}: {
-  name: string;
-  status: DaemonStatus | null;
-  extra?: string | null;
-  onStart?: () => Promise<void>;
-  onStop?: () => Promise<void>;
-}) {
-  const [phase, setPhase] = useState<"idle" | "starting" | "stopping">("idle");
-
-  // Sync: as soon as the poll confirms the expected state, clear the transition.
-  useEffect(() => {
-    if (phase === "starting" && status?.running) setPhase("idle");
-    if (phase === "stopping" && status?.running === false) setPhase("idle");
-  }, [status?.running]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const isRunning = phase === "starting" || (!!status?.running && phase !== "stopping");
-  const busy = phase !== "idle";
-
-  const fmtTs = (ts: number | null | undefined) =>
-    ts ? new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
-
-  const statusLine = phase === "starting"
-    ? "starting…"
-    : phase === "stopping"
-    ? "stopping…"
-    : isRunning
-    ? `running${status?.last_run_ts ? ` · checked ${fmtTs(status.last_run_ts)}` : ""}`
-    : `idle${status?.last_run_ts ? ` · last ran ${fmtTs(status.last_run_ts)}` : ""}`;
-
-  async function handleStart() {
-    setPhase("starting");
-    try { await onStart?.(); } catch {}
-    setTimeout(() => setPhase((p) => p === "starting" ? "idle" : p), 4000);
-  }
-  async function handleStop() {
-    setPhase("stopping");
-    try { await onStop?.(); } catch {}
-    setTimeout(() => setPhase((p) => p === "stopping" ? "idle" : p), 4000);
-  }
-
-  return (
-    <div className={`rounded-lg border px-4 py-3 transition-all duration-300 ${
-      isRunning
-        ? "border-ok/30 bg-ok/5"
-        : busy
-        ? "border-accent-border bg-accent-soft/50"
-        : "border-border bg-surface"
-    }`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <span className="relative inline-flex h-2.5 w-2.5 items-center justify-center">
-            {isRunning && (
-              <span className="pulse-soft absolute inset-0 rounded-full bg-ok/40" />
-            )}
-            <span className={`relative inline-block h-2 w-2 rounded-full transition-colors duration-300 ${
-              isRunning ? "bg-ok" : busy ? "bg-accent" : "bg-text-muted/30"
-            }`} />
-          </span>
-          <span className={`font-mono text-[11px] font-bold uppercase tracking-[0.15em] ${
-            isRunning ? "text-ok" : "text-text-primary"
-          }`}>{name}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {busy ? (
-            <span className="font-mono text-[10px] text-text-muted opacity-60">
-              {phase === "starting" ? "starting…" : "stopping…"}
-            </span>
-          ) : isRunning ? (
-            onStop && (
-              <button onClick={handleStop}
-                className="rounded border border-border px-2 py-0.5 font-mono text-[10px] text-text-muted transition-colors hover:border-err/60 hover:bg-err/5 hover:text-err">
-                stop
-              </button>
-            )
-          ) : (
-            onStart && (
-              <button onClick={handleStart}
-                className="rounded border border-border px-2 py-0.5 font-mono text-[10px] text-text-muted transition-colors hover:border-ok/50 hover:bg-ok/5 hover:text-ok">
-                start
-              </button>
-            )
-          )}
-        </div>
-      </div>
-      <div className={`mt-1.5 font-mono text-[10px] ${isRunning ? "text-ok/70" : "text-text-muted"}`}>
-        {statusLine}
-        {!busy && extra ? <span className="text-text-muted"> · {extra}</span> : null}
-        {!busy && status?.last_error ? <span className="text-err"> · {status.last_error}</span> : null}
-      </div>
-    </div>
-  );
-}
 
 // ── Daemons settings panel ────────────────────────────────────────────────────
 // Run the self-learning loop with the desktop CLOSED, via a launchd agent
 // (engine `daemon install`). When on, the in-app distiller defers to it.
-function HeadlessLearnCard({ vaultPath }: { vaultPath: string }) {
-  const [installed, setInstalled] = useState<boolean | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
-  const refresh = () => invoke<boolean>("headless_learn_status").then(setInstalled).catch(() => setInstalled(false));
-  useEffect(() => { refresh(); }, []);
-  async function toggle() {
-    setBusy(true); setNote(null);
-    try {
-      const r = await invoke<string>("headless_learn_set", { vault: vaultPath, enabled: !installed });
-      setNote(r.slice(0, 200) || (installed ? "Stopped." : "Now learning at login."));
-      await refresh();
-      window.dispatchEvent(new Event("prevail:headless-changed"));
-    } catch (e) { setNote(`Failed: ${String(e).slice(0, 200)}`); }
-    finally { setBusy(false); }
-  }
-  return (
-    <div className="mb-4 rounded-xl border border-border bg-surface p-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <Cpu className="h-4 w-4 shrink-0 text-accent" />
-        <div className="min-w-0 flex-1">
-          <div className="font-display text-sm font-semibold tracking-tight">Keep learning with the app closed</div>
-          <div className="text-xs text-text-secondary">
-            Installs a login agent (launchd) that runs the distiller headlessly, so chats arriving via MCP, Telegram, or the CLI keep feeding your memory and state even when Prevail is not open. While on, the in-app distiller defers to it.
-            {installed === true && " Currently running at login."}
-          </div>
-        </div>
-        <button onClick={toggle} disabled={busy || installed === null}
-          className={`rounded-md border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider disabled:opacity-50 ${installed ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
-          {busy ? "…" : installed ? "On" : "Off"}
-        </button>
-      </div>
-      {note && <div className="mt-2 break-words font-mono text-[11px] text-text-secondary">{note}</div>}
-    </div>
-  );
-}
 
 function DaemonsSection({ vaultPath }: { vaultPath: string }) {
   const [distillSt, setDistillSt] = useState<DaemonStatus | null>(null);
@@ -14371,17 +12808,6 @@ function DaemonsSection({ vaultPath }: { vaultPath: string }) {
 }
 
 // Shared settings Row used by the Phase 3 sections.
-function SettingsRowLite({ title, desc, control }: { title: string; desc: string; control: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-6 border-b border-border-subtle py-4 last:border-0">
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold text-text-primary">{title}</div>
-        <div className="mt-0.5 text-xs text-text-secondary">{desc}</div>
-      </div>
-      <div className="shrink-0">{control}</div>
-    </div>
-  );
-}
 
 // OpenAI dropped its logo from simple-icons (trademark), so we keep the glyph
 // path inline (same one ProviderMark uses for Codex).
@@ -14445,17 +12871,6 @@ function OrVendorMark({ id, size = 18 }: { id: string; size?: number }) {
   );
 }
 
-function DirectProviderMark({ p }: { p: DirectProvider }) {
-  return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-white">
-      {p.path ? (
-        <svg width={17} height={17} viewBox="0 0 24 24" fill={p.hex ?? "#111"} aria-hidden><path d={p.path} /></svg>
-      ) : (
-        <span className="font-mono text-[10px] font-semibold text-text-muted">{p.mono}</span>
-      )}
-    </span>
-  );
-}
 function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promise<CliInfo[]>; embedded?: boolean }) {
   const [key, setKey] = useState("");
   const [configured, setConfigured] = useState(false);
@@ -14675,19 +13090,6 @@ const CONNECTOR_GROUPS: { category: string; items: Connector[] }[] = [
   ]},
 ];
 
-function ConnectorIcon({ c }: { c: Connector }) {
-  return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-white">
-      {c.brand ? (
-        <svg width={16} height={16} viewBox="0 0 24 24" fill={`#${c.brand.hex}`} aria-hidden>
-          <path d={c.brand.path} />
-        </svg>
-      ) : c.icon ? (
-        <c.icon className="h-[16px] w-[16px]" style={{ color: c.color }} />
-      ) : null}
-    </span>
-  );
-}
 
 // Catalog shapes — mirror resources/connectors/catalog.json. The Rust command
 // returns it verbatim, so the frontend owns the type.
@@ -14695,39 +13097,12 @@ function ConnectorIcon({ c }: { c: Connector }) {
 // distinct from a catalog entry (a browseable directory listing).
 // Real brand SVG (simple-icons) when the app matched one at build time; else a
 // pattern-tinted dot. Keeps the row scannable for all 1,400+ apps.
-function AppLogo({ app, logos }: { app: CatalogApp; logos: Record<string, BrandLogo> }) {
-  const logo = app.iconSlug ? logos[app.iconSlug] : undefined;
-  return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-white">
-      {logo ? (
-        <svg width={16} height={16} viewBox="0 0 24 24" fill={`#${logo.hex}`} aria-hidden>
-          <path d={logo.path} />
-        </svg>
-      ) : (
-        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: PATTERN_TINT[app.pattern] ?? "#9aa0a6" }} />
-      )}
-    </span>
-  );
-}
 
 // Each connector PATTERN maps to one ingestion tier. Short label + tint so a
 // row scans at a glance without per-brand icons (the catalog has hundreds).
 
 // Friendly domain headings. Falls back to titleCase for anything unmapped.
 
-function PatternChip({ pattern }: { pattern: string }) {
-  const label = PATTERN_LABEL[pattern] ?? pattern;
-  const tint = PATTERN_TINT[pattern] ?? "#9aa0a6";
-  return (
-    <span
-      className="shrink-0 rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider"
-      style={{ color: tint, borderColor: `${tint}55`, backgroundColor: `${tint}14` }}
-      title={PATTERN_TIER[pattern] ?? pattern}
-    >
-      {label}
-    </span>
-  );
-}
 
 function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string; focusAppId?: string }) {
   const [cat, setCat] = useState<ConnectorCatalog | null>(null);
@@ -15131,122 +13506,6 @@ function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string; focus
 // App lock (F4 Phase 0) — set/change/remove the passcode that gates opening the
 // desktop app. Honest about scope: it locks the UI, it does NOT yet encrypt the
 // vault files on disk.
-function AppLockCard() {
-  const [lockSet, setLockSet] = useState<boolean | null>(null);
-  const [value, setValue] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
-  const [showReset, setShowReset] = useState(false);
-  const [resetConfirm, setResetConfirm] = useState("");
-  useEffect(() => {
-    (async () => {
-      try { const s = await invoke<{ set: boolean }>("engine_lock_status"); setLockSet(!!s.set); } catch { setLockSet(false); }
-    })();
-  }, []);
-  async function setPasscode() {
-    if (value.length < 4) { setNote("Passcode must be at least 4 characters."); return; }
-    setBusy(true); setNote(null);
-    try {
-      const r = await invoke<{ ok: boolean; error?: string }>("engine_lock_set", { passcode: value });
-      if (r.ok) { setLockSet(true); setValue(""); setNote("Passcode set. You'll be asked for it next time you open Prevail."); }
-      else setNote(r.error ?? "Could not set passcode.");
-    } catch (e) { setNote(`Failed: ${String(e)}`); } finally { setBusy(false); }
-  }
-  async function removePasscode() {
-    setBusy(true); setNote(null);
-    try {
-      const r = await invoke<{ ok: boolean; error?: string }>("engine_lock_clear", { passcode: value });
-      if (r.ok) { setLockSet(false); setValue(""); setNote("Passcode removed."); }
-      else setNote(r.error ?? "Wrong passcode. If you forgot it, use the Reset option below.");
-    } catch (e) { setNote(`Failed: ${String(e)}`); } finally { setBusy(false); }
-  }
-  async function resetPasscode() {
-    if (resetConfirm !== "RESET") { setNote("Type RESET to confirm."); return; }
-    setBusy(true); setNote(null);
-    try {
-      await invoke("engine_lock_reset");
-      setLockSet(false); setShowReset(false); setResetConfirm("");
-      setNote("App lock removed. Your vault data is unchanged. Set a new passcode below.");
-    } catch (e) { setNote(`Reset failed: ${String(e)}`); } finally { setBusy(false); }
-  }
-  const [touchId, setTouchId] = useState(() => getPref("prevail.pref.touchIdLock", "0") === "1");
-  if (lockSet === null) return null;
-  return (
-    <div className="mb-4 rounded-lg border border-border bg-surface p-5">
-      <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">
-        <Shield className="h-3.5 w-3.5" /> App lock {lockSet ? "· on" : "· off"}
-      </div>
-      <p className="mt-2 text-xs text-text-muted">
-        Require a passcode to open Prevail. This locks the app window. It does <span className="font-semibold">not</span> encrypt your vault files on disk.
-      </p>
-      <div className="mt-3 flex items-center gap-2">
-        <input
-          type="password"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") { if (lockSet) void removePasscode(); else void setPasscode(); } }}
-          placeholder={lockSet ? "Current passcode" : "New passcode (min 4 chars)"}
-          className="w-56 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none"
-        />
-        {lockSet ? (
-          <button onClick={removePasscode} disabled={busy || !value} className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50">
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Remove passcode
-          </button>
-        ) : (
-          <button onClick={setPasscode} disabled={busy || value.length < 4} className="inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent px-3 py-1.5 text-sm text-background hover:opacity-90 disabled:opacity-50">
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Set passcode
-          </button>
-        )}
-      </div>
-      {lockSet && (
-        <>
-          <label className="mt-3 flex items-center gap-2 text-xs text-text-secondary">
-            <input
-              type="checkbox"
-              checked={touchId}
-              onChange={(e) => { setTouchId(e.target.checked); setPref("prevail.pref.touchIdLock", e.target.checked ? "1" : "0"); }}
-            />
-            Offer Touch ID on the lock screen. The passcode path is always available independently.
-          </label>
-          {touchId && (
-            <div className="mt-2 rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-[11px] text-warn">
-              Known issue: in some cases enabling Touch ID may affect passcode verification. If your passcode stops working, use the Reset option below to remove the lock without entering the passcode.
-            </div>
-          )}
-          <button
-            onClick={() => setShowReset((v) => !v)}
-            className="mt-2 text-xs text-text-muted underline decoration-dotted hover:text-text-secondary"
-          >
-            Forgot passcode? Reset app lock.
-          </button>
-          {showReset && (
-            <div className="mt-2 rounded-md border border-warn/30 bg-warn/5 px-3 py-3">
-              <div className="mb-2 text-xs text-text-secondary">
-                Resetting removes the app lock entirely. Your vault data is <span className="font-semibold">not</span> affected. Type <code className="font-mono text-warn">RESET</code> to confirm.
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  value={resetConfirm}
-                  onChange={(e) => setResetConfirm(e.target.value)}
-                  placeholder="Type RESET"
-                  className="w-32 rounded border border-warn/40 bg-background px-2 py-1 font-mono text-xs focus:outline-none"
-                />
-                <button
-                  onClick={resetPasscode}
-                  disabled={busy || resetConfirm !== "RESET"}
-                  className="rounded border border-warn/40 bg-warn/10 px-3 py-1 text-xs text-warn hover:bg-warn/20 disabled:opacity-50"
-                >
-                  {busy ? "Resetting…" : "Reset lock"}
-                </button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-      {note && <div className="mt-2 text-xs text-text-secondary">{note}</div>}
-    </div>
-  );
-}
 
 // Vault encryption (F4 Phase 1) — encrypt the vault at rest, or decrypt it back.
 // Self-verifying in the engine (auto-rollback if anything is unreadable), and
@@ -15376,23 +13635,6 @@ function SafetySection({ vaultPath }: { vaultPath: string }) {
 }
 
 // WhatsApp is rendered as its own (fuller) card below, so it's excluded here.
-function GatewayMark({ icon, mono }: { icon?: { path: string; hex: string }; mono?: typeof Mail }) {
-  const Mono = mono;
-  return (
-    <span
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-subtle"
-      style={icon ? { background: `#${icon.hex}1f`, color: `#${icon.hex}` } : undefined}
-    >
-      {icon ? (
-        <svg width={18} height={18} viewBox="0 0 24 24" fill={`#${icon.hex}`} aria-hidden>
-          <path d={icon.path} />
-        </svg>
-      ) : Mono ? (
-        <Mono className="h-[18px] w-[18px] text-text-muted" />
-      ) : null}
-    </span>
-  );
-}
 
 const COMING_SOON_GATEWAYS: { name: string; icon?: { path: string; hex: string }; mono?: typeof Mail }[] = [
   { name: "Discord", icon: siDiscord },
@@ -15834,48 +14076,6 @@ function idealSectionIcon(title: string) {
 
 // Alignment readout — how close each life pillar is to the ideal state. Reads
 // the engine's alignment report (signal mode); shown on the Ideal State page.
-function AlignmentCard({ vaultPath }: { vaultPath: string }) {
-  const [rep, setRep] = useState<AlignmentReport | null>(null);
-  const [loading, setLoading] = useState(false);
-  async function refresh() {
-    setLoading(true);
-    try { setRep(await invoke<AlignmentReport>("engine_alignment", { vault: vaultPath })); }
-    catch { /* alignment optional */ }
-    setLoading(false);
-  }
-  useEffect(() => { void refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [vaultPath]);
-  if (!rep || rep.pillars.length === 0) return null;
-  const tint = (s: number) => (s >= 70 ? "#2fb87a" : s >= 40 ? "#C4A35A" : "#e06c75");
-  return (
-    <div className="mb-5 rounded-xl border border-border bg-surface p-5 shadow-sm">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="font-display text-base font-semibold tracking-tight">Alignment</span>
-        <span className="font-mono text-2xl font-bold" style={{ color: tint(rep.overall) }}>{rep.overall}</span>
-        <span className="font-mono text-[10px] text-text-muted">/100 · {rep.method === "model" ? "model-scored" : "signal"}</span>
-        <button onClick={refresh} disabled={loading} className="ml-auto rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">{loading ? "…" : "refresh"}</button>
-      </div>
-      <div className="space-y-1.5">
-        {rep.pillars.map((p) => (
-          <div key={p.pillar} className="flex items-center gap-3">
-            <span className="w-28 shrink-0 font-mono text-[11px] uppercase tracking-wider text-text-secondary">{p.pillar}</span>
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-warm">
-              <div className="h-full rounded-full" style={{ width: `${p.score}%`, backgroundColor: tint(p.score) }} />
-            </div>
-            <span className="w-8 shrink-0 text-right font-mono text-[11px] text-text-muted">{p.score}</span>
-          </div>
-        ))}
-      </div>
-      {rep.actions.length > 0 && (
-        <div className="mt-3 border-t border-border-subtle pt-2">
-          <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Top actions</div>
-          <ul className="mt-1 space-y-0.5">
-            {rep.actions.map((a, i) => <li key={i} className="text-xs text-text-secondary">▸ {a}</li>)}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function IdealStateSection({ vaultPath }: { vaultPath: string }) {
   const [body, setBody] = useState<string>("");
@@ -16753,64 +14953,6 @@ function PreambleColumn({
   );
 }
 
-function PreambleCard({
-  option,
-  on,
-  onSelect,
-}: {
-  option: PreambleOption;
-  on: boolean;
-  onSelect: () => void;
-}) {
-  const [open, setOpen] = useState(on);
-  useEffect(() => { if (!on) setOpen(false); }, [on]);
-  return (
-    <div
-      className={`rounded-lg border transition-colors ${
-        on ? "border-accent-border bg-accent-soft" : "border-border bg-surface"
-      }`}
-    >
-      <div className="flex items-start gap-3 p-3">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="flex min-w-0 flex-1 items-start gap-2 text-left"
-        >
-          <span className="mt-0.5 text-[11px] text-text-muted">{open ? "▾" : "▸"}</span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-baseline gap-x-2">
-              <span className={`font-mono text-sm font-semibold ${on ? "text-accent" : "text-text-primary"}`}>
-                {option.label}
-              </span>
-              <span className="text-xs text-text-muted">{option.blurb}</span>
-            </div>
-          </div>
-        </button>
-        <button
-          onClick={onSelect}
-          disabled={on}
-          className={`shrink-0 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider ${
-            on
-              ? "border-accent-border bg-accent text-background"
-              : "border-border bg-background text-text-secondary hover:bg-surface-warm"
-          }`}
-        >
-          {on ? "active" : "set default"}
-        </button>
-      </div>
-      {open && (
-        <div className="border-t border-border-subtle py-2 pl-8 pr-3">
-          {option.instruction ? (
-            <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
-              {option.instruction}
-            </pre>
-          ) : (
-            <p className="text-xs italic text-text-muted">no preamble: uses the model's default response shape</p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 
 // Stable color picker for the first-letter skill avatars. Same skill
@@ -17380,220 +15522,11 @@ function IngestionTierCard({
 // ~/Library/Application Support/Prevail/ingestion.log via Tauri.
 // Collapsed by default to avoid noise; expand on click. Each ingest
 // row offers a "reveal" button when the path still exists on disk.
-function IngestionAuditPanel() {
-  const [entries, setEntries] = useState<IngestionAuditEntry[]>([]);
-  const [open, setOpen] = useState(false);
-
-  async function refresh() {
-    try {
-      const r = await invoke<IngestionAuditEntry[]>("ingestion_audit_tail", { limit: 200 });
-      setEntries(r.reverse());
-    } catch { /* empty log is fine */ }
-  }
-  useEffect(() => { void refresh(); }, []);
-
-  return (
-    <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
-      <button
-        onClick={() => { setOpen((v) => !v); if (!open) void refresh(); }}
-        className="flex w-full items-center justify-between gap-2 text-left"
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-text-muted">{open ? "▾" : "▸"}</span>
-          <div className="font-display text-base font-semibold tracking-tight">Audit log</div>
-          <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-secondary">{entries.length}</span>
-        </div>
-        <span className="font-mono text-[10px] text-text-muted">~/Library/Application Support/Prevail/ingestion.log</span>
-      </button>
-      {open && (
-        <ul className="mt-4 max-h-72 overflow-y-auto flex flex-col gap-1">
-          {entries.length === 0 && (
-            <li className="text-xs text-text-muted">No entries yet: captured ingests will appear here.</li>
-          )}
-          {entries.map((e, i) => {
-            const t = e.ts ? new Date(e.ts * 1000).toLocaleString() : "";
-            return (
-              <li key={`${e.path ?? "_"}_${i}`} className="flex items-center gap-3 rounded border border-border-subtle bg-background px-3 py-1.5">
-                <span className={`rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
-                  e.type === "vacuum"
-                    ? "border border-warn/40 bg-warn/10 text-warn"
-                    : "border border-accent-border bg-accent-soft text-accent"
-                }`}>
-                  {e.type}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
-                    {e.domain && <span className="font-mono text-text-primary">{e.domain}</span>}
-                    {e.source && <span className="font-mono text-text-secondary">· {e.source}</span>}
-                    {e.tier_id && <span className="font-mono text-text-muted">· {e.tier_id}</span>}
-                    {e.older_than_days != null && <span className="font-mono text-text-muted">· &gt;{e.older_than_days}d</span>}
-                  </div>
-                  {e.path && (
-                    <div className="truncate font-mono text-[10px] text-text-muted">{e.path}</div>
-                  )}
-                </div>
-                <span className="shrink-0 font-mono text-[10px] text-text-muted">{t}</span>
-                {e.path && (
-                  <button
-                    onClick={() => invoke("open_in_finder", { path: e.path })}
-                    className="shrink-0 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
-                  >
-                    reveal
-                  </button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 // Editable list of post-login automation steps for Tier C. Lets the
 // user add / remove / reorder / tweak actions inline without
 // touching JSON. Each step renders the fields its action type
 // needs and nothing else. Reorder via ↑↓ buttons; delete via ×.
-function RecipeActionEditor({
-  actions,
-  onChange,
-}: {
-  actions: IngestionAction[];
-  onChange: (next: IngestionAction[]) => void;
-}) {
-  type ActionType = IngestionAction["type"];
-
-  function update(i: number, patch: Partial<IngestionAction>) {
-    const next = actions.slice();
-    next[i] = { ...next[i], ...patch } as IngestionAction;
-    onChange(next);
-  }
-  function remove(i: number) {
-    onChange(actions.filter((_, idx) => idx !== i));
-  }
-  function move(i: number, dir: -1 | 1) {
-    const j = i + dir;
-    if (j < 0 || j >= actions.length) return;
-    const next = actions.slice();
-    [next[i], next[j]] = [next[j], next[i]];
-    onChange(next);
-  }
-  function add(type: ActionType) {
-    let a: IngestionAction;
-    switch (type) {
-      case "goto":               a = { type: "goto", url: "" }; break;
-      case "click":              a = { type: "click", selector: "" }; break;
-      case "wait_for":           a = { type: "wait_for", selector: "" }; break;
-      case "select_option":      a = { type: "select_option", selector: "", value: "" }; break;
-      case "download_all_links": a = { type: "download_all_links", selector: "" }; break;
-      case "sleep":              a = { type: "sleep", seconds: 2 }; break;
-    }
-    onChange([...actions, a]);
-  }
-
-  return (
-    <div className="mt-2 rounded-md border border-border-subtle bg-background px-3 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-          Post-login steps
-          <span className="rounded-full bg-surface-warm px-1.5 py-0 text-[9px] text-text-secondary">{actions.length}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <select
-            value=""
-            onChange={(e) => { if (e.target.value) { add(e.target.value as ActionType); e.target.value = ""; } }}
-            className="rounded border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary focus:border-accent-border focus:outline-none"
-          >
-            <option value="">+ add step</option>
-            <option value="goto">goto url</option>
-            <option value="click">click selector</option>
-            <option value="wait_for">wait for selector</option>
-            <option value="select_option">select option</option>
-            <option value="download_all_links">download all links</option>
-            <option value="sleep">sleep</option>
-          </select>
-        </div>
-      </div>
-
-      {actions.length === 0 ? (
-        <p className="mt-1 text-xs text-text-muted">
-          No automation. Runner stops after login; trigger downloads manually in the headed window.
-        </p>
-      ) : (
-        <ol className="mt-2 flex flex-col gap-1.5">
-          {actions.map((a, i) => (
-            <li key={i} className="flex items-start gap-2 rounded border border-border-subtle bg-surface px-2 py-1.5">
-              <div className="mt-0.5 flex shrink-0 flex-col items-center gap-0.5">
-                <button onClick={() => move(i, -1)} disabled={i === 0} className="text-[10px] text-text-muted hover:text-accent disabled:opacity-30">▲</button>
-                <button onClick={() => move(i, 1)} disabled={i === actions.length - 1} className="text-[10px] text-text-muted hover:text-accent disabled:opacity-30">▼</button>
-              </div>
-              <span className="mt-0.5 rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent">
-                {a.type.replace(/_/g, " ")}
-              </span>
-              <div className="flex min-w-0 flex-1 flex-col gap-1">
-                {a.type === "goto" && (
-                  <input
-                    value={a.url}
-                    onChange={(e) => update(i, { url: e.target.value } as Partial<IngestionAction>)}
-                    placeholder="https://..."
-                    className="rounded border border-border-subtle bg-background px-2 py-0.5 font-mono text-[11px] focus:border-accent-border focus:outline-none"
-                  />
-                )}
-                {(a.type === "click" || a.type === "wait_for" || a.type === "select_option" || a.type === "download_all_links") && (
-                  <input
-                    value={(a as { selector: string }).selector}
-                    onChange={(e) => update(i, { selector: e.target.value } as Partial<IngestionAction>)}
-                    placeholder="CSS selector, e.g. a[href*='.pdf']"
-                    className="rounded border border-border-subtle bg-background px-2 py-0.5 font-mono text-[11px] focus:border-accent-border focus:outline-none"
-                  />
-                )}
-                {a.type === "select_option" && (
-                  <input
-                    value={a.value}
-                    onChange={(e) => update(i, { value: e.target.value } as Partial<IngestionAction>)}
-                    placeholder="option value"
-                    className="rounded border border-border-subtle bg-background px-2 py-0.5 font-mono text-[11px] focus:border-accent-border focus:outline-none"
-                  />
-                )}
-                {a.type === "download_all_links" && (
-                  <input
-                    type="number"
-                    min={1}
-                    max={200}
-                    value={a.max ?? ""}
-                    onChange={(e) => update(i, { max: e.target.value ? parseInt(e.target.value, 10) : undefined } as Partial<IngestionAction>)}
-                    placeholder="max downloads (optional)"
-                    className="rounded border border-border-subtle bg-background px-2 py-0.5 font-mono text-[11px] focus:border-accent-border focus:outline-none"
-                  />
-                )}
-                {a.type === "sleep" && (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={1}
-                      max={60}
-                      value={a.seconds}
-                      onChange={(e) => update(i, { seconds: parseInt(e.target.value, 10) || 1 } as Partial<IngestionAction>)}
-                      className="w-20 rounded border border-border-subtle bg-background px-2 py-0.5 font-mono text-[11px] focus:border-accent-border focus:outline-none"
-                    />
-                    <span className="font-mono text-[10px] text-text-muted">seconds</span>
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => remove(i)}
-                title="Remove step"
-                className="shrink-0 rounded border border-border bg-background px-1.5 py-0 font-mono text-[12px] text-text-muted hover:border-warn hover:text-warn"
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
-  );
-}
 
 function IngestionBrowserRunner() {
   const [domain, setDomain] = useState("");
@@ -18229,25 +16162,6 @@ function compareSemver(a: string, b: string): number {
 }
 
 // Reusable row: label on left, control on right. Hermes pattern.
-function SettingRow({
-  label,
-  desc,
-  children,
-}: {
-  label: string;
-  desc?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-6 border-b border-border-subtle py-4">
-      <div className="min-w-0">
-        <div className="text-sm font-medium text-text-primary">{label}</div>
-        {desc && <div className="mt-0.5 text-xs text-text-secondary">{desc}</div>}
-      </div>
-      <div className="shrink-0">{children}</div>
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // APPEARANCE SECTION — Color Mode toggle + 6 theme palette cards
@@ -18844,40 +16758,6 @@ function TelegramCard() {
   );
 }
 
-function WhatsAppCard() {
-  const [number, setNumber] = useState(lsGet(LS.whatsappNumber));
-  useEffect(() => { lsSet(LS.whatsappNumber, number); }, [number]);
-  return (
-    <div className="rounded-xl border border-border bg-surface p-5">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#25D366]/15">
-          <svg width={20} height={20} viewBox="0 0 24 24" fill="#25D366" aria-hidden><path d={siWhatsapp.path} /></svg>
-        </div>
-        <div>
-          <h3 className="font-semibold">
-            WhatsApp <span className="ml-2 rounded bg-warn/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-warn">soon</span>
-          </h3>
-          <p className="text-xs text-text-muted">Same idea as Telegram, via WhatsApp Cloud API. Setup pending Meta business approval.</p>
-        </div>
-      </div>
-      <div className="mt-4">
-        <label className="block">
-          <div className="text-xs uppercase tracking-wider text-text-muted">Your number (E.164)</div>
-          <input
-            value={number}
-            onChange={(e) => setNumber(e.target.value)}
-            placeholder="+14155552671"
-            className="mt-1 w-full rounded border border-border bg-background px-3 py-2 font-mono text-sm"
-            spellCheck={false}
-          />
-        </label>
-        <p className="mt-3 text-xs text-text-muted">
-          We'll email you when WhatsApp Cloud API hookup ships. Until then, this is just stored locally for when it's ready.
-        </p>
-      </div>
-    </div>
-  );
-}
 
 function McpCard() {
   const [enabled, setEnabled] = useState(lsGet(LS.mcpEnabled) === "1");
@@ -18912,6 +16792,7 @@ function McpCard() {
 }
 
 // BriefingsCard removed — landing back in v0.3 when wired up.
+
 
 
 
