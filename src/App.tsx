@@ -6,12 +6,13 @@ import { PrevailLogo } from "./PrevailLogo";
 import { Markdown, StreamingPlain } from "./Markdown";
 import { scoreColor, formatFreshness, titleCase, relTime } from "./format";
 import { Toggle, Sparkline, ThinkingDisclosure } from "./ui";
-import type { AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, ChatEvent, ChatMessage, CliInfo, ContextScore, DirectProvider, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainToggle, EngineApp, LifeReadiness, MatrixRow, Mode, ModelPick, PanelistReply, PanelistSlot, RunDetail, SkillEntry, TabId, ThreadMeta, ThreadTurn } from "./types";
+import type { AppRunHistory, BackupResult, BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, ChatEvent, ChatMessage, CliInfo, ContextScore, Domain, DomainContextBundle, DomainManifest, DomainTab, DomainToggle, EngineApp, LifeReadiness, MatrixRow, Mode, ModelPick, PanelistReply, PanelistSlot, RunDetail, SkillEntry, TabId, ThreadMeta, ThreadTurn } from "./types";
 import { appScheduleText, bytesHuman, domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
 import { APP_VERSION, AUTONOMY_LABEL, AUTONOMY_TINT, DISCOVERED_MODELS, FRAMEWORKS, INTEGRATION_LABEL, LENSES, MODELS, MODEL_SEP, PALETTES, SETTINGS_ROW, STATUS_TINT } from "./constants";
 import { BUNKER_LS, LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet, setDomainToggle, setPref } from "./storage";
 import { AppCard, AppKV, BridgeStatusChips, DemoRibbon, FloatingChip, ResizeHandle } from "./widgets";
 import { ContextScorePanel, DomainAppsTab, OnboardingModal, PaletteCard } from "./panels3";
+import { DIRECT_PROVIDERS_SOON, OrVendorMark, orVendorOf } from "./providermarks";
 import { AgentsSection, ConfigurationSection, CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6";
 import { AboutSection, GatewaySection, McpSection } from "./settings5";
 import { GeneralSection, IdealStateSection, SafetySection } from "./settings4";
@@ -169,16 +170,6 @@ import {
 // Shown as the card subtitle; falls back to a generic line for unknown domains.
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Provider brand marks. Real SVG glyphs from simple-icons (MIT) for
-// Anthropic/Claude and Ollama. OpenAI's mark isn't in simple-icons due
-// to trademark policy, so we render a faithful version. Antigravity is
-// Google's CLI, so we render the multicolor "G" wordmark.
-
-import {
-  // Model-provider brand marks (Settings → Models, direct-provider roadmap).
-  siAnthropic, siGooglegemini, siHuggingface, siX as siXRaw, siDeepseek, siQwen, siMinimax, siMeta, siMistralai,
-} from "simple-icons";
 
 // Top-level tabs. Council is NOT its own tab (a mode toggle inside Chat) and
 // Tools is NOT its own tab (a section inside Settings), keeping the surface
@@ -9539,64 +9530,6 @@ function ModelsSection({
 
 
 
-const OPENAI_PATH = "M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973l-.001.142v5.518a.79.79 0 0 0 .388.677l5.815 3.354-2.02 1.168a.075.075 0 0 1-.071 0l-4.83-2.788a4.504 4.504 0 0 1-1.647-6.098zm16.597 3.855L13.116 8.38 15.131 7.22a.071.071 0 0 1 .07 0l4.83 2.792a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.394-.674zm2.01-3.023l-.142-.085-4.774-2.781a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.659 4.139l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z";
-
-// Direct API providers on the roadmap — shown with real brand marks. `path`+`hex`
-// render the company logo on a white tile; `mono` is a fallback for brands with
-// no official simple-icon yet.
-// Safe accessor: if a simple-icon resolves undefined (e.g. stale dep cache),
-// fall back to the monogram instead of throwing and taking down the page.
-const brandIcon = (icon: { path?: string; hex?: string } | undefined, mono: string): Partial<DirectProvider> =>
-  icon && icon.path ? { path: icon.path, hex: `#${icon.hex ?? "111111"}` } : { mono };
-const DIRECT_PROVIDERS_SOON: DirectProvider[] = [
-  { name: "Anthropic", ...brandIcon(siAnthropic, "A") },
-  { name: "OpenAI", path: OPENAI_PATH, hex: "#000000" },
-  { name: "xAI (Grok)", ...brandIcon(siXRaw, "x") },
-  { name: "Google Gemini", ...brandIcon(siGooglegemini, "G") },
-  { name: "DeepSeek", ...brandIcon(siDeepseek, "DS") },
-  { name: "Qwen / DashScope", ...brandIcon(siQwen, "Q") },
-  { name: "MiniMax", ...brandIcon(siMinimax, "M") },
-  { name: "Hugging Face", ...brandIcon(siHuggingface, "HF") },
-  { name: "GLM / Z.AI", mono: "Z" },
-  { name: "Kimi / Moonshot", mono: "K" },
-  { name: "OpenCode Zen", mono: "OZ" },
-];
-
-// Shared dimensions for every settings list row (providers, connectors,
-// gateways, …) so lists look identical across pages: single column, h-8 icon
-// tile, gap-3, px-4 py-3, subtle border. Containers wrap these in `space-y-2`.
-
-// Map an OpenRouter model id ("anthropic/claude-...", "x-ai/grok-4", "qwen/...")
-// to a brand mark, so the catalog reads visually instead of as a wall of ids.
-const OR_VENDOR_ICON: Record<string, { path?: string; hex?: string; mono: string }> = {
-  anthropic: { ...brandIcon(siAnthropic, "A") } as { path?: string; hex?: string; mono: string },
-  openai: { mono: "AI" },
-  google: { ...brandIcon(siGooglegemini, "G") } as { path?: string; hex?: string; mono: string },
-  "x-ai": { ...brandIcon(siXRaw, "x") } as { path?: string; hex?: string; mono: string },
-  deepseek: { ...brandIcon(siDeepseek, "DS") } as { path?: string; hex?: string; mono: string },
-  qwen: { ...brandIcon(siQwen, "Q") } as { path?: string; hex?: string; mono: string },
-  "meta-llama": { ...brandIcon(siMeta, "M") } as { path?: string; hex?: string; mono: string },
-  mistralai: { ...brandIcon(siMistralai, "Mi") } as { path?: string; hex?: string; mono: string },
-  minimax: { ...brandIcon(siMinimax, "MM") } as { path?: string; hex?: string; mono: string },
-  moonshotai: { mono: "Ki" },
-  "z-ai": { mono: "Z" },
-};
-function orVendorOf(id: string): string {
-  const v = id.includes("/") ? id.split("/")[0].toLowerCase() : "";
-  return v;
-}
-function OrVendorMark({ id, size = 18 }: { id: string; size?: number }) {
-  const v = OR_VENDOR_ICON[orVendorOf(id)];
-  return (
-    <span className="flex shrink-0 items-center justify-center rounded-md border border-border-subtle bg-white" style={{ width: size + 8, height: size + 8 }}>
-      {v?.path ? (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill={v.hex ?? "#111"} aria-hidden><path d={v.path} /></svg>
-      ) : (
-        <span className="font-mono text-[9px] font-semibold text-text-muted">{v?.mono ?? "·"}</span>
-      )}
-    </span>
-  );
-}
 
 function ProvidersSection({ onActivated, embedded }: { onActivated?: () => Promise<CliInfo[]>; embedded?: boolean }) {
   const [key, setKey] = useState("");
@@ -10370,6 +10303,7 @@ function AppearanceSection({ appearance }: { appearance: ReturnType<typeof useAp
 
 // Council config — its own first-class section. You pick the EXACT models on the
 // default panel (per-provider, multiple models allowed) and which one chairs.
+
 
 
 
