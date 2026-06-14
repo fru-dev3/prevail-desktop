@@ -10,6 +10,8 @@ import { BenchScheduleCard } from "./cards";
 import { FrameworksSection, IngestionSection, RemoteSection, ShortcutsSection } from "./settings1";
 import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection, TasksCrossDomainSection } from "./settings2";
 import { ConnectorsSection } from "./settings3";
+import { AppsPanel } from "./appspanel";
+import { CollapsibleSection } from "./collapsible";
 import { GeneralSection, IdealStateSection, SafetySection } from "./settings4";
 import { AboutSection, GatewaySection, McpSection } from "./settings5";
 import { ConfigurationSection, CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6";
@@ -231,9 +233,15 @@ export function SettingsPanel({
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {section === "connectors" && (
             <>
-              <ConnectorsSection vaultPath={vaultPath} focusAppId={settingsDeepLink ?? undefined} />
-              <div className="mt-8 border-t border-border-subtle pt-8">
-                <IngestionSection />
+              <AppsPanel vaultPath={vaultPath} />
+              <div className="mt-8">
+                <CollapsibleSection icon={Wrench} title="Advanced" summary="catalog & connection tiers"
+                  subtitle="Browse the connector catalog and configure the raw MCP / Composio / browser / CLI tiers by hand.">
+                  <ConnectorsSection vaultPath={vaultPath} focusAppId={settingsDeepLink ?? undefined} />
+                  <div className="mt-6 border-t border-border-subtle pt-6">
+                    <IngestionSection />
+                  </div>
+                </CollapsibleSection>
               </div>
             </>
           )}
