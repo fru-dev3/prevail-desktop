@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { RotateCw } from "lucide-react";
 import { FRAMEWORKS, LENSES } from "./constants";
-import { formatFreshness } from "./format";
+import { formatDuration, formatFreshness } from "./format";
 import { lsGet, lsSet } from "./storage";
 import { CycleChip } from "./widgets";
 import { useFrameworkLens } from "./hooks";
@@ -143,6 +143,11 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
   const [enabled, setEnabled] = useState(() => lsGet(BENCH_SCHED.enabled, "0") === "1");
   const [freq, setFreq] = useState(() => lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
   const [, force] = useState(0);
+  // "Run now" used to call rerunLatestBatch and silently do nothing when it
+  // returned false (no prior batch, bunker filtered everything out, etc.) — so
+  // it looked dead. Track busy + a result message so every click reports back.
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
   useEffect(() => {
     const f = () => force((n) => n + 1);
     window.addEventListener("prevail:bench-sched", f);
@@ -151,42 +156,64 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
   const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
   const freqMs = BENCH_FREQ_MS[freq] ?? BENCH_FREQ_MS.weekly;
   const next = last ? last + freqMs : Date.now();
+  const runNow = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const started = await rerunLatestBatch(vault);
+      if (started) {
+        lsSet(BENCH_SCHED.lastRun, String(Date.now()));
+        window.dispatchEvent(new Event("prevail:bench-sched"));
+        setMsg("Re-running your latest batch now: watch progress in the sidebar and on the leaderboard.");
+      } else {
+        setMsg("No previous batch to re-run yet. Run a benchmark once (pick models + scope), then Run now repeats it.");
+      }
+    } catch (e) {
+      setMsg(`Couldn't start the run: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
-      <RotateCw className="h-4 w-4 shrink-0 text-accent" />
-      <div className="min-w-0 flex-1">
-        <div className="font-display text-sm font-semibold tracking-tight">Scheduled runs</div>
-        <div className="text-xs text-text-secondary">
-          Re-runs your most recent batch (same models, same scope) so drift shows up in the leaderboard and History without manual runs. Runs while the app is open.
-          {enabled && last > 0 && ` Last ran ${formatFreshness(Math.max(0, (Date.now() - last) / 1000))} ago.`}
-          {enabled && ` Next ${next <= Date.now() ? "within 30 minutes" : `in ~${formatFreshness(Math.max(0, (next - Date.now()) / 1000))}`}.`}
+    <div className="mb-5 rounded-xl border border-border bg-surface px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <RotateCw className={`h-4 w-4 shrink-0 text-accent ${busy ? "animate-spin" : ""}`} />
+        <div className="min-w-0 flex-1">
+          <div className="font-display text-sm font-semibold tracking-tight">Scheduled runs</div>
+          <div className="text-xs text-text-secondary">
+            Re-runs your most recent batch (same models, same scope) so drift shows up in the leaderboard and History without manual runs. Runs while the app is open.
+            {enabled && last > 0 && ` Last ran ${formatFreshness(Math.max(0, (Date.now() - last) / 1000))}.`}
+            {enabled && ` Next ${next <= Date.now() ? "within 30 minutes" : `in ~${formatDuration(Math.max(0, (next - Date.now()) / 1000))}`}.`}
+          </div>
         </div>
+        <select
+          value={freq}
+          onChange={(e) => { setFreq(e.target.value); lsSet(BENCH_SCHED.freq, e.target.value); }}
+          disabled={!enabled}
+          className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary disabled:opacity-40"
+        >
+          <option value="daily">daily</option>
+          <option value="weekly">weekly</option>
+          <option value="monthly">monthly</option>
+        </select>
+        <button
+          onClick={() => { const v = !enabled; setEnabled(v); lsSet(BENCH_SCHED.enabled, v ? "1" : "0"); }}
+          className={`rounded-md border px-3 py-1 font-mono text-[11px] uppercase tracking-wider ${
+            enabled ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"
+          }`}
+        >
+          {enabled ? "On" : "Off"}
+        </button>
+        <button
+          onClick={runNow}
+          disabled={busy}
+          title="Re-run the latest batch right now"
+          className="rounded-md border border-border px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40"
+        >
+          {busy ? "Starting…" : "Run now"}
+        </button>
       </div>
-      <select
-        value={freq}
-        onChange={(e) => { setFreq(e.target.value); lsSet(BENCH_SCHED.freq, e.target.value); }}
-        disabled={!enabled}
-        className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary disabled:opacity-40"
-      >
-        <option value="daily">daily</option>
-        <option value="weekly">weekly</option>
-        <option value="monthly">monthly</option>
-      </select>
-      <button
-        onClick={() => { const v = !enabled; setEnabled(v); lsSet(BENCH_SCHED.enabled, v ? "1" : "0"); }}
-        className={`rounded-md border px-3 py-1 font-mono text-[11px] uppercase tracking-wider ${
-          enabled ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"
-        }`}
-      >
-        {enabled ? "On" : "Off"}
-      </button>
-      <button
-        onClick={async () => { if (await rerunLatestBatch(vault)) { lsSet(BENCH_SCHED.lastRun, String(Date.now())); window.dispatchEvent(new Event("prevail:bench-sched")); } }}
-        title="Re-run the latest batch right now"
-        className="rounded-md border border-border px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
-      >
-        Run now
-      </button>
+      {msg && <div className="mt-2 text-xs text-text-secondary">{msg}</div>}
     </div>
   );
 }
