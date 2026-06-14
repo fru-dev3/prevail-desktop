@@ -3,7 +3,7 @@
 // run registry + executor live in ./bench; this is the presentation layer.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm, open, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
-import { Activity, AlertTriangle, Archive, Check, ChevronDown, ChevronRight, Circle, Crown, Download, FileText, Layers, Loader2, MessagesSquare, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X } from "lucide-react";
+import { Activity, AlertTriangle, Archive, Check, ChevronRight, Circle, Crown, Download, FileText, Layers, Loader2, MessagesSquare, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X } from "lucide-react";
 import { invoke, listen } from "./bridge";
 import { MODELS, MODEL_SEP } from "./constants";
 import { scoreColor, titleCase } from "./format";
@@ -685,7 +685,7 @@ export function BenchRunConfig({
                     onClick={() => toggleProvider(c.id)}
                     className="mb-1.5 flex w-full items-center gap-2 rounded-md py-0.5 text-left transition-colors hover:text-accent"
                   >
-                    {collapsed ? <ChevronRight className="h-3.5 w-3.5 text-text-muted" /> : <ChevronDown className="h-3.5 w-3.5 text-text-muted" />}
+                    <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${collapsed ? "" : "rotate-90"}`} strokeWidth={2.5} />
                     <ProviderMark vendor={c.id} size={16} />
                     <span className="font-display text-[13px] font-semibold tracking-tight">{c.label}</span>
                     {selectedHere > 0 && (
