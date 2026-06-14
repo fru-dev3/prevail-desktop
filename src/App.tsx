@@ -12,22 +12,14 @@ import { APP_VERSION, AUTONOMY_LABEL, AUTONOMY_TINT, FRAMEWORKS, INTEGRATION_LAB
 import { BUNKER_LS, LS, PREF, getDomainToggle, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet } from "./storage";
 import { AppCard, AppKV, BridgeStatusChips, DemoRibbon, FloatingChip, ResizeHandle } from "./widgets";
 import { ContextScorePanel, DomainAppsTab, OnboardingModal } from "./panels3";
-import { AppearanceSection, DemoModeSection, VaultSettings } from "./settings8";
+import { SettingsPanel } from "./settingspanel";
 import { BenchmarkPanel } from "./benchpanel";
 import { DomainHome, DomainStatusBar, MessageList } from "./chatviews";
 import { Sidebar } from "./sidebar";
-import { ModelsSection } from "./settings7";
-import { ConfigurationSection, CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6";
-import { AboutSection, GatewaySection, McpSection } from "./settings5";
-import { GeneralSection, IdealStateSection, SafetySection } from "./settings4";
-import { ConnectorsSection } from "./settings3";
-import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection, TasksCrossDomainSection } from "./settings2";
-import { FrameworksSection, IngestionSection, RemoteSection, ShortcutsSection } from "./settings1";
-import { BenchScheduleCard } from "./cards";
 import { ProviderMark } from "./marks";
 import { BrandMark } from "./brandmark";
 import { ThinkingDots, useAppearance, useFrameworkLens } from "./hooks";
-import { SettingsHeader, pickSkillColor } from "./sectionutil";
+import { pickSkillColor } from "./sectionutil";
 import { DOMAIN_ICONS, domainIcon } from "./icons";
 import { extractCliError } from "./textutil";
 import { distillCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
@@ -77,11 +69,11 @@ import { AppHeaderBar, ContextScoreBadge, DomainActionsMenu, DrawerImportsSectio
 // with the working gpt-5.5. Safe + idempotent.
 import {
   Archive,
-  ArrowLeft,
+  
   ArrowRight,
   ArrowUpRight,
   BookOpen,
-  Brain,
+  
   Briefcase,
   Check,
   
@@ -97,7 +89,7 @@ import {
   Folder,
   Heart,
   Home,
-  Github,
+  
   
   MessageSquare,
   
@@ -116,12 +108,12 @@ import {
   Sparkles,
   
   
-  MessagesSquare,
+  
   
   
   PanelRightClose,
   PanelRightOpen,
-  Target,
+  
   
   
   
@@ -133,7 +125,7 @@ import {
   TrendingUp,
   Users,
   Wallet,
-  Wrench,
+  
   X,
   
   
@@ -6131,241 +6123,8 @@ function CouncilPanel({
 
 
 
-function SettingsPanel({
-  appearance,
-  vaultPath,
-  onChangeVault,
-  clis,
-  onRefreshClis,
-  onBack,
-  onStartChatWith,
-  bunkerEnabled,
-  onBunkerChange,
-  onSetupDomains,
-  onVaultMoved,
-  jumpTo,
-}: {
-  appearance: ReturnType<typeof useAppearance>;
-  vaultPath: string;
-  onChangeVault: () => void;
-  clis: CliInfo[];
-  onRefreshClis: () => Promise<CliInfo[]>;
-  onBack?: () => void;
-  onStartChatWith?: (cliId: string, modelId?: string) => void;
-  bunkerEnabled: boolean;
-  onBunkerChange: (on: boolean) => void;
-  onSetupDomains?: () => void;
-  onVaultMoved?: (path: string) => void;
-  jumpTo?: { section: string; n: number } | null;
-}) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "memory" | "intents" | "tasks" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about";
-  const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
-  // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
-  // straight to a section. The nonce makes repeat jumps to the same section fire.
-  useEffect(() => {
-    if (jumpTo?.section) setSection(jumpTo.section as Section);
-  }, [jumpTo?.n]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [settingsDeepLink, setSettingsDeepLink] = useState<string | null>(null);
-  // In-settings deep links (e.g. a model row's "runs" button jumping to the
-  // Benchmark cockpit) dispatch this event rather than threading props.
-  // Format: "section" or "section:detail" — detail is passed to the section.
-  useEffect(() => {
-    const onJump = (e: Event) => {
-      const raw = (e as CustomEvent<string>).detail;
-      if (!raw) return;
-      const colonIdx = raw.indexOf(":");
-      if (colonIdx === -1) {
-        setSection(raw as Section);
-        setSettingsDeepLink(null);
-      } else {
-        setSection(raw.slice(0, colonIdx) as Section);
-        setSettingsDeepLink(raw.slice(colonIdx + 1));
-      }
-    };
-    window.addEventListener("prevail:settings-section", onJump as EventListener);
-    return () => window.removeEventListener("prevail:settings-section", onJump as EventListener);
-  }, []);
 
-  // Grouped settings nav — the flat 19-item list was hard to scan and mixed
-  // unrelated concerns (e.g. General vs Defaults overlap). Organized into
-  // labeled sections so related settings sit together and the redundancy reads
-  // as intentional structure.
-  type NavItem = { id: Section; label: string; icon: typeof Folder };
-  const navGroups: Array<{ heading: string; items: NavItem[] }> = [
-    { heading: "Models & AI", items: [
-      { id: "models", label: "Models", icon: Layers },
-      { id: "benchmark", label: "Benchmark", icon: Target },
-      { id: "council", label: "Council", icon: Scale },
-      { id: "frameworks", label: "Frameworks", icon: Scale },
-      { id: "skills", label: "Skills", icon: Sparkles },
-    ]},
-    { heading: "Privacy & Safety", items: [
-      { id: "privacy", label: "Privacy", icon: ShieldCheck },
-      { id: "safety", label: "Safety", icon: Shield },
-    ]},
-    { heading: "Apps", items: [
-      { id: "connectors", label: "Apps", icon: Plug },
-      { id: "gateway", label: "Gateway", icon: MessagesSquare },
-      { id: "mcp", label: "MCP", icon: Wrench },
-    ]},
-    { heading: "You & Vault", items: [
-      { id: "configuration", label: "Configuration", icon: Brain },
-      { id: "intents", label: "Intents", icon: Lightbulb },
-      { id: "daemons", label: "Daemons", icon: Zap },
-      { id: "vault", label: "Vault", icon: Folder },
-      { id: "demo", label: "Demo Mode", icon: Sparkles },
-    ]},
-    { heading: "App", items: [
-      { id: "general", label: "General", icon: SettingsIcon },
-      { id: "about", label: "About", icon: Github },
-    ]},
-  ];
 
-  // Live-bridge counter — used to light up the Gateway row in the nav
-  // when one or more routers (currently just Telegram) is running.
-  const [liveBridges, setLiveBridges] = useState(0);
-  useEffect(() => {
-    async function poll() {
-      let n = 0;
-      try {
-        const tg = await invoke<{ running: boolean }>("telegram_bridge_status");
-        if (tg.running) n++;
-      } catch { /* ignore */ }
-      setLiveBridges(n);
-    }
-    void poll();
-    const id = window.setInterval(() => void poll(), 4000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  // MCP live indicator — read from localStorage; McpCard writes the same key.
-  const [mcpLive, setMcpLive] = useState(() => lsGet(LS.mcpEnabled) === "1");
-  useEffect(() => {
-    const id = window.setInterval(() => setMcpLive(lsGet(LS.mcpEnabled) === "1"), 2000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  return (
-    <div className="flex h-full">
-      {/* Sidebar nav — Codex-style with Back to app at top */}
-      <aside className="flex h-full min-h-0 w-56 shrink-0 flex-col overflow-y-auto border-r border-border-subtle bg-surface-warm px-2 py-3">
-        {onBack && (
-          <button
-            onClick={onBack}
-            className="mb-3 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-text-muted hover:bg-surface-warm hover:text-text-primary"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to app
-          </button>
-        )}
-        <div className="mb-1 px-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
-          Settings
-        </div>
-        {navGroups.map((group) => (
-          <div key={group.heading} className="mb-1.5">
-            <div className="mb-0.5 mt-2 px-3 font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted/70">
-              {group.heading}
-            </div>
-            {group.items.map((it) => {
-              const Icon = it.icon;
-              const active = section === it.id;
-              const showLiveGateway = it.id === "gateway" && liveBridges > 0;
-              const showLiveMcp = it.id === "mcp" && mcpLive;
-              return (
-                <button
-                  key={it.id}
-                  onClick={() => setSection(it.id)}
-                  className={`flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm transition-colors ${
-                    active
-                      ? "bg-accent-soft text-accent"
-                      : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span className="flex-1">{it.label}</span>
-                  {showLiveGateway && (
-                    <span
-                      className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent"
-                      title={`${liveBridges} bridge${liveBridges === 1 ? "" : "s"} live`}
-                    >
-                      <span className="pulse-soft inline-block h-1 w-1 rounded-full bg-accent" />
-                      live{liveBridges > 1 ? ` ${liveBridges}` : ""}
-                    </span>
-                  )}
-                  {showLiveMcp && (
-                    <span
-                      className="inline-flex items-center gap-1 rounded-full bg-ai/15 px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-ai"
-                      title="MCP server enabled"
-                    >
-                      <span className="pulse-soft inline-block h-1 w-1 rounded-full bg-ai" />
-                      on
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </aside>
-
-      {/* Main pane */}
-      <div className="min-w-0 flex-1 overflow-y-auto">
-        {/* Full width — settings use the whole pane, left-aligned, to match
-            the rest of the app. Long prose inside sections caps itself
-            (subtitles use max-w-2xl) so readability stays intact. */}
-        <div className="w-full px-8 py-10">
-          {section === "general" && <GeneralSection appearance={appearance} />}
-          {section === "privacy" && <PrivacyConnectivitySection enabled={bunkerEnabled} onChange={onBunkerChange} />}
-          {section === "models" && <ModelsSection clis={clis} onStartChatWith={onStartChatWith} onActivated={onRefreshClis} />}
-          {section === "benchmark" && (
-            <>
-              <SettingsHeader
-                title="Benchmark"
-                icon={Target}
-                subtitle="Your personal eval suite. Run any model against your own questions across every domain, see who leads where, and manage the question set: write, AI-draft from your data, import, export."
-              />
-              <BenchScheduleCard vault={vaultPath} />
-              <div className="-mx-4 min-h-[60vh]">
-                <BenchmarkPanel vaultPath={vaultPath} />
-              </div>
-            </>
-          )}
-          {section === "configuration" && <ConfigurationSection vaultPath={vaultPath} />}
-          {section === "ideal-state" && <IdealStateSection vaultPath={vaultPath} />}
-          {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
-          {section === "intents" && <IntentsSection vaultPath={vaultPath} />}
-          {section === "tasks" && <TasksCrossDomainSection vaultPath={vaultPath} />}
-          {section === "daemons" && <DaemonsSection vaultPath={vaultPath} />}
-          {section === "council" && <CouncilSettingsSection clis={clis} />}
-          {section === "connectors" && (
-            <>
-              <ConnectorsSection vaultPath={vaultPath} focusAppId={settingsDeepLink ?? undefined} />
-              <div className="mt-8 border-t border-border-subtle pt-8">
-                <IngestionSection />
-              </div>
-            </>
-          )}
-          {section === "safety" && <SafetySection vaultPath={vaultPath} />}
-          {section === "gateway" && <GatewaySection />}
-          {section === "mcp" && <McpSection vaultPath={vaultPath} />}
-          {section === "remote" && <RemoteSection />}
-          {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} />}
-          {section === "demo" && <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} />}
-          {section === "appearance" && <AppearanceSection appearance={appearance} />}
-          {section === "frameworks" && <FrameworksSection />}
-          {section === "skills" && <SkillsSection vaultPath={vaultPath} />}
-          {section === "shortcuts" && <ShortcutsSection />}
-          {section === "about" && <AboutSection vaultPath={vaultPath} />}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Unified "Models" section — the single home for everything model-related. It
-// absorbed the old Agents + Providers pages AND the separate Defaults page:
-// each provider expands to its models where you can TEST a model and SET IT AS
-// THE DEFAULT, all in one place. No reason to set the default anywhere else.
 
 
 
