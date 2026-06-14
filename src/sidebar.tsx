@@ -2,7 +2,7 @@
 // state, domains, active selection, and a set of callbacks); renders the live
 // gateway/MCP/benchmark status strips from shared modules.
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { Archive, ChevronDown, ChevronRight, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Pin, Plug, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Sun } from "lucide-react";
+import { Archive, ChevronDown, ChevronLeft, ChevronRight, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, Pin, Plug, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Sun } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { STATUS_TINT } from "./constants";
@@ -264,7 +264,7 @@ export function Sidebar({
               title="Expand sidebar"
               className="flex h-7 w-7 items-center justify-center rounded-md bg-text-primary text-background shadow-sm transition-opacity hover:opacity-80"
             >
-              <PanelLeftOpen className="h-[18px] w-[18px]" strokeWidth={1.75} />
+              <ChevronRight className="h-[18px] w-[18px]" strokeWidth={2} />
             </button>
           </div>
         ) : (
@@ -275,7 +275,7 @@ export function Sidebar({
               title="Collapse sidebar"
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white/12 text-white transition-colors hover:bg-white/25"
             >
-              <PanelLeftClose className="h-[18px] w-[18px]" strokeWidth={1.75} />
+              <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={2} />
             </button>
           </>
         )}
