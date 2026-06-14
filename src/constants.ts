@@ -195,16 +195,3 @@ export const SCORE_DIMENSIONS: { key: keyof ScoreBreakdown; label: string }[] = 
   { key: "activity", label: "Activity" },
   { key: "config_completeness", label: "Config" },
 ];
-
-export const ONBOARDING_QUESTIONS: {
-  id: string;
-  prompt: string;
-  placeholder: string;
-}[] = [
-  { id: "focus", prompt: "What are you focused on right now?", placeholder: "building ventures, getting healthier, managing money…" },
-  { id: "roles", prompt: "What roles or hats do you wear?", placeholder: "founder, parent, investor, creator…" },
-  { id: "money", prompt: "How do you want to handle money & wealth?", placeholder: "track net worth, taxes, investing, real estate…" },
-  { id: "health", prompt: "Anything around health, fitness, or wellbeing?", placeholder: "fitness goals, sleep, mental health… (leave blank to skip)" },
-  { id: "work", prompt: "What does your work or business look like?", placeholder: "company, clients, content, career…" },
-  { id: "other", prompt: "Anything else you'd like a domain for?", placeholder: "learning, relationships, travel, side projects…" },
-];

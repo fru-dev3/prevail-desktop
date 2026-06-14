@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, Circle, Loader2, Plus, Sparkles, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
-import { ONBOARDING_QUESTIONS, PALETTES, SCORE_DIMENSIONS, SETTINGS_ROW, SEVERITY_LABEL, SEVERITY_ORDER, STATUS_TINT } from "./constants";
+import { PALETTES, SCORE_DIMENSIONS, SETTINGS_ROW, SEVERITY_LABEL, SEVERITY_ORDER, STATUS_TINT } from "./constants";
 import { formatFreshness, relTime, scoreColor, titleCase } from "./format";
 import { formatAuditedAt } from "./helpers";
 import { ScoreBar } from "./panels";
@@ -18,19 +18,21 @@ export function OnboardingModal({
   onClose: () => void;
   onApplied: () => void;
 }) {
-  type Step = "questions" | "review" | "applying";
-  const [step, setStep] = useState<Step>("questions");
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  type Step = "loading" | "review" | "applying";
+  const [step, setStep] = useState<Step>("loading");
   const [rec, setRec] = useState<OnboardingRecommendation | null>(null);
   const [picks, setPicks] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // No questionnaire. Prevail proposes a starter set automatically; the user
+  // just picks what to keep. Recommendation runs once on open.
   async function requestRecommendation() {
     setBusy(true);
     setError(null);
+    setStep("loading");
     try {
-      const answersJson = JSON.stringify({ answers });
+      const answersJson = JSON.stringify({ answers: {} });
       const value = await invoke<OnboardingRecommendation>("engine_onboard_recommend", {
         vault: vaultPath,
         answersJson,
@@ -45,6 +47,11 @@ export function OnboardingModal({
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    requestRecommendation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function applyPicks() {
     if (picks.size === 0) return;
@@ -73,8 +80,6 @@ export function OnboardingModal({
     });
   }
 
-  const answeredCount = ONBOARDING_QUESTIONS.filter((q) => (answers[q.id] ?? "").trim()).length;
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
@@ -100,27 +105,11 @@ export function OnboardingModal({
             </div>
           )}
 
-          {step === "questions" && (
-            <>
-              <p className="mb-4 text-sm text-text-secondary">
-                A few quick questions. Prevail proposes a starter set of life domains
-                from your answers: you pick what to keep. Leave any blank to skip.
-              </p>
-              <div className="flex flex-col gap-4">
-                {ONBOARDING_QUESTIONS.map((q) => (
-                  <label key={q.id} className="block">
-                    <span className="mb-1 block text-sm font-medium text-text-primary">{q.prompt}</span>
-                    <textarea
-                      value={answers[q.id] ?? ""}
-                      onChange={(e) => setAnswers((cur) => ({ ...cur, [q.id]: e.target.value }))}
-                      placeholder={q.placeholder}
-                      rows={2}
-                      className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
-                    />
-                  </label>
-                ))}
-              </div>
-            </>
+          {step === "loading" && (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-text-secondary">
+              <Loader2 className="h-6 w-6 animate-spin text-accent" />
+              <span className="text-sm">Proposing a starter set of domains…</span>
+            </div>
           )}
 
           {step === "review" && rec && (
@@ -185,28 +174,15 @@ export function OnboardingModal({
 
         {/* Footer actions */}
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border-subtle px-6 py-4">
-          {step === "questions" ? (
+          {step === "review" ? (
             <>
-              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
-                {answeredCount}/{ONBOARDING_QUESTIONS.length} answered
-              </span>
               <button
                 onClick={requestRecommendation}
-                disabled={busy || answeredCount === 0}
-                className="flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+                disabled={busy}
+                className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-40"
               >
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                Recommend domains
-              </button>
-            </>
-          ) : step === "review" ? (
-            <>
-              <button
-                onClick={() => setStep("questions")}
-                disabled={busy}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-40"
-              >
-                Back
+                Re-propose
               </button>
               <button
                 onClick={applyPicks}
