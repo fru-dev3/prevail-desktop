@@ -1,8 +1,26 @@
 // Components extracted from App.tsx.
+import { invoke } from "./bridge";
 import { DEAD_MODELS, DISCOVERED_MODELS, MODELS, SYCOPHANCY_RE } from "./constants";
 import { titleCase } from "./format";
 import { lsGet, lsSet } from "./storage";
 import type { ModelPick, PanelistReply, PanelistSlot } from "./types";
+
+// Best-effort live model discovery for the given providers; fills
+// DISCOVERED_MODELS and notifies listeners via prevail:models-refreshed. Never
+// throws. Returns the count discovered.
+export async function refreshDiscoveredModels(providers: string[]): Promise<number> {
+  let total = 0;
+  await Promise.all(
+    providers.map(async (id) => {
+      try {
+        const r = await invoke<{ models: ModelPick[] }>("engine_discover_models", { provider: id });
+        if (r?.models?.length) { DISCOVERED_MODELS[id] = r.models; total += r.models.length; }
+      } catch { /* best-effort; falls back to curated */ }
+    }),
+  );
+  window.dispatchEvent(new Event("prevail:models-refreshed"));
+  return total;
+}
 
 export function modelLabel(cli?: string, id?: string): string {
   if (!id) return "";
