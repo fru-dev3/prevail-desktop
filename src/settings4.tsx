@@ -3,8 +3,9 @@
 // start-on-boot, embedded Shortcuts).
 import { useEffect, useMemo, useState } from "react";
 import { disable as autostartDisable, enable as autostartEnable, isEnabled as autostartIsEnabled } from "@tauri-apps/plugin-autostart";
-import { ChevronRight, Compass, Eye, Keyboard, Monitor, Moon, Palette, PenLine, SlidersHorizontal, Sun } from "lucide-react";
+import { Compass, Eye, Keyboard, Monitor, Moon, Palette, PenLine, SlidersHorizontal, Sun } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { CollapsibleSection } from "./collapsible";
 import { invoke } from "./bridge";
 import { PALETTES } from "./constants";
 import { PREF, getPref, setPref } from "./storage";
@@ -315,27 +316,13 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
     <Toggle on={on} onChange={onChange} />
   );
 
-  const [genSubOpen, setGenSubOpen] = useState<"main" | "appearance" | "shortcuts" | null>("main");
-  const toggleSub = (id: "main" | "appearance" | "shortcuts") => setGenSubOpen((v) => (v === id ? null : id));
-  const GenSub = ({ id, title, icon: Icon, summary, children }: { id: "main" | "appearance" | "shortcuts"; title: string; icon: LucideIcon; summary?: string; children: React.ReactNode }) => (
-    <div className="rounded-lg border border-border bg-surface overflow-hidden">
-      <button
-        onClick={() => toggleSub(id)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-warm transition-colors"
-      >
-        <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${genSubOpen === id ? "rotate-90" : ""}`} strokeWidth={2.5} />
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-warm text-text-secondary">
-          <Icon className="h-4 w-4" />
-        </span>
-        <span className="text-sm font-semibold text-text-primary">{title}</span>
-        {summary && <span className="ml-auto truncate font-mono text-[10px] uppercase tracking-wider text-text-muted">{summary}</span>}
-      </button>
-      {genSubOpen === id && (
-        <div className="border-t border-border-subtle px-4 py-5">
-          {children}
-        </div>
-      )}
-    </div>
+  // General's three sub-sections route through the canonical CollapsibleSection
+  // so they match every other collapsible in the app (icon + title left, summary
+  // right, collapsed by default, open state persisted per section).
+  const GenSub = ({ id, title, icon, summary, children }: { id: "main" | "appearance" | "shortcuts"; title: string; icon: LucideIcon; summary?: string; children: React.ReactNode }) => (
+    <CollapsibleSection icon={icon} title={title} summary={summary} defaultOpen={id === "main"} storageKey={`prevail.settings.general.${id}`}>
+      {children}
+    </CollapsibleSection>
   );
 
   return (

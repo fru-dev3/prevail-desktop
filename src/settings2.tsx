@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Bell, Brain, Check, ChevronRight, Folder, GraduationCap, Lightbulb, ListChecks, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
+import { CollapsibleSection } from "./collapsible";
 import { formatFreshness, titleCase } from "./format";
 import { PREF, getPref, setPref } from "./storage";
 import { Toggle } from "./ui";
@@ -13,11 +14,10 @@ import { distillCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "
 import { SettingsHeader, pickSkillColor } from "./sectionutil";
 import type { DaemonStatus, SkillEntry } from "./types";
 
-// One collapsible card per daemon: chevron + icon + name on the left, a status
-// summary + a running/idle dot on the right. The daemon's start/stop, tuning,
-// and run-now controls all live inside its own group, instead of being spread
-// across shared cards.
-function DaemonGroup({ icon: Icon, title, summary, running, defaultOpen = false, children }: {
+// One collapsible card per daemon. Routes through the canonical CollapsibleSection
+// (icon + title left, summary + running dot right, collapsed by default) so the
+// Daemons page looks identical to every other collapsible in the app.
+function DaemonGroup({ icon, title, summary, running, defaultOpen = false, children }: {
   icon: LucideIcon;
   title: string;
   summary?: string;
@@ -25,20 +25,10 @@ function DaemonGroup({ icon: Icon, title, summary, running, defaultOpen = false,
   defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className="mb-3 overflow-hidden rounded-xl border border-border bg-surface">
-      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2.5 px-4 py-3 text-left">
-        <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
-        <Icon className="h-4 w-4 shrink-0 text-text-muted" />
-        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">{title}</span>
-        <span className="ml-auto flex min-w-0 items-center gap-2">
-          {summary && <span className="truncate font-mono text-[10px] uppercase tracking-wider text-text-muted">{summary}</span>}
-          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${running ? "bg-accent" : "bg-text-muted/40"}`} title={running ? "running" : "stopped"} />
-        </span>
-      </button>
-      {open && <div className="border-t border-border-subtle px-4 py-4">{children}</div>}
-    </section>
+    <CollapsibleSection icon={icon} title={title} summary={summary} status={running} defaultOpen={defaultOpen}>
+      {children}
+    </CollapsibleSection>
   );
 }
 
