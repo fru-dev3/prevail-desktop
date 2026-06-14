@@ -26,6 +26,26 @@ export default defineConfig(async () => ({
     },
   ],
 
+  // Split the heavy third-party libraries into their own chunks so the app's
+  // initial core stays small and vendors cache independently across releases.
+  // Pairs with the React.lazy panel splitting in App.tsx: together they keep the
+  // initial bundle (and live memory footprint) down.
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("framer-motion")) return "vendor-motion";
+          if (id.includes("simple-icons")) return "vendor-simpleicons";
+          if (id.includes("lucide-react")) return "vendor-lucide";
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return "vendor-react";
+          if (id.includes("markdown") || id.includes("remark") || id.includes("micromark") || id.includes("mdast") || id.includes("hast") || id.includes("unist") || id.includes("unified")) return "vendor-markdown";
+          return "vendor";
+        },
+      },
+    },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors
