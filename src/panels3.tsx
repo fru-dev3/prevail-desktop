@@ -1,6 +1,6 @@
 // Components extracted from App.tsx.
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, Circle, Loader2, Plus, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Boxes, Check, ChevronRight, Circle, Globe, Loader2, Plug, Plus, Sparkles, Terminal, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { PALETTES, SCORE_DIMENSIONS, SETTINGS_ROW, SEVERITY_LABEL, SEVERITY_ORDER, STATUS_TINT } from "./constants";
@@ -577,6 +577,11 @@ export function IngestionTierCard({
   const [cliProviders, setCliProviders] = useState<CliProvider[]>([]);
   const [cliProbe, setCliProbe] = useState<Record<string, boolean>>({});
   const [cliMsg, setCliMsg] = useState<Record<string, string>>({});
+  // Each connector type is its own collapsible card so the page reads as
+  // clearly separated sections; open by default only when this tier is active
+  // (running or ready) so the user lands focused on what they actually use.
+  const [open, setOpen] = useState<boolean>(() => tier.active || tier.running > 0);
+  const TierIcon = tier.id === "tier_a_mcp" ? Plug : tier.id === "tier_b_composio" ? Boxes : tier.id === "tier_c_browser" ? Globe : Terminal;
 
   // Tier D — load the bundled providers and probe which CLIs are installed.
   useEffect(() => {
@@ -642,13 +647,17 @@ export function IngestionTierCard({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="font-display text-base font-semibold tracking-tight">{tier.label}</div>
-          <div className="mt-0.5 font-mono text-[11px] text-text-muted">{tier.state}</div>
+    <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between gap-3 p-5 text-left">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
+          <TierIcon className="h-4 w-4 shrink-0 text-text-muted" />
+          <div className="min-w-0">
+            <div className="font-display text-base font-semibold tracking-tight">{tier.label}</div>
+            <div className="mt-0.5 font-mono text-[11px] text-text-muted">{tier.state}</div>
+          </div>
         </div>
-        <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
+        <span className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
           tier.active
             ? tier.running > 0
               ? "border border-accent-border bg-accent-soft text-accent"
@@ -657,7 +666,9 @@ export function IngestionTierCard({
         }`}>
           {tier.running > 0 ? `running · ${tier.running}` : tier.active ? "ready" : "inactive"}
         </span>
-      </div>
+      </button>
+      {open && (
+      <div className="border-t border-border-subtle px-5 pb-5 pt-4">
       {tier.last_error && (
         <div className="mt-3 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
           {tier.last_error}
@@ -819,6 +830,8 @@ export function IngestionTierCard({
             })
           )}
         </div>
+      )}
+      </div>
       )}
     </div>
   );
