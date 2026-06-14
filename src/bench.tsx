@@ -113,6 +113,22 @@ export const BENCH_FREQ_MS: Record<string, number> = {
   monthly: 30 * 86_400_000,
 };
 
+// Resolve a schedule value to milliseconds, supporting an arbitrary "every N
+// days" cadence ("custom:N") on top of the named presets. One place so the card
+// UI and the background scheduler agree.
+export function benchFreqMs(freq: string): number {
+  const m = /^custom:(\d+)$/.exec(freq);
+  if (m) return Math.max(1, parseInt(m[1], 10)) * 86_400_000;
+  return BENCH_FREQ_MS[freq] ?? BENCH_FREQ_MS.weekly;
+}
+
+// Human label for a schedule value (presets + "every N days").
+export function benchFreqLabel(freq: string): string {
+  const m = /^custom:(\d+)$/.exec(freq);
+  if (m) { const n = parseInt(m[1], 10); return `every ${n} day${n === 1 ? "" : "s"}`; }
+  return freq;
+}
+
 export async function rerunLatestBatch(vault: string): Promise<boolean> {
   const runs = await invoke<BenchmarkRun[]>("benchmark_runs", { vault }).catch(() => [] as BenchmarkRun[]);
   if (runs.length === 0) return false;
@@ -168,7 +184,7 @@ export function startBenchScheduler(vault: string) {
   const tick = async () => {
     try {
       if (lsGet(BENCH_SCHED.enabled, "0") !== "1") return;
-      const freq = BENCH_FREQ_MS[lsGet(BENCH_SCHED.freq, "weekly") || "weekly"] ?? BENCH_FREQ_MS.weekly;
+      const freq = benchFreqMs(lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
       const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
       if (Date.now() - last < freq) return;
       if ([...benchBatches.values()].some((b) => b.running)) return; // never stack

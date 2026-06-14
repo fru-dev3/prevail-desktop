@@ -417,12 +417,25 @@ export function BackupAutomationCard({ vault, onChange }: { vault: string; onCha
             {enabled && last > 0 && ` Last backup ${formatFreshness(Math.max(0, (Date.now() - last) / 1000))} ago.`}
           </div>
         </div>
-        <select value={freq} onChange={(e) => { setFreq(e.target.value); lsSet(BACKUP_CFG.freq, e.target.value); }} disabled={!enabled}
-          className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary disabled:opacity-40">
-          <option value="daily">daily</option>
-          <option value="weekly">weekly</option>
-          <option value="monthly">monthly</option>
-        </select>
+        <div className="flex items-center gap-1.5">
+          <select value={/^custom:/.test(freq) ? "custom" : freq}
+            onChange={(e) => { const v = e.target.value === "custom" ? `custom:${/^custom:(\d+)$/.exec(freq)?.[1] ?? "3"}` : e.target.value; setFreq(v); lsSet(BACKUP_CFG.freq, v); }}
+            disabled={!enabled}
+            className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary disabled:opacity-40">
+            <option value="daily">daily</option>
+            <option value="weekly">weekly</option>
+            <option value="monthly">monthly</option>
+            <option value="custom">every N days</option>
+          </select>
+          {/^custom:/.test(freq) && (
+            <div className="flex items-center gap-1">
+              <input type="number" min={1} max={365} value={/^custom:(\d+)$/.exec(freq)?.[1] ?? "3"} disabled={!enabled}
+                onChange={(e) => { const v = `custom:${Math.max(1, Math.min(365, parseInt(e.target.value, 10) || 1))}`; setFreq(v); lsSet(BACKUP_CFG.freq, v); }}
+                className="w-14 rounded-md border border-border bg-background px-2 py-1 text-right font-mono text-[11px] text-text-secondary disabled:opacity-40" />
+              <span className="font-mono text-[10px] text-text-muted">days</span>
+            </div>
+          )}
+        </div>
         <label className="flex items-center gap-1.5 font-mono text-[11px] text-text-muted">
           or every
           <input

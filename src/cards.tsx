@@ -8,7 +8,7 @@ import { formatDuration, formatFreshness } from "./format";
 import { lsGet, lsSet } from "./storage";
 import { CycleChip } from "./widgets";
 import { useFrameworkLens } from "./hooks";
-import { BENCH_FREQ_MS, BENCH_SCHED, cancelBenchBatch, rerunLatestBatch, useBenchBatches } from "./bench";
+import { benchFreqMs, BENCH_SCHED, cancelBenchBatch, rerunLatestBatch, useBenchBatches } from "./bench";
 
 export function SidebarBenchmarkRuns({ collapsed }: { collapsed: boolean }) {
   const runningBatches = useBenchBatches().filter((b) => b.running);
@@ -154,8 +154,11 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
     return () => window.removeEventListener("prevail:bench-sched", f);
   }, []);
   const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
-  const freqMs = BENCH_FREQ_MS[freq] ?? BENCH_FREQ_MS.weekly;
+  const isCustom = /^custom:/.test(freq);
+  const customDays = isCustom ? (/^custom:(\d+)$/.exec(freq)?.[1] ?? "3") : "3";
+  const freqMs = benchFreqMs(freq);
   const next = last ? last + freqMs : Date.now();
+  const setFreqPersist = (v: string) => { setFreq(v); lsSet(BENCH_SCHED.freq, v); };
   const runNow = async () => {
     setBusy(true);
     setMsg(null);
@@ -186,16 +189,29 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
             {enabled && ` Next ${next <= Date.now() ? "within 30 minutes" : `in ~${formatDuration(Math.max(0, (next - Date.now()) / 1000))}`}.`}
           </div>
         </div>
-        <select
-          value={freq}
-          onChange={(e) => { setFreq(e.target.value); lsSet(BENCH_SCHED.freq, e.target.value); }}
-          disabled={!enabled}
-          className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary disabled:opacity-40"
-        >
-          <option value="daily">daily</option>
-          <option value="weekly">weekly</option>
-          <option value="monthly">monthly</option>
-        </select>
+        <div className="flex items-center gap-1.5">
+          <select
+            value={isCustom ? "custom" : freq}
+            onChange={(e) => setFreqPersist(e.target.value === "custom" ? `custom:${customDays}` : e.target.value)}
+            disabled={!enabled}
+            className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary disabled:opacity-40"
+          >
+            <option value="daily">daily</option>
+            <option value="weekly">weekly</option>
+            <option value="monthly">monthly</option>
+            <option value="custom">every N days</option>
+          </select>
+          {isCustom && (
+            <div className="flex items-center gap-1">
+              <input
+                type="number" min={1} max={365} value={customDays} disabled={!enabled}
+                onChange={(e) => setFreqPersist(`custom:${Math.max(1, Math.min(365, parseInt(e.target.value, 10) || 1))}`)}
+                className="w-14 rounded-md border border-border bg-background px-2 py-1 text-right font-mono text-[11px] text-text-secondary disabled:opacity-40"
+              />
+              <span className="font-mono text-[10px] text-text-muted">days</span>
+            </div>
+          )}
+        </div>
         <button
           onClick={() => { const v = !enabled; setEnabled(v); lsSet(BENCH_SCHED.enabled, v ? "1" : "0"); }}
           className={`rounded-md border px-3 py-1 font-mono text-[11px] uppercase tracking-wider ${
