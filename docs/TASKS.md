@@ -56,7 +56,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
 - [ ] **T5 — Benchmark: suggest-questions design + all-domains guarantee.**
   - [x] BUG FIXED (96de.. benchpanel.tsx): "all domains" loops per-domain so every domain
     gets N questions, verifies each, reports failures/shortfalls.
-  - [ ] Improve the design/layout of the suggest-questions UI.
+  - [x] T5b DONE: redesigned suggest panel as a titled card with labeled controls.
 
 - [~] **T6 — Benchmark history/statistics accuracy.**
   - DONE: added "Coverage by domain" computed DIRECTLY from raw run records (each run's
@@ -92,6 +92,20 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
     → underlying intent = "looking for transportation", then probe job/use context).
   - Distill into broader recommendations for action.
   - DELIVERABLE FIRST: a written plan + recommendations before building.
+  - APPROVED by founder to BUILD (phased). BUILD PLAN (next focused session):
+    * Phase A (engine, Rust src-tauri): `intents_distill` command — read `_intents.jsonl`
+      across domains, call the configured cheap model to (1) cluster prompts into high-level
+      intents (the "Toyota vs Honda" -> "evaluating transportation" lift), (2) infer the
+      underlying goal + open questions, (3) emit recommended next actions. Write
+      `<vault>/_meta/intents_distilled.json`. Add `intents_distilled_read`. Mirror distill.rs
+      plumbing for the model call + cursor. Engine TS daemon (daemon-learn.ts pattern) for the
+      headless path.
+    * Phase B (desktop UI): restructure IntentsSection into the ladder — rename raw list to
+      "Prompt history"; new "Intents" view = distilled cards (goal, domains spanned, status,
+      confidence, evidence prompts on drill-down, recommended actions). "Distill now" button +
+      a daemon toggle on the Daemons page.
+    * Phase C: wire recommendations -> "turn into tasks / loop" (taskgen + domain loops).
+  - NOTE: do NOT fake high-level intent with client-side heuristics; it needs the model call.
 
 ## Verify / smaller
 
@@ -127,6 +141,9 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
 
 - [ ] **T16 — Vault folder layout.** In the vault folder, `apps/` and `domains/` should be
   siblings at the same level inside the vault folder.
+  - ENGINE-LEVEL: changes where the vault writes apps vs domains on disk (Rust storage + engine
+    + any migration of existing vaults). Needs care (Hard Rule: never lose user data) + a
+    migration path. Confirm current layout first; build with a one-time migrator. Next session.
 
 - [ ] **T17 — Mystery screenshot (image #17).** "Improve this design." Page unknown — ASK which
   screen this was before acting.
