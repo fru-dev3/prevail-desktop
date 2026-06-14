@@ -3,21 +3,21 @@
 // per domain, apps to connect. Each is one-click. Computed fresh from your vault
 // signals (intents, benchmark, apps), so it stays current as you use the app.
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, BarChart3, Check, Compass, Lightbulb, Loader2, Plug } from "lucide-react";
+import { ArrowRight, BarChart3, Check, Compass, Gauge, Lightbulb, Loader2, Plug } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase } from "./format";
 import { SettingsHeader } from "./sectionutil";
 
 type Rec = {
   id: string;
-  category: "domain" | "model" | "app";
+  category: "domain" | "model" | "app" | "context";
   title: string;
   detail: string;
-  action: { kind: "create_domain" | "set_domain_model" | "connect_app"; domain?: string; model?: string; cli?: string };
+  action: { kind: "create_domain" | "set_domain_model" | "connect_app" | "improve_context"; domain?: string; model?: string; cli?: string };
 };
 
-const CAT_ICON = { domain: Compass, model: BarChart3, app: Plug } as const;
-const CAT_LABEL = { domain: "New domain", model: "Better model", app: "Connect an app" } as const;
+const CAT_ICON = { domain: Compass, model: BarChart3, app: Plug, context: Gauge } as const;
+const CAT_LABEL = { domain: "New domain", model: "Better model", app: "Connect an app", context: "Enrich context" } as const;
 
 export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
   const [recs, setRecs] = useState<Rec[] | null>(null);
@@ -47,6 +47,11 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
         // No per-domain model setter yet — point the user at Models settings.
         window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "models" }));
         setDone((d) => ({ ...d, [rec.id]: `Set ${rec.action.model || "the model"} in Models settings.` }));
+      } else if (rec.action.kind === "improve_context" && rec.action.domain) {
+        // Open the domain so the user can add goals / context; the score then
+        // climbs on its own as apps sync and memory builds.
+        window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: rec.action.domain }));
+        setDone((d) => ({ ...d, [rec.id]: `Opening ${titleCase(rec.action.domain!)} — add context there; the score rises as Prevail learns.` }));
       }
     } catch (e) {
       setDone((d) => ({ ...d, [rec.id]: `Failed: ${e}` }));
@@ -93,7 +98,7 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
                     className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
                   >
                     {busy === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />}
-                    {r.category === "domain" ? "Create" : r.category === "app" ? "Connect" : "Set"}
+                    {r.category === "domain" ? "Create" : r.category === "app" ? "Connect" : r.category === "context" ? "Open" : "Set"}
                   </button>
                 )}
               </div>

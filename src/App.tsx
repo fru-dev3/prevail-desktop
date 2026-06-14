@@ -717,12 +717,19 @@ export default function App() {
       if (s) openSettingsAt(s);
     };
     window.addEventListener("prevail:open-settings", onOpen as EventListener);
+    // Jump straight to a domain (from the Recommendations "Open" action).
+    const onOpenDomain = (e: Event) => {
+      const d = (e as CustomEvent<string>).detail;
+      if (d) openDomain(d);
+    };
+    window.addEventListener("prevail:open-domain", onOpenDomain as EventListener);
     // Count vault-affecting changes for the change-based backup trigger.
     const bump = () => bumpBackupChangeCount();
     window.addEventListener("prevail:context-changed", bump);
     window.addEventListener("prevail:tasks-changed", bump);
     return () => {
       window.removeEventListener("prevail:open-settings", onOpen as EventListener);
+      window.removeEventListener("prevail:open-domain", onOpenDomain as EventListener);
       window.removeEventListener("prevail:context-changed", bump);
       window.removeEventListener("prevail:tasks-changed", bump);
     };
