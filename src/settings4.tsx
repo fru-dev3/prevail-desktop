@@ -3,7 +3,7 @@
 // start-on-boot, embedded Shortcuts).
 import { useEffect, useMemo, useState } from "react";
 import { disable as autostartDisable, enable as autostartEnable, isEnabled as autostartIsEnabled } from "@tauri-apps/plugin-autostart";
-import { Compass, Eye, Keyboard, Monitor, Moon, Palette, PenLine, SlidersHorizontal, Sun } from "lucide-react";
+import { Compass, Eye, History, Keyboard, Monitor, Moon, Palette, PenLine, SlidersHorizontal, Sun } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { CollapsibleSection } from "./collapsible";
 import { invoke } from "./bridge";
@@ -182,22 +182,56 @@ export function IdealStateSection({ vaultPath }: { vaultPath: string }) {
         </div>
       ) : (
         <div>
+          {/* Lead: the constitution's title + intro as a calm document header,
+              not a heavy accent box. */}
           {parsed.title && (
-            <h2 className="font-display text-lg font-bold tracking-tight">{parsed.title}</h2>
+            <h2 className="font-display text-xl font-bold tracking-tight text-text-primary">{parsed.title}</h2>
           )}
           {parsed.intro && (
-            <div className="mt-2 rounded-xl border border-accent-border bg-accent-soft/40 p-4 text-sm leading-relaxed text-text-primary">
+            <div className="mt-1.5 border-l-2 border-accent-border pl-3 text-sm leading-relaxed text-text-secondary">
               <Markdown source={parsed.intro} compact />
             </div>
           )}
+          {/* Sections: a clean single-column stack of cards. Each card leads with
+              an icon chip + title (clear hierarchy), then its content. */}
+          {parsed.sections.length > 0 ? (
+            <div className="mt-5 space-y-2.5">
+              {parsed.sections.map((s) => {
+                const Icon = idealSectionIcon(s.title);
+                return (
+                  <div key={s.title} className="rounded-xl border border-border bg-surface p-4">
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="font-display text-base font-semibold tracking-tight text-text-primary">{s.title}</span>
+                    </div>
+                    {s.body && (
+                      <div className="mt-2.5 pl-[38px] text-sm leading-relaxed text-text-secondary">
+                        <Markdown source={s.body} compact />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mt-5 rounded-xl border border-border bg-surface p-4 text-sm leading-relaxed text-text-secondary">
+              <Markdown source={body} compact />
+            </div>
+          )}
+          {/* Version history: the one canonical collapsible, collapsed by default. */}
           {versions.length > 0 && (
-            <details className="mb-3 rounded-lg border border-border-subtle bg-surface px-3 py-2">
-              <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
-                History · {versions.length} version{versions.length === 1 ? "" : "s"} · every edit is snapshotted, nothing is ever lost
-              </summary>
-              <div className="mt-2 flex flex-col gap-1">
+            <CollapsibleSection
+              icon={History}
+              title="History"
+              subtitle="Every edit is snapshotted: nothing is ever lost."
+              summary={`${versions.length} version${versions.length === 1 ? "" : "s"}`}
+              className="mt-4"
+            >
+              <div className="flex flex-col gap-1">
                 {versions.map((v) => (
-                  <div key={v.path} className="flex items-center gap-2 px-1 py-1">
+                  <div key={v.path} className="flex items-center gap-2 py-1">
                     <span className="flex-1 font-mono text-[11px] text-text-secondary">{v.name.replace("_", " · ")}</span>
                     <button
                       onClick={async () => {
@@ -218,36 +252,7 @@ export function IdealStateSection({ vaultPath }: { vaultPath: string }) {
                   </div>
                 ))}
               </div>
-            </details>
-          )}
-          {parsed.sections.length > 0 ? (
-            <div className="relative mt-4">
-              <div className="absolute bottom-4 left-[17px] top-4 w-px bg-border" aria-hidden />
-              <div className="space-y-3">
-                {parsed.sections.map((s) => {
-                  const Icon = idealSectionIcon(s.title);
-                  return (
-                    <div key={s.title} className="relative flex gap-3.5">
-                      <div className="relative z-10 mt-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent-border bg-accent-soft">
-                        <Icon className="h-4 w-4 text-accent" />
-                      </div>
-                      <div className="min-w-0 flex-1 rounded-xl border border-border bg-surface p-4">
-                        <div className="font-display text-sm font-semibold tracking-tight">{s.title}</div>
-                        {s.body && (
-                          <div className="mt-2 text-sm leading-relaxed text-text-secondary">
-                            <Markdown source={s.body} compact />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="mt-4 rounded-xl border border-border bg-surface p-4 text-sm leading-relaxed text-text-secondary">
-              <Markdown source={body} compact />
-            </div>
+            </CollapsibleSection>
           )}
         </div>
       )}
