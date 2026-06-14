@@ -130,7 +130,7 @@ fn parse_surface(output: &str) -> SurfaceResult {
 }
 
 fn cache_path(vault: &str, domain: &str) -> PathBuf {
-    crate::domain_dir_pub(vault, domain).join("_surface.json")
+    crate::paths::domain_dir_pub(vault, domain).join("_surface.json")
 }
 
 #[tauri::command]
@@ -141,7 +141,7 @@ pub async fn domain_surface(
     model: String,
     force: bool,
 ) -> Result<SurfaceResult, String> {
-    let dir = crate::domain_dir_pub(&vault, &domain);
+    let dir = crate::paths::domain_dir_pub(&vault, &domain);
     let cache = cache_path(&vault, &domain);
 
     // Serve fresh cache unless forced.

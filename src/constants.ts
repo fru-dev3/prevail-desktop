@@ -1,0 +1,210 @@
+// Pure data constants extracted from App.tsx.
+import type { Framework, Lens, ModelPick, Palette, ScoreBreakdown } from "./types";
+
+// App version, injected by Vite at build time. Shared so any surface (the
+// Bunker ribbon, the About section) shows the same string.
+declare const __APP_VERSION__: string;
+export const APP_VERSION = __APP_VERSION__;
+
+export const DOMAIN_BLURBS: Record<string, string> = {
+  wealth: "Your money, savings, and the path to financial freedom.",
+  finance: "Your money, savings, and the path to financial freedom.",
+  health: "Your energy, fitness, and long-term wellbeing.",
+  fitness: "Your energy, fitness, and long-term wellbeing.",
+  tax: "Filings, deadlines, and keeping more of what you earn.",
+  taxes: "Filings, deadlines, and keeping more of what you earn.",
+  career: "Your work, growth, and where you're headed next.",
+  work: "Your work, growth, and where you're headed next.",
+  business: "Your ventures, clients, and what you're building.",
+  insurance: "Coverage, renewals, and protecting what matters.",
+  estate: "Your legacy, documents, and looking after your people.",
+  calendar: "What's coming up, and making time for what counts.",
+  schedule: "What's coming up, and making time for what counts.",
+  benefits: "Perks, plans, and everything your employer offers.",
+  brand: "Your name, your voice, and how the world sees you.",
+  content: "Ideas, posts, and the things you create.",
+  "real-estate": "Property, home, and the roof over your head.",
+  realestate: "Property, home, and the roof over your head.",
+  home: "Your space, your projects, and daily life at home.",
+  records: "Important documents, kept safe and easy to find.",
+  vision: "The big picture: where you're going, and why.",
+  social: "Friends, connections, and staying in touch.",
+  family: "The people closest to you, and staying connected.",
+  learning: "Skills, courses, and growing your mind.",
+  learn: "Skills, courses, and growing your mind.",
+  intel: "Research, signals, and staying in the know.",
+  intelligence: "Research, signals, and staying in the know.",
+  explore: "Curiosities, trips, and things worth discovering.",
+  travel: "Curiosities, trips, and things worth discovering.",
+  chief: "Your command center for today's priorities and what matters now.",
+  mail: "Your inbox: important threads handled, noise filtered, nothing dropped.",
+  email: "Your inbox: important threads handled, noise filtered, nothing dropped.",
+  inbox: "Your inbox: important threads handled, noise filtered, nothing dropped.",
+};
+export const VENDOR_BRAND: Record<string, { hex: string; accent: string; name: string }> = {
+  claude:      { hex: "#cc785c", accent: "#cc785c", name: "Anthropic Claude" },
+  codex:       { hex: "#10a37f", accent: "#10a37f", name: "OpenAI Codex" },
+  antigravity: { hex: "#ffffff", accent: "#4285f4", name: "Google Antigravity" },
+  ollama:      { hex: "#0a0a0a", accent: "#6b7280", name: "Ollama (local)" },
+  lmstudio:    { hex: "#4f46e5", accent: "#6366f1", name: "LM Studio (local)" },
+  mlx:         { hex: "#1f2937", accent: "#9ca3af", name: "oMLX (local)" },
+  openrouter:  { hex: "#6566f1", accent: "#6566f1", name: "OpenRouter" },
+  other:       { hex: "#6b7280", accent: "#6b7280", name: "-" },
+};
+export const SEVERITY_ORDER: Record<string, number> = { critical: 0, warn: 1, info: 2 };
+export const SEVERITY_LABEL: Record<string, string> = {
+  critical: "Critical",
+  warn: "Warnings",
+  info: "Suggestions",
+};
+export const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+export const SYCOPHANCY_RE = /\b(you're absolutely right!?|you are absolutely right!?|great question!?|excellent question!?|that's a great point!?)\b\s*/gi;
+export const SKILL_TOKEN_RE = /(^|\s)(\/[a-zA-Z][a-zA-Z0-9_-]*)/g;
+export const DOMAIN_PALETTE = [
+  "#cc785c", "#2d7fe4", "#5fae74", "#2dd4bf", "#a78bfa", "#e0823d",
+  "#3fa6a0", "#c44e8a", "#7c83ff", "#6b8e23", "#d2674f", "#b8860b",
+];
+export const INTEGRATION_LABEL: Record<string, string> = {
+  api: "Direct API", oauth: "OAuth", browser: "Browser", mcp: "MCP server", manual: "Manual drop",
+};
+export const AUTONOMY_LABEL: Record<string, string> = {
+  "read-only": "Read only", draft: "Can draft", act: "Can act",
+};
+export const AUTONOMY_TINT: Record<string, string> = {
+  "read-only": "#2fb87a", draft: "#d8a657", act: "#e06c75",
+};
+export const STATUS_TINT: Record<string, string> = { connected: "#2fb87a", expired: "#d8a657", error: "#e06c75", "not-configured": "#2fb87a" };
+export const PATTERN_LABEL: Record<string, string> = { api: "API", oauth: "OAuth", cli: "CLI", browser: "Web" };
+export const PATTERN_TINT: Record<string, string> = { api: "#2fb87a", oauth: "#C4A35A", cli: "#6b7cff", browser: "#9aa0a6" };
+export const PATTERN_TIER: Record<string, string> = { api: "Tier A · API/MCP", oauth: "Tier B · OAuth gateway", cli: "Tier D · CLI", browser: "Tier C · browser" };
+export const DOMAIN_LABEL: Record<string, string> = {
+  money: "Money & Banking", credit: "Credit & Debt", investing: "Investing & Wealth",
+  taxes: "Taxes & Accounting", insurance: "Insurance", realestate: "Real Estate & Home",
+  health: "Health & Medical", fitness: "Fitness & Wellness", email: "Email",
+  communication: "Communication", productivity: "Productivity", calendar: "Calendar",
+  files: "Files & Storage", security: "Security & Identity", career: "Career & Work",
+  shopping: "Shopping", travel: "Travel", smarthome: "Smart Home", social: "Social",
+  media: "Media & Streaming", learning: "Learning", government: "Government & Civic",
+  utilities: "Utilities", automotive: "Automotive", food: "Food & Dining",
+  family: "Family & Home", giving: "Giving", legal: "Legal & Estate",
+  news: "News & Research", dev: "Developer", tech: "Tech & Devices",
+};
+export const SOURCE_ABBR: Record<string, string> = { claude: "Cl", chatgpt: "GPT", gemini: "Gem" };
+export const LOCAL_CLI_IDS = new Set(["ollama", "lmstudio", "mlx"]);
+
+export const MODELS: Record<string, ModelPick[]> = {
+  claude: [
+    // One entry per model: the alias id (auto-upgrades) carries the resolved
+    // version in its label, so "Opus 4.8 (latest)" and a separate "Opus 4.8"
+    // never coexist. Bump these labels when Anthropic ships a new version.
+    { id: "opus",            label: "Opus 4.8 (latest)",   blurb: "auto-upgrades to the newest Opus" },
+    { id: "claude-opus-4-7", label: "Opus 4.7",            blurb: "pinned · previous flagship" },
+    { id: "claude-opus-4-6", label: "Opus 4.6",            blurb: "pinned · legacy flagship" },
+    { id: "claude-fable-5",  label: "Fable 5",             blurb: "newest · most capable" },
+    { id: "sonnet",          label: "Sonnet 4.6 (latest)", blurb: "auto-upgrades · balanced" },
+    { id: "haiku",           label: "Haiku 4.5 (latest)",  blurb: "auto-upgrades · fast + cheap" },
+  ],
+  codex: [
+    // gpt-5.5 is the ONLY model Codex accepts on a ChatGPT-login
+    // account — every gpt-5 / gpt-5-codex / gpt-5-mini / o-series
+    // variant returns 400 "model not supported when using Codex with a
+    // ChatGPT account". Verified empirically against `codex exec`.
+    // The "@<effort>" suffix is parsed in cli_args() (lib.rs) into
+    // `-c model_reasoning_effort=<effort>`; minimal effort 400s, so
+    // only default / medium / high are offered. All three are tested
+    // working.
+    { id: "gpt-5.5",        label: "GPT-5.5",          blurb: "flagship · fast (default)" },
+    { id: "gpt-5.5@medium", label: "GPT-5.5 (medium)", blurb: "balanced reasoning" },
+    { id: "gpt-5.5@high",   label: "GPT-5.5 (high)",   blurb: "max reasoning · slower" },
+  ],
+  antigravity: [
+    { id: "Gemini 3.1 Pro (High)",        label: "Gemini 3.1 Pro (High)",        blurb: "extra reasoning" },
+    { id: "Gemini 3.1 Pro (Low)",         label: "Gemini 3.1 Pro (Low)",         blurb: "flagship · less reasoning" },
+    { id: "Gemini 3.5 Flash (High)",      label: "Gemini 3.5 Flash (High)",      blurb: "fast + reasoning" },
+    { id: "Gemini 3.5 Flash (Medium)",    label: "Gemini 3.5 Flash (Medium)",    blurb: "balanced" },
+    { id: "Gemini 3.5 Flash (Low)",       label: "Gemini 3.5 Flash (Low)",       blurb: "fastest" },
+    { id: "Claude Sonnet 4.6 (Thinking)", label: "Claude Sonnet 4.6 (Thinking)", blurb: "via Antigravity" },
+    { id: "Claude Opus 4.6 (Thinking)",   label: "Claude Opus 4.6 (Thinking)",   blurb: "via Antigravity" },
+    { id: "GPT-OSS 120B (Medium)",        label: "GPT-OSS 120B (Medium)",        blurb: "open model" },
+  ],
+  ollama: [
+    { id: "llama3.2", label: "Llama 3.2",  blurb: "local · meta" },
+    { id: "qwen2.5",  label: "Qwen 2.5",   blurb: "local · alibaba" },
+    { id: "mistral",  label: "Mistral 7B", blurb: "local · mistral" },
+  ],
+  openrouter: [
+    { id: "anthropic/claude-opus-4.1",       label: "Claude Opus 4.1",   blurb: "via OpenRouter" },
+    { id: "anthropic/claude-sonnet-4.5",     label: "Claude Sonnet 4.5", blurb: "via OpenRouter" },
+    { id: "openai/gpt-5.1",                  label: "GPT-5.1",           blurb: "via OpenRouter" },
+    { id: "google/gemini-2.5-pro",           label: "Gemini 2.5 Pro",    blurb: "via OpenRouter" },
+    { id: "x-ai/grok-4",                     label: "Grok 4",            blurb: "via OpenRouter" },
+    { id: "deepseek/deepseek-chat",          label: "DeepSeek",          blurb: "via OpenRouter" },
+    { id: "qwen/qwen-2.5-72b-instruct",      label: "Qwen 2.5 72B",      blurb: "via OpenRouter" },
+    { id: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B",   blurb: "via OpenRouter" },
+  ],
+};
+
+export const DISCOVERED_MODELS: Record<string, ModelPick[]> = {};
+
+export const DEAD_MODELS = new Set([
+  "gpt-5-codex", "gpt-5", "gpt-5-high", "gpt-5-mini", "gpt-5.1",
+  "gpt-5.5-codex", "gpt-4o", "o3", "o4-mini",
+]);
+
+export const FRAMEWORKS: Framework[] = [
+  { id: "none", label: "OFF", blurb: "No framework, model's default response shape", instruction: "" },
+  { id: "bluf", label: "BLUF", blurb: "Bottom Line Up Front, lead with the answer", instruction: "Apply the BLUF framework. Your first sentence MUST be the bottom line: the single most important conclusion or recommendation. Then provide supporting context in 1-3 short paragraphs. Never bury the conclusion under context." },
+  { id: "win", label: "WIN", blurb: "What's Important Now, name the ONE next move", instruction: "Apply the WIN (What's Important Now) framework. Identify the ONE most important next move the user should make. State that move in the first sentence. Drop everything that doesn't directly serve that next step." },
+  { id: "scqa", label: "SCQA", blurb: "Situation → Complication → Question → Answer", instruction: "Structure your response as SCQA: a one-line Situation, a one-line Complication, a one-line Question, then a decisive Answer." },
+  { id: "sbar", label: "SBAR", blurb: "Situation · Background · Assessment · Recommendation", instruction: "Structure your response as SBAR: Situation, Background, Assessment, Recommendation. Each in 1-2 lines max." },
+  { id: "ooda", label: "OODA", blurb: "Observe → Orient → Decide → Act", instruction: "Structure your response as an OODA loop: Observe, Orient, Decide, Act. Each step labelled and one line." },
+  { id: "proscons", label: "PROS/CONS", blurb: "Structured trade-off with weight", instruction: "Structure your response as a PROS/CONS analysis. Two columns. End with a one-line Weight verdict naming the winner." },
+  { id: "steelman", label: "STEELMAN", blurb: "Strongest version of the other side first", instruction: "Steelman the opposing position first: give it the strongest framing you can. Then give your verdict." },
+];
+
+export const LENSES: Lens[] = [
+  { id: "none", label: "OFF", blurb: "No lens, single response, default angle", instruction: "" },
+  { id: "first-principles", label: "FIRST PRINCIPLES", blurb: "Strip the problem to fundamentals", instruction: "Approach this problem from first principles. Forget conventional wisdom, prior advice, industry best practice, or what 'most people do.' Strip the problem to its fundamental mechanics and rebuild the answer from there." },
+  { id: "outsider", label: "OUTSIDER", blurb: "Challenge the thinking; ignore prior context", instruction: "Approach this as a complete outsider with no prior context. Challenge every assumption that the question seems to bake in." },
+  { id: "contrarian", label: "CONTRARIAN", blurb: "Argue the strongest case against the obvious answer", instruction: "Argue the strongest possible case against the obvious or expected answer. Don't be devil's advocate: actually pressure-test the consensus until something cracks." },
+  { id: "expansionist", label: "EXPANSIONIST", blurb: "What's the bigger version of this question?", instruction: "Don't answer the question as asked. First ask: what's the bigger version of this question? Then answer THAT." },
+  { id: "executor", label: "EXECUTOR", blurb: "Skip the framing, literal next step today", instruction: "Skip all framing. The user wants the literal next step they should take today. State the action in one imperative sentence, then list 2-3 concrete tasks." },
+  { id: "alien", label: "ALIEN", blurb: "An outsider notices what's obvious to you", instruction: "You are an alien observer with no familiarity with this user's biases. State what is plainly obvious about their situation that they themselves are too close to see." },
+  { id: "mom", label: "MOM", blurb: "Plain English, what would she actually do?", instruction: "Answer as a wise mom would: plain English, no jargon, sentimentally honest, practical. What would she actually tell her child to do?" },
+  { id: "dad", label: "DAD", blurb: "Hard-nosed, what's the trap you're not seeing?", instruction: "Answer as a hard-nosed dad would: direct, no coddling. Name the trap the user is not seeing. Tell them what they will regret in 10 years if they get this wrong." },
+];
+
+export const PALETTES: { id: Palette; name: string; blurb: string; swatch: { bg: string; surface: string; accent: string; ai: string } }[] = [
+  { id: "vault",     name: "Vault",     blurb: "Cream + teal, focused, calm",                       swatch: { bg: "#faf8f1", surface: "#ffffff", accent: "#0d7a6e", ai: "#60a8c0" } },
+  { id: "midnight",  name: "Midnight",  blurb: "Deep blue-violet with cool accents",                  swatch: { bg: "#0a0d1f", surface: "#131730", accent: "#818cf8", ai: "#60a8c0" } },
+  { id: "ember",     name: "Ember",     blurb: "Warm crimson and bronze, forge vibes",               swatch: { bg: "#1a0a06", surface: "#2a130c", accent: "#ef6c4a", ai: "#60a8c0" } },
+  { id: "mono",      name: "Mono",      blurb: "Clean grayscale, minimal and focused",               swatch: { bg: "#f7f7f8", surface: "#ffffff", accent: "#18181b", ai: "#60a8c0" } },
+  { id: "cyberpunk", name: "Cyberpunk", blurb: "Neon green on black, matrix terminal",               swatch: { bg: "#030a06", surface: "#08130c", accent: "#22ff77", ai: "#60a8c0" } },
+  { id: "slate",     name: "Slate",     blurb: "Cool slate blue, focused developer theme",           swatch: { bg: "#0c1220", surface: "#131b2e", accent: "#38bdf8", ai: "#60a8c0" } },
+];
+
+export const MODEL_SEP = "::";
+
+export const SETTINGS_ROW = "flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-4 py-3 transition-colors";
+
+export const SCORE_DIMENSIONS: { key: keyof ScoreBreakdown; label: string }[] = [
+  { key: "coverage", label: "Coverage" },
+  { key: "density", label: "Density" },
+  { key: "freshness", label: "Freshness" },
+  { key: "structure", label: "Structure" },
+  { key: "activity", label: "Activity" },
+  { key: "config_completeness", label: "Config" },
+];
+
+export const ONBOARDING_QUESTIONS: {
+  id: string;
+  prompt: string;
+  placeholder: string;
+}[] = [
+  { id: "focus", prompt: "What are you focused on right now?", placeholder: "building ventures, getting healthier, managing money…" },
+  { id: "roles", prompt: "What roles or hats do you wear?", placeholder: "founder, parent, investor, creator…" },
+  { id: "money", prompt: "How do you want to handle money & wealth?", placeholder: "track net worth, taxes, investing, real estate…" },
+  { id: "health", prompt: "Anything around health, fitness, or wellbeing?", placeholder: "fitness goals, sleep, mental health… (leave blank to skip)" },
+  { id: "work", prompt: "What does your work or business look like?", placeholder: "company, clients, content, career…" },
+  { id: "other", prompt: "Anything else you'd like a domain for?", placeholder: "learning, relationships, travel, side projects…" },
+];

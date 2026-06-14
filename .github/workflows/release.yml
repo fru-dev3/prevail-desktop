@@ -88,3 +88,75 @@ jobs:
           dmg=$(ls src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Prevail_*_aarch64.dmg)
           cp "$dmg" Prevail-mac-arm64.dmg
           gh release upload "${{ github.ref_name }}" Prevail-mac-arm64.dmg --clobber
+
+  # Windows build. Same Tauri codebase: the only platform-specific pieces are the
+  # NSIS installer target and a Windows-compiled engine sidecar (handled by
+  # prepare-sidecar.sh, which now emits prevail-<triple>.exe). Runs after the
+  # macOS job so the GitHub release already exists and tauri-action merges the
+  # Windows entry into latest.json (keeping the cross-platform auto-updater feed
+  # intact) instead of racing to create the release.
+  release-windows:
+    name: Build (Windows x64)
+    needs: release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Checkout engine (prevail-cli)
+        uses: actions/checkout@v4
+        with:
+          repository: fru-dev3/prevail-cli
+          path: engine
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install engine deps
+        run: cd engine && bun install
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Build (NSIS installer)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PREVAIL_CLI_DIR: ${{ github.workspace }}/engine
+          # Sign the updater artifact so the in-app auto-updater accepts Windows
+          # builds. (App-level Authenticode signing needs a Windows cert we don't
+          # have yet; until then the installer is unsigned and SmartScreen warns.)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          args: --bundles nsis
+          tagName: ${{ github.ref_name }}
+          releaseName: "Prevail ${{ github.ref_name }}"
+          releaseBody: "See CHANGELOG.md for details."
+          releaseDraft: false
+          prerelease: false
+
+      # Stable-name alias so download links can point at
+      # releases/latest/download/Prevail-windows-x64-setup.exe.
+      - name: Upload stable-name installer alias
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          exe=$(ls src-tauri/target/release/bundle/nsis/Prevail_*_x64-setup.exe)
+          cp "$exe" Prevail-windows-x64-setup.exe
+          gh release upload "${{ github.ref_name }}" Prevail-windows-x64-setup.exe --clobber
