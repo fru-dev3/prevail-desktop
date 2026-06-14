@@ -175,6 +175,14 @@ Loops were a stateless suggestion engine. Now genuinely autonomous:
   App.tsx, storage.ts. tsc + build green; engine tests pass; 0 new typecheck errors.
 - FUTURE: richer in-app status (history timeline per loop); auto-propose loops/goals from state.
 
+## T20 — Apps redesign + always-on (founder goal) — DONE
+- P1 status/schedule UI, P2 describe-the-goal connect, P3 autonomous sync daemon
+  (run headless + in-app), P4 method re-evaluation. (docs/APPS-REDESIGN.md)
+- Headless login agents now cover learn + loops + sync ("keep working when closed").
+- Loops are self-driving + can execute approved actions via connectors (act-mode).
+- VERIFIED 2026-06-14: desktop tsc PASS · 51 cargo tests · frontend build · 337 engine
+  tests (0 fail) · website build. Website (Windows-download fix) DEPLOYED to prevail.sh.
+
 ## Decisions (founder, 2026-06-14)
 - T10 Intents: BUILD NOW, phased (daemon + storage → drill-down UI → wire into taskgen/loops).
 - Sequence: VISUAL CONSISTENCY FIRST (T1 canonical-collapsible migration) → per-page redesigns
