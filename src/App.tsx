@@ -18,7 +18,7 @@ import { ContextScorePanel, DomainAppsTab, IngestionTierCard, OnboardingModal, P
 import { BenchScheduleCard, SidebarBenchmarkRuns } from "./cards";
 import { ProviderMark } from "./marks";
 import { ThinkingDots, ThinkingWord, useAppearance, useFrameworkLens } from "./hooks";
-import { authLoginCmd, idealSectionIcon, mcpCommandPath, pickSkillColor, settingsHeaderIcon } from "./sectionutil";
+import { SettingsHeader, authLoginCmd, idealSectionIcon, mcpCommandPath, pickSkillColor } from "./sectionutil";
 import { DOMAIN_ICONS, domainIcon } from "./icons";
 import { compareSemver, extractCliError, renderSkillTokens } from "./textutil";
 import { distillCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
@@ -9909,23 +9909,6 @@ function AgentCard({
 
 // Pick a representative icon for a settings page from its title, so every
 // header gets a matching glyph without threading an icon through 20 call sites.
-
-function SettingsHeader({ title, subtitle, icon }: { title: string; subtitle?: string; icon?: typeof Folder }) {
-  const Icon = icon ?? settingsHeaderIcon(title);
-  return (
-    <div className="mb-4 border-b border-border-subtle pb-4">
-      <div className="flex items-start gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent ring-1 ring-accent-border/50">
-          <Icon className="h-5 w-5" />
-        </div>
-        <div className="min-w-0 pt-0.5">
-          <h2 className="font-display text-[26px] font-bold leading-tight tracking-tight">{title}</h2>
-          {subtitle && <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-text-secondary">{subtitle}</p>}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // Header hierarchy, level 2: a subsection within a settings page. Sits clearly
 // below the big SettingsHeader (level 1) and above the small mono group labels
