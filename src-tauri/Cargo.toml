@@ -4,6 +4,7 @@ version = "0.8.2"
 description = "Prevail desktop — native macOS cockpit for AI council deliberation"
 authors = ["example.com"]
 edition = "2021"
+license = "GPL-3.0-only"
 
 [lib]
 name = "prevail_desktop_lib"

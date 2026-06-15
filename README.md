@@ -18,7 +18,7 @@ No terminal required.
   <a href="https://github.com/fru-dev3/prevail-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/fru-dev3/prevail-desktop?label=latest&color=1f6f5c" alt="Latest release" /></a>
   <img src="https://img.shields.io/badge/macOS-13%2B%20·%20Apple%20Silicon-111111?logo=apple&logoColor=white" alt="macOS 13+ Apple Silicon" />
   <img src="https://img.shields.io/badge/signed%20%26%20notarized-✓-1f6f5c" alt="Signed & notarized" />
-  <img src="https://img.shields.io/badge/license-MIT-555" alt="MIT License" />
+  <img src="https://img.shields.io/badge/license-GPL--3.0-555" alt="GPL-3.0 License" />
 </p>
 
 **[⤓ Download the latest `.dmg`](https://github.com/fru-dev3/prevail-desktop/releases/latest/download/Prevail-mac-arm64.dmg)** &nbsp;·&nbsp; [prevail.sh](https://prevail.sh) &nbsp;·&nbsp; [all releases](https://github.com/fru-dev3/prevail-desktop/releases)
@@ -104,4 +104,8 @@ See [SECURITY.md](SECURITY.md). Vault is **not** encrypted at rest; secrets live
 in the Keychain; the WebUI is loopback-only + allowlisted when enabled.
 
 ## License
-MIT. © 2026 example.com.
+[GPL-3.0-only](./LICENSE). © 2026 Fru Louis · example.com.
+
+Prevail is free software: you can use, study, share, and modify it under the
+terms of the GNU General Public License v3. Anyone may self-build and audit the
+code; any redistributed fork must stay open under the same license.
