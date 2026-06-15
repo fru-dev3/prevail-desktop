@@ -76,7 +76,7 @@ export const CONNECTOR_GROUPS: { category: string; items: Connector[] }[] = [
 
 // Friendly domain headings. Falls back to titleCase for anything unmapped.
 
-export function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string; focusAppId?: string }) {
+export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaultPath: string; focusAppId?: string; catalogOnly?: boolean }) {
   const [cat, setCat] = useState<ConnectorCatalog | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -211,14 +211,20 @@ export function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string
 
   return (
     <>
-      <SettingsHeader
-        title="Apps"
-        subtitle="Every app Prevail can pull from, pre-populated and tagged by how it connects. Pulled data lands in the matching domain's vault and feeds the intent ledger + memory."
-      />
+      {/* APP-1: when embedded under the top Apps panel's "Advanced", this is the
+          CATALOG ONLY — the connected-apps list lives once, in AppsPanel. The
+          standalone header + connected/empty blocks are suppressed to kill the
+          AllTrails-renders-twice duplication. */}
+      {!catalogOnly && (
+        <SettingsHeader
+          title="Apps"
+          subtitle="Every app Prevail can pull from, pre-populated and tagged by how it connects. Pulled data lands in the matching domain's vault and feeds the intent ledger + memory."
+        />
+      )}
 
       {/* Connected apps — the REAL apps the engine has wired up (with live auth
           + sync state), distinct from the browseable catalog below. */}
-      {engineApps && engineApps.length > 0 && (
+      {!catalogOnly && engineApps && engineApps.length > 0 && (
         <div className="mb-6">
           <div className="mb-2 flex items-baseline gap-2">
             <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Connected</span>
@@ -327,7 +333,7 @@ export function ConnectorsSection({ vaultPath, focusAppId }: { vaultPath: string
           </div>
         </div>
       )}
-      {engineApps && engineApps.length === 0 && (
+      {!catalogOnly && engineApps && engineApps.length === 0 && (
         <div className="mb-6 rounded-lg border border-border-subtle bg-surface px-4 py-3 text-xs text-text-muted">
           No apps connected yet. Drop a manifest into <code className="text-accent">~/.prevail/apps/&lt;id&gt;/</code> or add one from the catalog below; it then appears here with live status and syncs into its domains.
         </div>

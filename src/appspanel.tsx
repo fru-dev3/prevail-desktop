@@ -5,7 +5,7 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) — not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, ChevronRight, Loader2, Plug, Plus, RefreshCw } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, FolderOpen, Loader2, Pencil, Plug, Plus, RefreshCw, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { relTime, titleCase } from "./format";
 import { PREF, getPref, lsGet, lsSet } from "./storage";
@@ -89,8 +89,16 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   useEffect(() => {
     void reload();
     const onSynced = () => { void reload(); };
+    // APP-2: the connect flow's "open existing" match jumps here to expand it.
+    const onOpen = (e: Event) => { const id = (e as CustomEvent<string>).detail; if (id) setExpanded(id); };
     window.addEventListener("prevail:apps-synced", onSynced);
-    return () => window.removeEventListener("prevail:apps-synced", onSynced);
+    window.addEventListener("prevail:apps-changed", onSynced);
+    window.addEventListener("prevail:app-open", onOpen as EventListener);
+    return () => {
+      window.removeEventListener("prevail:apps-synced", onSynced);
+      window.removeEventListener("prevail:apps-changed", onSynced);
+      window.removeEventListener("prevail:app-open", onOpen as EventListener);
+    };
   }, [reload]);
 
   const syncNow = useCallback(async (id: string) => {
@@ -173,6 +181,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                   onToggle={() => setExpanded((e) => (e === a.id ? null : a.id))}
                   onSync={() => syncNow(a.id)}
                   onSetEnabled={(v) => setEnabled(a.id, v)}
+                  onReload={reload}
                 />
               ))}
             </section>
@@ -183,7 +192,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   );
 }
 
-function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEnabled }: {
+function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEnabled, onReload }: {
   app: EngineApp;
   vaultPath: string;
   status: AppStatus;
@@ -192,11 +201,38 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
   onToggle: () => void;
   onSync: () => void;
   onSetEnabled: (v: boolean) => void;
+  onReload: () => Promise<void> | void;
 }) {
   const meta = STATUS_META[status];
   const enabled = app.enabled !== false;
   const initial = (app.title || app.id || "·").charAt(0).toUpperCase();
   const runs = app.runs ?? [];
+  // APP-5 — edit which domains this app feeds (engine_app_set_domains). The
+  // vault's domain list is fetched lazily when the editor opens.
+  const [editDomains, setEditDomains] = useState(false);
+  const [allDomains, setAllDomains] = useState<string[]>([]);
+  const [domSel, setDomSel] = useState<Set<string>>(new Set((app.domains ?? []).map((d) => d.toLowerCase())));
+  const [domBusy, setDomBusy] = useState(false);
+  const openDomainEditor = async () => {
+    setDomSel(new Set((app.domains ?? []).map((d) => d.toLowerCase())));
+    setEditDomains(true);
+    if (allDomains.length === 0) {
+      try {
+        const ds = await invoke<{ name: string }[]>("scan_vault", { path: vaultPath });
+        setAllDomains((ds ?? []).map((d) => d.name.toLowerCase()).sort());
+      } catch { /* domains optional */ }
+    }
+  };
+  const saveDomains = async () => {
+    setDomBusy(true);
+    try {
+      await invoke("engine_app_set_domains", { id: app.id, domains: [...domSel] });
+      setEditDomains(false);
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+      await onReload();
+    } catch (e) { console.error("set domains", e); }
+    finally { setDomBusy(false); }
+  };
   // P4 — re-evaluate the connection method: maybe a better one exists now.
   const [reEval, setReEval] = useState<string | null>(null);
   const [reEvalBusy, setReEvalBusy] = useState(false);
@@ -267,7 +303,55 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
           {reEval && <div className="rounded-md border border-border-subtle bg-background px-3 py-1.5 text-xs text-text-secondary">{reEval}</div>}
           <Detail label="Schedule">{scheduleLabel(app.refresh)}</Detail>
           {app.nextDueTs ? <Detail label="Next sync">{relTime(app.nextDueTs)}</Detail> : null}
-          <Detail label="Domains fed">{(app.domains ?? []).length ? app.domains.map(titleCase).join(", ") : "none yet"}</Detail>
+          {/* APP-5 — domains fed, now editable. */}
+          <Detail label="Domains fed">
+            {!editDomains ? (
+              <span className="inline-flex flex-wrap items-center gap-1.5">
+                <span>{(app.domains ?? []).length ? app.domains.map(titleCase).join(", ") : "none yet"}</span>
+                <button onClick={openDomainEditor}
+                  className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+                  <Pencil className="h-2.5 w-2.5" /> edit
+                </button>
+              </span>
+            ) : (
+              <div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(allDomains.length ? allDomains : [...domSel]).map((d) => {
+                    const on = domSel.has(d);
+                    return (
+                      <button key={d} onClick={() => setDomSel((cur) => { const n = new Set(cur); n.has(d) ? n.delete(d) : n.add(d); return n; })}
+                        className={`rounded-full border px-2 py-0.5 text-[11px] ${on ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:border-accent-border"}`}>
+                        {on && <Check className="mr-1 inline h-2.5 w-2.5" />}{titleCase(d)}
+                      </button>
+                    );
+                  })}
+                  {allDomains.length === 0 && domSel.size === 0 && <span className="text-[11px] text-text-muted">loading domains…</span>}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <button onClick={saveDomains} disabled={domBusy}
+                    className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+                    {domBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save
+                  </button>
+                  <button onClick={() => setEditDomains(false)} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">
+                    <X className="h-3 w-3" /> Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </Detail>
+          {/* APP-6 — surface where the per-app (MCP/connector) config lives + reveal it. */}
+          {app.path && (
+            <Detail label="Config">
+              <span className="inline-flex flex-wrap items-center gap-1.5">
+                <code className="break-all font-mono text-[11px] text-text-secondary">{app.path}</code>
+                <button onClick={() => void invoke("open_in_finder", { path: app.path! }).catch(() => {})}
+                  title="Open this app's config folder (manifest + MCP/connector config)"
+                  className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+                  <FolderOpen className="h-2.5 w-2.5" /> reveal
+                </button>
+              </span>
+            </Detail>
+          )}
           {app.lastError && (
             <div className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {app.lastError}
