@@ -183,7 +183,7 @@ export function IdealStateSection({ vaultPath }: { vaultPath: string }) {
       <SettingsHeader
         title="Ideal State"
         icon={Compass}
-        subtitle="The vision and values everything optimizes for. Every chat, council, recommendation, plan, and background daemon reads this first and aligns to it. Saved to vault/ideal-state.md the moment you hit Save."
+        subtitle="The vision and values everything optimizes for. Every chat, council, recommendation, plan, and background routine reads this first and aligns to it. Saved to vault/ideal-state.md the moment you hit Save."
       />
       <AlignmentCard vaultPath={vaultPath} />
       <div className="mb-4 flex items-center justify-between gap-2">
