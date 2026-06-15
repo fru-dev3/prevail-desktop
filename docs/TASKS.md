@@ -31,6 +31,22 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
   Routines / Reflexes / Upkeep / Autopilot / Crew. Covers: distill memory, reminders,
   task generation, skill learning, intent distillation. Founder wants a creative name.
 
+- [ ] **APPS SECTION OVERHAUL** ("makes me want to puke" — big rework):
+  - [ ] **Kill the duplication.** AllTrails (and everything) renders 2-3x: once under
+    top "CONNECTED · 1", again inside "Advanced > Apps > CONNECTED 1", again on scroll.
+    The Advanced section embeds a SECOND full Apps panel (its own "Apps" header, connected
+    list, connector catalog, search). Consolidate to ONE coherent panel.
+  - [ ] **Smart "Connect an app" flow.** Today it asks for a name and can create a
+    DUPLICATE of an app that already exists (catalog has 1468). Instead: IntelliSense as
+    you type → if the app already exists, reuse it (NO dropdown); then user describes what
+    they want from it → Prevail walks through building the MCP/connector, testing, evaluating.
+  - [ ] **Re-evaluate is broken** — clicking it does nothing. Fix.
+  - [ ] **Scheduling** — currently "no schedule"; needs an intelligent/flexible scheduler,
+    not just daily/weekly/monthly. (We added flexible cadences earlier — wire it here.)
+  - [ ] **Domains fed** — let the user add/modify which domains an app feeds, intelligently
+    (not a static list).
+  - [ ] **MCP configuration** — surface where/how the MCP config is pulled & editable per app.
+
 ### Implementation notes (found)
 - Per-domain model is stored desktop-side: `prevail.domain.<domain>.cli` + `.model`
   (chatpanel.tsx:125-201 reads them live). Engine rec emits clean `action.cli` +
