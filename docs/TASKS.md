@@ -55,12 +55,13 @@ nested "Advanced" full panel (the duplicate source).
 - [x] **APP-3 · Re-evaluate is broken** (cc706fc) — AppsPanel's re-evaluate IS wired
   (engine_app_connect reevaluate mode, reports back inline); the BROKEN duplicate (in the old
   Advanced connectors panel) is gone with APP-1. Verify live on next build.
-- [~] **APP-4 · Scheduling** — DEFERRED: needs a new engine command. There is no
-  `engine_app_set_schedule` (only set_domains/set_enabled/sync/probe/connect). The schedule lives
-  in each app's manifest `refresh` field; an in-app editor can't persist without engine support.
-  Next: add `connectors set <id> schedule <cadence>` in prevail-cli + a Tauri command, then wire
-  a flexible cadence picker (reuse RefreshCadence/custom:N) into the AppCard. Founder: small
-  engine add.
+- [x] **APP-4 · Scheduling** DONE (cli 3eedaa4 + desktop 66c4c89). Built the missing engine
+  path: prevail-cli `connectors set <id> refresh <cadence> [at HH:MM] [on day]` →
+  setCommunityAppSchedule() writes manifest.refresh round-tripped through coerceRefresh (engine's
+  own validator). New `engine_app_set_schedule` Tauri command (registered in lib.rs). AppCard now
+  has a cadence editor: hourly / every 6-12h / daily / weekly (+ optional time + weekday) + clear.
+  Cadences are the engine-honored set (NOT monthly/N-days, which coerceRefresh rejects). Verified
+  e2e against a real manifest. cargo check clean.
 - [x] **APP-5 · Domains fed** (cc706fc) — "Domains fed" is now editable in the expanded card:
   chip toggles over the vault's domains (scan_vault), saved via engine_app_set_domains. appspanel.tsx.
 - [x] **APP-6 · MCP config** (cc706fc) — the expanded card surfaces the per-app config location
@@ -105,17 +106,14 @@ nested "Advanced" full panel (the duplicate source).
   SidebarBenchScheduled (sidebar) + HomeBenchScheduledBadge (home landing) show whenever a
   benchmark is armed on a schedule, with the cadence. Steady dot + calendar icon (distinct from
   a live run's pulsing dot, which SidebarBenchmarkRuns already shows). Click → Benchmark settings.
-- [~] **BENCH-2 · Scheduled benchmark scope is ambiguous/risky.** PARTIAL (37f8073).
-  - DONE: the schedule card now shows EXACTLY what the scheduled run will execute (model list +
-    domain scope, via scheduledRunPreview from the latest batch) AND warns on the single-model
-    trap ("only 1 model in your last run → schedule only tracks that one; run a benchmark with
-    every model you want tracked"). Coexistence is already handled (scheduler never stacks while
-    a run is in progress: benchpanel tick guard).
-  - DEFERRED (needs founder call): full decoupling into an independent "all models × all domains"
-    picker. Running ALL curated models nightly is a real cost decision and "all models" is
-    ambiguous (curated set can be dozens). runBenchmark() builds jobs from a (models,domains)
-    selection, so wiring an explicit scheduled-scope is feasible once the founder confirms the
-    intended set/cost.
+- [x] **BENCH-2 · Scheduled benchmark scope is ambiguous/risky.** DONE (37f8073 + 66c4c89).
+  - Scope is now fully DECOUPLED from the manual Run picker. Schedule card has three modes:
+    "Repeat latest run", "All models × all domains" (tracks every model even if the last manual
+    run was one), and "Custom" (pin an explicit model + domain set; persisted in BENCH_SCHED.scope*).
+  - buildScheduledJobs() builds jobs from the chosen scope (filtered to installed + Bunker-permitted
+    models); the in-app scheduler AND "Run now" route through runScheduledBatch() (never stacks
+    while a run is in progress). Preview shows exactly what will run, mode-aware; single-model
+    warning shown only in "repeat latest" mode. (bench.tsx, cards.tsx)
 - [x] **BENCH-3 · "Suggest with AI" question gen — per-domain + grounded in REAL data.**
   (CLI 33707ba, branch mcp-stdio-auth-fix)
   1. Per-domain count: ALREADY satisfied — both the desktop loop (suggestWithAi loops per
@@ -407,24 +405,24 @@ autonomously on branch `ui-feedback-recommendations` (desktop) + `mcp-stdio-auth
 Decisions taken (founder pre-confirmed): THEME-1 = desktop palette; MCP overhaul = yes;
 IA-1 umbrella = "Workspace".
 
-DONE (22): THEME-1, REC-1, NAV-1, SAFETY-1, IDEAL-1, TG-1, ABOUT-1, HOME-1, MCP-1, MCP-2,
-MCP-3, MCP-4, BENCH-1, BENCH-3, IA-1, VAULT-1, DEMO-1, APP-1, APP-2, APP-3, APP-5, APP-6.
-PARTIAL (2): BENCH-2 (run-preview + single-model warning done; full "all models" decouple
-deferred — cost decision for founter), APP-4 (scheduling editor — needs a new engine command
-`connectors set <id> schedule`; documented above).
+DONE (24 — the ENTIRE list): THEME-1, REC-1, NAV-1, SAFETY-1, IDEAL-1, TG-1, ABOUT-1, HOME-1,
+MCP-1, MCP-2, MCP-3, MCP-4, BENCH-1, BENCH-2, BENCH-3, IA-1, VAULT-1, DEMO-1, APP-1, APP-2,
+APP-3, APP-4, APP-5, APP-6. Nothing deferred.
+(2nd pass after founder said "do this all": BENCH-2 full scope-decouple + APP-4 schedule setter.)
 
 Verification: desktop `tsc` clean + `vite build` green on every batch; engine `cargo check`
-clean (MCP-4); prevail-cli rebuilt, MCP server tests pass incl. new no-token-over-stdio guard;
-337 engine tests pass (1 PRE-EXISTING unrelated recommendations.test failure, untouched).
-Commits (desktop): 66c07cd, 6ac1664, c88482e, 2194463, 37f8073, 80bf9c9, cc706fc (+docs).
-Commits (cli, branch mcp-stdio-auth-fix): 4d9e488 (MCP-1), 33707ba (BENCH-3).
+clean (MCP-4 + APP-4 command); prevail-cli rebuilt, MCP server tests pass incl. new
+no-token-over-stdio guard; APP-4 schedule setter verified e2e against a real manifest; 336
+engine tests pass (1 PRE-EXISTING unrelated recommendations.test failure, untouched).
+Commits (desktop): 66c07cd, 6ac1664, c88482e, 2194463, 37f8073, 80bf9c9, cc706fc, 66c4c89 (+docs).
+Commits (cli, branch mcp-stdio-auth-fix): 4d9e488 (MCP-1), 33707ba (BENCH-3), 3eedaa4 (APP-4).
 
-OPEN for founder when awake:
-- APP-4: approve the small engine add (schedule setter) → I'll wire the cadence picker.
-- BENCH-2: confirm what "all models × all domains" should cost nightly → I'll wire the decoupled scope.
-- MCP overhaul + everything else: review, then say the word to merge/release.
+OPEN for founder: review everything, then say the word to merge to main + cut a patch build.
+(MCP overhaul lives on the cli feature branch; once shipped the claude-mcp-proxy shim is unnecessary.)
 
 ## Log
+- 2026-06-15: 2nd pass — founder said "do this all" → completed BENCH-2 (full scope decouple)
+  + APP-4 (per-app schedule setter, CLI + Rust + UI). Whole list now DONE (24/24).
 - 2026-06-15: Overnight session — worked the entire UI-feedback + MCP list (see above).
 - 2026-06-14: Task list created from founder feedback batch.
 - 2026-06-14: Fixed T5 (all-domains suggest), T4 (Run now + time wording). Verified T11, T12.
