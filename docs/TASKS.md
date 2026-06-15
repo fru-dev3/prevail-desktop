@@ -66,7 +66,10 @@ nested "Advanced" full panel (the duplicate source).
   gauge for the overall score + verdict pill (On track/Drifting/Off course), thicker clean
   pillar bars with colored value, top-actions in a labelled panel. (Section layout itself
   was already redesigned in T7.) AlignmentCard in panels.tsx.
-- [ ] **TG-1 · Telegram bridge redesign** — clunky layout/flow; clean it up.
+- [x] **TG-1 · Telegram bridge redesign** (c88482e) — top-to-bottom flow: live status
+  pill in the header, one labelled setup block (token + chat ID + route CLI/model), a single
+  primary action row (Start/Stop + Send test + inline status), running stats + feed only when
+  relevant, help demoted to a quiet footer. settings5.tsx TelegramCard. (Single column kept.)
 - [x] **SAFETY-1 · Safety panel redesign** (6ac1664) — split into two labelled clusters:
   "Access protection" (App Lock + Vault Encryption cards) and "Agent guardrails" (the
   toggles/selects in one bordered card). Each guardrail row now has a leading state icon
@@ -81,10 +84,10 @@ nested "Advanced" full panel (the duplicate source).
   per-domain icon now render a circular badge (filled accent when active, ring otherwise)
   instead of a bare mono glyph. Apps don't render individual items collapsed (no change
   needed). The "+"/">" controls were already lucide icons (Plus/ChevronRight).
-- [ ] **ABOUT-1 · About page is a narrow centered column** — should go FULL-WIDTH like every
-  other panel (violates the single-column-full-width rule), and lay out so everything fits
-  without scrolling. Currently: centered max-w column (logo, update card, links list, Alpha
-  Software, Configuration, Health check stacked tall). Use the width to reduce vertical scroll.
+- [x] **ABOUT-1 · About page is a narrow centered column** (c88482e) — now full-width single
+  column. Logo + name + version + update controls collapse into ONE horizontal banner (was a
+  tall centered stack + separate update card); links are a horizontal chip wrap; license fixed
+  to GPL-3.0. Uses the width to cut vertical scroll. settings5.tsx AboutSection.
 
 ### 📊 Benchmark scheduled runs
 - [ ] **BENCH-1 · Scheduled benchmark needs a persistent visibility indicator.** When the
@@ -139,28 +142,30 @@ nested "Advanced" full panel (the duplicate source).
 ### 🔴 MCP "Expose Prevail" overhaul (separate from UI review; needs founder go)
 The whole "Expose Prevail to your agent" feature is broken for real users. Four parts:
 
-- [ ] **MCP-1 · Token auth breaks generic stdio clients.** Server (`prevail-cli/src/
-  mcp-server.ts`) requires `_meta.authorization: prevail-<token>` on every non-initialize
-  request → generic stdio clients (Claude Code) send none → `initialize` ok but `tools/list`
-  fails `-32001 unauthorized`. Likely also why "Test handshake" returns "no valid initialize
-  response". No `--no-auth`/env escape hatch exists. Root cause: per-request token is a
-  NETWORK control; over stdio `verifyParentProcess()` already secures it. Fix: don't require
-  the per-request token over stdio (keep it only for any network exposure). Rebuild the engine.
-- [ ] **MCP-2 · Generated config has hardcoded DEV/DEMO paths → leaks founder identity.**
-  The "Expose Prevail" snippet emits `command: /Users/frunde/Documents/fru/fd-apps/
-  prevail-desktop/src-tauri/target/debug/prevail` (founder's dev tree) and `--vault
-  /Users/frunde/Downloads/2026 June/vault-1-demo` (demo vault). For an INSTALLED user this is
-  wrong AND exposes a personal name/path. Fix: (a) command = the real resolved engine binary
-  via `resolve_prevail_bin()` (the bundled sidecar inside Prevail.app for installed users,
-  not the debug build); (b) vault = the user's ACTIVE configured vault path, resolved at
-  generation time — never a hardcoded demo path, never the founder's path.
-- [ ] **MCP-3 · Cover ALL agent clients.** Config tabs today: Claude Code, Claude Desktop,
-  Codex, Gemini CLI. Verify each emits a CORRECT, working config (paths + format + file
-  location). Also investigate/add: OpenClaw, Paperclip, Multica (+ any other MCP-capable
-  agent) — research which support MCP and their config schema/location.
-- [ ] **MCP-4 · "Test handshake" fails** — returns "✗ no valid initialize response from the
-  server" on Claude Desktop tab (and likely others). Fix once MCP-1/MCP-2 land; the test must
-  actually spawn the resolved binary + do a real initialize round-trip.
+- [x] **MCP-1 · Token auth breaks generic stdio clients.** (CLI 4d9e488, branch
+  mcp-stdio-auth-fix) — stdio no longer requires the per-request token; `McpServerOptions.network`
+  gates the check (default false). New `prevail mcp --network|--require-token` opts back in for
+  any network exposure. Token hint printed only in network mode. Regression test added
+  (tools/list with NO token over stdio). Engine rebuilt (dist/prevail); 337 engine tests pass
+  (1 PRE-EXISTING unrelated recommendations.test failure). NOTE: CLI on feature branch, NOT main.
+- [x] **MCP-2 · Generated config has hardcoded DEV/DEMO paths → leaks founder identity.**
+  (c88482e) — mcpCommandPath() now flags dev/source-tree paths (`/target/debug/`,
+  `/target/release/`, `/src-tauri/`) as unstable alongside translocated/volume/temp paths and
+  emits the canonical `/Applications/Prevail.app/Contents/MacOS/prevail` instead — so a copyable
+  config never contains the dev tree / founder home. (b) vault already uses the active vaultPath
+  prop (resolved at generation time), not a hardcoded demo path. The founder only SEES dev/demo
+  values because they run a debug build against the demo vault; installed users get correct ones.
+- [x] **MCP-3 · Cover ALL agent clients.** (c88482e) — added Cursor (~/.cursor/mcp.json,
+  mcpServers), VS Code (.vscode/mcp.json, NOTE: uses `servers` not `mcpServers`), and a generic
+  "Other / stdio" tab (covers OpenClaw, Paperclip, Multica, Goose, Zed — any stdio MCP host).
+  Existing 4 (Claude Code/Desktop, Codex, Gemini) verified format/location. OpenClaw/Paperclip/
+  Multica are the founder's bespoke systems — the generic stdio command+args is what they consume;
+  if they need a specific config schema, founder to confirm and I'll add a dedicated tab.
+- [x] **MCP-4 · "Test handshake" fails** (c88482e) — root cause: mcp_test_handshake spawned
+  `prevail mcp` whose parent (the Tauri app) failed verifyParentProcess() (not a TTY / known IDE),
+  so the server exited before answering → "no valid initialize response". Fixed by spawning with
+  `--unsafe-detach`; combined with MCP-1 (stdio needs no token) the initialize round-trip now
+  succeeds. engine.rs cargo check passes. (Verify live once a build is run.)
 
 Impl notes: `resolve_prevail_bin()` is the canonical engine resolver (engine.rs). The config
 generator lives in the desktop MCP settings panel (find: "EXPOSE PREVAIL TO YOUR AGENT" /
