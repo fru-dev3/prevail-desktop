@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-        with: { components: clippy, rustfmt }
+        with: { components: "clippy, rustfmt" }
       # The Tauri build script (tauri-build) requires the engine sidecar
       # (externalBin: binaries/prevail-<triple>) to exist, or `cargo test` fails
       # before any test runs. Build it the same way the release does.
