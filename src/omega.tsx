@@ -8,8 +8,34 @@ import { Eye, History, Loader2, PenLine, Sigma, Sparkles } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
 import { Markdown } from "./Markdown";
-import { PREF, getPref } from "./storage";
+import { PREF, getPref, lsGet, lsSet, setPref } from "./storage";
+import { Toggle } from "./ui";
 import { SettingsHeader } from "./sectionutil";
+
+// Omega daemon — auto-distill the app-wide learned layer on a slow cadence
+// (default daily) so it compounds without a manual click. Module-level timer,
+// same pattern as the apps/bench/loops schedulers; the tick re-reads the pref so
+// toggling needs no restart. Best-effort: a "not enough learned yet" error is
+// expected early on and swallowed.
+let omegaTimer: number | null = null;
+export function startOmegaScheduler(vault: string) {
+  if (omegaTimer !== null) window.clearInterval(omegaTimer);
+  const tick = async () => {
+    try {
+      if (getPref(PREF.omegaAuto, "1") !== "1") return;
+      const intervalMs = (Number(getPref(PREF.omegaIntervalSec, String(24 * 3600))) || 24 * 3600) * 1000;
+      const last = Number(lsGet(PREF.omegaLastRun, "0")) || 0;
+      if (Date.now() - last < intervalMs) return;
+      lsSet(PREF.omegaLastRun, String(Date.now()));
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      await invoke("omega_distill", { vault, provider, model });
+      window.dispatchEvent(new Event("prevail:omega-changed"));
+    } catch { /* best-effort; e.g. not enough learned across domains yet */ }
+  };
+  omegaTimer = window.setInterval(() => void tick(), 60 * 60 * 1000); // check hourly; tick gates on cadence
+  window.setTimeout(() => void tick(), 90_000); // first check shortly after launch
+}
 
 export function OmegaSection({ vaultPath }: { vaultPath: string }) {
   const [body, setBody] = useState<string>("");
@@ -20,6 +46,7 @@ export function OmegaSection({ vaultPath }: { vaultPath: string }) {
   const [distilling, setDistilling] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [versions, setVersions] = useState<{ name: string; path: string }[]>([]);
+  const [auto, setAuto] = useState(() => getPref(PREF.omegaAuto, "1") === "1");
 
   const loadVersions = useCallback(() =>
     invoke<{ name: string; path: string }[]>("omega_versions", { vault: vaultPath })
@@ -77,6 +104,10 @@ export function OmegaSection({ vaultPath }: { vaultPath: string }) {
           {editing ? "Editing markdown" : "App-wide · highest precedence after the Ideal State"}
         </span>
         <div className="flex items-center gap-2">
+          <label className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted" title="Auto-distill Omega across your domains on a slow cadence (default daily)">
+            <Toggle on={auto} onChange={(v) => { setAuto(v); setPref(PREF.omegaAuto, v ? "1" : "0"); }} label="Auto-distill Omega" />
+            Auto
+          </label>
           {savedAt && !editing && <span className="font-mono text-[10px] text-ok">✓ saved</span>}
           <button
             onClick={distill}

@@ -23,6 +23,7 @@ import { startBenchScheduler } from "./bench";
 import { bumpBackupChangeCount, startBackupScheduler } from "./backup";
 import { startLoopsScheduler } from "./loops";
 import { startAppsScheduler } from "./appspanel";
+import { startOmegaScheduler } from "./omega";
 import { migrateModelPrefs } from "./helpers2";
 import { AppHeaderBar, DomainActionsMenu, LockScreen, QuickSwitcher, ThreadsRail, WebLogin } from "./panels";
 
@@ -525,6 +526,9 @@ export default function App() {
     startLoopsScheduler(vaultPath);
     // Apps — keep connected apps fresh on their own schedule while open.
     startAppsScheduler(vaultPath);
+    // Omega — auto-distill the app-wide learned layer on a slow cadence (daily).
+    // Tick re-reads the enabled pref, so toggling needs no restart.
+    startOmegaScheduler(vaultPath);
     // Skill generation (self-learning) — on by default so the app learns
     // skills from conversations out of the box; togglable in Settings.
     if (getPref(PREF.skillgenEnabled, "1") === "1") {
