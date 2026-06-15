@@ -1,11 +1,27 @@
 # Prevail Desktop — Active Task List
 
-**Branch:** `ui-polish-post-081` · **Version line:** 0.8.x (patch-forever; never 0.9 without explicit go)
-**Source:** Founder feedback batch, 2026-06-14 (09:10–10:44 am)
+**Branch:** `ui-feedback-recommendations` · **Version line:** 0.8.x (patch-forever; never 0.9 without explicit go)
 **Rule:** Do NOT merge to main or release until founder says so. Stay on feature branch.
 
 This file is the crash-safe source of truth. Update statuses here as work proceeds.
 Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]` needs verify
+
+---
+
+## UI feedback round — 2026-06-15
+
+- [~] **Recommendations: "Set" must DO the action, not navigate.** Clicking a model
+  recommendation's "Set" currently just opens Models settings and tells the user to set
+  it manually (`set_domain_model` is a no-op in recommendationspanel.tsx:46-49). Make it
+  actually persist the per-domain default model in place. Principle: any recommendation
+  action that's a one-shot config write should execute on click; only navigate when the
+  user genuinely must go elsewhere and do something (e.g. connect_app auth, add context).
+  - [ ] Add per-domain model setter in engine (cli) + Rust command + desktop invoke
+  - [ ] Wire `set_domain_model` to call it; show "Set X as Wealth's default" inline
+- [ ] **Recommendations: redesign the panel UI** — "could be designed way better"
+  (the long flat list of near-identical rows is monotonous). Group/scan better.
+- [ ] **Ideal State: redesign layout** — format it nicely; the Alignment bar chart
+  "looks terrible". Rework the alignment chart + overall Ideal State section layout.
 
 ---
 
