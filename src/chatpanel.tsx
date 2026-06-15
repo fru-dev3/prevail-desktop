@@ -23,6 +23,7 @@ import { ProviderMark } from "./marks";
 import { DomainHome, DomainStatusBar, MessageList } from "./chatviews";
 import { LoopsPanel } from "./loopspanel";
 import { AgentPickerRail, DomainContextDrawer, DomainPrefsPanel } from "./domainpanels";
+import { HomeBriefing } from "./recommendationspanel";
 import type { ChatEvent, ChatMessage, CliInfo, ContextScore, Domain, DomainContextBundle, DomainTab, EngineApp, LifeReadiness, SkillEntry, ThreadMeta, ThreadTurn } from "./types";
 import type { UnlistenFn } from "./bridge";
 
@@ -1451,6 +1452,10 @@ export function ChatPanel({
               selected={selectedCli}
               onSelect={(id) => setSelectedCli(id)}
             />
+
+            {/* HOME-1: the Briefing — proactive digest (top recommendations +
+                recent intents) made first-class on the landing surface. */}
+            <HomeBriefing vaultPath={vaultPath} />
 
             {domains.length > 0 && (() => {
               // Show pinned first, then ones with the most imports,
