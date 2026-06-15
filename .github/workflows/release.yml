@@ -16,17 +16,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
       # Engine sidecar: check out the CLI repo + Bun so prepare-sidecar.sh (run
       # by beforeBuildCommand) can compile the bundled `prevail` engine in CI.
       - name: Checkout engine (prevail-cli)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: fru-dev3/prevail-cli
           path: engine
@@ -106,15 +106,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
       - name: Checkout engine (prevail-cli)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: fru-dev3/prevail-cli
           path: engine
