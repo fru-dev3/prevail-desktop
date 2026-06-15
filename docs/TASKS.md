@@ -10,48 +10,61 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
 
 ## UI feedback round — 2026-06-15
 
-- [~] **Recommendations: "Set" must DO the action, not navigate.** Clicking a model
-  recommendation's "Set" currently just opens Models settings and tells the user to set
-  it manually (`set_domain_model` is a no-op in recommendationspanel.tsx:46-49). Make it
-  actually persist the per-domain default model in place. Principle: any recommendation
-  action that's a one-shot config write should execute on click; only navigate when the
-  user genuinely must go elsewhere and do something (e.g. connect_app auth, add context).
-  - [ ] Add per-domain model setter in engine (cli) + Rust command + desktop invoke
-  - [ ] Wire `set_domain_model` to call it; show "Set X as Wealth's default" inline
-- [ ] **Recommendations: redesign the panel UI** — "could be designed way better"
-  (the long flat list of near-identical rows is monotonous). Group/scan better.
-- [ ] **Ideal State: redesign layout** — format it nicely; the Alignment bar chart
-  "looks terrible". Rework the alignment chart + overall Ideal State section layout.
-- [ ] **Homepage first-class surfacing** (DECISION pending) — bring Recommendations +
-  Intents onto the home dashboard as first-class glances (like domains/apps), so the
-  user sees them on landing instead of digging into settings. MUST respect the
-  no-scroll-on-landing rule → compact: top ~3 recommendations + recent intents glance,
-  "see all" into the full panels. Recommendation = proactive hero element.
-- [ ] **Rename "daemons"** (NAMING pending) — "daemon" is too technical. Candidates:
-  Routines / Reflexes / Upkeep / Autopilot / Crew. Covers: distill memory, reminders,
-  task generation, skill learning, intent distillation. Founder wants a creative name.
+**Mode:** CAPTURE — founder is doing a design-review walkthrough. Log every item in
+detail; do NOT build until founder says "go". More feedback incoming.
 
-- [ ] **APPS SECTION OVERHAUL** ("makes me want to puke" — big rework):
-  - [ ] **Kill the duplication.** AllTrails (and everything) renders 2-3x: once under
-    top "CONNECTED · 1", again inside "Advanced > Apps > CONNECTED 1", again on scroll.
-    The Advanced section embeds a SECOND full Apps panel (its own "Apps" header, connected
-    list, connector catalog, search). Consolidate to ONE coherent panel.
-  - [ ] **Smart "Connect an app" flow.** Today it asks for a name and can create a
-    DUPLICATE of an app that already exists (catalog has 1468). Instead: IntelliSense as
-    you type → if the app already exists, reuse it (NO dropdown); then user describes what
-    they want from it → Prevail walks through building the MCP/connector, testing, evaluating.
-  - [ ] **Re-evaluate is broken** — clicking it does nothing. Fix.
-  - [ ] **Scheduling** — currently "no schedule"; needs an intelligent/flexible scheduler,
-    not just daily/weekly/monthly. (We added flexible cadences earlier — wire it here.)
-  - [ ] **Domains fed** — let the user add/modify which domains an app feeds, intelligently
-    (not a static list).
-  - [ ] **MCP configuration** — surface where/how the MCP config is pulled & editable per app.
+### ✅ Done this round
+- [x] **Recommendations: "Set" acts in place** (4f07125) — model recs now write the
+  per-domain default model (`prevail.domain.<dom>.cli`/`.model`, read live by the chat
+  composer) instead of navigating to Models settings. Principle established: a rec action
+  that's a one-shot config write executes on click; only navigate when the user genuinely
+  must go do something elsewhere (auth, add context).
+- [x] **Rename Daemons → Routines** (c6b3d86) — all user-facing copy (section title, nav
+  label, "Memory & Routines" heading, Row descriptions, Ideal State + tasks copy, domain
+  PrefSection). Engine command names (`*_daemon_status`, `id:"daemons"`) intentionally kept.
+
+### 🔶 Decided, not yet built
+- [ ] **HOME-1 · "Briefing" on the homepage.** Bring Recommendations + Intents onto the
+  home dashboard as ONE first-class section named **"Briefing"** (proactive digest: what
+  Prevail learned + what it suggests next). Must respect no-scroll-on-landing → compact:
+  top ~3 actionable recommendations + a recent-intents glance, each with "see all" into the
+  full panel. This is the highest-leverage change (makes the self-learning visible on landing).
+
+### 🔴 Apps section overhaul ("makes me want to puke" — big rework)
+Components: `appspanel.tsx` (top simple panel), `appconnect.tsx` (connect flow), + the
+nested "Advanced" full panel (the duplicate source).
+- [ ] **APP-1 · Kill duplication.** AllTrails renders 2-3x: top "CONNECTED · 1", then again
+  inside "Advanced › Apps › CONNECTED 1" (a SECOND full Apps panel with its own header,
+  connected list, connector catalog, search), then again on scroll. Consolidate to ONE panel.
+- [ ] **APP-2 · Smart Connect flow.** "Connect an app" asks for a name and can create a
+  DUPLICATE of an existing app (catalog = 1468). Instead: IntelliSense as you type → if the
+  app exists, reuse it (NO dropdown, smarter than that); then user describes what they want
+  → Prevail builds the MCP/connector, tests it, evaluates it.
+- [ ] **APP-3 · Re-evaluate is broken** — clicking it does nothing. Fix.
+- [ ] **APP-4 · Scheduling** — apps show "no schedule"; need an intelligent/flexible
+  scheduler, not just daily/weekly/monthly. (Flexible cadences exist elsewhere — wire here.)
+- [ ] **APP-5 · Domains fed** — let the user add/modify which domains an app feeds
+  intelligently (currently a static list, e.g. "feeds Fitness, Health, Explore, Travel").
+- [ ] **APP-6 · MCP config** — surface where/how the per-app MCP config is pulled & editable.
+
+### 🟡 Redesigns (layout/visual)
+- [ ] **REC-1 · Recommendations panel redesign** — flat list of ~near-identical rows is
+  monotonous ("could be designed way better"). Group/scan better; also the model name
+  shows the ugly run-id label ("2026-06-04_claude-claude-opus-4-6") — show the clean model
+  name (rec `action.model` is already clean; the `title` uses the run `label`).
+- [ ] **IDEAL-1 · Ideal State redesign** — format the whole section nicely; the Alignment
+  bar chart "looks terrible". Rework the alignment chart + overall layout.
+- [ ] **TG-1 · Telegram bridge redesign** — clunky layout/flow; clean it up.
 
 ### Implementation notes (found)
-- Per-domain model is stored desktop-side: `prevail.domain.<domain>.cli` + `.model`
-  (chatpanel.tsx:125-201 reads them live). Engine rec emits clean `action.cli` +
-  `action.model` (canonical-bench `{key,cli,model,label}`; label is the ugly run-id).
-  So "Set" = write those two LS keys + dispatch a refresh event. No engine change.
+- Per-domain model: `prevail.domain.<domain>.cli` + `.model` (chatpanel.tsx:125-201 reads
+  live). Engine rec emits clean `action.cli`/`action.model` (canonical-bench
+  `{key,cli,model,label}`; `label` is the ugly run-id used in the title).
+- Apps duplication source: top panel + the "Advanced" collapsible embeds a second full
+  Apps panel. Connector catalog = 1468 apps across 4 patterns (API/MCP 1224, OAuth 72,
+  CLI 13, browser 159).
+- "Briefing" combines `recommendationspanel.tsx` (engine_recommendations) + the Intents
+  panel data; home dashboard must stay no-scroll.
 
 ---
 
