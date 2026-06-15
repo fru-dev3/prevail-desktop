@@ -35,6 +35,15 @@ export default defineConfig(async () => ({
       output: {
         manualChunks(id: string) {
           if (!id.includes("node_modules")) return undefined;
+          // Telemetry SDKs are dynamically imported (only on first opt-in send),
+          // so they MUST get their own chunks — otherwise the catch-all "vendor"
+          // below folds them into the eager startup bundle and every user, even
+          // those who never enable telemetry, downloads ~450kB for nothing.
+          if (id.includes("posthog-js")) return "vendor-posthog";
+          // Match @sentry/* AND @sentry-internal/* (hyphen) so no Sentry submodule
+          // leaks into the eager "vendor" chunk and creates a circular reference
+          // that would drag the whole SDK in on startup.
+          if (/[\\/]node_modules[\\/]@sentry/.test(id)) return "vendor-sentry";
           if (id.includes("framer-motion")) return "vendor-motion";
           if (id.includes("simple-icons")) return "vendor-simpleicons";
           if (id.includes("lucide-react")) return "vendor-lucide";
