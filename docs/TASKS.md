@@ -58,10 +58,10 @@ nested "Advanced" full panel (the duplicate source).
 - [ ] **APP-6 · MCP config** — surface where/how the per-app MCP config is pulled & editable.
 
 ### 🟡 Redesigns (layout/visual)
-- [ ] **REC-1 · Recommendations panel redesign** — flat list of ~near-identical rows is
-  monotonous ("could be designed way better"). Group/scan better; also the model name
-  shows the ugly run-id label ("2026-06-04_claude-claude-opus-4-6") — show the clean model
-  name (rec `action.model` is already clean; the `title` uses the run `label`).
+- [x] **REC-1 · Recommendations panel redesign** (66c07cd) — grouped by category
+  (model/app/domain/context) with section headers + counts + blurbs for scannability;
+  model recs now show the clean canonical model name (recTitle() builds from action.cli/
+  model via modelLabel) instead of the ugly run-id label.
 - [ ] **IDEAL-1 · Ideal State redesign** — format the whole section nicely; the Alignment
   bar chart "looks terrible". Rework the alignment chart + overall layout.
 - [ ] **TG-1 · Telegram bridge redesign** — clunky layout/flow; clean it up.
@@ -76,10 +76,10 @@ nested "Advanced" full panel (the duplicate source).
   number-stepper + ON pill + Back up now + Restore points). Rework hierarchy, iconography,
   the backups control cluster, and the raw-path display into something premium.
 - [ ] **DEMO-1 · "Demo Mode" panel redesign** — same premium bar (groupings/flow/icons).
-- [ ] **NAV-1 · Collapsed rail uses bare letters** — when a panel/sidebar is collapsed it
-  shows plain single letters (">", "+", "I", "s") in a thin rail. Replace with circular
-  icon badges (sophisticated, signal "content is behind here"), not bare glyphs. Expanded
-  state is fine; only the collapsed rail needs the upgrade.
+- [x] **NAV-1 · Collapsed rail uses bare letters** (66c07cd) — domain entries without a
+  per-domain icon now render a circular badge (filled accent when active, ring otherwise)
+  instead of a bare mono glyph. Apps don't render individual items collapsed (no change
+  needed). The "+"/">" controls were already lucide icons (Plus/ChevronRight).
 - [ ] **ABOUT-1 · About page is a narrow centered column** — should go FULL-WIDTH like every
   other panel (violates the single-column-full-width rule), and lay out so everything fits
   without scrolling. Currently: centered max-w column (logo, update card, links list, Alpha
@@ -116,11 +116,10 @@ nested "Advanced" full panel (the duplicate source).
      it must read per-domain vault data when drafting.
 
 ### 🎨 Theme default
-- [ ] **THEME-1 · Default palette → "Mono"** (clean grayscale, minimal and focused) for
-  BRAND-NEW users, replacing the current greenish/teal "vault" default. The whole app should
-  open in Mono by default. SUPERSEDES the earlier "greenish default" decision. (Founder said
-  "site"; interpreting as the desktop app palette picker — confirm if they meant prevail.sh.)
-  Impl: the palette default is set in storage/theme init (LS `prevail.desktop.palette`).
+- [x] **THEME-1 · Default palette → "Mono"** (66c07cd) — brand-new users (no saved
+  `prevail.desktop.palette`) now open in Mono grayscale; existing users keep their saved
+  palette. Default flipped in hooks.tsx useAppearance init. FOUNDER CONFIRMED: desktop app
+  palette (not prevail.sh).
 
 ### 🧭 Information architecture / naming
 - [ ] **IA-1 · Vault + "Demo Mode" overlap; "Demo Mode" is a misnomer.** The "Demo Mode"

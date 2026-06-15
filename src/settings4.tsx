@@ -3,7 +3,7 @@
 // start-on-boot, embedded Shortcuts).
 import { useEffect, useMemo, useState } from "react";
 import { disable as autostartDisable, enable as autostartEnable, isEnabled as autostartIsEnabled } from "@tauri-apps/plugin-autostart";
-import { Activity, Compass, Eye, History, Keyboard, Monitor, Moon, Palette, PenLine, ShieldCheck, SlidersHorizontal, Sun } from "lucide-react";
+import { Activity, Clock, Compass, Eye, EyeOff, FileClock, Globe, History, Keyboard, Lock, Monitor, Moon, Palette, PenLine, RefreshCw, ShieldAlert, ShieldCheck, SlidersHorizontal, Sun, Terminal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { CollapsibleSection } from "./collapsible";
 import { ALLOWED_EVENTS, clearTelemetryLog, crashOn, setCrash, setUsage, telemetryConfigured, telemetryLog, usageOn } from "./telemetry";
@@ -20,6 +20,38 @@ import { ShortcutsSection } from "./settings1";
 import { VaultEncryptionCard } from "./settings3";
 import type { Mode } from "./types";
 
+// SAFETY-1: a labelled cluster header so the panel reads as deliberate groups
+// (Access protection vs Agent guardrails) instead of one flat stack of rows.
+function SafetyGroup({ icon: Icon, label, desc, children }: { icon: LucideIcon; label: string; desc: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-6">
+      <div className="mb-2 flex items-center gap-2 px-1">
+        <Icon className="h-3.5 w-3.5 text-accent" />
+        <h3 className="text-sm font-semibold text-text-primary">{label}</h3>
+        <span className="ml-auto text-[11px] text-text-muted">{desc}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// SAFETY-1: a guardrail row with a leading state icon (lit when active) so each
+// control reads as a deliberate, premium switch rather than a bare label row.
+function GuardRow({ icon: Icon, title, desc, control, active }: { icon: LucideIcon; title: string; desc: string; control: React.ReactNode; active?: boolean }) {
+  return (
+    <div className="flex items-start gap-3 border-b border-border-subtle px-4 py-3.5 last:border-0">
+      <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${active ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-text-primary">{title}</div>
+        <div className="mt-0.5 text-xs text-text-secondary">{desc}</div>
+      </div>
+      <div className="shrink-0 self-center">{control}</div>
+    </div>
+  );
+}
+
 export function SafetySection({ vaultPath }: { vaultPath: string }) {
   const [approvalMode, setApprovalMode] = useState(() => getPref(PREF.approvalMode, "manual"));
   const [approvalTimeout, setApprovalTimeout] = useState(() => getPref(PREF.approvalTimeoutSec, "60"));
@@ -30,31 +62,35 @@ export function SafetySection({ vaultPath }: { vaultPath: string }) {
   const [checkpoints, setCheckpoints] = useState(() => getPref(PREF.fileCheckpoints, "0") === "1");
   return (
     <>
-      <SettingsHeader title="Safety" subtitle="Guardrails for what the agent can do and what gets stored. Redact secrets is enforced here; approval, allowlist, and checkpoints are honored by the engine." />
-      <AppLockCard />
-      <VaultEncryptionCard vaultPath={vaultPath} />
-      <div className="rounded-lg border border-border bg-surface px-5">
-        <SettingsRowLite title="Approval mode" desc="How commands that need explicit approval are handled."
-          control={
-            <select value={approvalMode} onChange={(e) => { setApprovalMode(e.target.value); setPref(PREF.approvalMode, e.target.value); }}
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none">
-              <option value="manual">Manual</option>
-              <option value="auto">Auto</option>
-            </select>
-          } />
-        <SettingsRowLite title="Approval timeout" desc="How long an approval prompt waits before timing out."
-          control={<div className="flex items-center gap-1.5"><input type="number" value={approvalTimeout} onChange={(e) => { setApprovalTimeout(e.target.value); setPref(PREF.approvalTimeoutSec, e.target.value); }} className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" /><span className="font-mono text-xs text-text-muted">s</span></div>} />
-        <SettingsRowLite title="Confirm MCP reloads" desc="Ask before reloading MCP servers."
-          control={<Toggle on={confirmMcp} onChange={(v) => { setConfirmMcp(v); setPref(PREF.confirmMcpReloads, v ? "1" : "0"); }} />} />
-        <SettingsRowLite title="Command allowlist" desc="Comma-separated commands the agent may run without prompting."
-          control={<input value={allowlist} placeholder="git, ls, cat" onChange={(e) => { setAllowlist(e.target.value); setPref(PREF.commandAllowlist, e.target.value); }} className="w-56 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
-        <SettingsRowLite title="Redact secrets" desc="Scrub API keys, tokens, and passwords from saved chat transcripts and the intent ledger."
-          control={<Toggle on={redact} onChange={(v) => { setRedact(v); setPref(PREF.redactSecrets, v ? "1" : "0"); }} />} />
-        <SettingsRowLite title="Allow private URLs" desc="Let the agent fetch localhost / private-network URLs."
-          control={<Toggle on={allowPrivate} onChange={(v) => { setAllowPrivate(v); setPref(PREF.allowPrivateUrls, v ? "1" : "0"); }} />} />
-        <SettingsRowLite title="File checkpoints" desc="Snapshot files before the agent edits them so changes can be rolled back."
-          control={<Toggle on={checkpoints} onChange={(v) => { setCheckpoints(v); setPref(PREF.fileCheckpoints, v ? "1" : "0"); }} />} />
-      </div>
+      <SettingsHeader icon={ShieldCheck} title="Safety" subtitle="Guardrails for what the agent can do and what gets stored. Redact secrets is enforced here; approval, allowlist, and checkpoints are honored by the engine." />
+      <SafetyGroup icon={Lock} label="Access protection" desc="Lock the app · encrypt the vault at rest">
+        <AppLockCard />
+        <VaultEncryptionCard vaultPath={vaultPath} />
+      </SafetyGroup>
+      <SafetyGroup icon={ShieldAlert} label="Agent guardrails" desc="What the agent may do, and what gets stored">
+        <div className="overflow-hidden rounded-xl border border-border bg-surface">
+          <GuardRow icon={ShieldAlert} active={approvalMode === "manual"} title="Approval mode" desc="How commands that need explicit approval are handled."
+            control={
+              <select value={approvalMode} onChange={(e) => { setApprovalMode(e.target.value); setPref(PREF.approvalMode, e.target.value); }}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none">
+                <option value="manual">Manual</option>
+                <option value="auto">Auto</option>
+              </select>
+            } />
+          <GuardRow icon={Clock} title="Approval timeout" desc="How long an approval prompt waits before timing out."
+            control={<div className="flex items-center gap-1.5"><input type="number" value={approvalTimeout} onChange={(e) => { setApprovalTimeout(e.target.value); setPref(PREF.approvalTimeoutSec, e.target.value); }} className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" /><span className="font-mono text-xs text-text-muted">s</span></div>} />
+          <GuardRow icon={RefreshCw} active={confirmMcp} title="Confirm MCP reloads" desc="Ask before reloading MCP servers."
+            control={<Toggle on={confirmMcp} onChange={(v) => { setConfirmMcp(v); setPref(PREF.confirmMcpReloads, v ? "1" : "0"); }} />} />
+          <GuardRow icon={Terminal} active={!!allowlist.trim()} title="Command allowlist" desc="Comma-separated commands the agent may run without prompting."
+            control={<input value={allowlist} placeholder="git, ls, cat" onChange={(e) => { setAllowlist(e.target.value); setPref(PREF.commandAllowlist, e.target.value); }} className="w-56 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
+          <GuardRow icon={EyeOff} active={redact} title="Redact secrets" desc="Scrub API keys, tokens, and passwords from saved chat transcripts and the intent ledger."
+            control={<Toggle on={redact} onChange={(v) => { setRedact(v); setPref(PREF.redactSecrets, v ? "1" : "0"); }} />} />
+          <GuardRow icon={Globe} active={allowPrivate} title="Allow private URLs" desc="Let the agent fetch localhost / private-network URLs."
+            control={<Toggle on={allowPrivate} onChange={(v) => { setAllowPrivate(v); setPref(PREF.allowPrivateUrls, v ? "1" : "0"); }} />} />
+          <GuardRow icon={FileClock} active={checkpoints} title="File checkpoints" desc="Snapshot files before the agent edits them so changes can be rolled back."
+            control={<Toggle on={checkpoints} onChange={(v) => { setCheckpoints(v); setPref(PREF.fileCheckpoints, v ? "1" : "0"); }} />} />
+        </div>
+      </SafetyGroup>
       <TelemetrySettings />
     </>
   );
