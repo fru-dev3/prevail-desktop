@@ -22,6 +22,20 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
   (the long flat list of near-identical rows is monotonous). Group/scan better.
 - [ ] **Ideal State: redesign layout** — format it nicely; the Alignment bar chart
   "looks terrible". Rework the alignment chart + overall Ideal State section layout.
+- [ ] **Homepage first-class surfacing** (DECISION pending) — bring Recommendations +
+  Intents onto the home dashboard as first-class glances (like domains/apps), so the
+  user sees them on landing instead of digging into settings. MUST respect the
+  no-scroll-on-landing rule → compact: top ~3 recommendations + recent intents glance,
+  "see all" into the full panels. Recommendation = proactive hero element.
+- [ ] **Rename "daemons"** (NAMING pending) — "daemon" is too technical. Candidates:
+  Routines / Reflexes / Upkeep / Autopilot / Crew. Covers: distill memory, reminders,
+  task generation, skill learning, intent distillation. Founder wants a creative name.
+
+### Implementation notes (found)
+- Per-domain model is stored desktop-side: `prevail.domain.<domain>.cli` + `.model`
+  (chatpanel.tsx:125-201 reads them live). Engine rec emits clean `action.cli` +
+  `action.model` (canonical-bench `{key,cli,model,label}`; label is the ugly run-id).
+  So "Set" = write those two LS keys + dispatch a refresh event. No engine change.
 
 ---
 
