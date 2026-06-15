@@ -1,7 +1,7 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { ArrowLeft, Brain, Folder, Github, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sparkles, Target, Wrench, Zap } from "lucide-react";
+import { ArrowLeft, Brain, Folder, Github, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Target, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { LS, lsGet } from "./storage";
 import { useAppearance } from "./hooks";
@@ -12,12 +12,13 @@ import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection, Ta
 import { ConnectorsSection } from "./settings3";
 import { AppsPanel } from "./appspanel";
 import { RecommendationsPanel } from "./recommendationspanel";
+import { OmegaSection } from "./omega";
 import { CollapsibleSection } from "./collapsible";
 import { GeneralSection, IdealStateSection, SafetySection } from "./settings4";
 import { AboutSection, GatewaySection, McpSection } from "./settings5";
 import { ConfigurationSection, CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6";
 import { ModelsSection } from "./settings7";
-import { AppearanceSection, DemoModeSection, VaultSettings } from "./settings8";
+import { AppearanceSection, WorkspaceSection } from "./settings8";
 import { BenchmarkPanel } from "./benchpanel";
 import type { CliInfo } from "./types";
 
@@ -48,7 +49,7 @@ export function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "memory" | "intents" | "tasks" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
@@ -92,11 +93,12 @@ export function SettingsPanel({
       { id: "skills", label: "Skills", icon: Sparkles },
       { id: "benchmark", label: "Benchmark", icon: Target },
     ]},
-    { heading: "Memory & Automation", items: [
+    { heading: "Memory & Routines", items: [
       { id: "recommendations", label: "Recommendations", icon: Sparkles },
+      { id: "omega", label: "Omega", icon: Sigma },
       { id: "configuration", label: "Configuration", icon: Brain },
       { id: "intents", label: "Intents", icon: Lightbulb },
-      { id: "daemons", label: "Daemons", icon: Zap },
+      { id: "daemons", label: "Routines", icon: Zap },
     ]},
     { heading: "Connections", items: [
       { id: "connectors", label: "Apps", icon: Plug },
@@ -107,9 +109,8 @@ export function SettingsPanel({
       { id: "privacy", label: "Privacy", icon: ShieldCheck },
       { id: "safety", label: "Safety", icon: Shield },
     ]},
-    { heading: "Vault", items: [
-      { id: "vault", label: "Vault", icon: Folder },
-      { id: "demo", label: "Demo Mode", icon: Sparkles },
+    { heading: "Workspace", items: [
+      { id: "workspace", label: "Workspace", icon: Folder },
     ]},
     { heading: "App", items: [
       { id: "general", label: "General", icon: SettingsIcon },
@@ -250,6 +251,7 @@ export function SettingsPanel({
           )}
           {section === "configuration" && <ConfigurationSection vaultPath={vaultPath} />}
           {section === "ideal-state" && <IdealStateSection vaultPath={vaultPath} />}
+          {section === "omega" && <OmegaSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
           {section === "intents" && <IntentsSection vaultPath={vaultPath} />}
           {section === "tasks" && <TasksCrossDomainSection vaultPath={vaultPath} />}
@@ -260,9 +262,12 @@ export function SettingsPanel({
             <>
               <AppsPanel vaultPath={vaultPath} />
               <div className="mt-8">
-                <CollapsibleSection icon={Wrench} title="Advanced" summary="catalog & connection tiers"
-                  subtitle="Browse the connector catalog and configure the raw MCP / Composio / browser / CLI tiers by hand.">
-                  <ConnectorsSection vaultPath={vaultPath} focusAppId={settingsDeepLink ?? undefined} />
+                {/* APP-1: Advanced is the CATALOG + tiers only — connected apps
+                    are shown once, above, in AppsPanel (catalogOnly suppresses the
+                    duplicate connected list inside ConnectorsSection). */}
+                <CollapsibleSection icon={Wrench} title="Browse the catalog" summary="1000+ apps & connection tiers"
+                  subtitle="Browse the full connector catalog to add an app, and configure the raw MCP / Composio / browser / CLI tiers by hand.">
+                  <ConnectorsSection vaultPath={vaultPath} focusAppId={settingsDeepLink ?? undefined} catalogOnly />
                   <div className="mt-6 border-t border-border-subtle pt-6">
                     <IngestionSection />
                   </div>
@@ -274,8 +279,11 @@ export function SettingsPanel({
           {section === "gateway" && <GatewaySection />}
           {section === "mcp" && <McpSection vaultPath={vaultPath} />}
           {section === "remote" && <RemoteSection />}
-          {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} />}
-          {section === "demo" && <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} />}
+          {/* IA-1: "workspace" is the umbrella; "vault"/"demo" remain as
+              deep-link aliases (e.g. the demo ribbon's jump) → same section. */}
+          {(section === "workspace" || section === "vault" || section === "demo") && (
+            <WorkspaceSection vaultPath={vaultPath} onChange={onChangeVault} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} />
+          )}
           {section === "appearance" && <AppearanceSection appearance={appearance} />}
           {section === "frameworks" && <FrameworksSection />}
           {section === "skills" && <SkillsSection vaultPath={vaultPath} />}

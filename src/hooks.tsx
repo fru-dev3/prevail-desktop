@@ -15,7 +15,9 @@ export function useAppearance() {
   });
   const [palette, setPalette] = useState<Palette>(() => {
     const saved = lsGet(LS.palette) as Palette;
-    return PALETTES.some((p) => p.id === saved) ? saved : "vault";
+    // THEME-1: brand-new users open in "mono" (clean grayscale). Existing users
+    // keep whatever they saved. Supersedes the earlier greenish "vault" default.
+    return PALETTES.some((p) => p.id === saved) ? saved : "mono";
   });
   // Track system preference for "system" mode
   const [systemDark, setSystemDark] = useState<boolean>(() =>
