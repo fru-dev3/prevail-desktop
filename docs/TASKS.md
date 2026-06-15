@@ -90,34 +90,30 @@ nested "Advanced" full panel (the duplicate source).
   to GPL-3.0. Uses the width to cut vertical scroll. settings5.tsx AboutSection.
 
 ### 📊 Benchmark scheduled runs
-- [ ] **BENCH-1 · Scheduled benchmark needs a persistent visibility indicator.** When the
-  benchmark is set to run on a schedule, it's not clear it's ON. Add an always-visible
-  indicator (sidebar AND homepage) that a scheduled benchmark is active — same pattern as
-  the existing "MCP working" / "web access on" indicators. Don't need to show the schedule
-  itself, just that it's turned on to run in the background. User must never have a nightly
-  benchmark running without being aware of it (without drilling into the Benchmark page).
-- [ ] **BENCH-2 · Scheduled benchmark scope is ambiguous/risky.** Today "Scheduled runs"
-  = "re-runs your most recent batch (same models, same scope)". Problem: if your last manual
-  run had only 1 model selected, the nightly schedule only ever runs that 1 model — useless
-  for tracking drift across models. Make it sophisticated:
-  - Decouple the SCHEDULED benchmark's model+domain scope from the ad-hoc manual Run
-    selection (they shouldn't silently share). Let the user explicitly choose which models +
-    which domains the scheduled benchmark covers (e.g. "all models × all domains" for the
-    schedule even if a manual run is 1 model).
-  - Show clearly, on the schedule control, EXACTLY what it will run (which models, which
-    domains) so the user knows.
-  - Reconcile scheduled runs coexisting with manual triggered runs (don't conflict/clobber).
-- [ ] **BENCH-3 · "Suggest with AI" question gen — per-domain + grounded in REAL data.**
-  (REPEAT — asked before, not fully fixed.) Two requirements:
-  1. **Per-domain count, never a permutation split.** If "all domains" + N questions, EVERY
-     selected domain must get exactly N questions (all domains × 3 = 3 each). Today it splits
-     N total across domains by permutation, so some domains get questions and others are
-     missed. No domain may be skipped.
-  2. **Ground each question in that domain's ACTUAL user data, not synthetic.** Draft from
-     the domain's real context: state.md, history, chat threads, the logs, and the user's
-     real data — that's the whole point (benchmark = accuracy against the user's real life,
-     not generic synthetic prompts). Generation engine likely in prevail-cli (question draft);
-     it must read per-domain vault data when drafting.
+- [x] **BENCH-1 · Scheduled benchmark needs a persistent visibility indicator.** (37f8073) —
+  SidebarBenchScheduled (sidebar) + HomeBenchScheduledBadge (home landing) show whenever a
+  benchmark is armed on a schedule, with the cadence. Steady dot + calendar icon (distinct from
+  a live run's pulsing dot, which SidebarBenchmarkRuns already shows). Click → Benchmark settings.
+- [~] **BENCH-2 · Scheduled benchmark scope is ambiguous/risky.** PARTIAL (37f8073).
+  - DONE: the schedule card now shows EXACTLY what the scheduled run will execute (model list +
+    domain scope, via scheduledRunPreview from the latest batch) AND warns on the single-model
+    trap ("only 1 model in your last run → schedule only tracks that one; run a benchmark with
+    every model you want tracked"). Coexistence is already handled (scheduler never stacks while
+    a run is in progress: benchpanel tick guard).
+  - DEFERRED (needs founder call): full decoupling into an independent "all models × all domains"
+    picker. Running ALL curated models nightly is a real cost decision and "all models" is
+    ambiguous (curated set can be dozens). runBenchmark() builds jobs from a (models,domains)
+    selection, so wiring an explicit scheduled-scope is feasible once the founder confirms the
+    intended set/cost.
+- [x] **BENCH-3 · "Suggest with AI" question gen — per-domain + grounded in REAL data.**
+  (CLI 33707ba, branch mcp-stdio-auth-fix)
+  1. Per-domain count: ALREADY satisfied — both the desktop loop (suggestWithAi loops per
+     domain requesting `count` each, verifies each got drafts) and the engine (`bench suggest`
+     loops per domain drafting N each, line ~1595). No permutation split; no domain skipped.
+  2. Grounding: the engine already drafts from state/goals/config/soul/_tasks/_memory + the
+     latest thread. ADDED the domain's recent `_log/*.md` decision logs to that context (the
+     explicit missing piece "the logs") — questions now draw on what actually happened, not
+     synthetic prompts. Engine rebuilt; bundle compiles.
 
 ### 🎨 Theme default
 - [x] **THEME-1 · Default palette → "Mono"** (66c07cd) — brand-new users (no saved
