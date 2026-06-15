@@ -706,7 +706,7 @@ export function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; do
         {tasks.map((t, i) => (
           <label
             key={i}
-            title={`${t.added ? `added ${t.added}` : "added before tracking"} · by ${t.source === "daemon" ? "the task daemon" : t.source === "surface" ? "an accepted suggestion" : "you"}${t.due ? ` · due ${t.due}` : ""}`}
+            title={`${t.added ? `added ${t.added}` : "added before tracking"} · by ${t.source === "daemon" ? "the task routine" : t.source === "surface" ? "an accepted suggestion" : "you"}${t.due ? ` · due ${t.due}` : ""}`}
             className="flex cursor-pointer items-center gap-2 text-sm"
           >
             <input type="checkbox" checked={t.done} onChange={() => persist(tasks.map((x, j) => j === i ? { ...x, done: !x.done } : x))} />
