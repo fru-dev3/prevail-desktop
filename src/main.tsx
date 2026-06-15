@@ -3,12 +3,18 @@ import ReactDOM from "react-dom/client";
 import { invoke } from "./bridge";
 import App from "./App";
 import { APP_VERSION } from "./constants";
-import { osFamily, track } from "./telemetry";
+import { initCrashReporting, osFamily, reportError, track } from "./telemetry";
 import "./index.css";
 
 // Anonymous, consent-gated, allowlisted. Logs locally always (transparency);
 // only transmitted when the user opts in AND build-time keys exist.
 track("app_opened", { version: APP_VERSION, os: osFamily() });
+
+// Attach Sentry's global crash handlers if (and only if) the user has opted into
+// crash reports and a DSN was built in. Uncaught errors / unhandled rejections
+// are then captured automatically; React render crashes are reported explicitly
+// from the ErrorBoundary below (React swallows those from window.onerror).
+initCrashReporting();
 
 // Surface fatal startup/render errors instead of a blank white window.
 function showFatal(msg: string) {
@@ -45,6 +51,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { err
     return { err };
   }
   componentDidCatch(err: unknown) {
+    reportError(err); // no-op unless crash consent is on + DSN built in
     showFatal((err as Error)?.stack || (err as Error)?.message || String(err));
   }
   render() {
