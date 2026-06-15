@@ -103,6 +103,17 @@ nested "Advanced" full panel (the duplicate source).
   - Show clearly, on the schedule control, EXACTLY what it will run (which models, which
     domains) so the user knows.
   - Reconcile scheduled runs coexisting with manual triggered runs (don't conflict/clobber).
+- [ ] **BENCH-3 · "Suggest with AI" question gen — per-domain + grounded in REAL data.**
+  (REPEAT — asked before, not fully fixed.) Two requirements:
+  1. **Per-domain count, never a permutation split.** If "all domains" + N questions, EVERY
+     selected domain must get exactly N questions (all domains × 3 = 3 each). Today it splits
+     N total across domains by permutation, so some domains get questions and others are
+     missed. No domain may be skipped.
+  2. **Ground each question in that domain's ACTUAL user data, not synthetic.** Draft from
+     the domain's real context: state.md, history, chat threads, the logs, and the user's
+     real data — that's the whole point (benchmark = accuracy against the user's real life,
+     not generic synthetic prompts). Generation engine likely in prevail-cli (question draft);
+     it must read per-domain vault data when drafting.
 
 ### 🎨 Theme default
 - [ ] **THEME-1 · Default palette → "Mono"** (clean grayscale, minimal and focused) for
