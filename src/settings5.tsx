@@ -235,175 +235,114 @@ export function TelegramCard() {
     }
   }
 
+  const ready = !!chatId.trim() && (!!token.trim() || tokenSaved);
   return (
+    // TG-1: cleaner top-to-bottom flow — header carries the live status; setup
+    // (credentials + routing) is one labelled block; one primary action row;
+    // running stats + feed only appear when relevant; help is a quiet footer.
     <div className="rounded-xl border border-border bg-surface p-5">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#229ED9]/15">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#229ED9]/15">
           <svg width={20} height={20} viewBox="0 0 24 24" fill="#229ED9" aria-hidden><path d={siTelegram.path} /></svg>
         </div>
-        <div>
+        <div className="min-w-0 flex-1">
           <h3 className="font-semibold">Telegram bridge</h3>
-          <p className="text-xs text-text-muted">
-            Two-way chat. Inbound messages from the configured chat are routed to your chosen CLI and the reply pushed back. Test button still works for one-shot pushes.
-          </p>
+          <p className="text-xs text-text-muted">Two-way chat: messages to your bot route to the chosen model and the reply is pushed back.</p>
         </div>
+        <span className={`shrink-0 self-start rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
+          bridge?.running ? "border border-accent-border bg-accent-soft text-accent" : "border border-border bg-background text-text-muted"
+        }`}>
+          {bridge?.running ? "● live" : "○ stopped"}
+        </span>
       </div>
 
-      <div className="mt-4 space-y-3">
-        <label className="block">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-text-muted">
-            Bot token
-            {tokenSaved && <span className="rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] tracking-wider text-accent">in keychain</span>}
-          </div>
-          <input
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder={tokenSaved ? "•••••••• (saved: type to replace)" : "123456:ABC-XYZ…"}
-            className="mt-1 w-full rounded border border-border bg-background px-3 py-2 font-mono text-sm"
-            spellCheck={false}
-          />
-        </label>
-        <label className="block">
-          <div className="text-xs uppercase tracking-wider text-text-muted">Chat ID</div>
-          <input
-            value={chatId}
-            onChange={(e) => setChatId(e.target.value)}
-            placeholder="-1001234567890"
-            className="mt-1 w-full rounded border border-border bg-background px-3 py-2 font-mono text-sm"
-            spellCheck={false}
-          />
-        </label>
-        <div className="flex items-center justify-between pt-1">
-          <button
-            onClick={testSend}
-            disabled={!chatId || (!token.trim() && !tokenSaved)}
-            className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-background hover:bg-accent-hover disabled:bg-surface-strong disabled:text-text-muted"
-          >
-            <Send className="h-3.5 w-3.5" />
-            Send test message
-          </button>
-          {status.kind === "ok" && (
-            <span className="text-xs text-ok"><Check className="mr-1 inline h-3 w-3" />{status.msg}</span>
-          )}
-          {status.kind === "err" && (
-            <span className="text-xs text-warn">{status.msg}</span>
-          )}
-        </div>
-
-        <div className="rounded-lg border border-border bg-background p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
-              Bidirectional bridge
-            </div>
-            <span className={`rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
-              bridge?.running
-                ? "border border-accent-border bg-accent-soft text-accent"
-                : "border border-border bg-surface text-text-muted"
-            }`}>
-              {bridge?.running ? "running" : "stopped"}
-            </span>
-          </div>
-          <p className="mb-3 text-[11px] text-text-muted">
-            Messages you send to the bot from Telegram get routed to the CLI below and the reply is pushed back to the same chat.
-          </p>
-          <div className="grid grid-cols-1 gap-3">
+      <div className="mt-4 space-y-4">
+        {/* Step 1 — credentials + routing, one premium setup block. */}
+        <div className="rounded-lg border border-border bg-background p-4">
+          <div className="space-y-3">
             <label className="block">
-              <div className="text-[10px] uppercase tracking-wider text-text-muted">Route to CLI</div>
-              <select
-                value={bridgeCli}
-                onChange={(e) => setBridgeCli(e.target.value)}
-                className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none"
-              >
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-text-muted">
+                Bot token
+                {tokenSaved && <span className="rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] tracking-wider text-accent">in keychain</span>}
+              </div>
+              <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
+                placeholder={tokenSaved ? "•••••••• (type to replace)" : "123456:ABC-XYZ…"}
+                className="mt-1 w-full rounded border border-border bg-surface px-3 py-2 font-mono text-sm focus:border-accent-border focus:outline-none" spellCheck={false} />
+            </label>
+            <label className="block">
+              <div className="text-[10px] uppercase tracking-wider text-text-muted">Chat ID</div>
+              <input value={chatId} onChange={(e) => setChatId(e.target.value)} placeholder="-1001234567890"
+                className="mt-1 w-full rounded border border-border bg-surface px-3 py-2 font-mono text-sm focus:border-accent-border focus:outline-none" spellCheck={false} />
+            </label>
+            <label className="block">
+              <div className="text-[10px] uppercase tracking-wider text-text-muted">Route to model</div>
+              <select value={bridgeCli} onChange={(e) => setBridgeCli(e.target.value)}
+                className="mt-1 w-full rounded border border-border bg-surface px-2 py-2 text-sm focus:border-accent-border focus:outline-none">
                 {routableClis.length === 0 ? (
-                  <option value="">No validated provider; set one up in Models</option>
+                  <option value="">No validated provider; set one in Models</option>
                 ) : (
                   routableClis.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}{verify.get(c.id)?.status === "ok" ? " ✓" : ""}
-                    </option>
+                    <option key={c.id} value={c.id}>{c.label}{verify.get(c.id)?.status === "ok" ? " ✓" : ""}</option>
                   ))
                 )}
               </select>
             </label>
             <label className="block">
               <div className="text-[10px] uppercase tracking-wider text-text-muted">Model</div>
-              <select
-                value={bridgeModel}
-                onChange={(e) => setBridgeModel(e.target.value)}
-                className="mt-1 w-full rounded border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none"
-              >
+              <select value={bridgeModel} onChange={(e) => setBridgeModel(e.target.value)}
+                className="mt-1 w-full rounded border border-border bg-surface px-2 py-2 text-sm focus:border-accent-border focus:outline-none">
                 <option value="">{`Provider default (${modelsFor(bridgeCli)[0]?.label ?? "default"})`}</option>
-                {modelsFor(bridgeCli).map((m) => (
-                  <option key={m.id} value={m.id}>{m.label}</option>
-                ))}
+                {modelsFor(bridgeCli).map((m) => (<option key={m.id} value={m.id}>{m.label}</option>))}
               </select>
             </label>
           </div>
-          <div className="mt-3 flex items-center gap-2">
-            {!bridge?.running ? (
-              <button
-                onClick={startBridge}
-                disabled={!chatId.trim() || (!token.trim() && !tokenSaved)}
-                className="rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
-              >
-                start bridge
-              </button>
-            ) : (
-              <button
-                onClick={stopBridge}
-                className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn"
-              >
-                stop bridge
-              </button>
-            )}
-            {bridge && (
-              <span className="font-mono text-[10px] text-text-muted">
-                in: {bridge.inbound_count} · out: {bridge.outbound_count}
-                {bridge.last_inbound_ts ? ` · last in ${Math.round((Date.now() / 1000 - bridge.last_inbound_ts))}s ago` : ""}
-              </span>
-            )}
-          </div>
-          {bridge?.last_error && (
-            <div className="mt-2 rounded border border-warn/40 bg-warn/10 px-2 py-1 text-xs text-warn">
-              {bridge.last_error}
-            </div>
-          )}
-          {feed.length > 0 && (
-            <ul className="mt-3 max-h-40 overflow-y-auto rounded border border-border-subtle bg-surface px-2 py-1.5">
-              {feed.map((f, i) => (
-                <li key={i} className="font-mono text-[10px] leading-relaxed">
-                  <span className={f.dir === "in" ? "text-accent" : "text-text-muted"}>
-                    {f.dir === "in" ? "▶" : "◀"}
-                  </span>{" "}
-                  <span className={f.dir === "in" ? "text-text-primary" : "text-text-secondary"}>
-                    {f.text.slice(0, 200)}{f.text.length > 200 ? "…" : ""}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
 
-        <div className="rounded-lg border border-border-subtle bg-background px-3 py-2">
-          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Routing keywords</div>
-          <p className="mt-1 text-xs text-text-secondary">
-            Inbound messages are matched against each domain's keywords to pick where they land.
-            Set them per-domain under{" "}
-            <span className="font-mono text-accent">Domain → Prefs → Channels &amp; routing</span>{" "}
-            (saved to <span className="font-mono">manifest.routing.keywords</span>).
-          </p>
+        {/* Step 2 — one action row: primary start/stop, secondary test, inline status. */}
+        <div className="flex flex-wrap items-center gap-2">
+          {!bridge?.running ? (
+            <button onClick={startBridge} disabled={!ready}
+              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-background hover:bg-accent-hover disabled:bg-surface-strong disabled:text-text-muted">
+              <Radio className="h-3.5 w-3.5" /> Start bridge
+            </button>
+          ) : (
+            <button onClick={stopBridge}
+              className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-text-secondary hover:border-warn hover:text-warn">
+              Stop bridge
+            </button>
+          )}
+          <button onClick={testSend} disabled={!ready}
+            className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+            <Send className="h-3.5 w-3.5" /> Send test
+          </button>
+          {status.kind === "ok" && <span className="text-xs text-ok"><Check className="mr-1 inline h-3 w-3" />{status.msg}</span>}
+          {status.kind === "err" && <span className="text-xs text-warn">{status.msg}</span>}
+          {bridge?.running && (
+            <span className="ml-auto font-mono text-[10px] text-text-muted">
+              in {bridge.inbound_count} · out {bridge.outbound_count}{bridge.last_inbound_ts ? ` · last ${Math.round((Date.now() / 1000 - bridge.last_inbound_ts))}s ago` : ""}
+            </span>
+          )}
         </div>
+        {bridge?.last_error && (
+          <div className="rounded border border-warn/40 bg-warn/10 px-2 py-1 text-xs text-warn">{bridge.last_error}</div>
+        )}
 
-        <p className="text-xs text-text-muted">
-          New to Telegram bots?{" "}
-          <a href="https://core.telegram.org/bots/features#botfather" target="_blank" rel="noreferrer" className="text-accent hover:underline">
-            Create one via @BotFather
-          </a>, then add it to your chat and use{" "}
-          <a href="https://api.telegram.org/bot{TOKEN}/getUpdates" target="_blank" rel="noreferrer" className="text-accent hover:underline">
-            getUpdates
-          </a>{" "}
-          to find your chat ID.
+        {/* Live feed — only when there's traffic. */}
+        {feed.length > 0 && (
+          <ul className="max-h-40 overflow-y-auto rounded-lg border border-border-subtle bg-background px-2 py-1.5">
+            {feed.map((f, i) => (
+              <li key={i} className="font-mono text-[10px] leading-relaxed">
+                <span className={f.dir === "in" ? "text-accent" : "text-text-muted"}>{f.dir === "in" ? "▶" : "◀"}</span>{" "}
+                <span className={f.dir === "in" ? "text-text-primary" : "text-text-secondary"}>{f.text.slice(0, 200)}{f.text.length > 200 ? "…" : ""}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Quiet footer: routing + setup help. */}
+        <p className="text-[11px] leading-relaxed text-text-muted">
+          Inbound messages route to a domain by its keywords (set per-domain under <span className="font-mono text-text-secondary">Domain → Prefs → Channels &amp; routing</span>).
+          {" "}New to bots? <a href="https://core.telegram.org/bots/features#botfather" target="_blank" rel="noreferrer" className="text-accent hover:underline">Create one via @BotFather</a>, then use getUpdates to find your chat ID.
         </p>
       </div>
     </div>
@@ -489,6 +428,23 @@ export function McpSection({ vaultPath }: { vaultPath: string }) {
       id: "gemini", label: "Gemini CLI", kind: "json",
       body: JSON.stringify({ mcpServers: { prevail: { command: mcpCommand, args: ["mcp", "--vault", vaultPath] } } }, null, 2),
       note: "Add to ~/.gemini/settings.json under mcpServers, then restart.",
+    },
+    // MCP-3: broaden coverage to the other common MCP hosts. All use stdio with
+    // the same resolved command; only the file location + the wrapper key differ.
+    {
+      id: "cursor", label: "Cursor", kind: "json",
+      body: JSON.stringify({ mcpServers: { prevail: { command: mcpCommand, args: ["mcp", "--vault", vaultPath] } } }, null, 2),
+      note: "Add to ~/.cursor/mcp.json (global) or .cursor/mcp.json in a project, then reload Cursor.",
+    },
+    {
+      id: "vscode", label: "VS Code", kind: "json",
+      body: JSON.stringify({ servers: { prevail: { command: mcpCommand, args: ["mcp", "--vault", vaultPath] } } }, null, 2),
+      note: "Add to .vscode/mcp.json (note: VS Code uses \"servers\", not \"mcpServers\"). Works with Copilot Agent mode + Continue/Cline.",
+    },
+    {
+      id: "generic", label: "Other / stdio", kind: "json",
+      body: JSON.stringify({ mcpServers: { prevail: { command: mcpCommand, args: ["mcp", "--vault", vaultPath] } } }, null, 2),
+      note: "Any MCP host that speaks stdio (OpenClaw, Paperclip, Multica, Goose, Zed, …). Use this command + args in that client's MCP config. The server is read-only over stdio and parent-verified.",
     },
   ];
   const [client, setClient] = useState(clients[0].id);
@@ -757,7 +713,7 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
         href={href}
         target="_blank"
         rel="noreferrer"
-        className="flex w-full items-center justify-between gap-4 border-b border-border-subtle px-1 py-3 text-left text-sm text-text-primary last:border-0 hover:text-accent"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary shadow-sm transition-colors hover:border-accent-border hover:text-accent"
       >
         <span>{label}</span>
         <span className="text-text-muted">›</span>
@@ -770,41 +726,41 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
   const newer = latest && cmp > 0;
 
   return (
-    <div className="mx-auto max-w-xl">
-      <div className="flex flex-col items-center text-center">
-        <img src="/logo.png" alt="Prevail" className="h-16 w-16 rounded-2xl shadow-md" />
-        <h1 className="mt-3 font-display text-2xl font-extrabold tracking-tight">
-          <BrandMark className="[letter-spacing:0.12em]" />
-        </h1>
-        <p className="mt-1 text-xs text-text-secondary">One desktop. Your AI council, grounded in your domains.</p>
-      </div>
-
-      {/* Update card — version + one-click install, compact. */}
-      <div className="mt-4 rounded-xl border border-border bg-surface p-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <span className="rounded-full bg-surface-warm px-2.5 py-1 font-mono text-xs text-text-secondary">v{APP_VERSION}</span>
-          <span className="flex-1 text-xs text-text-muted">
-            {newer ? "An update is ready to install." : upToDate ? "You're on the latest release." : "Install updates in place, no browser needed."}
-          </span>
+    // ABOUT-1: full-width single column (was a narrow centered max-w-xl). The
+    // header + update controls collapse into one horizontal banner so the page
+    // uses the width and fits with far less vertical scroll.
+    <div className="w-full">
+      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-surface p-4 shadow-sm">
+        <img src="/logo.png" alt="Prevail" className="h-14 w-14 shrink-0 rounded-2xl shadow-md" />
+        <div className="min-w-0 flex-1">
+          <h1 className="font-display text-2xl font-extrabold tracking-tight">
+            <BrandMark className="[letter-spacing:0.12em]" />
+            <span className="ml-2 align-middle rounded-full bg-surface-warm px-2.5 py-1 font-mono text-xs font-normal text-text-secondary">v{APP_VERSION}</span>
+          </h1>
+          <p className="mt-0.5 text-xs text-text-secondary">One desktop. Your AI council, grounded in your domains.</p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
           <button
             onClick={checkForUpdates}
             disabled={checking}
-            className="shrink-0 rounded-md bg-text-primary px-3 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="rounded-md bg-text-primary px-3 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {installing ? "Installing…" : checking ? "Checking…" : newer ? "Download & install" : "Check for updates"}
           </button>
+          {latest ? (
+            <span className={`font-mono text-[10px] ${upToDate ? "text-accent" : "text-warn"}`}>
+              {upToDate ? `latest (${latest})` : newer ? `update: ${latest}` : `latest: ${latest}`}
+            </span>
+          ) : (
+            <span className="font-mono text-[10px] text-text-muted">{newer ? "ready to install" : "in-place updates"}</span>
+          )}
         </div>
-        {latest && (
-          <div className={`mt-2 rounded-md border px-3 py-1.5 text-xs ${
-            upToDate ? "border-accent-border bg-accent-soft text-accent" : "border-warn/40 bg-warn/10 text-warn"
-          }`}>
-            {upToDate ? `Latest release (${latest}).` : newer ? `Update available: ${latest}. Click Download & install.` : `Latest: ${latest}`}
-          </div>
-        )}
-        {checkErr && <div className="mt-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-xs text-warn">{checkErr}</div>}
+        {checkErr && <div className="w-full rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-xs text-warn">{checkErr}</div>}
       </div>
 
-      <div className="mt-3 rounded-xl border border-border bg-surface px-4 py-1 shadow-sm">
+      {/* Links — a horizontal wrap of chips (was a tall stacked list) to use the
+          full width and shave vertical height. */}
+      <div className="mt-3 flex flex-wrap gap-2">
         <Row label="Help & documentation" href="https://github.com/fru-dev3/prevail-desktop#readme" />
         <Row label="Update log" href="https://github.com/fru-dev3/prevail-desktop/releases" />
         <Row label="Report an issue" href="https://github.com/fru-dev3/prevail-desktop/issues/new" />
@@ -899,7 +855,7 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
       </div>
 
       <div className="mt-6 flex items-center justify-between gap-3 px-1 text-[11px] text-text-muted">
-        <span>MIT licensed · Tauri 2 · React 19 · Tailwind 4</span>
+        <span>GPL-3.0 licensed · Tauri 2 · React 19 · Tailwind 4</span>
         <span>Local-first · Vault stays on this Mac</span>
       </div>
     </div>
