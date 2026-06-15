@@ -11,6 +11,7 @@
 //     VITE_SENTRY_DSN). With no keys the module is inert: it only writes the local
 //     log. Both SDKs are lazy-imported on first send, so a user who never opts in
 //     pays zero bytes; PostHog/Sentry init is privacy-hardened (see each block).
+import { APP_VERSION } from "./constants";
 import { PREF, getPref, lsGet, lsSet, setPref } from "./storage";
 
 // ── Allowlist ───────────────────────────────────────────────────────────────
@@ -157,6 +158,7 @@ function ensureSentry(): Promise<SentryLike | null> {
     .then((Sentry) => {
       Sentry.init({
         dsn: SENTRY_DSN,
+        release: APP_VERSION,          // matches the source maps uploaded in CI → readable stack traces
         sendDefaultPii: false,         // never attach IP, cookies, headers, or user data
         defaultIntegrations: false,    // drop breadcrumbs/console/fetch/dom capture wholesale
         integrations: [
