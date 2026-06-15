@@ -424,7 +424,11 @@ export function Sidebar({
                     }`}
                   >
                     {Icon ? <Icon className="h-4 w-4" /> : (
-                      <span className="font-mono text-xs font-semibold">
+                      // NAV-1: no per-domain icon → a circular badge (not a bare
+                      // glyph) so the collapsed rail signals "content behind here".
+                      <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
+                        active ? "bg-accent text-background" : "bg-surface-warm text-text-secondary ring-1 ring-border"
+                      }`}>
                         {titleCase(d.name).charAt(0)}
                       </span>
                     )}
