@@ -56,6 +56,18 @@ nested "Advanced" full panel (the duplicate source).
   bar chart "looks terrible". Rework the alignment chart + overall layout.
 - [ ] **TG-1 · Telegram bridge redesign** — clunky layout/flow; clean it up.
 
+### 🔴 Engine bug (separate from UI review)
+- [ ] **MCP-1 · Prevail MCP unusable by generic stdio clients (Claude Code).** Server
+  (`prevail-cli/src/mcp-server.ts`) requires `_meta.authorization: prevail-<token>` on every
+  non-initialize request → Claude Code's stdio client sends none → `initialize` ok but
+  `tools/list` fails with `-32001 unauthorized`. No `--no-auth`/env escape hatch exists.
+  Root cause: per-request token is a NETWORK-transport control; over stdio the
+  `verifyParentProcess()` check already secures it. Fix: don't require the per-request token
+  over stdio (trust verified parent; keep token gate for any network exposure), then rebuild
+  the `prevail` binary the `.claude.json` config points at (debug sidecar via prepare-sidecar).
+  Immediate workaround: Disable the prevail MCP in Claude Code (it's on the demo vault + debug
+  binary anyway). NEEDS founder go (security-model change + rebuild).
+
 ### Implementation notes (found)
 - Per-domain model: `prevail.domain.<domain>.cli` + `.model` (chatpanel.tsx:125-201 reads
   live). Engine rec emits clean `action.cli`/`action.model` (canonical-bench
