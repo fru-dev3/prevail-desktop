@@ -177,6 +177,35 @@ export async function rerunLatestBatch(vault: string): Promise<boolean> {
   return true;
 }
 
+// BENCH-2: a preview of EXACTLY what the scheduled run will execute. The
+// scheduled run repeats the most recent batch, so we derive its model list +
+// domain scope from benchmark_runs (same grouping rerunLatestBatch uses). This
+// lets the schedule control show what it covers — and flag the single-model
+// trap (a 1-model last run means the nightly only ever tracks that 1 model).
+export async function scheduledRunPreview(vault: string): Promise<{ models: string[]; scopeLabel: string; council: boolean; empty: boolean }> {
+  const runs = await invoke<BenchmarkRun[]>("benchmark_runs", { vault }).catch(() => [] as BenchmarkRun[]);
+  if (runs.length === 0) return { models: [], scopeLabel: "", council: false, empty: true };
+  const newest = runs[0];
+  const group = newest.batch_id
+    ? runs.filter((r) => r.batch_id === newest.batch_id)
+    : runs.filter((r) => Math.abs(r.created_ms - newest.created_ms) < 5 * 60_000);
+  const models: string[] = [];
+  let council = false;
+  const seen = new Set<string>();
+  for (const r of group) {
+    if (r.council) { council = true; continue; }
+    if (!r.cli) continue;
+    const k = `${r.cli}::${r.model ?? ""}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const ml = MODELS[r.cli]?.find((m) => m.id === (r.model ?? ""))?.label ?? (r.model || "default");
+    models.push(`${titleCase(r.cli)} ${ml}`);
+  }
+  const domains = newest.domains ?? [];
+  const scopeLabel = domains.length === 0 ? "All domains" : domains.length <= 2 ? domains.map(titleCase).join(", ") : `${domains.length} domains`;
+  return { models, scopeLabel, council, empty: false };
+}
+
 export let benchSchedTimer: number | null = null;
 
 export function startBenchScheduler(vault: string) {

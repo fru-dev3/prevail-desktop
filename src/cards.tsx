@@ -2,13 +2,71 @@
 // benchmark progress strip, the framework/lens cycle row, and the Settings
 // scheduled-benchmark card.
 import { useEffect, useState } from "react";
-import { RotateCw } from "lucide-react";
+import { CalendarClock, RotateCw } from "lucide-react";
 import { FRAMEWORKS, LENSES } from "./constants";
 import { formatDuration, formatFreshness } from "./format";
 import { lsGet, lsSet } from "./storage";
 import { CycleChip } from "./widgets";
 import { useFrameworkLens } from "./hooks";
-import { benchFreqMs, BENCH_SCHED, cancelBenchBatch, rerunLatestBatch, useBenchBatches } from "./bench";
+import { benchFreqLabel, benchFreqMs, BENCH_SCHED, cancelBenchBatch, rerunLatestBatch, scheduledRunPreview, useBenchBatches } from "./bench";
+
+// BENCH-1: a persistent indicator that a benchmark is ARMED to run on a
+// schedule (distinct from one actively running — SidebarBenchmarkRuns owns
+// that). The founder must never have a nightly benchmark running without being
+// aware of it. Mirrors the SidebarMcpLive / SidebarGatewayLive "live" pattern,
+// but with a steady (non-pulsing) dot + calendar icon to read as "armed".
+export function SidebarBenchScheduled({ collapsed }: { collapsed: boolean }) {
+  const [on, setOn] = useState(() => lsGet(BENCH_SCHED.enabled, "0") === "1");
+  const [freq, setFreq] = useState(() => lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
+  const running = useBenchBatches().some((b) => b.running);
+  useEffect(() => {
+    const sync = () => { setOn(lsGet(BENCH_SCHED.enabled, "0") === "1"); setFreq(lsGet(BENCH_SCHED.freq, "weekly") || "weekly"); };
+    window.addEventListener("prevail:bench-sched", sync);
+    const id = window.setInterval(sync, 30_000);
+    return () => { window.removeEventListener("prevail:bench-sched", sync); window.clearInterval(id); };
+  }, []);
+  if (!on || running) return null; // a live run already shows in SidebarBenchmarkRuns
+  const open = () => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "benchmark" }));
+  const title = `A benchmark is scheduled to run ${benchFreqLabel(freq)} in the background. Click for Benchmark settings.`;
+  if (collapsed) {
+    return (
+      <button onClick={open} title={title} className="flex w-full justify-center border-t border-border-subtle px-2 py-2 text-text-muted hover:text-accent">
+        <CalendarClock className="h-3.5 w-3.5" />
+      </button>
+    );
+  }
+  return (
+    <button onClick={open} title={title} className="flex w-full items-center gap-2 border-t border-border-subtle px-3 py-2 text-left hover:bg-surface-warm">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+      <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-text-secondary">Benchmark · {benchFreqLabel(freq)}</span>
+      <CalendarClock className="h-3 w-3 shrink-0 text-text-muted" />
+    </button>
+  );
+}
+
+// BENCH-1: the same awareness on the home landing — a compact pill so a
+// scheduled run is visible without opening the Benchmark page.
+export function HomeBenchScheduledBadge() {
+  const [on, setOn] = useState(() => lsGet(BENCH_SCHED.enabled, "0") === "1");
+  const [freq, setFreq] = useState(() => lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
+  useEffect(() => {
+    const sync = () => { setOn(lsGet(BENCH_SCHED.enabled, "0") === "1"); setFreq(lsGet(BENCH_SCHED.freq, "weekly") || "weekly"); };
+    window.addEventListener("prevail:bench-sched", sync);
+    const id = window.setInterval(sync, 30_000);
+    return () => { window.removeEventListener("prevail:bench-sched", sync); window.clearInterval(id); };
+  }, []);
+  if (!on) return null;
+  return (
+    <button
+      onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "benchmark" }))}
+      title={`A benchmark runs ${benchFreqLabel(freq)} in the background. Click for Benchmark settings.`}
+      className="mt-3 inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-text-secondary hover:border-accent-border hover:text-accent"
+    >
+      <CalendarClock className="h-3.5 w-3.5 text-accent" />
+      <span className="font-mono text-[11px] uppercase tracking-wider">Benchmark scheduled · {benchFreqLabel(freq)}</span>
+    </button>
+  );
+}
 
 export function SidebarBenchmarkRuns({ collapsed }: { collapsed: boolean }) {
   const runningBatches = useBenchBatches().filter((b) => b.running);
@@ -148,11 +206,19 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
   // it looked dead. Track busy + a result message so every click reports back.
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // BENCH-2: show exactly what the scheduled run will execute (models + scope).
+  const [preview, setPreview] = useState<{ models: string[]; scopeLabel: string; council: boolean; empty: boolean } | null>(null);
   useEffect(() => {
     const f = () => force((n) => n + 1);
     window.addEventListener("prevail:bench-sched", f);
     return () => window.removeEventListener("prevail:bench-sched", f);
   }, []);
+  useEffect(() => {
+    let alive = true;
+    void scheduledRunPreview(vault).then((p) => { if (alive) setPreview(p); }).catch(() => {});
+    return () => { alive = false; };
+    // re-derive when a run finishes (the "latest batch" may have changed)
+  }, [vault, busy]);
   const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
   const isCustom = /^custom:/.test(freq);
   const customDays = isCustom ? (/^custom:(\d+)$/.exec(freq)?.[1] ?? "3") : "3";
@@ -229,6 +295,25 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
           {busy ? "Starting…" : "Run now"}
         </button>
       </div>
+      {/* BENCH-2: exactly what the scheduled run will execute, + the
+          single-model trap warning the founder flagged. */}
+      {preview && !preview.empty && (
+        <div className="mt-2 rounded-lg border border-border-subtle bg-background px-3 py-2">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Will run (repeats your latest batch)</div>
+          <div className="mt-0.5 text-xs text-text-secondary">
+            {[preview.council ? "Council" : null, ...preview.models].filter(Boolean).join(" · ") || "—"}
+            {" · "}<span className="text-text-primary">{preview.scopeLabel}</span>
+          </div>
+          {preview.models.length === 1 && !preview.council && (
+            <div className="mt-1 text-[11px] text-warn">
+              Only 1 model in your last run, so the schedule only tracks that one. Run a benchmark with every model you want tracked, then the schedule repeats that set.
+            </div>
+          )}
+        </div>
+      )}
+      {preview?.empty && enabled && (
+        <div className="mt-2 text-[11px] text-text-muted">No previous batch yet: run a benchmark once (pick the models + domains you want tracked) and the schedule repeats exactly that.</div>
+      )}
       {msg && <div className="mt-2 text-xs text-text-secondary">{msg}</div>}
     </div>
   );
