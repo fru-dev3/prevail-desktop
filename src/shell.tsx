@@ -211,7 +211,7 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
             </div>
             {demoMode && (
               <div className="mt-2 rounded-lg border border-ai/40 bg-ai/10 px-3 py-2 text-[12px] leading-relaxed text-text-secondary">
-                You're in <span className="font-semibold">Demo Mode</span>, so this is a sample app and won't make a real connection. Switch to your own vault (Settings : Vault : Demo Mode) to connect real accounts.
+                You're in the <span className="font-semibold">Sandbox</span>, so this is a sample app and won't make a real connection. Switch to your own vault (Settings → Workspace) to connect real accounts.
               </div>
             )}
             {note && <div className="mt-2 rounded-lg bg-surface-warm px-3 py-1.5 font-mono text-[11px] text-text-secondary">{note}</div>}
