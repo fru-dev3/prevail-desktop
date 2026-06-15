@@ -120,7 +120,7 @@ Usage analytics go to PostHog and crash reports to Sentry, both configured with
 IP/geo and content collection disabled. See [`docs/TELEMETRY-PLAN.md`](docs/TELEMETRY-PLAN.md).
 
 ## License
-[GPL-3.0-only](./LICENSE). © 2026 Fru Louis · fru.dev.
+[GPL-3.0-only](./LICENSE). © 2026 fru.dev.
 
 Prevail is free software: you can use, study, share, and modify it under the
 terms of the GNU General Public License v3. Anyone may self-build and audit the
