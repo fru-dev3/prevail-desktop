@@ -74,12 +74,13 @@ nested "Advanced" full panel (the duplicate source).
   "Access protection" (App Lock + Vault Encryption cards) and "Agent guardrails" (the
   toggles/selects in one bordered card). Each guardrail row now has a leading state icon
   that lights (accent-soft) when the control is active. settings4.tsx SafetySection.
-- [ ] **VAULT-1 · Vault panel redesign** — functionality fine, design/layout/icons/flow
-  "could be way better" (premium-designer bar). Plain rows (Vault folder/Change, Domains/
-  Set up domains, raw path box, Move into app, Automatic backups card with inline select +
-  number-stepper + ON pill + Back up now + Restore points). Rework hierarchy, iconography,
-  the backups control cluster, and the raw-path display into something premium.
-- [ ] **DEMO-1 · "Demo Mode" panel redesign** — same premium bar (groupings/flow/icons).
+- [x] **VAULT-1 · Vault panel redesign** (80bf9c9) — premium location card (icon chip +
+  Change), the raw path now in a styled mono box with an "in app" badge + Finder-reveal button;
+  Domains + Move-into-app grouped as rows in one card; backups cluster unchanged below. Added a
+  `headerless` prop so it composes inside Workspace. settings8.tsx VaultSettings.
+- [x] **DEMO-1 · "Demo Mode" panel redesign** (80bf9c9) — renamed "Sandbox", icon header,
+  copy reframed (starter packs = production setup; sandbox = throwaway). `headerless` prop for
+  Workspace composition. Existing mode strip / 3-step / packs design retained + reframed.
 - [x] **NAV-1 · Collapsed rail uses bare letters** (66c07cd) — domain entries without a
   per-domain icon now render a circular badge (filled accent when active, ring otherwise)
   instead of a bare mono glyph. Apps don't render individual items collapsed (no change
@@ -122,7 +123,7 @@ nested "Advanced" full panel (the duplicate source).
   palette (not prevail.sh).
 
 ### 🧭 Information architecture / naming
-- [ ] **IA-1 · Vault + "Demo Mode" overlap; "Demo Mode" is a misnomer.** The "Demo Mode"
+- [x] **IA-1 · Vault + "Demo Mode" overlap; "Demo Mode" is a misnomer.** The "Demo Mode"
   panel hosts STARTER PACKS, which import real domains into your PRODUCTION vault — that's
   not demo. It conflates two different things: (a) the genuine demo *sandbox* (throwaway
   sample data) and (b) production setup (starter packs + vault). And it overlaps the Vault
@@ -134,6 +135,9 @@ nested "Advanced" full panel (the duplicate source).
     space), as a sub-mode of the umbrella.
   - Move STARTER PACKS under production setup (they feed the real vault), not under "demo".
   - Founder delegated the naming to me; await pick (Workspace vs Vault umbrella).
+  DONE (80bf9c9): umbrella = **Workspace** (founder-confirmed choice). One nav entry replaces
+  Vault + Demo Mode; WorkspaceSection composes headerless Vault + Sandbox. Demo → "Sandbox".
+  Starter packs framed as production setup. "vault"/"demo" remain deep-link aliases.
 
 ### 🔴 MCP "Expose Prevail" overhaul (separate from UI review; needs founder go)
 The whole "Expose Prevail to your agent" feature is broken for real users. Four parts:
