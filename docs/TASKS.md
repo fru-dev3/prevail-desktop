@@ -85,6 +85,25 @@ nested "Advanced" full panel (the duplicate source).
   without scrolling. Currently: centered max-w column (logo, update card, links list, Alpha
   Software, Configuration, Health check stacked tall). Use the width to reduce vertical scroll.
 
+### 📊 Benchmark scheduled runs
+- [ ] **BENCH-1 · Scheduled benchmark needs a persistent visibility indicator.** When the
+  benchmark is set to run on a schedule, it's not clear it's ON. Add an always-visible
+  indicator (sidebar AND homepage) that a scheduled benchmark is active — same pattern as
+  the existing "MCP working" / "web access on" indicators. Don't need to show the schedule
+  itself, just that it's turned on to run in the background. User must never have a nightly
+  benchmark running without being aware of it (without drilling into the Benchmark page).
+- [ ] **BENCH-2 · Scheduled benchmark scope is ambiguous/risky.** Today "Scheduled runs"
+  = "re-runs your most recent batch (same models, same scope)". Problem: if your last manual
+  run had only 1 model selected, the nightly schedule only ever runs that 1 model — useless
+  for tracking drift across models. Make it sophisticated:
+  - Decouple the SCHEDULED benchmark's model+domain scope from the ad-hoc manual Run
+    selection (they shouldn't silently share). Let the user explicitly choose which models +
+    which domains the scheduled benchmark covers (e.g. "all models × all domains" for the
+    schedule even if a manual run is 1 model).
+  - Show clearly, on the schedule control, EXACTLY what it will run (which models, which
+    domains) so the user knows.
+  - Reconcile scheduled runs coexisting with manual triggered runs (don't conflict/clobber).
+
 ### 🎨 Theme default
 - [ ] **THEME-1 · Default palette → "Mono"** (clean grayscale, minimal and focused) for
   BRAND-NEW users, replacing the current greenish/teal "vault" default. The whole app should
