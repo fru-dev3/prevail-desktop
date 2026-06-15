@@ -1,0 +1,165 @@
+# Monday Feedback — 2026-06-15 · Plan & TODO
+
+**Source:** `~/Downloads/Prevail - Monday Feedback 06.15.2026.pdf`
+**Branch:** `feat/monday-feedback-0615` · **Mode:** PLAN ONLY until founder says "go".
+Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[?]` needs founder input
+
+---
+
+## How I'd sequence this (recommendation)
+~40 items. Not all equal. Proposed order, highest-leverage / lowest-risk first:
+
+1. **Bugs & regressions** (B-group) — things that are broken NOW and hurt daily use. Fast wins.
+2. **Chat/threads/context correctness** (C-group) — thread binding, $domain refs, General parity.
+3. **Context & Memory IA reorg** (M-group) — the rename/regroup + Ideal State + Recommendations
+   redesign + Journals/Intents model. This is the conceptual spine; lots of other items hang off it.
+4. **Loops rework** (L-group) — needs a real design pass (agentic spec), so it gets its own phase.
+5. **Workspace / Vault / Backups** (W-group) — incl. the on-disk file-layout reorg (engine work).
+6. **Apps / Connections** (A-group) — edit-method, WebUI toggle, surfaces, de-noise.
+7. **Models / Council** (G-group), **Benchmark** (K-group) — page-level redesigns + the direct-provider build.
+8. **UX polish** (P-group) — toggles everywhere, text trims, dismiss affordances.
+9. **Onboarding** (O-group) — new feature; do after the surfaces it tours are stable.
+
+Two items need a decision before building: **L (Loops agentic model)** and **M1 naming** — see `[?]`.
+
+---
+
+## B · Bugs & regressions (do first)
+- [ ] **B1 — Drag domain → chat context broken.** Used to be able to drag a domain from the left
+  sidebar into the chat context; no longer works. (PDF p5)
+- [ ] **B2 — `$domain` reference broken.** Typing `$Wealth` (etc.) to add/reference a domain in the
+  composer + Enter does nothing. (PDF p5)
+- [ ] **B3 — Thread binding bug.** Selecting an empty "Untitled" thread and typing spawns a NEW
+  thread named after the prompt, leaving the Untitled one. Conversations must stay strictly tied to
+  the selected thread (even untitled). Also: show the thread name in the chat canvas so there's
+  never confusion about which thread you're in. (PDF p6)
+- [ ] **B4 — Benchmark "Draft with AI" false "0/3" message.** Drafting questions for a domain shows
+  "Drafted 0/3 · under target" while the questions ARE actually generated. Fix the
+  count/messaging (likely the added-count diff vs the generated questions). (PDF p8)
+- [ ] **B5 — Channel routing not populated.** The per-domain channel/routing keywords aren't being
+  filled. Fix, and add relevant contextual suggestions. (PDF p2)
+- [ ] **B6 — Models page shows Direct Providers twice.** Duplicate section. (PDF p3 — folded into G1)
+
+## C · Chat / threads / context
+- [ ] **C1 — General context parity.** The right-side Context panel for **General** only shows
+  Ideal State, Long-term memory, Recent decisions — domains show more. Give General the same
+  context items as domains (state/journal/sessions/skills as applicable). (PDF p1)
+- [ ] **C2 — Thread name in canvas + current-domain indicator.** Show active thread name in the
+  canvas (B3); add a current-domain indicator on the Benchmark page (PDF p7). (See K5.)
+
+## M · Context & Memory (IA reorg + the learning model)
+- [?] **M1 — Rename + regroup the "Memory & Routines" group → "Context & Memory"**, in this order
+  (founder-specified, PDF p4):
+  - **Ideals** (what the user inputs) ← today's "Configuration" item is renamed/replaced; this is
+    the Ideal State surface. *Decision needed:* confirm "Configuration" (memory-engine knobs) folds
+    into Routines/Settings and the nav item becomes "Ideals" = Ideal State.
+  - **Omega** (distilled for the user)
+  - **Intents** (what the user is doing)
+  - **Recommendations** (things for the user)
+  - **Routines**
+  Also surface the orphaned sections (Ideal State, Tasks were unreachable from nav).
+- [ ] **M2 — Ideal State redesign (scratch & rethink).** Current formatting is "so bad" — start
+  over with a fresh, out-of-the-box design/layout. (PDF p3, p4)
+- [ ] **M3 — Journals concept + Journal→Intent pipeline.** Implement the **Journal**: every
+  conversation logged per-domain across threads = the raw record of what the user typed/asked.
+  **Intent** = the high-level distillation (the question behind the question), per-domain or
+  cross-domain, from the Journal. Make this relationship clear in the UI + engine. (PDF p2, p4)
+- [ ] **M4 — Intents save/dismiss.** Let the user save/bookmark or dismiss intents so the list
+  doesn't grow punishingly long. (PDF p4)
+- [ ] **M5 — Recommendations redesign.** Human-readable, not technical: icons, indicators,
+  severity/impact. Bookmark/save or dismiss (one-by-one AND bulk). Click a rec → a nicely
+  formatted detail view with beautiful visuals of the "why". (PDF p3)
+- [ ] **M6 — Per-domain Ideal States.** Global ideal-state exists; add per-domain ideal states
+  (wealth, health, …) in a clear, intuitive, functional way. (PDF p3)
+- [ ] **M7 — Omega cohesive view.** Journals + Intents + States all feed Omega; combine with Ideal
+  State into one cohesive view. (PDF p4)
+
+## L · Loops (major rework — needs design + decision)
+- [?] **L1 — Define the agentic model for Loops (DECIDE FIRST).** Current UI is "so bad" and the
+  behavior is unclear. Specify: when a loop is enabled, what happens — is it autonomous? does it
+  create tasks, reach external systems, suggest prompts? what work does it do vs expect of the
+  user? How does the user communicate goals, allowed tasks, tools it can use, and guardrails? How
+  does it tie into Tasks? (PDF p2-3) → produce a short design doc, then build.
+- [ ] **L2 — Loops UI: full-width + redesign.** Make Loops full-width like other pages; rebuild the
+  layout. Adding a loop currently only asks a name + "always on" — needs goal/tools/guardrails. (PDF p2-3)
+- [ ] **L3 — Loop run history & progress.** Show run history: what work was done, why, and how it's
+  matching/progressing toward the goal. (PDF p3)
+
+## W · Workspace / Vault / Backups
+- [ ] **W1 — Workspace redesign.** Your Vault vs Demo Vault as mutually-exclusive toggles (one ON
+  grays the other off). Starter Packs import into whichever is active. All three (Your Vault, Demo
+  Vault, Starter Packs) collapsible + clean. (PDF p2)
+- [ ] **W2 — Backups = its own section + sidebar indicator.** Split backups/automations into their
+  own section; add a clear always-visible sidebar indicator when backups are ON. (PDF p2)
+- [ ] **W3 — Demo/launch default = "Every launch."** Make the default "Every launch." (PDF p3)
+- [ ] **W4 — Vault file-structure reorg (engine).** No loose files at vault root — everything in a
+  folder. Use a prefix so apps + domains sit together inside a `data/` folder. (Today's root has
+  loose `_decisions.jsonl`, `_intents.jsonl`, `_skillgen.json`, `_taskgen.json`, `usage.ndjson`,
+  `profile.md`, `AGENTS-operating.md`.) Needs a safe migrator + path updates across the engine. (PDF p4)
+
+## A · Apps / Connections
+- [ ] **A1 — Apps page clarity + no duplicates.** Be explicit: apps added here become available to
+  this domain's context. Reference an existing app (e.g. AllTrails) rather than creating a
+  duplicate. (PDF p3) — overlaps APP-2 already shipped; tighten copy + dedupe.
+- [ ] **A2 — Edit a connected app's method.** Let the user edit a working connection (change
+  MCP ↔ API ↔ browser automation) and see/edit those details. (PDF p4)
+- [ ] **A3 — De-noise connectors.** The connectors/tiers design is "too noisy/unprofessional" —
+  hide or reduce those filters. (PDF p4)
+- [ ] **A4 — Confirm auto-detection.** Verify installed CLIs/providers are actually auto-detected
+  and available. Confirm to founder. (PDF p3)
+- [ ] **A5 — WebUI/localhost toggle missing.** Restore/surface the "turn on localhost WebUI" control
+  under **Connections** (it disappeared / isn't where expected). (PDF p4)
+- [ ] **A6 — Implement all gateway surfaces (no more "coming soon").** Make the coming-soon
+  surfaces fully functional, and add new surfaces similar to OpenClaw / Hermes. Needs a plan of
+  which surfaces + build. (PDF p4)
+
+## G · Models / Council
+- [ ] **G1 — Models reorg + direct-provider keys.** Three collapsible sections (collapsed by
+  default): **CLI** / **API Providers** (OpenRouter, Replicate, Bedrock, …) / **Direct Providers**
+  (OpenAI, Anthropic, xAI, Kimi, …). Remove the duplicate Direct Providers (B6). Implement real
+  functionality: per-direct-provider key entry that actually works. (PDF p3)
+- [ ] **G2 — Council visual in the chat canvas.** Show the council-members visual in the chat area
+  (not only in Settings) as the user adds/removes members. Both sides show icon **+ provider +
+  specific model name**. (PDF p3)
+- [ ] **G3 — Council autosave clarity.** Confirm council membership saves automatically, or add an
+  explicit Edit/Save button so it's unambiguous. (PDF p3)
+
+## K · Benchmark
+- [ ] **K1 — Scheduled runs to the BOTTOM + redesign.** Move scheduled runs from top → bottom of the
+  Benchmark page. Redesign: not just grayscale; use a clear ON/OFF toggle; make state obvious. (PDF p3)
+- [ ] **K2 — Remove the pointless element.** "What's the point of this. Remove it." (identify the
+  flagged element on the benchmark page and remove). (PDF p3)
+- [ ] **K3 — Tooltips on question-row icons.** Add tooltips over the icons to the right of each
+  question. (PDF p3)
+- [ ] **K4 — Add-question UX.** Drop the domain dropdown; let a new question target **multiple
+  domains at once**, without checkboxes. (PDF p3)
+- [ ] **K5 — Current-domain indicator on Benchmark.** (PDF p7) (see C2)
+- [ ] **K6 — Ground AI-drafted questions in the user's truth.** AI-suggested benchmark questions are
+  too basic/generic; they must be grounded in that user's real context + nuance (how THEY would
+  approach something vs others). Likely a mix of specific + general. (PDF p7) — extends prior BENCH-3.
+
+## P · UX polish (cross-cutting)
+- [ ] **P1 — Toggles everywhere.** Replace all Start/Stop (and similar) text with ON/Off **toggle
+  pills**, consistently. (PDF p4)
+- [ ] **P2 — Trim verbose panel.** The "this is good, but too much text" panel — cut the copy. (PDF p3)
+- [ ] **P3 — Dismiss affordance.** Where clicking away dismisses, also add a small (✗) icon. (PDF p3)
+- [ ] **P4 — About: drop the stack mention.** Remove "Tauri · React · Tailwind" if not needed. (PDF p4)
+
+## O · Onboarding (new feature)
+- [ ] **O1 — First-time onboarding tour.** 5-6 step welcome/coachmark walkthrough on first launch,
+  dismissible. Research the best approach. *Recommendation:* a lightweight custom React coachmark
+  overlay (anchored tooltips + spotlight) rather than a heavy lib — keeps the no-emoji / premium
+  design language and avoids dependency weight; alternatives (react-joyride / driver.js) noted for
+  comparison. Persist "seen" in localStorage; re-runnable from About/Help. (PDF p1)
+
+## I · Investigate / answer
+- [?] **I1 — Repo naming consistency.** Founder asked why the app doesn't follow the
+  `fd-apps-prevail-*` pattern. Finding: folders are consistent (`prevail-cli/desktop/web`), but
+  **package names diverge** — desktop = `fd-apps-prevail-desktop` (follows it), web =
+  `fd-apps-prevail-site` (not `-web`), cli = `prevail` (no prefix). Decide a single convention and
+  align names/READMEs. (PDF p1)
+
+---
+
+## Log
+- 2026-06-15: Plan + todo created from the Monday feedback PDF on branch feat/monday-feedback-0615.
