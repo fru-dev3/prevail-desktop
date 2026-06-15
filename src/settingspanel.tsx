@@ -259,9 +259,12 @@ export function SettingsPanel({
             <>
               <AppsPanel vaultPath={vaultPath} />
               <div className="mt-8">
-                <CollapsibleSection icon={Wrench} title="Advanced" summary="catalog & connection tiers"
-                  subtitle="Browse the connector catalog and configure the raw MCP / Composio / browser / CLI tiers by hand.">
-                  <ConnectorsSection vaultPath={vaultPath} focusAppId={settingsDeepLink ?? undefined} />
+                {/* APP-1: Advanced is the CATALOG + tiers only — connected apps
+                    are shown once, above, in AppsPanel (catalogOnly suppresses the
+                    duplicate connected list inside ConnectorsSection). */}
+                <CollapsibleSection icon={Wrench} title="Browse the catalog" summary="1000+ apps & connection tiers"
+                  subtitle="Browse the full connector catalog to add an app, and configure the raw MCP / Composio / browser / CLI tiers by hand.">
+                  <ConnectorsSection vaultPath={vaultPath} focusAppId={settingsDeepLink ?? undefined} catalogOnly />
                   <div className="mt-6 border-t border-border-subtle pt-6">
                     <IngestionSection />
                   </div>
