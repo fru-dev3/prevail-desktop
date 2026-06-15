@@ -1840,30 +1840,49 @@ export function AlignmentCard({ vaultPath }: { vaultPath: string }) {
   useEffect(() => { void refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [vaultPath]);
   if (!rep || rep.pillars.length === 0) return null;
   const tint = (s: number) => (s >= 70 ? "#2fb87a" : s >= 40 ? "#C4A35A" : "#e06c75");
+  const overallTint = tint(rep.overall);
+  const verdict = rep.overall >= 70 ? "On track" : rep.overall >= 40 ? "Drifting" : "Off course";
   return (
     <div className="mb-5 rounded-xl border border-border bg-surface p-5 shadow-sm">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="font-display text-base font-semibold tracking-tight">Alignment</span>
-        <span className="font-mono text-2xl font-bold" style={{ color: tint(rep.overall) }}>{rep.overall}</span>
-        <span className="font-mono text-[10px] text-text-muted">/100 · {rep.method === "model" ? "model-scored" : "signal"}</span>
-        <button onClick={refresh} disabled={loading} className="ml-auto rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">{loading ? "…" : "refresh"}</button>
+      {/* IDEAL-1: a circular gauge for the overall score reads far more premium
+          than a bare number; pillars below are a clean labelled bar list. */}
+      <div className="flex items-center gap-4">
+        <div className="relative h-16 w-16 shrink-0">
+          <svg viewBox="0 0 36 36" className="h-16 w-16 -rotate-90">
+            <circle cx="18" cy="18" r="15.9155" fill="none" stroke="var(--color-surface-warm, #eee)" strokeWidth="3.2" />
+            <circle cx="18" cy="18" r="15.9155" fill="none" stroke={overallTint} strokeWidth="3.2" strokeLinecap="round"
+              pathLength={100} strokeDasharray={`${rep.overall} 100`} className="transition-all duration-500" />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="font-mono text-lg font-bold leading-none" style={{ color: overallTint }}>{rep.overall}</span>
+            <span className="font-mono text-[8px] text-text-muted">/100</span>
+          </div>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="font-display text-base font-semibold tracking-tight">Alignment</span>
+            <span className="rounded-full px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider" style={{ backgroundColor: `${overallTint}1f`, color: overallTint }}>{verdict}</span>
+          </div>
+          <p className="mt-0.5 text-xs text-text-secondary">How close your life is tracking to your Ideal State · {rep.method === "model" ? "model-scored" : "signal-based"}</p>
+        </div>
+        <button onClick={refresh} disabled={loading} className="self-start rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">{loading ? "…" : "refresh"}</button>
       </div>
-      <div className="space-y-1.5">
+      <div className="mt-4 space-y-2.5">
         {rep.pillars.map((p) => (
           <div key={p.pillar} className="flex items-center gap-3">
-            <span className="w-28 shrink-0 font-mono text-[11px] uppercase tracking-wider text-text-secondary">{p.pillar}</span>
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-warm">
-              <div className="h-full rounded-full" style={{ width: `${p.score}%`, backgroundColor: tint(p.score) }} />
+            <span className="w-28 shrink-0 truncate text-xs font-medium text-text-secondary">{p.pillar}</span>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-warm">
+              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${p.score}%`, backgroundColor: tint(p.score) }} />
             </div>
-            <span className="w-8 shrink-0 text-right font-mono text-[11px] text-text-muted">{p.score}</span>
+            <span className="w-9 shrink-0 text-right font-mono text-xs font-semibold" style={{ color: tint(p.score) }}>{p.score}</span>
           </div>
         ))}
       </div>
       {rep.actions.length > 0 && (
-        <div className="mt-3 border-t border-border-subtle pt-2">
-          <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Top actions</div>
-          <ul className="mt-1 space-y-0.5">
-            {rep.actions.map((a, i) => <li key={i} className="text-xs text-text-secondary">▸ {a}</li>)}
+        <div className="mt-4 rounded-lg border border-border-subtle bg-background/50 p-3">
+          <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-text-muted">Top actions to close the gap</div>
+          <ul className="mt-1.5 space-y-1">
+            {rep.actions.map((a, i) => <li key={i} className="flex gap-1.5 text-xs text-text-secondary"><span className="text-accent">▸</span>{a}</li>)}
           </ul>
         </div>
       )}
