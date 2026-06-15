@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, BarChart3, Check, Compass, Gauge, Lightbulb, Loader2, Plug } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase } from "./format";
+import { modelLabel } from "./helpers2";
 import { lsSet } from "./storage";
 import { SettingsHeader } from "./sectionutil";
 
@@ -19,6 +20,25 @@ type Rec = {
 
 const CAT_ICON = { domain: Compass, model: BarChart3, app: Plug, context: Gauge } as const;
 const CAT_LABEL = { domain: "New domain", model: "Better model", app: "Connect an app", context: "Enrich context" } as const;
+// Display order for grouped sections — most actionable first.
+const CAT_ORDER: Rec["category"][] = ["model", "app", "domain", "context"];
+const CAT_BLURB = {
+  domain: "Areas of life worth tracking on their own",
+  model: "The model that scores best per domain",
+  app: "Connect a source to keep a domain fresh",
+  context: "Domains that would benefit from more context",
+} as const;
+
+// REC-1: the engine's model-rec title embeds the benchmark run-id label
+// (e.g. "2026-06-04_claude-claude-opus-4-6"). action.model/.cli are already the
+// clean canonical ids, so for model recs we build a clean, human title ourselves.
+function recTitle(r: Rec): string {
+  if (r.category === "model" && r.action.model) {
+    const clean = modelLabel(r.action.cli, r.action.model) || r.action.model;
+    return r.action.domain ? `${titleCase(r.action.domain)}: switch to ${clean}` : `Switch to ${clean}`;
+  }
+  return r.title;
+}
 
 export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
   const [recs, setRecs] = useState<Rec[] | null>(null);
@@ -81,32 +101,44 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
           <p className="mt-1 text-xs text-text-muted">Keep chatting, benchmarking, and connecting apps — recommendations appear as Prevail learns your patterns.</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {recs.map((r) => {
-            const Icon = CAT_ICON[r.category];
-            const accepted = done[r.id];
+        <div className="space-y-6">
+          {CAT_ORDER.filter((cat) => recs.some((r) => r.category === cat)).map((cat) => {
+            const group = recs.filter((r) => r.category === cat);
+            const Icon = CAT_ICON[cat];
             return (
-              <div key={r.id} className="flex items-start gap-3 rounded-xl border border-border bg-surface p-4">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Icon className="h-4 w-4" /></span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-text-primary">{r.title}</span>
-                    <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted">{CAT_LABEL[r.category]}</span>
-                  </div>
-                  <p className="mt-0.5 text-xs text-text-secondary">{r.detail}</p>
-                  {accepted && <p className="mt-1.5 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-ok"><Check className="h-3 w-3" /> {accepted}</p>}
+              <section key={cat}>
+                <div className="mb-2 flex items-baseline gap-2 px-1">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-accent"><Icon className="h-3.5 w-3.5" /></span>
+                  <h3 className="text-sm font-semibold text-text-primary">{CAT_LABEL[cat]}</h3>
+                  <span className="text-[11px] text-text-muted">{group.length}</span>
+                  <span className="ml-auto text-[11px] text-text-muted">{CAT_BLURB[cat]}</span>
                 </div>
-                {!accepted && (
-                  <button
-                    onClick={() => accept(r)}
-                    disabled={busy === r.id}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
-                  >
-                    {busy === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />}
-                    {r.category === "domain" ? "Create" : r.category === "app" ? "Connect" : r.category === "context" ? "Open" : "Set"}
-                  </button>
-                )}
-              </div>
+                <div className="overflow-hidden rounded-xl border border-border bg-surface">
+                  {group.map((r, i) => {
+                    const accepted = done[r.id];
+                    return (
+                      <div key={r.id} className={`flex items-start gap-3 px-4 py-3.5 ${i > 0 ? "border-t border-border-subtle" : ""}`}>
+                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Icon className="h-4 w-4" /></span>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-sm font-semibold text-text-primary">{recTitle(r)}</span>
+                          <p className="mt-0.5 text-xs text-text-secondary">{r.detail}</p>
+                          {accepted && <p className="mt-1.5 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-ok"><Check className="h-3 w-3" /> {accepted}</p>}
+                        </div>
+                        {!accepted && (
+                          <button
+                            onClick={() => accept(r)}
+                            disabled={busy === r.id}
+                            className="inline-flex shrink-0 items-center gap-1.5 self-center rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
+                          >
+                            {busy === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />}
+                            {cat === "domain" ? "Create" : cat === "app" ? "Connect" : cat === "context" ? "Open" : "Set"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
             );
           })}
         </div>
