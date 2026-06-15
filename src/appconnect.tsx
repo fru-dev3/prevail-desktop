@@ -2,11 +2,12 @@
 // The user types the app name + what they want from it; the Connection Agent
 // (engine) researches the best method and returns a plan + the ONE auth step.
 // See docs/APPS-REDESIGN.md.
-import { useState } from "react";
-import { ArrowRight, Check, Loader2, Sparkles, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, Check, Link2, Loader2, Sparkles, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase } from "./format";
 import { PREF, getPref } from "./storage";
+import type { EngineApp } from "./types";
 
 type Plan = {
   app_id?: string;
@@ -29,6 +30,21 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
   const [goal, setGoal] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ConnectResult | null>(null);
+  // APP-2: IntelliSense — match what's typed against already-connected apps so we
+  // REUSE an existing one instead of silently creating a duplicate. (No dropdown;
+  // a single inline match that the user can open, or override to connect anew.)
+  const [existing, setExisting] = useState<EngineApp[]>([]);
+  useEffect(() => { void invoke<EngineApp[]>("engine_apps_list").then((l) => setExisting(Array.isArray(l) ? l : [])).catch(() => {}); }, []);
+  const match = useMemo(() => {
+    const q = name.trim().toLowerCase();
+    if (q.length < 2) return null;
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const nq = norm(q);
+    return existing.find((a) => {
+      const t = norm(a.title || ""); const id = norm(a.id || "");
+      return t === nq || id === nq || (nq.length >= 3 && (t.includes(nq) || id.includes(nq) || nq.includes(t)));
+    }) ?? null;
+  }, [name, existing]);
 
   const find = async () => {
     if (!name.trim()) return;
@@ -71,13 +87,26 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
             rows={2}
             className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm leading-relaxed text-text-primary outline-none focus:border-accent-border"
           />
+          {/* APP-2: already-connected match — reuse instead of duplicating. */}
+          {match && (
+            <div className="flex items-center gap-2 rounded-lg border border-accent-border bg-accent-soft/40 px-3 py-2">
+              <Link2 className="h-3.5 w-3.5 shrink-0 text-accent" />
+              <span className="min-w-0 flex-1 text-xs text-text-secondary">
+                <span className="font-semibold text-text-primary">{match.title || match.id}</span> is already connected. Open it instead of creating a duplicate.
+              </span>
+              <button onClick={() => { window.dispatchEvent(new CustomEvent("prevail:app-open", { detail: match.id })); onCancel(); }}
+                className="shrink-0 rounded-md border border-accent-border bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:opacity-90">
+                Open {match.title || match.id}
+              </button>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <button
               onClick={find} disabled={busy || !name.trim()}
               className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {busy ? "Finding the best way to connect…" : "Find the best way to connect"}
+              {busy ? "Finding the best way to connect…" : match ? "Connect a new one anyway" : "Find the best way to connect"}
             </button>
             <span className="text-[11px] text-text-muted">Prevail researches MCP, API, CLI, Composio, or browser — and picks the best.</span>
           </div>

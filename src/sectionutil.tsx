@@ -42,11 +42,19 @@ export function settingsHeaderIcon(title: string): typeof Folder {
 
 export function mcpCommandPath(enginePath: string): { command: string; unstable: boolean } {
   const p = (enginePath || "").trim();
+  // MCP-2: a dev/source-tree build path (…/src-tauri/target/debug|release/prevail)
+  // must NEVER be emitted in a copyable config — it won't exist on an installed
+  // user's machine AND it leaks the developer's home path/identity. Treat those
+  // (along with translocated / external-volume / temp paths) as "unstable" and
+  // emit the canonical installed sidecar path instead.
   const unstable =
     p === "" ||
     p.includes("/Volumes/") ||
     p.includes("AppTranslocation") ||
-    p.includes("/private/var/folders/");
+    p.includes("/private/var/folders/") ||
+    p.includes("/target/debug/") ||
+    p.includes("/target/release/") ||
+    p.includes("/src-tauri/");
   if (unstable) return { command: "/Applications/Prevail.app/Contents/MacOS/prevail", unstable: true };
   return { command: p, unstable: false };
 }

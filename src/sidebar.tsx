@@ -11,7 +11,7 @@ import { lsGet, lsSet } from "./storage";
 import { SidebarGatewayLive, SidebarMcpLive } from "./panels";
 import { domainIcon } from "./icons";
 import { useAppearance } from "./hooks";
-import { SidebarBenchmarkRuns } from "./cards";
+import { SidebarBenchmarkRuns, SidebarBenchScheduled } from "./cards";
 import { BrandMark } from "./brandmark";
 import type { Domain, EngineApp, LifeReadiness, Mode, TabId } from "./types";
 
@@ -424,7 +424,11 @@ export function Sidebar({
                     }`}
                   >
                     {Icon ? <Icon className="h-4 w-4" /> : (
-                      <span className="font-mono text-xs font-semibold">
+                      // NAV-1: no per-domain icon → a circular badge (not a bare
+                      // glyph) so the collapsed rail signals "content behind here".
+                      <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
+                        active ? "bg-accent text-background" : "bg-surface-warm text-text-secondary ring-1 ring-border"
+                      }`}>
                         {titleCase(d.name).charAt(0)}
                       </span>
                     )}
@@ -761,6 +765,7 @@ export function Sidebar({
       <SidebarGatewayLive collapsed={collapsed} />
       <SidebarMcpLive collapsed={collapsed} setTab={setTab} />
       <SidebarBenchmarkRuns collapsed={collapsed} />
+      <SidebarBenchScheduled collapsed={collapsed} />
 
       {/* Settings + theme — pinned to bottom (Upgrade lives in Settings) */}
       <div className={`border-t border-border-subtle bg-surface-warm/30 ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1 px-2 py-1.5"}`}>

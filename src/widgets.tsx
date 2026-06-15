@@ -141,7 +141,7 @@ export function DemoRibbon({ onSwitch }: { onSwitch: () => void }) {
   return (
     <div className="flex shrink-0 items-center justify-center gap-2.5 border-t border-accent-border bg-accent px-4 py-1.5 text-xs text-background">
       <Sparkles className="h-3.5 w-3.5 shrink-0" />
-      <span className="font-mono font-bold uppercase tracking-[0.2em]">Demo Mode</span>
+      <span className="font-mono font-bold uppercase tracking-[0.2em]">Sandbox</span>
       <span className="opacity-90">You're exploring sample data</span>
       <button onClick={onSwitch} className="font-semibold underline underline-offset-2 hover:opacity-80">
         Set up my own vault →

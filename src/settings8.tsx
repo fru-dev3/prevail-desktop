@@ -3,7 +3,7 @@
 // card).
 import { Fragment, useEffect, useState } from "react";
 import { confirm as tauriConfirm, open } from "@tauri-apps/plugin-dialog";
-import { ArrowRight, Briefcase, Check, Download, Folder, GraduationCap, Home, Loader2, Monitor, Moon, Package, RotateCw, ShieldCheck, Sparkles, Sun, TrendingUp, Users } from "lucide-react";
+import { ArrowRight, Briefcase, Check, Database, Download, ExternalLink, Folder, FolderOpen, FolderTree, GraduationCap, Home, Loader2, Monitor, Moon, Package, RotateCw, ShieldCheck, Sparkles, Sun, TrendingUp, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 // Pick a glyph for a starter pack from its name, so the list reads visually.
@@ -102,7 +102,7 @@ export function AppearanceSection({ appearance }: { appearance: ReturnType<typeo
 // Council config — its own first-class section. You pick the EXACT models on the
 // default panel (per-provider, multiple models allowed) and which one chairs.
 
-export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { vaultPath: string; onVaultMoved?: (path: string) => void; onSetupDomains?: () => void }) {
+export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, headerless }: { vaultPath: string; onVaultMoved?: (path: string) => void; onSetupDomains?: () => void; headerless?: boolean }) {
   const [appMode, setAppMode] = useState<"demo" | "production" | null>(null);
   const [switchingMode, setSwitchingMode] = useState(false);
   const [packs, setPacks] = useState<{ file: string; name: string; version: string; description: string | null; domains: string[] }[]>([]);
@@ -252,10 +252,16 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { v
   const isDemo = appMode === "demo";
   return (
     <>
-      <SettingsHeader
-        title="Demo Mode"
-        subtitle="Explore Prevail with sample data, then set up your own vault when you're ready."
-      />
+      {/* DEMO-1 / IA-1: "Demo Mode" was a misnomer (it hosts starter packs that
+          populate the REAL vault). Renamed "Sandbox" — the throwaway exploration
+          space — with starter packs framed as production setup. */}
+      {!headerless && (
+        <SettingsHeader
+          icon={Sparkles}
+          title="Sandbox"
+          subtitle="Explore Prevail with throwaway sample data, then set up your own vault when you're ready. Starter packs below populate your real vault."
+        />
+      )}
       {/* Current vault — one compact strip (which mode you're in + its path),
           instead of two oversized stage cards plus duplicate path rows. */}
       <div className="mb-5">
@@ -379,7 +385,7 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains }: { v
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-text-muted" />
         <span>
           {isDemo
-            ? "You're in demo mode. Importing a pack sets up your own vault and moves you out of demo: or use the button above to set up your vault first."
+            ? "You're in the sandbox. Importing a pack sets up your own vault and moves you out of the sandbox: or use the button above to set up your vault first."
             : "You're in your own vault. Import a starter pack any time to add ready-made domains."}
         </span>
       </div>
@@ -498,7 +504,7 @@ export function BackupAutomationCard({ vault, onChange }: { vault: string; onCha
   );
 }
 
-export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void }) {
+export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved, headerless }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void; headerless?: boolean }) {
   // "Move vault into the app" — copy the current vault into the app-owned
   // location (~/.prevail/vault) via the engine, non-destructively, then repoint.
   const [moving, setMoving] = useState(false);
@@ -528,46 +534,85 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
   }
   return (
     <>
-      <SettingsHeader title="Vault" subtitle="Where Prevail reads + writes your domain folders. Each child folder with a state.md becomes a life domain." />
-      <SettingRow label="Vault folder" desc="Currently selected workspace.">
-        <button
-          onClick={onChange}
-          className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm"
-        >
-          <Folder className="h-3.5 w-3.5" />
-          Change
-        </button>
-      </SettingRow>
-      {onSetupDomains && (
-        <SettingRow label="Domains" desc="Let Prevail recommend a starter set of life domains, or add more.">
-          <button
-            onClick={onSetupDomains}
-            className="inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-sm text-accent hover:bg-accent hover:text-background"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            Set up domains
-          </button>
-        </SettingRow>
+      {/* VAULT-1: premium hierarchy — a location card leading with an icon chip,
+          the path shown in a styled mono box with an in-app badge + Finder
+          reveal; domains/move-into-app grouped as rows; backups cluster below. */}
+      {!headerless && (
+        <SettingsHeader icon={FolderTree} title="Vault" subtitle="Where Prevail reads + writes your domain folders. Each child folder with a state.md becomes a life domain." />
       )}
-      <div className="mt-1 rounded-lg border border-border bg-surface p-4 font-mono text-xs text-text-primary">
-        {vaultPath}
-      </div>
-      {!embedded && (
-        <SettingRow label="Move vault into the app" desc="Copy this vault into the app-owned location so there's no loose folder to manage. Your original folder is copied, never moved or deleted.">
-          <button
-            onClick={moveIntoApp}
-            disabled={moving}
-            className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50"
-          >
-            {moving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Folder className="h-3.5 w-3.5" />}
-            {moving ? "Moving…" : "Move into app"}
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><FolderOpen className="h-5 w-5" /></span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold text-text-primary">Vault folder</div>
+            <div className="text-xs text-text-secondary">The workspace Prevail is reading right now{embedded ? " · stored inside the app" : ""}.</div>
+          </div>
+          <button onClick={onChange} className="inline-flex shrink-0 items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm">
+            <Folder className="h-3.5 w-3.5" /> Change
           </button>
-        </SettingRow>
+        </div>
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-border-subtle bg-background px-3 py-2">
+          <Database className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+          <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-primary" title={vaultPath}>{vaultPath}</span>
+          {embedded && <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent">in app</span>}
+          <button onClick={() => void invoke("open_in_finder", { path: vaultPath }).catch(() => {})} title="Reveal in Finder" className="shrink-0 rounded p-1 text-text-muted hover:text-accent">
+            <ExternalLink className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+      {(onSetupDomains || !embedded) && (
+        <div className="mt-3 rounded-xl border border-border bg-surface px-4">
+          {onSetupDomains && (
+            <SettingRow label="Domains" desc="Let Prevail recommend a starter set of life domains, or add more.">
+              <button onClick={onSetupDomains} className="inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-sm text-accent hover:bg-accent hover:text-background">
+                <Sparkles className="h-3.5 w-3.5" /> Set up domains
+              </button>
+            </SettingRow>
+          )}
+          {!embedded && (
+            <SettingRow label="Move vault into the app" desc="Copy this vault into the app-owned location so there's no loose folder to manage. Your original folder is copied, never moved or deleted.">
+              <button onClick={moveIntoApp} disabled={moving} className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50">
+                {moving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Folder className="h-3.5 w-3.5" />}
+                {moving ? "Moving…" : "Move into app"}
+              </button>
+            </SettingRow>
+          )}
+        </div>
       )}
       {moveNote && (
-        <div className="mt-1 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{moveNote}</div>
+        <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{moveNote}</div>
       )}
       <BackupAutomationCard vault={vaultPath} onChange={onChange} />
+    </>
+  );
+}
+
+// IA-1: "Workspace" is the single umbrella area covering where data lives (vault,
+// domains, backups) and how you set it up (starter packs) + the throwaway
+// Sandbox. Replaces the separate "Vault" and "Demo Mode" nav entries, composing
+// the (headerless) Vault + Sandbox sections under one header with sub-labels.
+function WorkspaceSubLabel({ icon: Icon, label, desc }: { icon: LucideIcon; label: string; desc: string }) {
+  return (
+    <div className="mb-2 mt-1 flex items-center gap-2 px-1">
+      <Icon className="h-3.5 w-3.5 text-accent" />
+      <h3 className="text-sm font-semibold text-text-primary">{label}</h3>
+      <span className="ml-auto text-[11px] text-text-muted">{desc}</span>
+    </div>
+  );
+}
+
+export function WorkspaceSection({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void }) {
+  return (
+    <>
+      <SettingsHeader icon={FolderTree} title="Workspace" subtitle="Everything about where your data lives and how you set it up: your vault, domains, backups, starter packs, and the throwaway sandbox for exploring with sample data." />
+      <div className="mb-7">
+        <WorkspaceSubLabel icon={FolderOpen} label="Vault" desc="location · domains · backups" />
+        <VaultSettings vaultPath={vaultPath} onChange={onChange} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} headerless />
+      </div>
+      <div>
+        <WorkspaceSubLabel icon={Sparkles} label="Starter packs & Sandbox" desc="set up real domains · explore safely" />
+        <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} headerless />
+      </div>
     </>
   );
 }

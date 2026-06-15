@@ -1,7 +1,7 @@
 // Subsystem extracted from App.tsx (encapsulated module state).
 import { useEffect, useState } from "react";
 import { invoke, listen } from "./bridge";
-import { MODELS } from "./constants";
+import { MODELS, MODEL_SEP } from "./constants";
 import { titleCase } from "./format";
 import { isLocalCli } from "./helpers";
 import { isBunkerOn, lsGet, lsSet } from "./storage";
@@ -105,7 +105,23 @@ export const BENCH_SCHED = {
   enabled: "prevail.bench.schedule.enabled",
   freq: "prevail.bench.schedule.freq", // daily | weekly | monthly
   lastRun: "prevail.bench.schedule.lastRun", // epoch ms
+  // BENCH-2: the scheduled run's scope is DECOUPLED from the ad-hoc manual Run
+  // selection. Mode "latest" repeats the most recent batch (legacy default);
+  // "all" runs every model x all domains; "custom" runs an explicit model+domain
+  // set the user picks once for the schedule.
+  scopeMode: "prevail.bench.schedule.scopeMode",     // "latest" | "all" | "custom"
+  scopeModels: "prevail.bench.schedule.scopeModels", // csv of cli::model (custom)
+  scopeDomains: "prevail.bench.schedule.scopeDomains", // csv domains, "" = all (custom)
 };
+
+// Every benchmarkable model key (cli::model) across the known providers — the
+// universe "all models" draws from. Availability + Bunker filtering happens at
+// build time (some of these CLIs may not be installed).
+export function allBenchModelKeys(): string[] {
+  const out: string[] = [];
+  for (const c of BENCH_CLI_OPTIONS) for (const m of MODELS[c.id] ?? []) out.push(`${c.id}${MODEL_SEP}${m.id}`);
+  return out;
+}
 
 export const BENCH_FREQ_MS: Record<string, number> = {
   daily: 86_400_000,
@@ -177,6 +193,85 @@ export async function rerunLatestBatch(vault: string): Promise<boolean> {
   return true;
 }
 
+function modelKeyLabel(k: string): string {
+  const [cli, model] = k.split(MODEL_SEP);
+  const ml = MODELS[cli]?.find((m) => m.id === model)?.label ?? (model || "default");
+  return `${titleCase(cli)} ${ml}`;
+}
+function domainScopeLabel(domains: string[]): string {
+  return domains.length === 0 ? "All domains" : domains.length <= 2 ? domains.map(titleCase).join(", ") : `${domains.length} domains`;
+}
+
+// BENCH-2: a scope-aware preview of EXACTLY what the scheduled run will execute.
+// "latest" repeats the most recent batch (derived from benchmark_runs, so we can
+// also flag the single-model trap); "all"/"custom" reflect the decoupled scope.
+export async function scheduledRunPreview(vault: string): Promise<{ models: string[]; scopeLabel: string; council: boolean; empty: boolean; mode: string }> {
+  const mode = lsGet(BENCH_SCHED.scopeMode, "latest");
+  if (mode === "all") {
+    return { models: [`all models (${allBenchModelKeys().length})`], scopeLabel: "All domains", council: false, empty: false, mode };
+  }
+  if (mode === "custom") {
+    const keys = lsGet(BENCH_SCHED.scopeModels, "").split(",").map((s) => s.trim()).filter(Boolean);
+    const doms = lsGet(BENCH_SCHED.scopeDomains, "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    return { models: keys.map(modelKeyLabel), scopeLabel: domainScopeLabel(doms), council: false, empty: keys.length === 0, mode };
+  }
+  const runs = await invoke<BenchmarkRun[]>("benchmark_runs", { vault }).catch(() => [] as BenchmarkRun[]);
+  if (runs.length === 0) return { models: [], scopeLabel: "", council: false, empty: true, mode };
+  const newest = runs[0];
+  const group = newest.batch_id
+    ? runs.filter((r) => r.batch_id === newest.batch_id)
+    : runs.filter((r) => Math.abs(r.created_ms - newest.created_ms) < 5 * 60_000);
+  const models: string[] = [];
+  let council = false;
+  const seen = new Set<string>();
+  for (const r of group) {
+    if (r.council) { council = true; continue; }
+    if (!r.cli) continue;
+    const k = `${r.cli}::${r.model ?? ""}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    models.push(modelKeyLabel(`${r.cli}${MODEL_SEP}${r.model ?? ""}`));
+  }
+  return { models, scopeLabel: domainScopeLabel(newest.domains ?? []), council, empty: false, mode };
+}
+
+// BENCH-2: build jobs from the DECOUPLED scheduled scope (all / custom). Returns
+// null for "latest" mode (the caller falls back to rerunLatestBatch). Filters to
+// installed CLIs + Bunker-permitted models at build time.
+export async function buildScheduledJobs(vault: string): Promise<{ jobs: BenchJob[]; scopeStr: string } | null> {
+  const mode = lsGet(BENCH_SCHED.scopeMode, "latest");
+  if (mode !== "all" && mode !== "custom") return null;
+  let keys = mode === "all"
+    ? allBenchModelKeys()
+    : lsGet(BENCH_SCHED.scopeModels, "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (keys.length === 0) return null;
+  const clis = await invoke<{ id: string; available?: boolean }[]>("detect_clis").catch(() => [] as { id: string; available?: boolean }[]);
+  const avail = new Set((clis ?? []).filter((c) => c.available !== false).map((c) => c.id));
+  keys = keys.filter((k) => { const cli = k.split(MODEL_SEP)[0]; return avail.has(cli) && (!isBunkerOn() || isLocalCli(cli)); });
+  if (keys.length === 0) return null;
+  const domStr = mode === "custom" ? lsGet(BENCH_SCHED.scopeDomains, "") : "";
+  const domSet = new Set(domStr.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
+  const questions = await invoke<BenchQuestion[]>("benchmark_questions", { vault }).catch(() => [] as BenchQuestion[]);
+  const qids = questions.filter((q) => domSet.size === 0 || domSet.has(q.domain.toLowerCase())).map((q) => q.id).sort();
+  const jobs: BenchJob[] = keys.map((k) => {
+    const [cli, model] = k.split(MODEL_SEP);
+    const ml = MODELS[cli]?.find((m) => m.id === model)?.label ?? model;
+    return { key: `sched-${k}-${Date.now()}`, cli, model, label: `${titleCase(cli)} · ${ml}`, status: "queued", done: 0, total: qids.length, qids, qdone: {} };
+  });
+  return { jobs, scopeStr: [...domSet].join(",") };
+}
+
+// BENCH-2: the single entry point the scheduler + "Run now" use. Honors the
+// decoupled scope (all/custom); falls back to repeating the latest batch.
+export async function runScheduledBatch(vault: string): Promise<boolean> {
+  const built = await buildScheduledJobs(vault).catch(() => null);
+  if (built && built.jobs.length > 0) {
+    void executeBenchBatch(vault, built.jobs, false, built.scopeStr);
+    return true;
+  }
+  return rerunLatestBatch(vault);
+}
+
 export let benchSchedTimer: number | null = null;
 
 export function startBenchScheduler(vault: string) {
@@ -188,7 +283,7 @@ export function startBenchScheduler(vault: string) {
       const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
       if (Date.now() - last < freq) return;
       if ([...benchBatches.values()].some((b) => b.running)) return; // never stack
-      if (await rerunLatestBatch(vault)) {
+      if (await runScheduledBatch(vault)) {
         lsSet(BENCH_SCHED.lastRun, String(Date.now()));
         window.dispatchEvent(new Event("prevail:bench-sched"));
       }
