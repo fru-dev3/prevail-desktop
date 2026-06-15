@@ -76,6 +76,10 @@ nested "Advanced" full panel (the duplicate source).
   number-stepper + ON pill + Back up now + Restore points). Rework hierarchy, iconography,
   the backups control cluster, and the raw-path display into something premium.
 - [ ] **DEMO-1 · "Demo Mode" panel redesign** — same premium bar (groupings/flow/icons).
+- [ ] **NAV-1 · Collapsed rail uses bare letters** — when a panel/sidebar is collapsed it
+  shows plain single letters (">", "+", "I", "s") in a thin rail. Replace with circular
+  icon badges (sophisticated, signal "content is behind here"), not bare glyphs. Expanded
+  state is fine; only the collapsed rail needs the upgrade.
 
 ### 🧭 Information architecture / naming
 - [ ] **IA-1 · Vault + "Demo Mode" overlap; "Demo Mode" is a misnomer.** The "Demo Mode"
