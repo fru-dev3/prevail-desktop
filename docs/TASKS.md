@@ -43,19 +43,29 @@ premium, well-thought-out design. Functionality is really more on the design and
 ### 🔴 Apps section overhaul ("makes me want to puke" — big rework)
 Components: `appspanel.tsx` (top simple panel), `appconnect.tsx` (connect flow), + the
 nested "Advanced" full panel (the duplicate source).
-- [ ] **APP-1 · Kill duplication.** AllTrails renders 2-3x: top "CONNECTED · 1", then again
-  inside "Advanced › Apps › CONNECTED 1" (a SECOND full Apps panel with its own header,
-  connected list, connector catalog, search), then again on scroll. Consolidate to ONE panel.
-- [ ] **APP-2 · Smart Connect flow.** "Connect an app" asks for a name and can create a
-  DUPLICATE of an existing app (catalog = 1468). Instead: IntelliSense as you type → if the
-  app exists, reuse it (NO dropdown, smarter than that); then user describes what they want
-  → Prevail builds the MCP/connector, tests it, evaluates it.
-- [ ] **APP-3 · Re-evaluate is broken** — clicking it does nothing. Fix.
-- [ ] **APP-4 · Scheduling** — apps show "no schedule"; need an intelligent/flexible
-  scheduler, not just daily/weekly/monthly. (Flexible cadences exist elsewhere — wire here.)
-- [ ] **APP-5 · Domains fed** — let the user add/modify which domains an app feeds
-  intelligently (currently a static list, e.g. "feeds Fitness, Health, Explore, Travel").
-- [ ] **APP-6 · MCP config** — surface where/how the per-app MCP config is pulled & editable.
+- [x] **APP-1 · Kill duplication.** (cc706fc) — the nested "Advanced" connectors section is
+  now CATALOG-ONLY (`catalogOnly` prop on ConnectorsSection suppresses its duplicate connected
+  list + standalone header); connected apps render ONCE in AppsPanel. Section retitled "Browse
+  the catalog". settingspanel.tsx + settings3.tsx.
+- [x] **APP-2 · Smart Connect flow.** (cc706fc) — IntelliSense on the name field matches
+  already-connected apps as you type (normalized fuzzy) and offers "Open <app>" to reuse instead
+  of duplicating; primary CTA flips to "Connect a new one anyway" when a match shows. Fires
+  prevail:app-open → AppsPanel expands it. (The research/build/test/evaluate path is the existing
+  engine_app_connect.) appconnect.tsx.
+- [x] **APP-3 · Re-evaluate is broken** (cc706fc) — AppsPanel's re-evaluate IS wired
+  (engine_app_connect reevaluate mode, reports back inline); the BROKEN duplicate (in the old
+  Advanced connectors panel) is gone with APP-1. Verify live on next build.
+- [~] **APP-4 · Scheduling** — DEFERRED: needs a new engine command. There is no
+  `engine_app_set_schedule` (only set_domains/set_enabled/sync/probe/connect). The schedule lives
+  in each app's manifest `refresh` field; an in-app editor can't persist without engine support.
+  Next: add `connectors set <id> schedule <cadence>` in prevail-cli + a Tauri command, then wire
+  a flexible cadence picker (reuse RefreshCadence/custom:N) into the AppCard. Founder: small
+  engine add.
+- [x] **APP-5 · Domains fed** (cc706fc) — "Domains fed" is now editable in the expanded card:
+  chip toggles over the vault's domains (scan_vault), saved via engine_app_set_domains. appspanel.tsx.
+- [x] **APP-6 · MCP config** (cc706fc) — the expanded card surfaces the per-app config location
+  (app.path — manifest + MCP/connector config) with a Reveal-in-Finder button. Full inline
+  editing of the MCP config blob can follow if wanted (the folder is one click away now).
 
 ### 🟡 Redesigns (layout/visual)
 - [x] **REC-1 · Recommendations panel redesign** (66c07cd) — grouped by category
@@ -390,7 +400,32 @@ NEEDS FOUNDER (when ready):
   and flip the flush on (one spot). Currently inert/log-only by design.
 - Site deploy — to publish the Windows-download fix to prevail.sh.
 
+## Overnight build session — 2026-06-15 (founder asleep, "implement them all")
+Founder gave the GO on the 2026-06-15 UI-feedback round + included MCP overhaul. Built
+autonomously on branch `ui-feedback-recommendations` (desktop) + `mcp-stdio-auth-fix`
+(prevail-cli). NOT merged, NOT released (per standing rule — awaiting explicit go).
+Decisions taken (founder pre-confirmed): THEME-1 = desktop palette; MCP overhaul = yes;
+IA-1 umbrella = "Workspace".
+
+DONE (22): THEME-1, REC-1, NAV-1, SAFETY-1, IDEAL-1, TG-1, ABOUT-1, HOME-1, MCP-1, MCP-2,
+MCP-3, MCP-4, BENCH-1, BENCH-3, IA-1, VAULT-1, DEMO-1, APP-1, APP-2, APP-3, APP-5, APP-6.
+PARTIAL (2): BENCH-2 (run-preview + single-model warning done; full "all models" decouple
+deferred — cost decision for founter), APP-4 (scheduling editor — needs a new engine command
+`connectors set <id> schedule`; documented above).
+
+Verification: desktop `tsc` clean + `vite build` green on every batch; engine `cargo check`
+clean (MCP-4); prevail-cli rebuilt, MCP server tests pass incl. new no-token-over-stdio guard;
+337 engine tests pass (1 PRE-EXISTING unrelated recommendations.test failure, untouched).
+Commits (desktop): 66c07cd, 6ac1664, c88482e, 2194463, 37f8073, 80bf9c9, cc706fc (+docs).
+Commits (cli, branch mcp-stdio-auth-fix): 4d9e488 (MCP-1), 33707ba (BENCH-3).
+
+OPEN for founder when awake:
+- APP-4: approve the small engine add (schedule setter) → I'll wire the cadence picker.
+- BENCH-2: confirm what "all models × all domains" should cost nightly → I'll wire the decoupled scope.
+- MCP overhaul + everything else: review, then say the word to merge/release.
+
 ## Log
+- 2026-06-15: Overnight session — worked the entire UI-feedback + MCP list (see above).
 - 2026-06-14: Task list created from founder feedback batch.
 - 2026-06-14: Fixed T5 (all-domains suggest), T4 (Run now + time wording). Verified T11, T12.
 - 2026-06-14: Founder chose: build Intents (phased), visual consistency first.
