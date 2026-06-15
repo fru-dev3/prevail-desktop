@@ -103,6 +103,22 @@ The engine **sidecar** is built from the sibling `fd-apps-prevail-cli` repo by
 See [SECURITY.md](SECURITY.md). Vault is **not** encrypted at rest; secrets live
 in the Keychain; the WebUI is loopback-only + allowlisted when enabled.
 
+## Privacy & telemetry
+**Off by default.** Prevail collects **no** telemetry unless you explicitly opt in
+under Settings → Privacy & telemetry. There are two independent toggles (anonymous
+usage analytics, and crash reports), both default OFF.
+
+If you opt in, what's sent is:
+- **Anonymous** — a random local UUID, never your name, email, machine name, file
+  paths, or any vault content.
+- **Allowlisted** — only a small, fixed set of event names and properties; anything
+  off the list is dropped before it can be sent. No free text you typed, ever.
+- **Transparent** — every would-be event is also written to a local log you can
+  read in Settings, so you can see exactly what telemetry does.
+
+Usage analytics go to PostHog and crash reports to Sentry, both configured with
+IP/geo and content collection disabled. See [`docs/TELEMETRY-PLAN.md`](docs/TELEMETRY-PLAN.md).
+
 ## License
 [GPL-3.0-only](./LICENSE). © 2026 Fru Louis · fru.dev.
 
