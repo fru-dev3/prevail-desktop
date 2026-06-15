@@ -167,6 +167,11 @@ export const PREF = {
   intentDaemonIntervalSec: "prevail.pref.intentDaemonIntervalSec", // how often to CHECK
   intentDaemonMinNew: "prevail.pref.intentDaemonMinNew",       // distill after N new prompts
   intentDaemonMaxAgeSec: "prevail.pref.intentDaemonMaxAgeSec", // OR if older than this (daily)
+  // Omega daemon — auto-distill the app-wide learned layer (vault/omega.md) on a
+  // slow cadence (it's meta; it should change slowly). Default ON. See OMEGA-PLAN.
+  omegaAuto: "prevail.pref.omegaAuto",                 // "1" | "0" (default on)
+  omegaIntervalSec: "prevail.pref.omegaIntervalSec",   // re-distill cadence (default daily)
+  omegaLastRun: "prevail.pref.omegaLastRun",           // epoch ms of last auto-distill
   // Telemetry — anonymous, opt-in, default OFF. Independent crash vs usage
   // sub-toggles. distinctId is a random local UUID, never tied to identity.
   telemetryUsage: "prevail.pref.telemetryUsage",           // "1" | "0" — PostHog anonymous usage analytics

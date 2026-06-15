@@ -14,7 +14,7 @@ import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, ta
 import { SettingsHeader } from "./sectionutil";
 import type { DaemonStatus, SkillEntry } from "./types";
 
-// One collapsible card per daemon. Routes through the canonical CollapsibleSection
+// One collapsible card per routine. Routes through the canonical CollapsibleSection
 // (icon + title left, summary + running dot right, collapsed by default) so the
 // Daemons page looks identical to every other collapsible in the app.
 function DaemonGroup({ icon, title, summary, running, defaultOpen = false, children }: {
@@ -50,12 +50,12 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
   const [remInterval, setRemInterval] = useState(() => getPref(PREF.remindersIntervalSec, "900"));
   const [taskgenMsg, setTaskgenMsg] = useState("");
   const [running, setRunning] = useState(false);
-  // Intent distillation daemon (automated, default ON).
+  // Intent distillation routine (automated, default ON).
   const [intentSt, setIntentSt] = useState<{ running?: boolean; last_run_ts?: number | null; distills?: number; last_intent_count?: number } | null>(null);
   const [intentEnabled, setIntentEnabled] = useState(() => getPref(PREF.intentDaemonEnabled, "1") === "1");
   const [intentMinNew, setIntentMinNew] = useState(() => getPref(PREF.intentDaemonMinNew, "10"));
   const [intentInterval, setIntentInterval] = useState(() => getPref(PREF.intentDaemonIntervalSec, "1800"));
-  // Distill (memory) tuning — moved here from Memory & Context so all daemon
+  // Distill (memory) tuning — moved here from Memory & Context so all routine
   // operation lives in one place. These write the same prefs distillCfgFromPrefs reads.
   const [dProvider, setDProvider] = useState(() => getPref(PREF.memoryProvider, "claude"));
   const [dModel, setDModel] = useState(() => getPref(PREF.distillModel, "claude-haiku-4-5"));
@@ -120,7 +120,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
   return (
     <>
       <SettingsHeader
-        title="Daemons"
+        title="Routines"
         subtitle="The background workers. Each runs continuously: distill intents into memory, fire task reminders, proactively generate tasks, and learn reusable skills from your conversations."
       />
       <button
@@ -132,7 +132,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         <span className="ml-auto font-mono text-[10px] text-accent">Distilled memory & budget in Memory & Context →</span>
       </button>
 
-      {/* One collapsible group per daemon: status + tuning + run-now together. */}
+      {/* One collapsible group per routine: status + tuning + run-now together. */}
       <DaemonGroup
         icon={Brain}
         title="Distill · memory"
@@ -159,7 +159,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           <Row title="Distill model" desc="Model id used for distillation, e.g. claude-haiku-4-5."
             control={<input value={dModel} onChange={(e) => { setDModel(e.target.value); setPref(PREF.distillModel, e.target.value); }}
               className="w-44 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:border-accent-border focus:outline-none" />} />
-          <Row title="Auto-compression" desc="Run the distill daemon on a timer (off = manual passes only)."
+          <Row title="Auto-compression" desc="Run the distill routine on a timer (off = manual passes only)."
             control={<Toggle on={dAuto} onChange={(v) => { setDAuto(v); setPref(PREF.autoCompression, v ? "1" : "0"); }} />} />
           <Row title="Compression threshold" desc="Start distilling once new activity reaches this fraction of the memory budget."
             control={<input type="number" step="0.1" value={dThreshold} onChange={(e) => { setDThreshold(e.target.value); setPref(PREF.compressionThreshold, e.target.value); }}
@@ -170,7 +170,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           <Row title="Protected recent" desc="Never distill the most-recent N ledger entries: keep them raw."
             control={<input type="number" value={dProtected} onChange={(e) => { setDProtected(e.target.value); setPref(PREF.protectedRecent, e.target.value); }}
               className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
-          <Row title="Distill interval" desc="How often the distill daemon runs a pass (seconds)."
+          <Row title="Distill interval" desc="How often the distill routine runs a pass (seconds)."
             control={<div className="flex items-center gap-1.5"><input type="number" value={dInterval} onChange={(e) => { setDInterval(e.target.value); setPref(PREF.distillIntervalSec, e.target.value); }}
               className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" /><span className="font-mono text-xs text-text-muted">s</span></div>} />
           <Row title="Distill now" desc="Run a distillation pass immediately."
@@ -202,7 +202,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           }}
         />
         <div className="mt-3 rounded-lg border border-border-subtle bg-background px-5">
-          <Row title="Reminders interval" desc="How often the reminders daemon checks for due tasks (seconds)."
+          <Row title="Reminders interval" desc="How often the reminders routine checks for due tasks (seconds)."
             control={
               <div className="flex items-center gap-1.5">
                 <input type="number" value={remInterval} onChange={(e) => { setRemInterval(e.target.value); setPref(PREF.remindersIntervalSec, e.target.value); }}
@@ -235,7 +235,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           <Row title="Tasks per domain" desc="Maximum tasks generated per domain per day."
             control={<input type="number" value={taskgenMax} onChange={(e) => { setTaskgenMax(e.target.value); setPref(PREF.taskgenMaxPerDomain, e.target.value); }}
               className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
-          <Row title="Task gen interval" desc="How often the task-gen daemon checks for domains that need new tasks (seconds)."
+          <Row title="Task gen interval" desc="How often the task-gen routine checks for domains that need new tasks (seconds)."
             control={
               <div className="flex items-center gap-1.5">
                 <input type="number" value={taskgenInterval} onChange={(e) => { setTaskgenInterval(e.target.value); setPref(PREF.taskgenIntervalSec, e.target.value); }}
@@ -275,7 +275,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           <Row title="Skills per domain" desc="Maximum new skills learned per domain per day."
             control={<input type="number" value={skillgenMax} onChange={(e) => { setSkillgenMax(e.target.value); setPref(PREF.skillgenMaxPerDomain, e.target.value); }}
               className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
-          <Row title="Skill gen interval" desc="How often the skill-learning daemon scans domains for new lessons (seconds; default 6h)."
+          <Row title="Skill gen interval" desc="How often the skill-learning routine scans domains for new lessons (seconds; default 6h)."
             control={
               <div className="flex items-center gap-1.5">
                 <input type="number" value={skillgenInterval} onChange={(e) => { setSkillgenInterval(e.target.value); setPref(PREF.skillgenIntervalSec, e.target.value); }}
@@ -312,7 +312,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
             control={<input type="number" value={intentMinNew} onChange={(e) => { setIntentMinNew(e.target.value); setPref(PREF.intentDaemonMinNew, e.target.value); }}
               className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />} />
           <Row title="Check interval"
-            desc="How often the daemon checks whether a re-distill is due (a check with nothing new costs no model call). It also re-distills at least daily."
+            desc="How often the routine checks whether a re-distill is due (a check with nothing new costs no model call). It also re-distills at least daily."
             control={<div className="flex items-center gap-1.5"><input type="number" value={intentInterval} onChange={(e) => { setIntentInterval(e.target.value); setPref(PREF.intentDaemonIntervalSec, e.target.value); }}
               className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" /><span className="font-mono text-xs text-text-muted">s</span></div>} />
         </div>
@@ -633,7 +633,7 @@ export function MemoryContextSection(_props: { vaultPath: string }) {
   useEffect(() => {
     let alive = true;
     const poll = async () => {
-      try { const s = await invoke<typeof status>("distill_status"); if (alive) setStatus(s); } catch { /* daemon not started */ }
+      try { const s = await invoke<typeof status>("distill_status"); if (alive) setStatus(s); } catch { /* routine not started */ }
     };
     poll();
     const id = window.setInterval(poll, 4000);
@@ -659,7 +659,7 @@ export function MemoryContextSection(_props: { vaultPath: string }) {
     <>
       <SettingsHeader
         title="Memory & Context"
-        subtitle="What the system has learned about you. Every chat is captured as an intent; the distiller daemon compacts them into per-domain long-term memory that is fed back into future chats."
+        subtitle="What the system has learned about you. Every chat is captured as an intent; the distiller routine compacts them into per-domain long-term memory that is fed back into future chats."
       />
       {/* The distiller runs on the Daemons page; this is its outcome view. A
           live status chip links across so the two pages are clearly related. */}

@@ -2,13 +2,73 @@
 // benchmark progress strip, the framework/lens cycle row, and the Settings
 // scheduled-benchmark card.
 import { useEffect, useState } from "react";
-import { RotateCw } from "lucide-react";
-import { FRAMEWORKS, LENSES } from "./constants";
-import { formatDuration, formatFreshness } from "./format";
-import { lsGet, lsSet } from "./storage";
+import { CalendarClock, Check, RotateCw, SlidersHorizontal } from "lucide-react";
+import { invoke } from "./bridge";
+import { FRAMEWORKS, LENSES, MODELS, MODEL_SEP } from "./constants";
+import { formatDuration, formatFreshness, titleCase } from "./format";
+import { isLocalCli } from "./helpers";
+import { isBunkerOn, lsGet, lsSet } from "./storage";
 import { CycleChip } from "./widgets";
 import { useFrameworkLens } from "./hooks";
-import { benchFreqMs, BENCH_SCHED, cancelBenchBatch, rerunLatestBatch, useBenchBatches } from "./bench";
+import { allBenchModelKeys, BENCH_CLI_OPTIONS, benchFreqLabel, benchFreqMs, BENCH_SCHED, cancelBenchBatch, runScheduledBatch, scheduledRunPreview, useBenchBatches } from "./bench";
+
+// BENCH-1: a persistent indicator that a benchmark is ARMED to run on a
+// schedule (distinct from one actively running — SidebarBenchmarkRuns owns
+// that). The founder must never have a nightly benchmark running without being
+// aware of it. Mirrors the SidebarMcpLive / SidebarGatewayLive "live" pattern,
+// but with a steady (non-pulsing) dot + calendar icon to read as "armed".
+export function SidebarBenchScheduled({ collapsed }: { collapsed: boolean }) {
+  const [on, setOn] = useState(() => lsGet(BENCH_SCHED.enabled, "0") === "1");
+  const [freq, setFreq] = useState(() => lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
+  const running = useBenchBatches().some((b) => b.running);
+  useEffect(() => {
+    const sync = () => { setOn(lsGet(BENCH_SCHED.enabled, "0") === "1"); setFreq(lsGet(BENCH_SCHED.freq, "weekly") || "weekly"); };
+    window.addEventListener("prevail:bench-sched", sync);
+    const id = window.setInterval(sync, 30_000);
+    return () => { window.removeEventListener("prevail:bench-sched", sync); window.clearInterval(id); };
+  }, []);
+  if (!on || running) return null; // a live run already shows in SidebarBenchmarkRuns
+  const open = () => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "benchmark" }));
+  const title = `A benchmark is scheduled to run ${benchFreqLabel(freq)} in the background. Click for Benchmark settings.`;
+  if (collapsed) {
+    return (
+      <button onClick={open} title={title} className="flex w-full justify-center border-t border-border-subtle px-2 py-2 text-text-muted hover:text-accent">
+        <CalendarClock className="h-3.5 w-3.5" />
+      </button>
+    );
+  }
+  return (
+    <button onClick={open} title={title} className="flex w-full items-center gap-2 border-t border-border-subtle px-3 py-2 text-left hover:bg-surface-warm">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+      <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-text-secondary">Benchmark · {benchFreqLabel(freq)}</span>
+      <CalendarClock className="h-3 w-3 shrink-0 text-text-muted" />
+    </button>
+  );
+}
+
+// BENCH-1: the same awareness on the home landing — a compact pill so a
+// scheduled run is visible without opening the Benchmark page.
+export function HomeBenchScheduledBadge() {
+  const [on, setOn] = useState(() => lsGet(BENCH_SCHED.enabled, "0") === "1");
+  const [freq, setFreq] = useState(() => lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
+  useEffect(() => {
+    const sync = () => { setOn(lsGet(BENCH_SCHED.enabled, "0") === "1"); setFreq(lsGet(BENCH_SCHED.freq, "weekly") || "weekly"); };
+    window.addEventListener("prevail:bench-sched", sync);
+    const id = window.setInterval(sync, 30_000);
+    return () => { window.removeEventListener("prevail:bench-sched", sync); window.clearInterval(id); };
+  }, []);
+  if (!on) return null;
+  return (
+    <button
+      onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "benchmark" }))}
+      title={`A benchmark runs ${benchFreqLabel(freq)} in the background. Click for Benchmark settings.`}
+      className="mt-3 inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-text-secondary hover:border-accent-border hover:text-accent"
+    >
+      <CalendarClock className="h-3.5 w-3.5 text-accent" />
+      <span className="font-mono text-[11px] uppercase tracking-wider">Benchmark scheduled · {benchFreqLabel(freq)}</span>
+    </button>
+  );
+}
 
 export function SidebarBenchmarkRuns({ collapsed }: { collapsed: boolean }) {
   const runningBatches = useBenchBatches().filter((b) => b.running);
@@ -148,11 +208,36 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
   // it looked dead. Track busy + a result message so every click reports back.
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // BENCH-2: show exactly what the scheduled run will execute (models + scope).
+  const [preview, setPreview] = useState<{ models: string[]; scopeLabel: string; council: boolean; empty: boolean; mode: string } | null>(null);
+  // BENCH-2: the DECOUPLED scheduled scope (independent of the manual Run picker).
+  const [scopeMode, setScopeMode] = useState(() => lsGet(BENCH_SCHED.scopeMode, "latest"));
+  const [scopeModels, setScopeModels] = useState<Set<string>>(() => new Set(lsGet(BENCH_SCHED.scopeModels, "").split(",").map((s) => s.trim()).filter(Boolean)));
+  const [scopeDomains, setScopeDomains] = useState<Set<string>>(() => new Set(lsGet(BENCH_SCHED.scopeDomains, "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)));
+  const [vaultDomains, setVaultDomains] = useState<string[]>([]);
   useEffect(() => {
     const f = () => force((n) => n + 1);
     window.addEventListener("prevail:bench-sched", f);
     return () => window.removeEventListener("prevail:bench-sched", f);
   }, []);
+  useEffect(() => {
+    let alive = true;
+    void scheduledRunPreview(vault).then((p) => { if (alive) setPreview(p); }).catch(() => {});
+    return () => { alive = false; };
+    // re-derive when a run finishes or the scope changes.
+  }, [vault, busy, scopeMode, scopeModels, scopeDomains]);
+  useEffect(() => {
+    if (scopeMode === "custom" && vaultDomains.length === 0) {
+      void invoke<{ name: string }[]>("scan_vault", { path: vault })
+        .then((ds) => setVaultDomains((ds ?? []).map((d) => d.name.toLowerCase()).sort()))
+        .catch(() => {});
+    }
+  }, [scopeMode, vault, vaultDomains.length]);
+  const setMode = (m: string) => { setScopeMode(m); lsSet(BENCH_SCHED.scopeMode, m); window.dispatchEvent(new Event("prevail:bench-sched")); };
+  const toggleScopeModel = (k: string) => setScopeModels((cur) => { const n = new Set(cur); n.has(k) ? n.delete(k) : n.add(k); lsSet(BENCH_SCHED.scopeModels, [...n].join(",")); return n; });
+  const toggleScopeDomain = (d: string) => setScopeDomains((cur) => { const n = new Set(cur); n.has(d) ? n.delete(d) : n.add(d); lsSet(BENCH_SCHED.scopeDomains, [...n].join(",")); return n; });
+  const selectAllModels = () => { const all = new Set(allBenchModelKeys()); setScopeModels(all); lsSet(BENCH_SCHED.scopeModels, [...all].join(",")); };
+  const clearModels = () => { setScopeModels(new Set()); lsSet(BENCH_SCHED.scopeModels, ""); };
   const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
   const isCustom = /^custom:/.test(freq);
   const customDays = isCustom ? (/^custom:(\d+)$/.exec(freq)?.[1] ?? "3") : "3";
@@ -163,13 +248,13 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
     setBusy(true);
     setMsg(null);
     try {
-      const started = await rerunLatestBatch(vault);
+      const started = await runScheduledBatch(vault);
       if (started) {
         lsSet(BENCH_SCHED.lastRun, String(Date.now()));
         window.dispatchEvent(new Event("prevail:bench-sched"));
-        setMsg("Re-running your latest batch now: watch progress in the sidebar and on the leaderboard.");
+        setMsg("Started the scheduled run now: watch progress in the sidebar and on the leaderboard.");
       } else {
-        setMsg("No previous batch to re-run yet. Run a benchmark once (pick models + scope), then Run now repeats it.");
+        setMsg("Nothing to run yet. Pick a scope below (or run a benchmark once so 'Repeat latest run' has something to repeat).");
       }
     } catch (e) {
       setMsg(`Couldn't start the run: ${e}`);
@@ -184,7 +269,7 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
         <div className="min-w-0 flex-1">
           <div className="font-display text-sm font-semibold tracking-tight">Scheduled runs</div>
           <div className="text-xs text-text-secondary">
-            Re-runs your most recent batch (same models, same scope) so drift shows up in the leaderboard and History without manual runs. Runs while the app is open.
+            Runs a benchmark on a cadence so drift shows up in the leaderboard and History without manual runs (while the app is open). Its scope is set below, independent of your manual Run selection.
             {enabled && last > 0 && ` Last ran ${formatFreshness(Math.max(0, (Date.now() - last) / 1000))}.`}
             {enabled && ` Next ${next <= Date.now() ? "within 30 minutes" : `in ~${formatDuration(Math.max(0, (next - Date.now()) / 1000))}`}.`}
           </div>
@@ -229,6 +314,103 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
           {busy ? "Starting…" : "Run now"}
         </button>
       </div>
+
+      {/* BENCH-2: the DECOUPLED scheduled scope — independent of the manual Run
+          picker. "All" tracks every model x all domains even if a manual run was
+          a single model; "Custom" pins an explicit set. */}
+      <div className="mt-3 border-t border-border-subtle pt-3">
+        <div className="mb-2 flex items-center gap-2">
+          <SlidersHorizontal className="h-3.5 w-3.5 text-text-muted" />
+          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-text-secondary">Scheduled scope</span>
+          <span className="text-[11px] text-text-muted">independent of your manual Run selection</span>
+        </div>
+        <div className="inline-flex flex-wrap rounded-lg border border-border bg-background p-1 text-xs">
+          {([["latest", "Repeat latest run"], ["all", "All models × all domains"], ["custom", "Custom"]] as const).map(([m, l]) => (
+            <button key={m} onClick={() => setMode(m)} disabled={!enabled}
+              className={`rounded px-2.5 py-1 transition-colors disabled:opacity-40 ${scopeMode === m ? "bg-accent text-background shadow-sm" : "text-text-secondary hover:bg-surface-warm"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {scopeMode === "custom" && enabled && (
+          <div className="mt-3 space-y-3 rounded-lg border border-border-subtle bg-background p-3">
+            <div>
+              <div className="mb-1.5 flex items-center gap-2">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Models · {scopeModels.size}</span>
+                <button onClick={selectAllModels} className="font-mono text-[10px] uppercase tracking-wider text-accent hover:underline">all</button>
+                <button onClick={clearModels} className="font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-text-secondary">none</button>
+              </div>
+              <div className="space-y-2">
+                {BENCH_CLI_OPTIONS.map((c) => {
+                  const models = MODELS[c.id] ?? [];
+                  if (models.length === 0) return null;
+                  const blocked = isBunkerOn() && !isLocalCli(c.id);
+                  return (
+                    <div key={c.id}>
+                      <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary">{c.label}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {models.map((m) => {
+                          const k = `${c.id}${MODEL_SEP}${m.id}`;
+                          const on = scopeModels.has(k);
+                          return (
+                            <button key={m.id} onClick={() => toggleScopeModel(k)} disabled={blocked}
+                              title={blocked ? "Blocked by Bunker Mode" : m.blurb}
+                              className={`rounded-full border px-2 py-0.5 text-[11px] disabled:opacity-40 ${on ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-surface text-text-muted hover:border-accent-border"}`}>
+                              {on && <Check className="mr-1 inline h-2.5 w-2.5" />}{m.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Domains · {scopeDomains.size === 0 ? "all" : scopeDomains.size}</div>
+              <div className="flex flex-wrap gap-1.5">
+                {vaultDomains.length === 0 ? <span className="text-[11px] text-text-muted">loading domains…</span> :
+                  vaultDomains.map((d) => {
+                    const on = scopeDomains.has(d);
+                    return (
+                      <button key={d} onClick={() => toggleScopeDomain(d)}
+                        className={`rounded-full border px-2 py-0.5 text-[11px] ${on ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-surface text-text-muted hover:border-accent-border"}`}>
+                        {on && <Check className="mr-1 inline h-2.5 w-2.5" />}{titleCase(d)}
+                      </button>
+                    );
+                  })}
+              </div>
+              <div className="mt-1 text-[10px] text-text-muted">None selected = all domains.</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* BENCH-2: exactly what the scheduled run will execute, + the
+          single-model trap warning (only meaningful in "repeat latest" mode). */}
+      {preview && !preview.empty && (
+        <div className="mt-2 rounded-lg border border-border-subtle bg-background px-3 py-2">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
+            Will run {preview.mode === "all" ? "(all models × all domains)" : preview.mode === "custom" ? "(your scheduled selection)" : "(repeats your latest batch)"}
+          </div>
+          <div className="mt-0.5 text-xs text-text-secondary">
+            {[preview.council ? "Council" : null, ...preview.models].filter(Boolean).join(" · ") || "—"}
+            {" · "}<span className="text-text-primary">{preview.scopeLabel}</span>
+          </div>
+          {preview.mode === "latest" && preview.models.length === 1 && !preview.council && (
+            <div className="mt-1 text-[11px] text-warn">
+              Only 1 model in your last run, so "Repeat latest run" only tracks that one. Switch to "All models" or "Custom" above to track drift across models.
+            </div>
+          )}
+        </div>
+      )}
+      {preview?.empty && enabled && (
+        <div className="mt-2 text-[11px] text-text-muted">
+          {scopeMode === "custom"
+            ? "Pick at least one model above for the scheduled run."
+            : "No previous batch yet: run a benchmark once, or switch the scope to \"All models × all domains\"."}
+        </div>
+      )}
       {msg && <div className="mt-2 text-xs text-text-secondary">{msg}</div>}
     </div>
   );
