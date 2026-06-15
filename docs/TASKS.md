@@ -34,11 +34,11 @@ premium, well-thought-out design. Functionality is really more on the design and
   PrefSection). Engine command names (`*_daemon_status`, `id:"daemons"`) intentionally kept.
 
 ### 🔶 Decided, not yet built
-- [ ] **HOME-1 · "Briefing" on the homepage.** Bring Recommendations + Intents onto the
-  home dashboard as ONE first-class section named **"Briefing"** (proactive digest: what
-  Prevail learned + what it suggests next). Must respect no-scroll-on-landing → compact:
-  top ~3 actionable recommendations + a recent-intents glance, each with "see all" into the
-  full panel. This is the highest-leverage change (makes the self-learning visible on landing).
+- [x] **HOME-1 · "Briefing" on the homepage.** (2194463) — compact "Briefing" added to the
+  no-domain landing (chatpanel.tsx, after the agent rail): top 3 recommendations (actionable in
+  place via shared applyRec) + a recent-distilled-intents glance line, each with "see all" into
+  the full Recommendations/Intents panels. HomeBriefing in recommendationspanel.tsx; applyRec
+  extracted so panel + briefing share one action path. Kept tight for no-scroll.
 
 ### 🔴 Apps section overhaul ("makes me want to puke" — big rework)
 Components: `appspanel.tsx` (top simple panel), `appconnect.tsx` (connect flow), + the
