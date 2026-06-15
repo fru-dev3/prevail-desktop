@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, BarChart3, Check, Compass, Gauge, Lightbulb, Loader2, Plug } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase } from "./format";
+import { lsSet } from "./storage";
 import { SettingsHeader } from "./sectionutil";
 
 type Rec = {
@@ -43,10 +44,14 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
         // Open the Apps page so the user can connect one for this domain.
         window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }));
         setDone((d) => ({ ...d, [rec.id]: "Opening Apps — connect one to feed this domain." }));
-      } else if (rec.action.kind === "set_domain_model") {
-        // No per-domain model setter yet — point the user at Models settings.
-        window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "models" }));
-        setDone((d) => ({ ...d, [rec.id]: `Set ${rec.action.model || "the model"} in Models settings.` }));
+      } else if (rec.action.kind === "set_domain_model" && rec.action.domain) {
+        // Set the domain's default model IN PLACE — write the same per-domain prefs
+        // the chat composer reads live (prevail.domain.<domain>.cli/.model). No nav.
+        const dom = rec.action.domain;
+        if (rec.action.cli) lsSet(`prevail.domain.${dom}.cli`, rec.action.cli);
+        if (rec.action.model) lsSet(`prevail.domain.${dom}.model`, rec.action.model);
+        window.dispatchEvent(new CustomEvent("prevail:domain-model-set", { detail: dom }));
+        setDone((d) => ({ ...d, [rec.id]: `Set ${rec.action.model || "the model"} as ${titleCase(dom)}'s default.` }));
       } else if (rec.action.kind === "improve_context" && rec.action.domain) {
         // Open the domain so the user can add goals / context; the score then
         // climbs on its own as apps sync and memory builds.
