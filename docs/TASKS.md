@@ -13,6 +13,16 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done (committed) · `[?]
 **Mode:** CAPTURE — founder is doing a design-review walkthrough. Log every item in
 detail; do NOT build until founder says "go". More feedback incoming.
 
+### 🎨 DESIGN BAR (cross-cutting — applies to EVERY panel below)
+Founder: "a lot of these things look basic… avoid just basic forms… needs to look like a
+premium, well-thought-out design. Functionality is really more on the design and layout."
+- The settings panels are currently plain stacked forms: bare label + input/toggle rows,
+  flat cards, default-looking selects/number-steppers/text inputs. Reads as a generic form.
+- RAISE THE BAR everywhere: thoughtful hierarchy, grouping, spacing, iconography, states;
+  premium controls (not default OS toggles/selects); cards with intent; visual interest
+  without clutter. This quality bar applies to REC-1, IDEAL-1, TG-1, SAFETY-1, Apps, Home,
+  and any panel we touch. When redesigning a panel, redesign the CONTROLS too, not just copy.
+
 ### ✅ Done this round
 - [x] **Recommendations: "Set" acts in place** (4f07125) — model recs now write the
   per-domain default model (`prevail.domain.<dom>.cli`/`.model`, read live by the chat
@@ -55,18 +65,48 @@ nested "Advanced" full panel (the duplicate source).
 - [ ] **IDEAL-1 · Ideal State redesign** — format the whole section nicely; the Alignment
   bar chart "looks terrible". Rework the alignment chart + overall layout.
 - [ ] **TG-1 · Telegram bridge redesign** — clunky layout/flow; clean it up.
+- [ ] **SAFETY-1 · Safety panel redesign** — "looks so basic". Plain stacked rows of
+  label + default toggle/select/number/text input (App Lock, Vault Encryption, Approval
+  mode/timeout, Confirm MCP reloads, Command allowlist, Redact secrets, Allow private URLs,
+  File checkpoints). Make it premium per the DESIGN BAR: group the two encryption/lock cards
+  distinctly from the guardrail toggles, upgrade the controls, add visual hierarchy + states.
+- [ ] **VAULT-1 · Vault panel redesign** — functionality fine, design/layout/icons/flow
+  "could be way better" (premium-designer bar). Plain rows (Vault folder/Change, Domains/
+  Set up domains, raw path box, Move into app, Automatic backups card with inline select +
+  number-stepper + ON pill + Back up now + Restore points). Rework hierarchy, iconography,
+  the backups control cluster, and the raw-path display into something premium.
 
-### 🔴 Engine bug (separate from UI review)
-- [ ] **MCP-1 · Prevail MCP unusable by generic stdio clients (Claude Code).** Server
-  (`prevail-cli/src/mcp-server.ts`) requires `_meta.authorization: prevail-<token>` on every
-  non-initialize request → Claude Code's stdio client sends none → `initialize` ok but
-  `tools/list` fails with `-32001 unauthorized`. No `--no-auth`/env escape hatch exists.
-  Root cause: per-request token is a NETWORK-transport control; over stdio the
-  `verifyParentProcess()` check already secures it. Fix: don't require the per-request token
-  over stdio (trust verified parent; keep token gate for any network exposure), then rebuild
-  the `prevail` binary the `.claude.json` config points at (debug sidecar via prepare-sidecar).
-  Immediate workaround: Disable the prevail MCP in Claude Code (it's on the demo vault + debug
-  binary anyway). NEEDS founder go (security-model change + rebuild).
+### 🔴 MCP "Expose Prevail" overhaul (separate from UI review; needs founder go)
+The whole "Expose Prevail to your agent" feature is broken for real users. Four parts:
+
+- [ ] **MCP-1 · Token auth breaks generic stdio clients.** Server (`prevail-cli/src/
+  mcp-server.ts`) requires `_meta.authorization: prevail-<token>` on every non-initialize
+  request → generic stdio clients (Claude Code) send none → `initialize` ok but `tools/list`
+  fails `-32001 unauthorized`. Likely also why "Test handshake" returns "no valid initialize
+  response". No `--no-auth`/env escape hatch exists. Root cause: per-request token is a
+  NETWORK control; over stdio `verifyParentProcess()` already secures it. Fix: don't require
+  the per-request token over stdio (keep it only for any network exposure). Rebuild the engine.
+- [ ] **MCP-2 · Generated config has hardcoded DEV/DEMO paths → leaks founder identity.**
+  The "Expose Prevail" snippet emits `command: /Users/frunde/Documents/fru/fd-apps/
+  prevail-desktop/src-tauri/target/debug/prevail` (founder's dev tree) and `--vault
+  /Users/frunde/Downloads/2026 June/vault-1-demo` (demo vault). For an INSTALLED user this is
+  wrong AND exposes a personal name/path. Fix: (a) command = the real resolved engine binary
+  via `resolve_prevail_bin()` (the bundled sidecar inside Prevail.app for installed users,
+  not the debug build); (b) vault = the user's ACTIVE configured vault path, resolved at
+  generation time — never a hardcoded demo path, never the founder's path.
+- [ ] **MCP-3 · Cover ALL agent clients.** Config tabs today: Claude Code, Claude Desktop,
+  Codex, Gemini CLI. Verify each emits a CORRECT, working config (paths + format + file
+  location). Also investigate/add: OpenClaw, Paperclip, Multica (+ any other MCP-capable
+  agent) — research which support MCP and their config schema/location.
+- [ ] **MCP-4 · "Test handshake" fails** — returns "✗ no valid initialize response from the
+  server" on Claude Desktop tab (and likely others). Fix once MCP-1/MCP-2 land; the test must
+  actually spawn the resolved binary + do a real initialize round-trip.
+
+Impl notes: `resolve_prevail_bin()` is the canonical engine resolver (engine.rs). The config
+generator lives in the desktop MCP settings panel (find: "EXPOSE PREVAIL TO YOUR AGENT" /
+mcpServers snippet). Active vault path is the desktop's current vaultPath.
+
+### Implementation notes (found)
 
 ### Implementation notes (found)
 - Per-domain model: `prevail.domain.<domain>.cli` + `.model` (chatpanel.tsx:125-201 reads
