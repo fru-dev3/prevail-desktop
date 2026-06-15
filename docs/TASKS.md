@@ -80,6 +80,10 @@ nested "Advanced" full panel (the duplicate source).
   shows plain single letters (">", "+", "I", "s") in a thin rail. Replace with circular
   icon badges (sophisticated, signal "content is behind here"), not bare glyphs. Expanded
   state is fine; only the collapsed rail needs the upgrade.
+- [ ] **ABOUT-1 · About page is a narrow centered column** — should go FULL-WIDTH like every
+  other panel (violates the single-column-full-width rule), and lay out so everything fits
+  without scrolling. Currently: centered max-w column (logo, update card, links list, Alpha
+  Software, Configuration, Health check stacked tall). Use the width to reduce vertical scroll.
 
 ### 🎨 Theme default
 - [ ] **THEME-1 · Default palette → "Mono"** (clean grayscale, minimal and focused) for
