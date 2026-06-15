@@ -92,11 +92,11 @@ export function SettingsPanel({
       { id: "skills", label: "Skills", icon: Sparkles },
       { id: "benchmark", label: "Benchmark", icon: Target },
     ]},
-    { heading: "Memory & Automation", items: [
+    { heading: "Memory & Routines", items: [
       { id: "recommendations", label: "Recommendations", icon: Sparkles },
       { id: "configuration", label: "Configuration", icon: Brain },
       { id: "intents", label: "Intents", icon: Lightbulb },
-      { id: "daemons", label: "Daemons", icon: Zap },
+      { id: "daemons", label: "Routines", icon: Zap },
     ]},
     { heading: "Connections", items: [
       { id: "connectors", label: "Apps", icon: Plug },
