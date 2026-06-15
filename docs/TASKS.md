@@ -221,3 +221,15 @@ NEEDS FOUNDER (when ready):
 - 2026-06-14: Worked the full list — collapsible consistency, all page redesigns (Ideal State,
   Council, Skills, Frameworks, Gateway, Ingestion tabs), benchmark coverage, website Windows,
   telemetry scaffolding, Intents end-to-end + automation, vault v3 layout + migrator, flexible cadences.
+- 2026-06-14: T18 telemetry LIVE-WIRED (founder provided creds). PostHog (phc_…, US Cloud) +
+  Sentry DSN (fdev3/apple-macos) both wired anonymous/opt-in/default-OFF; SDKs lazy-chunked
+  (vendor-posthog / vendor-sentry) after fixing a manualChunks bug that shipped ~450kB of
+  telemetry eagerly to all users. Creds saved to 1Password (Personal). Auth token in .env.local.
+- 2026-06-14: GPL-3.0 relicense across Prevail (desktop + cli + web): LICENSE files, SPDX fields,
+  READMEs/badges, site copy, Homebrew formula, 6 community connector manifests. Left third-party
+  dep licenses (package-lock) and factual OpenClaw mention untouched (correctly).
+- 2026-06-14: MERGED ALL to main + RELEASED. Web deployed to Netlify (live). Desktop v0.8.3 tagged
+  → Release CI building (GPL + telemetry). cli merged to main. Fixed a silent incomplete-commit
+  bug on prevail-web (LICENSE/pkg field were never staged) before pushing.
+- 2026-06-14: CI source-map upload scaffolded (@sentry/vite-plugin, gated on SENTRY_AUTH_TOKEN
+  secret) → readable crash stack traces on the NEXT release. Pushed to desktop main (f86d2eb).
