@@ -17,7 +17,7 @@ import { GeneralSection, IdealStateSection, SafetySection } from "./settings4";
 import { AboutSection, GatewaySection, McpSection } from "./settings5";
 import { ConfigurationSection, CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6";
 import { ModelsSection } from "./settings7";
-import { AppearanceSection, DemoModeSection, VaultSettings } from "./settings8";
+import { AppearanceSection, WorkspaceSection } from "./settings8";
 import { BenchmarkPanel } from "./benchpanel";
 import type { CliInfo } from "./types";
 
@@ -48,7 +48,7 @@ export function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "memory" | "intents" | "tasks" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "memory" | "intents" | "tasks" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
@@ -107,9 +107,8 @@ export function SettingsPanel({
       { id: "privacy", label: "Privacy", icon: ShieldCheck },
       { id: "safety", label: "Safety", icon: Shield },
     ]},
-    { heading: "Vault", items: [
-      { id: "vault", label: "Vault", icon: Folder },
-      { id: "demo", label: "Demo Mode", icon: Sparkles },
+    { heading: "Workspace", items: [
+      { id: "workspace", label: "Workspace", icon: Folder },
     ]},
     { heading: "App", items: [
       { id: "general", label: "General", icon: SettingsIcon },
@@ -274,8 +273,11 @@ export function SettingsPanel({
           {section === "gateway" && <GatewaySection />}
           {section === "mcp" && <McpSection vaultPath={vaultPath} />}
           {section === "remote" && <RemoteSection />}
-          {section === "vault" && <VaultSettings vaultPath={vaultPath} onChange={onChangeVault} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} />}
-          {section === "demo" && <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} />}
+          {/* IA-1: "workspace" is the umbrella; "vault"/"demo" remain as
+              deep-link aliases (e.g. the demo ribbon's jump) → same section. */}
+          {(section === "workspace" || section === "vault" || section === "demo") && (
+            <WorkspaceSection vaultPath={vaultPath} onChange={onChangeVault} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} />
+          )}
           {section === "appearance" && <AppearanceSection appearance={appearance} />}
           {section === "frameworks" && <FrameworksSection />}
           {section === "skills" && <SkillsSection vaultPath={vaultPath} />}
