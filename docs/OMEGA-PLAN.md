@@ -1,6 +1,11 @@
 # Omega — the app-wide learned knowledge layer
 
-**Status:** building v1 on branch `feat/omega` (desktop + prevail-cli). NOT merged/released.
+**Status:** BUILT (A–E) on branch `feat/omega` (desktop + prevail-cli). NOT merged/released.
+Commits: cli 7d32a13 (inject); desktop 221887a (file+distiller+UI+inject), dae8466 (daemon).
+A injection (engine+desktop) · B read/write+versions · C distiller (omega_distill) · D Omega
+page (Distill now / edit / history) · E auto-distill daemon (default daily, Auto toggle). Verified:
+cargo check + tsc + desktop build green; 336 cli tests pass (1 pre-existing unrelated fail).
+Fast-follow ideas remain under "Out of scope" below.
 **One line:** a single vault-level `omega.md` that captures durable, cross-cutting lessons,
 preferences, and meta-patterns learned across EVERY domain and the app itself, injected into
 every model turn at the precedence just below the Ideal State.
