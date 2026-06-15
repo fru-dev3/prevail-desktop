@@ -22,6 +22,7 @@ mod intent_daemon;
 mod domain;
 mod intents;
 mod idealstate;
+mod omega;
 mod paths;
 mod settings;
 mod threads;
@@ -283,6 +284,10 @@ pub fn run() {
             intents::intents_read_all,
             intents::intents_distill,
             intents::intents_distilled_read,
+            omega::read_omega,
+            omega::write_omega,
+            omega::omega_versions,
+            omega::omega_distill,
             intent_daemon::intent_daemon_start,
             intent_daemon::intent_daemon_stop,
             intent_daemon::intent_daemon_status,
