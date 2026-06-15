@@ -75,6 +75,21 @@ nested "Advanced" full panel (the duplicate source).
   Set up domains, raw path box, Move into app, Automatic backups card with inline select +
   number-stepper + ON pill + Back up now + Restore points). Rework hierarchy, iconography,
   the backups control cluster, and the raw-path display into something premium.
+- [ ] **DEMO-1 · "Demo Mode" panel redesign** — same premium bar (groupings/flow/icons).
+
+### 🧭 Information architecture / naming
+- [ ] **IA-1 · Vault + "Demo Mode" overlap; "Demo Mode" is a misnomer.** The "Demo Mode"
+  panel hosts STARTER PACKS, which import real domains into your PRODUCTION vault — that's
+  not demo. It conflates two different things: (a) the genuine demo *sandbox* (throwaway
+  sample data) and (b) production setup (starter packs + vault). And it overlaps the Vault
+  panel (vault folder, domains, move-into-app). FIX = merge + rename:
+  - Merge Vault + Demo Mode into ONE umbrella area. Recommended name: **"Workspace"**
+    (covers vault location, domains, starter packs, backups, sandbox). Alt: keep **"Vault"**
+    as umbrella.
+  - Rename the demo concept "Demo Mode" → **"Sandbox"** (clearly the throwaway exploration
+    space), as a sub-mode of the umbrella.
+  - Move STARTER PACKS under production setup (they feed the real vault), not under "demo".
+  - Founder delegated the naming to me; await pick (Workspace vs Vault umbrella).
 
 ### 🔴 MCP "Expose Prevail" overhaul (separate from UI review; needs founder go)
 The whole "Expose Prevail to your agent" feature is broken for real users. Four parts:
