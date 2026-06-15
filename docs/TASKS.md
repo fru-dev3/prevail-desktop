@@ -81,6 +81,13 @@ nested "Advanced" full panel (the duplicate source).
   icon badges (sophisticated, signal "content is behind here"), not bare glyphs. Expanded
   state is fine; only the collapsed rail needs the upgrade.
 
+### 🎨 Theme default
+- [ ] **THEME-1 · Default palette → "Mono"** (clean grayscale, minimal and focused) for
+  BRAND-NEW users, replacing the current greenish/teal "vault" default. The whole app should
+  open in Mono by default. SUPERSEDES the earlier "greenish default" decision. (Founder said
+  "site"; interpreting as the desktop app palette picker — confirm if they meant prevail.sh.)
+  Impl: the palette default is set in storage/theme init (LS `prevail.desktop.palette`).
+
 ### 🧭 Information architecture / naming
 - [ ] **IA-1 · Vault + "Demo Mode" overlap; "Demo Mode" is a misnomer.** The "Demo Mode"
   panel hosts STARTER PACKS, which import real domains into your PRODUCTION vault — that's
