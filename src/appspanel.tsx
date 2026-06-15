@@ -233,6 +233,34 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
     } catch (e) { console.error("set domains", e); }
     finally { setDomBusy(false); }
   };
+  // APP-4 — edit this app's autonomous-sync schedule (engine_app_set_schedule).
+  // Cadences are the ones the engine validates: hourly, every Nh, daily, weekly.
+  const [editSched, setEditSched] = useState(false);
+  const [schedEvery, setSchedEvery] = useState(app.refresh?.every ?? "daily");
+  const [schedAt, setSchedAt] = useState(app.refresh?.at ?? "");
+  const [schedOn, setSchedOn] = useState(app.refresh?.on ?? "");
+  const [schedBusy, setSchedBusy] = useState(false);
+  const openSchedEditor = () => {
+    setSchedEvery(app.refresh?.every ?? "daily");
+    setSchedAt(app.refresh?.at ?? "");
+    setSchedOn(app.refresh?.on ?? "");
+    setEditSched(true);
+  };
+  const saveSchedule = async (clear?: boolean) => {
+    setSchedBusy(true);
+    try {
+      await invoke("engine_app_set_schedule", {
+        id: app.id,
+        every: clear ? "off" : schedEvery,
+        at: clear ? null : ((schedEvery === "daily" || schedEvery === "weekly") && schedAt ? schedAt : null),
+        on: clear ? null : (schedEvery === "weekly" && schedOn ? schedOn : null),
+      });
+      setEditSched(false);
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+      await onReload();
+    } catch (e) { console.error("set schedule", e); }
+    finally { setSchedBusy(false); }
+  };
   // P4 — re-evaluate the connection method: maybe a better one exists now.
   const [reEval, setReEval] = useState<string | null>(null);
   const [reEvalBusy, setReEvalBusy] = useState(false);
@@ -301,7 +329,57 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
             </button>
           </Detail>
           {reEval && <div className="rounded-md border border-border-subtle bg-background px-3 py-1.5 text-xs text-text-secondary">{reEval}</div>}
-          <Detail label="Schedule">{scheduleLabel(app.refresh)}</Detail>
+          {/* APP-4 — schedule, now editable with engine-honored cadences. */}
+          <Detail label="Schedule">
+            {!editSched ? (
+              <span className="inline-flex flex-wrap items-center gap-1.5">
+                <span>{scheduleLabel(app.refresh)}</span>
+                <button onClick={openSchedEditor}
+                  className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+                  <Pencil className="h-2.5 w-2.5" /> edit
+                </button>
+              </span>
+            ) : (
+              <div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <select value={schedEvery} onChange={(e) => setSchedEvery(e.target.value)}
+                    className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none">
+                    <option value="hourly">hourly</option>
+                    <option value="6h">every 6 hours</option>
+                    <option value="12h">every 12 hours</option>
+                    <option value="daily">daily</option>
+                    <option value="weekly">weekly</option>
+                  </select>
+                  {(schedEvery === "daily" || schedEvery === "weekly") && (
+                    <input type="time" value={schedAt} onChange={(e) => setSchedAt(e.target.value)}
+                      className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
+                  )}
+                  {schedEvery === "weekly" && (
+                    <select value={schedOn} onChange={(e) => setSchedOn(e.target.value)}
+                      className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none">
+                      <option value="">any day</option>
+                      {["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+                    </select>
+                  )}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <button onClick={() => saveSchedule(false)} disabled={schedBusy}
+                    className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+                    {schedBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save
+                  </button>
+                  <button onClick={() => setEditSched(false)} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">
+                    <X className="h-3 w-3" /> Cancel
+                  </button>
+                  {app.refresh && (
+                    <button onClick={() => saveSchedule(true)} disabled={schedBusy}
+                      className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:border-danger hover:text-danger disabled:opacity-50">
+                      Clear schedule
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </Detail>
           {app.nextDueTs ? <Detail label="Next sync">{relTime(app.nextDueTs)}</Detail> : null}
           {/* APP-5 — domains fed, now editable. */}
           <Detail label="Domains fed">

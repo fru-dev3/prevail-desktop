@@ -721,6 +721,27 @@ pub fn engine_app_set_domains(id: String, domains: Vec<String>) -> Result<serde_
     run_engine_json(&["connectors", "set", &id, "domains", &doms, "--json"])
 }
 
+/// APP-4: set (or clear) an app's autonomous-sync schedule. `every` is the
+/// cadence the engine validates (hourly | <2-23>h | daily | weekly), with an
+/// optional HH:MM `at` and weekday `on`; "off"/"none"/"" clears the schedule.
+/// Returns { ok, path?, refresh?, error? }.
+#[tauri::command]
+pub fn engine_app_set_schedule(
+    id: String,
+    every: String,
+    at: Option<String>,
+    on: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let mut args: Vec<String> = vec![
+        "connectors".into(), "set".into(), id, "refresh".into(), every,
+    ];
+    if let Some(a) = at { if !a.trim().is_empty() { args.push("at".into()); args.push(a); } }
+    if let Some(o) = on { if !o.trim().is_empty() { args.push("on".into()); args.push(o); } }
+    args.push("--json".into());
+    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_engine_json(&refs)
+}
+
 /// Enable / disable an app's autonomous sync. A disabled app stays configured
 /// and chattable; only the sync daemon's scheduled tick skips it (an explicit
 /// "Sync now" still runs). Returns { ok, path?, enabled?, error? }.
