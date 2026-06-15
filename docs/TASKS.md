@@ -62,14 +62,15 @@ nested "Advanced" full panel (the duplicate source).
   (model/app/domain/context) with section headers + counts + blurbs for scannability;
   model recs now show the clean canonical model name (recTitle() builds from action.cli/
   model via modelLabel) instead of the ugly run-id label.
-- [ ] **IDEAL-1 · Ideal State redesign** — format the whole section nicely; the Alignment
-  bar chart "looks terrible". Rework the alignment chart + overall layout.
+- [x] **IDEAL-1 · Ideal State redesign** (6ac1664) — Alignment card reworked: circular SVG
+  gauge for the overall score + verdict pill (On track/Drifting/Off course), thicker clean
+  pillar bars with colored value, top-actions in a labelled panel. (Section layout itself
+  was already redesigned in T7.) AlignmentCard in panels.tsx.
 - [ ] **TG-1 · Telegram bridge redesign** — clunky layout/flow; clean it up.
-- [ ] **SAFETY-1 · Safety panel redesign** — "looks so basic". Plain stacked rows of
-  label + default toggle/select/number/text input (App Lock, Vault Encryption, Approval
-  mode/timeout, Confirm MCP reloads, Command allowlist, Redact secrets, Allow private URLs,
-  File checkpoints). Make it premium per the DESIGN BAR: group the two encryption/lock cards
-  distinctly from the guardrail toggles, upgrade the controls, add visual hierarchy + states.
+- [x] **SAFETY-1 · Safety panel redesign** (6ac1664) — split into two labelled clusters:
+  "Access protection" (App Lock + Vault Encryption cards) and "Agent guardrails" (the
+  toggles/selects in one bordered card). Each guardrail row now has a leading state icon
+  that lights (accent-soft) when the control is active. settings4.tsx SafetySection.
 - [ ] **VAULT-1 · Vault panel redesign** — functionality fine, design/layout/icons/flow
   "could be way better" (premium-designer bar). Plain rows (Vault folder/Change, Domains/
   Set up domains, raw path box, Move into app, Automatic backups card with inline select +

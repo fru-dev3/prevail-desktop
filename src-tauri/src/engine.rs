@@ -992,8 +992,14 @@ pub async fn mcp_test_handshake(vault: String) -> Result<serde_json::Value, Stri
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let bin = resolve_prevail_bin();
     let (combined_path, user, logname) = crate::build_cli_env();
+    // MCP-4: spawn with --unsafe-detach so the server's parent-process check
+    // (verifyParentProcess) doesn't reject us — the desktop IS the parent here,
+    // and it isn't a TTY or a known IDE binary, so without this the server would
+    // exit before answering and the test reports "no valid initialize response".
+    // The server runs in stdio mode (no --network) so no per-request token is
+    // needed for the handshake (MCP-1).
     let mut child = tokio::process::Command::new(&bin)
-        .args(["mcp", "--vault", &vault])
+        .args(["mcp", "--vault", &vault, "--unsafe-detach"])
         .env_clear()
         .envs(crate::scrubbed_env_pairs())
         .env("PATH", combined_path)
