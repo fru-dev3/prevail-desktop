@@ -563,10 +563,10 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
       out.push({
         label: "Vault", status: exists ? (enc?.encrypted && !enc.unlocked ? "warn" : "ok") : "fail",
         detail: `${vaultPath}${encNote}`,
-        why: exists ? "Your data lives here. An encrypted+locked vault can't be read until you unlock it." : "The vault path doesn't exist; pick or restore it in Settings → Vault.",
+        why: exists ? "Your data lives here. An encrypted+locked vault can't be read until you unlock it." : "The vault path doesn't exist; pick or restore it in Settings → Workspace.",
       });
     } else {
-      out.push({ label: "Vault", status: "fail", detail: "no vault selected", why: "Set up a vault in Settings → Vault or Demo Mode." });
+      out.push({ label: "Vault", status: "fail", detail: "no vault selected", why: "Set up a vault in Settings → Workspace." });
     }
 
     // Agents: detected AND validated.
