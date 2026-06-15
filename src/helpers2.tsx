@@ -101,6 +101,20 @@ export function buildIdealStatePreamble(idealMd: string): string {
   );
 }
 
+// Omega — the app-wide LEARNED layer, injected just BELOW the Ideal State and
+// above domain memory. Empty when there's no omega.md yet (nothing to inject).
+export function buildOmegaPreamble(omegaMd: string): string {
+  const t = omegaMd.trim();
+  if (!t) return "";
+  return (
+    "# OMEGA: what Prevail has LEARNED across all your domains. App-wide context.\n" +
+    "Durable lessons, preferences, and patterns that hold across everything. Apply them by default. " +
+    "They rank BELOW the Ideal State above: if they ever conflict, the Ideal State wins.\n\n" +
+    t.slice(0, 3000) +
+    "\n\n---\n\n"
+  );
+}
+
 export function maybeRedact(s: string): string {
   if (lsGet("prevail.pref.redactSecrets") !== "1") return s;
   return s

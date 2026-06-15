@@ -11,7 +11,7 @@ import { MODELS } from "./constants";
 import { relTime, scoreColor, titleCase } from "./format";
 import { ContextMeter, contextWindowFor, estimateTokens } from "./contextmeter";
 import { domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
-import { buildChatContext, buildIdealStatePreamble, buildQuickActions, loadPreferredSkills, maybeRedact, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
+import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, loadPreferredSkills, maybeRedact, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getDomainToggle, getPref, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
 import { ContextScoreBadge, NewSkillForm, SkillsList } from "./panels";
@@ -225,6 +225,16 @@ export function ChatPanel({
     invoke<string>("read_ideal_state", { vault: vaultPath })
       .then(setIdealMd)
       .catch(() => setIdealMd(""));
+  }, [vaultPath]);
+  // Omega (vault/omega.md) — the app-wide LEARNED layer, injected just below the
+  // Ideal State. Empty until the user has distilled/authored one (no boilerplate).
+  const [omegaMd, setOmegaMd] = useState<string>("");
+  useEffect(() => {
+    if (!vaultPath) return;
+    const load = () => invoke<string>("read_omega", { vault: vaultPath }).then(setOmegaMd).catch(() => setOmegaMd(""));
+    void load();
+    window.addEventListener("prevail:omega-changed", load);
+    return () => window.removeEventListener("prevail:omega-changed", load);
   }, [vaultPath]);
   // Distilled long-term memory for this domain — prepended to prompts like
   // user.md so the assistant remembers across sessions (self-learning loop).
@@ -1127,6 +1137,8 @@ export function ChatPanel({
       ? primedContext.map((c) => `--- ${c.label} ---\n${c.body.trim()}\n`).join("\n") + "\n"
       : "";
     const userPreamble = buildIdealStatePreamble(idealMd);
+    // Omega: app-wide learned context, just below the Ideal State, above memory.
+    const omegaPreamble = buildOmegaPreamble(omegaMd);
     // Self-learning: prepend the distilled long-term memory for this domain.
     const memoryPreamble = (getPref(PREF.persistentMemory, "1") === "1" && memoryMd.trim())
       ? `--- Long-term memory (${domain ?? "General"}) ---\n${memoryMd.trim().slice(0, Number(getPref(PREF.memoryBudgetChars, "4000")))}\n\n`
@@ -1141,8 +1153,8 @@ export function ChatPanel({
     const history = buildChatContext(messages, 40000);
     const promptText = fwLens.buildPrompt(
       history
-        ? `${userPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}You are mid-conversation. Below is the prior turn history; use it as context but do NOT repeat it back to the user.\n\n--- PRIOR TURNS ---\n${history}\n--- END PRIOR TURNS ---\n\nUser's next message: ${visible}`
-        : `${userPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}${visible}`
+        ? `${userPreamble}${omegaPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}You are mid-conversation. Below is the prior turn history; use it as context but do NOT repeat it back to the user.\n\n--- PRIOR TURNS ---\n${history}\n--- END PRIOR TURNS ---\n\nUser's next message: ${visible}`
+        : `${userPreamble}${omegaPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}${visible}`
     );
     pushHistory(visible);
     setAttachments([]);
