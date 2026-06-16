@@ -64,17 +64,14 @@ export function DomainContextDrawer({
     let mounted = true;
     setLoading(true);
     const load = () => {
-      // Domain files (state/decisions/journal/logs/skills) only exist for a
-      // real domain; General has none, so skip the call and show the
-      // cross-cutting context instead.
-      if (domain) {
-        invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain })
-          .then((c) => { if (mounted) { setCtx(c); setErr(null); } })
-          .catch((e) => { if (mounted) setErr(String(e)); })
-          .finally(() => { if (mounted) setLoading(false); });
-      } else {
-        if (mounted) { setCtx(null); setErr(null); setLoading(false); }
-      }
+      // C1 (Monday feedback): General now gets the SAME context items as domains.
+      // domain_context with an empty domain reads the vault ROOT, which is exactly
+      // where General's journal / session logs / skills / decisions live — so the
+      // panel shows them instead of only the cross-cutting trio.
+      invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain: domain || "" })
+        .then((c) => { if (mounted) { setCtx(c); setErr(null); } })
+        .catch((e) => { if (mounted) { setCtx(null); setErr(domain ? String(e) : null); } })
+        .finally(() => { if (mounted) setLoading(false); });
       invoke<DecisionRecord[]>("decisions_read", { vault: vaultPath, domain: domain || null, limit: 15 })
         .then((d) => { if (mounted) setDecisionLog(Array.isArray(d) ? d : []); })
         .catch(() => { if (mounted) setDecisionLog([]); });
