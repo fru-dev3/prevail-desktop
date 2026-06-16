@@ -9,10 +9,15 @@ import { invoke } from "./bridge";
 import { titleCase } from "./format";
 import { PREF, getPref } from "./storage";
 import { Toggle } from "./ui";
+import { CollapsibleSection } from "./collapsible";
 import {
+  AUTONOMY_BLURB,
+  AUTONOMY_LABEL,
   CADENCE_LABEL,
   type Loop,
+  type LoopAutonomy,
   type LoopCadence,
+  type LoopRtEntry,
   type LoopType,
   type LoopsDoc,
   type LoopsRuntime,
@@ -34,6 +39,8 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState<LoopType>("open");
   const [newCadence, setNewCadence] = useState<LoopCadence>("weekly");
+  const [newPurpose, setNewPurpose] = useState("");
+  const [newAutonomy, setNewAutonomy] = useState<LoopAutonomy>("ask");
   const [savedAt, setSavedAt] = useState(0);
   const [runtime, setRuntime] = useState<LoopsRuntime>({ schema: 1, loops: {} });
 
@@ -122,11 +129,11 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
 
   const addLoop = useCallback(() => {
     if (!doc || !newName.trim()) return;
-    const loop = makeLoop({ name: newName.trim(), type: newType, cadence: newCadence, purpose: "", status: "active", enabled: true });
+    const loop = makeLoop({ name: newName.trim(), type: newType, cadence: newCadence, autonomy: newAutonomy, purpose: newPurpose.trim(), status: "active", enabled: true });
     persist({ ...doc, loops: [...doc.loops, loop] });
-    setNewName(""); setNewType("open"); setNewCadence("weekly"); setAdding(false);
+    setNewName(""); setNewType("open"); setNewCadence("weekly"); setNewPurpose(""); setNewAutonomy("ask"); setAdding(false);
     setOpenIds((s) => new Set(s).add(loop.id));
-  }, [doc, newName, newType, newCadence, persist]);
+  }, [doc, newName, newType, newCadence, newPurpose, newAutonomy, persist]);
 
   const toggleOpen = (id: string) => setOpenIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -149,8 +156,8 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
   const done = doc.loops.filter((l) => l.status === "done");
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4">
-      {/* Header */}
+    <div className="w-full space-y-4">
+      {/* Header — L1 (Monday feedback): full-width like every other page. */}
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-display text-2xl font-semibold tracking-tight">Loops</h2>
@@ -165,10 +172,25 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
             title="Run every due loop now: the engine measures the gap and refreshes each loop's actions. Also runs in the background on each loop's cadence."
             className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${running ? "animate-spin" : ""}`} /> {running ? "running…" : "run loops now"}
+            <RefreshCw className={`h-3.5 w-3.5 ${running ? "animate-spin" : ""}`} /> {running ? "Running…" : "Run loops now"}
           </button>
         )}
       </div>
+
+      {/* How loops work — make the agentic model explicit (Monday feedback: the
+          founder couldn't tell what a loop does on enable). Collapsed by default. */}
+      <CollapsibleSection icon={InfinityIcon} title="How loops work" summary="agentic · goal-driven · guardrailed">
+        <div className="space-y-2 text-[13px] leading-relaxed text-text-secondary">
+          <p>A loop is a <span className="font-semibold text-text-primary">standing agent</span> for this domain. On each cadence (or "Run now"), the engine reads the domain's state + your <span className="font-semibold">Desired state</span>, measures the gap, and decides the next concrete steps to close it. It learns from its own run history, so it doesn't repeat itself and escalates when a gap stalls.</p>
+          <p>What it's allowed to DO is set by each loop's <span className="font-semibold text-text-primary">guardrail</span>:</p>
+          <ul className="ml-1 space-y-1">
+            {(["suggest", "tasks", "ask", "auto"] as LoopAutonomy[]).map((a) => (
+              <li key={a} className="flex gap-2"><span className="shrink-0 font-mono text-[11px] font-semibold text-accent">{AUTONOMY_LABEL[a]}</span><span className="text-text-muted">{AUTONOMY_BLURB[a]}</span></li>
+            ))}
+          </ul>
+          <p>Consequential steps (spend, contacting someone, anything irreversible) always queue under <span className="font-semibold text-text-primary">"Needs your approval"</span> below, regardless of guardrail. Approve → it acts via your connectors and files a task; or send it straight to Tasks. Every run is recorded in each loop's <span className="font-semibold">Run history</span>.</p>
+        </div>
+      </CollapsibleSection>
 
       {/* Needs your approval — steps a loop wants to take but that need your OK
           first (spend money, contact someone, irreversible, or a decision only
@@ -248,6 +270,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
             <LoopCard
               key={l.id}
               loop={l}
+              rt={runtime.loops[l.id]}
               open={openIds.has(l.id)}
               onToggleOpen={() => toggleOpen(l.id)}
               onChange={(patch) => mutateLoop(l.id, patch)}
@@ -267,16 +290,39 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
               placeholder="Loop name (e.g. Opportunity Detection)"
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-border"
             />
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <select value={newType} onChange={(e) => setNewType(e.target.value as LoopType)} className="rounded-md border border-border bg-background px-2 py-1 text-xs">
-                <option value="open">Open (never ends)</option>
-                <option value="closed">Closed (has a finish line)</option>
-              </select>
-              <select value={newCadence} onChange={(e) => setNewCadence(e.target.value as LoopCadence)} className="rounded-md border border-border bg-background px-2 py-1 text-xs">
-                {CADENCES.map((c) => <option key={c} value={c}>{CADENCE_LABEL[c]}</option>)}
-              </select>
-              <button onClick={addLoop} disabled={!newName.trim()} className="rounded-md border border-accent-border bg-accent px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:opacity-90 disabled:opacity-40">add</button>
-              <button onClick={() => { setAdding(false); setNewName(""); }} className="rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-text-primary">cancel</button>
+            {/* L2 (Monday feedback): capture the GOAL + GUARDRAIL on create, not
+                just a name. The engine reads purpose to drive what the loop does. */}
+            <textarea
+              value={newPurpose} onChange={(e) => setNewPurpose(e.target.value)}
+              placeholder="Goal: what should this loop work toward? (e.g. surface networking opportunities that match my career direction and prep the outreach)"
+              rows={2}
+              className="mt-2 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-border"
+            />
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <label className="block">
+                <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Kind</div>
+                <select value={newType} onChange={(e) => setNewType(e.target.value as LoopType)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs">
+                  <option value="open">Open (never ends)</option>
+                  <option value="closed">Closed (has a finish line)</option>
+                </select>
+              </label>
+              <label className="block">
+                <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Checks</div>
+                <select value={newCadence} onChange={(e) => setNewCadence(e.target.value as LoopCadence)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs">
+                  {CADENCES.map((c) => <option key={c} value={c}>{CADENCE_LABEL[c]}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Guardrail</div>
+                <select value={newAutonomy} onChange={(e) => setNewAutonomy(e.target.value as LoopAutonomy)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs" title={AUTONOMY_BLURB[newAutonomy]}>
+                  {(["suggest", "tasks", "ask", "auto"] as LoopAutonomy[]).map((a) => <option key={a} value={a}>{AUTONOMY_LABEL[a]}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="mt-1 text-[11px] text-text-muted">{AUTONOMY_BLURB[newAutonomy]}</div>
+            <div className="mt-2 flex items-center gap-2">
+              <button onClick={addLoop} disabled={!newName.trim()} className="rounded-md border border-accent-border bg-accent px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:opacity-90 disabled:opacity-40">Add loop</button>
+              <button onClick={() => { setAdding(false); setNewName(""); setNewPurpose(""); }} className="rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-text-primary">Cancel</button>
             </div>
           </div>
         ) : (
@@ -291,7 +337,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
         <section className="space-y-2 pt-2">
           <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Completed · {done.length}</div>
           {done.map((l) => (
-            <LoopCard key={l.id} loop={l} open={openIds.has(l.id)} onToggleOpen={() => toggleOpen(l.id)} onChange={(patch) => mutateLoop(l.id, patch)} onRemove={() => removeLoop(l.id)} />
+            <LoopCard key={l.id} loop={l} rt={runtime.loops[l.id]} open={openIds.has(l.id)} onToggleOpen={() => toggleOpen(l.id)} onChange={(patch) => mutateLoop(l.id, patch)} onRemove={() => removeLoop(l.id)} />
           ))}
         </section>
       )}
@@ -301,14 +347,17 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
   );
 }
 
-function LoopCard({ loop, open, onToggleOpen, onChange, onRemove }: {
+function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove }: {
   loop: Loop;
+  rt?: LoopRtEntry;
   open: boolean;
   onToggleOpen: () => void;
   onChange: (patch: Partial<Loop>) => void;
   onRemove: () => void;
 }) {
   const done = loop.status === "done";
+  const autonomy = loop.autonomy ?? "ask";
+  const history = (rt?.history ?? []).slice().reverse();
   const dot = done ? "#9aa0a6" : loop.status === "paused" ? "#d9a441" : "#0d7a6e";
   return (
     <div className={`overflow-hidden rounded-xl border bg-surface ${done ? "border-border-subtle opacity-70" : "border-border"}`}>
@@ -321,6 +370,7 @@ function LoopCard({ loop, open, onToggleOpen, onChange, onRemove }: {
             ? <span className="inline-flex items-center gap-1 rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Open loop: never ends"><InfinityIcon className="h-2.5 w-2.5" /> open</span>
             : <span className="rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Closed loop: finishes when its condition is met">closed</span>}
           <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">{CADENCE_LABEL[loop.cadence]}</span>
+          <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent" title={AUTONOMY_BLURB[autonomy]}>{AUTONOMY_LABEL[autonomy]}</span>
         </button>
         {!done && (
           <Toggle on={loop.enabled} onChange={(v) => onChange({ enabled: v })} label={`${loop.name} enabled`} />
@@ -345,10 +395,31 @@ function LoopCard({ loop, open, onToggleOpen, onChange, onRemove }: {
               </ul>
             </Field>
           )}
+          {/* L3 (Monday feedback): run history — what work the loop did, when, and
+              the tasks it created. Sourced from the engine's _loops_runtime.json. */}
+          {history.length > 0 && (
+            <Field label="Run history">
+              <ul className="space-y-1.5">
+                {history.slice(0, 8).map((r, i) => (
+                  <li key={i} className="rounded-lg border border-border-subtle bg-background px-2.5 py-1.5">
+                    <div className="flex items-center gap-2 font-mono text-[10px] text-text-muted">
+                      <span className={r.done ? "text-ok" : "text-accent"}>{r.done ? "✓ closed" : "▸ ran"}</span>
+                      <span>{new Date(r.ts).toLocaleString()}</span>
+                      {r.tasksCreated?.length > 0 && <span className="text-text-secondary">· {r.tasksCreated.length} task{r.tasksCreated.length === 1 ? "" : "s"}</span>}
+                    </div>
+                    {r.note && <div className="mt-0.5 text-[12px] text-text-secondary">{r.note}</div>}
+                  </li>
+                ))}
+              </ul>
+            </Field>
+          )}
           {/* Controls */}
           <div className="flex flex-wrap items-center gap-2 border-t border-border-subtle pt-2.5">
             <select value={loop.cadence} onChange={(e) => onChange({ cadence: e.target.value as LoopCadence })} className="rounded-md border border-border bg-background px-2 py-1 text-xs" title="How often the runner evaluates this loop">
               {CADENCES.map((c) => <option key={c} value={c}>{CADENCE_LABEL[c]}</option>)}
+            </select>
+            <select value={autonomy} onChange={(e) => onChange({ autonomy: e.target.value as LoopAutonomy })} className="rounded-md border border-border bg-background px-2 py-1 text-xs" title={AUTONOMY_BLURB[autonomy]}>
+              {(["suggest", "tasks", "ask", "auto"] as LoopAutonomy[]).map((a) => <option key={a} value={a}>{AUTONOMY_LABEL[a]}</option>)}
             </select>
             <select value={loop.status} onChange={(e) => onChange({ status: e.target.value as Loop["status"] })} className="rounded-md border border-border bg-background px-2 py-1 text-xs" title="Loop status">
               <option value="active">Active</option>
