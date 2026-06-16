@@ -129,7 +129,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       <SettingsHeader
         title="Apps"
         icon={Plug}
-        subtitle="The services that feed your vault. Each one syncs real data into your domains on a schedule, so everything downstream stays grounded in your actual life. Describe what you want from an app and Prevail figures out how to connect it."
+        subtitle="The services that feed your vault. Each app is connected ONCE and then made available to any domain's context (no duplicates), syncing real data on a schedule so everything downstream stays grounded in your actual life. Describe what you want from an app and Prevail figures out how to connect it."
       />
 
       {/* Connect — one goal sentence, not forms. */}
