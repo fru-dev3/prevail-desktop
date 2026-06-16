@@ -157,8 +157,13 @@ async fn run_socket(cfg: SlackConfig, mut stop_rx: watch::Receiver<bool>, status
 }
 
 async fn post_message(bot_token: &str, channel: &str, text: &str) -> Result<(), String> {
+    post_message_to("https://slack.com/api/chat.postMessage", bot_token, channel, text).await
+}
+
+// URL is a parameter so a test can point it at a mock server.
+async fn post_message_to(url: &str, bot_token: &str, channel: &str, text: &str) -> Result<(), String> {
     let resp = reqwest::Client::new()
-        .post("https://slack.com/api/chat.postMessage")
+        .post(url)
         .bearer_auth(bot_token)
         .json(&serde_json::json!({ "channel": channel, "text": text }))
         .send().await.map_err(|e| format!("slack post: {e}"))?;
@@ -203,5 +208,23 @@ mod tests {
         assert!(b.token.is_empty());
         assert_eq!(b.chat_id, "C1");
         assert_eq!(b.domain.as_deref(), Some("career"));
+    }
+
+    fn mock(body: &str) -> String {
+        let body = body.to_string();
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let port = server.server_addr().to_ip().unwrap().port();
+        std::thread::spawn(move || { if let Ok(req) = server.recv() { let _ = req.respond(tiny_http::Response::from_string(body)); } });
+        format!("http://127.0.0.1:{port}")
+    }
+    // Slack returns 200 with {ok:false} on failure, so status alone isn't enough —
+    // verify post_message reads the `ok` field (round-trip against a mock).
+    #[tokio::test]
+    async fn post_message_honors_the_ok_field() {
+        let good = mock(r#"{"ok":true}"#);
+        assert!(post_message_to(&good, "xoxb", "C1", "hi").await.is_ok());
+        let bad = mock(r#"{"ok":false,"error":"channel_not_found"}"#);
+        let e = post_message_to(&bad, "xoxb", "C1", "hi").await.unwrap_err();
+        assert!(e.contains("channel_not_found"));
     }
 }

@@ -174,10 +174,15 @@ async fn run_gateway(cfg: DiscordConfig, mut stop_rx: watch::Receiver<bool>, sta
 }
 
 async fn send_discord(token: &str, channel: &str, text: &str) -> Result<(), String> {
+    send_discord_to(API, token, channel, text).await
+}
+
+// API base is a parameter so a test can point it at a mock server.
+async fn send_discord_to(api: &str, token: &str, channel: &str, text: &str) -> Result<(), String> {
     // Discord caps a message at 2000 chars.
     let body = text.chars().take(2000).collect::<String>();
     let resp = reqwest::Client::new()
-        .post(format!("{API}/channels/{channel}/messages"))
+        .post(format!("{api}/channels/{channel}/messages"))
         .header("Authorization", format!("Bot {token}"))
         .json(&serde_json::json!({ "content": body }))
         .send().await.map_err(|e| format!("discord send: {e}"))?;
@@ -217,5 +222,21 @@ mod tests {
         let c = DiscordConfig { token: "secret".into(), channel: "123".into(), cli: "claude".into(), model: None, domain: None, vault: None, routes: vec![] };
         assert!(bridge_cfg(&c).token.is_empty());
         assert_eq!(bridge_cfg(&c).chat_id, "123");
+    }
+
+    // Verify the REST reply path (HTTP POST + status handling) against a mock,
+    // including the 2000-char cap, with no live Discord call.
+    fn mock_status(code: u32) -> String {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let port = server.server_addr().to_ip().unwrap().port();
+        std::thread::spawn(move || { if let Ok(req) = server.recv() { let _ = req.respond(tiny_http::Response::from_string("{}").with_status_code(code)); } });
+        format!("http://127.0.0.1:{port}")
+    }
+    #[tokio::test]
+    async fn send_discord_posts_and_maps_status() {
+        let ok = mock_status(200);
+        assert!(send_discord_to(&ok, "tok", "123", &"x".repeat(5000)).await.is_ok());
+        let bad = mock_status(401);
+        assert!(send_discord_to(&bad, "tok", "123", "hi").await.is_err());
     }
 }
