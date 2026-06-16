@@ -249,6 +249,9 @@ export function HomeBriefing({ vaultPath }: { vaultPath: string }) {
   const [intents, setIntents] = useState<BriefIntent[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [done, setDone] = useState<Record<string, boolean>>({});
+  // Once actioned, a rec is finished — flash the tick, then clear it so the row
+  // frees up and the next-best recommendation surfaces in its place.
+  const [cleared, setCleared] = useState<Set<string>>(new Set());
   useEffect(() => {
     let alive = true;
     invoke<{ ok: boolean; recommendations?: Rec[] }>("engine_recommendations", { vault: vaultPath })
@@ -260,13 +263,18 @@ export function HomeBriefing({ vaultPath }: { vaultPath: string }) {
     return () => { alive = false; };
   }, [vaultPath]);
 
-  const top = recs.slice(0, 3);
+  const top = recs.filter((r) => !cleared.has(r.id)).slice(0, 3);
   const intentLine = intents.slice(0, 3).map((it) => it.title || it.goal || "").filter(Boolean).join(" · ");
   const openRecs = () => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "recommendations" }));
   const openIntents = () => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "intents" }));
   const act = useCallback(async (rec: Rec) => {
     setBusy(rec.id);
-    try { await applyRec(rec, vaultPath); setDone((d) => ({ ...d, [rec.id]: true })); }
+    try {
+      await applyRec(rec, vaultPath);
+      setDone((d) => ({ ...d, [rec.id]: true }));
+      // Flash the tick, then clear the row to make room + surface the next rec.
+      window.setTimeout(() => setCleared((c) => new Set(c).add(rec.id)), 1100);
+    }
     catch { /* surfaced in the full panel */ }
     finally { setBusy(null); }
   }, [vaultPath]);
