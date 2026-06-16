@@ -30,6 +30,24 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
   const [goal, setGoal] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ConnectResult | null>(null);
+  // While the engine researches (one long async call), cycle a visible status so
+  // it's clear work is happening — a button spinner alone reads as "stuck".
+  const RESEARCH_PHASES = [
+    "Reading what you want to pull in…",
+    "Checking for an MCP server…",
+    "Checking the official API…",
+    "Checking a local CLI…",
+    "Checking Composio connectors…",
+    "Considering browser automation…",
+    "Picking the best method for you…",
+  ];
+  const [phaseIdx, setPhaseIdx] = useState(0);
+  useEffect(() => {
+    if (!busy) { setPhaseIdx(0); return; }
+    const id = window.setInterval(() => setPhaseIdx((i) => Math.min(i + 1, RESEARCH_PHASES.length - 1)), 1400);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy]);
   // APP-2: IntelliSense — match what's typed against already-connected apps so we
   // REUSE an existing one instead of silently creating a duplicate. (No dropdown;
   // a single inline match that the user can open, or override to connect anew.)
@@ -110,6 +128,22 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
             </button>
             <span className="text-[11px] text-text-muted">Prevail researches MCP, API, CLI, Composio, or browser — and picks the best.</span>
           </div>
+          {busy && (
+            <div className="mt-3 rounded-lg border border-accent-border/40 bg-accent-soft/20 p-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-accent">
+                <Loader2 className="h-4 w-4 animate-spin" /> Working on it…
+              </div>
+              <div className="mt-2 space-y-1">
+                {RESEARCH_PHASES.map((p, i) => (
+                  <div key={i} className={`flex items-center gap-2 text-xs ${i < phaseIdx ? "text-text-muted" : i === phaseIdx ? "text-text-primary" : "text-text-muted/40"}`}>
+                    <span className="w-3 shrink-0 text-center">{i < phaseIdx ? "✓" : i === phaseIdx ? "▸" : "·"}</span>
+                    {p}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 text-[11px] text-text-muted">This runs a model to research + test the best path — usually 10–30s.</div>
+            </div>
+          )}
         </div>
       )}
 
