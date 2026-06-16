@@ -144,45 +144,6 @@ export function DomainContextDrawer({
             General is your no-domain workspace, so it shows only what spans everything: recent decisions, your ideal state, and long-term memory. State, journal, session logs, and skills live inside each domain's own folder, so open a domain to see those.
           </div>
         )}
-        {/* Recent decisions = the raw live ledger (_decisions.jsonl). "Decisions"
-            below = the distiller's curated summary. The caption explains the
-            promotion so the two are never confused (always shown, not just empty). */}
-        <Section keyName="recent" title="Recent decisions" count={decisionLog.length} body={
-          <>
-          <div className="mb-2 text-[11px] leading-snug text-text-muted">
-            The live feed: council verdicts and saved decisions appear here the instant they happen (latest 15). The distiller later folds these into a curated <span className="font-semibold">Decisions</span> summary below.
-          </div>
-          {decisionLog.length === 0 ? (
-            <div className="text-xs text-text-muted">Nothing yet. Run a council or save a decision and it shows here immediately.</div>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {decisionLog.map((d, i) => {
-                const fb = typeof d.feedback === "object" && d.feedback ? d.feedback.rating : (typeof d.feedback === "string" ? d.feedback : undefined);
-                const ago = d.ts ? formatFreshness(Math.max(0, Math.floor((Date.now() - d.ts) / 1000))) : "";
-                return (
-                  <li key={d.id ?? i} className="rounded-lg border border-border-subtle bg-background p-2.5">
-                    <div className="mb-1 flex items-center justify-between gap-2 font-mono text-[9px] uppercase tracking-wider text-text-muted">
-                      <span>{d.kind ?? "decision"}{ago ? ` · ${ago}` : ""}</span>
-                      {fb === "up" && <ThumbsUp className="h-3 w-3 text-accent" />}
-                      {fb === "down" && <ThumbsDown className="h-3 w-3 text-red-500" />}
-                    </div>
-                    {d.prompt && <div className="line-clamp-1 text-[11px] font-semibold text-text-primary">{d.prompt}</div>}
-                    {d.verdict && <div className="mt-1 line-clamp-3 whitespace-pre-wrap text-[11px] leading-snug text-text-secondary">{d.verdict}</div>}
-                    {d.verdict && (
-                      <button
-                        onClick={() => onInjectContext(d.verdict!, `decision · ${(d.prompt ?? "").slice(0, 30)}`)}
-                        className="mt-1.5 rounded-md border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
-                      >
-                        → use in chat
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          </>
-        } />
         <Section keyName="ideal" title="Ideal state" body={
           idealState.trim() ? (
             <>
@@ -233,64 +194,89 @@ export function DomainContextDrawer({
                 </>
               ) : <div className="text-xs text-text-muted">No state yet. The distiller derives a state snapshot from your activity in this domain; it appears after your first few chats here.</div>
             } />
-            <Section keyName="decisions" title="Decisions" body={
+            {/* Decisions = the live ledger (latest, raw) + the distiller's curated
+                summary, in ONE section (was split into "Recent decisions" + "Decisions"). */}
+            <Section keyName="decisions" title="Decisions" count={decisionLog.length || undefined} body={
               <>
               <div className="mb-2 text-[11px] leading-snug text-text-muted">
-                The curated summary the distiller writes from your decision history (its file: <span className="font-mono">_journal/decisions.md</span>). A <span className="font-semibold">Recent decision</span> moves here on the distiller's next pass, condensed and deduplicated. Empty until that first pass runs.
+                Council verdicts and saved decisions — latest first. The distiller folds them into a curated summary over time.
               </div>
+              {decisionLog.length > 0 && (
+                <ul className="mb-2 flex flex-col gap-2">
+                  {decisionLog.slice(0, 6).map((d, i) => {
+                    const fb = typeof d.feedback === "object" && d.feedback ? d.feedback.rating : (typeof d.feedback === "string" ? d.feedback : undefined);
+                    const ago = d.ts ? formatFreshness(Math.max(0, Math.floor((Date.now() - d.ts) / 1000))) : "";
+                    return (
+                      <li key={d.id ?? i} className="rounded-lg border border-border-subtle bg-background p-2.5">
+                        <div className="mb-1 flex items-center justify-between gap-2 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                          <span>{d.kind ?? "decision"}{ago ? ` · ${ago}` : ""}</span>
+                          {fb === "up" && <ThumbsUp className="h-3 w-3 text-accent" />}
+                          {fb === "down" && <ThumbsDown className="h-3 w-3 text-red-500" />}
+                        </div>
+                        {d.prompt && <div className="line-clamp-1 text-[11px] font-semibold text-text-primary">{d.prompt}</div>}
+                        {d.verdict && <div className="mt-1 line-clamp-3 whitespace-pre-wrap text-[11px] leading-snug text-text-secondary">{d.verdict}</div>}
+                        {d.verdict && (
+                          <button onClick={() => onInjectContext(d.verdict!, `decision · ${(d.prompt ?? "").slice(0, 30)}`)}
+                            className="mt-1.5 rounded-md border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
+                            → use in chat
+                          </button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
               {ctx.decisions ? (
                 <>
-                  <button
-                    onClick={() => onInjectContext(ctx.decisions!, `${titleCase(domain)}/decisions.md`)}
-                    className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
-                  >
+                  <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">Curated summary</div>
+                  <button onClick={() => onInjectContext(ctx.decisions!, `${titleCase(domain)}/decisions.md`)}
+                    className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
                     → use in chat
                   </button>
                   <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
                     {ctx.decisions.length > 1200 ? ctx.decisions.slice(0, 1200) + "\n…" : ctx.decisions}
                   </pre>
                 </>
-              ) : <div className="text-xs text-text-muted">No curated summary yet. It appears after the distiller's next pass over your recent decisions.</div>}
+              ) : (decisionLog.length === 0 && <div className="text-xs text-text-muted">No decisions yet. Run a council or save a decision; the distiller curates a summary over time.</div>)}
               </>
             } />
-            <Section keyName="journal" title="Journal" body={
-              ctx.journal ? (
+            {/* Activity = the raw record: what you asked (journal) + session logs,
+                merged (was split into "Journal" + "Session logs"). The distilled
+                sections above are derived from this. */}
+            <Section keyName="activity" title="Activity" count={ctx.recent_logs.length || undefined} body={
+              <>
+              <div className="mb-2 text-[11px] leading-snug text-text-muted">
+                The raw record — what you asked, and session logs. State, Memory, and Decisions above are distilled from this.
+              </div>
+              {ctx.journal && (
                 <>
-                  <button
-                    onClick={() => onInjectContext(ctx.journal!, `${titleCase(domain)}/_journal`)}
-                    className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
-                  >
+                  <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">Journal · what you asked</div>
+                  <button onClick={() => onInjectContext(ctx.journal!, `${titleCase(domain)}/_journal`)}
+                    className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
                     → use in chat
                   </button>
-                  <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
-                    {ctx.journal.length > 1500 ? ctx.journal.slice(0, 1500) + "\n…" : ctx.journal}
+                  <pre className="mb-3 whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
+                    {ctx.journal.length > 1200 ? ctx.journal.slice(0, 1200) + "\n…" : ctx.journal}
                   </pre>
                 </>
-              ) : <div className="text-xs text-text-muted">No journal yet. Journal entries are curated from chat turns run through the engine; desktop chats feed State and Decisions via the distiller instead.</div>
-            } />
-            <Section keyName="logs" title="Session logs" count={ctx.recent_logs.length} body={
-              ctx.recent_logs.length === 0 ? (
-                <div className="text-xs text-text-muted">No session logs yet. Engine sessions write daily logs here; your desktop chat history lives under Insights and the thread list.</div>
-              ) : (
-                <ul className="space-y-1">
-                  {ctx.recent_logs.map((l) => (
-                    <li key={l.path}>
-                      <button
-                        onClick={async () => {
-                          try {
-                            const body = await invoke<string>("read_file", { path: l.path });
-                            onInjectContext(body, l.name);
-                          } catch (e) { console.error(e); }
-                        }}
-                        className="w-full rounded border border-border-subtle bg-background px-2 py-1.5 text-left hover:border-accent-border hover:bg-surface-warm"
-                      >
-                        <div className="font-mono text-[11px] text-text-primary">{l.name}</div>
-                        {l.preview && <div className="mt-0.5 line-clamp-2 text-[10px] text-text-muted">{l.preview}</div>}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )
+              )}
+              {ctx.recent_logs.length > 0 ? (
+                <>
+                  <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">Session logs</div>
+                  <ul className="space-y-1">
+                    {ctx.recent_logs.map((l) => (
+                      <li key={l.path}>
+                        <button onClick={async () => { try { const body = await invoke<string>("read_file", { path: l.path }); onInjectContext(body, l.name); } catch (e) { console.error(e); } }}
+                          className="w-full rounded border border-border-subtle bg-background px-2 py-1.5 text-left hover:border-accent-border hover:bg-surface-warm">
+                          <div className="font-mono text-[11px] text-text-primary">{l.name}</div>
+                          {l.preview && <div className="mt-0.5 line-clamp-2 text-[10px] text-text-muted">{l.preview}</div>}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (!ctx.journal && <div className="text-xs text-text-muted">No activity yet. Your chats here build this raw record, which the distiller folds into State, Memory, and Decisions.</div>)}
+              </>
             } />
             <Section keyName="skills" title="Skills" count={ctx.skills.length} body={
               ctx.skills.length === 0 ? (

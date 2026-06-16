@@ -1205,8 +1205,8 @@ export default function App() {
                 // to Chat first if you're on Council/Benchmark).
                 <>
                   <button
-                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "insights" ? "chat" : "insights"); }}
-                    title="Insights: what to work on, your tasks, and recent intents"
+                    onClick={() => { setTab("chat"); setDomainTab("insights"); }}
+                    title="Insights: what to work on, your tasks, and recent intents (use the Chat tab to return to the conversation)"
                     className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
                       tab === "chat" && domainTab === "insights"
                         ? "bg-accent-soft text-accent"
