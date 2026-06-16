@@ -254,4 +254,28 @@ mod tests {
         assert!(plain_text_body(&m).contains("Hello there"));
         assert_eq!(header(&m, "Subject"), "Hi");
     }
+
+    // The risky parser path: a real multipart/alternative email (what Gmail etc.
+    // actually send) — verify we pull the text/plain part, not the HTML.
+    #[test]
+    fn plain_text_body_picks_text_part_from_multipart() {
+        let raw = b"From: Fru <fru@example.com>\r\n\
+Subject: Question\r\n\
+Content-Type: multipart/alternative; boundary=\"BB\"\r\n\
+\r\n\
+--BB\r\n\
+Content-Type: text/plain\r\n\
+\r\n\
+what is my runway?\r\n\
+--BB\r\n\
+Content-Type: text/html\r\n\
+\r\n\
+<p>what is my runway?</p>\r\n\
+--BB--\r\n";
+        let m = mailparse::parse_mail(raw).unwrap();
+        let body = plain_text_body(&m);
+        assert!(body.contains("what is my runway?"));
+        assert!(!body.contains("<p>"), "took the text/plain part, not the HTML");
+        assert_eq!(extract_addr(&header(&m, "From")), "fru@example.com");
+    }
 }
