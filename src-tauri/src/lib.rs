@@ -327,6 +327,7 @@ pub fn run() {
             distill::distill_status,
             distill::distill_run_once,
             surface::domain_surface,
+            surface::domain_draft_ideal,
             tasks::tasks_read,
             tasks::tasks_set,
             tasks::tasks_add,
