@@ -24,10 +24,17 @@ TAG="${1:-v$(node -p "require('./package.json').version")}"
 REPO="fru-dev3/prevail-desktop"
 
 # --- Apple credentials (signing identity is in the keychain already) ---
-export APPLE_SIGNING_IDENTITY="Developer ID Application: Fru Nde (TXN399AHT5)"
-export APPLE_ID="redacted@example.com"
-export APPLE_TEAM_ID="TXN399AHT5"
+# Read identity + Apple ID from env (or local dotfiles), never hardcoded — keeps
+# personal identifiers out of the repo. Set APPLE_ID / APPLE_SIGNING_IDENTITY /
+# APPLE_TEAM_ID in your shell, or drop them in the ~/.prevail-* files below.
+export APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:-$(cat ~/.prevail-signing-identity.txt 2>/dev/null || true)}"
+export APPLE_ID="${APPLE_ID:-$(cat ~/.prevail-apple-id.txt 2>/dev/null || true)}"
+export APPLE_TEAM_ID="${APPLE_TEAM_ID:-$(cat ~/.prevail-team-id.txt 2>/dev/null || true)}"
 export APPLE_PASSWORD="${APPLE_PASSWORD:-$(cat ~/.prevail-asp.txt 2>/dev/null || true)}"
+if [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_SIGNING_IDENTITY:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+  echo "ERROR: set APPLE_ID, APPLE_SIGNING_IDENTITY, APPLE_TEAM_ID (env or ~/.prevail-*.txt)." >&2
+  exit 1
+fi
 if [ -z "${APPLE_PASSWORD:-}" ]; then
   echo "ERROR: no app-specific password. Create one at appleid.apple.com" >&2
   echo "       (Sign-In & Security -> App-Specific Passwords) and either:" >&2
