@@ -17,9 +17,9 @@ schema: 2
 **Resting HR:** 58
 
 ## Where things stand
-The May physical was mostly good, but two early flags came back: LDL at 138 (borderline high — notable at 29) and low vitamin D. Dr. Marquez suggested diet + activity before anything else, plus a vitamin D supplement. The training plan (see fitness) is the lever here; the cholesterol number also matters for the term-life picture (see insurance).
+The May physical was mostly good, but two early flags came back: LDL at 142 (borderline high) and low vitamin D (28 ng/mL). Dr. Marquez suggested diet + activity before anything else, plus a vitamin D supplement. The training plan (see fitness) is the lever here; the cholesterol number also matters for the term-life picture (see insurance).
 
 ## Open Items
-- [ ] Borderline LDL 138 + low vitamin D _(also: fitness, insurance)_
-- [ ] Recheck LDL in 3 months after the diet/training changes
-- [ ] Start vitamin D supplement; re-test in fall
+- [ ] Borderline LDL 142 + low vitamin D (28 ng/mL) _(also: fitness, insurance)_
+- [ ] Recheck LDL in August after the diet/training changes
+- [ ] Start vitamin D supplement; re-test in August

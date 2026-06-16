@@ -3,8 +3,8 @@
 > Skills read this file to personalize their output.
 
 ## Identity
-name: Jordan Smith
-household: Jordan Smith, Sam Smith (partner), Maya Smith (3)
+name: Alex Rivera
+household: Alex Rivera, Jordan Rivera (spouse), Maya Rivera (6)
 location: Austin, TX
 
 ## Operating rhythm

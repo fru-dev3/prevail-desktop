@@ -1,6 +1,6 @@
 ---
 
-title: Book the Lima flights before holiday prices go up
+title: Book the Phoenix flights before summer prices climb
 
 domain: travel
 
@@ -16,23 +16,22 @@ turns: 2
 
 ## You
 
-We want to go to Lima for the holidays — December 20 to January 3. That's Jordan, Sam, and Maya. What should I be doing now to not get burned on flights?
+We want to go to Phoenix in July - mostly to check on the rental condo, plus a couple of family days. That's Alex, Jordan, and Maya. What should I be doing now to not get burned on flights?
 
 ## claude · opus-4
 
-Book the flights now — seriously, don't wait another 2–3 weeks.
+Book the flights now - don't wait another 2-3 weeks.
 
-**Why the urgency:** Austin–Lima (AUS → LIM) for the December 20–January 3 window is a high-demand international route. Lima is a hub for South American holiday travel, and fares for this period typically peak 3–4 months in advance (August–September for December travel). You're in the last window where you can still get reasonable fares.
+**Why the urgency:** Austin-Phoenix (AUS to PHX) is a short, popular route, and July is peak summer travel out of Texas. Fares for the mid-July window tend to firm up a few weeks out, so you're in the last window where you can still get reasonable prices.
 
 **What to expect:**
-- **Direct or 1-stop via Miami/Houston/Bogotá** — LATAM, American, and United are the main carriers from AUS. A 1-stop via Lima's hub through Miami (about 8–9 hours total travel) is the most common.
-- **Price range:** For 3 passengers (Austin to Lima, December 20 return January 3), expect $1,400–1,900 total if you book this week, vs. $2,200–2,800 if you wait until August.
-- **Maya's fare:** At 3, she needs her own seat on an international flight — no lap child for flights over 12 hours. Factor that in.
+- **Direct, ~2.5 hours.** Southwest, American, and United all fly AUS to PHX nonstop. Plenty of options, which keeps fares competitive if you book early.
+- **Price range:** For 3 passengers round trip, expect roughly $600-900 total if you book this week, versus $1,000-1,400 if you wait until July. That fits inside the $1,800 trip budget with room for the on-the-ground costs.
+- **Maya's fare:** At 6 she needs her own seat - factor that in (no lap-child option at her age anyway).
 
-**Document check (important):**
-- Maya's US passport — check the expiration date right now. International travel generally requires 6 months of validity beyond return date; for Peru that means valid through at least July 2027.
-- If Maya's passport is expiring soon, US passport renewal for a minor takes 6–8 weeks standard, 3–5 weeks expedited. Don't let this slip.
-- Jordan's Peruvian connections shouldn't affect entry — naturalized citizens can enter Peru on either passport; just be consistent about which you use for entry/exit.
+**Trip logistics (the rental piece):**
+- Coordinate with Sun Valley PM before you go so you can do a walkthrough of the condo while the tenant lease is mid-term (runs through 2027-02). A check-in visit is also a clean reason to expense part of the trip against the Schedule E rental - keep receipts and ask Maria how much qualifies.
+- Phoenix in July is hot. Plan the family days around mornings and evenings, and pick a place with a pool to keep Maya happy.
 
-Check Google Flights tonight with flexible dates around Dec 19–22. Lock it in this week.
+Check Google Flights tonight with flexible dates around the mid-July week. Lock it in this week.
 
