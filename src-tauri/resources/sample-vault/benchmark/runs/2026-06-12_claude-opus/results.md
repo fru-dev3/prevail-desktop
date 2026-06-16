@@ -80,7 +80,7 @@ My weeks are filling with meetings and the Staff packet work keeps slipping. How
 
 ### reply
 
-Quick reality check first: the only calendar connected here is your personal one (`redacted@example.com`), and it's nearly empty — just a city council meeting and election dates. **Your work meetings and the Staff packet live on a corporate calendar I can't see.** So I can't audit the actual creep. What I *can* do is give you the system and operationalize the parts I can reach (and do a real meeting audit the moment you connect the work calendar). Here's how I'd fix it.
+Quick reality check first: the only calendar connected here is your personal one (`alex.rivera@gmail.com`), and it's nearly empty — just a city council meeting and election dates. **Your work meetings and the Staff packet live on a corporate calendar I can't see.** So I can't audit the actual creep. What I *can* do is give you the system and operationalize the parts I can reach (and do a real meeting audit the moment you connect the work calendar). Here's how I'd fix it.
 
 ## The actual problem
 The packet slips for one structural reason: **every meeting has a counterparty who'll notice if you no-show. The packet has none.** It's the only thing on your plate with zero external accountability, so it's always the thing that yields. You don't fix that with willpower — you fix it by giving the packet a counterparty and a defended slot, and by shrinking the meeting surface that's eating it.

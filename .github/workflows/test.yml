@@ -10,6 +10,8 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v6
+      - name: Scrub gate (no personal data in demo vault)
+        run: bash scripts/scrub-gate.sh
       - uses: actions/setup-node@v6
         with: { node-version: "20", cache: "npm" }
       - run: npm ci
