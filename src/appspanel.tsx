@@ -264,6 +264,18 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
   // P4 — re-evaluate the connection method: maybe a better one exists now.
   const [reEval, setReEval] = useState<string | null>(null);
   const [reEvalBusy, setReEvalBusy] = useState(false);
+  // A2 — change the connection method by hand (MCP / API / OAuth / browser / manual).
+  const [methodBusy, setMethodBusy] = useState(false);
+  const changeMethod = async (integration: string) => {
+    if (!integration || integration === app.integration) return;
+    setMethodBusy(true);
+    try {
+      await invoke("engine_app_set_integration", { id: app.id, integration });
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+      await onReload();
+    } catch (e) { console.error("set integration", e); }
+    finally { setMethodBusy(false); }
+  };
   const reevaluate = async () => {
     setReEvalBusy(true);
     setReEval(null);
@@ -321,12 +333,21 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
         <div className="space-y-3 border-t border-border-subtle px-4 py-4 pl-[60px] text-[13px]">
           {app.account?.label && <Detail label="Account">{app.account.label}{app.account.address ? ` · ${app.account.address}` : ""}</Detail>}
           <Detail label="Method">
-            {methodLabel(app.integration)}{app.connections?.length ? ` · ${app.connections.map((c) => c.kind).join(", ")}` : ""}
-            <button onClick={reevaluate} disabled={reEvalBusy}
-              title="Check whether a better way to connect this app exists now"
-              className="ml-2 inline-flex items-center gap-1 rounded border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
-              {reEvalBusy ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <RefreshCw className="h-2.5 w-2.5" />} re-evaluate
-            </button>
+            <span className="inline-flex flex-wrap items-center gap-2">
+              {/* A2 (Monday feedback): change the method by hand. */}
+              <select value={(app.integration || "manual").toLowerCase()} onChange={(e) => void changeMethod(e.target.value)} disabled={methodBusy}
+                title="Change how this app connects"
+                className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none disabled:opacity-50">
+                {["mcp", "api", "oauth", "browser", "manual"].map((m) => <option key={m} value={m}>{methodLabel(m)}</option>)}
+              </select>
+              {app.connections?.length ? <span className="text-text-muted">· {app.connections.map((c) => c.kind).join(", ")}</span> : null}
+              {methodBusy && <Loader2 className="h-3 w-3 animate-spin text-text-muted" />}
+              <button onClick={reevaluate} disabled={reEvalBusy}
+                title="Check whether a better way to connect this app exists now"
+                className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
+                {reEvalBusy ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <RefreshCw className="h-2.5 w-2.5" />} re-evaluate
+              </button>
+            </span>
           </Detail>
           {reEval && <div className="rounded-md border border-border-subtle bg-background px-3 py-1.5 text-xs text-text-secondary">{reEval}</div>}
           {/* APP-4 — schedule, now editable with engine-honored cadences. */}
