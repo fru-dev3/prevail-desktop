@@ -298,19 +298,14 @@ export function TelegramCard() {
           </div>
         </div>
 
-        {/* Step 2 — one action row: primary start/stop, secondary test, inline status. */}
+        {/* Step 2 — one action row. P1 (Monday feedback): the bridge is an ON/Off
+            toggle (was Start/Stop text); test is the secondary action. */}
         <div className="flex flex-wrap items-center gap-2">
-          {!bridge?.running ? (
-            <button onClick={startBridge} disabled={!ready}
-              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-background hover:bg-accent-hover disabled:bg-surface-strong disabled:text-text-muted">
-              <Radio className="h-3.5 w-3.5" /> Start bridge
-            </button>
-          ) : (
-            <button onClick={stopBridge}
-              className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-text-secondary hover:border-warn hover:text-warn">
-              Stop bridge
-            </button>
-          )}
+          <label className={`inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm ${ready ? "" : "opacity-50"}`} title={ready ? "Turn the bridge on/off" : "Fill in token + chat ID first"}>
+            <Radio className={`h-3.5 w-3.5 ${bridge?.running ? "text-accent" : "text-text-muted"}`} />
+            <span className="font-medium text-text-secondary">Bridge</span>
+            <Toggle on={!!bridge?.running} onChange={(v) => { if (!ready) return; v ? void startBridge() : void stopBridge(); }} label="Telegram bridge on/off" />
+          </label>
           <button onClick={testSend} disabled={!ready}
             className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
             <Send className="h-3.5 w-3.5" /> Send test
