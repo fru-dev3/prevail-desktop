@@ -304,11 +304,12 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
     setExpandedSet((e) => (e.size ? e : new Set([available[0].id])));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [available]);
-  useEffect(() => { lsSet(COUNCIL_MEMBERS_KEY, JSON.stringify([...members])); }, [members]);
+  useEffect(() => { lsSet(COUNCIL_MEMBERS_KEY, JSON.stringify([...members])); window.dispatchEvent(new Event("prevail:council-changed")); }, [members]);
   useEffect(() => {
     lsSet(COUNCIL_CHAIR_KEY, chair);
     const cli = chair.split("::")[0];
     if (cli) lsSet(LS.defaultChairCli, cli); // back-compat
+    window.dispatchEvent(new Event("prevail:council-changed"));
   }, [chair]);
   // Chair must be a current member.
   useEffect(() => {
