@@ -202,7 +202,22 @@ so they're left for a focused pass rather than blind overnight edits:
 - [x] **A5** (9c19694) — surfaced the orphaned WebUI as "Web access" under Connections.
 - [x] **P4** (0e93baf) — About drops the Tauri/React/Tailwind mention.
 
-## DEFINITIVE STATUS (2026-06-16)
+## DEFINITIVE STATUS (2026-06-16, updated)
+**Done (24+), all build-verified + committed (desktop + cli + web branches):**
+B4, B5, B6, M1, M4, M5, A1, A2, A3, A5, C1, C2, G2, G3, K1, K3, K4, K5, W1, W2, P4,
+**Loops L1/L2/L3**, I1. Plus confirmations: A4 (detection works — detect_clis on mount +
+autoVerify), K6 (grounding shipped via BENCH-3 + _log grounding).
+Engine commands added (cli branch): loops guardrail, app schedule, app integration, omega.
+
+**Still remaining — genuinely large features / blocked (need dedicated passes or input):**
+- _Big features (each its own session):_ M2 (Ideal State scratch-redesign), M3 (Journals→Intent
+  pipeline), M6 (per-domain ideal states), M7 (Omega cohesive view), A6 (implement all gateway
+  surfaces), O1 (onboarding tour), W4 (vault on-disk reorg + safe engine migrator).
+- _Live-UI verify (risky blind):_ B1 drag→context, B2 $domain ref, B3 thread-binding (C2 mitigates).
+- _Need founder pointing:_ K2 (which element), P2/P3 (which panel), W3 ("every launch" meaning).
+- _Broad polish:_ P1 (replace remaining Start/Stop text app-wide with toggles).
+
+### old status line (superseded)
 **Done (20), all build-verified + committed:** B4, B6, M1, M4, M5, A1, A3, A5, C1, C2,
 K1, K3, K4, K5 (covered by existing scoped-domain breadcrumb), W1, W2, P4, Loops L1/L2/L3,
 I1 (web pkg rename, on prevail-web branch). Engine: Loops guardrail (cli branch).
