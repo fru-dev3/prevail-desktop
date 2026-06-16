@@ -283,7 +283,25 @@ shipped tri-path readers stay correct (dataRoot is idempotent).
 - Result: cli config + desktop React + desktop Rust all point at data/ after
   migration, consistently. cargo check + tsc clean. Root stays clean; nothing deleted.
 
-## TRUE REMAINING (1 item)
+## A6 NATIVE BRIDGES — 3 built this round (Matrix, Mattermost, Signal)
+Native surfaces now live (off by default, configured + verified by the user):
+Telegram, **Webhook** (universal), **Matrix** (/sync long-poll), **Mattermost**
+(REST poll), **Signal** (signal-cli subprocess). All built with the EXISTING
+dependency set (reqwest + tokio::process) — no new crates. native_bridge.rs +
+NativeBridgeCard; ab079e7 (Matrix/Mattermost) + f8a187a (Signal). cargo check +
+tsc clean; 3 rust unit tests.
+
+**Remaining: Discord, Slack, Email — the new-dependency tier.**
+- Discord + Slack: real-time inbound needs a WebSocket client (Discord Gateway /
+  Slack Socket Mode) → tokio-tungstenite + tokio "net" feature, plus stateful
+  protocol code (HELLO/IDENTIFY/heartbeat/resume) that is genuinely error-prone
+  without a live account to test against.
+- Email: IMAP poll + SMTP send → imap + lettre + TLS crates.
+These three need their dependency + that platform's credential to build correctly
+AND verify; until then they're reachable via the Webhook. Build one with its
+credential in a live session.
+
+## (historical) TRUE REMAINING (1 item)
 1. **A6 native bridges (6).** Webhook (done) already makes every platform
    functional via forwarding. NATIVE bridges: Discord + Slack need a WebSocket
    crate (not a dep; tokio lacks net/rt-multi-thread); Email needs imap+lettre+TLS
