@@ -4,7 +4,7 @@
 // and current actions. The runner daemon (separate) evaluates enabled loops and
 // keeps their actions current; here you define and steer them.
 import { useCallback, useEffect, useState } from "react";
-import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, Plus, RefreshCw, ShieldQuestion, Target, Trash2, X, Zap } from "lucide-react";
+import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, Plus, RefreshCw, ShieldQuestion, Sparkles, Target, Trash2, X, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase } from "./format";
 import { PREF, getPref } from "./storage";
@@ -48,6 +48,21 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
   // no separate "desired state" anymore.
   const [ideal, setIdeal] = useState<string>("");
   const [idealSaved, setIdealSaved] = useState(false);
+  const [draftingIdeal, setDraftingIdeal] = useState(false);
+  const draftIdealWithAI = useCallback(async () => {
+    setDraftingIdeal(true);
+    try {
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      const text = await invoke<string>("domain_draft_ideal", { vault: vaultPath, domain, provider, model });
+      if (text?.trim()) {
+        setIdeal(text.trim());
+        await invoke("write_domain_ideal", { vault: vaultPath, domain, body: text.trim() });
+        setIdealSaved(true); window.setTimeout(() => setIdealSaved(false), 1500);
+      }
+    } catch (e) { console.error("draft ideal", e); }
+    finally { setDraftingIdeal(false); }
+  }, [vaultPath, domain]);
   useEffect(() => {
     invoke<string>("read_domain_ideal", { vault: vaultPath, domain }).then((s) => setIdeal(s || "")).catch(() => setIdeal(""));
   }, [vaultPath, domain]);
@@ -242,11 +257,21 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
                   <div className="text-sm text-text-primary">{p.text}</div>
                   <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">{p.loopName}</div>
                 </div>
-                <button onClick={() => executePending(p.loopId, p.text)} disabled={execBusy !== null}
-                  title="Execute now via your connectors (email, calendar, etc.) — the agent actually does it"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:opacity-90 disabled:opacity-50">
-                  {execBusy === p.text ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />} {execBusy === p.text ? "running…" : "execute"}
-                </button>
+                {(() => {
+                  const thisRunning = execBusy === p.text;
+                  const otherRunning = execBusy !== null && !thisRunning;
+                  return (
+                    <button onClick={() => executePending(p.loopId, p.text)} disabled={execBusy !== null}
+                      title={otherRunning ? "Another action is running — only one at a time" : "Execute now via your connectors (email, calendar, etc.) — the agent actually does it"}
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
+                        otherRunning
+                          ? "cursor-not-allowed border-border-subtle bg-surface-warm text-text-muted/60"
+                          : "border-accent-border bg-accent text-background hover:opacity-90"
+                      }`}>
+                      {thisRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />} {thisRunning ? "running…" : "execute"}
+                    </button>
+                  );
+                })()}
                 <button onClick={() => resolvePending(p.loopId, p.text, true)} disabled={execBusy !== null} title="Approve: file it as a task to do later"
                   className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
                   <Check className="h-3 w-3" /> task
@@ -292,9 +317,18 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
                 setIdealSaved(true); window.setTimeout(() => setIdealSaved(false), 1500);
               } catch (e) { console.error("write ideal", e); }
             }}
-            placeholder={`e.g. "${titleCase(domain)}: abundant, growing, resilient — net worth and passive income climbing toward financial freedom." Loops close the gap to this.`}
-            className="min-h-[88px] w-full resize-y rounded-lg border border-border-subtle bg-background px-3 py-2.5 text-sm leading-relaxed text-text-primary outline-none transition-colors placeholder:text-text-muted/70 focus:border-accent-border focus:ring-2 focus:ring-accent-border/20"
+            placeholder={`e.g. "${titleCase(domain)}: abundant, growing, resilient — net worth and passive income climbing toward financial freedom." Or let AI draft it from what it knows about your ${titleCase(domain)}.`}
+            disabled={draftingIdeal}
+            className="min-h-[88px] w-full resize-y rounded-lg border border-border-subtle bg-background px-3 py-2.5 text-sm leading-relaxed text-text-primary outline-none transition-colors placeholder:text-text-muted/70 focus:border-accent-border focus:ring-2 focus:ring-accent-border/20 disabled:opacity-60"
           />
+          <div className="mt-2">
+            <button onClick={draftIdealWithAI} disabled={draftingIdeal}
+              title={`Draft from what Prevail knows about your ${titleCase(domain)} — review before relying on it`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent hover:text-background disabled:opacity-50">
+              {draftingIdeal ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {draftingIdeal ? "Drafting…" : ideal.trim() ? "Redraft with AI" : "Draft with AI"}
+            </button>
+          </div>
         </div>
       </section>
 
