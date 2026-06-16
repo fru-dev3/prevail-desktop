@@ -25,7 +25,6 @@ import { LoopsPanel } from "./loopspanel";
 import { AgentPickerRail, DomainContextDrawer, DomainPrefsPanel } from "./domainpanels";
 import { HomeBriefing } from "./recommendationspanel";
 import { HomeBenchScheduledBadge } from "./cards";
-import { CouncilPanelStrip } from "./council";
 import type { ChatEvent, ChatMessage, CliInfo, ContextScore, Domain, DomainContextBundle, DomainTab, EngineApp, LifeReadiness, SkillEntry, ThreadMeta, ThreadTurn } from "./types";
 import type { UnlistenFn } from "./bridge";
 
@@ -2059,9 +2058,8 @@ export function ChatPanel({
           )}
           {/* Single inline toolbar: + then the per-domain toggles,
               then a spacer, then model picker / council / send. */}
-          {/* G2 (Monday feedback): the council panel, visible right in the chat
-              canvas (icon + provider + model), updating as you edit it in Settings. */}
-          <CouncilPanelStrip className="mt-2" />
+          {/* G2: the council roster lives in the COUNCIL panel, not here — this is
+              single-model Chat, so showing the full council was confusing. */}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <div className="relative" ref={plusMenuRef}>
               <button
