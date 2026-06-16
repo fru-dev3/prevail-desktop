@@ -236,6 +236,15 @@ export function ChatPanel({
     window.addEventListener("prevail:omega-changed", load);
     return () => window.removeEventListener("prevail:omega-changed", load);
   }, [vaultPath]);
+  // The user's profile / identity (vault/user.md, falling back to profile.md) —
+  // who they are. Auto-injected into every turn so the model always has the
+  // person's real context without a manual $attach. (Founder feedback: profile +
+  // ideal state should come automatically.)
+  const [userMd, setUserMd] = useState<string>("");
+  useEffect(() => {
+    if (!vaultPath) { setUserMd(""); return; }
+    invoke<string>("read_user_md", { vault: vaultPath }).then(setUserMd).catch(() => setUserMd(""));
+  }, [vaultPath]);
   // Distilled long-term memory for this domain — prepended to prompts like
   // user.md so the assistant remembers across sessions (self-learning loop).
   const [memoryMd, setMemoryMd] = useState<string>("");
@@ -1155,6 +1164,11 @@ export function ChatPanel({
       ? primedContext.map((c) => `--- ${c.label} ---\n${c.body.trim()}\n`).join("\n") + "\n"
       : "";
     const userPreamble = buildIdealStatePreamble(idealMd);
+    // The person's profile/identity — auto-injected so the model always knows who
+    // it's helping (no manual attach). Sits just under the Ideal State.
+    const profilePreamble = userMd.trim()
+      ? `# WHO YOU'RE HELPING — the user's profile. Use this as ground truth about them.\n${userMd.trim().slice(0, 2500)}\n\n`
+      : "";
     // Omega: app-wide learned context, just below the Ideal State, above memory.
     const omegaPreamble = buildOmegaPreamble(omegaMd);
     // Self-learning: prepend the distilled long-term memory for this domain.
@@ -1171,8 +1185,8 @@ export function ChatPanel({
     const history = buildChatContext(messages, 40000);
     const promptText = fwLens.buildPrompt(
       history
-        ? `${userPreamble}${omegaPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}You are mid-conversation. Below is the prior turn history; use it as context but do NOT repeat it back to the user.\n\n--- PRIOR TURNS ---\n${history}\n--- END PRIOR TURNS ---\n\nUser's next message: ${visible}`
-        : `${userPreamble}${omegaPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}${visible}`
+        ? `${userPreamble}${profilePreamble}${omegaPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}You are mid-conversation. Below is the prior turn history; use it as context but do NOT repeat it back to the user.\n\n--- PRIOR TURNS ---\n${history}\n--- END PRIOR TURNS ---\n\nUser's next message: ${visible}`
+        : `${userPreamble}${profilePreamble}${omegaPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}${visible}`
     );
     pushHistory(visible);
     setAttachments([]);
