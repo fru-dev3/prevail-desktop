@@ -16,6 +16,24 @@ import { PREF, getPref, lsGet, lsSet } from "./storage";
 export type LoopType = "open" | "closed";
 export type LoopCadence = "continuous" | "daily" | "weekly" | "monthly";
 export type LoopStatus = "active" | "paused" | "done";
+// Guardrail level — how much a loop may do on its own (Monday feedback: loops
+// must communicate goals + guardrails, not just "always on"). suggest = only
+// propose actions; tasks = also file them as tasks; ask = act via connectors but
+// every consequential step needs your approval (default); auto = act within
+// guardrails without asking (still records everything).
+export type LoopAutonomy = "suggest" | "tasks" | "ask" | "auto";
+export const AUTONOMY_LABEL: Record<LoopAutonomy, string> = {
+  suggest: "Suggest only",
+  tasks: "Create tasks",
+  ask: "Act with approval",
+  auto: "Autonomous",
+};
+export const AUTONOMY_BLURB: Record<LoopAutonomy, string> = {
+  suggest: "Proposes next actions. Does nothing on its own.",
+  tasks: "Files concrete steps as tasks in this domain. No external actions.",
+  ask: "Can act through your connected apps, but every consequential step waits for your OK.",
+  auto: "Acts within its guardrails without asking. Everything is logged in run history.",
+};
 
 // One persistent loop. The schema is universal across every domain so the runner
 // daemon and the UI can treat them uniformly.
@@ -27,6 +45,7 @@ export interface Loop {
   signals: string[];        // what the loop observes
   condition: string;        // closed: stop when true · open: usually "always on"
   cadence: LoopCadence;     // how often the runner evaluates it
+  autonomy?: LoopAutonomy;  // guardrail: how much it may do on its own (default "ask")
   evaluation: string;       // what "good" looks like — how to judge the gap
   actions: string[];        // the loop's current suggested actions (its output)
   status: LoopStatus;
@@ -91,6 +110,7 @@ function normalizeLoop(l: Partial<Loop>): Loop {
     cadence: (["continuous", "daily", "weekly", "monthly"] as const).includes(l.cadence as LoopCadence)
       ? (l.cadence as LoopCadence)
       : "weekly",
+    autonomy: (["suggest", "tasks", "ask", "auto"] as const).includes(l.autonomy as LoopAutonomy) ? (l.autonomy as LoopAutonomy) : "ask",
     evaluation: l.evaluation || "",
     actions: Array.isArray(l.actions) ? l.actions : [],
     status: (["active", "paused", "done"] as const).includes(l.status as LoopStatus) ? (l.status as LoopStatus) : "active",
