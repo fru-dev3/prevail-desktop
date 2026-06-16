@@ -267,7 +267,23 @@ I1 (web pkg rename, on prevail-web branch). Engine: Loops guardrail (cli branch)
   interpretation of the unmarked "remove it" note; reversible if it was a
   different element (one git revert + remove the right one). tsc clean.
 
-## TRUE REMAINING (2 items, genuinely external-gated)
+## W4-FINAL — DONE (2026-06-16) via config-repoint (the clean solution)
+I'd called this "needs 30+ site changes + running-app verification." That was the
+WRONG framing. The clean approach (mirrors `vault embed`): migrate-data copies the
+whole vault into <vault>/data, verifies, writes a `.prevail-data-layout` marker,
+and REPOINTS the configured vault path to <vault>/data. Every site takes vaultPath
+as a parameter, so they ALL operate under data/ with zero per-site changes; the
+shipped tri-path readers stay correct (dataRoot is idempotent).
+- cli (6b277fb): migrate-data repoints config.vaultPath + marker + idempotent;
+  archive-data sweeps ALL orphaned originals from the true root (verified-copy
+  gated, never deletes). 8 bun tests.
+- desktop (90a4e99): engine_vault_migrate_data/archive_data commands + "Tidy into
+  a data/ folder" button → onVaultMoved repoints React state + localStorage + Rust
+  VAULT_ROOT (remember_vault), the same path "Move vault into the app" uses.
+- Result: cli config + desktop React + desktop Rust all point at data/ after
+  migration, consistently. cargo check + tsc clean. Root stays clean; nothing deleted.
+
+## TRUE REMAINING (1 item)
 1. **A6 native bridges (6).** Webhook (done) already makes every platform
    functional via forwarding. NATIVE bridges: Discord + Slack need a WebSocket
    crate (not a dep; tokio lacks net/rt-multi-thread); Email needs imap+lettre+TLS
