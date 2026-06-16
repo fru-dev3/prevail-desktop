@@ -203,7 +203,7 @@ so they're left for a focused pass rather than blind overnight edits:
 - [x] **P4** (0e93baf) — About drops the Tauri/React/Tailwind mention.
 
 ## DEFINITIVE STATUS (2026-06-16, updated)
-**Done (28), all build-verified + committed (desktop + cli + web branches):**
+**Done (30), all build-verified + committed (desktop + cli + web branches):**
 B4, B5, B6, M1, M4, M5, M6, M7, A1, A2, A3, A5, C1, C2, G2, G3, K1, K3, K4, K5, W1, W2,
 P1 (Telegram toggle), P4, O1 (onboarding tour), **Loops L1/L2/L3**, I1. Plus confirmations: A4 (detection works),
 K6 (grounding shipped via BENCH-3 + _log grounding).
