@@ -259,3 +259,31 @@ I1 (web pkg rename, on prevail-web branch). Engine: Loops guardrail (cli branch)
 - Genuinely blocked: A6 (7 real bot integrations — external creds, days of work), W4 (vault
   on-disk move — data-loss risk; needs a tested migrator), B3 (Untitled-thread stub lifecycle —
   needs the running app), K2/P2/P3 (need founder to point at the element/panel).
+
+## DEEP-DIVE (2026-06-15) — B1/B2/W4 traced to source, line by line
+- **B1 (drag domain → context):** FULLY WIRED, no broken link found. Sidebar domain rows use a
+  manual mouse-drag (sidebar.tsx:447-495 — HTML5 DnD is unreliable in WKWebView) that, on mouseup
+  after movement, calls `window.__prevailAttach(name, mode)`. That hook is registered by ChatPanel
+  (chatpanel.tsx:1374-1385) → `attachDomainAsContext` (1317) → `domain_context` (layout-aware) →
+  `injectContext` as a chip. Apps use the identical pattern (`__prevailAttachApp`) and the founder
+  didn't report apps broken — so the mechanism works. Caveat: the hook only exists while ChatPanel
+  is mounted; dragging while on a non-chat tab logs "no attach hook" (expected). Verdict: not
+  reproducible by inspection; needs a live drag to catch any residual (likely already fixed).
+- **B2 (`$domain` + Enter):** code path is correct. `dollarMatch` (chatpanel.tsx:523) regex
+  `/(^|\s)\$([a-zA-Z0-9_-]*)$/` matches `$Wealth` at caret; `dollarCandidates` (533) filters
+  domains by substring; Enter (1882-1898) routes to `applyDollarCompletion` when candidates exist,
+  else falls through to send(). For the documented "type $Wealth at end, Enter" flow this resolves
+  correctly. ONE latent smell (not a confirmed bug): both `slashMatch` (482) and `dollarMatch`
+  read `taRef.current.selectionStart` inside a useMemo keyed on `[input]` — a render-phase DOM
+  read. For append-at-end typing the browser has already updated the caret, so it's correct; it
+  could only misbehave mid-string. A defensive fix (track caret in state) would touch BOTH popover
+  systems + the textarea handlers = not surgical, unverifiable blind → deliberately NOT done.
+- **W4 (vault on-disk reorg):** confirmed NOT safely one-shot-able blind. The General bucket's
+  loose files (`_decisions.jsonl`, `_intents.jsonl`, `usage.ndjson`, `profile.md`,
+  `AGENTS-operating.md`, `_skillgen/_taskgen.json`) resolve via `domainDir(vault, null) → vault
+  root` and are read/written BYTE-FOR-BYTE by THREE processes (prevail-cli, TUI, desktop Rust —
+  decisions.ts:34, daemon-learn.ts, mcp-server.ts:458, score.ts:194, cli-bridge.ts:796, plus
+  src-tauri/src/lib.rs). Relocating them under `data/` requires a coordinated change across all
+  three + a tested copy-then-verify migrator (never move/delete), then live verification that all
+  three still agree. That is a dedicated, multi-repo, app-running task — exactly the "blind
+  overnight edit" risk the founder warned against. Spec deferred until we can run + verify together.
