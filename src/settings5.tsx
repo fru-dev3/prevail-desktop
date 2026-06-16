@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { confirm as tauriConfirm, open, save } from "@tauri-apps/plugin-dialog";
 import { check as checkUpdate } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { Check, Folder, Loader2, Mail, MessageSquare, MessagesSquare, Network, Radio, Send, Sparkles, Wrench, Zap } from "lucide-react";
+import { Check, Folder, Loader2, Mail, MessageSquare, MessagesSquare, Network, Radio, Send, Sparkles, Webhook, Wrench, Zap } from "lucide-react";
 import { siDiscord, siMatrix, siMattermost, siSignal, siTelegram } from "simple-icons";
 import { invoke, listen } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
@@ -63,6 +63,7 @@ export function GatewaySection() {
         >
           <div className="space-y-4">
             <TelegramCard />
+            <WebhookCard />
             <WhatsAppCard />
           </div>
         </CollapsibleSection>
@@ -340,6 +341,124 @@ export function TelegramCard() {
           {" "}New to bots? <a href="https://core.telegram.org/bots/features#botfather" target="_blank" rel="noreferrer" className="text-accent hover:underline">Create one via @BotFather</a>, then use getUpdates to find your chat ID.
         </p>
       </div>
+    </div>
+  );
+}
+
+// A6 — generic inbound Webhook surface. Credential-free (a self-generated
+// secret), so it's the one bridge that's fully functional out of the box: any
+// system POSTs {message} and gets the council's reply. Backend: webhook_bridge.rs.
+export function WebhookCard() {
+  const [secretSaved, setSecretSaved] = useState(false);
+  const [port, setPort] = useState<string>(() => lsGet("prevail.webhook.port") || "8765");
+  const [cli, setCli] = useState(lsGet("prevail.webhook.cli") || "claude");
+  const [model, setModel] = useState(lsGet("prevail.webhook.model"));
+  const verify = useCliVerifyLive();
+  const [clis, setClis] = useState<CliInfo[]>([]);
+  const [bridge, setBridge] = useState<TgBridgeStatus | null>(null);
+  const [status, setStatus] = useState<{ kind: "idle" | "ok" | "err"; msg: string }>({ kind: "idle", msg: "" });
+  const routable = clis.filter((c) => c.available && verify.get(c.id)?.status !== "failed");
+
+  useEffect(() => { invoke<CliInfo[]>("detect_clis").then(setClis).catch(() => {}); }, []);
+  useEffect(() => { invoke<boolean>("provider_key_exists", { provider: "webhook" }).then((ok) => setSecretSaved(!!ok)).catch(() => {}); }, []);
+  useEffect(() => { lsSet("prevail.webhook.port", port); }, [port]);
+  useEffect(() => { lsSet("prevail.webhook.cli", cli); }, [cli]);
+  useEffect(() => { lsSet("prevail.webhook.model", model); }, [model]);
+  useEffect(() => {
+    if (routable.length > 0 && !routable.some((c) => c.id === cli)) setCli(routable[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clis, verify]);
+
+  async function refresh() {
+    try { setBridge(await invoke<TgBridgeStatus>("webhook_bridge_status")); } catch { /* ignore */ }
+  }
+  useEffect(() => {
+    void refresh();
+    const id = window.setInterval(() => void refresh(), 3000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  async function generateSecret() {
+    // 32 random bytes, hex — generated in the renderer only to seed the Keychain.
+    const buf = new Uint8Array(32);
+    crypto.getRandomValues(buf);
+    const hex = Array.from(buf).map((b) => b.toString(16).padStart(2, "0")).join("");
+    try {
+      await invoke("provider_key_set", { provider: "webhook", key: hex });
+      setSecretSaved(true);
+      setStatus({ kind: "ok", msg: "secret generated + saved to Keychain ✓" });
+    } catch (e) { setStatus({ kind: "err", msg: String(e) }); }
+  }
+
+  async function toggle(on: boolean) {
+    try {
+      if (!on) { await invoke("webhook_bridge_stop"); await refresh(); return; }
+      if (!secretSaved) { setStatus({ kind: "err", msg: "generate a secret first" }); return; }
+      let routes: { domain: string; keywords: string[] }[] = [];
+      let vault: string | null = null;
+      try {
+        vault = lsGet(LS.vault) || null;
+        if (vault) {
+          const ds = await invoke<{ name: string }[]>("scan_vault", { path: vault });
+          routes = ds.map((d) => ({
+            domain: d.name,
+            keywords: (lsGet(`prevail.domain.${d.name}.routing.keywords`) || "").split(",").map((s) => s.trim()).filter(Boolean),
+          }));
+        }
+      } catch { /* routing best-effort */ }
+      await invoke("webhook_bridge_start", {
+        cfg: { port: Number(port) || 8765, secret: "", cli, model: model || null, domain: null, vault, routes },
+      });
+      setStatus({ kind: "idle", msg: "" });
+      await refresh();
+    } catch (e) { setStatus({ kind: "err", msg: String(e) }); }
+  }
+
+  const running = !!bridge?.running;
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <GatewayMark mono={Webhook} />
+          <div>
+            <div className="text-sm font-semibold text-text-primary">Webhook</div>
+            <div className="text-xs text-text-muted">Any system POSTs a message, gets the council's reply. No platform account needed.</div>
+          </div>
+        </div>
+        <Toggle on={running} onChange={(v) => void toggle(v)} disabled={!secretSaved} label={running ? "On" : "Off"} />
+      </div>
+
+      <div className="mt-3 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 text-xs">
+        <span className="text-text-muted">Port</span>
+        <input value={port} onChange={(e) => setPort(e.target.value.replace(/[^0-9]/g, ""))} disabled={running}
+          className="w-24 rounded-md border border-border bg-background px-2 py-1 font-mono focus:border-accent-border focus:outline-none disabled:opacity-60" />
+        <span className="text-text-muted">Model</span>
+        <div className="flex items-center gap-2">
+          <select value={cli} onChange={(e) => setCli(e.target.value)} disabled={running}
+            className="rounded-md border border-border bg-background px-2 py-1 focus:border-accent-border focus:outline-none disabled:opacity-60">
+            {routable.length === 0 ? <option value={cli}>{cli}</option> : routable.map((c) => <option key={c.id} value={c.id}>{c.id}</option>)}
+          </select>
+          <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="model (optional)" disabled={running}
+            className="flex-1 rounded-md border border-border bg-background px-2 py-1 focus:border-accent-border focus:outline-none disabled:opacity-60" />
+        </div>
+        <span className="text-text-muted">Secret</span>
+        <div className="flex items-center gap-2">
+          <span className={secretSaved ? "text-ok" : "text-text-muted"}>{secretSaved ? "✓ stored in Keychain" : "none yet"}</span>
+          <button onClick={generateSecret} disabled={running}
+            className="rounded border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+            {secretSaved ? "regenerate" : "generate"}
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-md border border-border-subtle bg-background px-3 py-2 font-mono text-[10px] text-text-muted">
+        curl -s 127.0.0.1:{port || "8765"}/hook -H "Authorization: Bearer &lt;secret&gt;" \<br />
+        &nbsp;&nbsp;-d '{`{"message":"how's my runway?","domain":"wealth"}`}'
+      </div>
+      {running && bridge && (
+        <div className="mt-2 font-mono text-[10px] text-text-muted">in {bridge.inbound_count ?? 0} · out {bridge.outbound_count ?? 0}{bridge.last_error ? ` · err: ${bridge.last_error.slice(0, 50)}` : ""}</div>
+      )}
+      {status.msg && <div className={`mt-2 text-xs ${status.kind === "err" ? "text-danger" : status.kind === "ok" ? "text-ok" : "text-text-muted"}`}>{status.msg}</div>}
     </div>
   );
 }
