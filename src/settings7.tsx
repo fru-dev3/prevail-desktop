@@ -5,15 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, ChevronDown, Clock, Globe, Layers, Loader2, RotateCw, Sparkles, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
-import { DISCOVERED_MODELS, MODELS, SETTINGS_ROW } from "./constants";
+import { DISCOVERED_MODELS, MODELS } from "./constants";
 import { refreshDiscoveredModels } from "./helpers2";
 import { LS, lsGet, lsSet } from "./storage";
-import { DirectProviderMark } from "./panels";
 import { SettingsHeader } from "./sectionutil";
 import { autoVerifyClis, setCliVerify, useCliVerifyLive } from "./verify";
 import { ProviderMark } from "./marks";
 import { AgentsSection } from "./settings6";
-import { DIRECT_PROVIDERS_SOON, OrVendorMark, orVendorOf } from "./providermarks";
+import { OrVendorMark, orVendorOf } from "./providermarks";
 import type { CliInfo } from "./types";
 
 // Auto-refresh cadence: how often model lists re-discover and providers
@@ -268,19 +267,9 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
           )}
         </div>
       </div>
-      <div className="mt-4">
-        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Direct providers</div>
-        {/* Shared list-row spec (see SETTINGS_ROW): single column, comfortable. */}
-        <div className="space-y-2">
-          {DIRECT_PROVIDERS_SOON.map((p) => (
-            <div key={p.name} className={SETTINGS_ROW}>
-              <DirectProviderMark p={p} />
-              <span className="flex-1 text-sm text-text-secondary">{p.name}</span>
-              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* B6 (Monday feedback): the "Direct providers" list used to render here too,
+          duplicating the dedicated "Direct Providers" section in ModelsSection.
+          Removed — Direct Providers lives in its own section now. */}
     </>
   );
 }
