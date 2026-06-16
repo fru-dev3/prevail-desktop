@@ -393,6 +393,8 @@ pub fn run() {
             engine::engine_lock_reset,
             engine::engine_biometric_authenticate,
             idealstate::ideal_state_versions,
+            idealstate::read_domain_ideal,
+            idealstate::write_domain_ideal,
             engine::engine_vault_status,
             engine::mcp_test_handshake,
             engine::headless_learn_status,
