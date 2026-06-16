@@ -422,7 +422,8 @@ export function BenchQuestions({
                     {q.source === "ai" ? "AI-suggested" : "written by you"}{q.created ? ` · added ${q.created}` : ""}{q.edited ? ` · edited ${q.edited} (prior version kept)` : ""}
                   </div>
                 </div>
-                {q.council && <Scale className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />}
+                {/* K3 (Monday feedback): tooltip on the per-question icon. */}
+                {q.council && <span title="Council question: asked to the whole panel" className="mt-0.5 shrink-0"><Scale className="h-3.5 w-3.5 text-text-muted" /></span>}
               </button>
               <button
                 onClick={() => void setArchived(q, true)}
