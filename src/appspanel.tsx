@@ -129,7 +129,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       <SettingsHeader
         title="Apps"
         icon={Plug}
-        subtitle="The services that feed your vault. Each app is connected ONCE and then made available to any domain's context (no duplicates), syncing real data on a schedule so everything downstream stays grounded in your actual life. Describe what you want from an app and Prevail figures out how to connect it."
+        subtitle="Services that feed your vault. Connect each one once, then it's available to any domain's context. No duplicates."
       />
 
       {/* Connect — one goal sentence, not forms. */}
@@ -330,7 +330,16 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
         )}
       </div>
       {open && (
-        <div className="space-y-3 border-t border-border-subtle px-4 py-4 pl-[60px] text-[13px]">
+        <div className="relative space-y-3 border-t border-border-subtle px-4 py-4 pl-[60px] text-[13px]">
+          {/* P3 (Monday feedback): clicking the card header collapses this, but a
+              tiny explicit close affordance is clearer. */}
+          <button
+            onClick={onToggle}
+            title="Close details"
+            className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
           {app.account?.label && <Detail label="Account">{app.account.label}{app.account.address ? ` · ${app.account.address}` : ""}</Detail>}
           <Detail label="Method">
             <span className="inline-flex flex-wrap items-center gap-2">
