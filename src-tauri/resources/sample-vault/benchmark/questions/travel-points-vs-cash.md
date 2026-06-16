@@ -14,8 +14,8 @@ We have a pile of credit card points. Should we burn them on this trip or pay ca
 
 ## Context
 
-Family trip to Lima being planned. Points balance accumulated from regular spend; no specific other redemption planned.
+Family holiday trip to see relatives being planned. Points balance accumulated from regular spend; no specific other redemption planned.
 
 ## Notes
 
-A good answer says use points where they deliver the best cents-per-point (typically long-haul flights) and pay cash where redemptions are poor, rather than hoarding points that quietly devalue.
+A good answer says use points where they deliver the best cents-per-point (typically flights when cash fares are high over the holidays) and pay cash where redemptions are poor, rather than hoarding points that quietly devalue.

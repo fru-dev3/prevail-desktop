@@ -14,7 +14,7 @@ Several big decisions are stacking up. In what order should I tackle them so not
 
 ## Context
 
-Open decisions: replace HVAC before summer, plan the Aug RSU vest sell/tax, decide on the Lima trip, keep the Staff packet moving, grow consulting toward the $8k/mo trigger.
+Open decisions: replace HVAC before summer, plan the Aug RSU vest sell/tax, decide on the Phoenix trip, keep the Staff packet moving, grow consulting toward the $8k/mo trigger.
 
 ## Notes
 

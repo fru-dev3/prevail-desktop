@@ -14,7 +14,7 @@ There's too much going on: promo packet, consulting, the HVAC decision, a possib
 
 ## Context
 
-Cross-domain: Staff promo (career), consulting growth (wealth), HVAC replacement (homestead), Lima trip (travel), RSU vest approaching (wealth/tax). One household, finite time.
+Cross-domain: Staff promo (career), consulting growth (wealth), HVAC replacement (homestead), Phoenix trip (travel), RSU vest approaching (wealth/tax). One household, finite time.
 
 ## Notes
 

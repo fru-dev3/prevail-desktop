@@ -8,7 +8,7 @@ source: seed
 
 # Trip blueprint
 
-Run when a trip moves from idea to intent (see the Lima and Portland threads).
+Run when a trip moves from idea to intent (see the Phoenix and Thanksgiving threads).
 
 1. **Frame.** Dates, budget ceiling, and the trip's one purpose (rest,
    adventure, people, food). Trips fail by trying to be everything.

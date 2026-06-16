@@ -11,14 +11,14 @@ schema: 2
 
 **Last updated:** 2026-06-10
 
-**Next trip:** Portland, OR — in 3 weeks
-**Planned:** Lima, Peru in December
-**Wishlist:** Cusco / Machu Picchu with Maya, Japan 2027
+**Next trip:** Phoenix, AZ - in July (rental check-in)
+**Planned:** Thanksgiving with family in November
+**Wishlist:** a national-parks road trip with Maya, Japan 2027
 
 ## Where things stand
-A Portland long weekend is three weeks out ($1,800 budget). The big one is December: the annual trip to Lima to see Rosa & Miguel — and to show Maya more of where Jordan grew up. Booking early keeps the holiday fares sane (see calendar), and the trip is already penciled into the wealth budget.
+A short Phoenix trip is coming in July - mostly a rental check-in on the condo, with a couple of family days around it. The bigger one is Thanksgiving with family in November. Booking the Phoenix flights early keeps the fares sane (see calendar), and both trips are already penciled into the wealth budget.
 
 ## Open Items
-- [ ] December family visit to Lima _(also: calendar, wealth)_
-- [ ] Book Lima flights before holiday fares climb
-- [ ] Renew Maya's passport ahead of December
+- [ ] Phoenix trip in July (rental check-in) _(also: calendar, wealth)_
+- [ ] Book Phoenix flights before summer fares climb
+- [ ] Confirm Thanksgiving plans and travel dates

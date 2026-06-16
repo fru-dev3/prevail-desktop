@@ -11,13 +11,13 @@ schema: 2
 
 **Last updated:** 2026-06-10
 
-**Currently:** CBM coursework
+**Currently:** system design / Staff Engineer prep
 **Books this year:** 5 of 12
-**At homestead:** helping Maya with Spanish reading on weekends
+**On the side:** reading on technical leadership and mentoring
 
 ## Where things stand
-The CBM credential is the work-relevant one — it's the box to check before the Area Manager conversation (see career), and the coursework is about 60% done. On the lighter side, 5 of 12 books, and weekend Spanish reading with Maya that's as much about keeping Lima close as it is about literacy.
+The work-relevant track is system design and Staff Engineer prep - sharpening the depth and breadth the Q4 packet rests on (see career), and it's about 60% of the way to where Alex wants it. On the lighter side, 5 of 12 books this year, a mix of leadership reading and one novel for the plane.
 
 ## Open Items
-- [ ] Finish the last CBM module before the July review
+- [ ] Work through the next system design topic before the comp review
 - [ ] Pick the next book (target: 12)

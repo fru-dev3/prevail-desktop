@@ -3,9 +3,9 @@
 > Skills read this file to personalize their output.
 
 ## Trips
-next: Portland, OR (in 3 weeks) — family long weekend, budget $1,800
-planned: Lima, Peru (December) — annual family visit (holidays with Rosa & Miguel)
+next: Phoenix, AZ (in July) - rental check-in plus a couple of family days, budget $1,800
+planned: Thanksgiving with family (November)
 
 ## Wishlist
-- Cusco / Machu Picchu with Maya
+- a national-parks road trip with Maya
 - Japan 2027

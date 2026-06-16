@@ -1,8 +1,8 @@
 # Profile
 
-**Jordan Smith** — 29, Senior Branch Manager at Frontera Bank, Austin, TX.
-Born in Lima, Peru; immigrated 2011 (age 14), naturalized 2018. Bilingual Spanish (native) / English (fluent).
-Household: Sam Smith (28, Physical Therapist) and Maya Smith (3).
-Net worth $133,980 · filing married filing jointly · TX.
+**Alex Rivera** — 34, Senior Software Engineer at TechFlow Inc., Austin, TX.
+Running a side practice, Alex Rivera Consulting LLC, while going for the Staff Engineer promotion.
+Household: Jordan Rivera (35, UX Designer at Designify) and Maya Rivera (6).
+Net worth ~$423,000 · filing married filing jointly · TX.
 
 _Synthetic demo data — one consistent household across every domain._

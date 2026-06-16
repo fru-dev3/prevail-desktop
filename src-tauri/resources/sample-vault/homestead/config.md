@@ -3,13 +3,13 @@
 > Skills read this file to personalize their output.
 
 ## The house
-address: 2117 Cedar Hollow Dr, Austin, TX 78704
-bought: 2024
+address: 4412 Bluebonnet Ln, Austin, TX 78745
+bought: May 2023
 
 ## HVAC
-unit: 2016 Carrier (came with the house)
+unit: 2016 Carrier (single unit, came with the house)
 status: near end of life
-replacement_quote: $6,850
+replacement_quote: ~$9,000
 
 ## Maintenance
 - furnace filter due

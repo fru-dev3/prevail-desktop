@@ -176,34 +176,34 @@ It's been 18 months since my last compensation review. Should I push for a base 
 
 ### reply
 
-Grounding this in your vault (Jordan — Senior Branch Manager at Frontera, base $90K, ~$50K equity grant with the next lot vesting Aug 15, July mid-year review coming up):
+Grounding this in your vault (Alex - Senior Software Engineer at TechFlow, base $145K, 5,000 RSUs vesting over 4 years with the next tranche on Aug 15, going for Staff this year):
 
-## Lead with base. Use the RSU refresh as the secondary ask — don't trade one for the other.
+## Lead with base. Use the RSU refresh as the secondary ask - don't trade one for the other.
 
 **Why base comes first for *your* situation specifically:**
 
-- **Your package is already equity-heavy for the role.** ~$50K of grant against a $90K base means more than half a year's salary is riding on stock you don't control. For a branch manager, that's a lot of variable comp. Adding *more* RSUs deepens a concentration you should be trimming, not growing.
-- **Base compounds; RSUs don't.** A $6–8K base bump lifts every future raise (they're %-of-base), your bonus math, and your retirement contributions — for as long as you're there and into the next job. A one-time refresh is a single lump that vests and is gone.
-- **It's portable and it raises your floor.** When the Area/District conversation comes, your *base* is the number the next role anchors off. Equity resets; base travels with you. This is the freedom-over-dependency lever — it makes you less hostage to Frontera's stock and to Frontera itself.
-- **You have unusual leverage right now.** 18 months since your last review is overdue, the company is doing well, your manager is in your corner, and you're bilingual in a branch where that's the retention story. That combination rarely lines up. Spend it on the durable asset.
+- **Your equity is a thin slice of the package.** A ~$12.5K/yr RSU stream against a $145K base means the grant is a small fraction of total comp. The bigger lever by far is the base number, and that is where a senior-to-Staff market gap usually hides.
+- **Base compounds; RSUs don't.** A base bump lifts every future raise (they're %-of-base), your bonus math, and your 401k match - for as long as you're there and into the next job. A one-time refresh is a single lump that vests and is gone.
+- **It's portable and it raises your floor.** When you move or get an external offer, your *base* is the number the next role anchors off. Equity resets; base travels with you. This is the freedom-over-dependency lever - it makes you less hostage to TechFlow's stock and to TechFlow itself.
+- **You have unusual leverage right now.** 18 months since your last review is overdue, the company is doing well, your manager is in your corner, and you're delivering at a Staff-track level. That combination rarely lines up. Spend it on the durable asset.
 
-**Where the RSU refresh genuinely earns its place — as ask #2:**
+**Where the RSU refresh genuinely earns its place - as ask #2:**
 
-You're 50% vested, which is *exactly* the point where unvested overhang starts shrinking. As the original grant burns down, your total comp quietly declines unless something replaces it. A refresh's real job is to flatten that cliff and signal you're a retain-and-promote person. So frame it as: *"I'd also like to talk about a refresh to keep my equity whole as the original grant vests down"* — a retention conversation the company is motivated to have, not a raise.
+You're 50% vested, which is *exactly* the point where unvested overhang starts shrinking. As the original grant burns down, your total comp quietly declines unless something replaces it. A refresh's real job is to flatten that cliff and signal you're a retain-and-promote person. So frame it as: *"I'd also like to talk about a refresh to keep my equity whole as the original grant vests down"* - a retention conversation the company is motivated to have, not a raise.
 
-One timing note: the stock being up ~20% cuts both ways on the refresh — a grant today buys fewer shares per dollar. That's another reason to weight the *guaranteed* lever (base) over the *priced-high* one (equity).
+One timing note: the stock being up ~20% cuts both ways on the refresh - a grant today buys fewer shares per dollar. That's another reason to weight the *guaranteed* lever (base) over the *priced-high* one (equity).
 
-## How to actually run it at the July review
+## How to actually run it at the review
 
-1. **Walk in with the district numbers, not the ask.** Your comp is tied to district performance — so open with deposit growth, your bilingual customer retention, team development. Earn the number before you name it.
-2. **Two specific asks, in order:** a base adjustment to *$X* (pull a real market range for Senior Branch Manager in Austin — I can help you find that), then "and a refresh to keep equity whole."
-3. **Don't accept equity *in lieu of* base.** If they say "we can't move base but here's more RSUs," that's them shifting risk onto you. Counter: "I appreciate the equity — I'd still like to revisit base at the next cycle, can we put that on the calendar?"
+1. **Walk in with impact, not the ask.** Open with the cross-team work and the system-design wins that show Staff-level scope. Earn the number before you name it.
+2. **Two specific asks, in order:** a base adjustment to *$X* (pull a real market range for senior SWEs in Austin - I can help you find that), then "and a refresh to keep equity whole."
+3. **Don't accept equity *in lieu of* base.** If they say "we can't move base but here's more RSUs," that's them shifting risk onto you. Counter: "I appreciate the equity - I'd still like to revisit base at the next cycle, can we put that on the calendar?"
 
-**One blind spot worth naming:** your job, your deposits, *and* your equity are all concentrated in one bank. That's three correlated bets on Frontera. Prioritizing base (and selling vested RSUs to diversify rather than holding) is the move that protects your peace of mind if the sector turns — a banking-sector wobble would hit all three at once.
+**One blind spot worth naming:** your salary *and* your equity are both tied to TechFlow. That's two correlated bets on one company. Prioritizing base (and selling vested RSUs to diversify rather than holding) is the move that protects your peace of mind if the sector turns - a bad quarter would hit both at once.
 
 ---
 
-Want me to pull current Austin market comp for Senior Branch Manager so you walk into July with a defensible number, and draft the talking points (you've already got "Prepare mid-year review talking points" open as a task)?
+Want me to pull current Austin market comp for senior SWEs so you walk into the review with a defensible number, and draft the talking points for the Staff case?
 
 ---
 
@@ -400,7 +400,7 @@ Want this saved to your `fru-career` STATE so Paperclip and the Telegram gateway
 ### prompt
 
 Context:
-Open decisions: replace HVAC before summer, plan the Aug RSU vest sell/tax, decide on the Lima trip, keep the Staff packet moving, grow consulting toward the $8k/mo trigger.
+Open decisions: replace HVAC before summer, plan the Aug RSU vest sell/tax, decide on the Phoenix trip, keep the Staff packet moving, grow consulting toward the $8k/mo trigger.
 
 Several big decisions are stacking up. In what order should I tackle them so nothing important slips?
 
@@ -413,7 +413,7 @@ Here's how I'd sequence these — the key insight is that only two of the five a
 **1. HVAC — decide and book within days.** This is the most time-sensitive item on the board, and it's the one most likely to slip from "manageable" to "miserable." It's June 12; summer heat and contractor lead times both spike from here. Waiting risks a failure during a heat wave (health + comfort hit) *and* peak pricing with multi-week installation queues. The decision itself is small — get 2–3 quotes, pick one — but the *window* is closing. Knock it out first.
   - Risk to surface: this is a real cash outlay. Don't drain reserves right before the Aug vest — see #2.
 
-**2. RSU vest plan — design now, execute in August.** The vest has a hard date, but the *decision* (how much to sell, tax withholding, what the proceeds fund) needs to exist **before** the vest, not on the day. Two months is the right lead time to model the tax hit, decide sell-to-cover vs. sell-more, and earmark proceeds. This is also where HVAC and Lima get funded — so building the plan now lets the other items draw against a known number instead of guessing.
+**2. RSU vest plan — design now, execute in August.** The vest has a hard date, but the *decision* (how much to sell, tax withholding, what the proceeds fund) needs to exist **before** the vest, not on the day. Two months is the right lead time to model the tax hit, decide sell-to-cover vs. sell-more, and earmark proceeds. This is also where HVAC and the Phoenix trip get funded — so building the plan now lets the other items draw against a known number instead of guessing.
 
 ## Background campaigns (continuous, don't let them stall)
 
@@ -423,11 +423,11 @@ Here's how I'd sequence these — the key insight is that only two of the five a
 
 ## Flexible decision (decide soon, then it's off your plate)
 
-**5. Lima trip — make the go/no-go call once the RSU number is real.** Travel/experience value is high, but the cost of *delay* is mostly money (flights and lodging climb the longer you wait) and calendar friction. So: don't agonize, but don't drift either. Once #2 gives you a funded number, make a clean go/no-go and book it. Deciding *not* to go is also a complete decision — what's expensive is leaving it open.
+**5. Phoenix trip — make the go/no-go call once the RSU number is real.** Travel/experience value is high (and it doubles as a rental check-in), but the cost of *delay* is mostly money (flights climb the longer you wait) and calendar friction. So: don't agonize, but don't drift either. Once #2 gives you a funded number, make a clean go/no-go and book it. Deciding *not* to go is also a complete decision — what's expensive is leaving it open.
 
 ## The order, in one line
 
-**HVAC (book now) → RSU plan (build now, execute Aug) → Lima (decide once RSU number is set) — with Staff packet and consulting running on weekly rails the whole time.**
+**HVAC (book now) → RSU plan (build now, execute Aug) → Phoenix (decide once RSU number is set) — with Staff packet and consulting running on weekly rails the whole time.**
 
 Two cross-cutting risks worth holding in view: **cash-flow sequencing** (HVAC outlay vs. waiting ~8 weeks for vest proceeds — make sure the gap doesn't force a bad short-term money move), and **attention budget** (the two urgent decisions will eat foreground focus in June/July; the weekly rails for Staff and consulting are what keep those from silently regressing while you're heads-down).
 
@@ -515,7 +515,7 @@ I can turn this into the actual review the moment you give me the missing pieces
 ### prompt
 
 Context:
-Cross-domain: Staff promo (career), consulting growth (wealth), HVAC replacement (homestead), Lima trip (travel), RSU vest approaching (wealth/tax). One household, finite time.
+Cross-domain: Staff promo (career), consulting growth (wealth), HVAC replacement (homestead), Phoenix trip (travel), RSU vest approaching (wealth/tax). One household, finite time.
 
 There's too much going on: promo packet, consulting, the HVAC decision, a possible trip. What should I actually focus on this week?
 
@@ -540,11 +540,11 @@ This is an hour of work guarding a four- or five-figure outcome. Do it early in 
 **Consulting.** Maintain existing commitments, but don't launch anything new this week. It's your freedom-building system long-term and worth real energy — just not in a week already carrying a promo deadline and a vest. Starving it for one week costs nothing; cannibalizing the packet for it could cost a promo cycle.
 
 ## Time-box, then close it
-**Lima.** Give it 30 minutes: if dates are firm, book the flights now (price only goes up) and shelve detailed planning. If dates aren't firm, park it entirely until the packet is in. The relationship/experience value is real, but the *planning* doesn't have to happen this week — only the booking decision, if there's price decay.
+**Phoenix.** Give it 30 minutes: if dates are firm, book the flights now (price only goes up) and shelve detailed planning. If dates aren't firm, park it entirely until the packet is in. The trip doubles as a rental check-in, but the *planning* doesn't have to happen this week — only the booking decision, if there's price decay.
 
 ---
 
-**The week in one line:** Vest check Monday → packet as the daily centerpiece → HVAC quotes out the door (decide on bids) → consulting on maintenance → Lima booked-or-parked in 30 minutes.
+**The week in one line:** Vest check Monday → packet as the daily centerpiece → HVAC quotes out the door (decide on bids) → consulting on maintenance → Phoenix booked-or-parked in 30 minutes.
 
 Two facts would reorder this: **when's the packet deadline**, and **is the HVAC a true emergency or a planned replacement?** Tell me those and I'll tighten the sequence. Otherwise, the throughline is intentional, not reactive — one thing gets your mind, the rest get a decision and a boundary, so none of them quietly steals the household's finite energy from the others.
 
@@ -1659,51 +1659,51 @@ One caveat: I'm not your CPA, and the "reasonable salary" number is the whole ba
 - cli: claude·opus
 - ms: 24512
 - ok: true
-- expected_decision: yes, file FBAR
-- expected_verdict_keywords: [fbar, fincen, foreign, file, required]
+- expected_decision: yes, file an Arizona nonresident return
+- expected_verdict_keywords: [arizona, nonresident, 140nr, rental, file]
 
 ### prompt
 
 Context:
-US person with a foreign bank account (Banco de Credito del Peru). Balance is ~$11,000 USD equivalent. FBAR threshold is $10,000 aggregate at any point during the year.
+Texas resident (no state income tax) with a Phoenix, AZ rental condo reported on Schedule E, rent $1,350/mo, managed by Sun Valley PM.
 
-I have a BCP savings account in Lima with about $11,000. Do I need to file an FBAR?
+I live in Texas but rent out a condo in Phoenix. Do I need to file an Arizona state tax return for the rental income?
 
 ### reply
 
-No existing FBAR notes in your knowledge base, so here's the answer grounded in the rules.
+No existing state-filing notes in your knowledge base, so here's the answer grounded in the rules.
 
-## Yes — you must file an FBAR
+## Yes — you almost certainly need an Arizona nonresident return
 
-**Why:** The FBAR (FinCEN Form 114) is triggered when the **aggregate** value of all your foreign financial accounts exceeds **$10,000 at any point** during the calendar year. Your BCP account alone hits ~$11,000, so you're over the line.
+**Why:** Rental income is taxed by the state where the property *sits*, not where you live. Arizona sources the income from your Phoenix condo to Arizona, so even though you're a Texas resident, you owe Arizona on that income above its filing threshold. The form is **AZ Form 140NR** (nonresident).
 
-Three things that often trip people up — all work against you here:
+Three things that often trip people up — all relevant here:
 
-1. **It's "at any point," not year-end.** Even if the balance later dropped below $10,000, a single day at $11,000 triggers the requirement. You report the account's *maximum* value during the year.
-2. **It's aggregate across all foreign accounts.** If you have any other non-US accounts (another Peruvian account, a brokerage, even one you're just a signatory on), they all count toward the $10,000 — and once over, *every* foreign account must be reported, not just the one that pushed you over.
-3. **"Financial interest or signature authority" both count** — so accounts you don't own but can sign on are included too.
+1. **Texas having no income tax doesn't make this go away.** Your home state levies nothing, so there's no "credit for taxes paid to another state" to claim back — the Arizona tax is just a cost of holding the property. You can't offset it against a Texas return because there isn't one.
+2. **It's the net rental result that matters.** You report the Schedule E income/loss attributable to Arizona. Depreciation and expenses (the 8% PM fee, insurance, mortgage interest, property tax) flow through, so a paper loss may mean little or no AZ tax — but the *filing* obligation can still apply once gross rents clear the threshold.
+3. **Filing threshold and timing.** Arizona has a gross-income filing threshold for nonresidents; with $1,350/mo (~$16,200/yr) in rents you're over it. The 140NR is due with the federal deadline (April 15), extendable alongside the federal extension.
 
 ## Key facts
 
 | Item | Detail |
 |---|---|
-| **Form** | FinCEN Form 114 (the FBAR) |
-| **Where** | Filed electronically through the BSA E-Filing system — **not** with your 1040, and not to the IRS |
-| **Deadline** | April 15, with an **automatic** extension to October 15 (no request needed) |
-| **Cost** | Free; informational only — filing creates **no tax** |
-| **Max value** | Report the highest USD-equivalent balance during the year (use Treasury's year-end exchange rate to convert from PEN) |
+| **Form** | AZ Form 140NR (nonresident) |
+| **Why** | Arizona-source rental income is taxable where the property is located |
+| **Deadline** | April 15, extendable to October 15 with the federal extension |
+| **Home state** | Texas levies no income tax, so no offsetting credit to claim |
+| **What flows through** | The Schedule E net result attributable to Arizona (depreciation and expenses included) |
 
-## Don't overlook: FATCA / Form 8938
+## Don't overlook: depreciation and recapture
 
-FBAR and **Form 8938** (FATCA, filed *with* your 1040) are separate requirements with different, higher thresholds. At $11,000 you're very likely **under** the 8938 threshold (starts at $50,000 for single filers living in the US, higher if abroad/married), so you probably don't need 8938 — but confirm against your total foreign assets, not just this account.
+Keep claiming depreciation on the condo even when the AZ tax is small — the IRS recaptures depreciation "allowed or allowable" at sale regardless, and Arizona follows the same basis. Skipping it is the worst of both worlds.
 
 ## Why this matters (the real stakes)
 
-FBAR penalties are severe relative to the trivial effort to file — non-willful failure can run up to ~$16,000 per violation, and the form takes 20 minutes. This is pure downside protection: a small, one-time administrative task that removes a disproportionate legal/financial risk. File it.
+A missed nonresident return is an easy, avoidable compliance gap — the kind that surfaces years later with penalties and interest attached. The filing itself is routine once it's set up, and your CPA can fold it into the annual workflow alongside the Schedule E.
 
-**One caveat:** I'm working from the general rules, not a review of your full foreign-asset picture. If you have other foreign accounts or assets, the aggregate math and the 8938 question both shift — worth a quick confirmation with your tax preparer for the year in question.
+**One caveat:** I'm working from the general rules, not a review of your full Arizona picture. Confirm the exact threshold and whether the net rental result produces any AZ tax with your tax preparer for the year in question.
 
-Want me to save an FBAR checklist (or the Treasury year-end PEN→USD rate workflow) to your tax knowledge base so it's ready each filing season?
+Want me to save an Arizona-nonresident checklist (filing threshold, 140NR workflow) to your tax knowledge base so it's ready each filing season?
 
 ---
 
@@ -1905,7 +1905,7 @@ Should I save a note on this property (basis, PM, the land-allocation open quest
 ### prompt
 
 Context:
-Family trip to Lima being planned. Points balance accumulated from regular spend; no specific other redemption planned.
+Family holiday trip to see relatives being planned. Points balance accumulated from regular spend; no specific other redemption planned.
 
 We have a pile of credit card points. Should we burn them on this trip or pay cash and save them?
 
@@ -1926,11 +1926,11 @@ cpp = (cash price you'd otherwise pay) ÷ (points required)
 
 Most portal redemptions (book-travel-through-the-card) are a flat ~1.0–1.5 cpp — mediocre. The outsized value comes from **transferring** transferable points (Amex MR, Chase UR, Capital One, Bilt) to airline/hotel partners.
 
-## Applied to Lima specifically
+## Applied to this trip specifically
 
-- **Flights — usually YES, burn here.** International airfare, especially anything premium-cabin, is where transferable points routinely hit 2–5+ cpp. A family of award economy seats to Lima can also clear the bar when cash fares are high (summer/holiday). This is the highest-leverage use.
-- **Hotels in Lima — usually NO, pay cash.** Lima is an inexpensive hotel market; cash rates are low, so points often redeem at a weak ~0.6–1.0 cpp. Paying cash here *and* earning points on that spend is the better play.
-- **Taxes/fees, tours, food, ground transport — pay cash.** Points rarely apply or apply poorly.
+- **Flights — usually YES, burn here.** Holiday airfare is where transferable points routinely hit 2–5+ cpp, because cash fares spike over the year-end peak. A family of award seats can clear the bar easily when cash prices are high. This is the highest-leverage use.
+- **Hotels — often NO, pay cash.** If you're staying with family or in a cheap market, cash rates are low, so points redeem at a weak ~0.6–1.0 cpp. Paying cash there *and* earning points on that spend is the better play.
+- **Taxes/fees, food, ground transport — pay cash.** Points rarely apply or apply poorly.
 
 ## The risks you're weighing (both directions)
 
@@ -1939,9 +1939,9 @@ Most portal redemptions (book-travel-through-the-card) are a flat ~1.0–1.5 cpp
 
 ## Recommendation
 
-Split it. **Put points against the flights** (the redemption most likely to beat 2 cpp), **pay cash for the cheap Lima hotels and on-the-ground costs** (earning points back on that spend). That captures the trip's best point value, avoids burning them where they're worth least, and — true to spending intentionally rather than reactively — doesn't dump the whole balance just because it's there.
+Split it. **Put points against the flights** (the redemption most likely to beat 2 cpp), **pay cash for the cheap lodging and on-the-ground costs** (earning points back on that spend). That captures the trip's best point value, avoids burning them where they're worth least, and — true to spending intentionally rather than reactively — doesn't dump the whole balance just because it's there.
 
-One thing that changes the math: **which program are the points in?** If you tell me (Amex / Chase / Capital One / a co-brand like Delta or United), I can tell you the specific transfer partners that fly to Lima and whether the award rates are actually worth it right now — happy to dig in if useful.
+One thing that changes the math: **which program are the points in?** If you tell me (Amex / Chase / Capital One / a co-brand like Delta or United), I can tell you the specific transfer partners on your route and whether the award rates are actually worth it right now — happy to dig in if useful.
 
 ---
 
@@ -1958,51 +1958,51 @@ One thing that changes the math: **which program are the points in?** If you tel
 ### prompt
 
 Context:
-Jordan has family in Lima, Peru. Household income $240k but emergency fund still ~3 months and college unfunded. Maya is 6 (school calendar matters).
+Alex and Jordan have family out of state. Household income $240k but emergency fund still ~4 months and the 529 modestly funded. Maya is 6 (school calendar matters).
 
-We're considering a 10-day trip to Lima to see family. Can we afford it this year, and how should we plan it?
+We're considering a 10-day family trip over the holidays to see relatives out of state. Can we afford it this year, and how should we plan it?
 
 ### reply
 
-Short answer: **Yes — a 10-day Lima trip is affordable this year**, *if* you fund it as its own line item and don't pull it from the emergency fund or let it crowd out the two things that are genuinely behind (emergency cushion and college). On $240k, a family trip to family is squarely within reach. The real work is sequencing, not affordability.
+Short answer: **Yes — a 10-day holiday trip is affordable this year**, *if* you fund it as its own line item and don't pull it from the emergency fund or let it crowd out the two things you're still building (the emergency cushion and the 529). On $240k, a family trip to family is squarely within reach. The real work is sequencing, not affordability.
 
 ## Can you afford it?
 
-A 10-day Lima trip where you stay *with family* is cheaper than people expect — lodging, your biggest variable, is largely covered.
+A 10-day trip where you stay *with family* is cheaper than people expect — lodging, your biggest variable, is largely covered.
 
 | Item | Estimate (family of 3) |
 |---|---|
-| Round-trip airfare (US→LIM) | $1,800–2,700 |
+| Round-trip airfare | $900–1,600 |
 | Local food, transport, gifts for hosts | $800–1,500 |
-| Day trips / one big excursion (e.g. Machu Picchu adds ~$1,500–2,500) | $0–2,500 |
+| Day trips / one bigger excursion | $0–1,500 |
 | Buffer / travel insurance | $400 |
-| **Total** | **~$3,500 (family-only) to ~$7,000 (with Machu Picchu)** |
+| **Total** | **~$2,500 (family-only) to ~$5,000 (with an excursion)** |
 
-That's **1.5–3% of gross income**. Affordable — the question is just where the cash comes from.
+That's **1–2% of gross income**. Affordable — the question is just where the cash comes from.
 
 ## How to fund it without setting back your priorities
 
-Your two soft spots are a **3-month emergency fund** (you want 6 on a single-or-dual income with a kid) and **college being unfunded**. Don't trade either for this trip — you don't have to.
+Your two soft spots are the **emergency fund** (you're at ~4 months and want a fuller cushion with a kid and two mortgages) and **keeping the 529 growing**. Don't trade either for this trip — you don't have to.
 
-1. **Open a separate "Lima" sinking fund** and auto-transfer toward it monthly. If you go over US winter break (see below), you have ~6 months — ~$700–1,000/month fully funds even the Machu Picchu version. Booked from savings, not credit, not the cushion.
-2. **In parallel, keep topping the emergency fund toward 6 months.** Both can run at once at this income; the trip doesn't require pausing it.
-3. **Start the college account this year regardless** — even $200/month into a 529 now matters far more than the trip's cost, because Maya's got ~12 years of compounding. Starting it *is* the higher-priority move; the trip just shouldn't be an excuse to keep deferring it.
+1. **Open a separate trip sinking fund** and auto-transfer toward it monthly. If you go over winter break (see below), you have ~6 months — ~$500–800/month fully funds even the version with one excursion. Booked from savings, not credit, not the cushion.
+2. **In parallel, keep topping the emergency fund.** Both can run at once at this income; the trip doesn't require pausing it.
+3. **Keep the 529 contributions running regardless** — the $300/month auto-transfer matters far more than the trip's cost, because Maya's got ~12 years of compounding. Don't let the trip become an excuse to pause it.
 
-If funding all three at once feels tight in a given month, the priority order is: emergency fund top-up → start 529 (small is fine) → trip. The trip waits a season before it touches the cushion.
+If funding all three at once feels tight in a given month, the priority order is: emergency fund top-up → 529 contribution → trip. The trip waits a season before it touches the cushion.
 
 ## How to plan it — timing is the lever
 
-**Go over US winter break (late Dec–early Jan).** Two things line up:
+**Go over winter break (late Dec–early Jan).** Two things line up:
 - **Maya's school calendar** — winter break means no pulled school days for a 6-year-old. (Spring break works too but is shorter than 10 days.)
-- **Weather** — Lima is Southern Hemisphere. Dec–Mar is their *summer* (sunny, warm); Jun–Sep is gray, damp *garúa* overcast. US summer break is Lima's worst weather. So winter break gives you both the school fit *and* the good season.
+- **Cost control** — booking a peak holiday window early is the only way to keep airfare sane.
 
 Trade-off: late-December fares are peak and book up — so **lock flights ~3–4 months out** (by Sept) to control the single biggest cost.
 
 ## The risk worth naming
 
-You framed this as "see family." If those family members include **aging grandparents**, that's a deadline that doesn't show up on a budget — time with elderly relatives, and Maya forming real memories with them at an age she'll actually retain, is finite in a way money isn't. That argues for **this year, not "someday,"** and for prioritizing presence with family over packing the itinerary with tourism. The Machu Picchu add is wonderful but optional; the family time is the point and the thing with a clock on it.
+You framed this as "see family." If those family members include **aging grandparents**, that's a deadline that doesn't show up on a budget — time with elderly relatives, and Maya forming real memories with them at an age she'll actually retain, is finite in a way money isn't. That argues for **this year, not "someday,"** and for prioritizing presence with family over packing the itinerary with tourism. An excursion add is wonderful but optional; the family time is the point and the thing with a clock on it.
 
-**Bottom line:** Affordable yes. Go this winter break, fund it from a dedicated sinking fund over the next ~6 months, book flights by September, and keep the emergency-fund top-up and a (small, new) 529 running alongside it — none of those three has to wait for the others.
+**Bottom line:** Affordable yes. Go this winter break, fund it from a dedicated sinking fund over the next ~6 months, book flights by September, and keep the emergency-fund top-up and the 529 contributions running alongside it — none of those three has to wait for the others.
 
 Want me to sketch the actual month-by-month savings schedule, or rough out a 10-day itinerary that's family-time-first with one optional excursion?
 
@@ -2021,24 +2021,24 @@ Want me to sketch the actual month-by-month savings schedule, or rough out a 10-
 ### prompt
 
 Context:
-Alex, Senior SWE at TechFlow (remote days allowed), Staff packet due Q4. Family trip to Lima being planned.
+Alex, Senior SWE at TechFlow (remote days allowed), Staff packet due Q4. Family holiday trip out of state being planned.
 
-Could I extend the Lima trip and work remotely for part of it, or should I just take PTO?
+Could I extend the holiday trip and work remotely for part of it, or should I just take PTO?
 
 ### reply
 
-Short answer: **take PTO for the family portion, and only "work remotely" as a clean bookend of normal workdays at the start or end of the trip — not blended into the family days.** And before you count on the remote piece at all, confirm one thing (below) that can quietly kill the plan.
+Short answer: **take PTO for the family portion, and only "work remotely" as a clean bookend of normal workdays at the start or end of the trip — not blended into the family days.** And before you count on the remote piece at all, confirm one thing (below) that can quietly complicate the plan.
 
 ## The gating question — check this first
-"Remote days allowed" almost always means *domestic* remote. Working from **Peru**, even for a week, is a different thing for most employers:
-- **Tax / permanent-establishment risk** for the company
-- **Data-security / access policies** (some block logins from foreign IPs)
-- **Work-authorization** technicalities
+"Remote days allowed" usually means working from home, not working from another state for a stretch. Even a week from a different state can raise:
+- **State tax / nexus questions** for the company (working days in another state can create payroll/withholding wrinkles)
+- **Data-security / access policies** in some orgs
+- **Simple expectation-setting** about availability while "away"
 
-So the real first step is a quick, low-drama message to your manager/HR: *"I'm extending a family trip to Lima — can I work a few normal days from there, or is international remote off the table?"* If the answer is no, the decision is made for you: it's PTO. Don't freelance this one; an unapproved foreign login during your Staff window is exactly the kind of avoidable blemish you don't want.
+So the real first step is a quick, low-drama message to your manager: *"I'm extending a family trip — can I work a few normal days from there, or is that a hassle on the company side?"* If the answer is no, the decision is made for you: it's PTO. Don't freelance this one; an unannounced stretch of out-of-state work during your Staff window is exactly the kind of avoidable friction you don't want.
 
-## The timezone is actually in your favor
-Lima is **UTC‑5 — same as US Eastern, no DST.** If your team is US-based, overlap is excellent (full ET overlap, ~3 hrs behind PT). So the logistics aren't the problem. The *presence* tradeoff is.
+## The logistics are usually manageable
+A domestic trip keeps you in a US timezone with easy overlap, so the mechanics aren't the problem. The *presence* tradeoff is.
 
 ## Why I'd lean PTO for the family days
 Two things are colliding, and both matter:
@@ -2049,7 +2049,7 @@ Two things are colliding, and both matter:
 Extend the trip, but **separate the modes in time, not blend them:**
 - **Bookend, don't interleave.** e.g. arrive, work 2–3 normal remote days *up front* (or after the family flies home), then PTO for the family days — or vice versa. Whole days in one mode, clearly communicated to your team and your family.
 - **PTO for every day that overlaps family activity.** No "I'll just hop on for an hour" — that's the trap.
-- If policy blocks international remote: just take PTO for the whole thing. With a healthy PTO balance, that's the clean, low-risk answer anyway.
+- If the company would rather you didn't work out of state: just take PTO for the whole thing. With a healthy PTO balance, that's the clean, low-risk answer anyway.
 
 **Net:** Extend the trip. Make the family days real PTO. Add remote days only as a separate block, and only after a one-line OK from your manager/HR. That keeps the promotion case clean *and* the trip intact — you don't have to trade one for the other if you don't braid them together.
 
@@ -2372,7 +2372,7 @@ Looking at my whole net worth, am I allocated sensibly or too exposed to any one
 
 ### reply
 
-Quick flag before the substance: the numbers on file in this vault are the synthetic "Jordan Smith" sample, so I'm working from the figures you gave me in the prompt, not a stored ledger. I have the *shape* of your balance sheet but not exact dollar balances for the 401k, taxable, and TechFlow position — so I'll give you the judgment, and if you share those three numbers I'll turn it into precise percentages.
+Quick flag before the substance: I'm working from the figures you gave me in the prompt, not a stored ledger. I have the *shape* of your balance sheet but not exact dollar balances for the 401k, taxable, and TechFlow position — so I'll give you the judgment, and if you share those three numbers I'll turn it into precise percentages.
 
 ## The short answer
 You're not poorly diversified across *asset classes* — you've got real estate, retirement, taxable, and equities. The problem is **single-name and single-employer concentration**, and that's the one exposure worth acting on. Everything else is secondary.
