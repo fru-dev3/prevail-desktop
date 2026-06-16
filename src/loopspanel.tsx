@@ -428,37 +428,62 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove }: {
         )}
       </div>
       {open && (
-        <div className="space-y-3 border-t border-border-subtle px-4 py-3 text-[13px]">
-          {loop.purpose && <p className="text-text-secondary">{loop.purpose}</p>}
-          {loop.signals.length > 0 && (
-            <Field label="Signals">
-              <div className="flex flex-wrap gap-1.5">
-                {loop.signals.map((s, i) => <span key={i} className="rounded-full border border-border-subtle bg-background px-2 py-0.5 font-mono text-[10px] text-text-secondary">{s}</span>)}
-              </div>
-            </Field>
+        <div className="space-y-4 border-t border-border-subtle px-4 py-4 text-[13px]">
+          {loop.purpose && <p className="leading-relaxed text-text-secondary">{loop.purpose}</p>}
+
+          {/* Signals + condition — compact "what it watches" metadata row. */}
+          {(loop.signals.length > 0 || loop.condition) && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {loop.signals.length > 0 && (
+                <Field label="Watches">
+                  <div className="flex flex-wrap gap-1.5">
+                    {loop.signals.map((s, i) => <span key={i} className="rounded-md border border-border-subtle bg-background px-2 py-0.5 font-mono text-[10px] text-text-secondary">{s}</span>)}
+                  </div>
+                </Field>
+              )}
+              {loop.condition && (
+                <Field label="Closes when">
+                  <span className="inline-block rounded-md bg-surface-warm px-2 py-0.5 font-mono text-[11px] text-text-secondary">{loop.condition}</span>
+                </Field>
+              )}
+            </div>
           )}
-          {loop.condition && <Field label="Condition"><span className="font-mono text-[12px] text-text-secondary">{loop.condition}</span></Field>}
-          {loop.evaluation && <Field label="What good looks like"><span className="text-text-secondary">{loop.evaluation}</span></Field>}
+
+          {/* The target — highlighted, since the whole loop exists to reach it. */}
+          {loop.evaluation && (
+            <div className="rounded-lg border-l-2 border-accent bg-accent-soft/20 py-2 pl-3 pr-3">
+              <div className="mb-0.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-accent"><Target className="h-3 w-3" /> What good looks like</div>
+              <div className="leading-relaxed text-text-secondary">{loop.evaluation}</div>
+            </div>
+          )}
+
+          {/* Current actions — each a distinct card, not a bullet wall. */}
           {loop.actions.length > 0 && (
-            <Field label="Current actions">
-              <ul className="space-y-0.5">
-                {loop.actions.map((a, i) => <li key={i} className="flex items-start gap-1.5 text-text-secondary"><span className="text-accent">▸</span> {a}</li>)}
+            <Field label={`Current actions · ${loop.actions.length}`}>
+              <ul className="space-y-1.5">
+                {loop.actions.map((a, i) => (
+                  <li key={i} className="flex items-start gap-2 rounded-lg border border-border-subtle bg-background px-3 py-2 leading-relaxed text-text-secondary">
+                    <span className="mt-0.5 shrink-0 font-mono text-[11px] text-accent">{String(i + 1).padStart(2, "0")}</span>
+                    <span>{a}</span>
+                  </li>
+                ))}
               </ul>
             </Field>
           )}
-          {/* L3 (Monday feedback): run history — what work the loop did, when, and
-              the tasks it created. Sourced from the engine's _loops_runtime.json. */}
+
+          {/* L3: run history — a left-railed timeline of what the loop did. */}
           {history.length > 0 && (
             <Field label="Run history">
-              <ul className="space-y-1.5">
+              <ul className="space-y-0 border-l border-border-subtle pl-4">
                 {history.slice(0, 8).map((r, i) => (
-                  <li key={i} className="rounded-lg border border-border-subtle bg-background px-2.5 py-1.5">
+                  <li key={i} className="relative pb-3 last:pb-0">
+                    <span className={`absolute -left-[21px] top-1 h-2 w-2 rounded-full ring-2 ring-surface ${r.done ? "bg-ok" : "bg-accent"}`} />
                     <div className="flex items-center gap-2 font-mono text-[10px] text-text-muted">
-                      <span className={r.done ? "text-ok" : "text-accent"}>{r.done ? "✓ closed" : "▸ ran"}</span>
+                      <span className={r.done ? "text-ok" : "text-accent"}>{r.done ? "closed" : "ran"}</span>
                       <span>{new Date(r.ts).toLocaleString()}</span>
-                      {r.tasksCreated?.length > 0 && <span className="text-text-secondary">· {r.tasksCreated.length} task{r.tasksCreated.length === 1 ? "" : "s"}</span>}
+                      {r.tasksCreated?.length > 0 && <span className="rounded-full bg-surface-warm px-1.5 text-text-secondary">{r.tasksCreated.length} task{r.tasksCreated.length === 1 ? "" : "s"}</span>}
                     </div>
-                    {r.note && <div className="mt-0.5 text-[12px] text-text-secondary">{r.note}</div>}
+                    {r.note && <div className="mt-0.5 text-[12px] leading-relaxed text-text-secondary">{r.note}</div>}
                   </li>
                 ))}
               </ul>
