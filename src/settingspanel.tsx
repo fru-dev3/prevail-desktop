@@ -104,6 +104,8 @@ export function SettingsPanel({
       { id: "intents", label: "Intents", icon: Lightbulb },
       { id: "recommendations", label: "Recommendations", icon: Sparkles },
       { id: "daemons", label: "Routines", icon: Zap },
+      // Memory engine (distillation knobs) belongs with memory, not orphaned in App.
+      { id: "configuration", label: "Memory engine", icon: Brain },
     ]},
     { heading: "Connections", items: [
       { id: "connectors", label: "Apps", icon: Plug },
@@ -123,7 +125,6 @@ export function SettingsPanel({
     { heading: "App", items: [
       { id: "general", label: "General", icon: SettingsIcon },
       { id: "tasks", label: "Tasks", icon: Check },
-      { id: "configuration", label: "Memory engine", icon: Brain },
       { id: "about", label: "About", icon: Github },
     ]},
   ];
