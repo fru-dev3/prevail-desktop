@@ -178,6 +178,10 @@ so they're left for a focused pass rather than blind overnight edits:
 - **Broad polish:** P1 (toggles everywhere — replace Start/Stop text app-wide).
 
 ## Done this session (feat/monday-feedback-0615)
+- [x] **L1/L2/L3 + Loops model** (desktop 6aebe4f · cli b9d12be) — full-width; "How loops work"
+  explainer; create captures GOAL + GUARDRAIL (autonomy suggest/tasks/ask/auto); per-loop
+  guardrail badge/selector + Run history; engine steward honors goal+guardrail. Spec:
+  docs/LOOPS-MODEL.md. (Decided the agentic model myself per "you decide".)
 - [x] **B6** (6f663f2) — removed duplicate "Direct providers" list in Models.
 - [x] **M4** (e9efdcd) — dismiss distilled intents (X per card, persisted) so the list stays short.
 - [x] **C1** (82372c3) — General context panel now has parity with domains (loads vault-root context).
