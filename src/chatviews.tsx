@@ -461,19 +461,19 @@ export function DomainHome({
             {tab === "chat" && (
               <div className="w-full">
                 {starterPrompts.length > 0 && (
-                  <div className="mb-4 rounded-xl border border-accent-border bg-accent-soft p-4">
-                    <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-accent">
-                      <Sparkles className="h-3.5 w-3.5" /> Start a conversation
+                  <div className="mb-3 rounded-xl border border-accent-border bg-accent-soft p-3">
+                    <div className="mb-1.5 flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-accent">
+                      <Sparkles className="h-3 w-3" /> Start a conversation
                     </div>
-                    <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-1">
                       {starterPrompts.map((p, i) => (
                         <button
                           key={i}
                           onClick={() => onPickPrompt(p)}
-                          className="group flex items-center gap-2 rounded-lg border border-accent-border/60 bg-background px-3 py-2 text-left text-sm text-text-secondary hover:border-accent hover:text-text-primary"
+                          className="group flex items-center gap-2 rounded-lg border border-accent-border/60 bg-background px-3 py-1.5 text-left text-sm text-text-secondary hover:border-accent hover:text-text-primary"
                         >
                           <ArrowRight className="h-3.5 w-3.5 shrink-0 text-accent opacity-60 group-hover:opacity-100" />
-                          <span>{p}</span>
+                          <span className="truncate">{p}</span>
                         </button>
                       ))}
                     </div>
@@ -482,22 +482,21 @@ export function DomainHome({
                 <SurfacePanel vaultPath={vaultPath} domain={domain} onPick={onPickPrompt}
                   onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t, source: "surface" }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }} />
                 <TasksPanel vaultPath={vaultPath} domain={domain} nonce={taskNonce} />
-                <ul className="flex flex-col gap-2">
+                {/* Quick actions — compact single-line rows (label + one-line prompt)
+                    so the home fits without scrolling; full prompt on hover. */}
+                <ul className="mt-2 flex flex-col gap-1">
                 {buildQuickActions(domain).map((q) => (
                   <li key={q.label}>
                     <button
+                      title={q.prompt}
                       onClick={() => q.council
                         ? window.dispatchEvent(new CustomEvent("prevail:council-seed", { detail: { domain, prompt: q.prompt } }))
                         : onPickPrompt(q.prompt)}
-                      className="block w-full rounded-xl border border-border bg-surface px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-px hover:border-accent-border hover:shadow-md"
+                      className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm"
                     >
-                      <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-accent">
-                        <span><span className="mr-1">{q.glyph}</span>{q.label}</span>
-                        {q.council && <span className="rounded-full border border-accent-border bg-accent-soft px-1.5 py-0 text-[9px] normal-case tracking-normal">→ Council</span>}
-                      </div>
-                      <div className="mt-1 text-sm leading-relaxed text-text-secondary">
-                        {q.prompt}
-                      </div>
+                      <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-accent"><span className="mr-1">{q.glyph}</span>{q.label}</span>
+                      {q.council && <span className="shrink-0 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent">→ Council</span>}
+                      <span className="min-w-0 flex-1 truncate text-xs text-text-muted">{q.prompt}</span>
                     </button>
                   </li>
                 ))}
