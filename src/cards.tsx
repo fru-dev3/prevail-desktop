@@ -2,7 +2,8 @@
 // benchmark progress strip, the framework/lens cycle row, and the Settings
 // scheduled-benchmark card.
 import { useEffect, useState } from "react";
-import { CalendarClock, Check, RotateCw, SlidersHorizontal } from "lucide-react";
+import { Archive, CalendarClock, Check, RotateCw, SlidersHorizontal } from "lucide-react";
+import { BACKUP_CFG } from "./backup";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES, MODELS, MODEL_SEP } from "./constants";
 import { formatDuration, formatFreshness, titleCase } from "./format";
@@ -42,6 +43,38 @@ export function SidebarBenchScheduled({ collapsed }: { collapsed: boolean }) {
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
       <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-text-secondary">Benchmark · {benchFreqLabel(freq)}</span>
       <CalendarClock className="h-3 w-3 shrink-0 text-text-muted" />
+    </button>
+  );
+}
+
+// W2 (Monday feedback): a clear sidebar indicator when automatic backups are ON,
+// so the user always knows their vault is being snapshotted. Same pattern as the
+// scheduled-benchmark indicator.
+export function SidebarBackupActive({ collapsed }: { collapsed: boolean }) {
+  const [on, setOn] = useState(() => lsGet(BACKUP_CFG.enabled, "0") === "1");
+  const [freq, setFreq] = useState(() => lsGet(BACKUP_CFG.freq, "weekly") || "weekly");
+  useEffect(() => {
+    const sync = () => { setOn(lsGet(BACKUP_CFG.enabled, "0") === "1"); setFreq(lsGet(BACKUP_CFG.freq, "weekly") || "weekly"); };
+    window.addEventListener("prevail:backup-done", sync);
+    const id = window.setInterval(sync, 30_000);
+    return () => { window.removeEventListener("prevail:backup-done", sync); window.clearInterval(id); };
+  }, []);
+  if (!on) return null;
+  const label = /^custom:/.test(freq) ? "every N days" : freq;
+  const open = () => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "workspace" }));
+  const title = `Automatic vault backups are ON (${label}). Click for Workspace.`;
+  if (collapsed) {
+    return (
+      <button onClick={open} title={title} className="flex w-full justify-center border-t border-border-subtle px-2 py-2 text-text-muted hover:text-accent">
+        <Archive className="h-3.5 w-3.5" />
+      </button>
+    );
+  }
+  return (
+    <button onClick={open} title={title} className="flex w-full items-center gap-2 border-t border-border-subtle px-3 py-2 text-left hover:bg-surface-warm">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
+      <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-text-secondary">Backups · {label}</span>
+      <Archive className="h-3 w-3 shrink-0 text-text-muted" />
     </button>
   );
 }

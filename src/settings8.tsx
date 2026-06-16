@@ -504,7 +504,7 @@ export function BackupAutomationCard({ vault, onChange }: { vault: string; onCha
   );
 }
 
-export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved, headerless }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void; headerless?: boolean }) {
+export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved, headerless, hideBackups }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void; headerless?: boolean; hideBackups?: boolean }) {
   // "Move vault into the app" — copy the current vault into the app-owned
   // location (~/.prevail/vault) via the engine, non-destructively, then repoint.
   const [moving, setMoving] = useState(false);
@@ -582,7 +582,8 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
       {moveNote && (
         <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{moveNote}</div>
       )}
-      <BackupAutomationCard vault={vaultPath} onChange={onChange} />
+      {/* W2 (Monday feedback): backups can render as their own section in Workspace. */}
+      {!hideBackups && <BackupAutomationCard vault={vaultPath} onChange={onChange} />}
     </>
   );
 }
@@ -606,8 +607,12 @@ export function WorkspaceSection({ vaultPath, onChange, onSetupDomains, onVaultM
     <>
       <SettingsHeader icon={FolderTree} title="Workspace" subtitle="Everything about where your data lives and how you set it up: your vault, domains, backups, starter packs, and the throwaway sandbox for exploring with sample data." />
       <div className="mb-7">
-        <WorkspaceSubLabel icon={FolderOpen} label="Vault" desc="location · domains · backups" />
-        <VaultSettings vaultPath={vaultPath} onChange={onChange} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} headerless />
+        <WorkspaceSubLabel icon={FolderOpen} label="Vault" desc="location · domains" />
+        <VaultSettings vaultPath={vaultPath} onChange={onChange} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} headerless hideBackups />
+      </div>
+      <div className="mb-7">
+        <WorkspaceSubLabel icon={RotateCw} label="Backups" desc="automatic snapshots · restore points" />
+        <BackupAutomationCard vault={vaultPath} onChange={onChange} />
       </div>
       <div>
         <WorkspaceSubLabel icon={Sparkles} label="Starter packs & Sandbox" desc="set up real domains · explore safely" />
