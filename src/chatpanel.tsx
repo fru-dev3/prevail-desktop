@@ -1728,7 +1728,7 @@ export function ChatPanel({
       {/* Codex-style composer — full width to match Council. The reply
           transcript above stays in a centered max-w-3xl column for
           readability; only the composer goes edge-to-edge. */}
-      <div className="shrink-0 px-6 pb-6 pt-2">
+      <div data-tour="composer" className="shrink-0 px-6 pb-6 pt-2">
         <div className="relative rounded-2xl border border-border bg-surface p-3 shadow-sm">
           {/* Context-window meter — minimal gauge of how full the running
               conversation is, where tokens go, and a one-click fresh start. */}
