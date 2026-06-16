@@ -260,6 +260,24 @@ I1 (web pkg rename, on prevail-web branch). Engine: Loops guardrail (cli branch)
   on-disk move — data-loss risk; needs a tested migrator), B3 (Untitled-thread stub lifecycle —
   needs the running app), K2/P2/P3 (need founder to point at the element/panel).
 
+## SESSION 2026-06-16 (cont.) — built G1 (direct providers) — was a hidden gap
+**G1 — direct single-vendor provider keys: BUILT + verified (both processes).**
+The "Direct Providers" section was a `coming soon` PLACEHOLDER (settings7.tsx) —
+not actually done, despite G2/G3 being done. The founder asked: "implement all
+the functionality... put in their key for each direct provider like xAI, Kimi,
+Anthropic, etc. and make it work." Now real, end-to-end:
+- cli (0fe82aa): `DirectProviderKind` in CliKind; `DIRECT_PROVIDERS` table
+  (Anthropic/OpenAI/xAI/Kimi/DeepSeek/Google) drives detectClis (available when
+  PREVAIL_<ID>_KEY is set) + runChatTurn routing (OpenAI-compat reuse +
+  native `runAnthropicChat` with SSE). Exhaustive CliKind maps filled
+  (defaults/quickpicks/hints/budget/council-colors). 5 bun tests.
+- desktop (358b9aa): settings7 `DirectProvidersSection` — per-vendor key entry,
+  saved to Keychain (provider_key_set), re-detects to go live. engine.rs
+  `DIRECT_PROVIDER_ENVS` injects each key as PREVAIL_<ID>_KEY into the engine
+  child. cargo check clean.
+- Chain verified: UI → Keychain → engine env → detect → route. The 3 collapsible
+  Models sections (CLI / API Providers / Direct Providers) are now all functional.
+
 ## SESSION 2026-06-16 — built W4 (data/ layout) + A6 (Webhook surface)
 **W4 — vault `data/` layout: BUILT + verified across both processes.**
 - cli (commits 8417b5a, ada3770): `dataRoot()`/`DATA_DIR` in path-safety.ts;
