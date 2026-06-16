@@ -260,6 +260,36 @@ I1 (web pkg rename, on prevail-web branch). Engine: Loops guardrail (cli branch)
   on-disk move — data-loss risk; needs a tested migrator), B3 (Untitled-thread stub lifecycle —
   needs the running app), K2/P2/P3 (need founder to point at the element/panel).
 
+## SESSION 2026-06-16 — built W4 (data/ layout) + A6 (Webhook surface)
+**W4 — vault `data/` layout: BUILT + verified across both processes.**
+- cli (commits 8417b5a, ada3770): `dataRoot()`/`DATA_DIR` in path-safety.ts;
+  resolveDomainDir/newDomainDir/appsContainer + scanVault + scanVaultApps now
+  prefer `<vault>/data/{domains,apps}` (tri-path: v4 → v3 → legacy, all readable).
+  New module vault-data-layout.ts: `migrateToDataLayout` (copy+verify,
+  NON-destructive, idempotent) + `archiveLegacyRoot` (opt-in; sweeps only the
+  v4-aware containers domains/+apps/, DEFERS the loose General files so they're
+  never orphaned; moves to a `_pre-data-*` backup, never deletes). CLI: `prevail
+  vault migrate-data` + `vault archive-data --force`. 7 bun tests, all green;
+  zero new type errors; full suite unaffected.
+- desktop (commit 6bbf9a2): paths.rs mirrors the resolution (resolve_domain_base
+  + enumerate_domain_dirs prefer data/domains; data/ excluded as a domain).
+  cargo check clean.
+- Headline ask (apps+domains grouped under data/) DONE. Remaining for the
+  co-working session: switch the General-bucket loose-file readers (byte-for-byte
+  shared by cli/TUI/Rust) to data/ + live-verify, then `archive-data` sweeps them.
+
+**A6 — Webhook surface: BUILT (fully functional, credential-free).**
+- desktop (commit 037004b): webhook_bridge.rs — loopback tiny_http server,
+  bearer-secret gated (constant-time), POST /hook {message,domain?} →
+  resolve_domain → run_cli → reply + record_exchange (reuses the Telegram
+  bridge's routing + model choke point). 3 Tauri commands registered; 2 unit
+  tests + cargo check clean. settings5.tsx WebhookCard: ON/Off toggle, port,
+  model, self-generated Keychain secret, curl example, live counters.
+- Removes one "coming soon"; it's the foundation other surfaces POST into.
+- Remaining 6 (Discord/Slack/Signal/Matrix/Mattermost/Email/SMS) each need that
+  platform's API client + the user's runtime credentials + live verification —
+  spec'd in A6-SURFACES-PLAN.md (P0 generalize → P1 Discord → …).
+
 ## SESSION 2026-06-15 (cont.) — built B2/P2/P3; resolved B1/B3; pinned K2
 **Newly DONE + committed (tsc-verified) — 39016a4:**
 - **B2** (`$domain` + Enter "does nothing") — FIXED. Root cause: both the `/` and `$`
