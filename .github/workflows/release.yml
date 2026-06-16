@@ -18,6 +18,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # Privacy gate: block the release if any real/personal data leaked into the
+      # shipped demo vault. Runs FIRST so a leak never gets signed/notarized.
+      - name: Scrub gate (no personal data in demo vault)
+        run: bash scripts/scrub-gate.sh
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -107,6 +112,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      # Privacy gate: block the release if any real/personal data leaked into the
+      # shipped demo vault. Runs FIRST so a leak never gets signed/notarized.
+      - name: Scrub gate (no personal data in demo vault)
+        run: bash scripts/scrub-gate.sh
 
       - name: Setup Node
         uses: actions/setup-node@v6
