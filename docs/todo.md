@@ -203,7 +203,7 @@ so they're left for a focused pass rather than blind overnight edits:
 - [x] **P4** (0e93baf) — About drops the Tauri/React/Tailwind mention.
 
 ## DEFINITIVE STATUS (2026-06-16, updated)
-**Done (30), all build-verified + committed (desktop + cli + web branches):**
+**Done (31), all build-verified + committed (desktop + cli + web branches):**
 B4, B5, B6, M1, M4, M5, M6, M7, A1, A2, A3, A5, C1, C2, G2, G3, K1, K3, K4, K5, W1, W2,
 P1 (Telegram toggle), P4, O1 (onboarding tour), **Loops L1/L2/L3**, I1. Plus confirmations: A4 (detection works),
 K6 (grounding shipped via BENCH-3 + _log grounding).
@@ -250,3 +250,12 @@ I1 (web pkg rename, on prevail-web branch). Engine: Loops guardrail (cli branch)
 - 2026-06-15: Plan + todo created from the Monday feedback PDF on branch feat/monday-feedback-0615.
 - 2026-06-16: Worked the list — 20 items done (incl. Loops rework + Recommendations redesign).
 - 2026-06-16: Batch 1-3 — B4, M1(nav), K1, K3, A5, P4. Builds green; not merged.
+
+## FINAL (2026-06-16) — 31 done; the rest need you, the app, or a dedicated build
+- W3 done (model refresh defaults to "Every launch").
+- B1/B2 audit: code paths (attachDomainAsContext → layout-aware domain_context → chip;
+  $-popover Enter → applyDollarCompletion) look CORRECT now — likely already fixed since the
+  founder's build. Needs a live re-test, not a blind edit.
+- Genuinely blocked: A6 (7 real bot integrations — external creds, days of work), W4 (vault
+  on-disk move — data-loss risk; needs a tested migrator), B3 (Untitled-thread stub lifecycle —
+  needs the running app), K2/P2/P3 (need founder to point at the element/panel).
