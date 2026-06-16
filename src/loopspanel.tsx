@@ -43,6 +43,14 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
   const [newAutonomy, setNewAutonomy] = useState<LoopAutonomy>("ask");
   const [savedAt, setSavedAt] = useState(0);
   const [runtime, setRuntime] = useState<LoopsRuntime>({ schema: 1, loops: {} });
+  // Unified per-domain Ideal State (the SAME ideal-state.md the domain's Ideal
+  // State editor + every chat use). Loops measure the gap against THIS — there's
+  // no separate "desired state" anymore.
+  const [ideal, setIdeal] = useState<string>("");
+  const [idealSaved, setIdealSaved] = useState(false);
+  useEffect(() => {
+    invoke<string>("read_domain_ideal", { vault: vaultPath, domain }).then((s) => setIdeal(s || "")).catch(() => setIdeal(""));
+  }, [vaultPath, domain]);
 
   useEffect(() => {
     let alive = true;
@@ -180,15 +188,42 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
       {/* How loops work — make the agentic model explicit (Monday feedback: the
           founder couldn't tell what a loop does on enable). Collapsed by default. */}
       <CollapsibleSection icon={InfinityIcon} title="How loops work" summary="agentic · goal-driven · guardrailed">
-        <div className="space-y-2 text-[13px] leading-relaxed text-text-secondary">
-          <p>A loop is a <span className="font-semibold text-text-primary">standing agent</span> for this domain. On each cadence (or "Run now"), the engine reads the domain's state + your <span className="font-semibold">Desired state</span>, measures the gap, and decides the next concrete steps to close it. It learns from its own run history, so it doesn't repeat itself and escalates when a gap stalls.</p>
-          <p>What it's allowed to DO is set by each loop's <span className="font-semibold text-text-primary">guardrail</span>:</p>
-          <ul className="ml-1 space-y-1">
-            {(["suggest", "tasks", "ask", "auto"] as LoopAutonomy[]).map((a) => (
-              <li key={a} className="flex gap-2"><span className="shrink-0 font-mono text-[11px] font-semibold text-accent">{AUTONOMY_LABEL[a]}</span><span className="text-text-muted">{AUTONOMY_BLURB[a]}</span></li>
+        <div className="space-y-4">
+          <p className="text-[13px] leading-relaxed text-text-secondary">
+            A loop is a <span className="font-semibold text-text-primary">standing agent</span> for this domain. It learns from its own run history, so it doesn't repeat itself and escalates when a gap stalls.
+          </p>
+          {/* The cadence → gap → act mini-flow, as three steps, not prose. */}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {[
+              { n: "1", h: "Reads", b: "the domain's state + your Ideal State, on each cadence or Run now." },
+              { n: "2", h: "Measures", b: "the gap between where you are and where you want to be." },
+              { n: "3", h: "Acts", b: "decides the next concrete steps to close it, within its guardrail." },
+            ].map((s) => (
+              <div key={s.n} className="rounded-lg border border-border-subtle bg-background px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-soft font-mono text-[10px] font-bold text-accent">{s.n}</span>
+                  <span className="text-sm font-semibold text-text-primary">{s.h}</span>
+                </div>
+                <div className="mt-1 text-xs leading-relaxed text-text-muted">{s.b}</div>
+              </div>
             ))}
-          </ul>
-          <p>Consequential steps (spend, contacting someone, anything irreversible) always queue under <span className="font-semibold text-text-primary">"Needs your approval"</span> below, regardless of guardrail. Approve → it acts via your connectors and files a task; or send it straight to Tasks. Every run is recorded in each loop's <span className="font-semibold">Run history</span>.</p>
+          </div>
+          {/* Guardrail tiers as a clean two-column list with accent keys. */}
+          <div>
+            <div className="mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">Each loop's guardrail · what it may DO</div>
+            <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border-subtle bg-border-subtle sm:grid-cols-2">
+              {(["suggest", "tasks", "ask", "auto"] as LoopAutonomy[]).map((a) => (
+                <div key={a} className="bg-surface px-3 py-2">
+                  <div className="font-mono text-[11px] font-semibold text-accent">{AUTONOMY_LABEL[a]}</div>
+                  <div className="mt-0.5 text-xs leading-relaxed text-text-muted">{AUTONOMY_BLURB[a]}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <p className="rounded-lg border border-accent-border/40 bg-accent-soft/20 px-3 py-2 text-xs leading-relaxed text-text-secondary">
+            <ShieldQuestion className="mr-1 inline h-3.5 w-3.5 -translate-y-px text-accent" />
+            Anything consequential (spend, contacting someone, irreversible) always queues under <span className="font-semibold text-text-primary">Needs your approval</span> first, regardless of guardrail. Every run is recorded in each loop's <span className="font-semibold text-text-primary">Run history</span>.
+          </p>
         </div>
       </CollapsibleSection>
 
@@ -233,18 +268,34 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
         </section>
       )}
 
-      {/* Desired state */}
-      <section className="rounded-xl border border-border bg-surface p-4">
-        <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
-          <Target className="h-3.5 w-3.5 text-accent" /> Desired state
+      {/* Ideal state — ONE per-domain target (ideal-state.md). The same field the
+          domain's Ideal State editor + every chat use; loops measure the gap to it.
+          Saving mirrors it into the loops doc so the engine reads it too. */}
+      <section className="overflow-hidden rounded-xl border border-border bg-surface">
+        <div className="flex items-center gap-3 border-b border-border-subtle bg-gradient-to-r from-accent-soft/40 to-transparent px-4 py-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-background"><Target className="h-4.5 w-4.5" /></span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold text-text-primary">{titleCase(domain)} ideal state</div>
+            <div className="text-xs text-text-muted">What a thriving {titleCase(domain)} looks like. Every loop measures the gap to this, and it grounds every {titleCase(domain)} chat. One target, used everywhere.</div>
+          </div>
+          {idealSaved && <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-ok/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ok"><Check className="h-3 w-3" /> saved</span>}
         </div>
-        <textarea
-          defaultValue={doc.desiredState}
-          key={`ds-${domain}`}
-          onBlur={(e) => { if (e.target.value !== doc.desiredState) persist({ ...doc, desiredState: e.target.value }); }}
-          placeholder={`What does a thriving ${titleCase(domain)} look like? The loops below work to close the gap to this.`}
-          className="min-h-[72px] w-full resize-y rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm leading-relaxed text-text-primary outline-none focus:border-accent-border"
-        />
+        <div className="p-4">
+          <textarea
+            value={ideal}
+            key={`ideal-${domain}`}
+            onChange={(e) => setIdeal(e.target.value)}
+            onBlur={async () => {
+              try {
+                await invoke("write_domain_ideal", { vault: vaultPath, domain, body: ideal });
+                if (doc && doc.desiredState !== ideal) persist({ ...doc, desiredState: ideal }); // engine mirror
+                setIdealSaved(true); window.setTimeout(() => setIdealSaved(false), 1500);
+              } catch (e) { console.error("write ideal", e); }
+            }}
+            placeholder={`e.g. "${titleCase(domain)}: abundant, growing, resilient — net worth and passive income climbing toward financial freedom." Loops close the gap to this.`}
+            className="min-h-[88px] w-full resize-y rounded-lg border border-border-subtle bg-background px-3 py-2.5 text-sm leading-relaxed text-text-primary outline-none transition-colors placeholder:text-text-muted/70 focus:border-accent-border focus:ring-2 focus:ring-accent-border/20"
+          />
+        </div>
       </section>
 
       {/* Empty state → seed */}
