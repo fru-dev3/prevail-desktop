@@ -19,7 +19,7 @@ type Plan = {
   domains?: string[];
   data?: string;
 };
-type ConnectResult = { ok: boolean; plan?: Plan; error?: string; raw?: string };
+type ConnectResult = { ok: boolean; plan?: Plan; error?: string; raw?: string; verified?: boolean | null; proof?: string | null };
 
 const METHOD_LABEL: Record<string, string> = {
   mcp: "MCP server", api: "API", oauth: "API (OAuth)", cli: "CLI", composio: "Composio", browser: "Browser automation", manual: "Manual",
@@ -172,15 +172,28 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
             </div>
           </div>
 
+          {/* Autonomous verification: the engine tested the connection itself. */}
+          {result.verified === true && (
+            <div className="flex items-start gap-2 rounded-lg border border-ok/30 bg-ok/5 px-3 py-2 text-xs text-ok">
+              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span><span className="font-semibold">Connected + verified.</span> {result.proof || "the connection test passed."} Prevail will sync on schedule from here.</span>
+            </div>
+          )}
+          {result.verified === false && (
+            <div className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
+              Set up, but the automatic test didn't pass: {result.proof || "unknown"}. {authNeeded ? "Finish the step below and it'll re-test." : "It may still work; check the app's status."}
+            </div>
+          )}
+
           {authNeeded ? (
             <div className="rounded-lg border border-accent-border bg-accent-soft/40 p-3">
-              <div className="font-mono text-[10px] uppercase tracking-wider text-accent">One step to authorize</div>
+              <div className="font-mono text-[10px] uppercase tracking-wider text-accent">One step only — then Prevail does the rest</div>
               <p className="mt-1 text-sm text-text-primary">{plan.auth_step!.instruction}</p>
-              <p className="mt-1 text-[11px] text-text-muted">Do this once, then mark it done — Prevail will sync on schedule from then on.</p>
+              <p className="mt-1 text-[11px] text-text-muted">This is the one thing only you can do (a secret/login). Do it, then mark done — Prevail tests it and syncs on schedule from then on.</p>
             </div>
-          ) : (
+          ) : result.verified == null ? (
             <div className="rounded-lg border border-ok/30 bg-ok/5 px-3 py-2 text-xs text-ok">No authorization needed — it's ready to sync.</div>
-          )}
+          ) : null}
 
           <div className="flex items-center gap-2">
             <button onClick={onDone} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover">
