@@ -260,6 +260,27 @@ I1 (web pkg rename, on prevail-web branch). Engine: Loops guardrail (cli branch)
   on-disk move — data-loss risk; needs a tested migrator), B3 (Untitled-thread stub lifecycle —
   needs the running app), K2/P2/P3 (need founder to point at the element/panel).
 
+## SESSION 2026-06-16 (cont.) — K2 done (judgment call)
+- **K2** (ccd054d): removed the "Coverage by domain" table from the Benchmark
+  results view — it restated runs/models-per-domain that the main Model × domain
+  matrix already conveys ("What's the point of this. Remove it."). Best-judgment
+  interpretation of the unmarked "remove it" note; reversible if it was a
+  different element (one git revert + remove the right one). tsc clean.
+
+## TRUE REMAINING (2 items, genuinely external-gated)
+1. **A6 native bridges (6).** Webhook (done) already makes every platform
+   functional via forwarding. NATIVE bridges: Discord + Slack need a WebSocket
+   crate (not a dep; tokio lacks net/rt-multi-thread); Email needs imap+lettre+TLS
+   crates. Matrix/Mattermost/Signal are buildable with existing deps but their
+   exact API semantics (sync tokens, post pagination, signal-cli -o json) can't be
+   written correctly without testing against the real service. Each needs the
+   user's token + live verification. → build one at a time, with its credential.
+2. **W4 final reader-switch.** Route the General-bucket loose-file readers/writers
+   to data/ in cli + Rust. Safe-by-design (dual-path, opt-in) BUT all-or-nothing:
+   a single missed writer site → post-migration staleness. Needs the running app +
+   a migrated vault to verify all three processes agree. Migrator already stages
+   the files; archive-data defers them so root copies persist as a safety net.
+
 ## SESSION 2026-06-16 (cont.) — built G1 (direct providers) — was a hidden gap
 **G1 — direct single-vendor provider keys: BUILT + verified (both processes).**
 The "Direct Providers" section was a `coming soon` PLACEHOLDER (settings7.tsx) —
