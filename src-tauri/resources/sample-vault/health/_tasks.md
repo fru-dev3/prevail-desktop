@@ -1,6 +1,6 @@
 # Tasks
 
-- [ ] Schedule follow-up with Dr. Reyes — LDL 138 borderline high @2026-06-10
-- [ ] Start Vitamin D supplement (level: 24, target: 40+) @2026-06-11
-- [ ] Book annual physical for December @2026-11-01
+- [ ] Schedule follow-up with Dr. Marquez — LDL 142 borderline high @2026-08-01
+- [ ] Start Vitamin D supplement (level: 28, target: 40+) @2026-06-11
+- [ ] Book Maya's pediatric checkup @2026-08-01
 - [x] Complete bloodwork panel

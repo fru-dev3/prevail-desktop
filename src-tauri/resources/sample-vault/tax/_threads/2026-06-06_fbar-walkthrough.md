@@ -1,6 +1,6 @@
 ---
 
-title: What do I actually need to file for the FBAR?
+title: Can I deduct my home office for the consulting work?
 
 domain: tax
 
@@ -16,44 +16,42 @@ turns: 4
 
 ## You
 
-Walk me through the FBAR. I have a savings account at BCP in Peru with about $11,000. What do I need to do and when?
+I do my consulting work from a home office and also take remote work days there. Can I deduct the home office, and how?
 
 ## claude · opus-4
 
-The FBAR (FinCEN 114) is a disclosure form — not a tax — that US persons must file when they hold foreign financial accounts with an **aggregate balance exceeding $10,000 at any point during the calendar year**. Your BCP account at $11,000 clears that threshold, so you're required to file.
+Yes - but only for the consulting side, not the W2 days. And the fact that you use the same room for both is the one thing that can sink the deduction.
 
-**What to do:**
+**The two activities are treated very differently:**
 
-1. **File FinCEN 114 at fincen.gov** (the BSA e-filing system). It's free and separate from your tax return — don't attach it to your 1040.
+1. **Consulting (Alex Rivera Consulting LLC, Schedule C) -> deductible.** A self-employed home office qualifies if the space is used *regularly and exclusively* and is your *principal place of business*. A dedicated office at the Austin house for the 1099 consulting fits this cleanly.
 
-2. **What you report:** For each foreign account — the institution name (Banco de Crédito del Perú), country (Peru), account type (savings), last four digits of the account number, and the maximum value during the year in USD.
+2. **W2 remote days -> not deductible.** The employee home-office deduction is suspended, so as a W2 employee you get nothing for those days, regardless of how the room is used.
 
-3. **Converting to USD:** Use the Treasury's official exchange rate for December 31 of the tax year (or the highest balance in the year if you want to be conservative). The BCP account is denominated in Peruvian soles (PEN); the USD equivalent is what you report.
+**The catch - the exclusive-use test:**
+The deduction flows through Schedule C, and the law requires the space be used *exclusively for that trade or business*. Using the same desk for your TechFlow work is a different income-producing activity, and the conservative reading is that it can break exclusivity and disqualify the entire deduction. Two clean fixes: separate the spaces (a defined sub-area or second desk used only for consulting), or do your W2 remote work somewhere else in the house.
 
-**Deadlines:**
-- Primary deadline: **April 15** (same as the federal return)
-- Automatic extension: **October 15** — no form needed to claim the extension, it's automatic
+**How to calculate it (consulting portion):**
+- **Simplified:** $5 per office sq ft, capped at 300 sq ft ($1,500 max). Set-and-forget, no depreciation recapture.
+- **Regular (Form 8829):** office sq ft / home sq ft, applied to actual home expenses (mortgage interest, property tax, utilities, insurance, repairs, depreciation). Usually wins materially for an Austin house, but commits you to tracking depreciation and recapturing it on sale.
 
-**Interest income:** The interest the BCP account earns is also reportable on your US 1040 as foreign interest income (Schedule B). Based on the $11k balance you're probably earning a few hundred dollars a year — it's a small number but it must be reported.
+**Deadlines:** Nothing standalone - this rides on the annual 1040, due April 15.
 
-**The inherited property (Lima family home):** A 1/3 share of a foreign property with no rental income generally does not trigger FBAR or Form 8938 at your net worth level. Worth confirming with a CPA once, but it's a passive hold.
-
-Is there anything you're uncertain about — the account number, the PEN/USD conversion, or the online filing process?
+Take it to Maria with the square footage and 12 months of home expenses so she can pick the method.
 
 ## You
 
-The interest I earn in the BCP account — I get a statement from them in Spanish. Is that enough documentation?
+If I go with the regular method, what records do I need to keep?
 
 ## claude · opus-4
 
-Yes, a BCP account statement is exactly what you need, even in Spanish.
-
-Keep the original statement as your record. For the 1040 (Schedule B), you report the USD equivalent of the interest earned. You can translate it yourself — the exchange rate to use is the Treasury's year-end rate for December 31, or the spot rate on each interest posting date (either is acceptable; most people use the year-end rate for simplicity).
+For the regular method, keep the documentation that supports both the business-use percentage and the actual expenses.
 
 A few practical tips for your records:
-- Download the PDF statement from BCP's online banking and save it to the tax domain in your vault. The IRS statute of limitations for unreported foreign income is 6 years (vs. 3 for domestic-only returns), so keep these indefinitely.
-- Note the account's maximum balance during the year in USD for FBAR purposes — often this is just the year-end balance if the account is stable.
-- If BCP issues a year-end "certificado de intereses" (interest certificate), grab that too — it's the cleanest documentation.
+- **Measure once:** office square footage and total home square footage. That ratio drives the whole calculation - write it down and keep it.
+- **Pull 12 months of home expenses:** mortgage interest (Form 1098), property tax, utilities, homeowners insurance, and repairs. Save the statements and receipts in the tax domain of your vault.
+- **Depreciation schedule:** the regular method depreciates the office portion of the home's basis. Keep that schedule, because the depreciation is recaptured when you sell the house - the IRS recaptures depreciation "allowed or allowable" whether or not you tracked it.
+- **Keep it consistent:** if the room ever doubles as W2 workspace, that breaks exclusivity. Document that the office is consulting-only.
 
-If you haven't worked with a CPA on the FBAR before, it might be worth a one-time consult in year one to make sure the workflow is set up correctly. The filing itself is straightforward once you've done it once.
+If you haven't claimed a home office before, it's worth a one-time check with Maria in year one to make sure the method choice and the depreciation setup are right. The filing itself is straightforward once it's set up.
 

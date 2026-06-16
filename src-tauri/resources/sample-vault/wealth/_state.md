@@ -11,22 +11,22 @@ schema: 2
 
 **Last updated:** 2026-06-10
 
-**Net worth:** $133,980
+**Net worth:** ~$423,000
 **Savings rate:** 18%
-**Emergency fund:** $10,240 (about 3 months)
+**Emergency fund:** $32,000 (about 4 months)
 
 ## Where things stand
-Two incomes ($168,000 W2), a starter house in Austin, and the early innings of investing. Most of the net worth is retirement ($35,400) plus $10,800 of home equity. About $46,000 sits in Lima — an inherited 1/3 share of the family home and a BCP savings account. $400/mo goes to Jordan's parents, which is non-negotiable and built into the budget.
+Two W2 incomes ($240,000 with Alex $145k and Jordan $95k), the owned Austin home, a Phoenix rental, and a steady investing habit. The net worth is spread across home equity, the Phoenix condo, a 401k ($168,000), a Roth IRA, a taxable brokerage, an HSA, and Maya's 529. Auto-invest runs $1,500/mo to the brokerage and $300/mo to the 529. No credit card debt.
 
 ## The capital question
-The summer's main decision is the HVAC ($6,850). The emergency fund ($10,240) can float it without touching investments, so it's replace-now versus wait — not whether it's affordable. Replacing the 2016 unit before peak Texas summer beats an emergency failure in July.
+The summer's main decision is the HVAC (~$9,000). The emergency fund ($32,000) can float it without touching investments, so it's replace-now versus wait - not whether it's affordable. Replacing the 2016 unit before peak Texas summer beats an emergency failure in July.
 
 ## Open Items
-- [ ] Replace the 2016 HVAC ($6,850) before summer _(also: homestead, insurance)_
-- [ ] RSU vest 2026-08-15 ($6,180 gross) _(also: career, tax)_
-- [ ] BCP foreign account ($11,000) → FBAR filing required _(also: tax)_
-- [ ] Maya (3): 529, child tax credit, term-life beneficiary, preschool recital Sat _(also: tax, insurance, calendar)_
-- [ ] December family visit to Lima _(also: travel, calendar)_
+- [ ] Replace the 2016 HVAC (~$9,000) before summer _(also: homestead, insurance)_
+- [ ] RSU vest 2026-08-15 (next tranche, ~$12,500/yr grant) _(also: career, tax)_
+- [ ] Phoenix rental: Schedule E, depreciation, lease through 2027-02 _(also: tax)_
+- [ ] Maya (6): 529, child tax credit, term-life beneficiary _(also: tax, insurance, calendar)_
+- [ ] Phoenix trip in July (rental check-in) _(also: travel, calendar)_
 - [ ] Add a $1M umbrella policy (no gap coverage yet) _(also: insurance)_
 - [ ] Earmark the net RSU proceeds after the Aug 15 vest (tax-aware)
 - [ ] Nudge new contributions toward bonds to drift back to 75/20/5

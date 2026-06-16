@@ -1,6 +1,6 @@
 ---
 
-title: 6 weeks to the CBM exam — what's the plan?
+title: A few months to the Staff packet — what's the plan?
 
 domain: career
 
@@ -16,23 +16,23 @@ turns: 2
 
 ## You
 
-I'm 62% through the CBM coursework. The exam window opens in October and I want to sit for it in November. Six weeks to finish the material. What's a realistic plan?
+The Staff Engineer packet is due Q4 2026 and I'm about 60% of the way to having the evidence I need. I want it ready before the deadline so I'm not scrambling. What's a realistic plan from here?
 
 ## claude · opus-4
 
-You're further along than you think — 62% done means roughly 38% of the coursework remaining. If the CBM is structured like most ABA programs (typically 5–6 modules), you have about 2 modules left.
+You're further along than you think - 60% of the evidence assembled means the hard part (doing Staff-level work) is mostly happening. The remaining 40% is capture and framing, which is steady weekly work, not a grind.
 
-A 6-week plan assuming 2 sessions per week (weeknight evenings, 90 min each):
+A plan running from now to the Q4 deadline, assuming one focused block per week (90 min):
 
-**Weeks 1–2:** Complete the next module. Use the ABA study guides, don't just read — answer the practice questions at the end of each section. Flag anything you got wrong.
+**Now through July:** Finish documenting the two cross-team projects that show org-level scope. Don't just list them - write the impact, who you unblocked, and the decisions you drove. Flag any gaps where you need a sponsor's confirmation.
 
-**Weeks 3–4:** Complete the final module. Same approach.
+**August:** Line up endorsements. Talk to the Staff engineers and peer managers who have seen your work, and give each of them a concrete example to cite. This is where packets are won or lost.
 
-**Week 5:** Full practice exam under timed conditions. ABA typically provides a practice test. Score it, identify your weak areas.
+**September:** Draft the full narrative end to end. Get your manager to read it and tell you where the case is thin while there's still time to fill it.
 
-**Week 6:** Targeted review of weak areas only. The goal is not to re-read everything — it's to fix the specific gaps the practice test found.
+**October onward:** Targeted polish only. The goal is not to rewrite everything - it's to close the specific gaps your manager flagged.
 
-Schedule the exam registration now (October window) so there's a date on the calendar. The accountability of a paid exam date does more than any study plan.
+Put the submission window on the calendar now so there's a date driving it. The accountability of a real deadline does more than any plan.
 
-One scheduling note: your July 11 review and the Portland trip (July 1–4) are both in the next few weeks. Don't let those compress your Week 1–2 study time — front-load a bit before the Portland weekend if you can.
+One scheduling note: the RSU vest on August 15 and the Phoenix trip in July are both in the next few weeks. Don't let those compress your evidence-gathering time - front-load a bit before the Phoenix weekend if you can.
 

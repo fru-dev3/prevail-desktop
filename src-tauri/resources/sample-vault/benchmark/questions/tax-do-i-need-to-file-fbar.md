@@ -2,18 +2,18 @@
 id: tax-do-i-need-to-file-fbar
 domain: tax
 council: false
-expected_decision: yes, file FBAR
-expected_verdict_keywords: [fbar, fincen, foreign, file, required]
+expected_decision: yes, file an Arizona nonresident return
+expected_verdict_keywords: [arizona, nonresident, 140nr, rental, file]
 ---
 
 ## Prompt
 
-I have a BCP savings account in Lima with about $11,000. Do I need to file an FBAR?
+I live in Texas but rent out a condo in Phoenix. Do I need to file an Arizona state tax return for the rental income?
 
 ## Context
 
-US person with a foreign bank account (Banco de Credito del Peru). Balance is ~$11,000 USD equivalent. FBAR threshold is $10,000 aggregate at any point during the year.
+Texas resident (no state income tax) with a Phoenix, AZ rental condo reported on Schedule E, rent $1,350/mo, managed by Sun Valley PM. CPA is Maria Gonzalez.
 
 ## Notes
 
-A good answer must clearly state yes, FBAR filing is required (FinCEN Form 114), explain the $10,000 threshold, and note the deadline (April 15, extended to October 15). Should also mention potential penalties for non-filing.
+A good answer must clearly state yes, Arizona-source rental income generally requires a nonresident return (AZ Form 140NR), explain that the income is taxed where the property sits even though Texas has no state income tax, note there is no double-tax offset to claim back home (Texas levies none), and flag the filing-threshold and timing considerations. Should suggest confirming with the CPA.

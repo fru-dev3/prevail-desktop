@@ -19,6 +19,6 @@ schema: 2
 Three solid sessions most weeks, building toward a 4th. The half-marathon in November is the anchor; the zone-2 work doubles as the answer to the borderline cholesterol (see health). Bouldering on weekends has been the fun part and is quietly helping grip and core.
 
 ## Open Items
-- [ ] Borderline LDL 138 + low vitamin D _(also: health, insurance)_
+- [ ] Borderline LDL 142 + low vitamin D _(also: health, insurance)_
 - [ ] Add the 4th weekly session (short zone-2)
 - [ ] Book the November half-marathon before prices rise

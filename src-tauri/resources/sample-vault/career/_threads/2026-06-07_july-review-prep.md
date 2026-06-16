@@ -1,6 +1,6 @@
 ---
 
-title: How do I prepare for the mid-year review?
+title: How do I prepare for the comp and promo review?
 
 domain: career
 
@@ -16,39 +16,39 @@ turns: 4
 
 ## You
 
-My mid-year review is July 11. I want the comp conversation to go well and I want my district manager to start thinking of me for the Area Manager role. How do I set that up?
+My comp review is coming up. I want the comp conversation to go well and I want my manager to start backing me for Staff Engineer. How do I set that up?
 
 ## claude · opus-4
 
-You have five weeks. Here's what I'd prepare:
+You have a few weeks. Here's what I'd prepare:
 
-**Lead with deposit growth numbers.** That's the metric your district manager runs on. Pull your branch's YTD deposit growth vs. the same period last year and vs. district average. If you're above average — and you should know this number cold — that's your opening. If you're not, frame what changed and what you've done about it.
+**Lead with impact, not the ask.** Pull the two or three things you shipped that moved the team or the org, not just your own backlog. Cross-team influence and work that made others more effective is the Staff signal. If you can name a problem you owned end to end, that's your opening.
 
-**Make the Area Manager intention explicit.** Don't hint at it. "I'm targeting the Area Manager role and I want to understand what the path looks like from your perspective." District managers respect directness, and ambiguity about your ambition doesn't serve you. The CBM credential (you're 62% through) gives you concrete evidence you're investing in that trajectory.
+**Make the Staff intention explicit.** Don't hint at it. "I'm putting up for Staff in Q4 and I want to understand what closes the gap from your perspective." Managers respect directness, and ambiguity about your ambition doesn't serve you. The packet evidence you're already assembling (you're about 60% there) shows you're investing in that trajectory.
 
-**Bring one cross-branch insight.** Area Managers think across branches, not just within one. Come with an observation about a pattern you've noticed: customer segment, service issue, or staffing approach that you've solved at your branch and think could help the district. It signals you're already thinking at the next level.
+**Bring one org-level insight.** Staff engineers think across teams, not just within one. Come with an observation about a pattern you've noticed: a reliability issue, a migration nobody owns, a design approach you solved on your team and think could help more broadly. It signals you're already operating at the next level.
 
-**On comp:** You moved from $88k to $90k last year. A 5–7% ask ($94.5–$96.3k) is reasonable for a two-year Senior Branch Manager with your metrics. Anchor to the CBM completion and deposit growth. Do not bring it up before the performance piece — earn the number first, then name it.
+**On comp:** Your base is $145k. Strong senior engineers in Austin in 2026 generally land higher, so verify your market number first (levels.fyi, a couple of recruiter calls). A market-correction ask anchored to data and demonstrated scope is reasonable for a two-year senior delivering at a Staff-track level. Do not bring it up before the impact piece - earn the number first, then name it.
 
 One logistics thing: request 45 minutes, not 30. More time lets the comp conversation breathe without feeling rushed.
 
 ## You
 
-What if my deposit growth numbers aren't as strong as I'd like?
+What if my impact case isn't as strong as I'd like this cycle?
 
 ## claude · opus-4
 
-Then you own it briefly and pivot to what you did about it — that's what district managers want to see from someone angling for Area Manager.
+Then you own it briefly and pivot to trajectory - that's what managers want to see from someone angling for Staff.
 
-The structure: *"Q1 deposit growth was X, which was below my target. Here's what I identified as the driver [short diagnosis], and here's what I changed in Q2 [your action]. Here's where we are now."*
+The structure: *"Here's what I delivered this period. Here's the area where I want more scope, and here's the concrete work I'm taking on to get there."*
 
-A few things that work in your favor regardless of the numbers:
+A few things that work in your favor regardless:
 
-- **Bilingual capacity is a real differentiator.** If your branch serves a significant Spanish-speaking customer segment, quantify it. Retention rate, NPS, account-opening source data if you have it. This is a genuine edge that not every branch manager in the district has.
+- **Engineering depth is a real differentiator.** If you're the person other engineers come to for system design and hard debugging, quantify it. Reviews you led, designs you owned, incidents you resolved. That depth is a genuine edge not every senior has.
 
-- **Team development.** Who have you promoted or developed? Area Managers are evaluated in part by the talent pipeline they build. If you've fast-tracked anyone to personal banker or supervisor, that's a data point.
+- **Mentoring and team development.** Who have you leveled up? Staff engineers are evaluated in part on how much better they make the people around them. If you've grown a junior or unblocked another team, that's a data point.
 
-- **The CBM.** It shows the district manager you're not waiting to be handed the next role — you're preparing for it on your own time and partially your own dime. Most branch managers at your level don't have it yet.
+- **The side practice, kept in its lane.** It shows you're a builder, but the review is about your TechFlow impact - lead with that here.
 
-Weak deposit numbers are a one-quarter story. Leadership capacity and bilingual customer retention are a multi-year structural edge. Lead with the latter if the former is soft.
+Weak impact in one cycle is a one-quarter story. Engineering depth and the people you develop are a multi-year structural edge. Lead with the latter if the former is soft this time.
 
