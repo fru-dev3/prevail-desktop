@@ -562,6 +562,15 @@ export function DomainPrefsPanel({
   const localOnlyKey = `prevail.domain.${domain}.localOnly`;
   const sandboxKey = `prevail.domain.${domain}.sandbox`;
   const keywordsKey = `prevail.domain.${domain}.routing.keywords`;
+  // M6: per-domain Ideal State (this domain's own target, layered under global).
+  const [domainIdeal, setDomainIdeal] = useState<string>("");
+  const [domainIdealSaved, setDomainIdealSaved] = useState(false);
+  useEffect(() => {
+    invoke<string>("read_domain_ideal", { vault: vaultPath, domain }).then((s) => setDomainIdeal(s || "")).catch(() => setDomainIdeal(""));
+  }, [vaultPath, domain]);
+  const saveDomainIdeal = async () => {
+    try { await invoke("write_domain_ideal", { vault: vaultPath, domain, body: domainIdeal }); setDomainIdealSaved(true); window.setTimeout(() => setDomainIdealSaved(false), 1500); } catch (e) { console.error("write domain ideal", e); }
+  };
 
   // Per-domain daemon config (_daemon.json) — taskgen + reminders toggles.
   // Default true so domains work without any config file.
@@ -984,6 +993,27 @@ export function DomainPrefsPanel({
             <option value="open">open</option>
             <option value="locked">locked</option>
           </select>
+        </div>
+      </PrefSection>
+
+      {/* M6: per-domain Ideal State — this domain's own target, layered under the
+          global Ideal State (which wins on conflict). Injected into this domain's
+          turns by the engine. */}
+      <PrefSection
+        title="Domain ideal state"
+        icon={<Compass className="h-4 w-4" />}
+        subtitle={domainIdeal.trim() ? `${domainIdeal.trim().length} chars` : "not set"}
+      >
+        <textarea
+          value={domainIdeal}
+          onChange={(e) => setDomainIdeal(e.target.value)}
+          placeholder={`What does a thriving ${titleCase(domain)} look like? This guides every ${titleCase(domain)} chat, on top of your global Ideal State.`}
+          rows={4}
+          className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm leading-relaxed text-text-primary outline-none focus:border-accent-border"
+        />
+        <div className="mt-2 flex items-center gap-2">
+          <button onClick={saveDomainIdeal} className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-background hover:bg-accent-hover">Save</button>
+          {domainIdealSaved && <span className="font-mono text-[10px] text-ok">✓ saved</span>}
         </div>
       </PrefSection>
 
