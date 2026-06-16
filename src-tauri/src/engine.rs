@@ -417,6 +417,17 @@ pub async fn run_engine_stream_stdin(
                 cmd.env("PREVAIL_OPENROUTER_KEY", key);
             }
         }
+        // Direct single-vendor providers (G1): inject each configured key as
+        // PREVAIL_<ID>_KEY (the PREVAIL_ prefix dodges the engine's scrubbedEnv
+        // strip list). The engine's DIRECT_PROVIDERS table reads these to make
+        // the provider available + route to it.
+        for (id, env_key) in DIRECT_PROVIDER_ENVS {
+            if let Ok(key) = crate::ingestion::keychain::get("prevail.providers", id) {
+                if !key.is_empty() {
+                    cmd.env(env_key, key);
+                }
+            }
+        }
     }
     // Per-call env overrides (e.g. PREVAIL_OLLAMA_URL redirect so the engine's
     // local provider path reaches LM Studio / MLX instead of Ollama). Local-only,
@@ -925,8 +936,27 @@ pub(crate) fn provider_env_pairs() -> Vec<(String, String)> {
             out.push(("PREVAIL_OPENROUTER_KEY".to_string(), key));
         }
     }
+    for (id, env_key) in DIRECT_PROVIDER_ENVS {
+        if let Ok(key) = crate::ingestion::keychain::get("prevail.providers", id) {
+            if !key.is_empty() {
+                out.push((env_key.to_string(), key));
+            }
+        }
+    }
     out
 }
+
+/// Direct single-vendor providers (G1): (Keychain provider id, engine env var).
+/// Mirrors the engine's DIRECT_PROVIDERS table. The PREVAIL_ prefix keeps these
+/// out of the engine's scrubbedEnv strip list.
+pub(crate) const DIRECT_PROVIDER_ENVS: &[(&str, &str)] = &[
+    ("anthropic", "PREVAIL_ANTHROPIC_KEY"),
+    ("openai", "PREVAIL_OPENAI_KEY"),
+    ("xai", "PREVAIL_XAI_KEY"),
+    ("kimi", "PREVAIL_KIMI_KEY"),
+    ("deepseek", "PREVAIL_DEEPSEEK_KEY"),
+    ("google", "PREVAIL_GOOGLE_KEY"),
+];
 
 /// The session DEK, iff `path` is inside the unlocked, encrypted vault.
 fn session_key_for(path: &std::path::Path) -> Option<[u8; 32]> {
