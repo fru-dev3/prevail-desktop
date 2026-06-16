@@ -756,6 +756,11 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
       {/* Links — a horizontal wrap of chips (was a tall stacked list) to use the
           full width and shave vertical height. */}
       <div className="mt-3 flex flex-wrap gap-2">
+        {/* O1: replay the onboarding tour. */}
+        <button onClick={() => window.dispatchEvent(new Event("prevail:open-onboarding"))}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary shadow-sm transition-colors hover:border-accent-border hover:text-accent">
+          Take the tour <span className="text-text-muted">↻</span>
+        </button>
         <Row label="Help & documentation" href="https://github.com/fru-dev3/prevail-desktop#readme" />
         <Row label="Update log" href="https://github.com/fru-dev3/prevail-desktop/releases" />
         <Row label="Report an issue" href="https://github.com/fru-dev3/prevail-desktop/issues/new" />
