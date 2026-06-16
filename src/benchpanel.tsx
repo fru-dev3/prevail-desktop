@@ -191,7 +191,7 @@ export function BenchQuestions({
     (chunkUn as UnlistenFn | null)?.();
     let added = 0;
     try {
-      const fresh = await invoke<BenchQuestion[]>("benchmark_questions_list", { vault: vaultPath });
+      const fresh = await invoke<BenchQuestion[]>("benchmark_questions", { vault: vaultPath });
       added = (fresh ?? []).filter((q) => q.domain === target).length - before;
     } catch { /* counting is best-effort; exit code still drives success */ }
     return { code, added, tail: output.trim().split("\n").filter(Boolean).slice(-2).join(" / ") };
