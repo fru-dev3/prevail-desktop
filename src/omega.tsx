@@ -4,7 +4,7 @@
 // Ideal State. This page lets the user distill, view, and hand-edit it.
 // See docs/OMEGA-PLAN.md. Engine: src-tauri/src/omega.rs.
 import { useCallback, useEffect, useState } from "react";
-import { Eye, History, Loader2, PenLine, Sigma, Sparkles } from "lucide-react";
+import { ArrowRight, Compass, Eye, FileText, History, Lightbulb, Loader2, PenLine, Sigma, Sparkles } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
 import { Markdown } from "./Markdown";
@@ -97,6 +97,30 @@ export function OmegaSection({ vaultPath }: { vaultPath: string }) {
         icon={Sigma}
         subtitle="What Prevail has LEARNED across all your domains: durable lessons, preferences, and patterns that hold everywhere. It's the learned counterpart to your Ideal State, injected into every chat, council, and routine just below it. Distilled from your domains; you can also edit it by hand."
       />
+
+      {/* M7 (Monday feedback): the cohesive view — show what FEEDS Omega + how it
+          sits with the Ideal State, so the flow Journals/Intents/States → Omega is
+          legible. Each source links to its surface. */}
+      <CollapsibleSection icon={Compass} title="What feeds Omega" summary="journals · intents · states → omega" className="mb-4">
+        <div className="space-y-2 text-[13px] text-text-secondary">
+          <p>Your raw activity compounds upward into Omega, then sits alongside your authored Ideal State:</p>
+          <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
+            <span className="rounded-full border border-border-subtle bg-surface px-2 py-0.5">Journals (what you asked)</span>
+            <ArrowRight className="h-3 w-3 text-text-muted" />
+            <span className="rounded-full border border-border-subtle bg-surface px-2 py-0.5">Intents (the goal behind it)</span>
+            <ArrowRight className="h-3 w-3 text-text-muted" />
+            <span className="rounded-full border border-border-subtle bg-surface px-2 py-0.5">Domain memory + state</span>
+            <ArrowRight className="h-3 w-3 text-accent" />
+            <span className="rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 text-accent">Omega (learned)</span>
+          </div>
+          <div className="mt-1 flex flex-wrap gap-2">
+            <button onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "ideal-state" }))} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs hover:border-accent-border hover:text-accent"><Compass className="h-3.5 w-3.5" /> Ideal State (authored)</button>
+            <button onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "intents" }))} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs hover:border-accent-border hover:text-accent"><Lightbulb className="h-3.5 w-3.5" /> Intents</button>
+            <button onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "recommendations" }))} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs hover:border-accent-border hover:text-accent"><FileText className="h-3.5 w-3.5" /> Recommendations</button>
+          </div>
+          <p className="text-[11px] text-text-muted">Ideal State = what you WANT (authored, wins conflicts). Omega = what we've LEARNED (distilled). Both inject into every turn.</p>
+        </div>
+      </CollapsibleSection>
 
       {/* Action bar: distill + edit/view. */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
