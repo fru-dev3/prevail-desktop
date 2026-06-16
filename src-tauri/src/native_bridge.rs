@@ -107,7 +107,7 @@ impl NativeBridgeState {
     pub async fn start(&self, cfg: NativeBridgeConfig) -> Result<(), String> {
         crate::bunker::guard_cloud()?; // polls a remote service
         let platform = cfg.platform.to_lowercase();
-        if platform != "matrix" && platform != "mattermost" {
+        if !matches!(platform.as_str(), "matrix" | "mattermost" | "signal") {
             return Err(format!("unsupported native platform: {platform}"));
         }
         self.stop(&platform).await;
@@ -120,14 +120,17 @@ impl NativeBridgeState {
         let handle = tauri::async_runtime::spawn(async move {
             // Cursor: Matrix `next_batch` token; Mattermost last-seen create_at ms.
             let mut since: Option<String> = None;
-            // Skip the backlog on first poll so we only answer NEW messages.
-            let mut primed = false;
+            // HTTP platforms return a backlog on the first sync — skip it so we
+            // only answer NEW messages. Signal's `receive` consumes the queue
+            // (messages aren't re-delivered), so we process its first batch.
+            let mut primed = platform == "signal";
             loop {
                 tokio::select! {
                     _ = stop_rx.changed() => { if *stop_rx.borrow() { break; } }
                     _ = tokio::time::sleep(poll) => {
                         let res = match platform.as_str() {
                             "matrix" => fetch_matrix(&cfg.base_url, &cfg.token, &cfg.channel, since.as_deref()).await,
+                            "signal" => fetch_signal(&cfg.base_url).await,
                             _ => fetch_mattermost(&cfg.base_url, &cfg.token, &cfg.channel, since.as_deref()).await,
                         };
                         match res {
@@ -152,6 +155,7 @@ impl NativeBridgeState {
                                     };
                                     let sent = match platform.as_str() {
                                         "matrix" => send_matrix(&cfg.base_url, &cfg.token, &cfg.channel, &reply).await,
+                                        "signal" => send_signal(&cfg.base_url, &cfg.channel, &reply).await,
                                         _ => send_mattermost(&cfg.base_url, &cfg.token, &cfg.channel, &reply).await,
                                     };
                                     match sent {
@@ -277,6 +281,43 @@ async fn send_mattermost(base: &str, token: &str, channel: &str, text: &str) -> 
     Ok(())
 }
 
+// ── Signal (signal-cli subprocess) ────────────────────────────────────────────
+// No official bot API, so we drive the `signal-cli` daemon the user has already
+// installed + registered (their account IS the credential). `receive` drains the
+// inbound queue as JSON envelopes; `send` posts a reply. base_url = the account
+// number (e.g. +15551234567); channel = the recipient number.
+async fn fetch_signal(account: &str) -> Result<(Vec<Incoming>, Option<String>), String> {
+    let out = tokio::process::Command::new("signal-cli")
+        .args(["-a", account, "-o", "json", "receive"])
+        .output().await.map_err(|e| format!("signal-cli receive: {e} (is signal-cli installed?)"))?;
+    if !out.status.success() {
+        return Err(format!("signal-cli receive: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut msgs = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() { continue; }
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            // Only real text messages — skip receipts, typing, sync, reactions.
+            if let Some(body) = v.pointer("/envelope/dataMessage/message").and_then(|m| m.as_str()) {
+                if !body.trim().is_empty() { msgs.push(Incoming { text: body.to_string() }); }
+            }
+        }
+    }
+    Ok((msgs, None)) // signal-cli consumes the queue; no cursor needed
+}
+
+async fn send_signal(account: &str, recipient: &str, text: &str) -> Result<(), String> {
+    let out = tokio::process::Command::new("signal-cli")
+        .args(["-a", account, "send", "-m", text, recipient])
+        .output().await.map_err(|e| format!("signal-cli send: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("signal-cli send: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    Ok(())
+}
+
 // Minimal URL-encoding for path/query segments (room ids contain ! : / etc.).
 fn urlencode(s: &str) -> String {
     let mut out = String::new();
@@ -303,7 +344,9 @@ pub async fn native_bridge_start(
 ) -> Result<BridgeStatus, String> {
     let mut cfg = cfg;
     let platform = cfg.platform.to_lowercase();
-    if cfg.token.trim().is_empty() {
+    // Signal authenticates via the locally-registered signal-cli account, not a
+    // token. The HTTP platforms resolve their access token from the Keychain.
+    if platform != "signal" && cfg.token.trim().is_empty() {
         cfg.token = crate::ingestion::keychain::get("prevail.providers", &format!("native-{platform}"))
             .map_err(|_| format!("no {platform} token configured"))?;
         if cfg.token.trim().is_empty() {

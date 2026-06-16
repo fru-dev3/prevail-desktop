@@ -22,12 +22,11 @@ import type { CliInfo, DiagCheck, TgBridgeStatus } from "./types";
 import type { UnlistenFn } from "./bridge";
 
 export const COMING_SOON_GATEWAYS: { name: string; icon?: { path: string; hex: string }; mono?: typeof Mail }[] = [
-  // Matrix + Mattermost are now native (NativeBridgeCard). These remain pending a
-  // native bridge: Discord/Slack need a WebSocket client, Email needs IMAP/SMTP,
-  // Signal needs signal-cli. All are reachable today via the Webhook.
+  // Matrix, Mattermost, Signal are now native (NativeBridgeCard). These remain
+  // pending a native bridge: Discord/Slack need a WebSocket client, Email needs
+  // IMAP/SMTP. Both are reachable today via the Webhook.
   { name: "Discord", icon: siDiscord },
   { name: "Slack", mono: MessagesSquare },
-  { name: "Signal", icon: siSignal },
   { name: "Email (IMAP/SMTP)", mono: Mail },
   { name: "SMS (Twilio)", mono: MessageSquare },
 ];
@@ -71,6 +70,9 @@ export function GatewaySection() {
             <NativeBridgeCard platform="mattermost" label="Mattermost" icon={siMattermost}
               urlLabel="Server URL" urlPlaceholder="https://chat.example.com"
               channelLabel="Channel ID" channelPlaceholder="channel id" />
+            <NativeBridgeCard platform="signal" label="Signal" icon={siSignal} noToken
+              urlLabel="Account" urlPlaceholder="+15551234567"
+              channelLabel="Recipient" channelPlaceholder="+15559876543" />
             <WhatsAppCard />
           </div>
         </CollapsibleSection>
@@ -478,9 +480,9 @@ export function WebhookCard() {
 // A6 — native poll bridges (Matrix, Mattermost). Two-way relays over HTTP polling
 // (no WebSocket), backend: native_bridge.rs. Off by default; inert until the user
 // fills in server + token + channel and toggles it on.
-export function NativeBridgeCard({ platform, label, icon, urlLabel, urlPlaceholder, channelLabel, channelPlaceholder }: {
-  platform: "matrix" | "mattermost"; label: string; icon?: { path: string; hex: string };
-  urlLabel: string; urlPlaceholder: string; channelLabel: string; channelPlaceholder: string;
+export function NativeBridgeCard({ platform, label, icon, mono, urlLabel, urlPlaceholder, channelLabel, channelPlaceholder, noToken }: {
+  platform: "matrix" | "mattermost" | "signal"; label: string; icon?: { path: string; hex: string }; mono?: typeof Mail;
+  urlLabel: string; urlPlaceholder: string; channelLabel: string; channelPlaceholder: string; noToken?: boolean;
 }) {
   const provider = `native-${platform}`;
   const [baseUrl, setBaseUrl] = useState(lsGet(`prevail.native.${platform}.url`));
@@ -517,11 +519,11 @@ export function NativeBridgeCard({ platform, label, icon, urlLabel, urlPlacehold
   async function toggle(on: boolean) {
     try {
       if (!on) { await invoke("native_bridge_stop", { platform }); await refresh(); return; }
-      if (!baseUrl.trim() || !channel.trim() || (!token.trim() && !tokenSaved)) {
-        setStatus({ kind: "err", msg: "fill in server, channel, and token first" });
+      if (!baseUrl.trim() || !channel.trim() || (!noToken && !token.trim() && !tokenSaved)) {
+        setStatus({ kind: "err", msg: noToken ? "fill in account and recipient first" : "fill in server, channel, and token first" });
         return;
       }
-      if (token.trim()) { await invoke("provider_key_set", { provider, key: token.trim() }); setTokenSaved(true); setToken(""); }
+      if (!noToken && token.trim()) { await invoke("provider_key_set", { provider, key: token.trim() }); setTokenSaved(true); setToken(""); }
       let routes: { domain: string; keywords: string[] }[] = [];
       let vault: string | null = null;
       try {
@@ -544,13 +546,13 @@ export function NativeBridgeCard({ platform, label, icon, urlLabel, urlPlacehold
     <div className="rounded-xl border border-border bg-surface p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <GatewayMark icon={icon} />
+          <GatewayMark icon={icon} mono={mono} />
           <div>
             <div className="text-sm font-semibold text-text-primary">{label}</div>
-            <div className="text-xs text-text-muted">Two-way relay over HTTP polling. Message your council from {label}.</div>
+            <div className="text-xs text-text-muted">Two-way relay. Message your council from {label}.</div>
           </div>
         </div>
-        <Toggle on={running} onChange={(v) => void toggle(v)} disabled={!baseUrl.trim() || !channel.trim() || (!token.trim() && !tokenSaved)} label={running ? "On" : "Off"} />
+        <Toggle on={running} onChange={(v) => void toggle(v)} disabled={!baseUrl.trim() || !channel.trim() || (!noToken && !token.trim() && !tokenSaved)} label={running ? "On" : "Off"} />
       </div>
       <div className="mt-3 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 text-xs">
         <span className="text-text-muted">{urlLabel}</span>
@@ -559,12 +561,14 @@ export function NativeBridgeCard({ platform, label, icon, urlLabel, urlPlacehold
         <span className="text-text-muted">{channelLabel}</span>
         <input value={channel} onChange={(e) => setChannel(e.target.value)} placeholder={channelPlaceholder} disabled={running}
           className="rounded-md border border-border bg-background px-2 py-1 font-mono focus:border-accent-border focus:outline-none disabled:opacity-60" />
-        <span className="text-text-muted">Token</span>
-        <div className="flex items-center gap-2">
-          <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={tokenSaved ? "saved · replace…" : "access token"} disabled={running}
-            className="flex-1 rounded-md border border-border bg-background px-2 py-1 focus:border-accent-border focus:outline-none disabled:opacity-60" />
-          {tokenSaved && <span className="font-mono text-[10px] uppercase tracking-wider text-ok">stored</span>}
-        </div>
+        {!noToken && <>
+          <span className="text-text-muted">Token</span>
+          <div className="flex items-center gap-2">
+            <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={tokenSaved ? "saved · replace…" : "access token"} disabled={running}
+              className="flex-1 rounded-md border border-border bg-background px-2 py-1 focus:border-accent-border focus:outline-none disabled:opacity-60" />
+            {tokenSaved && <span className="font-mono text-[10px] uppercase tracking-wider text-ok">stored</span>}
+          </div>
+        </>}
         <span className="text-text-muted">Model</span>
         <select value={cli} onChange={(e) => setCli(e.target.value)} disabled={running}
           className="rounded-md border border-border bg-background px-2 py-1 focus:border-accent-border focus:outline-none disabled:opacity-60">
