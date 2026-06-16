@@ -388,9 +388,15 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
           })}
         </div>
       </div>
-      {/* Tag filter chips */}
+      {/* A3 (Monday feedback): the tag-filter cloud read as noisy/unprofessional.
+          Tuck it behind a disclosure (collapsed by default; auto-open when a
+          filter is active) so the catalog stays clean. */}
       {allTags.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-1.5">
+        <details className="mb-3 group" open={activeTags.size > 0}>
+          <summary className="mb-2 inline-flex cursor-pointer list-none items-center gap-1.5 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+            Filter by tag{activeTags.size > 0 ? ` · ${activeTags.size}` : ""}
+          </summary>
+        <div className="flex flex-wrap gap-1.5">
           {allTags.map((t) => {
             const active = activeTags.has(t.key);
             return (
@@ -412,6 +418,7 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
             </button>
           )}
         </div>
+        </details>
       )}
       <div className="mb-4 font-mono text-[10px] uppercase tracking-wider text-text-muted/70">
         {needle

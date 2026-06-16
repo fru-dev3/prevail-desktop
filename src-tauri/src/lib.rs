@@ -40,8 +40,13 @@ mod skillgen;
 mod taskgen;
 mod tasks;
 mod telegram;
+mod discord_bridge;
+mod email_bridge;
+mod native_bridge;
+mod slack_bridge;
 mod telegram_bridge;
 mod watchdog;
+mod webhook_bridge;
 mod webui;
 
 use std::fs;
@@ -253,6 +258,11 @@ pub fn run() {
         })
         .manage(ingestion::OrchestratorState::default())
         .manage(telegram_bridge::BridgeState::new())
+        .manage(webhook_bridge::WebhookState::default())
+        .manage(native_bridge::NativeBridgeState::default())
+        .manage(discord_bridge::DiscordState::default())
+        .manage(slack_bridge::SlackState::default())
+        .manage(email_bridge::EmailState::default())
         .manage(distill::DistillState::new())
         .manage(intent_daemon::IntentDaemonState::new())
         .manage(reminders::RemindersState::new())
@@ -317,6 +327,7 @@ pub fn run() {
             distill::distill_status,
             distill::distill_run_once,
             surface::domain_surface,
+            surface::domain_draft_ideal,
             tasks::tasks_read,
             tasks::tasks_set,
             tasks::tasks_add,
@@ -368,6 +379,7 @@ pub fn run() {
             engine::engine_app_probe,
             engine::engine_app_add,
             engine::engine_app_set_domains,
+            engine::engine_app_set_integration,
             engine::engine_app_set_schedule,
             engine::engine_app_set_enabled,
             engine::engine_app_runs,
@@ -378,6 +390,8 @@ pub fn run() {
             engine::engine_alignment,
             engine::engine_app_skills,
             engine::engine_vault_embed,
+            engine::engine_vault_migrate_data,
+            engine::engine_vault_archive_data,
             engine::engine_appmode_get,
             engine::engine_appmode_set,
             engine::engine_production_init,
@@ -392,6 +406,8 @@ pub fn run() {
             engine::engine_lock_reset,
             engine::engine_biometric_authenticate,
             idealstate::ideal_state_versions,
+            idealstate::read_domain_ideal,
+            idealstate::write_domain_ideal,
             engine::engine_vault_status,
             engine::mcp_test_handshake,
             engine::headless_learn_status,
@@ -451,6 +467,21 @@ pub fn run() {
             telegram_bridge::telegram_bridge_start,
             telegram_bridge::telegram_bridge_stop,
             telegram_bridge::telegram_bridge_status,
+            webhook_bridge::webhook_bridge_start,
+            webhook_bridge::webhook_bridge_stop,
+            webhook_bridge::webhook_bridge_status,
+            native_bridge::native_bridge_start,
+            native_bridge::native_bridge_stop,
+            native_bridge::native_bridge_status,
+            discord_bridge::discord_bridge_start,
+            discord_bridge::discord_bridge_stop,
+            discord_bridge::discord_bridge_status,
+            slack_bridge::slack_bridge_start,
+            slack_bridge::slack_bridge_stop,
+            slack_bridge::slack_bridge_status,
+            email_bridge::email_bridge_start,
+            email_bridge::email_bridge_stop,
+            email_bridge::email_bridge_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

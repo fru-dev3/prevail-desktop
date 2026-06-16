@@ -251,7 +251,11 @@ export function ChatPanel({
   const [contextOpen, setContextOpen] = useState<boolean>(() => lsGet("prevail.contextOpen") === "1");
   useEffect(() => { lsSet("prevail.contextOpen", contextOpen ? "1" : "0"); }, [contextOpen]);
   const [primedContext, setPrimedContext] = useState<{ label: string; body: string }[]>([]);
+  // B2: surface attach failures on-screen instead of swallowing them, so a
+  // silent "$domain didn't attach" becomes a visible, diagnosable message.
+  const [attachErr, setAttachErr] = useState<string | null>(null);
   function injectContext(body: string, label: string) {
+    setAttachErr(null);
     setPrimedContext((cur) => {
       if (cur.some((c) => c.label === label)) return cur;
       return [...cur, { label, body }];
@@ -478,17 +482,26 @@ export function ChatPanel({
   // Slash autocomplete — detect `/<word>` at the caret position and
   // expose the filtered skills + a completer for the textarea below.
   const taRef = useRef<HTMLTextAreaElement>(null);
+  // B2 (Monday feedback): the `/` and `$` popovers must read the caret to know
+  // what the user is typing. Reading `taRef.current.selectionStart` inside a
+  // useMemo is a render-phase DOM read — for append-at-end typing the browser
+  // has already moved the caret, but mid-string edits (or a stale ref) can read
+  // the WRONG position, so the popover silently fails to match and Enter "does
+  // nothing." Track the caret in state instead, updated from the very events
+  // that move it, so the matchers always see a correct, committed position.
+  const [caretPos, setCaretPos] = useState<number>(0);
+  const syncCaret = useCallback((el: HTMLTextAreaElement | null) => {
+    if (el) setCaretPos(el.selectionStart ?? el.value.length);
+  }, []);
   const slashMatch = useMemo(() => {
-    const ta = taRef.current;
-    if (!ta) return null;
-    const caret = ta.selectionStart ?? input.length;
+    const caret = Math.min(caretPos, input.length);
     const before = input.slice(0, caret);
     // Match the trailing /<word> right at the caret.
     const m = before.match(/(^|\s)\/([a-zA-Z0-9_-]*)$/);
     if (!m) return null;
     const start = caret - m[2].length - 1; // index of the `/`
     return { token: m[2], start, end: caret };
-  }, [input]);
+  }, [input, caretPos]);
   const slashCandidates = useMemo(() => {
     if (!slashMatch) return [];
     const q = slashMatch.token.toLowerCase();
@@ -506,6 +519,7 @@ export function ChatPanel({
     const tail = input.slice(slashMatch.end);
     const next = `${head}${head && tail && !tail.startsWith(" ") ? " " : ""}${tail}`;
     setInput(next);
+    setCaretPos(head.length); // collapse the match so the popover closes
     insertSkillSlash(name);
     requestAnimationFrame(() => {
       const ta = taRef.current;
@@ -520,15 +534,13 @@ export function ChatPanel({
   // as a chip, exactly like dragging it in, then strips the `$token`.
   type DollarItem = { kind: "domain" | "app"; id: string; label: string; sub?: string };
   const dollarMatch = useMemo(() => {
-    const ta = taRef.current;
-    if (!ta) return null;
-    const caret = ta.selectionStart ?? input.length;
+    const caret = Math.min(caretPos, input.length);
     const before = input.slice(0, caret);
     const m = before.match(/(^|\s)\$([a-zA-Z0-9_-]*)$/);
     if (!m) return null;
     const start = caret - m[2].length - 1; // index of the `$`
     return { token: m[2], start, end: caret };
-  }, [input]);
+  }, [input, caretPos]);
   const dollarCandidates = useMemo<DollarItem[]>(() => {
     if (!dollarMatch) return [];
     const q = dollarMatch.token.toLowerCase();
@@ -542,12 +554,13 @@ export function ChatPanel({
   }, [dollarMatch, domains, appsCache]);
   const [dollarIdx, setDollarIdx] = useState(0);
   useEffect(() => { setDollarIdx(0); }, [dollarMatch?.token]);
-  function applyDollarCompletion(item: DollarItem) {
-    if (!dollarMatch) return;
+  function applyDollarCompletion(item: DollarItem | undefined) {
+    if (!dollarMatch || !item) return;
     const head = input.slice(0, dollarMatch.start).replace(/\s$/, "");
     const tail = input.slice(dollarMatch.end);
     const next = `${head}${head && tail && !tail.startsWith(" ") ? " " : ""}${tail}`;
     setInput(next);
+    setCaretPos(head.length); // collapse the match so the popover closes
     if (item.kind === "domain") void attachDomainAsContext(item.id, "light");
     else void attachAppAsContext(item.id);
     requestAnimationFrame(() => {
@@ -636,6 +649,10 @@ export function ChatPanel({
   // file — hence the duplicates the user reported.
   const activeThreadRef = useRef<string | null>(activeThreadPath);
   useEffect(() => { activeThreadRef.current = activeThreadPath; }, [activeThreadPath]);
+  // C2 (Monday feedback): surface the active thread name in the canvas so it's
+  // never ambiguous which thread you're typing into. Derived from the loaded
+  // thread meta, falling back to the path slug.
+  const [threadTitle, setThreadTitle] = useState<string>("");
   useEffect(() => {
     if (tDomain && activeThreadPath && activeThreadPath.includes(`/${tDomain}/`)) {
       lsSet(`prevail.domain.${tDomain}.lastThread`, activeThreadPath);
@@ -661,7 +678,7 @@ export function ChatPanel({
     // Picking a thread (or starting a new one) always returns to the chat view,
     // even if Preferences was open — otherwise the click appears to do nothing.
     setDomainTab("chat");
-    if (!activeThreadPath) { setMessages([]); return; }
+    if (!activeThreadPath) { setMessages([]); setThreadTitle(""); return; }
     if (selfSetPathRef.current === activeThreadPath) {
       selfSetPathRef.current = null;
       return;
@@ -670,6 +687,7 @@ export function ChatPanel({
     invoke<{ meta: ThreadMeta; turns: ThreadTurn[] }>("load_thread", { path: activeThreadPath })
       .then((t) => {
         if (cancelled) return;
+        setThreadTitle(t.meta?.title?.trim() || "Untitled");
         setMessages(t.turns.map((tn) => ({
           role: tn.role,
           cli: tn.cli ?? undefined,
@@ -1337,7 +1355,7 @@ export function ChatPanel({
       } else {
         injectContext(`(no state.md in ${name})`, `extra: ${titleCase(name)}/state.md`);
       }
-    } catch (err) { console.error("attach domain", err); }
+    } catch (err) { console.error("attach domain", err); setAttachErr(`Couldn't attach ${titleCase(name)}: ${err}`); }
   }, [vaultPath, injectContext]);
   // Drag an app in as context — the mirror of attachDomainAsContext. An app
   // isn't a folder of prose; what's useful to the model is what the app IS and
@@ -1359,7 +1377,7 @@ export function ChatPanel({
         `Last synced ${relTime(app.lastSuccessTs)}.`,
       ].join("\n");
       injectContext(body, `app: ${app.title}`);
-    } catch (err) { console.error("attach app", err); }
+    } catch (err) { console.error("attach app", err); setAttachErr(`Couldn't attach app: ${err}`); }
   }, [injectContext]);
   // Test/drag hooks — exposed on window so the sidebar's manual drag (WebKit's
   // HTML5 DnD is unreliable in WKWebView) can attach a domain or app on drop.
@@ -1430,6 +1448,13 @@ export function ChatPanel({
         </div>
       )}
 
+      {/* C2 (Monday feedback): always show which thread is active in the canvas. */}
+      {activeThreadPath && threadTitle && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border-subtle bg-surface-warm/40 px-4 py-1.5">
+          <FileText className="h-3 w-3 shrink-0 text-text-muted" />
+          <span className="truncate font-mono text-[11px] text-text-secondary" title={threadTitle}>{threadTitle}</span>
+        </div>
+      )}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 && !domain && (
           <div className="flex h-full flex-col items-center justify-center px-6 py-8">
@@ -1707,7 +1732,7 @@ export function ChatPanel({
       {/* Codex-style composer — full width to match Council. The reply
           transcript above stays in a centered max-w-3xl column for
           readability; only the composer goes edge-to-edge. */}
-      <div className="shrink-0 px-6 pb-6 pt-2">
+      <div data-tour="composer" className="shrink-0 px-6 pb-6 pt-2">
         <div className="relative rounded-2xl border border-border bg-surface p-3 shadow-sm">
           {/* Context-window meter — minimal gauge of how full the running
               conversation is, where tokens go, and a one-click fresh start. */}
@@ -1727,6 +1752,13 @@ export function ChatPanel({
               onToggleAutoCompact={(v) => setPref(PREF.autoCompact, v ? "1" : "0")}
             />
           </div>
+          {/* B2: visible attach error (replaces the old silent console.error). */}
+          {attachErr && (
+            <div className="mb-2 mx-2 flex items-start gap-2 rounded-md border border-warn/40 bg-warn/10 px-2.5 py-1.5 text-xs text-warn">
+              <span className="flex-1">{attachErr}</span>
+              <button onClick={() => setAttachErr(null)} className="shrink-0 text-warn/70 hover:text-warn">×</button>
+            </div>
+          )}
           {/* Context pills — auto-loaded + dragged-in domains */}
           {primedContext.length > 0 && (
             <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2">
@@ -1804,7 +1836,10 @@ export function ChatPanel({
           <textarea
             ref={taRef}
             value={input}
-            onChange={(e) => { setInput(e.target.value); setHistIdx(-1); }}
+            onChange={(e) => { setInput(e.target.value); setCaretPos(e.target.selectionStart ?? e.target.value.length); setHistIdx(-1); }}
+            onSelect={(e) => syncCaret(e.currentTarget)}
+            onKeyUp={(e) => syncCaret(e.currentTarget)}
+            onClick={(e) => syncCaret(e.currentTarget)}
             onDragOver={(e) => {
               const types = Array.from(e.dataTransfer.types);
               if (types.includes("application/x-prevail-domain") || types.includes("text/plain")) {
@@ -2034,6 +2069,8 @@ export function ChatPanel({
           )}
           {/* Single inline toolbar: + then the per-domain toggles,
               then a spacer, then model picker / council / send. */}
+          {/* G2: the council roster lives in the COUNCIL panel, not here — this is
+              single-model Chat, so showing the full council was confusing. */}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <div className="relative" ref={plusMenuRef}>
               <button
