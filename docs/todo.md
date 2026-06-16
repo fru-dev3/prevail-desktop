@@ -161,5 +161,17 @@ Two items need a decision before building: **L (Loops agentic model)** and **M1 
 
 ---
 
+## Done this session (feat/monday-feedback-0615)
+- [x] **B4** (9d8ace6) — benchmark false "0/N under target": draft-count used an unregistered
+  command (`benchmark_questions_list`); switched to `benchmark_questions`.
+- [x] **M1** (0e93baf) — nav reorg: "Memory & Routines" → "Context & Memory"
+  (Ideals/Omega/Intents/Recommendations/Routines); surfaced Ideals + Tasks in nav; moved the
+  memory-engine knobs to App as "Memory engine". (M2–M7 redesigns still pending.)
+- [x] **K1** (0e93baf) — scheduled benchmark runs moved to the bottom of the page.
+- [x] **K3** (9c19694) — tooltip on the per-question council icon.
+- [x] **A5** (9c19694) — surfaced the orphaned WebUI as "Web access" under Connections.
+- [x] **P4** (0e93baf) — About drops the Tauri/React/Tailwind mention.
+
 ## Log
 - 2026-06-15: Plan + todo created from the Monday feedback PDF on branch feat/monday-feedback-0615.
+- 2026-06-16: Batch 1-3 — B4, M1(nav), K1, K3, A5, P4. Builds green; not merged.
