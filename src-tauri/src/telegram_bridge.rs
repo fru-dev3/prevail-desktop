@@ -43,7 +43,8 @@ pub struct RouteRule {
 }
 
 /// First route whose domain name or any keyword appears in the message.
-fn resolve_domain(cfg: &BridgeConfig, text: &str) -> Option<String> {
+/// pub(crate) so the webhook bridge (A6) routes identically.
+pub(crate) fn resolve_domain(cfg: &BridgeConfig, text: &str) -> Option<String> {
     let lower = text.to_lowercase();
     for r in &cfg.routes {
         if lower.contains(&r.domain.to_lowercase())
@@ -59,7 +60,7 @@ fn resolve_domain(cfg: &BridgeConfig, text: &str) -> Option<String> {
 /// ledger (the distiller feeds state/memory from it) and a turn in a dated
 /// telegram thread file, so the conversation is visible in the desktop's
 /// thread list. Crypto-aware via vault_append_line.
-fn record_exchange(cfg: &BridgeConfig, domain: &str, user_text: &str, reply: &str) {
+pub(crate) fn record_exchange(cfg: &BridgeConfig, domain: &str, user_text: &str, reply: &str) {
     let Some(vault) = cfg.vault.as_deref().filter(|v| !v.is_empty()) else { return };
     let dir = std::path::Path::new(vault).join(domain);
     if !dir.exists() {

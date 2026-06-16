@@ -42,6 +42,7 @@ mod tasks;
 mod telegram;
 mod telegram_bridge;
 mod watchdog;
+mod webhook_bridge;
 mod webui;
 
 use std::fs;
@@ -253,6 +254,7 @@ pub fn run() {
         })
         .manage(ingestion::OrchestratorState::default())
         .manage(telegram_bridge::BridgeState::new())
+        .manage(webhook_bridge::WebhookState::default())
         .manage(distill::DistillState::new())
         .manage(intent_daemon::IntentDaemonState::new())
         .manage(reminders::RemindersState::new())
@@ -454,6 +456,9 @@ pub fn run() {
             telegram_bridge::telegram_bridge_start,
             telegram_bridge::telegram_bridge_stop,
             telegram_bridge::telegram_bridge_status,
+            webhook_bridge::webhook_bridge_start,
+            webhook_bridge::webhook_bridge_stop,
+            webhook_bridge::webhook_bridge_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
