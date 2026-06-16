@@ -1734,34 +1734,11 @@ export function ChatPanel({
           readability; only the composer goes edge-to-edge. */}
       <div data-tour="composer" className="shrink-0 px-6 pb-6 pt-2">
         <div className="relative rounded-2xl border border-border bg-surface p-3 shadow-sm">
-          {/* Context-window meter — minimal gauge of how full the running
-              conversation is, where tokens go, and a one-click fresh start. */}
-          <div className="mb-1 flex items-center justify-end gap-2">
-            {(autoCompacted || compacting) && (
-              <span className="font-mono text-[10px] text-accent">{compacting ? "compacting…" : "auto-compacted ✓"}</span>
-            )}
-            <ContextMeter
-              conversationTokens={conversationTokens}
-              attachedTokens={attachedTokens}
-              draftTokens={estimateTokens(input)}
-              windowTokens={ctxWindowTokens}
-              onReset={() => window.dispatchEvent(new Event("prevail:new-chat"))}
-              onCompact={messages.length > 1 ? compactConversation : undefined}
-              compacting={compacting}
-              autoCompact={getPref(PREF.autoCompact, "1") === "1"}
-              onToggleAutoCompact={(v) => setPref(PREF.autoCompact, v ? "1" : "0")}
-            />
-          </div>
-          {/* B2: visible attach error (replaces the old silent console.error). */}
-          {attachErr && (
-            <div className="mb-2 mx-2 flex items-start gap-2 rounded-md border border-warn/40 bg-warn/10 px-2.5 py-1.5 text-xs text-warn">
-              <span className="flex-1">{attachErr}</span>
-              <button onClick={() => setAttachErr(null)} className="shrink-0 text-warn/70 hover:text-warn">×</button>
-            </div>
-          )}
-          {/* Context pills — auto-loaded + dragged-in domains */}
-          {primedContext.length > 0 && (
-            <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2">
+          {/* One row: context pills on the left, the context-window meter on the
+              right — so attached context + the gauge share a line instead of
+              stacking and eating vertical space. */}
+          <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
               {primedContext.map((c, i) => (
                 <span
                   key={c.label}
@@ -1777,6 +1754,29 @@ export function ChatPanel({
                   >×</button>
                 </span>
               ))}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {(autoCompacted || compacting) && (
+                <span className="font-mono text-[10px] text-accent">{compacting ? "compacting…" : "auto-compacted ✓"}</span>
+              )}
+              <ContextMeter
+                conversationTokens={conversationTokens}
+                attachedTokens={attachedTokens}
+                draftTokens={estimateTokens(input)}
+                windowTokens={ctxWindowTokens}
+                onReset={() => window.dispatchEvent(new Event("prevail:new-chat"))}
+                onCompact={messages.length > 1 ? compactConversation : undefined}
+                compacting={compacting}
+                autoCompact={getPref(PREF.autoCompact, "1") === "1"}
+                onToggleAutoCompact={(v) => setPref(PREF.autoCompact, v ? "1" : "0")}
+              />
+            </div>
+          </div>
+          {/* B2: visible attach error (replaces the old silent console.error). */}
+          {attachErr && (
+            <div className="mb-2 mx-1 flex items-start gap-2 rounded-md border border-warn/40 bg-warn/10 px-2.5 py-1.5 text-xs text-warn">
+              <span className="flex-1">{attachErr}</span>
+              <button onClick={() => setAttachErr(null)} className="shrink-0 text-warn/70 hover:text-warn">×</button>
             </div>
           )}
           {/* Slash-command popover for skills */}
