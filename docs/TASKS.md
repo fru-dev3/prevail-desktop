@@ -455,12 +455,20 @@ basic forms; "format way nicely, not text walls."
   was the G2 strip showing where it shouldn't; Council keeps its panelist pills.
 
 ### Open (this round)
-- [ ] **ARCH-1: unify "Desired State" (loops) and "Domain Ideal State" (M6)** — overlapping
-  per-domain "what good looks like." Make ONE source of truth (loops read the domain ideal).
-- [ ] **IDEAL-AI: "Draft/Suggest with AI" on the Domain Ideal State** — generate or suggest it.
-- [ ] **FMT-1: format "way nicely"** — Routines section, "How loops work" explainer, the
-  Ideal/Desired State editors — premium layout, not text walls / bare textareas.
-- [ ] **B2: `$domain` + Enter not attaching** — popover shows but Enter does nothing; caret fix
-  didn't resolve it. Need the webview console error, or add visible error reporting to locate it.
-- [ ] **ONB-1: onboarding — add the Prevail logo + a real anchored walkthrough** (spotlight
-  actual sections), not a centered modal with generic copy.
+- [x] **ARCH-1: unified** (bb55b43) — Loops "Desired state" now edits the SAME ideal-state.md
+  as the domain Ideal State (mirrors to the loop doc for the engine). One target everywhere.
+- [x] **IDEAL-AI** (59c1367) — "Draft with AI" on the Ideal State (surface.rs domain_draft_ideal:
+  2-4 grounded sentences from the domain's context, for review).
+- [x] **FMT-1** (bb55b43, 59c1367) — reformatted: "How loops work" (steps + guardrail grid),
+  the loop card (highlighted target, numbered action cards, run-history timeline), Routines
+  (on/off icon cards), Ideal State editors (premium framing).
+- [x] **IA: "Memory engine" moved into Context & Memory** (afd2fde) — was orphaned in App.
+- [x] **ONB-1** (a1a5b40) — onboarding is now PrevailLogo on welcome + a spotlight walkthrough
+  highlighting domains / composer / tabs / settings via data-tour anchors.
+- [~] **B2: `$domain` + Enter** (98d6fd2) — hardened + now surfaces attach failures on-screen
+  (was a silent console.error); guarded applyDollarCompletion. Root cause shows on next attempt.
+
+### Released
+- [x] **v0.8.5** — merged cli + desktop feature branches to main (--no-ff), tagged v0.8.5,
+  pushed → Release CI building (sign + notarize + publish). cli merged first so the engine
+  sidecar carries W4/G1/ideal-draft. 73 rust tests + tsc(0) + cli suite green.
