@@ -63,19 +63,36 @@ export function OnboardingTour() {
   const first = i === 0;
   const anchored = !!step.anchor && !!rect;
 
-  // Card placement: centered when not anchored; otherwise to the side of the
-  // spotlight with the most room (right → left → below), clamped to the viewport.
+  // Card placement: centered when not anchored; otherwise placed in the emptiest
+  // region around the spotlight so it NEVER overlaps the highlighted element.
+  // Pick the side (right/left/below/above) with the most free space that fits the
+  // card, position it there, and clamp to the viewport.
   let cardStyle: React.CSSProperties = {};
   if (anchored && rect) {
     const vw = window.innerWidth, vh = window.innerHeight;
-    const spaceRight = vw - rect.right, spaceLeft = rect.left;
+    const estH = Math.min(cardRef.current?.offsetHeight ?? 280, vh - 2 * GAP);
+    const space = {
+      right: vw - rect.right,
+      left: rect.left,
+      below: vh - rect.bottom,
+      above: rect.top,
+    };
     let left: number, top: number;
-    if (spaceRight > CARD_W + GAP) { left = rect.right + GAP; top = rect.top; }
-    else if (spaceLeft > CARD_W + GAP) { left = rect.left - CARD_W - GAP; top = rect.top; }
-    else { left = Math.min(rect.left, vw - CARD_W - GAP); top = rect.bottom + GAP; }
-    left = Math.max(GAP, Math.min(left, vw - CARD_W - GAP));
-    top = Math.max(GAP, Math.min(top, vh - 280));
-    cardStyle = { position: "fixed", left, top, width: CARD_W };
+    const clampX = (x: number) => Math.max(GAP, Math.min(x, vw - CARD_W - GAP));
+    const clampY = (y: number) => Math.max(GAP, Math.min(y, vh - estH - GAP));
+    // Horizontal sides first (card beside the element, vertically aligned to it).
+    if (space.right >= CARD_W + GAP && space.right >= space.left) {
+      left = rect.right + GAP; top = clampY(rect.top);
+    } else if (space.left >= CARD_W + GAP) {
+      left = rect.left - CARD_W - GAP; top = clampY(rect.top);
+    } else if (space.below >= space.above) {
+      // Below: centered horizontally on the element, fully under it.
+      top = rect.bottom + GAP; left = clampX(rect.left + rect.width / 2 - CARD_W / 2);
+    } else {
+      // Above: fully above the element (the common case for the bottom composer).
+      top = rect.top - estH - GAP; left = clampX(rect.left + rect.width / 2 - CARD_W / 2);
+    }
+    cardStyle = { position: "fixed", left: clampX(left), top: Math.max(GAP, top), width: CARD_W };
   }
 
   const card = (
