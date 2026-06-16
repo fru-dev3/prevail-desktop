@@ -470,7 +470,7 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
       <SettingsHeader
         title="Intents"
         icon={Lightbulb}
-        subtitle="Not just a list of prompts: Prevail reads across your sessions and domains and distills the high-level goals you're actually pursuing, with recommended next actions. The raw prompt history (replayable provenance) lives below."
+        subtitle="Your JOURNAL is the raw record of what you asked, logged per domain across every thread. INTENTS are the distillation of it: the goal behind the questions (per-domain or cross-domain), with recommended next actions. The journal lives below as provenance; intents are lifted from it."
       />
 
       {/* Distilled intents — the high-level layer. */}
@@ -582,8 +582,10 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
         </div>
       )}
 
-      {/* Raw prompt history — provenance, collapsed by default. */}
-      <div className="mb-2 text-sm font-semibold text-text-primary">Prompt history</div>
+      {/* M3 (Monday feedback): this raw log IS the Journal — what you asked, the
+          provenance intents are distilled from. Labelled so the relationship is clear. */}
+      <div className="mb-1 text-sm font-semibold text-text-primary">Journal · what you asked</div>
+      <div className="mb-2 text-xs text-text-secondary">The raw record across every thread. Intents above are distilled from this.</div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
           value={q}
