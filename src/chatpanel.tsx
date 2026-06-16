@@ -251,7 +251,11 @@ export function ChatPanel({
   const [contextOpen, setContextOpen] = useState<boolean>(() => lsGet("prevail.contextOpen") === "1");
   useEffect(() => { lsSet("prevail.contextOpen", contextOpen ? "1" : "0"); }, [contextOpen]);
   const [primedContext, setPrimedContext] = useState<{ label: string; body: string }[]>([]);
+  // B2: surface attach failures on-screen instead of swallowing them, so a
+  // silent "$domain didn't attach" becomes a visible, diagnosable message.
+  const [attachErr, setAttachErr] = useState<string | null>(null);
   function injectContext(body: string, label: string) {
+    setAttachErr(null);
     setPrimedContext((cur) => {
       if (cur.some((c) => c.label === label)) return cur;
       return [...cur, { label, body }];
@@ -550,8 +554,8 @@ export function ChatPanel({
   }, [dollarMatch, domains, appsCache]);
   const [dollarIdx, setDollarIdx] = useState(0);
   useEffect(() => { setDollarIdx(0); }, [dollarMatch?.token]);
-  function applyDollarCompletion(item: DollarItem) {
-    if (!dollarMatch) return;
+  function applyDollarCompletion(item: DollarItem | undefined) {
+    if (!dollarMatch || !item) return;
     const head = input.slice(0, dollarMatch.start).replace(/\s$/, "");
     const tail = input.slice(dollarMatch.end);
     const next = `${head}${head && tail && !tail.startsWith(" ") ? " " : ""}${tail}`;
@@ -1351,7 +1355,7 @@ export function ChatPanel({
       } else {
         injectContext(`(no state.md in ${name})`, `extra: ${titleCase(name)}/state.md`);
       }
-    } catch (err) { console.error("attach domain", err); }
+    } catch (err) { console.error("attach domain", err); setAttachErr(`Couldn't attach ${titleCase(name)}: ${err}`); }
   }, [vaultPath, injectContext]);
   // Drag an app in as context — the mirror of attachDomainAsContext. An app
   // isn't a folder of prose; what's useful to the model is what the app IS and
@@ -1373,7 +1377,7 @@ export function ChatPanel({
         `Last synced ${relTime(app.lastSuccessTs)}.`,
       ].join("\n");
       injectContext(body, `app: ${app.title}`);
-    } catch (err) { console.error("attach app", err); }
+    } catch (err) { console.error("attach app", err); setAttachErr(`Couldn't attach app: ${err}`); }
   }, [injectContext]);
   // Test/drag hooks — exposed on window so the sidebar's manual drag (WebKit's
   // HTML5 DnD is unreliable in WKWebView) can attach a domain or app on drop.
@@ -1748,6 +1752,13 @@ export function ChatPanel({
               onToggleAutoCompact={(v) => setPref(PREF.autoCompact, v ? "1" : "0")}
             />
           </div>
+          {/* B2: visible attach error (replaces the old silent console.error). */}
+          {attachErr && (
+            <div className="mb-2 mx-2 flex items-start gap-2 rounded-md border border-warn/40 bg-warn/10 px-2.5 py-1.5 text-xs text-warn">
+              <span className="flex-1">{attachErr}</span>
+              <button onClick={() => setAttachErr(null)} className="shrink-0 text-warn/70 hover:text-warn">×</button>
+            </div>
+          )}
           {/* Context pills — auto-loaded + dragged-in domains */}
           {primedContext.length > 0 && (
             <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2">
