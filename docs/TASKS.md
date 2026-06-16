@@ -442,3 +442,25 @@ OPEN for founder: review everything, then say the word to merge to main + cut a 
   bug on prevail-web (LICENSE/pkg field were never staged) before pushing.
 - 2026-06-14: CI source-map upload scaffolded (@sentry/vite-plugin, gated on SENTRY_AUTH_TOKEN
   secret) → readable crash stack traces on the NEXT release. Pushed to desktop main (f86d2eb).
+
+---
+
+## LIVE-REVIEW ROUND — 2026-06-16 (testing v0.8.5 in the running app)
+Founder walking through the running build. DESIGN BAR above still applies: premium, not
+basic forms; "format way nicely, not text walls."
+
+### Done
+- [x] **Version 0.8.4 → 0.8.5** (68f1922) — 3 files; footer reflects the new build.
+- [x] **Council roster removed from single-Chat composer** (68f1922) — "many models in Chat"
+  was the G2 strip showing where it shouldn't; Council keeps its panelist pills.
+
+### Open (this round)
+- [ ] **ARCH-1: unify "Desired State" (loops) and "Domain Ideal State" (M6)** — overlapping
+  per-domain "what good looks like." Make ONE source of truth (loops read the domain ideal).
+- [ ] **IDEAL-AI: "Draft/Suggest with AI" on the Domain Ideal State** — generate or suggest it.
+- [ ] **FMT-1: format "way nicely"** — Routines section, "How loops work" explainer, the
+  Ideal/Desired State editors — premium layout, not text walls / bare textareas.
+- [ ] **B2: `$domain` + Enter not attaching** — popover shows but Enter does nothing; caret fix
+  didn't resolve it. Need the webview console error, or add visible error reporting to locate it.
+- [ ] **ONB-1: onboarding — add the Prevail logo + a real anchored walkthrough** (spotlight
+  actual sections), not a centered modal with generic copy.

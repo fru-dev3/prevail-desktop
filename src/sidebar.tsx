@@ -11,7 +11,7 @@ import { lsGet, lsSet } from "./storage";
 import { SidebarGatewayLive, SidebarMcpLive } from "./panels";
 import { domainIcon } from "./icons";
 import { useAppearance } from "./hooks";
-import { SidebarBenchmarkRuns, SidebarBenchScheduled } from "./cards";
+import { SidebarBackupActive, SidebarBenchmarkRuns, SidebarBenchScheduled } from "./cards";
 import { BrandMark } from "./brandmark";
 import type { Domain, EngineApp, LifeReadiness, Mode, TabId } from "./types";
 
@@ -354,6 +354,7 @@ export function Sidebar({
         </div>
         {!collapsed && (
           <button
+            data-tour="domains"
             onClick={() => setDomainsOpen((v) => !v)}
             className="group/h mt-2 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted hover:text-text-secondary transition-colors"
           >
@@ -766,9 +767,10 @@ export function Sidebar({
       <SidebarMcpLive collapsed={collapsed} setTab={setTab} />
       <SidebarBenchmarkRuns collapsed={collapsed} />
       <SidebarBenchScheduled collapsed={collapsed} />
+      <SidebarBackupActive collapsed={collapsed} />
 
       {/* Settings + theme — pinned to bottom (Upgrade lives in Settings) */}
-      <div className={`border-t border-border-subtle bg-surface-warm/30 ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1 px-2 py-1.5"}`}>
+      <div data-tour="settings" className={`border-t border-border-subtle bg-surface-warm/30 ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1 px-2 py-1.5"}`}>
         <button
           onClick={() => setTab("settings")}
           title="Settings"

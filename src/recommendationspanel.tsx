@@ -3,11 +3,11 @@
 // per domain, apps to connect. Each is one-click. Computed fresh from your vault
 // signals (intents, benchmark, apps), so it stays current as you use the app.
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, BarChart3, Check, Compass, Gauge, Lightbulb, Loader2, Plug, Sparkles } from "lucide-react";
+import { ArrowRight, BarChart3, Bookmark, Check, ChevronRight, Compass, Gauge, Lightbulb, Loader2, Plug, Sparkles, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase } from "./format";
 import { modelLabel } from "./helpers2";
-import { lsSet } from "./storage";
+import { lsGet, lsSet } from "./storage";
 import { SettingsHeader } from "./sectionutil";
 
 type Rec = {
@@ -40,6 +40,29 @@ function recTitle(r: Rec): string {
   return r.title;
 }
 
+// M5 (Monday feedback): show severity/impact, human-readably. Context recs carry
+// a score like "(52/100)" — lower score = higher impact; others get a category tone.
+function impactOf(r: Rec): { label: string; cls: string } {
+  const m = `${r.title} ${r.detail}`.match(/(\d{1,3})\s*\/\s*100/);
+  if (m) {
+    const s = Number(m[1]);
+    if (s < 50) return { label: "High impact", cls: "bg-danger/10 text-danger" };
+    if (s < 70) return { label: "Medium impact", cls: "bg-warn/10 text-warn" };
+    return { label: "Low impact", cls: "bg-surface-warm text-text-muted" };
+  }
+  if (r.category === "model") return { label: "Better answers", cls: "bg-accent-soft text-accent" };
+  if (r.category === "domain") return { label: "New area", cls: "bg-accent-soft text-accent" };
+  if (r.category === "app") return { label: "Fresh data", cls: "bg-accent-soft text-accent" };
+  return { label: "Suggested", cls: "bg-surface-warm text-text-muted" };
+}
+// The "why" behind each recommendation, in plain language.
+const WHY: Record<Rec["category"], string> = {
+  context: "A higher context score means grounded, personal answers in this domain. Recording goals + decisions and connecting apps raises it, so every future reply gets sharper.",
+  model: "Benchmarks on your own questions show this model scores best here. Setting it as the default routes this domain's chats to it automatically.",
+  domain: "Prevail saw activity that doesn't fit your current domains. A dedicated domain gives it its own state, memory, and loops.",
+  app: "Connecting a source keeps this domain fed with real data on a schedule, so it never goes stale.",
+};
+
 // Shared action logic: a rec that's a one-shot config write executes in place
 // (the REC principle); anything that needs the user elsewhere navigates there.
 // Returns the human "done" message. Used by both the full panel and the home
@@ -68,10 +91,24 @@ export async function applyRec(rec: Rec, vaultPath: string): Promise<string> {
   return "Done.";
 }
 
+const REC_DISMISSED = "prevail.recs.dismissed";
+const REC_SAVED = "prevail.recs.saved";
+function loadSet(key: string): Set<string> { try { return new Set(JSON.parse(lsGet(key) || "[]")); } catch { return new Set(); } }
+
 export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
   const [recs, setRecs] = useState<Rec[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [done, setDone] = useState<Record<string, string>>({});
+  // M5: per-rec save/dismiss (persisted) + a "why" expander + bulk controls.
+  const [dismissed, setDismissed] = useState<Set<string>>(() => loadSet(REC_DISMISSED));
+  const [saved, setSaved] = useState<Set<string>>(() => loadSet(REC_SAVED));
+  const [openWhy, setOpenWhy] = useState<string | null>(null);
+  const [showDismissed, setShowDismissed] = useState(false);
+  const persistDismissed = (s: Set<string>) => { setDismissed(new Set(s)); lsSet(REC_DISMISSED, JSON.stringify([...s])); };
+  const persistSaved = (s: Set<string>) => { setSaved(new Set(s)); lsSet(REC_SAVED, JSON.stringify([...s])); };
+  const dismissRec = (id: string) => { const s = new Set(dismissed); s.add(id); persistDismissed(s); };
+  const restoreRec = (id: string) => { const s = new Set(dismissed); s.delete(id); persistDismissed(s); };
+  const toggleSave = (id: string) => { const s = new Set(saved); s.has(id) ? s.delete(id) : s.add(id); persistSaved(s); };
 
   const load = useCallback(async () => {
     try {
@@ -108,10 +145,30 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
           <p className="mt-3 text-sm text-text-secondary">Nothing to recommend right now.</p>
           <p className="mt-1 text-xs text-text-muted">Keep chatting, benchmarking, and connecting apps — recommendations appear as Prevail learns your patterns.</p>
         </div>
-      ) : (
-        <div className="space-y-6">
-          {CAT_ORDER.filter((cat) => recs.some((r) => r.category === cat)).map((cat) => {
-            const group = recs.filter((r) => r.category === cat);
+      ) : (() => {
+        const visible = recs.filter((r) => showDismissed || !dismissed.has(r.id));
+        const dismissedCount = recs.filter((r) => dismissed.has(r.id)).length;
+        const savedCount = recs.filter((r) => saved.has(r.id)).length;
+        return (
+        <div className="space-y-5">
+          {/* M5: bulk controls — saved count, dismiss-all, show/hide dismissed. */}
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-muted">
+            <span>{visible.filter((r) => !dismissed.has(r.id)).length} active{savedCount > 0 ? ` · ${savedCount} saved` : ""}</span>
+            <span className="ml-auto flex items-center gap-2">
+              {visible.some((r) => !dismissed.has(r.id)) && (
+                <button onClick={() => { const s = new Set(dismissed); recs.forEach((r) => s.add(r.id)); persistDismissed(s); }}
+                  className="rounded border border-border px-2 py-0.5 font-mono uppercase tracking-wider hover:border-accent-border hover:text-accent">Dismiss all</button>
+              )}
+              {dismissedCount > 0 && (
+                <button onClick={() => setShowDismissed((v) => !v)}
+                  className="rounded border border-border px-2 py-0.5 font-mono uppercase tracking-wider hover:border-accent-border hover:text-accent">
+                  {showDismissed ? "Hide" : "Show"} dismissed · {dismissedCount}
+                </button>
+              )}
+            </span>
+          </div>
+          {CAT_ORDER.filter((cat) => visible.some((r) => r.category === cat)).map((cat) => {
+            const group = visible.filter((r) => r.category === cat);
             const Icon = CAT_ICON[cat];
             return (
               <section key={cat}>
@@ -124,24 +181,49 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
                 <div className="overflow-hidden rounded-xl border border-border bg-surface">
                   {group.map((r, i) => {
                     const accepted = done[r.id];
+                    const isDismissed = dismissed.has(r.id);
+                    const isSaved = saved.has(r.id);
+                    const impact = impactOf(r);
+                    const whyOpen = openWhy === r.id;
                     return (
-                      <div key={r.id} className={`flex items-start gap-3 px-4 py-3.5 ${i > 0 ? "border-t border-border-subtle" : ""}`}>
-                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Icon className="h-4 w-4" /></span>
-                        <div className="min-w-0 flex-1">
-                          <span className="text-sm font-semibold text-text-primary">{recTitle(r)}</span>
-                          <p className="mt-0.5 text-xs text-text-secondary">{r.detail}</p>
-                          {accepted && <p className="mt-1.5 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-ok"><Check className="h-3 w-3" /> {accepted}</p>}
+                      <div key={r.id} className={`px-4 py-3.5 ${i > 0 ? "border-t border-border-subtle" : ""} ${isDismissed ? "opacity-50" : ""}`}>
+                        <div className="flex items-start gap-3">
+                          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Icon className="h-4 w-4" /></span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-semibold text-text-primary">{recTitle(r)}</span>
+                              <span className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${impact.cls}`}>{impact.label}</span>
+                            </div>
+                            <p className="mt-0.5 text-xs text-text-secondary">{r.detail}</p>
+                            <button onClick={() => setOpenWhy(whyOpen ? null : r.id)} className="mt-1 inline-flex items-center gap-1 text-[11px] text-accent hover:underline">
+                              <ChevronRight className={`h-3 w-3 transition-transform ${whyOpen ? "rotate-90" : ""}`} /> Why this?
+                            </button>
+                            {whyOpen && (
+                              <div className="mt-1.5 rounded-lg border border-border-subtle bg-background p-3 text-xs leading-relaxed text-text-secondary">
+                                {WHY[r.category]}
+                              </div>
+                            )}
+                            {accepted && <p className="mt-1.5 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-ok"><Check className="h-3 w-3" /> {accepted}</p>}
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1 self-center">
+                            {!accepted && !isDismissed && (
+                              <button onClick={() => accept(r)} disabled={busy === r.id}
+                                className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
+                                {busy === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />}
+                                {cat === "domain" ? "Create" : cat === "app" ? "Connect" : cat === "context" ? "Open" : "Set"}
+                              </button>
+                            )}
+                            <button onClick={() => toggleSave(r.id)} title={isSaved ? "Saved — click to unsave" : "Save for later"}
+                              className={`rounded p-1.5 ${isSaved ? "text-accent" : "text-text-muted hover:text-accent"}`}>
+                              <Bookmark className="h-3.5 w-3.5" fill={isSaved ? "currentColor" : "none"} />
+                            </button>
+                            {isDismissed ? (
+                              <button onClick={() => restoreRec(r.id)} title="Restore" className="rounded p-1.5 text-text-muted hover:text-accent"><ArrowRight className="h-3.5 w-3.5 rotate-180" /></button>
+                            ) : (
+                              <button onClick={() => dismissRec(r.id)} title="Dismiss" className="rounded p-1.5 text-text-muted hover:text-danger"><X className="h-3.5 w-3.5" /></button>
+                            )}
+                          </div>
                         </div>
-                        {!accepted && (
-                          <button
-                            onClick={() => accept(r)}
-                            disabled={busy === r.id}
-                            className="inline-flex shrink-0 items-center gap-1.5 self-center rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
-                          >
-                            {busy === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />}
-                            {cat === "domain" ? "Create" : cat === "app" ? "Connect" : cat === "context" ? "Open" : "Set"}
-                          </button>
-                        )}
                       </div>
                     );
                   })}
@@ -150,7 +232,8 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
             );
           })}
         </div>
-      )}
+        );
+      })()}
     </>
   );
 }

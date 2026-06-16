@@ -188,6 +188,40 @@ pub async fn domain_surface(
     Ok(res)
 }
 
+/// Draft a per-domain Ideal State from the domain's real context (memory, state,
+/// decisions, recent intents). Returns 2-4 sentences describing what a thriving
+/// version of this domain looks like — grounded in the user's actual situation,
+/// not generic. The desktop puts it in the editor for review before saving.
+#[tauri::command]
+pub async fn domain_draft_ideal(
+    vault: String,
+    domain: String,
+    provider: String,
+    model: String,
+) -> Result<String, String> {
+    let dir = crate::paths::domain_dir_pub(&vault, &domain);
+    let context = gather_context(&dir);
+    let prompt = format!(
+        "{}You are helping define the IDEAL STATE for this person's \"{domain}\" domain — a \
+short, vivid description of what a thriving {domain} looks like FOR THEM, used as the \
+standing target their AI council and background loops work toward.\n\n\
+Write 2-4 sentences, second person or declarative (no preamble, no headers, no quotes). \
+Make it specific and grounded in the context below — reference their actual situation, \
+goals, and decisions where possible — but aspirational. Return ONLY the ideal-state text.\n\n\
+--- CONTEXT ---\n{context}",
+        crate::ideal_state_preamble(Path::new(&vault)),
+    );
+    let effective = crate::bunker::resolve_cli(&provider)?;
+    let switched = effective != provider;
+    let model_opt = if switched || model.is_empty() { None } else { Some(model.as_str()) };
+    let out = crate::telegram_bridge::run_cli(&effective, model_opt, &prompt).await?;
+    let cleaned = out.trim().trim_matches('"').trim().to_string();
+    if cleaned.is_empty() {
+        return Err("the model returned an empty draft".into());
+    }
+    Ok(cleaned)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

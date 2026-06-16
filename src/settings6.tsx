@@ -304,11 +304,12 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
     setExpandedSet((e) => (e.size ? e : new Set([available[0].id])));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [available]);
-  useEffect(() => { lsSet(COUNCIL_MEMBERS_KEY, JSON.stringify([...members])); }, [members]);
+  useEffect(() => { lsSet(COUNCIL_MEMBERS_KEY, JSON.stringify([...members])); window.dispatchEvent(new Event("prevail:council-changed")); }, [members]);
   useEffect(() => {
     lsSet(COUNCIL_CHAIR_KEY, chair);
     const cli = chair.split("::")[0];
     if (cli) lsSet(LS.defaultChairCli, cli); // back-compat
+    window.dispatchEvent(new Event("prevail:council-changed"));
   }, [chair]);
   // Chair must be a current member.
   useEffect(() => {
@@ -329,6 +330,10 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   return (
     <>
       <SettingsHeader title="Council" subtitle="Convene several models on one question: each answers independently, then a chair writes the verdict. Pick the exact models on your default panel (you can add several from the same provider)." />
+      {/* G3 (Monday feedback): make it explicit that the panel saves as you edit. */}
+      <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-surface-warm px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+        <Check className="h-3 w-3 text-ok" /> Changes save automatically
+      </div>
       {/* Visual round table — who's seated and who chairs, at a glance. */}
       <CouncilCircle members={[...members]} chair={chair} clis={clis} />
       {/* Compact summary bar — what the panel is right now. */}

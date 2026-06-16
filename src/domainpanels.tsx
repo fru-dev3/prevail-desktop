@@ -1,12 +1,12 @@
 // Domain-scoped panels extracted from App.tsx: the context drawer (right rail),
 // the agent picker rail, the pref-picker column, and the domain prefs panel.
 import { useCallback, useEffect, useState } from "react";
-import { Box, Check, ChevronRight, Compass, Cpu, Folder, Lock, MessageSquare, PanelRightClose, Pin, Share2, SlidersHorizontal, Terminal, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Box, Check, ChevronRight, Compass, Cpu, Folder, Loader2, Lock, MessageSquare, PanelRightClose, Pin, Share2, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp } from "lucide-react";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES, MODELS } from "./constants";
 import { formatFreshness, titleCase } from "./format";
 import { isLocalCli } from "./helpers";
-import { isBunkerOn, lsGet, lsSet } from "./storage";
+import { PREF, getPref, isBunkerOn, lsGet, lsSet } from "./storage";
 import { Toggle } from "./ui";
 import { ResizeHandle } from "./widgets";
 import { DrawerImportsSection } from "./panels";
@@ -64,17 +64,14 @@ export function DomainContextDrawer({
     let mounted = true;
     setLoading(true);
     const load = () => {
-      // Domain files (state/decisions/journal/logs/skills) only exist for a
-      // real domain; General has none, so skip the call and show the
-      // cross-cutting context instead.
-      if (domain) {
-        invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain })
-          .then((c) => { if (mounted) { setCtx(c); setErr(null); } })
-          .catch((e) => { if (mounted) setErr(String(e)); })
-          .finally(() => { if (mounted) setLoading(false); });
-      } else {
-        if (mounted) { setCtx(null); setErr(null); setLoading(false); }
-      }
+      // C1 (Monday feedback): General now gets the SAME context items as domains.
+      // domain_context with an empty domain reads the vault ROOT, which is exactly
+      // where General's journal / session logs / skills / decisions live — so the
+      // panel shows them instead of only the cross-cutting trio.
+      invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain: domain || "" })
+        .then((c) => { if (mounted) { setCtx(c); setErr(null); } })
+        .catch((e) => { if (mounted) { setCtx(null); setErr(domain ? String(e) : null); } })
+        .finally(() => { if (mounted) setLoading(false); });
       invoke<DecisionRecord[]>("decisions_read", { vault: vaultPath, domain: domain || null, limit: 15 })
         .then((d) => { if (mounted) setDecisionLog(Array.isArray(d) ? d : []); })
         .catch(() => { if (mounted) setDecisionLog([]); });
@@ -565,6 +562,28 @@ export function DomainPrefsPanel({
   const localOnlyKey = `prevail.domain.${domain}.localOnly`;
   const sandboxKey = `prevail.domain.${domain}.sandbox`;
   const keywordsKey = `prevail.domain.${domain}.routing.keywords`;
+  // M6: per-domain Ideal State (this domain's own target, layered under global).
+  const [domainIdeal, setDomainIdeal] = useState<string>("");
+  const [domainIdealSaved, setDomainIdealSaved] = useState(false);
+  const [draftingIdeal, setDraftingIdeal] = useState(false);
+  const [draftErr, setDraftErr] = useState<string | null>(null);
+  useEffect(() => {
+    invoke<string>("read_domain_ideal", { vault: vaultPath, domain }).then((s) => setDomainIdeal(s || "")).catch(() => setDomainIdeal(""));
+  }, [vaultPath, domain]);
+  const saveDomainIdeal = async () => {
+    try { await invoke("write_domain_ideal", { vault: vaultPath, domain, body: domainIdeal }); setDomainIdealSaved(true); window.setTimeout(() => setDomainIdealSaved(false), 1500); } catch (e) { console.error("write domain ideal", e); }
+  };
+  // IDEAL-AI: draft the ideal state from the domain's real context, for review.
+  const draftIdealWithAI = async () => {
+    setDraftingIdeal(true); setDraftErr(null);
+    try {
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      const text = await invoke<string>("domain_draft_ideal", { vault: vaultPath, domain, provider, model });
+      if (text?.trim()) setDomainIdeal(text.trim());
+    } catch (e) { setDraftErr(String(e)); }
+    finally { setDraftingIdeal(false); }
+  };
 
   // Per-domain daemon config (_daemon.json) — taskgen + reminders toggles.
   // Default true so domains work without any config file.
@@ -635,10 +654,17 @@ export function DomainPrefsPanel({
         // setup. Frequency-ranked distinctive words, top six.
         if (!lsGet(keywordsKey)) {
           try {
+            // B5 (Monday feedback): routing keywords weren't populating because
+            // this only read the LEGACY path; v3 vaults keep domains under
+            // domains/<d>/. Try the v3 path first, then legacy.
             const texts = await Promise.all(
-              ["goals.md", "soul.md", "config.md"].map((f) =>
-                invoke<string>("read_text_file", { path: `${vaultPath}/${domain}/${f}` }).catch(() => ""),
-              ),
+              ["goals.md", "soul.md", "config.md"].map(async (f) => {
+                for (const base of [`${vaultPath}/domains/${domain}`, `${vaultPath}/${domain}`]) {
+                  const t = await invoke<string>("read_text_file", { path: `${base}/${f}` }).catch(() => "");
+                  if (t && t.trim()) return t;
+                }
+                return "";
+              }),
             );
             const STOP = new Set("the and for with that this from your you are was have has not but they them then than when what where which while will would could should about into over under each every some most more very just also like been being our their his her its only own same can may might must a an of to in on at by it is as or be do if no so we i me my".split(" "));
             const freq = new Map<string, number>();
@@ -983,6 +1009,44 @@ export function DomainPrefsPanel({
         </div>
       </PrefSection>
 
+      {/* M6: per-domain Ideal State — this domain's own target, layered under the
+          global Ideal State (which wins on conflict). Injected into this domain's
+          turns by the engine. */}
+      <PrefSection
+        title="Ideal state"
+        icon={<Compass className="h-4 w-4" />}
+        subtitle={domainIdeal.trim() ? "set" : "not set"}
+      >
+        {/* One per-domain target (ideal-state.md). The SAME field the Loops page
+            uses as its gap-target; grounds every chat in this domain. */}
+        <p className="mb-2.5 text-xs leading-relaxed text-text-muted">
+          What a thriving <span className="font-medium text-text-secondary">{titleCase(domain)}</span> looks like. Grounds every {titleCase(domain)} chat (under your global Ideal State) and is the target every {titleCase(domain)} loop closes the gap to. One target, used everywhere.
+        </p>
+        <div className="rounded-xl border border-border-subtle bg-background p-1 transition-colors focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-border/20">
+          <textarea
+            value={domainIdeal}
+            onChange={(e) => setDomainIdeal(e.target.value)}
+            placeholder={`e.g. "${titleCase(domain)}: thriving, resilient, and on a clear upward path." Or let AI draft it from what it knows about your ${titleCase(domain)}.`}
+            rows={4}
+            disabled={draftingIdeal}
+            className="w-full resize-y bg-transparent px-2.5 py-2 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted/70 disabled:opacity-60"
+          />
+        </div>
+        <div className="mt-2.5 flex items-center gap-2">
+          <button onClick={saveDomainIdeal} disabled={draftingIdeal} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+            <Check className="h-3.5 w-3.5" /> Save
+          </button>
+          <button onClick={draftIdealWithAI} disabled={draftingIdeal}
+            title={`Draft from what Prevail knows about your ${titleCase(domain)} — review before saving`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent hover:text-background disabled:opacity-50">
+            {draftingIdeal ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {draftingIdeal ? "Drafting…" : domainIdeal.trim() ? "Redraft with AI" : "Draft with AI"}
+          </button>
+          {domainIdealSaved && <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-ok"><Check className="h-3 w-3" /> saved</span>}
+        </div>
+        {draftErr && <div className="mt-2 rounded-md border border-warn/40 bg-warn/10 px-2.5 py-1.5 text-xs text-warn">{draftErr}</div>}
+      </PrefSection>
+
       {/* Channels / routing — domain name is always matched (A6); the input
           holds extra keywords → manifest.routing.keywords = [domain, ...extras] */}
       <PrefSection
@@ -1028,28 +1092,30 @@ export function DomainPrefsPanel({
       </PrefSection>
 
       <PrefSection title="Routines" icon={<Cpu className="h-4 w-4" />} subtitle={`${[daemonTaskgen, daemonReminders, daemonSkillgen].filter(Boolean).length}/3 on`}>
-        <div className="flex flex-col gap-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="text-sm font-medium text-text-primary">Task generation</div>
-              <div className="mt-0.5 text-xs text-text-secondary">AI proactively writes tasks for this domain from your goals and memory.</div>
-            </div>
-            <Toggle on={daemonTaskgen} onChange={(v) => { setDaemonTaskgen(v); saveDaemonCfg({ taskgen: v }); }} />
-          </div>
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="text-sm font-medium text-text-primary">Reminders</div>
-              <div className="mt-0.5 text-xs text-text-secondary">Fire a notification when tasks in this domain are due or overdue.</div>
-            </div>
-            <Toggle on={daemonReminders} onChange={(v) => { setDaemonReminders(v); saveDaemonCfg({ reminders: v }); }} />
-          </div>
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="text-sm font-medium text-text-primary">Skill learning</div>
-              <div className="mt-0.5 text-xs text-text-secondary">Distill reusable skills from this domain's conversations as you use it.</div>
-            </div>
-            <Toggle on={daemonSkillgen} onChange={(v) => { setDaemonSkillgen(v); saveDaemonCfg({ skillgen: v }); }} />
-          </div>
+        <p className="mb-2.5 text-xs leading-relaxed text-text-muted">
+          Background work Prevail does for {titleCase(domain)} on its own, even when the app is closed.
+        </p>
+        <div className="space-y-2">
+          {([
+            { on: daemonTaskgen, set: setDaemonTaskgen, key: "taskgen", icon: ChevronRight, title: "Task generation", desc: "Proactively writes tasks for this domain from your goals and memory." },
+            { on: daemonReminders, set: setDaemonReminders, key: "reminders", icon: Cpu, title: "Reminders", desc: "Fires a notification when tasks in this domain are due or overdue." },
+            { on: daemonSkillgen, set: setDaemonSkillgen, key: "skillgen", icon: Sparkles, title: "Skill learning", desc: "Distills reusable skills from this domain's conversations as you use it." },
+          ] as const).map((r) => {
+            const Icon = r.icon;
+            return (
+              <div key={r.key} className={`flex items-start gap-3 rounded-xl border px-3.5 py-3 transition-colors ${r.on ? "border-accent-border/50 bg-accent-soft/15" : "border-border-subtle bg-surface"}`}>
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${r.on ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}><Icon className="h-4 w-4" /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-text-primary">{r.title}</span>
+                    <span className={`font-mono text-[9px] uppercase tracking-wider ${r.on ? "text-ok" : "text-text-muted"}`}>{r.on ? "on" : "off"}</span>
+                  </div>
+                  <div className="mt-0.5 text-xs leading-relaxed text-text-secondary">{r.desc}</div>
+                </div>
+                <Toggle on={r.on} onChange={(v) => { r.set(v); saveDaemonCfg({ [r.key]: v }); }} />
+              </div>
+            );
+          })}
         </div>
       </PrefSection>
     </div>
