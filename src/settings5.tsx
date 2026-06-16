@@ -71,15 +71,20 @@ export function GatewaySection() {
         <CollapsibleSection
           icon={Sparkles}
           title="More surfaces"
-          subtitle="Other gateways on the way."
-          summary={`${COMING_SOON_GATEWAYS.length} coming`}
+          subtitle="Native bridges on the way — most are reachable today via the Webhook."
+          summary={`${COMING_SOON_GATEWAYS.length} native pending`}
         >
+          <div className="mb-3 rounded-md border border-accent-border/40 bg-accent-soft/20 px-3 py-2 text-xs text-text-secondary">
+            Reachable now: point any of these at the <span className="font-semibold text-accent">Webhook</span> above
+            (Zapier, n8n, a Twilio Function, or a few lines of glue forward the message to <span className="font-mono">/hook</span>).
+            The rows below are the native, in-app bridges still to come.
+          </div>
           <div className="space-y-1">
             {COMING_SOON_GATEWAYS.map((g) => (
               <div key={g.name} className={SETTINGS_ROW}>
                 <GatewayMark icon={g.icon} mono={g.mono} />
                 <span className="flex-1 text-sm text-text-secondary">{g.name}</span>
-                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
+                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Native pending</span>
               </div>
             ))}
           </div>
