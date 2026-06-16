@@ -161,7 +161,27 @@ Two items need a decision before building: **L (Loops agentic model)** and **M1 
 
 ---
 
+## Remaining — needs decision, live UI verification, or a dedicated feature pass
+These are NOT done. Each is large and/or can't be safely verified without the running app,
+so they're left for a focused pass rather than blind overnight edits:
+- **Live-UI bugs (best-effort code reads done, need verification):** B1 drag→context, B2 `$domain`
+  ref, B3 thread-binding (C2 thread-name indicator already mitigates the confusion).
+- **Big features:** L (Loops agentic rework — needs the spec/decision first), W4 (vault on-disk
+  reorg + engine migrator), O1 (onboarding tour), M2 (Ideal State scratch-redesign), M5
+  (Recommendations redesign), M3 (Journals→Intent pipeline), M6 (per-domain ideal states), M7
+  (Omega cohesive view), W1 (Workspace vault/demo toggles), W2 (backups section + sidebar
+  indicator), G1-full (direct-provider key entry + working calls), G2 (council canvas visual),
+  A2 (edit a connection's method), A6 (implement all gateway surfaces).
+- **Need founder pointing:** K2 (which element to remove), P3 (which panel's dismiss), P2 (which
+  verbose panel), K5 (where exactly the benchmark domain indicator goes), A4 (confirm detection),
+  I1 (pick a repo-naming convention — finding: web pkg is `fd-apps-prevail-site`, cli is `prevail`).
+- **Broad polish:** P1 (toggles everywhere — replace Start/Stop text app-wide).
+
 ## Done this session (feat/monday-feedback-0615)
+- [x] **B6** (6f663f2) — removed duplicate "Direct providers" list in Models.
+- [x] **M4** (e9efdcd) — dismiss distilled intents (X per card, persisted) so the list stays short.
+- [x] **C1** (82372c3) — General context panel now has parity with domains (loads vault-root context).
+- [x] **C2** (82372c3) — active thread name shown in the chat canvas (mitigates B3 confusion).
 - [x] **B4** (9d8ace6) — benchmark false "0/N under target": draft-count used an unregistered
   command (`benchmark_questions_list`); switched to `benchmark_questions`.
 - [x] **M1** (0e93baf) — nav reorg: "Memory & Routines" → "Context & Memory"
