@@ -1,7 +1,7 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { ArrowLeft, Brain, Check, Compass, Folder, Github, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Target, Wrench, Zap } from "lucide-react";
+import { ArrowLeft, Brain, Check, Compass, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Target, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { LS, lsGet } from "./storage";
 import { useAppearance } from "./hooks";
@@ -109,6 +109,9 @@ export function SettingsPanel({
       { id: "connectors", label: "Apps", icon: Plug },
       { id: "gateway", label: "Gateway", icon: MessagesSquare },
       { id: "mcp", label: "MCP", icon: Wrench },
+      // A5 (Monday feedback): the WebUI/localhost toggle was orphaned (no nav
+      // entry). Surface it under Connections where it's expected.
+      { id: "remote", label: "Web access", icon: Globe },
     ]},
     { heading: "Privacy & Safety", items: [
       { id: "privacy", label: "Privacy", icon: ShieldCheck },
