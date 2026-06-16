@@ -479,17 +479,26 @@ export function ChatPanel({
   // Slash autocomplete — detect `/<word>` at the caret position and
   // expose the filtered skills + a completer for the textarea below.
   const taRef = useRef<HTMLTextAreaElement>(null);
+  // B2 (Monday feedback): the `/` and `$` popovers must read the caret to know
+  // what the user is typing. Reading `taRef.current.selectionStart` inside a
+  // useMemo is a render-phase DOM read — for append-at-end typing the browser
+  // has already moved the caret, but mid-string edits (or a stale ref) can read
+  // the WRONG position, so the popover silently fails to match and Enter "does
+  // nothing." Track the caret in state instead, updated from the very events
+  // that move it, so the matchers always see a correct, committed position.
+  const [caretPos, setCaretPos] = useState<number>(0);
+  const syncCaret = useCallback((el: HTMLTextAreaElement | null) => {
+    if (el) setCaretPos(el.selectionStart ?? el.value.length);
+  }, []);
   const slashMatch = useMemo(() => {
-    const ta = taRef.current;
-    if (!ta) return null;
-    const caret = ta.selectionStart ?? input.length;
+    const caret = Math.min(caretPos, input.length);
     const before = input.slice(0, caret);
     // Match the trailing /<word> right at the caret.
     const m = before.match(/(^|\s)\/([a-zA-Z0-9_-]*)$/);
     if (!m) return null;
     const start = caret - m[2].length - 1; // index of the `/`
     return { token: m[2], start, end: caret };
-  }, [input]);
+  }, [input, caretPos]);
   const slashCandidates = useMemo(() => {
     if (!slashMatch) return [];
     const q = slashMatch.token.toLowerCase();
@@ -507,6 +516,7 @@ export function ChatPanel({
     const tail = input.slice(slashMatch.end);
     const next = `${head}${head && tail && !tail.startsWith(" ") ? " " : ""}${tail}`;
     setInput(next);
+    setCaretPos(head.length); // collapse the match so the popover closes
     insertSkillSlash(name);
     requestAnimationFrame(() => {
       const ta = taRef.current;
@@ -521,15 +531,13 @@ export function ChatPanel({
   // as a chip, exactly like dragging it in, then strips the `$token`.
   type DollarItem = { kind: "domain" | "app"; id: string; label: string; sub?: string };
   const dollarMatch = useMemo(() => {
-    const ta = taRef.current;
-    if (!ta) return null;
-    const caret = ta.selectionStart ?? input.length;
+    const caret = Math.min(caretPos, input.length);
     const before = input.slice(0, caret);
     const m = before.match(/(^|\s)\$([a-zA-Z0-9_-]*)$/);
     if (!m) return null;
     const start = caret - m[2].length - 1; // index of the `$`
     return { token: m[2], start, end: caret };
-  }, [input]);
+  }, [input, caretPos]);
   const dollarCandidates = useMemo<DollarItem[]>(() => {
     if (!dollarMatch) return [];
     const q = dollarMatch.token.toLowerCase();
@@ -549,6 +557,7 @@ export function ChatPanel({
     const tail = input.slice(dollarMatch.end);
     const next = `${head}${head && tail && !tail.startsWith(" ") ? " " : ""}${tail}`;
     setInput(next);
+    setCaretPos(head.length); // collapse the match so the popover closes
     if (item.kind === "domain") void attachDomainAsContext(item.id, "light");
     else void attachAppAsContext(item.id);
     requestAnimationFrame(() => {
@@ -1817,7 +1826,10 @@ export function ChatPanel({
           <textarea
             ref={taRef}
             value={input}
-            onChange={(e) => { setInput(e.target.value); setHistIdx(-1); }}
+            onChange={(e) => { setInput(e.target.value); setCaretPos(e.target.selectionStart ?? e.target.value.length); setHistIdx(-1); }}
+            onSelect={(e) => syncCaret(e.currentTarget)}
+            onKeyUp={(e) => syncCaret(e.currentTarget)}
+            onClick={(e) => syncCaret(e.currentTarget)}
             onDragOver={(e) => {
               const types = Array.from(e.dataTransfer.types);
               if (types.includes("application/x-prevail-domain") || types.includes("text/plain")) {
