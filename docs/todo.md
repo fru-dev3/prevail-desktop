@@ -203,15 +203,15 @@ so they're left for a focused pass rather than blind overnight edits:
 - [x] **P4** (0e93baf) — About drops the Tauri/React/Tailwind mention.
 
 ## DEFINITIVE STATUS (2026-06-16, updated)
-**Done (27), all build-verified + committed (desktop + cli + web branches):**
+**Done (28), all build-verified + committed (desktop + cli + web branches):**
 B4, B5, B6, M1, M4, M5, M6, M7, A1, A2, A3, A5, C1, C2, G2, G3, K1, K3, K4, K5, W1, W2,
-P1 (Telegram toggle), P4, **Loops L1/L2/L3**, I1. Plus confirmations: A4 (detection works),
+P1 (Telegram toggle), P4, O1 (onboarding tour), **Loops L1/L2/L3**, I1. Plus confirmations: A4 (detection works),
 K6 (grounding shipped via BENCH-3 + _log grounding).
 Engine commands added (cli branch): loops guardrail, app schedule, app integration, omega,
 per-domain ideal injection.
 
 **Truly remaining — large features / blocked (NOT responsibly one-shot-able in this run):**
-- M2 (Ideal State scratch-redesign — "think outside the box": wants design direction so it's not
+- O1 onboarding shipped. - M2 (Ideal State scratch-redesign — "think outside the box": wants design direction so it's not
   a speculative rebuild the founder dislikes again), M3 (Journals→Intent pipeline — engine + UI),
   A6 (build out ALL gateway surfaces fully — multiple real integrations), O1 (onboarding tour —
   new feature), W4 (vault on-disk reorg + SAFE migrator — data-loss risk; must be done carefully,
