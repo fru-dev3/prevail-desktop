@@ -40,7 +40,10 @@ mod skillgen;
 mod taskgen;
 mod tasks;
 mod telegram;
+mod discord_bridge;
+mod email_bridge;
 mod native_bridge;
+mod slack_bridge;
 mod telegram_bridge;
 mod watchdog;
 mod webhook_bridge;
@@ -257,6 +260,9 @@ pub fn run() {
         .manage(telegram_bridge::BridgeState::new())
         .manage(webhook_bridge::WebhookState::default())
         .manage(native_bridge::NativeBridgeState::default())
+        .manage(discord_bridge::DiscordState::default())
+        .manage(slack_bridge::SlackState::default())
+        .manage(email_bridge::EmailState::default())
         .manage(distill::DistillState::new())
         .manage(intent_daemon::IntentDaemonState::new())
         .manage(reminders::RemindersState::new())
@@ -466,6 +472,15 @@ pub fn run() {
             native_bridge::native_bridge_start,
             native_bridge::native_bridge_stop,
             native_bridge::native_bridge_status,
+            discord_bridge::discord_bridge_start,
+            discord_bridge::discord_bridge_stop,
+            discord_bridge::discord_bridge_status,
+            slack_bridge::slack_bridge_start,
+            slack_bridge::slack_bridge_stop,
+            slack_bridge::slack_bridge_status,
+            email_bridge::email_bridge_start,
+            email_bridge::email_bridge_stop,
+            email_bridge::email_bridge_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

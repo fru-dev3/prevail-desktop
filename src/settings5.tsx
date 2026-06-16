@@ -22,12 +22,9 @@ import type { CliInfo, DiagCheck, TgBridgeStatus } from "./types";
 import type { UnlistenFn } from "./bridge";
 
 export const COMING_SOON_GATEWAYS: { name: string; icon?: { path: string; hex: string }; mono?: typeof Mail }[] = [
-  // Matrix, Mattermost, Signal are now native (NativeBridgeCard). These remain
-  // pending a native bridge: Discord/Slack need a WebSocket client, Email needs
-  // IMAP/SMTP. Both are reachable today via the Webhook.
-  { name: "Discord", icon: siDiscord },
-  { name: "Slack", mono: MessagesSquare },
-  { name: "Email (IMAP/SMTP)", mono: Mail },
+  // Telegram, Webhook, Matrix, Mattermost, Signal, Discord, Slack, Email are all
+  // native now. SMS is inbound-webhook-based: a Twilio Function forwards to the
+  // Webhook's /hook (no native bridge needed).
   { name: "SMS (Twilio)", mono: MessageSquare },
 ];
 
@@ -73,6 +70,9 @@ export function GatewaySection() {
             <NativeBridgeCard platform="signal" label="Signal" icon={siSignal} noToken
               urlLabel="Account" urlPlaceholder="+15551234567"
               channelLabel="Recipient" channelPlaceholder="+15559876543" />
+            <DiscordCard />
+            <SlackCard />
+            <EmailCard />
             <WhatsAppCard />
           </div>
         </CollapsibleSection>
@@ -579,6 +579,176 @@ export function NativeBridgeCard({ platform, label, icon, mono, urlLabel, urlPla
         <div className="mt-2 font-mono text-[10px] text-text-muted">in {bridge.inbound_count ?? 0} · out {bridge.outbound_count ?? 0}{bridge.last_error ? ` · err: ${bridge.last_error.slice(0, 50)}` : ""}</div>
       )}
       {status.msg && <div className={`mt-2 text-xs ${status.kind === "err" ? "text-danger" : "text-text-muted"}`}>{status.msg}</div>}
+    </div>
+  );
+}
+
+// Shared model picker + live status footer for the WS/email bridges below.
+function useBridgeCli(key: string) {
+  const [cli, setCli] = useState(lsGet(key) || "claude");
+  const verify = useCliVerifyLive();
+  const [clis, setClis] = useState<CliInfo[]>([]);
+  useEffect(() => { invoke<CliInfo[]>("detect_clis").then(setClis).catch(() => {}); }, []);
+  const routable = clis.filter((c) => c.available && verify.get(c.id)?.status !== "failed");
+  useEffect(() => { lsSet(key, cli); }, [key, cli]);
+  useEffect(() => { if (routable.length > 0 && !routable.some((c) => c.id === cli)) setCli(routable[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clis, verify]);
+  return { cli, setCli, routable };
+}
+function BridgeFooter({ bridge, status }: { bridge: TgBridgeStatus | null; status: { kind: string; msg: string } }) {
+  return (<>
+    {bridge?.running && <div className="mt-2 font-mono text-[10px] text-text-muted">in {bridge.inbound_count ?? 0} · out {bridge.outbound_count ?? 0}{bridge.last_error ? ` · err: ${bridge.last_error.slice(0, 50)}` : ""}</div>}
+    {status.msg && <div className={`mt-2 text-xs ${status.kind === "err" ? "text-danger" : "text-text-muted"}`}>{status.msg}</div>}
+  </>);
+}
+function CliSelect({ cli, setCli, routable, disabled }: { cli: string; setCli: (v: string) => void; routable: CliInfo[]; disabled: boolean }) {
+  return (
+    <select value={cli} onChange={(e) => setCli(e.target.value)} disabled={disabled}
+      className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none disabled:opacity-60">
+      {routable.length === 0 ? <option value={cli}>{cli}</option> : routable.map((c) => <option key={c.id} value={c.id}>{c.id}</option>)}
+    </select>
+  );
+}
+const FIELD = "rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none disabled:opacity-60";
+
+export function DiscordCard() {
+  const [token, setToken] = useState(""); const [saved, setSaved] = useState(false);
+  const [channel, setChannel] = useState(lsGet("prevail.native.discord.channel"));
+  const { cli, setCli, routable } = useBridgeCli("prevail.native.discord.cli");
+  const [bridge, setBridge] = useState<TgBridgeStatus | null>(null);
+  const [status, setStatus] = useState<{ kind: "idle" | "ok" | "err"; msg: string }>({ kind: "idle", msg: "" });
+  useEffect(() => { invoke<boolean>("provider_key_exists", { provider: "native-discord" }).then((o) => setSaved(!!o)).catch(() => {}); }, []);
+  useEffect(() => { lsSet("prevail.native.discord.channel", channel); }, [channel]);
+  const refresh = async () => { try { setBridge(await invoke<TgBridgeStatus>("discord_bridge_status")); } catch { /* */ } };
+  useEffect(() => { void refresh(); const id = window.setInterval(() => void refresh(), 4000); return () => window.clearInterval(id); }, []);
+  async function toggle(on: boolean) {
+    try {
+      if (!on) { await invoke("discord_bridge_stop"); await refresh(); return; }
+      if (!channel.trim() || (!token.trim() && !saved)) { setStatus({ kind: "err", msg: "bot token + channel id first" }); return; }
+      if (token.trim()) { await invoke("provider_key_set", { provider: "native-discord", key: token.trim() }); setSaved(true); setToken(""); }
+      const vault = lsGet(LS.vault) || null;
+      await invoke("discord_bridge_start", { cfg: { token: "", channel: channel.trim(), cli, model: null, domain: null, vault, routes: [] } });
+      setStatus({ kind: "idle", msg: "" }); await refresh();
+    } catch (e) { setStatus({ kind: "err", msg: String(e) }); }
+  }
+  const running = !!bridge?.running;
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5"><GatewayMark icon={siDiscord} /><div>
+          <div className="text-sm font-semibold text-text-primary">Discord</div>
+          <div className="text-xs text-text-muted">Bot via the Discord Gateway. Message your council from a channel.</div>
+        </div></div>
+        <Toggle on={running} onChange={(v) => void toggle(v)} disabled={!channel.trim() || (!token.trim() && !saved)} label={running ? "On" : "Off"} />
+      </div>
+      <div className="mt-3 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 text-xs">
+        <span className="text-text-muted">Bot token</span>
+        <div className="flex items-center gap-2"><input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={saved ? "saved · replace…" : "bot token"} disabled={running} className={`flex-1 ${FIELD}`} />{saved && <span className="font-mono text-[10px] uppercase tracking-wider text-ok">stored</span>}</div>
+        <span className="text-text-muted">Channel ID</span>
+        <input value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="123456789012345678" disabled={running} className={`font-mono ${FIELD}`} />
+        <span className="text-text-muted">Model</span>
+        <CliSelect cli={cli} setCli={setCli} routable={routable} disabled={running} />
+      </div>
+      <BridgeFooter bridge={bridge} status={status} />
+    </div>
+  );
+}
+
+export function SlackCard() {
+  const [appTok, setAppTok] = useState(""); const [botTok, setBotTok] = useState("");
+  const [appSaved, setAppSaved] = useState(false); const [botSaved, setBotSaved] = useState(false);
+  const [channel, setChannel] = useState(lsGet("prevail.native.slack.channel"));
+  const { cli, setCli, routable } = useBridgeCli("prevail.native.slack.cli");
+  const [bridge, setBridge] = useState<TgBridgeStatus | null>(null);
+  const [status, setStatus] = useState<{ kind: "idle" | "ok" | "err"; msg: string }>({ kind: "idle", msg: "" });
+  useEffect(() => { invoke<boolean>("provider_key_exists", { provider: "native-slack-app" }).then((o) => setAppSaved(!!o)).catch(() => {});
+    invoke<boolean>("provider_key_exists", { provider: "native-slack" }).then((o) => setBotSaved(!!o)).catch(() => {}); }, []);
+  useEffect(() => { lsSet("prevail.native.slack.channel", channel); }, [channel]);
+  const refresh = async () => { try { setBridge(await invoke<TgBridgeStatus>("slack_bridge_status")); } catch { /* */ } };
+  useEffect(() => { void refresh(); const id = window.setInterval(() => void refresh(), 4000); return () => window.clearInterval(id); }, []);
+  async function toggle(on: boolean) {
+    try {
+      if (!on) { await invoke("slack_bridge_stop"); await refresh(); return; }
+      if (!channel.trim() || (!appTok.trim() && !appSaved) || (!botTok.trim() && !botSaved)) { setStatus({ kind: "err", msg: "app token + bot token + channel first" }); return; }
+      if (appTok.trim()) { await invoke("provider_key_set", { provider: "native-slack-app", key: appTok.trim() }); setAppSaved(true); setAppTok(""); }
+      if (botTok.trim()) { await invoke("provider_key_set", { provider: "native-slack", key: botTok.trim() }); setBotSaved(true); setBotTok(""); }
+      const vault = lsGet(LS.vault) || null;
+      await invoke("slack_bridge_start", { cfg: { app_token: "", bot_token: "", channel: channel.trim(), cli, model: null, domain: null, vault, routes: [] } });
+      setStatus({ kind: "idle", msg: "" }); await refresh();
+    } catch (e) { setStatus({ kind: "err", msg: String(e) }); }
+  }
+  const running = !!bridge?.running;
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5"><GatewayMark mono={MessagesSquare} /><div>
+          <div className="text-sm font-semibold text-text-primary">Slack</div>
+          <div className="text-xs text-text-muted">Socket Mode (no public URL). Needs an app token + a bot token.</div>
+        </div></div>
+        <Toggle on={running} onChange={(v) => void toggle(v)} disabled={!channel.trim() || (!appTok.trim() && !appSaved) || (!botTok.trim() && !botSaved)} label={running ? "On" : "Off"} />
+      </div>
+      <div className="mt-3 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 text-xs">
+        <span className="text-text-muted">App token</span>
+        <div className="flex items-center gap-2"><input type="password" value={appTok} onChange={(e) => setAppTok(e.target.value)} placeholder={appSaved ? "saved · replace…" : "xapp-…"} disabled={running} className={`flex-1 ${FIELD}`} />{appSaved && <span className="font-mono text-[10px] uppercase tracking-wider text-ok">stored</span>}</div>
+        <span className="text-text-muted">Bot token</span>
+        <div className="flex items-center gap-2"><input type="password" value={botTok} onChange={(e) => setBotTok(e.target.value)} placeholder={botSaved ? "saved · replace…" : "xoxb-…"} disabled={running} className={`flex-1 ${FIELD}`} />{botSaved && <span className="font-mono text-[10px] uppercase tracking-wider text-ok">stored</span>}</div>
+        <span className="text-text-muted">Channel ID</span>
+        <input value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="C0123456789" disabled={running} className={`font-mono ${FIELD}`} />
+        <span className="text-text-muted">Model</span>
+        <CliSelect cli={cli} setCli={setCli} routable={routable} disabled={running} />
+      </div>
+      <BridgeFooter bridge={bridge} status={status} />
+    </div>
+  );
+}
+
+export function EmailCard() {
+  const g = (k: string) => lsGet(`prevail.native.email.${k}`);
+  const [imapHost, setImapHost] = useState(g("imapHost")); const [smtpHost, setSmtpHost] = useState(g("smtpHost"));
+  const [username, setUsername] = useState(g("username")); const [fromAddr, setFromAddr] = useState(g("from"));
+  const [password, setPassword] = useState(""); const [pwSaved, setPwSaved] = useState(false);
+  const { cli, setCli, routable } = useBridgeCli("prevail.native.email.cli");
+  const [bridge, setBridge] = useState<TgBridgeStatus | null>(null);
+  const [status, setStatus] = useState<{ kind: "idle" | "ok" | "err"; msg: string }>({ kind: "idle", msg: "" });
+  useEffect(() => { invoke<boolean>("provider_key_exists", { provider: "native-email" }).then((o) => setPwSaved(!!o)).catch(() => {}); }, []);
+  useEffect(() => { lsSet("prevail.native.email.imapHost", imapHost); }, [imapHost]);
+  useEffect(() => { lsSet("prevail.native.email.smtpHost", smtpHost); }, [smtpHost]);
+  useEffect(() => { lsSet("prevail.native.email.username", username); }, [username]);
+  useEffect(() => { lsSet("prevail.native.email.from", fromAddr); }, [fromAddr]);
+  const refresh = async () => { try { setBridge(await invoke<TgBridgeStatus>("email_bridge_status")); } catch { /* */ } };
+  useEffect(() => { void refresh(); const id = window.setInterval(() => void refresh(), 5000); return () => window.clearInterval(id); }, []);
+  const ready = !!imapHost.trim() && !!smtpHost.trim() && !!username.trim() && !!fromAddr.trim() && (!!password.trim() || pwSaved);
+  async function toggle(on: boolean) {
+    try {
+      if (!on) { await invoke("email_bridge_stop"); await refresh(); return; }
+      if (!ready) { setStatus({ kind: "err", msg: "fill in all fields + password" }); return; }
+      if (password.trim()) { await invoke("provider_key_set", { provider: "native-email", key: password.trim() }); setPwSaved(true); setPassword(""); }
+      const vault = lsGet(LS.vault) || null;
+      await invoke("email_bridge_start", { cfg: { imap_host: imapHost.trim(), smtp_host: smtpHost.trim(), username: username.trim(), password: "", from_addr: fromAddr.trim(), cli, model: null, domain: null, vault, routes: [], poll_secs: 20 } });
+      setStatus({ kind: "idle", msg: "" }); await refresh();
+    } catch (e) { setStatus({ kind: "err", msg: String(e) }); }
+  }
+  const running = !!bridge?.running;
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5"><GatewayMark mono={Mail} /><div>
+          <div className="text-sm font-semibold text-text-primary">Email</div>
+          <div className="text-xs text-text-muted">IMAP poll + SMTP reply. Email your council, get a reply. (Use an app password.)</div>
+        </div></div>
+        <Toggle on={running} onChange={(v) => void toggle(v)} disabled={!ready} label={running ? "On" : "Off"} />
+      </div>
+      <div className="mt-3 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 text-xs">
+        <span className="text-text-muted">IMAP host</span><input value={imapHost} onChange={(e) => setImapHost(e.target.value)} placeholder="imap.gmail.com" disabled={running} className={FIELD} />
+        <span className="text-text-muted">SMTP host</span><input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="smtp.gmail.com" disabled={running} className={FIELD} />
+        <span className="text-text-muted">Username</span><input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="you@gmail.com" disabled={running} className={FIELD} />
+        <span className="text-text-muted">From address</span><input value={fromAddr} onChange={(e) => setFromAddr(e.target.value)} placeholder="you@gmail.com" disabled={running} className={FIELD} />
+        <span className="text-text-muted">Password</span>
+        <div className="flex items-center gap-2"><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={pwSaved ? "saved · replace…" : "app password"} disabled={running} className={`flex-1 ${FIELD}`} />{pwSaved && <span className="font-mono text-[10px] uppercase tracking-wider text-ok">stored</span>}</div>
+        <span className="text-text-muted">Model</span><CliSelect cli={cli} setCli={setCli} routable={routable} disabled={running} />
+      </div>
+      <BridgeFooter bridge={bridge} status={status} />
     </div>
   );
 }
