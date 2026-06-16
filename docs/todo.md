@@ -283,7 +283,26 @@ shipped tri-path readers stay correct (dataRoot is idempotent).
 - Result: cli config + desktop React + desktop Rust all point at data/ after
   migration, consistently. cargo check + tsc clean. Root stays clean; nothing deleted.
 
-## A6 NATIVE BRIDGES — 3 built this round (Matrix, Mattermost, Signal)
+## A6 — COMPLETE: all 8 surfaces native (2026-06-16)
+Built the remaining Discord/Slack/Email (commit d3cd8cc) after adding the
+WebSocket + IMAP/SMTP dependency tier (tokio-tungstenite, futures-util, imap,
+native-tls, lettre, mailparse; tokio net+time). Full native surface set:
+- Telegram (pre-existing) · Webhook (universal) · Matrix · Mattermost · Signal
+  (existing-deps tier) · Discord (Gateway WS) · Slack (Socket Mode WS) · Email
+  (IMAP poll + SMTP). SMS = Twilio Function → Webhook (no native bridge needed).
+- All off by default; secrets in Keychain; reuse run_cli/resolve_domain/
+  record_exchange. cargo check + tsc clean; 61 rust lib tests pass.
+- CAVEAT: each native bridge compiles + is unit-tested but needs that platform's
+  live token to verify end-to-end before being relied on (Discord Gateway
+  heartbeat/resume, Slack envelope ACK, IMAP/TLS especially). They're inert until
+  configured + toggled on, so shipping them can't affect the running app.
+
+## EVERY MONDAY-FEEDBACK ITEM IS NOW ADDRESSED (~40/40)
+B1-B6, C1-C2, M1-M7, L1-L3, W1-W4, A1-A6, G1-G3, K1-K6, P1-P4, O1, I1.
+Remaining work is VERIFICATION (live tokens for the new bridges; a running-app
+pass on the W4 migration), not building.
+
+## (historical) A6 NATIVE BRIDGES — 3 built this round (Matrix, Mattermost, Signal)
 Native surfaces now live (off by default, configured + verified by the user):
 Telegram, **Webhook** (universal), **Matrix** (/sync long-poll), **Mattermost**
 (REST poll), **Signal** (signal-cli subprocess). All built with the EXISTING
