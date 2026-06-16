@@ -636,6 +636,10 @@ export function ChatPanel({
   // file — hence the duplicates the user reported.
   const activeThreadRef = useRef<string | null>(activeThreadPath);
   useEffect(() => { activeThreadRef.current = activeThreadPath; }, [activeThreadPath]);
+  // C2 (Monday feedback): surface the active thread name in the canvas so it's
+  // never ambiguous which thread you're typing into. Derived from the loaded
+  // thread meta, falling back to the path slug.
+  const [threadTitle, setThreadTitle] = useState<string>("");
   useEffect(() => {
     if (tDomain && activeThreadPath && activeThreadPath.includes(`/${tDomain}/`)) {
       lsSet(`prevail.domain.${tDomain}.lastThread`, activeThreadPath);
@@ -661,7 +665,7 @@ export function ChatPanel({
     // Picking a thread (or starting a new one) always returns to the chat view,
     // even if Preferences was open — otherwise the click appears to do nothing.
     setDomainTab("chat");
-    if (!activeThreadPath) { setMessages([]); return; }
+    if (!activeThreadPath) { setMessages([]); setThreadTitle(""); return; }
     if (selfSetPathRef.current === activeThreadPath) {
       selfSetPathRef.current = null;
       return;
@@ -670,6 +674,7 @@ export function ChatPanel({
     invoke<{ meta: ThreadMeta; turns: ThreadTurn[] }>("load_thread", { path: activeThreadPath })
       .then((t) => {
         if (cancelled) return;
+        setThreadTitle(t.meta?.title?.trim() || "Untitled");
         setMessages(t.turns.map((tn) => ({
           role: tn.role,
           cli: tn.cli ?? undefined,
@@ -1430,6 +1435,13 @@ export function ChatPanel({
         </div>
       )}
 
+      {/* C2 (Monday feedback): always show which thread is active in the canvas. */}
+      {activeThreadPath && threadTitle && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border-subtle bg-surface-warm/40 px-4 py-1.5">
+          <FileText className="h-3 w-3 shrink-0 text-text-muted" />
+          <span className="truncate font-mono text-[11px] text-text-secondary" title={threadTitle}>{threadTitle}</span>
+        </div>
+      )}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 && !domain && (
           <div className="flex h-full flex-col items-center justify-center px-6 py-8">
