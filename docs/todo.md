@@ -202,6 +202,26 @@ so they're left for a focused pass rather than blind overnight edits:
 - [x] **A5** (9c19694) — surfaced the orphaned WebUI as "Web access" under Connections.
 - [x] **P4** (0e93baf) — About drops the Tauri/React/Tailwind mention.
 
+## DEFINITIVE STATUS (2026-06-16)
+**Done (20), all build-verified + committed:** B4, B6, M1, M4, M5, A1, A3, A5, C1, C2,
+K1, K3, K4, K5 (covered by existing scoped-domain breadcrumb), W1, W2, P4, Loops L1/L2/L3,
+I1 (web pkg rename, on prevail-web branch). Engine: Loops guardrail (cli branch).
+
+**Remaining — by why they're not done:**
+- _Large features (need dedicated passes; build-verifiable):_ W4 (vault on-disk reorg + engine
+  migrator), M2 (Ideal State scratch-redesign), M3 (Journals→Intent pipeline), M6 (per-domain
+  ideal states), M7 (Omega cohesive view), G1 (direct-provider key entry + working calls),
+  G2 (council canvas visual), A2 (edit a connection's method), A6 (implement all gateway
+  surfaces), O1 (onboarding tour).
+- _Engine, moderate:_ B5 (channel routing populate + suggestions).
+- _Small, next:_ G3 (council autosave confirm), K6 (grounding — largely shipped via BENCH-3).
+- _Live-UI verification (fix-blind is risky):_ B1 (drag→context), B2 ($domain ref), B3 (thread
+  binding — C2 indicator mitigates).
+- _Need founder pointing:_ K2 (which element to remove), P2/P3 (which panel), W3 ("every launch"
+  meaning), A4 (just confirm — detect_clis runs on mount + autoVerify; detection works).
+- _Broad:_ P1 (toggles everywhere — replace remaining Start/Stop text app-wide).
+
 ## Log
 - 2026-06-15: Plan + todo created from the Monday feedback PDF on branch feat/monday-feedback-0615.
+- 2026-06-16: Worked the list — 20 items done (incl. Loops rework + Recommendations redesign).
 - 2026-06-16: Batch 1-3 — B4, M1(nav), K1, K3, A5, P4. Builds green; not merged.
