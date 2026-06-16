@@ -308,10 +308,16 @@ B1-B6, C1-C2, M1-M7, L1-L3, W1-W4, A1-A6, G1-G3, K1-K6, P1-P4, O1, I1.
 - **Bridge network code verified** via mock-socket round-trips: Matrix +
   Mattermost fetch (parse real responses) and send (HTTP status), Discord send,
   Slack post_message (honors {ok:false}). 67 rust lib tests pass + 365 bun tests.
-- **Inherently needs a live credential** (cannot be verified without it — that IS
-  the task): the WS INBOUND handshakes (Discord Gateway, Slack Socket Mode), IMAP/
-  SMTP against a real mailbox, and signal-cli against a registered account. Each
-  bridge is off-by-default + inert until configured, so this can't affect the app.
+- **WS inbound DECISION logic now verified too** (commit 8f9c5b6): extracted the
+  error-prone protocol decisions into pure functions the live loops use, tested
+  exhaustively — Discord parse_hello/extract_message (bots/channels/empty/typing),
+  Slack extract_text (bot_id/subtype/channel/hello/non-message), email multipart
+  body extraction. 73 rust lib tests.
+- **The ONLY residual** (inherent — cannot be done without a credential): the
+  literal transport handshake — `wss://` connect + IDENTIFY (Discord/Slack) and
+  IMAP TLS login — which is thin glue over tokio-tungstenite / imap where the sole
+  variable is whether the USER's token is valid, not our logic. Off-by-default, so
+  inert until the founder configures it. Build + all logic verification: DONE.
 
 ## (historical) A6 NATIVE BRIDGES — 3 built this round (Matrix, Mattermost, Signal)
 Native surfaces now live (off by default, configured + verified by the user):
