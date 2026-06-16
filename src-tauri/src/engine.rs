@@ -1286,6 +1286,24 @@ pub fn engine_vault_embed(vault: String) -> Result<serde_json::Value, String> {
     run_engine_json(&["--vault", &vault, "vault", "embed", "--from", &vault])
 }
 
+/// W4 — `prevail --vault <vault> vault migrate-data --json`
+/// Relocate the whole vault under <vault>/data (non-destructive copy + verify),
+/// then the engine repoints config.vaultPath to <vault>/data. Returns
+/// { dataDir, ok, repointed, ... }; the desktop repoints its own vaultPath to
+/// `dataDir` on success, exactly like the embed flow.
+#[tauri::command]
+pub fn engine_vault_migrate_data(vault: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["--vault", &vault, "vault", "migrate-data"])
+}
+
+/// W4 — `prevail --vault <dataDir> vault archive-data --force --json`
+/// AFTER migration + repoint, move the orphaned originals at the true root into a
+/// timestamped backup (never deletes). `vault` is the repointed data dir.
+#[tauri::command]
+pub fn engine_vault_archive_data(vault: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["--vault", &vault, "vault", "archive-data", "--force"])
+}
+
 /// `prevail --vault <vault> score <domain> [--audit] --json`
 /// Returns a fully typed ContextScore.
 #[tauri::command]
