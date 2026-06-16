@@ -2,12 +2,12 @@
 // Tasks, Intents, Memory & Context, and Skills. vaultPath-driven; no App-root
 // state closure.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Bell, Brain, Check, ChevronRight, Folder, GraduationCap, Lightbulb, ListChecks, Loader2, Pencil, Sparkles } from "lucide-react";
+import { ArrowRight, Bell, Brain, Check, ChevronRight, Folder, GraduationCap, Lightbulb, ListChecks, Loader2, Pencil, Sparkles, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
 import { formatFreshness, titleCase } from "./format";
-import { PREF, getPref, setPref } from "./storage";
+import { PREF, getPref, lsGet, lsSet, setPref } from "./storage";
 import { Toggle } from "./ui";
 import { DaemonCard, HeadlessLearnCard } from "./panels";
 import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
@@ -444,6 +444,17 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
       setDistilling(false);
     }
   }
+  // M4 (Monday feedback): let the user dismiss distilled intents so the list
+  // doesn't grow punishingly long. Dismissed keys persist locally; the next
+  // distill can re-surface a genuinely active intent under a new title.
+  const DISMISS_KEY = "prevail.intents.dismissed";
+  const [dismissed, setDismissed] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(lsGet(DISMISS_KEY) || "[]")); } catch { return new Set(); }
+  });
+  const intentKey = (it: DistilledIntent, i: number) => (it.title || it.goal || `#${i}`).trim().toLowerCase();
+  const dismissIntent = (key: string) => setDismissed((cur) => {
+    const n = new Set(cur); n.add(key); lsSet(DISMISS_KEY, JSON.stringify([...n])); return n;
+  });
   const statusTone = (s?: string) => s === "active" ? "text-accent" : s === "resolved" ? "text-ok" : "text-text-muted";
   const domains = useMemo(
     () => [...new Set(intents.map((i) => i.domain ?? "general"))].sort(),
@@ -490,9 +501,11 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
         <div className="mb-6 space-y-2">
           {distilled.intents.map((it, i) => {
             const open = openIntent === i;
+            if (dismissed.has(intentKey(it, i))) return null;
             return (
               <div key={i} className="overflow-hidden rounded-xl border border-border bg-surface">
-                <button onClick={() => setOpenIntent(open ? null : i)} className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-surface-warm">
+               <div className="flex items-start">
+                <button onClick={() => setOpenIntent(open ? null : i)} className="flex min-w-0 flex-1 items-start gap-3 px-4 py-3 text-left hover:bg-surface-warm">
                   <ChevronRight className={`mt-0.5 h-4 w-4 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent"><Lightbulb className="h-4 w-4" /></span>
                   <div className="min-w-0 flex-1">
@@ -509,6 +522,12 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
                     ))}
                   </span>
                 </button>
+                {/* M4: dismiss this intent so the list stays manageable. */}
+                <button onClick={() => dismissIntent(intentKey(it, i))} title="Dismiss this intent"
+                  className="m-2 shrink-0 rounded p-1 text-text-muted hover:bg-surface-warm hover:text-danger">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+               </div>
                 {open && (
                   <div className="space-y-3 border-t border-border-subtle px-4 py-4 pl-[60px] text-sm">
                     {it.underlying_need && (
