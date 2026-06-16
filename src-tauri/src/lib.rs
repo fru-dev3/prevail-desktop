@@ -368,6 +368,7 @@ pub fn run() {
             engine::engine_app_probe,
             engine::engine_app_add,
             engine::engine_app_set_domains,
+            engine::engine_app_set_integration,
             engine::engine_app_set_schedule,
             engine::engine_app_set_enabled,
             engine::engine_app_runs,
