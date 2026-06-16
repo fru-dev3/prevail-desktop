@@ -298,7 +298,8 @@ export function ModelsSection({
   // ones appear without a code change. Runs once on launch + a manual Refresh.
   const [refreshing, setRefreshing] = useState(false);
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
-  const [refreshPeriod, setRefreshPeriod] = useState(() => lsGet("prevail.models.refreshPeriod") || "daily");
+  // W3 (Monday feedback): default the model-list refresh to "Every launch".
+  const [refreshPeriod, setRefreshPeriod] = useState(() => lsGet("prevail.models.refreshPeriod") || "launch");
   const verify = useCliVerifyLive();
   const discover = useCallback(async () => {
     setRefreshing(true);
