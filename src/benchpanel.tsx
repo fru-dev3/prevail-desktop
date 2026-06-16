@@ -244,22 +244,29 @@ export function BenchQuestions({
   };
 
   async function save() {
-    if (!draft.domain.trim() || !draft.prompt.trim()) return;
+    // K4 (Monday feedback): a NEW question can target multiple domains at once
+    // (comma-separated, no dropdown/checkboxes) — saved once per domain. Editing
+    // an existing question keeps a single domain.
+    const domains = draft.domain.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
+    if (domains.length === 0 || !draft.prompt.trim()) return;
+    const targets = editing === "new" ? domains : [domains[0]];
     setSaving(true);
     try {
-      await invoke("benchmark_save_question", {
-        vault: vaultPath,
-        q: {
-          id: draft.id || null,
-          domain: draft.domain.trim().toLowerCase(),
-          prompt: draft.prompt,
-          context: draft.context,
-          notes: draft.notes,
-          council: draft.council,
-          expected_decision: draft.expected_decision,
-          expected_verdict_keywords: draft.expected_verdict_keywords,
-        },
-      });
+      for (const dom of targets) {
+        await invoke("benchmark_save_question", {
+          vault: vaultPath,
+          q: {
+            id: editing === "new" ? null : (draft.id || null),
+            domain: dom,
+            prompt: draft.prompt,
+            context: draft.context,
+            notes: draft.notes,
+            council: draft.council,
+            expected_decision: draft.expected_decision,
+            expected_verdict_keywords: draft.expected_verdict_keywords,
+          },
+        });
+      }
       setEditing(null);
       onChanged();
     } finally {
@@ -286,8 +293,8 @@ export function BenchQuestions({
         />
         <div className="max-w-3xl space-y-4">
         <h2 className="font-display text-xl font-bold tracking-tight">{editing === "new" ? "New question" : draft.id}</h2>
-        <Field label="Domain">
-          <input value={draft.domain} onChange={(e) => setDraft({ ...draft, domain: e.target.value })} list="bench-domains" placeholder="wealth" className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+        <Field label={editing === "new" ? "Domain(s): comma-separated to add to several at once" : "Domain"}>
+          <input value={draft.domain} onChange={(e) => setDraft({ ...draft, domain: e.target.value })} list="bench-domains" placeholder={editing === "new" ? "wealth, health, career" : "wealth"} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
           <datalist id="bench-domains">{allDomains.map((d) => <option key={d} value={d} />)}</datalist>
         </Field>
         <Field label="Prompt: the question as you'd ask it">
