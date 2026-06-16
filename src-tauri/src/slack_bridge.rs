@@ -93,6 +93,21 @@ fn bridge_cfg(cfg: &SlackConfig) -> BridgeConfig {
     }
 }
 
+// Pure Socket-Mode decision logic (unit-tested below): a frame yields the user
+// text IFF it's an events_api message event, not bot-authored / not an edit, in
+// the configured channel, and non-empty. Everything else (hello, disconnect,
+// other event types) → None.
+fn extract_text(v: &serde_json::Value, channel: &str) -> Option<String> {
+    if v.get("type").and_then(|t| t.as_str()) != Some("events_api") { return None; }
+    let event = v.pointer("/payload/event")?;
+    if event.get("type").and_then(|t| t.as_str()) != Some("message") { return None; }
+    if event.get("bot_id").is_some() || event.get("subtype").is_some() { return None; }
+    if event.get("channel").and_then(|c| c.as_str()) != Some(channel) { return None; }
+    let text = event.get("text").and_then(|t| t.as_str()).unwrap_or("");
+    if text.trim().is_empty() { return None; }
+    Some(text.to_string())
+}
+
 async fn open_socket_url(app_token: &str) -> Result<String, String> {
     let resp = reqwest::Client::new()
         .post("https://slack.com/api/apps.connections.open")
@@ -122,20 +137,12 @@ async fn run_socket(cfg: SlackConfig, mut stop_rx: watch::Receiver<bool>, status
                     Some(Err(e)) => return Err(format!("slack read: {e}")),
                 };
                 let v: serde_json::Value = match serde_json::from_str(&msg) { Ok(v) => v, Err(_) => continue };
-                let kind = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                if kind == "hello" || kind == "disconnect" { continue; }
                 // ACK every envelope immediately (Slack requires it within seconds).
                 if let Some(env) = v.get("envelope_id").and_then(|e| e.as_str()) {
                     let _ = write.send(WsMessage::Text(serde_json::json!({ "envelope_id": env }).to_string())).await;
                 }
-                if kind != "events_api" { continue; }
-                let event = match v.pointer("/payload/event") { Some(e) => e, None => continue };
-                if event.get("type").and_then(|t| t.as_str()) != Some("message") { continue; }
-                // Skip bot messages, edits, and other channels.
-                if event.get("bot_id").is_some() || event.get("subtype").is_some() { continue; }
-                if event.get("channel").and_then(|c| c.as_str()) != Some(cfg.channel.as_str()) { continue; }
-                let text = event.get("text").and_then(|t| t.as_str()).unwrap_or("").to_string();
-                if text.trim().is_empty() { continue; }
+                // Decision logic is extracted + unit-tested (extract_text).
+                let text = match extract_text(&v, &cfg.channel) { Some(t) => t, None => continue };
 
                 { let mut s = status.lock().await; s.inbound_count += 1; s.last_inbound_ts = Some(now_secs()); }
                 let bcfg = bridge_cfg(&cfg);
@@ -226,5 +233,26 @@ mod tests {
         let bad = mock(r#"{"ok":false,"error":"channel_not_found"}"#);
         let e = post_message_to(&bad, "xoxb", "C1", "hi").await.unwrap_err();
         assert!(e.contains("channel_not_found"));
+    }
+
+    // The Socket-Mode INBOUND decision logic, verified without a live socket.
+    #[test]
+    fn extract_text_accepts_user_message_in_channel() {
+        let v = serde_json::json!({ "type": "events_api", "envelope_id": "e1",
+            "payload": { "event": { "type": "message", "channel": "C1", "text": "hi council" } } });
+        assert_eq!(extract_text(&v, "C1").as_deref(), Some("hi council"));
+    }
+    #[test]
+    fn extract_text_rejects_bots_edits_other_channels_and_nonmessages() {
+        let bot = serde_json::json!({ "type": "events_api", "payload": { "event": { "type": "message", "channel": "C1", "text": "x", "bot_id": "B1" } } });
+        assert_eq!(extract_text(&bot, "C1"), None, "skip bot_id (no self-loop)");
+        let edit = serde_json::json!({ "type": "events_api", "payload": { "event": { "type": "message", "channel": "C1", "text": "x", "subtype": "message_changed" } } });
+        assert_eq!(extract_text(&edit, "C1"), None, "skip edits/subtypes");
+        let other = serde_json::json!({ "type": "events_api", "payload": { "event": { "type": "message", "channel": "C2", "text": "x" } } });
+        assert_eq!(extract_text(&other, "C1"), None, "skip other channels");
+        let hello = serde_json::json!({ "type": "hello" });
+        assert_eq!(extract_text(&hello, "C1"), None, "hello frame ignored");
+        let reaction = serde_json::json!({ "type": "events_api", "payload": { "event": { "type": "reaction_added", "channel": "C1" } } });
+        assert_eq!(extract_text(&reaction, "C1"), None, "non-message events ignored");
     }
 }
