@@ -402,4 +402,76 @@ mod tests {
         assert_eq!(b.domain.as_deref(), Some("wealth"));
         assert!(b.token.is_empty()); // never carries the platform token
     }
+
+    // Serve one canned HTTP response on a throwaway port; returns the base URL.
+    fn mock_once(body: String) -> String {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let port = server.server_addr().to_ip().unwrap().port();
+        std::thread::spawn(move || {
+            if let Ok(req) = server.recv() {
+                let _ = req.respond(tiny_http::Response::from_string(body));
+            }
+        });
+        format!("http://127.0.0.1:{port}")
+    }
+
+    // Round-trip verification (no live homeserver): fetch_matrix actually does the
+    // HTTP GET, then extracts the message body + next_batch from a real response.
+    #[tokio::test]
+    async fn fetch_matrix_parses_a_real_sync_response() {
+        let room = "!r:srv.org";
+        let body = serde_json::json!({
+            "next_batch": "s2",
+            "rooms": { "join": { room: { "timeline": { "events": [
+                { "type": "m.room.message", "content": { "body": "hello council" } },
+                { "type": "m.reaction", "content": {} }
+            ] } } } }
+        }).to_string();
+        let base = mock_once(body);
+        let (msgs, next) = fetch_matrix(&base, "tok", room, None).await.unwrap();
+        assert_eq!(next.as_deref(), Some("s2"));
+        assert_eq!(msgs.len(), 1, "only the m.room.message is taken");
+        assert_eq!(msgs[0].text, "hello council");
+    }
+
+    // Round-trip verification: fetch_mattermost parses posts + advances the cursor.
+    #[tokio::test]
+    async fn fetch_mattermost_parses_posts_and_cursor() {
+        let body = serde_json::json!({
+            "order": ["p1"],
+            "posts": { "p1": { "message": "hey there", "create_at": 1700u64 } }
+        }).to_string();
+        let base = mock_once(body);
+        let (msgs, cursor) = fetch_mattermost(&base, "tok", "chan", None).await.unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].text, "hey there");
+        assert_eq!(cursor.as_deref(), Some("1700"));
+    }
+
+    // Mock that returns a fixed status code; used to verify send paths.
+    fn mock_status(code: u32, body: &str) -> String {
+        let body = body.to_string();
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let port = server.server_addr().to_ip().unwrap().port();
+        std::thread::spawn(move || {
+            if let Ok(req) = server.recv() {
+                let _ = req.respond(tiny_http::Response::from_string(body).with_status_code(code));
+            }
+        });
+        format!("http://127.0.0.1:{port}")
+    }
+
+    #[tokio::test]
+    async fn send_matrix_succeeds_on_200_and_errors_otherwise() {
+        let ok_base = mock_status(200, "{}");
+        assert!(send_matrix(&ok_base, "t", "!r:s", "hi").await.is_ok());
+        let bad_base = mock_status(403, "forbidden");
+        assert!(send_matrix(&bad_base, "t", "!r:s", "hi").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn send_mattermost_succeeds_on_200() {
+        let base = mock_status(201, "{}");
+        assert!(send_mattermost(&base, "t", "chan", "hi").await.is_ok());
+    }
 }
