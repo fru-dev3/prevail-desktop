@@ -178,6 +178,11 @@ so they're left for a focused pass rather than blind overnight edits:
 - **Broad polish:** P1 (toggles everywhere — replace Start/Stop text app-wide).
 
 ## Done this session (feat/monday-feedback-0615)
+- [x] **M5** (580c749) — Recommendations redesign: impact chips, "Why this?" expander, save +
+  dismiss per rec (persisted), bulk dismiss-all + show/hide dismissed.
+- [x] **W2** (fffe239) — backups split into their own Workspace section + always-visible sidebar
+  "backups on" indicator.
+- [x] **A3** (8d59c1e) — connector tag-filter cloud collapsed behind a disclosure (de-noised).
 - [x] **L1/L2/L3 + Loops model** (desktop 6aebe4f · cli b9d12be) — full-width; "How loops work"
   explainer; create captures GOAL + GUARDRAIL (autonomy suggest/tasks/ask/auto); per-loop
   guardrail badge/selector + Run history; engine steward honors goal+guardrail. Spec:
