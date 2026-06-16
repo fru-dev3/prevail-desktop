@@ -721,6 +721,12 @@ pub fn engine_app_set_domains(id: String, domains: Vec<String>) -> Result<serde_
     run_engine_json(&["connectors", "set", &id, "domains", &doms, "--json"])
 }
 
+/// A2: change how a connected app connects (api | oauth | browser | mcp | manual).
+#[tauri::command]
+pub fn engine_app_set_integration(id: String, integration: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "set", &id, "integration", &integration, "--json"])
+}
+
 /// APP-4: set (or clear) an app's autonomous-sync schedule. `every` is the
 /// cadence the engine validates (hourly | <2-23>h | daily | weekly), with an
 /// optional HH:MM `at` and weekday `on`; "off"/"none"/"" clears the schedule.
