@@ -299,8 +299,19 @@ native-tls, lettre, mailparse; tokio net+time). Full native surface set:
 
 ## EVERY MONDAY-FEEDBACK ITEM IS NOW ADDRESSED (~40/40)
 B1-B6, C1-C2, M1-M7, L1-L3, W1-W4, A1-A6, G1-G3, K1-K6, P1-P4, O1, I1.
-Remaining work is VERIFICATION (live tokens for the new bridges; a running-app
-pass on the W4 migration), not building.
+
+## VERIFICATION (2026-06-16) — everything verifiable without live creds is verified
+- **W4 verified END-TO-END** by running the real CLI on a temp vault (commit
+  f7f06f8): migrate-data copied 6/6 + repointed config; live `domains` read
+  resolved under data/domains; idempotent re-run; archive-data swept originals to
+  a backup (root clean, nothing deleted).
+- **Bridge network code verified** via mock-socket round-trips: Matrix +
+  Mattermost fetch (parse real responses) and send (HTTP status), Discord send,
+  Slack post_message (honors {ok:false}). 67 rust lib tests pass + 365 bun tests.
+- **Inherently needs a live credential** (cannot be verified without it — that IS
+  the task): the WS INBOUND handshakes (Discord Gateway, Slack Socket Mode), IMAP/
+  SMTP against a real mailbox, and signal-cli against a registered account. Each
+  bridge is off-by-default + inert until configured, so this can't affect the app.
 
 ## (historical) A6 NATIVE BRIDGES — 3 built this round (Matrix, Mattermost, Signal)
 Native surfaces now live (off by default, configured + verified by the user):
