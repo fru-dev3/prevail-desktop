@@ -1,7 +1,7 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { ArrowLeft, Brain, Folder, Github, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Target, Wrench, Zap } from "lucide-react";
+import { ArrowLeft, Brain, Check, Compass, Folder, Github, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Target, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { LS, lsGet } from "./storage";
 import { useAppearance } from "./hooks";
@@ -93,11 +93,16 @@ export function SettingsPanel({
       { id: "skills", label: "Skills", icon: Sparkles },
       { id: "benchmark", label: "Benchmark", icon: Target },
     ]},
-    { heading: "Memory & Routines", items: [
-      { id: "recommendations", label: "Recommendations", icon: Sparkles },
+    // M1 (Monday feedback): "Context & Memory", in the founder-specified order —
+    // Ideals (what the user inputs) → Omega (distilled) → Intents (what the user
+    // is doing) → Recommendations (things for the user) → Routines. The old
+    // "Configuration" (memory-engine knobs) + cross-domain Tasks move to the App
+    // group so nothing is orphaned.
+    { heading: "Context & Memory", items: [
+      { id: "ideal-state", label: "Ideals", icon: Compass },
       { id: "omega", label: "Omega", icon: Sigma },
-      { id: "configuration", label: "Configuration", icon: Brain },
       { id: "intents", label: "Intents", icon: Lightbulb },
+      { id: "recommendations", label: "Recommendations", icon: Sparkles },
       { id: "daemons", label: "Routines", icon: Zap },
     ]},
     { heading: "Connections", items: [
@@ -114,6 +119,8 @@ export function SettingsPanel({
     ]},
     { heading: "App", items: [
       { id: "general", label: "General", icon: SettingsIcon },
+      { id: "tasks", label: "Tasks", icon: Check },
+      { id: "configuration", label: "Memory engine", icon: Brain },
       { id: "about", label: "About", icon: Github },
     ]},
   ];
@@ -243,9 +250,12 @@ export function SettingsPanel({
                 icon={Target}
                 subtitle="Your personal eval suite. Run any model against your own questions across every domain, see who leads where, and manage the question set: write, AI-draft from your data, import, export."
               />
-              <BenchScheduleCard vault={vaultPath} />
               <div className="-mx-4 min-h-[60vh]">
                 <BenchmarkPanel vaultPath={vaultPath} />
+              </div>
+              {/* K1 (Monday feedback): scheduled runs live at the BOTTOM, not the top. */}
+              <div className="mt-8 border-t border-border-subtle pt-6">
+                <BenchScheduleCard vault={vaultPath} />
               </div>
             </>
           )}

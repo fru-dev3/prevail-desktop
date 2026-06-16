@@ -855,7 +855,7 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
       </div>
 
       <div className="mt-6 flex items-center justify-between gap-3 px-1 text-[11px] text-text-muted">
-        <span>GPL-3.0 licensed · Tauri 2 · React 19 · Tailwind 4</span>
+        <span>GPL-3.0 licensed · Open source</span>
         <span>Local-first · Vault stays on this Mac</span>
       </div>
     </div>
