@@ -260,6 +260,48 @@ I1 (web pkg rename, on prevail-web branch). Engine: Loops guardrail (cli branch)
   on-disk move — data-loss risk; needs a tested migrator), B3 (Untitled-thread stub lifecycle —
   needs the running app), K2/P2/P3 (need founder to point at the element/panel).
 
+## SESSION 2026-06-15 (cont.) — built B2/P2/P3; resolved B1/B3; pinned K2
+**Newly DONE + committed (tsc-verified) — 39016a4:**
+- **B2** (`$domain` + Enter "does nothing") — FIXED. Root cause: both the `/` and `$`
+  popover matchers read `taRef.current.selectionStart` inside a `useMemo` keyed on `[input]` —
+  a render-phase DOM read that can return a stale caret, so the match silently fails and Enter
+  falls through to send(). Replaced with a tracked `caretPos` state updated from onChange/
+  onSelect/onKeyUp/onClick; both matchers now key on `[input, caretPos]` and apply-completion
+  collapses the caret so the popover closes. chatpanel.tsx.
+- **P2** (Apps page "too much text") — trimmed the verbose 4-sentence subtitle to one line.
+- **P3** (add a tiny dismiss ✗) — app detail drawer now has an explicit close (X) button
+  top-right, in addition to click-header-to-collapse. appspanel.tsx.
+
+**Resolved by source investigation (no edit needed — already fixed since the v0.8.4 screenshots):**
+- **B1** (drag domain→context) — full chain verified wired: sidebar manual-drag (sidebar.tsx
+  447-495) → `window.__prevailAttach(name,mode)` (registered chatpanel.tsx 1374-1385) →
+  `attachDomainAsContext` → `domain_context` → chip. Apps use the identical path and weren't
+  reported broken. Not reproducible from code.
+- **B3** (Untitled thread forks on type) — the autosave derives the slug from
+  `activeThreadRef.current` whenever a thread is selected (chatpanel.tsx 720-721), and Rust
+  `save_thread` HONORS the passed slug (threads.rs 348) + has hash-dedup + a 10-min reuse window
+  + treats a placeholder "Untitled" title as replaceable (threads.rs 431-438). All of this
+  targets exactly this fork. C2 (thread name in canvas, the founder's own suggested mitigation)
+  already shipped. Not reproducible from current code.
+
+**Pinned (needs founder pointer):**
+- **K2** ("What's the point of this. Remove it.") — the PDF note (p3) sits between the
+  scheduled-runs and question-row commentary but has NO standalone image marking WHICH element.
+  Cannot identify the target with confidence. Need: which element on the Benchmark page.
+
+**Genuinely large / multi-process (need the running app + verification; A6 also needs creds):**
+- **A6** — 7 real platform bridges (Discord/Slack/Signal/Matrix/Mattermost/Email/SMS). No
+  existing surface abstraction (surface.rs is the unrelated proactive-insights feature). The
+  Telegram bridge (telegram_bridge.rs, 819 lines) is the reference. Fully functional = each
+  needs that platform's API client + the user's runtime credentials + live verification. The
+  one credential-free win is a generic inbound Webhook surface (reuse webui.rs HTTP server,
+  secret-gated like MCP) — ready to build on confirmation; verify via curl with the app running.
+- **W4** — vault reorg (loose root files → a folder; apps+domains under `data/`). The General
+  bucket's loose files + apps/ + domains/ are read/written byte-for-byte by THREE processes
+  (cli, TUI, desktop Rust). Safe path = non-destructive copy-migrator + dual-path readers
+  (prefer new, fall back to old) shipped ATOMICALLY across all three, then live-verified. Doing
+  one side alone DESYNCS live data. Build feasible; safe-verify needs the app. Do together.
+
 ## DEEP-DIVE (2026-06-15) — B1/B2/W4 traced to source, line by line
 - **B1 (drag domain → context):** FULLY WIRED, no broken link found. Sidebar domain rows use a
   manual mouse-drag (sidebar.tsx:447-495 — HTML5 DnD is unreliable in WKWebView) that, on mouseup
