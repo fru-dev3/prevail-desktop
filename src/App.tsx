@@ -24,6 +24,7 @@ import { bumpBackupChangeCount, startBackupScheduler } from "./backup";
 import { startLoopsScheduler } from "./loops";
 import { startAppsScheduler } from "./appspanel";
 import { startOmegaScheduler } from "./omega";
+import { OnboardingTour } from "./onboarding";
 import { migrateModelPrefs } from "./helpers2";
 import { AppHeaderBar, DomainActionsMenu, LockScreen, QuickSwitcher, ThreadsRail, WebLogin } from "./panels";
 
@@ -1021,6 +1022,8 @@ export default function App() {
 
   return (
     <div className="relative flex h-screen flex-col bg-background text-text-primary">
+      {/* O1 (Monday feedback): first-run onboarding tour (dismissible, replayable). */}
+      <OnboardingTour />
       {memoryAlert && (
         <div className="fixed left-1/2 top-3 z-[100] flex max-w-xl -translate-x-1/2 items-start gap-2.5 rounded-lg border border-warn/40 bg-warn/10 px-4 py-2.5 shadow-lg backdrop-blur">
           <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-warn" />
