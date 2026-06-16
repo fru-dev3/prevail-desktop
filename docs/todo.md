@@ -178,6 +178,7 @@ so they're left for a focused pass rather than blind overnight edits:
 - **Broad polish:** P1 (toggles everywhere — replace Start/Stop text app-wide).
 
 ## Done this session (feat/monday-feedback-0615)
+- [x] **K4** (dc2657f) — add a benchmark question to multiple domains at once (comma-separated).
 - [x] **M5** (580c749) — Recommendations redesign: impact chips, "Why this?" expander, save +
   dismiss per rec (persisted), bulk dismiss-all + show/hide dismissed.
 - [x] **W2** (fffe239) — backups split into their own Workspace section + always-visible sidebar
