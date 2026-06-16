@@ -15,23 +15,42 @@ pub(crate) fn is_safe_domain(d: &str) -> bool {
         && d.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
-// Resolve a domain's base directory. v3 nests domains under <vault>/domains/<d>;
-// for backward compatibility we still read legacy domains at <vault>/<d>. Prefer
-// the v3 home, fall back to an existing legacy dir, default new domains to v3.
-// Mirrors the engine's resolveDomainDir so both stacks agree.
+// W4: the v4 `data/` container. Once a vault is migrated (engine: `prevail vault
+// migrate-data`), domains + apps live under <vault>/data/; readers prefer it the
+// instant it exists. Mirrors the engine's dataRoot() so the CLI, TUI, and
+// desktop all agree on where content lives. NOTE: the General-bucket loose files
+// (domain == None) still resolve to the vault ROOT in BOTH stacks — that reader
+// switch ships separately, once it can be live-verified across all three.
+pub(crate) fn data_root(vault: &str) -> PathBuf {
+    let d = PathBuf::from(vault).join("data");
+    if d.is_dir() {
+        d
+    } else {
+        PathBuf::from(vault)
+    }
+}
+
+// Resolve a domain's base directory. Resolution order (newest wins, all readable
+// for zero-migration compatibility): v4 <vault>/data/domains/<d>, then v3
+// <vault>/domains/<d>, then legacy <vault>/<d>. New domains default to the v4
+// home under the effective content root. Mirrors the engine's resolveDomainDir.
 pub(crate) fn resolve_domain_base(vault: &str, d: &str) -> PathBuf {
-    let nu = PathBuf::from(vault).join("domains").join(d);
-    if nu.exists() {
-        return nu;
+    let v4 = data_root(vault).join("domains").join(d);
+    if v4.exists() {
+        return v4;
+    }
+    let v3 = PathBuf::from(vault).join("domains").join(d);
+    if v3.exists() {
+        return v3;
     }
     // Preserve an existing legacy domain in place (never orphan its data by
-    // pointing at a fresh v3 path).
+    // pointing at a fresh path).
     let legacy = PathBuf::from(vault).join(d);
     if legacy.exists() {
         return legacy;
     }
-    // Brand-new domains default to the v3 layout (sibling of <vault>/apps/).
-    nu
+    // Brand-new domains default to the canonical home under the content root.
+    v4
 }
 
 pub(crate) fn domain_dir(vault: &str, domain: &Option<String>) -> PathBuf {
@@ -49,23 +68,27 @@ pub(crate) fn domain_dir(vault: &str, domain: &Option<String>) -> PathBuf {
 pub(crate) fn enumerate_domain_dirs(vault: &Path) -> Vec<(String, PathBuf)> {
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut out: Vec<(String, PathBuf)> = Vec::new();
-    // v3 first so it wins on a name clash.
-    if let Ok(rd) = std::fs::read_dir(vault.join("domains")) {
-        for e in rd.flatten() {
-            let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') || name.starts_with('_') {
-                continue;
-            }
-            let p = e.path();
-            if p.is_dir() && seen.insert(name.clone()) {
-                out.push((name, p));
+    // v4 (<vault>/data/domains) then v3 (<vault>/domains) — newest wins on a name
+    // clash. When no data/ dir exists data_root() == vault so these collapse.
+    let vault_str = vault.to_string_lossy().to_string();
+    for container in [data_root(&vault_str).join("domains"), vault.join("domains")] {
+        if let Ok(rd) = std::fs::read_dir(&container) {
+            for e in rd.flatten() {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') || name.starts_with('_') {
+                    continue;
+                }
+                let p = e.path();
+                if p.is_dir() && seen.insert(name.clone()) {
+                    out.push((name, p));
+                }
             }
         }
     }
     if let Ok(rd) = std::fs::read_dir(vault) {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') || name.starts_with('_') || name == "domains" || name == "apps" {
+            if name.starts_with('.') || name.starts_with('_') || name == "data" || name == "domains" || name == "apps" {
                 continue;
             }
             let p = e.path();
