@@ -464,6 +464,35 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
   const [moving, setMoving] = useState(false);
   const [moveNote, setMoveNote] = useState<string | null>(null);
   const embedded = vaultPath.replace(/\/+$/, "").endsWith("/.prevail/vault");
+  // W4 — "Tidy into a data/ folder": relocate the whole vault under <vault>/data
+  // so the root holds no loose files and apps+domains sit together. The engine
+  // copies + verifies + repoints; we adopt the new path. Already-tidied vaults
+  // (path ends in /data) are a no-op.
+  const [tidying, setTidying] = useState(false);
+  const [tidyNote, setTidyNote] = useState<string | null>(null);
+  const tidied = vaultPath.replace(/\/+$/, "").endsWith("/data");
+  async function tidyIntoData() {
+    setTidying(true);
+    setTidyNote(null);
+    try {
+      const r = await invoke<{ dataDir: string; ok: boolean; alreadyMigrated?: boolean; copiedFiles?: number; sourceFiles?: number }>(
+        "engine_vault_migrate_data",
+        { vault: vaultPath },
+      );
+      if (r.alreadyMigrated) {
+        setTidyNote("Vault is already grouped under a data/ folder.");
+      } else if (r.ok) {
+        setTidyNote(`Grouped ${r.copiedFiles ?? "the"} files under data/. Your original files are kept until you archive them; nothing was deleted.`);
+        onVaultMoved?.(r.dataDir);
+      } else {
+        setTidyNote(`Tidy incomplete (${r.copiedFiles}/${r.sourceFiles} files). Your vault is unchanged; nothing was moved.`);
+      }
+    } catch (e) {
+      setTidyNote(`Tidy failed: ${String(e)}`);
+    } finally {
+      setTidying(false);
+    }
+  }
   async function moveIntoApp() {
     setMoving(true);
     setMoveNote(null);
@@ -514,7 +543,7 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
           </button>
         </div>
       </div>
-      {(onSetupDomains || !embedded) && (
+      {(onSetupDomains || !embedded || !tidied) && (
         <div className="mt-3 rounded-xl border border-border bg-surface px-4">
           {onSetupDomains && (
             <SettingRow label="Domains" desc="Let Prevail recommend a starter set of life domains, or add more.">
@@ -531,10 +560,21 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
               </button>
             </SettingRow>
           )}
+          {!tidied && (
+            <SettingRow label="Tidy into a data/ folder" desc="Group apps + domains and move loose files under a single data/ folder so the vault root stays clean. Copied + verified first; your files are kept, never deleted.">
+              <button onClick={tidyIntoData} disabled={tidying} className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50">
+                {tidying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderTree className="h-3.5 w-3.5" />}
+                {tidying ? "Tidying…" : "Tidy into data/"}
+              </button>
+            </SettingRow>
+          )}
         </div>
       )}
       {moveNote && (
         <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{moveNote}</div>
+      )}
+      {tidyNote && (
+        <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{tidyNote}</div>
       )}
       {/* W2 (Monday feedback): backups can render as their own section in Workspace. */}
       {!hideBackups && <BackupAutomationCard vault={vaultPath} onChange={onChange} />}
