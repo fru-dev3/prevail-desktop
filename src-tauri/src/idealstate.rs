@@ -83,6 +83,27 @@ pub(crate) fn ideal_state_versions(vault: String) -> Result<Vec<serde_json::Valu
     Ok(out)
 }
 
+// M6: per-domain Ideal State — a `<domain>/ideal-state.md` that targets ONE
+// domain, layered under the global ideal-state.md (which still wins conflicts).
+// The engine injects it whenever the chat's cwd is that domain (cli-bridge
+// findDomainIdeal). domain_dir resolves the v3 (domains/<d>) or legacy layout.
+#[tauri::command]
+pub(crate) fn read_domain_ideal(vault: String, domain: Option<String>) -> Result<String, String> {
+    let p = domain_dir(&vault, &domain).join("ideal-state.md");
+    if !p.exists() {
+        return Ok(String::new());
+    }
+    let raw = read_to_string_retry(&p).map_err(|e| e.to_string())?;
+    Ok(engine::maybe_decrypt(&p, raw))
+}
+#[tauri::command]
+pub(crate) fn write_domain_ideal(vault: String, domain: Option<String>, body: String) -> Result<(), String> {
+    let dir = domain_dir(&vault, &domain);
+    let _ = fs::create_dir_all(&dir);
+    let p = dir.join("ideal-state.md");
+    fs::write(&p, engine::maybe_encrypt(&p, &body)).map_err(|e| format!("write domain ideal: {e}"))
+}
+
 // Distilled long-term memory for a domain (vault root for General), written
 // by the distill daemon. Prepended to prompts like user.md. Empty if none yet.
 #[tauri::command]

@@ -283,37 +283,39 @@ export function IdealStateSection({ vaultPath }: { vaultPath: string }) {
           </button>
         </div>
       ) : (
+        // M2 (Monday feedback): scratched the bordered-cards layout. Fresh take —
+        // an editorial "manifesto": a large vision hero, then each pillar as a
+        // numbered chapter with a left accent rule and flowing prose. Single column.
         <div>
-          {/* Lead: the constitution's title + intro as a calm document header,
-              not a heavy accent box. */}
-          {parsed.title && (
-            <h2 className="font-display text-xl font-bold tracking-tight text-text-primary">{parsed.title}</h2>
-          )}
-          {parsed.intro && (
-            <div className="mt-1.5 border-l-2 border-accent-border pl-3 text-sm leading-relaxed text-text-secondary">
-              <Markdown source={parsed.intro} compact />
-            </div>
-          )}
-          {/* Sections: a clean single-column stack of cards. Each card leads with
-              an icon chip + title (clear hierarchy), then its content. */}
+          <div className="rounded-2xl border border-border bg-gradient-to-b from-accent-soft/40 to-surface px-6 py-7">
+            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.28em] text-accent">My constitution</div>
+            {parsed.title && (
+              <h2 className="mt-2 font-display text-3xl font-extrabold leading-tight tracking-tight text-text-primary">{parsed.title}</h2>
+            )}
+            {parsed.intro && (
+              <div className="mt-3 max-w-2xl text-[15px] leading-relaxed text-text-secondary">
+                <Markdown source={parsed.intro} compact />
+              </div>
+            )}
+          </div>
+          {/* Pillars as numbered chapters — typographic, not card-y. */}
           {parsed.sections.length > 0 ? (
-            <div className="mt-5 space-y-2.5">
-              {parsed.sections.map((s) => {
+            <div className="mt-7 space-y-7">
+              {parsed.sections.map((s, idx) => {
                 const Icon = idealSectionIcon(s.title);
                 return (
-                  <div key={s.title} className="rounded-xl border border-border bg-surface p-4">
+                  <section key={s.title} className="relative border-l-2 border-accent-border/60 pl-5">
                     <div className="flex items-center gap-2.5">
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
-                        <Icon className="h-4 w-4" />
-                      </span>
-                      <span className="font-display text-base font-semibold tracking-tight text-text-primary">{s.title}</span>
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-background">{idx + 1}</span>
+                      <Icon className="h-4 w-4 shrink-0 text-accent" />
+                      <h3 className="font-display text-lg font-bold tracking-tight text-text-primary">{s.title}</h3>
                     </div>
                     {s.body && (
-                      <div className="mt-2.5 pl-[38px] text-sm leading-relaxed text-text-secondary">
+                      <div className="mt-2 text-[15px] leading-relaxed text-text-secondary">
                         <Markdown source={s.body} compact />
                       </div>
                     )}
-                  </div>
+                  </section>
                 );
               })}
             </div>

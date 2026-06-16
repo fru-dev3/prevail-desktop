@@ -417,6 +417,17 @@ pub async fn run_engine_stream_stdin(
                 cmd.env("PREVAIL_OPENROUTER_KEY", key);
             }
         }
+        // Direct single-vendor providers (G1): inject each configured key as
+        // PREVAIL_<ID>_KEY (the PREVAIL_ prefix dodges the engine's scrubbedEnv
+        // strip list). The engine's DIRECT_PROVIDERS table reads these to make
+        // the provider available + route to it.
+        for (id, env_key) in DIRECT_PROVIDER_ENVS {
+            if let Ok(key) = crate::ingestion::keychain::get("prevail.providers", id) {
+                if !key.is_empty() {
+                    cmd.env(env_key, key);
+                }
+            }
+        }
     }
     // Per-call env overrides (e.g. PREVAIL_OLLAMA_URL redirect so the engine's
     // local provider path reaches LM Studio / MLX instead of Ollama). Local-only,
@@ -721,6 +732,12 @@ pub fn engine_app_set_domains(id: String, domains: Vec<String>) -> Result<serde_
     run_engine_json(&["connectors", "set", &id, "domains", &doms, "--json"])
 }
 
+/// A2: change how a connected app connects (api | oauth | browser | mcp | manual).
+#[tauri::command]
+pub fn engine_app_set_integration(id: String, integration: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "set", &id, "integration", &integration, "--json"])
+}
+
 /// APP-4: set (or clear) an app's autonomous-sync schedule. `every` is the
 /// cadence the engine validates (hourly | <2-23>h | daily | weekly), with an
 /// optional HH:MM `at` and weekday `on`; "off"/"none"/"" clears the schedule.
@@ -919,8 +936,27 @@ pub(crate) fn provider_env_pairs() -> Vec<(String, String)> {
             out.push(("PREVAIL_OPENROUTER_KEY".to_string(), key));
         }
     }
+    for (id, env_key) in DIRECT_PROVIDER_ENVS {
+        if let Ok(key) = crate::ingestion::keychain::get("prevail.providers", id) {
+            if !key.is_empty() {
+                out.push((env_key.to_string(), key));
+            }
+        }
+    }
     out
 }
+
+/// Direct single-vendor providers (G1): (Keychain provider id, engine env var).
+/// Mirrors the engine's DIRECT_PROVIDERS table. The PREVAIL_ prefix keeps these
+/// out of the engine's scrubbedEnv strip list.
+pub(crate) const DIRECT_PROVIDER_ENVS: &[(&str, &str)] = &[
+    ("anthropic", "PREVAIL_ANTHROPIC_KEY"),
+    ("openai", "PREVAIL_OPENAI_KEY"),
+    ("xai", "PREVAIL_XAI_KEY"),
+    ("kimi", "PREVAIL_KIMI_KEY"),
+    ("deepseek", "PREVAIL_DEEPSEEK_KEY"),
+    ("google", "PREVAIL_GOOGLE_KEY"),
+];
 
 /// The session DEK, iff `path` is inside the unlocked, encrypted vault.
 fn session_key_for(path: &std::path::Path) -> Option<[u8; 32]> {
@@ -1248,6 +1284,24 @@ pub fn engine_pack_import(
 #[tauri::command]
 pub fn engine_vault_embed(vault: String) -> Result<serde_json::Value, String> {
     run_engine_json(&["--vault", &vault, "vault", "embed", "--from", &vault])
+}
+
+/// W4 — `prevail --vault <vault> vault migrate-data --json`
+/// Relocate the whole vault under <vault>/data (non-destructive copy + verify),
+/// then the engine repoints config.vaultPath to <vault>/data. Returns
+/// { dataDir, ok, repointed, ... }; the desktop repoints its own vaultPath to
+/// `dataDir` on success, exactly like the embed flow.
+#[tauri::command]
+pub fn engine_vault_migrate_data(vault: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["--vault", &vault, "vault", "migrate-data"])
+}
+
+/// W4 — `prevail --vault <dataDir> vault archive-data --force --json`
+/// AFTER migration + repoint, move the orphaned originals at the true root into a
+/// timestamped backup (never deletes). `vault` is the repointed data dir.
+#[tauri::command]
+pub fn engine_vault_archive_data(vault: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["--vault", &vault, "vault", "archive-data", "--force"])
 }
 
 /// `prevail --vault <vault> score <domain> [--audit] --json`

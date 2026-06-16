@@ -1,9 +1,9 @@
 // Settings sections extracted from App.tsx: Appearance (theme + palette), Demo
 // Mode (sample-vault sandbox), and Vault settings (path + the backup-automation
 // card).
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { confirm as tauriConfirm, open } from "@tauri-apps/plugin-dialog";
-import { ArrowRight, Briefcase, Check, Database, Download, ExternalLink, Folder, FolderOpen, FolderTree, GraduationCap, Home, Loader2, Monitor, Moon, Package, RotateCw, ShieldCheck, Sparkles, Sun, TrendingUp, Users } from "lucide-react";
+import { Briefcase, Check, Database, Download, ExternalLink, Folder, FolderOpen, FolderTree, GraduationCap, Home, Loader2, Monitor, Moon, Package, RotateCw, ShieldCheck, Sparkles, Sun, TrendingUp, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 // Pick a glyph for a starter pack from its name, so the list reads visually.
@@ -23,6 +23,7 @@ import { formatFreshness } from "./format";
 import { bytesHuman } from "./helpers";
 import { LS, lsGet, lsSet } from "./storage";
 import { SettingRow } from "./panels";
+import { Toggle } from "./ui";
 import { PaletteCard } from "./panels3";
 import { useAppearance } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
@@ -262,78 +263,31 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
           subtitle="Explore Prevail with throwaway sample data, then set up your own vault when you're ready. Starter packs below populate your real vault."
         />
       )}
-      {/* Current vault — one compact strip (which mode you're in + its path),
-          instead of two oversized stage cards plus duplicate path rows. */}
-      <div className="mb-5">
-        <div className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 ${isDemo ? "border-accent-border bg-accent-soft" : prodVault ? "border-warn/40 bg-warn/5" : "border-border bg-surface"}`}>
-          {isDemo ? <Sparkles className="h-4 w-4 shrink-0 text-accent" /> : <ShieldCheck className={`h-4 w-4 shrink-0 ${prodVault ? "text-warn" : "text-text-muted"}`} />}
-          <span className={`shrink-0 font-mono text-[10px] font-bold uppercase tracking-[0.16em] ${isDemo ? "text-accent" : "text-text-secondary"}`}>{isDemo ? "Demo" : "Your vault"}</span>
-          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary" title={isDemo ? vaultPath : (prodVault || "not set up yet")}>{isDemo ? vaultPath : (prodVault || "not set up yet")}</span>
-          <span className={`shrink-0 font-mono text-[9px] font-bold uppercase tracking-wider ${isDemo ? "text-accent" : prodVault ? "text-warn" : "text-text-muted"}`}>{isDemo ? "sample · re-seeded" : prodVault ? "real data" : ""}</span>
-        </div>
-        {!isDemo && prodVault && (
-          <p className="mt-1 px-1 text-[10px] text-text-muted">
-            This folder holds your real vault. Switching to demo never touches it; do not delete or move it from Finder, or Prevail will lose track of it.
-          </p>
-        )}
-      </div>
-      {/* Action: in demo, the 3-step setup; in your own vault, a quiet way back. */}
-      {isDemo && prodVault ? (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-warm p-4">
-          <p className="text-sm text-text-secondary">You have your own vault set up. Switch back to it any time, no re-setup.</p>
-          <button
-            onClick={switchToProduction}
-            disabled={switchingMode}
-            className="shrink-0 inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
-          >
-            {switchingMode ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-            {switchingMode ? "Switching…" : "Switch to my vault"}
-          </button>
-        </div>
-      ) : isDemo ? (
-        <div className="mb-4 rounded-xl border border-accent-border bg-accent-soft p-4">
-          <div className="mb-3 text-sm font-semibold text-text-primary">Setting up your own vault takes three steps:</div>
-          <div className="mb-4 flex items-stretch gap-2">
-            {[
-              { n: 1, label: "Choose your vault folder" },
-              { n: 2, label: "Set up your domains" },
-              { n: 3, label: "Start for real, demo data cleared" },
-            ].map((step, i) => (
-              <Fragment key={step.n}>
-                {i > 0 && (
-                  <div className="flex shrink-0 items-center text-accent">
-                    <ArrowRight className="h-4 w-4" />
-                  </div>
-                )}
-                <div className="flex flex-1 flex-col items-center gap-1.5 rounded-lg border border-accent-border bg-background/60 p-2.5 text-center">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-background">{step.n}</span>
-                  <span className="text-xs leading-tight text-text-secondary">{step.label}</span>
-                </div>
-              </Fragment>
-            ))}
+      {/* W1 (Monday feedback): Your Vault vs Demo Vault as MUTUALLY-EXCLUSIVE
+          toggles — exactly one is ON; the other grays off. Toggling switches mode
+          (your vault may run first-time setup). Starter packs import into whichever
+          is active. */}
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className={`rounded-xl border p-4 transition-opacity ${!isDemo ? "border-warn/40 bg-warn/5" : "border-border bg-surface opacity-60"}`}>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className={`h-4 w-4 ${!isDemo ? "text-warn" : "text-text-muted"}`} />
+            <span className="text-sm font-semibold text-text-primary">Your vault</span>
+            <span className="ml-auto"><Toggle on={!isDemo} disabled={switchingMode} onChange={(v) => { if (v) void switchToProduction(); else void switchToDemo(); }} label="Use my own vault" /></span>
           </div>
-          <button
-            onClick={switchToProduction}
-            disabled={switchingMode}
-            className="inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
-          >
-            {switchingMode ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-            {switchingMode ? "Setting up…" : "Set up my own vault"}
-          </button>
+          <div className="mt-1.5 truncate font-mono text-[11px] text-text-secondary" title={prodVault || "not set up yet"}>{prodVault || (isDemo ? "not set up yet — toggle on to set up" : vaultPath)}</div>
+          <div className="mt-0.5 text-[10px] text-text-muted">Real data, backed up. {isDemo && !prodVault ? "Toggling on walks you through a quick 3-step setup." : "Switching to demo never touches it."}</div>
         </div>
-      ) : appMode ? (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-warm p-4">
-          <p className="text-sm text-text-secondary">You're in your own vault. You can explore the demo sandbox any time.</p>
-          <button
-            onClick={switchToDemo}
-            disabled={switchingMode}
-            className="shrink-0 inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50"
-          >
-            {switchingMode ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            {switchingMode ? "Switching…" : "Explore demo sandbox"}
-          </button>
+        <div className={`rounded-xl border p-4 transition-opacity ${isDemo ? "border-accent-border bg-accent-soft" : "border-border bg-surface opacity-60"}`}>
+          <div className="flex items-center gap-2">
+            <Sparkles className={`h-4 w-4 ${isDemo ? "text-accent" : "text-text-muted"}`} />
+            <span className="text-sm font-semibold text-text-primary">Demo vault</span>
+            <span className="ml-auto"><Toggle on={isDemo} disabled={switchingMode} onChange={(v) => { if (v) void switchToDemo(); else void switchToProduction(); }} label="Explore the demo sandbox" /></span>
+          </div>
+          <div className="mt-1.5 truncate font-mono text-[11px] text-text-secondary" title={isDemo ? vaultPath : "sample data"}>{isDemo ? vaultPath : "throwaway sample data"}</div>
+          <div className="mt-0.5 text-[10px] text-text-muted">Sample data, re-seeded. Safe to explore; nothing here is your real data.</div>
         </div>
-      ) : null}
+      </div>
+      {switchingMode && <div className="mb-4 text-xs text-text-muted">Switching…</div>}
       {packs.length > 0 && (
         <div className="mt-4">
           <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">
@@ -504,12 +458,41 @@ export function BackupAutomationCard({ vault, onChange }: { vault: string; onCha
   );
 }
 
-export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved, headerless }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void; headerless?: boolean }) {
+export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved, headerless, hideBackups }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void; headerless?: boolean; hideBackups?: boolean }) {
   // "Move vault into the app" — copy the current vault into the app-owned
   // location (~/.prevail/vault) via the engine, non-destructively, then repoint.
   const [moving, setMoving] = useState(false);
   const [moveNote, setMoveNote] = useState<string | null>(null);
   const embedded = vaultPath.replace(/\/+$/, "").endsWith("/.prevail/vault");
+  // W4 — "Tidy into a data/ folder": relocate the whole vault under <vault>/data
+  // so the root holds no loose files and apps+domains sit together. The engine
+  // copies + verifies + repoints; we adopt the new path. Already-tidied vaults
+  // (path ends in /data) are a no-op.
+  const [tidying, setTidying] = useState(false);
+  const [tidyNote, setTidyNote] = useState<string | null>(null);
+  const tidied = vaultPath.replace(/\/+$/, "").endsWith("/data");
+  async function tidyIntoData() {
+    setTidying(true);
+    setTidyNote(null);
+    try {
+      const r = await invoke<{ dataDir: string; ok: boolean; alreadyMigrated?: boolean; copiedFiles?: number; sourceFiles?: number }>(
+        "engine_vault_migrate_data",
+        { vault: vaultPath },
+      );
+      if (r.alreadyMigrated) {
+        setTidyNote("Vault is already grouped under a data/ folder.");
+      } else if (r.ok) {
+        setTidyNote(`Grouped ${r.copiedFiles ?? "the"} files under data/. Your original files are kept until you archive them; nothing was deleted.`);
+        onVaultMoved?.(r.dataDir);
+      } else {
+        setTidyNote(`Tidy incomplete (${r.copiedFiles}/${r.sourceFiles} files). Your vault is unchanged; nothing was moved.`);
+      }
+    } catch (e) {
+      setTidyNote(`Tidy failed: ${String(e)}`);
+    } finally {
+      setTidying(false);
+    }
+  }
   async function moveIntoApp() {
     setMoving(true);
     setMoveNote(null);
@@ -560,7 +543,7 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
           </button>
         </div>
       </div>
-      {(onSetupDomains || !embedded) && (
+      {(onSetupDomains || !embedded || !tidied) && (
         <div className="mt-3 rounded-xl border border-border bg-surface px-4">
           {onSetupDomains && (
             <SettingRow label="Domains" desc="Let Prevail recommend a starter set of life domains, or add more.">
@@ -577,12 +560,24 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
               </button>
             </SettingRow>
           )}
+          {!tidied && (
+            <SettingRow label="Tidy into a data/ folder" desc="Group apps + domains and move loose files under a single data/ folder so the vault root stays clean. Copied + verified first; your files are kept, never deleted.">
+              <button onClick={tidyIntoData} disabled={tidying} className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50">
+                {tidying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderTree className="h-3.5 w-3.5" />}
+                {tidying ? "Tidying…" : "Tidy into data/"}
+              </button>
+            </SettingRow>
+          )}
         </div>
       )}
       {moveNote && (
         <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{moveNote}</div>
       )}
-      <BackupAutomationCard vault={vaultPath} onChange={onChange} />
+      {tidyNote && (
+        <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{tidyNote}</div>
+      )}
+      {/* W2 (Monday feedback): backups can render as their own section in Workspace. */}
+      {!hideBackups && <BackupAutomationCard vault={vaultPath} onChange={onChange} />}
     </>
   );
 }
@@ -606,8 +601,12 @@ export function WorkspaceSection({ vaultPath, onChange, onSetupDomains, onVaultM
     <>
       <SettingsHeader icon={FolderTree} title="Workspace" subtitle="Everything about where your data lives and how you set it up: your vault, domains, backups, starter packs, and the throwaway sandbox for exploring with sample data." />
       <div className="mb-7">
-        <WorkspaceSubLabel icon={FolderOpen} label="Vault" desc="location · domains · backups" />
-        <VaultSettings vaultPath={vaultPath} onChange={onChange} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} headerless />
+        <WorkspaceSubLabel icon={FolderOpen} label="Vault" desc="location · domains" />
+        <VaultSettings vaultPath={vaultPath} onChange={onChange} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} headerless hideBackups />
+      </div>
+      <div className="mb-7">
+        <WorkspaceSubLabel icon={RotateCw} label="Backups" desc="automatic snapshots · restore points" />
+        <BackupAutomationCard vault={vaultPath} onChange={onChange} />
       </div>
       <div>
         <WorkspaceSubLabel icon={Sparkles} label="Starter packs & Sandbox" desc="set up real domains · explore safely" />

@@ -13,7 +13,6 @@ import { isBunkerOn, lsGet, lsSet } from "./storage";
 import { Sparkline } from "./ui";
 import { BenchCrumbs, Field, ScoreBar, SubsectionHeader } from "./panels";
 import { domainIcon } from "./icons";
-import { CollapsibleSection } from "./collapsible";
 import { BENCH_CLI_OPTIONS, benchBatches, benchNotify, cancelBenchBatch, executeBenchBatch, useBenchBatches } from "./bench";
 import { ProviderMark } from "./marks";
 import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Domain, MatrixRow, RunDetail } from "./types";
@@ -191,7 +190,7 @@ export function BenchQuestions({
     (chunkUn as UnlistenFn | null)?.();
     let added = 0;
     try {
-      const fresh = await invoke<BenchQuestion[]>("benchmark_questions_list", { vault: vaultPath });
+      const fresh = await invoke<BenchQuestion[]>("benchmark_questions", { vault: vaultPath });
       added = (fresh ?? []).filter((q) => q.domain === target).length - before;
     } catch { /* counting is best-effort; exit code still drives success */ }
     return { code, added, tail: output.trim().split("\n").filter(Boolean).slice(-2).join(" / ") };
@@ -244,22 +243,29 @@ export function BenchQuestions({
   };
 
   async function save() {
-    if (!draft.domain.trim() || !draft.prompt.trim()) return;
+    // K4 (Monday feedback): a NEW question can target multiple domains at once
+    // (comma-separated, no dropdown/checkboxes) — saved once per domain. Editing
+    // an existing question keeps a single domain.
+    const domains = draft.domain.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
+    if (domains.length === 0 || !draft.prompt.trim()) return;
+    const targets = editing === "new" ? domains : [domains[0]];
     setSaving(true);
     try {
-      await invoke("benchmark_save_question", {
-        vault: vaultPath,
-        q: {
-          id: draft.id || null,
-          domain: draft.domain.trim().toLowerCase(),
-          prompt: draft.prompt,
-          context: draft.context,
-          notes: draft.notes,
-          council: draft.council,
-          expected_decision: draft.expected_decision,
-          expected_verdict_keywords: draft.expected_verdict_keywords,
-        },
-      });
+      for (const dom of targets) {
+        await invoke("benchmark_save_question", {
+          vault: vaultPath,
+          q: {
+            id: editing === "new" ? null : (draft.id || null),
+            domain: dom,
+            prompt: draft.prompt,
+            context: draft.context,
+            notes: draft.notes,
+            council: draft.council,
+            expected_decision: draft.expected_decision,
+            expected_verdict_keywords: draft.expected_verdict_keywords,
+          },
+        });
+      }
       setEditing(null);
       onChanged();
     } finally {
@@ -286,8 +292,8 @@ export function BenchQuestions({
         />
         <div className="max-w-3xl space-y-4">
         <h2 className="font-display text-xl font-bold tracking-tight">{editing === "new" ? "New question" : draft.id}</h2>
-        <Field label="Domain">
-          <input value={draft.domain} onChange={(e) => setDraft({ ...draft, domain: e.target.value })} list="bench-domains" placeholder="wealth" className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+        <Field label={editing === "new" ? "Domain(s): comma-separated to add to several at once" : "Domain"}>
+          <input value={draft.domain} onChange={(e) => setDraft({ ...draft, domain: e.target.value })} list="bench-domains" placeholder={editing === "new" ? "wealth, health, career" : "wealth"} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
           <datalist id="bench-domains">{allDomains.map((d) => <option key={d} value={d} />)}</datalist>
         </Field>
         <Field label="Prompt: the question as you'd ask it">
@@ -422,7 +428,8 @@ export function BenchQuestions({
                     {q.source === "ai" ? "AI-suggested" : "written by you"}{q.created ? ` · added ${q.created}` : ""}{q.edited ? ` · edited ${q.edited} (prior version kept)` : ""}
                   </div>
                 </div>
-                {q.council && <Scale className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />}
+                {/* K3 (Monday feedback): tooltip on the per-question icon. */}
+                {q.council && <span title="Council question: asked to the whole panel" className="mt-0.5 shrink-0"><Scale className="h-3.5 w-3.5 text-text-muted" /></span>}
               </button>
               <button
                 onClick={() => void setArchived(q, true)}
@@ -1007,30 +1014,9 @@ export function BenchResults({
   }, [visibleRuns, matrix, domainFilter]);
   const [expandedModel, setExpandedModel] = useState<string | null>(initialModel ?? null);
 
-  // Accurate coverage counts, derived straight from the raw run records (the
-  // source of truth: each run lists the domains it covered and which model ran).
-  // This is what makes the History trustworthy — "how many times was THIS domain
-  // benchmarked, and by how many distinct models" — counted, never estimated.
-  const coverage = useMemo(() => {
-    const byDomain = new Map<string, { runs: number; models: Set<string> }>();
-    const allModels = new Set<string>();
-    for (const r of visibleRuns) {
-      const p = parseRunLabel(r.label);
-      const mk = `${p.vendor}::${p.model || r.label}`;
-      allModels.add(mk);
-      for (const d of r.domains) {
-        const e = byDomain.get(d) ?? { runs: 0, models: new Set<string>() };
-        e.runs += 1;
-        e.models.add(mk);
-        byDomain.set(d, e);
-      }
-    }
-    const rows = [...byDomain.entries()]
-      .map(([domain, v]) => ({ domain, runs: v.runs, models: v.models.size }))
-      .sort((a, b) => b.runs - a.runs || a.domain.localeCompare(b.domain));
-    return { rows, totalRuns: visibleRuns.length, modelCount: allModels.size };
-  }, [visibleRuns]);
-
+  // K2 (Monday feedback): the "Coverage by domain" summary table was removed —
+  // it restated runs/models-per-domain that the main Model × domain matrix below
+  // already conveys ("What's the point of this. Remove it.").
 
   if (selected) {
     const p = parseRunLabel(selected.score.label);
@@ -1156,36 +1142,7 @@ export function BenchResults({
         </div>
       )}
 
-      {/* Accurate coverage: counted from the run records, not estimated. Answers
-          "how many times has each domain been benchmarked, by how many models". */}
-      {visibleRuns.length > 0 && coverage.rows.length > 0 && (
-        <CollapsibleSection
-          icon={Target}
-          title="Coverage by domain"
-          subtitle="Counted directly from every run record."
-          summary={`${coverage.totalRuns} runs · ${coverage.modelCount} models · ${coverage.rows.length} domains`}
-          className="mb-4"
-        >
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle text-left font-mono text-[10px] uppercase tracking-wider text-text-muted">
-                <th className="py-1.5 pr-3 font-medium">Domain</th>
-                <th className="py-1.5 pr-3 text-right font-medium">Benchmark runs</th>
-                <th className="py-1.5 text-right font-medium">Distinct models</th>
-              </tr>
-            </thead>
-            <tbody>
-              {coverage.rows.map((r) => (
-                <tr key={r.domain} className="border-b border-border-subtle/40 last:border-0">
-                  <td className="py-1.5 pr-3 text-text-primary">{titleCase(r.domain)}</td>
-                  <td className="py-1.5 pr-3 text-right font-mono text-text-secondary">{r.runs}</td>
-                  <td className="py-1.5 text-right font-mono text-text-secondary">{r.models}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </CollapsibleSection>
-      )}
+      {/* K2: "Coverage by domain" table removed — redundant with the matrix. */}
 
       {loadingDetail && <div className="mb-2 text-xs text-text-muted">loading…</div>}
 

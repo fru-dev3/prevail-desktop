@@ -5,15 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, ChevronDown, Clock, Globe, Layers, Loader2, RotateCw, Sparkles, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
-import { DISCOVERED_MODELS, MODELS, SETTINGS_ROW } from "./constants";
+import { DISCOVERED_MODELS, MODELS } from "./constants";
 import { refreshDiscoveredModels } from "./helpers2";
 import { LS, lsGet, lsSet } from "./storage";
-import { DirectProviderMark } from "./panels";
 import { SettingsHeader } from "./sectionutil";
 import { autoVerifyClis, setCliVerify, useCliVerifyLive } from "./verify";
 import { ProviderMark } from "./marks";
 import { AgentsSection } from "./settings6";
-import { DIRECT_PROVIDERS_SOON, OrVendorMark, orVendorOf } from "./providermarks";
+import { OrVendorMark, orVendorOf } from "./providermarks";
 import type { CliInfo } from "./types";
 
 // Auto-refresh cadence: how often model lists re-discover and providers
@@ -268,20 +267,101 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
           )}
         </div>
       </div>
-      <div className="mt-4">
-        <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Direct providers</div>
-        {/* Shared list-row spec (see SETTINGS_ROW): single column, comfortable. */}
-        <div className="space-y-2">
-          {DIRECT_PROVIDERS_SOON.map((p) => (
-            <div key={p.name} className={SETTINGS_ROW}>
-              <DirectProviderMark p={p} />
-              <span className="flex-1 text-sm text-text-secondary">{p.name}</span>
-              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Coming soon</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* B6 (Monday feedback): the "Direct providers" list used to render here too,
+          duplicating the dedicated "Direct Providers" section in ModelsSection.
+          Removed — Direct Providers lives in its own section now. */}
     </>
+  );
+}
+
+// G1 — Direct Providers. Native single-vendor keys: the user pastes their key
+// for any vendor and it works (the engine's DIRECT_PROVIDERS table routes to it;
+// the desktop injects PREVAIL_<ID>_KEY from the Keychain). Each row is an
+// independent key-entry that saves to the Keychain via provider_key_set, then
+// re-detects so the provider shows up live in every model picker.
+const DIRECT_PROVIDERS_UI: { id: string; label: string; hint: string }[] = [
+  { id: "anthropic", label: "Anthropic", hint: "console.anthropic.com · sk-ant-…" },
+  { id: "openai", label: "OpenAI", hint: "platform.openai.com · sk-…" },
+  { id: "xai", label: "xAI (Grok)", hint: "console.x.ai · xai-…" },
+  { id: "kimi", label: "Kimi (Moonshot)", hint: "platform.moonshot.ai · sk-…" },
+  { id: "deepseek", label: "DeepSeek", hint: "platform.deepseek.com · sk-…" },
+  { id: "google", label: "Google AI", hint: "aistudio.google.com · AIza…" },
+];
+
+function DirectProviderRow({ id, label, hint, onActivated }: {
+  id: string; label: string; hint: string; onActivated?: () => Promise<CliInfo[]>;
+}) {
+  const [key, setKey] = useState("");
+  const [configured, setConfigured] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [activated, setActivated] = useState<boolean | null>(null);
+  useEffect(() => { invoke<boolean>("provider_key_exists", { provider: id }).then((ok) => setConfigured(!!ok)).catch(() => {}); }, [id]);
+  async function save() {
+    if (!key.trim()) return;
+    setBusy(true);
+    try {
+      await invoke("provider_key_set", { provider: id, key: key.trim() });
+      setConfigured(true);
+      setKey("");
+      if (onActivated) {
+        const list = await onActivated();
+        setActivated(list.some((c) => c.id === id && c.available));
+        window.setTimeout(() => setActivated(null), 6000);
+      }
+    } catch (e) { console.error("provider_key_set", e); }
+    finally { setBusy(false); }
+  }
+  async function remove() {
+    setBusy(true);
+    try {
+      await invoke("provider_key_del", { provider: id });
+      setConfigured(false);
+      setActivated(null);
+      if (onActivated) await onActivated();
+    } catch (e) { console.error(e); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2.5">
+      <div className="flex items-center gap-2">
+        <span className="flex-1 text-sm font-semibold text-text-primary">{label}</span>
+        {configured
+          ? <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-ok"><Check className="h-3 w-3" /> key set</span>
+          : <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">no key</span>}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          type="password"
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          placeholder={configured ? "replace key…" : hint}
+          className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none"
+        />
+        <button onClick={save} disabled={busy || !key.trim()}
+          className="rounded-md bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:opacity-90 disabled:opacity-50">
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : "save"}
+        </button>
+        {configured && (
+          <button onClick={remove} disabled={busy}
+            className="rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-danger hover:text-danger disabled:opacity-50">
+            remove
+          </button>
+        )}
+      </div>
+      {activated === true && <div className="mt-1.5 text-[11px] text-ok">Live: {label} answered with this key. Selectable in Chat, Council, and Benchmark pickers.</div>}
+      {activated === false && <div className="mt-1.5 text-[11px] text-warn">Key saved, but {label} didn&apos;t come online. Double-check it.</div>}
+    </div>
+  );
+}
+
+export function DirectProvidersSection({ onActivated }: { onActivated?: () => Promise<CliInfo[]> }) {
+  return (
+    <div className="space-y-2">
+      <p className="mb-1 text-xs text-text-muted">Paste your API key for any vendor. Stored in the OS Keychain, never in plaintext. Once saved, the provider's models appear in every picker.</p>
+      {DIRECT_PROVIDERS_UI.map((p) => (
+        <DirectProviderRow key={p.id} id={p.id} label={p.label} hint={p.hint} onActivated={onActivated} />
+      ))}
+    </div>
   );
 }
 
@@ -309,7 +389,8 @@ export function ModelsSection({
   // ones appear without a code change. Runs once on launch + a manual Refresh.
   const [refreshing, setRefreshing] = useState(false);
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
-  const [refreshPeriod, setRefreshPeriod] = useState(() => lsGet("prevail.models.refreshPeriod") || "daily");
+  // W3 (Monday feedback): default the model-list refresh to "Every launch".
+  const [refreshPeriod, setRefreshPeriod] = useState(() => lsGet("prevail.models.refreshPeriod") || "launch");
   const verify = useCliVerifyLive();
   const discover = useCallback(async () => {
     setRefreshing(true);
@@ -417,12 +498,8 @@ export function ModelsSection({
           id: "direct",
           label: "Direct Providers",
           icon: Globe,
-          desc: "Anthropic, OpenAI, Google: native API keys",
-          content: (
-            <div className="rounded-lg border border-border-subtle bg-surface px-4 py-4 text-xs text-text-muted">
-              Native single-vendor keys (Anthropic API, OpenAI API, Google AI) are coming next. Use OpenRouter above to access all of these today with one key.
-            </div>
-          ),
+          desc: "Anthropic, OpenAI, xAI, Kimi, DeepSeek, Google: your own key per vendor",
+          content: <DirectProvidersSection onActivated={onActivated} />,
         },
       ] as const).map(({ id, label, icon: Icon, desc, content }) => (
         <CollapsibleSection key={id} icon={Icon} title={label} summary={desc} storageKey={`prevail.settings.models.${id}`}>
