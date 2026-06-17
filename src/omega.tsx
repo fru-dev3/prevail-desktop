@@ -95,7 +95,7 @@ export function OmegaSection({ vaultPath }: { vaultPath: string }) {
       <SettingsHeader
         title="Omega"
         icon={Sigma}
-        subtitle="What Prevail has LEARNED across all your domains: durable lessons, preferences, and patterns that hold everywhere. It's the learned counterpart to your Ideal State, injected into every chat, council, and routine just below it. Distilled from your domains; you can also edit it by hand."
+        subtitle="What Prevail has learned across your domains: durable lessons and patterns, injected into every chat just below your Ideal State. Distilled automatically; editable by hand."
       />
 
       {/* M7 (Monday feedback): the cohesive view — show what FEEDS Omega + how it
