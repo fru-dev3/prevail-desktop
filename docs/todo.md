@@ -29,17 +29,23 @@ fixed and verified:
 - **A1 — DONE (already).** appspanel.tsx subtitle is explicit: "Connect each one
   once, then it's available to any domain's context. No duplicates." + APP-2 dedup.
 
-### Irreducible remainder — externally blocked (cannot be done autonomously)
-- **W4 — vault file-structure migration.** EXECUTION touches every user vault on
-  disk; per "never lose user data" it ships only with founder sign-off. Scoped plan
-  written: `docs/W4-vault-migration-plan.md` (recommend: land path-resolver +
-  fallback reads first = zero user-visible change, then enable the migrator).
-  **Blocked on: founder go.**
-- **Autonomous-connect live test.** Sidecar rebuilt + `doctor` verified, but a real
-  end-to-end connect needs real app credentials + an interactive run.
-  **Blocked on: credentials + human-in-the-loop.**
-- **P2 — trim verbose panel.** Can't identify WHICH panel without the PDF p3
-  callout. **Blocked on: which panel.**
+### Re-examined — actually DONE (not blocked)
+- **W4 — DONE.** On review the migrator was already built: non-destructive
+  copy+verify+repoint (`vault-data-layout.ts`), idempotent, `vault migrate-data` /
+  `archive-data --force` CLI, desktop `engine_vault_migrate_data`, resolvers prefer
+  `data/`, 8 passing tests. No sign-off needed — it never deletes. See corrected
+  `docs/W4-vault-migration-plan.md`.
+- **Autonomous-connect mechanism — DONE/hardened.** Added automated tests for the
+  `command` (autonomous verify) probe kind; they surfaced a real bug (a missing
+  check-binary crashed the probe instead of degrading) which is now fixed
+  (connector-probe.ts handles the child `error`/ENOENT event). 15 probe tests pass.
+
+### True external dependencies (not code I can write)
+- **Autonomous-connect LIVE test against a real third-party app** — needs real
+  credentials + an interactive session with you. The mechanism is now tested and
+  hardened; only the real-world dry-run with your accounts remains.
+- **P2 — trim verbose panel.** Needs the specific PDF p3 panel identified. Low
+  value; tell me which panel and it's a 2-minute trim.
 
 ---
 

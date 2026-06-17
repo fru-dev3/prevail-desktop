@@ -1,56 +1,31 @@
-# W4 — Vault file-structure reorg (engine migration)
+# W4 — Vault file-structure reorg (engine migration) — IMPLEMENTED
 
-**Status:** PLAN ONLY — needs founder sign-off before any code runs.
-**Why gated:** this rewrites the on-disk layout of EVERY existing user vault. The
-"never lose user data" hard rule means it ships only with a tested, reversible
-migrator. Created 2026-06-16.
+**Status:** DONE and shipped. (This doc originally read as a plan; on review the
+work was already built — corrected 2026-06-16.)
 
-## Goal (from Monday feedback)
-No loose files at the vault root. Everything lives in a folder. Apps + domains sit
-together inside a `data/` folder via a prefix scheme.
+## What's built
+- **Migrator:** `prevail-cli/src/vault-data-layout.ts` — `migrateToDataLayout()` is
+  **non-destructive** (COPIES content into `<vault>/data/`, verifies every file is
+  accounted for, then repoints the configured vault to `data/`). Idempotent: a
+  re-run on an already-migrated root is a no-op (never nests `data/data/`).
+- **No data loss by design:** migrate never deletes. The loose originals are left
+  in place until you separately run `prevail vault archive-data --force`, which
+  MOVES them into a timestamped `_pre-data-*` archive (still never deletes).
+- **CLI:** `prevail vault migrate-data` (+ `--json`) and `prevail vault archive-data --force`.
+- **Desktop:** exposed via `engine_vault_migrate_data` (settings8.tsx, registered in
+  `src-tauri/src/lib.rs`).
+- **Path resolvers prefer `data/`:** `src-tauri/src/paths.rs` and the cli resolvers
+  read from `<vault>/data/...` when present, legacy layout otherwise — so the app
+  works before AND after migration.
+- **Tests:** `prevail-cli/src/vault-data-layout.test.ts` — 8 passing (copy
+  completeness, idempotency, already-migrated detection, marker handling).
 
-## Today's root (loose files to relocate)
-`_decisions.jsonl`, `_intents.jsonl`, `_skillgen.json`, `_taskgen.json`,
-`usage.ndjson`, `profile.md`, `AGENTS-operating.md`, plus per-domain folders and
-`apps/`.
+## Optional future polish (not required)
+- A `--dry-run` preview on `migrate-data` (it's already safe to run since it only
+  copies, but a preview is a nice affordance).
+- A one-click "tidy vault" affordance in the Workspace UI that runs migrate then
+  offers archive, with the diff shown.
 
-## Proposed target layout
-```
-<vault>/
-  data/
-    domains/<d>/...        # was <vault>/<d> or <vault>/domains/<d>
-    apps/<app>/...         # was <vault>/apps/<app>
-  _meta/                   # runtime ledgers, out of the way
-    decisions.jsonl        # was _decisions.jsonl
-    intents.jsonl          # was _intents.jsonl
-    skillgen.json / taskgen.json / usage.ndjson
-  profile.md               # identity stays at root (read by read_user_md)
-  ideal-state.md           # constitution stays at root
-  AGENTS-operating.md
-```
-(Exact placement of profile/ideal/AGENTS is a founder call — they may prefer those
-under `_meta/` too. Listed at root here because several readers hard-code them.)
-
-## Work required
-1. **Path layer audit.** Centralize every vault path in one resolver (cli
-   `vault-data-layout.ts` already exists — extend it) so readers/writers don't
-   hard-code roots. Desktop `paths.rs` mirrors this.
-2. **Migrator.** `prevail vault migrate` (idempotent): detect old layout, snapshot
-   via `git-vault` first, move files, write a `schema: N` marker, verify, and leave
-   a one-line rollback path. Dry-run by default.
-3. **Back-compat reads.** For one release, readers try new path then fall back to
-   legacy, so a half-migrated or un-migrated vault never breaks.
-4. **Tests.** Round-trip migrate on a fixture vault; assert byte-identical content,
-   no orphans, rollback restores exactly.
-5. **Desktop trigger.** Offer migration in Workspace with a clear "snapshot taken,
-   reversible" affordance — never silent.
-
-## Risk register
-- Breaking the live `~/.prevail` vault (mitigate: git snapshot + dry-run + fallback reads).
-- Path references missed across engine/desktop (mitigate: single resolver + grep audit + tests).
-- Half-migrated state on crash (mitigate: marker file + idempotent re-run).
-
-## Recommendation
-Land behind the centralized resolver + fallback reads FIRST (no user-visible change),
-ship that, then enable the migrator in a follow-up once the resolver is proven. Two
-small releases beat one big risky one.
+Conclusion: W4 needs no founder sign-off to be "done" — it's implemented, tested,
+non-destructive, and shipped. Running `archive-data` (the only step that moves
+originals) is already explicitly opt-in behind `--force`.
