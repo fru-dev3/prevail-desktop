@@ -280,17 +280,17 @@ export function DomainContextDrawer({
               ) : (decisionLog.length === 0 && <div className="text-xs text-text-muted">No decisions yet. Run a council or save a decision; the distiller curates a summary over time.</div>)}
               </>
             } />
-            {/* Activity = the raw record: what you asked (journal) + session logs,
-                merged (was split into "Journal" + "Session logs"). The distilled
-                sections above are derived from this. */}
-            <Section keyName="activity" title="Activity" count={ctx.recent_logs.length || undefined} body={
+            {/* Journal = the raw record: what you asked + session logs. The
+                distilled sections above are derived from this. (Named "Journal"
+                consistently per founder; was "Activity".) */}
+            <Section keyName="activity" title="Journal" count={ctx.recent_logs.length || undefined} body={
               <>
               <div className="mb-2 text-[11px] leading-snug text-text-muted">
                 The raw record - what you asked, and session logs. State, Memory, and Decisions above are distilled from this.
               </div>
               {ctx.journal && (
                 <>
-                  <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">Journal · what you asked</div>
+                  <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">What you asked</div>
                   <button onClick={() => onInjectContext(ctx.journal!, `${titleCase(domain)}/_journal`)}
                     className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
                     → use in chat
@@ -315,7 +315,7 @@ export function DomainContextDrawer({
                     ))}
                   </ul>
                 </>
-              ) : (!ctx.journal && <div className="text-xs text-text-muted">No activity yet. Your chats here build this raw record, which the distiller folds into State, Memory, and Decisions.</div>)}
+              ) : (!ctx.journal && <div className="text-xs text-text-muted">No journal entries yet. Your chats here build this raw record, which the distiller folds into State, Memory, and Decisions.</div>)}
               </>
             } />
             <Section keyName="skills" title="Skills" count={ctx.skills.length} body={
