@@ -534,3 +534,27 @@ pub(crate) fn delete_thread(path: String) -> Result<(), String> {
     }
     fs::remove_file(&p).map_err(|e| format!("delete thread: {e}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // B3: an existing thread stem must survive verbatim so save_thread reuses the
+    // same file instead of forking a new one. Underscores in particular were the
+    // bug — the old slugify turned them into dashes.
+    #[test]
+    fn sanitize_preserves_existing_stem() {
+        let stem = "2026-06-16_12-30-45_a1b2c3d4";
+        assert_eq!(sanitize_existing_slug(stem), stem);
+    }
+
+    #[test]
+    fn sanitize_strips_path_unsafe_chars() {
+        // No traversal or separators can survive into a filename.
+        assert!(!sanitize_existing_slug("../../etc/passwd").contains('/'));
+        assert!(!sanitize_existing_slug("a/b\\c").contains('/'));
+        assert!(!sanitize_existing_slug("a/b\\c").contains('\\'));
+        // Leading/trailing separators trimmed; interior word chars kept.
+        assert_eq!(sanitize_existing_slug("--foo_bar--"), "foo_bar");
+    }
+}
