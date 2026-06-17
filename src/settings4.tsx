@@ -91,7 +91,6 @@ export function SafetySection({ vaultPath }: { vaultPath: string }) {
             control={<Toggle on={checkpoints} onChange={(v) => { setCheckpoints(v); setPref(PREF.fileCheckpoints, v ? "1" : "0"); }} />} />
         </div>
       </SafetyGroup>
-      <TelemetrySettings />
     </>
   );
 }
@@ -99,16 +98,21 @@ export function SafetySection({ vaultPath }: { vaultPath: string }) {
 // Anonymous, opt-in telemetry governance. Default OFF, two independent consents,
 // and a fully transparent "what we collect" list + local log. See telemetry.ts
 // and docs/TELEMETRY-PLAN.md. Network sends stay inert until build-time keys exist.
-function TelemetrySettings() {
+export function TelemetrySettings() {
   const [usage, setUsageState] = useState(() => usageOn());
   const [crash, setCrashState] = useState(() => crashOn());
   const [showLog, setShowLog] = useState(false);
   const [, force] = useState(0);
   const log = telemetryLog();
   return (
-    <div className="mt-5">
-      <SettingsHeader title="Privacy & telemetry" icon={ShieldCheck}
-        subtitle="Anonymous, opt-in, and never includes your prompts, vault, names you created, or any personal data. Off by default. Turn it on only if you want to help improve Prevail." />
+    <div className="mt-6 border-t border-border-subtle pt-5">
+      {/* Minimal: a one-line label (the page is already "Privacy"), two toggles,
+          and the collapsed "what we collect" list. Anonymous, opt-in, off by default. */}
+      <div className="mb-2 flex items-baseline justify-between">
+        <h3 className="font-display text-sm font-semibold tracking-tight text-text-primary">Telemetry</h3>
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">anonymous · opt-in · off by default</span>
+      </div>
+      <p className="mb-3 text-xs text-text-secondary">Never includes your prompts, vault, the names you created, or any personal data. On only if you want to help improve Prevail.</p>
       <div className="mb-3 rounded-lg border border-border bg-surface px-5">
         <SettingsRowLite title="Usage analytics (anonymous)" desc="Coarse, anonymous events (app opened, which features are used, OS) via PostHog. No content, ever."
           control={<Toggle on={usage} onChange={(v) => { setUsage(v); setUsageState(v); }} />} />

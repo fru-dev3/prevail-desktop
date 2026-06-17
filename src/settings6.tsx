@@ -17,7 +17,7 @@ import { SettingsHeader, authLoginCmd } from "./sectionutil";
 import { cliVerifyLive, loadVerifyMap, saveVerifyMap, setCliVerify, useCliVerifyLive, verifyCliDefaultModel } from "./verify";
 import { ProviderMark } from "./marks";
 import { MemoryContextSection, TasksCrossDomainSection } from "./settings2";
-import { IdealStateSection } from "./settings4";
+import { IdealStateSection, TelemetrySettings } from "./settings4";
 import type { CliInfo, ModelVerifyStatus } from "./types";
 
 export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; onChange: (on: boolean) => void }) {
@@ -203,6 +203,10 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
           </div>
         </div>
       )}
+
+      {/* Telemetry lives under Privacy (moved from Safety). Anonymous, opt-in,
+          default-OFF — see TelemetrySettings. */}
+      <TelemetrySettings />
     </>
   );
 }
