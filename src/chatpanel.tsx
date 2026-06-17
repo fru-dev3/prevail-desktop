@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { motion } from "framer-motion";
-import { ArrowUpRight, BookOpen, Boxes, Check, ChevronRight, FileText, Folder, Layers, PanelRightOpen, Paperclip, Plus, Scale, Sparkles } from "lucide-react";
+import { ArrowUpRight, BookOpen, Boxes, Check, ChevronRight, FileText, Folder, Ghost, Layers, PanelRightOpen, Paperclip, Plus, Scale, Sparkles } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
 import { MODELS } from "./constants";
@@ -263,6 +263,10 @@ export function ChatPanel({
   // B2: surface attach failures on-screen instead of swallowing them, so a
   // silent "$domain didn't attach" becomes a visible, diagnosable message.
   const [attachErr, setAttachErr] = useState<string | null>(null);
+  // G3: incognito mode — a plain model with NO user context injected. Persisted
+  // so it survives navigation; off by default. Read live by the prompt builder.
+  const [incognito, setIncognito] = useState(() => getPref(PREF.incognito, "0") === "1");
+  const toggleIncognito = () => setIncognito((v) => { const n = !v; setPref(PREF.incognito, n ? "1" : "0"); return n; });
   function injectContext(body: string, label: string) {
     setAttachErr(null);
     setPrimedContext((cur) => {
@@ -1176,16 +1180,26 @@ export function ChatPanel({
     const primedPreamble = primedContext.length > 0
       ? primedContext.map((c) => `--- ${c.label} ---\n${c.body.trim()}\n`).join("\n") + "\n"
       : "";
-    const userPreamble = buildIdealStatePreamble(idealMd);
+    // G3: Incognito mode -> a plain model, like vanilla ChatGPT. When on, NONE of
+    // the user's context is injected: no ideal state, profile, omega, memory, or
+    // skills. (Explicit per-message attachments the user added are still honored.)
+    const incognito = getPref(PREF.incognito, "0") === "1";
+    const userPreamble = incognito ? "" : buildIdealStatePreamble(idealMd);
     // The person's profile/identity - auto-injected so the model always knows who
     // it's helping (no manual attach). Sits just under the Ideal State.
-    const profilePreamble = userMd.trim()
-      ? `# WHO YOU'RE HELPING - the user's profile. Use this as ground truth about them.\n${userMd.trim().slice(0, 2500)}\n\n`
+    // G1: instruct the model to be SPECIFIC - name the user's actual accounts,
+    // institutions, cards, and items from this profile rather than generic
+    // placeholders; if a needed specific isn't known, ask which one instead of
+    // guessing or saying something vague like "your checking account".
+    const profilePreamble = (!incognito && userMd.trim())
+      ? `# WHO YOU'RE HELPING - the user's profile. Use this as ground truth about them.\n`
+        + `When you give advice or recommendations, BE SPECIFIC TO THEM: name their actual accounts, banks, cards, providers, and items from this profile (e.g. "your Chase checking and Amex Gold", not "your checking and a credit card"). If a specific you need is not in the profile, ask which one rather than guessing or staying generic.\n`
+        + `${userMd.trim().slice(0, 2500)}\n\n`
       : "";
     // Omega: app-wide learned context, just below the Ideal State, above memory.
-    const omegaPreamble = buildOmegaPreamble(omegaMd);
+    const omegaPreamble = incognito ? "" : buildOmegaPreamble(omegaMd);
     // Self-learning: prepend the distilled long-term memory for this domain.
-    const memoryPreamble = (getPref(PREF.persistentMemory, "1") === "1" && memoryMd.trim())
+    const memoryPreamble = (!incognito && getPref(PREF.persistentMemory, "1") === "1" && memoryMd.trim())
       ? `--- Long-term memory (${domain ?? "General"}) ---\n${memoryMd.trim().slice(0, Number(getPref(PREF.memoryBudgetChars, "4000")))}\n\n`
       : "";
     const skillsPreamble = attachedSkills.length > 0
@@ -1773,6 +1787,15 @@ export function ChatPanel({
               stacking and eating vertical space. */}
           <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+              {/* G3: incognito toggle - always visible. On = a plain model, none of
+                  your profile/ideal/memory/omega is sent. */}
+              <button
+                onClick={toggleIncognito}
+                title={incognito ? "Incognito is ON - replies use a plain model with none of your context. Click to turn off." : "Incognito: ask a plain model with NONE of your profile or context attached."}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px] transition-colors ${incognito ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}
+              >
+                <Ghost className="h-3 w-3" /> {incognito ? "Incognito on" : "Incognito"}
+              </button>
               {primedContext.map((c, i) => (
                 <span
                   key={c.label}

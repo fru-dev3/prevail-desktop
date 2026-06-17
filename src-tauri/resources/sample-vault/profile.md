@@ -44,6 +44,13 @@ below are the canon: keep them consistent everywhere.
 - **Liabilities:** Austin mortgage $451,800; Phoenix mortgage $198,500; auto loan $14,200 (2022 Honda CR-V).
 - No credit card debt. Auto-invest $1,500/mo to the brokerage; $300/mo to the 529.
 
+## Banking and cards (all fictional, for the demo)
+- **Everyday checking + savings:** Frost Bank (Austin). Checking ~$9,500; high-yield savings holds the $32,000 emergency fund.
+- **Credit cards:** Chase Sapphire Reserve (primary, travel + dining), Amex Blue Cash (groceries/gas), both paid in full monthly. No balances carried.
+- **Brokerage:** Fidelity (taxable $58,000, Roth IRA $41,000, 401k $168,000, HSA $7,200).
+- **Phoenix rental** rent deposits land in the Frost checking; managed by Sun Valley PM.
+- So "your checking" = Frost Bank; "your card" = the Chase Sapphire Reserve unless context says groceries (then Amex Blue Cash). Name these specifically rather than saying "your bank" or "a credit card".
+
 ## Insurance
 - **Homeowners** (Austin), Allstate. Dwelling $485,000, deductible $2,500, separate wind/hail deductible $4,850 (Texas). Premium **$2,150/yr**. Renews **2026-09**.
 - **Landlord policy** (Phoenix condo). Premium $780/yr.
