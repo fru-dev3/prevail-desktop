@@ -696,7 +696,9 @@ export function MemoryContextSection({ headerless }: { vaultPath: string; header
         <span className="font-mono text-[10px] uppercase tracking-wider text-text-secondary">Distiller</span>
         <span className="font-mono text-[10px] text-text-muted">
           {status?.running ? "running" : "idle"}
-          {status?.last_run_ts ? ` · last pass ${formatFreshness(Math.max(0, (Date.now() - status.last_run_ts) / 1000))} ago` : ""}
+          {/* B2-19: last_run_ts is in SECONDS (treating it as ms gave "20601 days");
+              formatFreshness already returns "... ago" (don't append a second one). */}
+          {status?.last_run_ts ? ` · last pass ${formatFreshness(Math.max(0, Date.now() / 1000 - status.last_run_ts))}` : ""}
           {status?.lines_distilled ? ` · ${status.lines_distilled} lines` : ""}
         </span>
         <span className="ml-auto font-mono text-[10px] text-accent">Schedule & controls in Daemons →</span>

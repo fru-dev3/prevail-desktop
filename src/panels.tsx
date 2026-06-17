@@ -1595,10 +1595,8 @@ export function HeadlessLearnCard({ vaultPath }: { vaultPath: string }) {
             {installed === true && " Currently running at login."}
           </div>
         </div>
-        <button onClick={toggle} disabled={busy || installed === null}
-          className={`rounded-md border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider disabled:opacity-50 ${installed ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
-          {busy ? "…" : installed ? "On" : "Off"}
-        </button>
+        {/* B2-21: pill toggle, not On/Off text. */}
+        <Toggle on={!!installed} disabled={busy || installed === null} onChange={() => void toggle()} label="Keep working with the app closed" />
       </div>
       {note && <div className="mt-2 break-words font-mono text-[11px] text-text-secondary">{note}</div>}
     </div>
