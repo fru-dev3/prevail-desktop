@@ -11,9 +11,9 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
   claude/codex/antigravity CLI as a flag → exit 1. Fixed in cli-bridge buildCliArgs
   (prepend a leading space when the prompt starts with "-"). Needs sidecar rebuild
   (ships with the next release).
-- [x] **B2-4 — Council circle: show model name + number.** Each node should label
+- [ ] **B2-4 — Council circle: show model name + number.** Each node should label
   its model, e.g. "Opus 4.7", not just the provider glyph.
-- [x] **B2-5 — Skills: let the user UPLOAD skills.** The Skills page only explains
+- [ ] **B2-5 — Skills: let the user UPLOAD skills.** The Skills page only explains
   the drop-a-folder convention. Add an actual upload/import affordance (pick a
   folder / SKILL.md and install it into a domain's skills/).
 - [x] **B2-6 — Scheduled runs: pill toggle, not "OFF" text.** The scheduled-runs
