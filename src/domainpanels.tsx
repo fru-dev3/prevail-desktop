@@ -659,7 +659,19 @@ export function DomainPrefsPanel({
               freq.set(w, (freq.get(w) ?? 0) + 1);
             }
             const top = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([w]) => w);
-            if (top.length > 0) lsSet(keywordsKey, top.join(", "));
+            if (top.length > 0) {
+              lsSet(keywordsKey, top.join(", "));
+              // B5: persist derived keywords to the manifest too — localStorage
+              // alone is invisible to the CLI gateway router, so inbound channel
+              // messages never matched. Store domain name first, then the derived
+              // extras (deduped), matching the edit-path convention.
+              const full = [domain.toLowerCase(), ...top].filter((k, i, a) => a.indexOf(k) === i);
+              invoke("engine_manifest_set", {
+                vault: vaultPath,
+                domain,
+                json: JSON.stringify({ routing: { keywords: full } }),
+              }).catch(() => { /* manifest write unsupported — localStorage holds it */ });
+            }
           } catch { /* derivation is best-effort */ }
         }
       } catch {
