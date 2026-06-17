@@ -64,8 +64,11 @@ export function SafetySection({ vaultPath }: { vaultPath: string }) {
     <>
       <SettingsHeader icon={ShieldCheck} title="Safety" subtitle="Guardrails for what the agent can do and what gets stored. Redact secrets is enforced here; approval, allowlist, and checkpoints are honored by the engine." />
       <SafetyGroup icon={Lock} label="Access protection" desc="Lock the app · encrypt the vault at rest">
-        <AppLockCard />
-        <VaultEncryptionCard vaultPath={vaultPath} />
+        {/* D3: two compact columns instead of two tall stacked blocks. */}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <AppLockCard />
+          <VaultEncryptionCard vaultPath={vaultPath} />
+        </div>
       </SafetyGroup>
       <SafetyGroup icon={ShieldAlert} label="Agent guardrails" desc="What the agent may do, and what gets stored">
         <div className="overflow-hidden rounded-xl border border-border bg-surface">
