@@ -3,7 +3,7 @@
 // run registry + executor live in ./bench; this is the presentation layer.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm, open, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
-import { Activity, AlertTriangle, Archive, Check, ChevronRight, Circle, Crown, Download, FileText, Layers, Loader2, MessagesSquare, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X } from "lucide-react";
+import { Activity, AlertTriangle, Archive, Bookmark, CalendarClock, Check, ChevronRight, Circle, Crown, Download, FileText, Layers, Loader2, MessagesSquare, Play, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X } from "lucide-react";
 import { invoke, listen } from "./bridge";
 import { MODELS, MODEL_SEP } from "./constants";
 import { scoreColor, titleCase } from "./format";
@@ -13,7 +13,9 @@ import { isBunkerOn, lsGet, lsSet } from "./storage";
 import { Sparkline } from "./ui";
 import { BenchCrumbs, Field, ScoreBar, SubsectionHeader } from "./panels";
 import { domainIcon } from "./icons";
-import { BENCH_CLI_OPTIONS, benchBatches, benchNotify, cancelBenchBatch, executeBenchBatch, useBenchBatches } from "./bench";
+import { BENCH_CLI_OPTIONS, BENCH_SCHED, benchBatches, benchFreqLabel, benchNotify, cancelBenchBatch, executeBenchBatch, useBenchBatches } from "./bench";
+import { deleteBundle, deleteSuite, saveBundle, saveSuite, useBundles, useSuites } from "./bench-presets";
+import type { BenchSuite } from "./bench-presets";
 import { ProviderMark } from "./marks";
 import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Domain, MatrixRow, RunDetail } from "./types";
 import type { UnlistenFn } from "./bridge";
@@ -496,6 +498,7 @@ export function BenchQuestions({
 
 export function BenchRunConfig({
   mode, setMode, selModels, toggleModel, allDomains, scope, toggleScope,
+  applyModels, applyScope, onRunSuite,
   questionCounts, questionCount, running, jobs, log, logRef, activeBatch, onRun, onViewResults, onReset, onCancel, onCrumbHome,
 }: {
   mode: "single" | "council";
@@ -505,6 +508,11 @@ export function BenchRunConfig({
   allDomains: string[];
   scope: Set<string>;
   toggleScope: (d: string) => void;
+  // Saved-preset plumbing: apply a bundle's models / a suite's domains to the
+  // live selection, and run a suite as a unit.
+  applyModels: (keys: string[]) => void;
+  applyScope: (domains: string[]) => void;
+  onRunSuite: (s: { mode: "single" | "council"; models: string[]; domains: string[] }) => void;
   questionCounts: Record<string, number>;
   questionCount: number;
   running: boolean;
@@ -535,6 +543,53 @@ export function BenchRunConfig({
 
   // Which job card is expanded to its question-by-question detail.
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
+
+  // ── Saved presets (bundles of models, and suites of models+domains) ─────────
+  const bundles = useBundles();
+  const suites = useSuites();
+  const [bundleName, setBundleName] = useState("");
+  const [savingBundle, setSavingBundle] = useState(false);
+  const [suiteName, setSuiteName] = useState("");
+  const [savingSuite, setSavingSuite] = useState(false);
+  const [scheduledSuiteId, setScheduledSuiteId] = useState<string | null>(null);
+  const selModelArr = Array.from(selModels);
+  // Load a suite into the editor (apply its selection) WITHOUT running — so the
+  // user can tweak then run or re-save. Distinct from the Run button.
+  const loadSuite = (s: BenchSuite) => { setMode(s.mode); applyModels(s.models); applyScope(s.domains); };
+  const commitBundle = () => {
+    if (saveBundle(bundleName, selModelArr)) { setBundleName(""); setSavingBundle(false); }
+  };
+  const commitSuite = () => {
+    if (saveSuite({ name: suiteName, mode, models: selModelArr, domains: Array.from(scope) })) {
+      setSuiteName(""); setSavingSuite(false);
+    }
+  };
+  // Put a suite on the existing background scheduler by writing the "custom" scope
+  // it already understands (models + domains). No new scheduler needed.
+  const scheduleSuite = (s: BenchSuite) => {
+    lsSet(BENCH_SCHED.scopeMode, "custom");
+    lsSet(BENCH_SCHED.scopeModels, s.models.join(","));
+    lsSet(BENCH_SCHED.scopeDomains, s.domains.join(","));
+    lsSet(BENCH_SCHED.enabled, "1");
+    if (!lsGet(BENCH_SCHED.freq, "")) lsSet(BENCH_SCHED.freq, "weekly");
+    setScheduledSuiteId(s.id);
+    // The sidebar / home schedule indicators sync on this event.
+    window.dispatchEvent(new Event("prevail:bench-sched"));
+  };
+  const suiteScopeLabel = (s: BenchSuite) =>
+    s.domains.length === 0 ? "all domains"
+    : s.domains.length <= 2 ? s.domains.map(titleCase).join(", ")
+    : `${s.domains.length} domains`;
+  const schedFreq = benchFreqLabel(lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
+  // Reflect an already-scheduled suite across remounts: if the custom schedule's
+  // models+domains match a saved suite, mark it scheduled.
+  useEffect(() => {
+    if (lsGet(BENCH_SCHED.enabled, "0") !== "1" || lsGet(BENCH_SCHED.scopeMode, "latest") !== "custom") { setScheduledSuiteId(null); return; }
+    const m = lsGet(BENCH_SCHED.scopeModels, "").split(",").filter(Boolean).sort().join(",");
+    const d = lsGet(BENCH_SCHED.scopeDomains, "").split(",").filter(Boolean).sort().join(",");
+    const hit = suites.find((s) => [...s.models].sort().join(",") === m && [...s.domains].sort().join(",") === d);
+    setScheduledSuiteId(hit ? hit.id : null);
+  }, [suites]);
 
   // While a benchmark is in flight (or just finished with errors), the page
   // IS the progress: the config disappears and each model gets a live
@@ -703,6 +758,43 @@ export function BenchRunConfig({
           <SubsectionHeader icon={Layers} hint={`${selModels.size} selected · runs head-to-head`}>
             Models
           </SubsectionHeader>
+          {/* Saved bundles — one click drops a named set of models onto the panel.
+              Save the current selection as a new bundle from the right. */}
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            <Bookmark className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+            {bundles.length === 0 && !savingBundle && (
+              <span className="font-mono text-[11px] text-text-muted">No saved bundles yet.</span>
+            )}
+            {bundles.map((b) => {
+              const active = b.models.length === selModels.size && b.models.every((m) => selModels.has(m));
+              return (
+                <span key={b.id} className={`group inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-mono text-[11px] ${active ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-secondary"}`}>
+                  <button onClick={() => applyModels(b.models)} title={`Apply ${b.models.length} model${b.models.length === 1 ? "" : "s"}`} className="inline-flex items-center gap-1 hover:text-accent">
+                    {b.name}
+                    <span className={`rounded-full px-1 text-[9px] ${active ? "bg-accent/15" : "bg-surface-warm text-text-muted"}`}>{b.models.length}</span>
+                  </button>
+                  <button onClick={() => deleteBundle(b.id)} title="Delete bundle" className="text-text-muted/50 hover:text-danger"><X className="h-3 w-3" /></button>
+                </span>
+              );
+            })}
+            {savingBundle ? (
+              <span className="inline-flex items-center gap-1">
+                <input
+                  autoFocus value={bundleName} onChange={(e) => setBundleName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") commitBundle(); if (e.key === "Escape") { setSavingBundle(false); setBundleName(""); } }}
+                  placeholder="bundle name" className="w-32 rounded-md border border-accent-border bg-background px-2 py-0.5 font-mono text-[11px] outline-none"
+                />
+                <button onClick={commitBundle} disabled={!bundleName.trim()} className="rounded-md bg-accent px-2 py-0.5 font-mono text-[11px] text-background disabled:opacity-40">Save</button>
+                <button onClick={() => { setSavingBundle(false); setBundleName(""); }} className="text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
+              </span>
+            ) : (
+              selModels.size > 0 && (
+                <button onClick={() => setSavingBundle(true)} className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-1 font-mono text-[11px] text-text-muted hover:border-accent-border hover:text-accent">
+                  <Plus className="h-3 w-3" /> Save selection as bundle
+                </button>
+              )
+            )}
+          </div>
           {isBunkerOn() && (
             <div className="mb-3 flex items-center gap-2 rounded-lg border border-border bg-surface-warm/60 px-3 py-2">
               <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-accent" />
@@ -831,6 +923,55 @@ export function BenchRunConfig({
             </details>
           );
         })()}
+      </section>
+
+      {/* Suites — a named (models + domains + mode) you can re-run as a unit or
+          drop onto the background schedule. Built from the current selection. */}
+      <section>
+        <SubsectionHeader icon={Bookmark} hint={suites.length ? `${suites.length} saved` : "save a reusable run"}>
+          Suites
+        </SubsectionHeader>
+        <div className="space-y-2">
+          {suites.map((s) => {
+            const isScheduled = scheduledSuiteId === s.id;
+            return (
+              <div key={s.id} className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-3 py-2">
+                <button onClick={() => loadSuite(s)} title="Load into the editor to tweak (does not run)" className="min-w-0 flex-1 text-left">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate font-display text-sm font-semibold tracking-tight hover:text-accent">{s.name}</span>
+                    {isScheduled && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] text-accent"><CalendarClock className="h-2.5 w-2.5" /> {schedFreq}</span>}
+                  </div>
+                  <div className="mt-0.5 font-mono text-[10px] text-text-muted">
+                    {s.mode === "council" ? "Council" : `${s.models.length} model${s.models.length === 1 ? "" : "s"}`} · {suiteScopeLabel(s)}
+                  </div>
+                </button>
+                <button onClick={() => onRunSuite(s)} disabled={running} title="Run this suite now" className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
+                  <Play className="h-3 w-3" /> Run
+                </button>
+                <button onClick={() => scheduleSuite(s)} title="Run this suite on the background schedule" className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] ${isScheduled ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}>
+                  <CalendarClock className="h-3 w-3" /> {isScheduled ? "Scheduled" : "Schedule"}
+                </button>
+                <button onClick={() => { if (isScheduled) setScheduledSuiteId(null); deleteSuite(s.id); }} title="Delete suite" className="text-text-muted/50 hover:text-danger"><Trash2 className="h-3.5 w-3.5" /></button>
+              </div>
+            );
+          })}
+          {savingSuite ? (
+            <div className="flex items-center gap-2 rounded-lg border border-accent-border bg-accent-soft/30 px-3 py-2">
+              <input
+                autoFocus value={suiteName} onChange={(e) => setSuiteName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") commitSuite(); if (e.key === "Escape") { setSavingSuite(false); setSuiteName(""); } }}
+                placeholder="suite name (e.g. Frontier x Finance)" className="flex-1 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] outline-none focus:border-accent-border"
+              />
+              <span className="font-mono text-[10px] text-text-muted">{mode === "council" ? "Council" : `${selModels.size} model${selModels.size === 1 ? "" : "s"}`} · {scope.size === 0 ? "all domains" : `${scope.size} domain${scope.size === 1 ? "" : "s"}`}</span>
+              <button onClick={commitSuite} disabled={!suiteName.trim() || (mode === "single" && selModels.size === 0)} className="rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background disabled:opacity-40">Save</button>
+              <button onClick={() => { setSavingSuite(false); setSuiteName(""); }} className="text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
+            </div>
+          ) : (
+            <button onClick={() => setSavingSuite(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-accent-border hover:text-accent">
+              <Plus className="h-3.5 w-3.5" /> Save current models + domains as a suite
+            </button>
+          )}
+        </div>
       </section>
 
       {/* Run */}
@@ -1482,23 +1623,26 @@ export function BenchmarkPanel({
       return next;
     });
 
-  async function runBenchmark() {
-    const scopeStr = Array.from(scope).join(",");
-    const scoped = scope.size === 0
+  // Execute from EXPLICIT inputs so a saved suite can run its own models+domains
+  // directly, without waiting on a setState round-trip. runBenchmark() just feeds
+  // it the current UI selection.
+  function executeRun(modelKeys: string[], domains: Set<string>, runMode: "single" | "council") {
+    const scopeStr = Array.from(domains).join(",");
+    const scoped = domains.size === 0
       ? questions
-      : questions.filter((q) => scope.has(q.domain.toLowerCase()));
+      : questions.filter((q) => domains.has(q.domain.toLowerCase()));
     const qids = scoped.map((q) => q.id).sort();
     const blankJob = { status: "queued" as BenchJobStatus, done: 0, total: qids.length, qids, qdone: {} };
     const plannedJobs: BenchJob[] =
-      mode === "council"
+      runMode === "council"
         ? [{ key: "council", cli: "", model: "", label: "Council", ...blankJob }]
-        : Array.from(selModels).map((k) => {
+        : modelKeys.map((k) => {
             const [cli, model] = k.split(MODEL_SEP);
             const ml = MODELS[cli]?.find((m) => m.id === model)?.label ?? model;
             return { key: k, cli, model, label: `${titleCase(cli)} · ${ml}`, ...blankJob, qdone: {} };
           });
     const runnable = isBunkerOn() ? plannedJobs.filter((j) => j.cli && isLocalCli(j.cli)) : plannedJobs;
-    if (isBunkerOn() && mode === "council") { setErr("Blocked by Bunker Mode: the Council convenes cloud models."); return; }
+    if (isBunkerOn() && runMode === "council") { setErr("Blocked by Bunker Mode: the Council convenes cloud models."); return; }
     if (isBunkerOn() && runnable.length < plannedJobs.length) {
       setErr(runnable.length === 0
         ? "Blocked by Bunker Mode: pick a local model (Ollama, LM Studio, oMLX)."
@@ -1506,8 +1650,21 @@ export function BenchmarkPanel({
       if (runnable.length === 0) return;
     }
     if (runnable.length === 0) { setErr("Pick at least one model to run."); return; }
-    void executeBenchBatch(vaultPath, runnable, mode === "council", scopeStr);
+    void executeBenchBatch(vaultPath, runnable, runMode === "council", scopeStr);
   }
+  async function runBenchmark() {
+    executeRun(Array.from(selModels), scope, mode);
+  }
+  // Run a saved suite: reflect its selection in the UI (so the panel shows what
+  // ran) AND execute it immediately from the suite's own values.
+  function runSuite(s: { mode: "single" | "council"; models: string[]; domains: string[] }) {
+    setMode(s.mode);
+    setSelModels(new Set(s.models));
+    setScope(new Set(s.domains));
+    executeRun(s.models, new Set(s.domains), s.mode);
+  }
+  const applyModels = (keys: string[]) => setSelModels(new Set(keys));
+  const applyScope = (domains: string[]) => setScope(new Set(domains));
 
   // Rebuild a runnable job from a stored run. Runs since the rerun fix carry
   // meta.json (exact cli/model/council); older runs fall back to parsing the
@@ -1662,6 +1819,7 @@ export function BenchmarkPanel({
             mode={mode} setMode={setMode}
             selModels={selModels} toggleModel={toggleModel}
             allDomains={allDomains} scope={scope} toggleScope={toggleScope}
+            applyModels={applyModels} applyScope={applyScope} onRunSuite={runSuite}
             questionCounts={questionCounts}
             questionCount={
               scope.size === 0
