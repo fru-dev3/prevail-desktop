@@ -68,6 +68,14 @@ export function UsageDashboard({
 }) {
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // S2: refresh when a chat turn appends usage (event from chatpanel), so the
+  // panel populates ~realtime instead of only on a thread/domain/nonce change.
+  const [usageNonce, setUsageNonce] = useState(0);
+  useEffect(() => {
+    const h = () => setUsageNonce((n) => n + 1);
+    window.addEventListener("prevail:usage-updated", h);
+    return () => window.removeEventListener("prevail:usage-updated", h);
+  }, []);
   useEffect(() => {
     let alive = true;
     setLoaded(false);
@@ -84,7 +92,7 @@ export function UsageDashboard({
       }
     })();
     return () => { alive = false; };
-  }, [vault, domain, nonce]);
+  }, [vault, domain, nonce, usageNonce]);
 
   if (!summary || summary.total_turns === 0) {
     if (hideWhenEmpty || !loaded) return null;
