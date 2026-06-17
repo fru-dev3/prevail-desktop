@@ -61,7 +61,7 @@ export function ChatPanel({
   domainPath: string | null;
   // Where threads are stored/listed. Defaults to `domain`. An open app passes
   // its own `_app-<id>` scope so conversations live in the app's space,
-  // independent of the (possibly many) domains it's bound to — while `domain`
+  // independent of the (possibly many) domains it's bound to - while `domain`
   // above still drives model grounding.
   threadDomain?: string | null;
   // True when an app (not a domain) is open. Suppresses domain-only chrome:
@@ -98,7 +98,7 @@ export function ChatPanel({
   // (start/user/delta/assistant/usage/done/error) and threads through the
   // domain manifest's configured engine, privacy (localOnly) and skills.
   // When it's absent we fall back to the native chat_send path below.
-  // This is purely additive — neither path is removed.
+  // This is purely additive - neither path is removed.
   const [engineAvailable, setEngineAvailable] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -134,7 +134,7 @@ export function ChatPanel({
     const domSaved = domain ? lsGet(`prevail.domain.${domain}.cli`) : "";
     return domSaved || lsGet(LS.defaultChatCli) || null;
   });
-  // Per-CLI model selection — persisted to localStorage as
+  // Per-CLI model selection - persisted to localStorage as
   // prevail.model.<cli>. Defaults to first model for that CLI when no
   // saved choice exists.
   const [modelByCli, setModelByCli] = useState<Record<string, string>>(() => {
@@ -158,7 +158,7 @@ export function ChatPanel({
       if (globalLn && globalLn !== fwLens.lens) fwLens.setLens(globalLn);
       return;
     }
-    // Domain override when set, else fall back to the global default — so both
+    // Domain override when set, else fall back to the global default - so both
     // picking an override AND clearing it ("Use global") propagate live.
     const domCli = lsGet(`prevail.domain.${domain}.cli`);
     const effectiveCli = domCli || lsGet(LS.defaultChatCli) || null;
@@ -215,7 +215,7 @@ export function ChatPanel({
     return () => window.removeEventListener("mousedown", onClick);
   }, [modelMenuOpen]);
   const [input, setInput] = useState("");
-  // The user's Ideal State (vault/ideal-state.md) — their constitution, always
+  // The user's Ideal State (vault/ideal-state.md) - their constitution, always
   // prepended as the highest-precedence preamble so every turn aligns with it.
   // Loaded per vault path; read_ideal_state returns the starter template when
   // the file is absent so it's never empty on a fresh vault.
@@ -226,7 +226,7 @@ export function ChatPanel({
       .then(setIdealMd)
       .catch(() => setIdealMd(""));
   }, [vaultPath]);
-  // Omega (vault/omega.md) — the app-wide LEARNED layer, injected just below the
+  // Omega (vault/omega.md) - the app-wide LEARNED layer, injected just below the
   // Ideal State. Empty until the user has distilled/authored one (no boilerplate).
   const [omegaMd, setOmegaMd] = useState<string>("");
   useEffect(() => {
@@ -236,7 +236,7 @@ export function ChatPanel({
     window.addEventListener("prevail:omega-changed", load);
     return () => window.removeEventListener("prevail:omega-changed", load);
   }, [vaultPath]);
-  // The user's profile / identity (vault/user.md, falling back to profile.md) —
+  // The user's profile / identity (vault/user.md, falling back to profile.md) -
   // who they are. Auto-injected into every turn so the model always has the
   // person's real context without a manual $attach. (Founder feedback: profile +
   // ideal state should come automatically.)
@@ -245,7 +245,7 @@ export function ChatPanel({
     if (!vaultPath) { setUserMd(""); return; }
     invoke<string>("read_user_md", { vault: vaultPath }).then(setUserMd).catch(() => setUserMd(""));
   }, [vaultPath]);
-  // Distilled long-term memory for this domain — prepended to prompts like
+  // Distilled long-term memory for this domain - prepended to prompts like
   // user.md so the assistant remembers across sessions (self-learning loop).
   const [memoryMd, setMemoryMd] = useState<string>("");
   useEffect(() => {
@@ -254,7 +254,7 @@ export function ChatPanel({
       .then(setMemoryMd)
       .catch(() => setMemoryMd(""));
   }, [vaultPath, domain, chatViewNonce]);
-  // Domain context column — a persistent right column showing state.md,
+  // Domain context column - a persistent right column showing state.md,
   // decisions, journal, recent logs, skills. Collapsible; state persisted.
   // Items can be "used in chat" to inject as prompt context.
   const [contextOpen, setContextOpen] = useState<boolean>(() => lsGet("prevail.contextOpen") === "1");
@@ -270,12 +270,12 @@ export function ChatPanel({
       return [...cur, { label, body }];
     });
   }
-  // Per-domain preferences popover — explicit view of overrides saved
+  // Per-domain preferences popover - explicit view of overrides saved
   // for this domain with reset controls. Implicit auto-save still
   // happens in pickers; this only surfaces + clears the result.
   // Skills attached to the next send. Decoupled from the textarea so
   // editing the prompt text doesn't affect them, and the user removes
-  // them from the pills below — not by editing prompt text.
+  // them from the pills below - not by editing prompt text.
   const [attachedSkills, setAttachedSkills] = useState<string[]>(() => loadPreferredSkills(domain));
   const [preferredSkills, setPreferredSkills] = useState<string[]>(() => loadPreferredSkills(domain));
   // domainTab is lifted to App (the top bar owns the Insights/Preferences
@@ -292,7 +292,7 @@ export function ChatPanel({
   const [ctxScoreError, setCtxScoreError] = useState<string | null>(null);
   // S1: only reset the domain tab to "chat" when the domain GENUINELY changes
   // (a real domain switch), not on mount. Resetting on mount clobbered the
-  // Insights button when arriving from another tab — App set domainTab="insights",
+  // Insights button when arriving from another tab - App set domainTab="insights",
   // then ChatPanel mounted and immediately reset it to "chat", so the first click
   // appeared to do nothing and a second was needed.
   const prevDomainRef = useRef<string | null | undefined>(undefined);
@@ -318,7 +318,7 @@ export function ChatPanel({
       .then(setDomainCtx)
       .catch(() => {});
   }, [domain, vaultPath]);
-  // I7: "Save as skill" — the composer dispatches this with the typed prompt;
+  // I7: "Save as skill" - the composer dispatches this with the typed prompt;
   // we jump to the Skills tab and pre-fill the new-skill form.
   const [newSkillSeed, setNewSkillSeed] = useState<string | null>(null);
   useEffect(() => {
@@ -335,7 +335,7 @@ export function ChatPanel({
     setCtxScore(null);
     setCtxScoreError(null);
     if (!domain || !vaultPath) return;
-    // Instant from cache when a recent score exists — no engine spawn.
+    // Instant from cache when a recent score exists - no engine spawn.
     const key = `${vaultPath}:${domain}`;
     const cached = _scoreCache.get(key);
     if (cached && Date.now() - cached.at < SCORE_CACHE_TTL_MS) {
@@ -359,7 +359,7 @@ export function ChatPanel({
       .catch((e) => setCtxScoreError(String(e)))
       .finally(() => setCtxScoreRescanning(false));
   }, [domain, vaultPath]);
-  // Aggregate "Life Readiness" — averaged across all domains. Loaded on
+  // Aggregate "Life Readiness" - averaged across all domains. Loaded on
   // the no-domain landing. Re-fetched when a re-scan finishes so the
   // headline number stays roughly current.
   const [lifeReadiness, setLifeReadiness] = useState<LifeReadiness | null>(null);
@@ -396,7 +396,7 @@ export function ChatPanel({
       setPrimedContext((cur) => cur.filter((x) => !x.label.startsWith("auto:")));
       return;
     }
-    // Per-domain opt-out — when prevail.domain.<name>.autoState === "0"
+    // Per-domain opt-out - when prevail.domain.<name>.autoState === "0"
     // we skip auto-attaching state.md. Default is on.
     if (lsGet(`prevail.domain.${domain}.autoState`) === "0") {
       setPrimedContext((cur) => cur.filter((x) => !x.label.startsWith("auto:")));
@@ -439,7 +439,7 @@ export function ChatPanel({
       .catch(() => { if (mounted) setDomainImports([]); });
     return () => { mounted = false; };
   }, [domain]);
-  // Local recall history — arrow-up cycles backward, arrow-down forward.
+  // Local recall history - arrow-up cycles backward, arrow-down forward.
   const HISTORY_KEY = `prevail.chat.history.${domain ?? "_root"}`;
   const [history, setHistory] = useState<string[]>(() => {
     try {
@@ -497,12 +497,12 @@ export function ChatPanel({
     window.addEventListener("prevail:apps-changed", load);
     return () => window.removeEventListener("prevail:apps-changed", load);
   }, [vaultPath]);
-  // Slash autocomplete — detect `/<word>` at the caret position and
+  // Slash autocomplete - detect `/<word>` at the caret position and
   // expose the filtered skills + a completer for the textarea below.
   const taRef = useRef<HTMLTextAreaElement>(null);
   // B2 (Monday feedback): the `/` and `$` popovers must read the caret to know
   // what the user is typing. Reading `taRef.current.selectionStart` inside a
-  // useMemo is a render-phase DOM read — for append-at-end typing the browser
+  // useMemo is a render-phase DOM read - for append-at-end typing the browser
   // has already moved the caret, but mid-string edits (or a stale ref) can read
   // the WRONG position, so the popover silently fails to match and Enter "does
   // nothing." Track the caret in state instead, updated from the very events
@@ -546,7 +546,7 @@ export function ChatPanel({
       ta.setSelectionRange(head.length, head.length);
     });
   }
-  // `$<word>` context mention — the mirror of `/` for skills. Detect a
+  // `$<word>` context mention - the mirror of `/` for skills. Detect a
   // trailing `$word` at the caret and offer matching domains + apps; picking
   // one attaches its context (state.md for a domain, identity card for an app)
   // as a chip, exactly like dragging it in, then strips the `$token`.
@@ -603,7 +603,7 @@ export function ChatPanel({
   }
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // Compaction: summarize the running conversation into a dense brief, then start
-  // a fresh chat seeded with that summary — continuity preserved, tokens reclaimed.
+  // a fresh chat seeded with that summary - continuity preserved, tokens reclaimed.
   // The summary is stashed in localStorage so it survives the new-chat remount.
   const COMPACT_KEY = `prevail.compact.${domain ?? "_root"}`;
   const [compacting, setCompacting] = useState(false);
@@ -647,7 +647,7 @@ export function ChatPanel({
   );
   // AUTO-COMPACTION: when the window crosses ~85% and the turn is idle, summarize
   // & continue on its own so responses don't degrade from an overfull context.
-  // Self-limiting — compaction resets the conversation, dropping the fill below
+  // Self-limiting - compaction resets the conversation, dropping the fill below
   // the threshold. Off-switchable from the meter (PREF.autoCompact).
   const [autoCompacted, setAutoCompacted] = useState(false);
   useEffect(() => {
@@ -664,7 +664,7 @@ export function ChatPanel({
   // Use a ref for the active thread path so async saves don't capture
   // a stale closure value. Without this, every streaming chunk after
   // the first save still saw activeThreadPath=null and created a new
-  // file — hence the duplicates the user reported.
+  // file - hence the duplicates the user reported.
   const activeThreadRef = useRef<string | null>(activeThreadPath);
   useEffect(() => { activeThreadRef.current = activeThreadPath; }, [activeThreadPath]);
   // C2 (Monday feedback): surface the active thread name in the canvas so it's
@@ -678,12 +678,12 @@ export function ChatPanel({
   }, [tDomain, activeThreadPath]);
   // When the auto-save effect adopts a new path mid-stream we stamp
   // the path here. The load-on-change effect below uses this to skip
-  // reloading from disk — the in-memory messages are already ahead of
+  // reloading from disk - the in-memory messages are already ahead of
   // what was saved (more chunks have arrived). Reloading would
   // overwrite them and the assistant placeholder loses streaming:true,
   // which is the original cause of the "(empty reply)" symptom.
   const selfSetPathRef = useRef<string | null>(null);
-  // Any thread pick returns to the chat view — even re-clicking the active
+  // Any thread pick returns to the chat view - even re-clicking the active
   // thread (which doesn't change activeThreadPath), so you can always escape
   // the Preferences view by clicking a thread. Skips the initial mount.
   const chatViewMounted = useRef(false);
@@ -694,7 +694,7 @@ export function ChatPanel({
   // Load the thread when activeThreadPath changes.
   useEffect(() => {
     // Picking a thread (or starting a new one) always returns to the chat view,
-    // even if Preferences was open — otherwise the click appears to do nothing.
+    // even if Preferences was open - otherwise the click appears to do nothing.
     setDomainTab("chat");
     if (!activeThreadPath) { setMessages([]); setThreadTitle(""); return; }
     if (selfSetPathRef.current === activeThreadPath) {
@@ -722,7 +722,7 @@ export function ChatPanel({
   const savePendingRef = useRef<boolean>(false);
   // Extra guard: once a save with slug=null has been DISPATCHED, block
   // any further slug=null dispatches until activeThreadRef is set.
-  // savePendingRef alone wasn't enough in practice — duplicates kept
+  // savePendingRef alone wasn't enough in practice - duplicates kept
   // appearing, suggesting a race where a second timer fires between
   // the first save dispatching and activeThreadRef being adopted.
   const initialSaveDispatchedRef = useRef<boolean>(false);
@@ -783,7 +783,7 @@ export function ChatPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
   // The slug=null save guard above is one-shot PER ChatPanel INSTANCE, but the
-  // panel persists across domain switches — so without this, only the first-ever
+  // panel persists across domain switches - so without this, only the first-ever
   // chat saved and later new-domain chats silently never created a thread. When
   // the active thread clears (new domain, "New chat", domain switch), release the
   // guard so the next fresh conversation can create its own thread.
@@ -797,7 +797,7 @@ export function ChatPanel({
   const unlistenRefs = useRef<UnlistenFn[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // P4.7 Phase 3 — capture real chat usage. We snapshot the turn's meta
+  // P4.7 Phase 3 - capture real chat usage. We snapshot the turn's meta
   // (vault/domain/thread/cli/model) at send time so the mount-once 'done'
   // listeners (which have stale closures) can persist an accurate record
   // when the turn closes. One turn streams at a time, so a single pending
@@ -977,7 +977,7 @@ export function ChatPanel({
         (e) => {
           if (e.payload.session !== sessionRef.current) return;
           if (!mounted) return;
-          // stderr lines arrive as raw strings — capture them on the
+          // stderr lines arrive as raw strings - capture them on the
           // streaming assistant bubble so failures surface like the
           // native path's "No output" panel.
           if (e.payload.stream === "stderr" || typeof e.payload.data === "string") {
@@ -999,7 +999,7 @@ export function ChatPanel({
               // already optimistically rendered. Nothing to append.
               break;
             case "delta": {
-              // Incremental text chunk — append to the streaming bubble.
+              // Incremental text chunk - append to the streaming bubble.
               rawReplyRef.current += ev.text ?? ""; // raw, for the intent ledger
               const clean = maybeStripSycophancy(stripAnsi(ev.text ?? ""));
               setMessages((m) => {
@@ -1030,7 +1030,7 @@ export function ChatPanel({
               break;
             }
             case "usage": {
-              // Token / cost accounting — stash on the streaming bubble.
+              // Token / cost accounting - stash on the streaming bubble.
               setMessages((m) => {
                 const last = m[m.length - 1];
                 if (last && last.streaming) {
@@ -1055,7 +1055,7 @@ export function ChatPanel({
               // engine-chat:done event below flips streaming off.
               break;
             default:
-              // Unknown event type — tolerate per the schema's forward-
+              // Unknown event type - tolerate per the schema's forward-
               // compat requirement. No-op.
               break;
           }
@@ -1066,7 +1066,7 @@ export function ChatPanel({
         (e) => {
           if (!mounted) return;
           onStreamEnd(e.payload.session);
-          // Capture usage for engine-path turns — pull the token/cost
+          // Capture usage for engine-path turns - pull the token/cost
           // accounting off the streaming bubble before we flip it closed.
           setMessages((m) => {
             const last = m[m.length - 1];
@@ -1100,7 +1100,7 @@ export function ChatPanel({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
 
-  // Bubble action handlers — shared across both renderers (in-domain
+  // Bubble action handlers - shared across both renderers (in-domain
   // and no-domain). Copy uses the Clipboard API; Retry rewinds the
   // transcript to before the last user turn and resends; Edit pops
   // the user message back into the composer for revision.
@@ -1172,15 +1172,15 @@ export function ChatPanel({
       ? `Attached files (read these as context):\n${attachments.map((p) => `- ${p}`).join("\n")}\n\n`
       : "";
     // Items the user explicitly clicked "use in chat" on (state.md,
-    // decisions.md, a session log, etc.) — included verbatim.
+    // decisions.md, a session log, etc.) - included verbatim.
     const primedPreamble = primedContext.length > 0
       ? primedContext.map((c) => `--- ${c.label} ---\n${c.body.trim()}\n`).join("\n") + "\n"
       : "";
     const userPreamble = buildIdealStatePreamble(idealMd);
-    // The person's profile/identity — auto-injected so the model always knows who
+    // The person's profile/identity - auto-injected so the model always knows who
     // it's helping (no manual attach). Sits just under the Ideal State.
     const profilePreamble = userMd.trim()
-      ? `# WHO YOU'RE HELPING — the user's profile. Use this as ground truth about them.\n${userMd.trim().slice(0, 2500)}\n\n`
+      ? `# WHO YOU'RE HELPING - the user's profile. Use this as ground truth about them.\n${userMd.trim().slice(0, 2500)}\n\n`
       : "";
     // Omega: app-wide learned context, just below the Ideal State, above memory.
     const omegaPreamble = buildOmegaPreamble(omegaMd);
@@ -1220,7 +1220,7 @@ export function ChatPanel({
       intent: visible,
     };
     // ── Self-learning: record the INTENT immediately, the instant the user
-    // sends — BEFORE the async model call — so a chat is never lost even on
+    // sends - BEFORE the async model call - so a chat is never lost even on
     // a crash/quit mid-reply. Captures the exact prompt sent + every
     // preference in effect, so a future better model can replay it. The
     // matching raw reply is appended on completion (persistUsage).
@@ -1262,7 +1262,7 @@ export function ChatPanel({
       startedAt: Date.now(),
     });
     // Engine chat: the installed `prevail` CLI is now v2-aware (detects domains
-    // by soul.md / reads _state.md — VAULT-SPEC-v2 stages 3–4), so the engine
+    // by soul.md / reads _state.md - VAULT-SPEC-v2 stages 3-4), so the engine
     // path grounds replies in the domain's real state again. Falls back to the
     // native chat_send path when the CLI isn't present.
     const ENGINE_CHAT_ENABLED = true;
@@ -1302,7 +1302,7 @@ export function ChatPanel({
       }
     } catch (e) {
       // If the engine path failed to even spawn, fall back to the native
-      // path once so a transient engine issue doesn't drop the turn — but only
+      // path once so a transient engine issue doesn't drop the turn - but only
       // for providers with a real spawnable binary (engine-only providers like
       // LM Studio / MLX / OpenRouter have none, so the native path can't serve
       // them and would just echo "unknown cli").
@@ -1325,7 +1325,7 @@ export function ChatPanel({
     }
   }
 
-  // Quick-action seed prompts — currently surfaced via DomainHome,
+  // Quick-action seed prompts - currently surfaced via DomainHome,
   // not the no-domain landing (which shows the domains dashboard
   // instead). Keep the array allocation alive so DomainHome's
   // onPickPrompt continues to receive prompts.
@@ -1384,7 +1384,7 @@ export function ChatPanel({
       }
     } catch (err) { console.error("attach domain", err); setAttachErr(`Couldn't attach ${titleCase(name)}: ${err}`); }
   }, [vaultPath, injectContext]);
-  // Drag an app in as context — the mirror of attachDomainAsContext. An app
+  // Drag an app in as context - the mirror of attachDomainAsContext. An app
   // isn't a folder of prose; what's useful to the model is what the app IS and
   // the freshness of the data it feeds, so we attach a compact identity card
   // (connector, status, the domains it refreshes, schedule, last sync).
@@ -1406,12 +1406,12 @@ export function ChatPanel({
       injectContext(body, `app: ${app.title}`);
     } catch (err) { console.error("attach app", err); setAttachErr(`Couldn't attach app: ${err}`); }
   }, [injectContext]);
-  // Test/drag hooks — exposed on window so the sidebar's manual drag (WebKit's
+  // Test/drag hooks - exposed on window so the sidebar's manual drag (WebKit's
   // HTML5 DnD is unreliable in WKWebView) can attach a domain or app on drop.
   // Call window.__prevailAttach('tax') / __prevailAttachApp('gmail') in DevTools.
   // B1: keep the latest attach callbacks in refs and register the window hooks
   // ONCE on mount. Registering them in an effect keyed on the callbacks meant the
-  // cleanup deleted the hooks every time those callbacks changed identity — a
+  // cleanup deleted the hooks every time those callbacks changed identity - a
   // teardown race that left the sidebar's drag-drop with no hook to call.
   const attachDomainRef = useRef(attachDomainAsContext);
   const attachAppRef = useRef(attachAppAsContext);
@@ -1461,9 +1461,9 @@ export function ChatPanel({
           </div>
         </div>
       )}
-      {/* Header — just the domain identity now. Insights / Preferences /
+      {/* Header - just the domain identity now. Insights / Preferences /
           archive moved up to the top tab bar; the score badge opens the
-          context view. When no domain is active there's no header at all —
+          context view. When no domain is active there's no header at all -
           the empty state owns the canvas. */}
       {domain && !isApp && (
         <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-4 py-2">
@@ -1528,14 +1528,14 @@ export function ChatPanel({
               onSelect={(id) => setSelectedCli(id)}
             />
 
-            {/* HOME-1: the Briefing — proactive digest (top recommendations +
+            {/* HOME-1: the Briefing - proactive digest (top recommendations +
                 recent intents) made first-class on the landing surface. */}
             <HomeBriefing vaultPath={vaultPath} />
 
             {domains.length > 0 && (() => {
               // Show pinned first, then ones with the most imports,
               // capped at 4. The full domain list still lives in the
-              // sidebar — this landing surface is a quick-pick only.
+              // sidebar - this landing surface is a quick-pick only.
               const pinnedSet = (() => {
                 try { return new Set<string>(JSON.parse(lsGet("prevail.pinnedDomains") || "[]")); }
                 catch { return new Set<string>(); }
@@ -1574,7 +1574,7 @@ export function ChatPanel({
                         whileTap={{ scale: 0.99 }}
                         className="group relative flex h-[60px] flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface p-3 text-left transition-all duration-200 hover:border-border hover:shadow-[0_10px_34px_-12px_rgba(0,0,0,0.18)]"
                       >
-                        {/* oversized watermark glyph — editorial fill, no text clutter */}
+                        {/* oversized watermark glyph - editorial fill, no text clutter */}
                         {Icon && (
                           <Icon
                             aria-hidden
@@ -1763,13 +1763,13 @@ export function ChatPanel({
         )}
       </div>
 
-      {/* Codex-style composer — full width to match Council. The reply
+      {/* Codex-style composer - full width to match Council. The reply
           transcript above stays in a centered max-w-3xl column for
           readability; only the composer goes edge-to-edge. */}
       <div data-tour="composer" className="shrink-0 px-6 pb-6 pt-2">
         <div className="relative rounded-2xl border border-border bg-surface p-3 shadow-sm">
           {/* One row: context pills on the left, the context-window meter on the
-              right — so attached context + the gauge share a line instead of
+              right - so attached context + the gauge share a line instead of
               stacking and eating vertical space. */}
           <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
@@ -1965,7 +1965,7 @@ export function ChatPanel({
                 send();
                 return;
               }
-              // Arrow-up / arrow-down recall — only when the textarea
+              // Arrow-up / arrow-down recall - only when the textarea
               // is at the very start (so we don't fight normal
               // line-up navigation inside multi-line drafts).
               const ta = e.currentTarget;
@@ -1991,7 +1991,7 @@ export function ChatPanel({
             rows={2}
             className="w-full resize-none bg-transparent px-2 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
           />
-          {/* Domain imports — chips for files in this domain's
+          {/* Domain imports - chips for files in this domain's
               imports/ folder. Click to toggle attach. Auto-fetched
               when the domain changes. */}
           {domainImports.length > 0 && (
@@ -2027,7 +2027,7 @@ export function ChatPanel({
               )}
             </div>
           )}
-          {/* Attached skills — separate from textarea text. Removing
+          {/* Attached skills - separate from textarea text. Removing
               text in the input doesn't affect these; remove a skill
               by hovering its pill and clicking ×. */}
           {attachedSkills.length > 0 && (
@@ -2049,7 +2049,7 @@ export function ChatPanel({
               ))}
             </div>
           )}
-          {/* Suggested skills — match the prompt's words against skill
+          {/* Suggested skills - match the prompt's words against skill
               names and the first non-empty line of each SKILL.md. Only
               fires when the prompt is at least 8 chars to avoid noise. */}
           {(() => {
@@ -2103,7 +2103,7 @@ export function ChatPanel({
           )}
           {/* Single inline toolbar: + then the per-domain toggles,
               then a spacer, then model picker / council / send. */}
-          {/* G2: the council roster lives in the COUNCIL panel, not here — this is
+          {/* G2: the council roster lives in the COUNCIL panel, not here - this is
               single-model Chat, so showing the full council was confusing. */}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <div className="relative" ref={plusMenuRef}>
@@ -2173,7 +2173,7 @@ export function ChatPanel({
             <DomainStatusBar domain={domain} fwLens={fwLens} />
             <div className="flex-1" />
 
-            {/* Model picker pill — Codex-style. Click opens cascading
+            {/* Model picker pill - Codex-style. Click opens cascading
                 provider→model menu. */}
             <div className="relative" ref={modelMenuRef}>
               <button
@@ -2248,7 +2248,7 @@ export function ChatPanel({
                       );
                     })}
                   </div>
-                  {/* Domain default management — only shown when in a
+                  {/* Domain default management - only shown when in a
                       domain. Setting a model already auto-saves; this
                       lets the user clear the override. */}
                   {domain && (

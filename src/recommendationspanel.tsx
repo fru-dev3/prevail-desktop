@@ -1,4 +1,4 @@
-// Recommendations — the proactive feed. Prevail watches what you do and proposes
+// Recommendations - the proactive feed. Prevail watches what you do and proposes
 // the next high-leverage moves across your life: domains to create, the best model
 // per domain, apps to connect. Each is one-click. Computed fresh from your vault
 // signals (intents, benchmark, apps), so it stays current as you use the app.
@@ -20,7 +20,7 @@ type Rec = {
 
 const CAT_ICON = { domain: Compass, model: BarChart3, app: Plug, context: Gauge } as const;
 const CAT_LABEL = { domain: "New domain", model: "Better model", app: "Connect an app", context: "Enrich context" } as const;
-// Display order for grouped sections — most actionable first.
+// Display order for grouped sections - most actionable first.
 const CAT_ORDER: Rec["category"][] = ["model", "app", "domain", "context"];
 const CAT_BLURB = {
   domain: "Areas of life worth tracking on their own",
@@ -41,7 +41,7 @@ function recTitle(r: Rec): string {
 }
 
 // M5 (Monday feedback): show severity/impact, human-readably. Context recs carry
-// a score like "(52/100)" — lower score = higher impact; others get a category tone.
+// a score like "(52/100)" - lower score = higher impact; others get a category tone.
 function impactOf(r: Rec): { label: string; cls: string } {
   const m = `${r.title} ${r.detail}`.match(/(\d{1,3})\s*\/\s*100/);
   if (m) {
@@ -75,7 +75,7 @@ export async function applyRec(rec: Rec, vaultPath: string): Promise<string> {
   }
   if (rec.action.kind === "connect_app") {
     window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }));
-    return "Opening Apps — connect one to feed this domain.";
+    return "Opening Apps - connect one to feed this domain.";
   }
   if (rec.action.kind === "set_domain_model" && rec.action.domain) {
     const dom = rec.action.domain;
@@ -86,7 +86,7 @@ export async function applyRec(rec: Rec, vaultPath: string): Promise<string> {
   }
   if (rec.action.kind === "improve_context" && rec.action.domain) {
     window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: rec.action.domain }));
-    return `Opening ${titleCase(rec.action.domain)} — add context there; the score rises as Prevail learns.`;
+    return `Opening ${titleCase(rec.action.domain)} - add context there; the score rises as Prevail learns.`;
   }
   return "Done.";
 }
@@ -143,7 +143,7 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
         <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
           <Lightbulb className="mx-auto h-7 w-7 text-text-muted opacity-50" />
           <p className="mt-3 text-sm text-text-secondary">Nothing to recommend right now.</p>
-          <p className="mt-1 text-xs text-text-muted">Keep chatting, benchmarking, and connecting apps — recommendations appear as Prevail learns your patterns.</p>
+          <p className="mt-1 text-xs text-text-muted">Keep chatting, benchmarking, and connecting apps - recommendations appear as Prevail learns your patterns.</p>
         </div>
       ) : (() => {
         const visible = recs.filter((r) => showDismissed || !dismissed.has(r.id));
@@ -151,7 +151,7 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
         const savedCount = recs.filter((r) => saved.has(r.id)).length;
         return (
         <div className="space-y-5">
-          {/* M5: bulk controls — saved count, dismiss-all, show/hide dismissed. */}
+          {/* M5: bulk controls - saved count, dismiss-all, show/hide dismissed. */}
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-muted">
             <span>{visible.filter((r) => !dismissed.has(r.id)).length} active{savedCount > 0 ? ` · ${savedCount} saved` : ""}</span>
             <span className="ml-auto flex items-center gap-2">
@@ -213,7 +213,7 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
                                 {cat === "domain" ? "Create" : cat === "app" ? "Connect" : cat === "context" ? "Open" : "Set"}
                               </button>
                             )}
-                            <button onClick={() => toggleSave(r.id)} title={isSaved ? "Saved — click to unsave" : "Save for later"}
+                            <button onClick={() => toggleSave(r.id)} title={isSaved ? "Saved - click to unsave" : "Save for later"}
                               className={`rounded p-1.5 ${isSaved ? "text-accent" : "text-text-muted hover:text-accent"}`}>
                               <Bookmark className="h-3.5 w-3.5" fill={isSaved ? "currentColor" : "none"} />
                             </button>
@@ -238,7 +238,7 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
   );
 }
 
-// HOME-1: the "Briefing" — a compact, first-class digest on the home landing:
+// HOME-1: the "Briefing" - a compact, first-class digest on the home landing:
 // the top few recommendations Prevail suggests next + a glance at the recent
 // distilled intents. Each links into its full panel via "see all". Kept tight
 // so the landing stays no-scroll. The full logic lives in RecommendationsPanel /
@@ -249,7 +249,7 @@ export function HomeBriefing({ vaultPath }: { vaultPath: string }) {
   const [intents, setIntents] = useState<BriefIntent[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [done, setDone] = useState<Record<string, boolean>>({});
-  // Once actioned, a rec is finished — flash the tick, then clear it so the row
+  // Once actioned, a rec is finished - flash the tick, then clear it so the row
   // frees up and the next-best recommendation surfaces in its place.
   const [cleared, setCleared] = useState<Set<string>>(new Set());
   useEffect(() => {

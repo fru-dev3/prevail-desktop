@@ -100,7 +100,7 @@ export function AppearanceSection({ appearance }: { appearance: ReturnType<typeo
 }
 
 
-// Council config — its own first-class section. You pick the EXACT models on the
+// Council config - its own first-class section. You pick the EXACT models on the
 // default panel (per-provider, multiple models allowed) and which one chairs.
 
 export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, headerless }: { vaultPath: string; onVaultMoved?: (path: string) => void; onSetupDomains?: () => void; headerless?: boolean }) {
@@ -121,7 +121,7 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
     window.addEventListener("prevail:appmode", loadMode);
     return () => window.removeEventListener("prevail:appmode", loadMode);
   }, []);
-  // When we're in production, the current vaultPath IS the production vault —
+  // When we're in production, the current vaultPath IS the production vault -
   // remember it (covers vaults set up before this round-trip logic existed).
   useEffect(() => {
     if (appMode === "production" && vaultPath && !vaultPath.includes("/.prevail/demo-vault")) {
@@ -131,7 +131,7 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
   }, [appMode, vaultPath]);
 
   // Point the app at a chosen folder as the production vault. `runOnboarding`
-  // is false when a starter pack already populated it — the pack IS the start.
+  // is false when a starter pack already populated it - the pack IS the start.
   async function enterProduction(picked: string, runOnboarding: boolean) {
     // Snapshot before clearing the demo sandbox (a pre-event backup).
     await backupVaultNow(vaultPath);
@@ -202,7 +202,7 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
     }
   }
   async function importPack(p: { name: string; domains: string[] }) {
-    // In demo mode, importing is an intent to keep something — trigger vault setup first,
+    // In demo mode, importing is an intent to keep something - trigger vault setup first,
     // then import the pack into the new vault once it's ready.
     if (appMode === "demo") {
       const ok = await tauriConfirm(
@@ -233,7 +233,7 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
       }
       return;
     }
-    // Production mode — import directly into the current vault.
+    // Production mode - import directly into the current vault.
     setImportingPack(p.name);
     setNote(null);
     try {
@@ -254,8 +254,8 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
   return (
     <>
       {/* DEMO-1 / IA-1: "Demo Mode" was a misnomer (it hosts starter packs that
-          populate the REAL vault). Renamed "Sandbox" — the throwaway exploration
-          space — with starter packs framed as production setup. */}
+          populate the REAL vault). Renamed "Sandbox" - the throwaway exploration
+          space - with starter packs framed as production setup. */}
       {!headerless && (
         <SettingsHeader
           icon={Sparkles}
@@ -264,7 +264,7 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
         />
       )}
       {/* W1 (Monday feedback): Your Vault vs Demo Vault as MUTUALLY-EXCLUSIVE
-          toggles — exactly one is ON; the other grays off. Toggling switches mode
+          toggles - exactly one is ON; the other grays off. Toggling switches mode
           (your vault may run first-time setup). Starter packs import into whichever
           is active. */}
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -274,7 +274,7 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
             <span className="text-sm font-semibold text-text-primary">Your vault</span>
             <span className="ml-auto"><Toggle on={!isDemo} disabled={switchingMode} onChange={(v) => { if (v) void switchToProduction(); else void switchToDemo(); }} label="Use my own vault" /></span>
           </div>
-          <div className="mt-1.5 truncate font-mono text-[11px] text-text-secondary" title={prodVault || "not set up yet"}>{prodVault || (isDemo ? "not set up yet — toggle on to set up" : vaultPath)}</div>
+          <div className="mt-1.5 truncate font-mono text-[11px] text-text-secondary" title={prodVault || "not set up yet"}>{prodVault || (isDemo ? "not set up yet - toggle on to set up" : vaultPath)}</div>
           <div className="mt-0.5 text-[10px] text-text-muted">Real data, backed up. {isDemo && !prodVault ? "Toggling on walks you through a quick 3-step setup." : "Switching to demo never touches it."}</div>
         </div>
         <div className={`rounded-xl border p-4 transition-opacity ${isDemo ? "border-accent-border bg-accent-soft" : "border-border bg-surface opacity-60"}`}>
@@ -459,12 +459,12 @@ export function BackupAutomationCard({ vault, onChange }: { vault: string; onCha
 }
 
 export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved, headerless, hideBackups }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void; headerless?: boolean; hideBackups?: boolean }) {
-  // "Move vault into the app" — copy the current vault into the app-owned
+  // "Move vault into the app" - copy the current vault into the app-owned
   // location (~/.prevail/vault) via the engine, non-destructively, then repoint.
   const [moving, setMoving] = useState(false);
   const [moveNote, setMoveNote] = useState<string | null>(null);
   const embedded = vaultPath.replace(/\/+$/, "").endsWith("/.prevail/vault");
-  // W4 — "Tidy into a data/ folder": relocate the whole vault under <vault>/data
+  // W4 - "Tidy into a data/ folder": relocate the whole vault under <vault>/data
   // so the root holds no loose files and apps+domains sit together. The engine
   // copies + verifies + repoints; we adopt the new path. Already-tidied vaults
   // (path ends in /data) are a no-op.
@@ -517,7 +517,7 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
   }
   return (
     <>
-      {/* VAULT-1: premium hierarchy — a location card leading with an icon chip,
+      {/* VAULT-1: premium hierarchy - a location card leading with an icon chip,
           the path shown in a styled mono box with an in-app badge + Finder
           reveal; domains/move-into-app grouped as rows; backups cluster below. */}
       {!headerless && (

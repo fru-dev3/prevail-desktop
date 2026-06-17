@@ -42,7 +42,7 @@ export function skillgenCfgFromPrefs(vaultPath: string) {
     vault: vaultPath,
     provider: getPref(PREF.memoryProvider, "claude"),
     model: getPref(PREF.skillgenModel, "claude-haiku-4-5"),
-    // Skills change slowly — tick every 6h; a per-domain daily cursor caps it
+    // Skills change slowly - tick every 6h; a per-domain daily cursor caps it
     // to one learning pass per domain per day regardless of tick cadence.
     interval_sec: Number(getPref(PREF.skillgenIntervalSec, "21600")) || 21600,
     max_skills_per_domain: Number(getPref(PREF.skillgenMaxPerDomain, "2")) || 2,

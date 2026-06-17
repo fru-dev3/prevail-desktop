@@ -87,7 +87,7 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
         subtitle="Bunker Mode is a trust guarantee, not a preference. While it's on, everything stays on this device: local models only, no network, no cloud AI, no web search."
       />
 
-      {/* Hero — the master control. Two colors only: the AI cyan (the "AI" in
+      {/* Hero - the master control. Two colors only: the AI cyan (the "AI" in
           the wordmark) as the on-accent, and brand-dark when off. Text stays
           high-contrast (dark on the light card, white on the dark card). */}
       <div className={`rounded-2xl border p-5 transition-colors ${
@@ -116,7 +116,7 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
         </div>
       </div>
 
-      {/* Live status — visual tiles for what's blocked vs open. */}
+      {/* Live status - visual tiles for what's blocked vs open. */}
       <div className="mt-5">
         <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Live status</div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -205,7 +205,7 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
       )}
 
       {/* Telemetry lives under Privacy (moved from Safety). Anonymous, opt-in,
-          default-OFF — see TelemetrySettings. */}
+          default-OFF - see TelemetrySettings. */}
       <TelemetrySettings />
     </>
   );
@@ -219,7 +219,7 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
 // A visual "round table": the panel drawn as seats around a ring, the chair
 // crowned at the top, spokes to a central emblem. New seats animate in as members
 // are added, so picking a council feels like assembling a table, not editing a
-// list. Why it matters: the council's value is the spread of independent minds —
+// list. Why it matters: the council's value is the spread of independent minds -
 // seeing them arranged makes that legible at a glance.
 function CouncilCircle({ members, chair, clis }: { members: string[]; chair: string; clis: CliInfo[] }) {
   const size = 232, R = 84, cx = size / 2, cy = size / 2, seat = 46;
@@ -289,12 +289,12 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   const available = useMemo(() => clis.filter((c) => c.available && (!isBunkerOn() || isLocalCli(c.id))), [clis]);
   const [members, setMembers] = useState<Set<string>>(() => new Set(readCouncilMembers()));
   const [chair, setChair] = useState<string>(() => readCouncilChair());
-  // Each provider expands/collapses INDEPENDENTLY — a Set of open provider ids,
+  // Each provider expands/collapses INDEPENDENTLY - a Set of open provider ids,
   // not a single value (opening one never closes another).
   const [expandedSet, setExpandedSet] = useState<Set<string>>(() => new Set());
   // Once providers are detected: prune any stale slot keys that no longer map to
-  // a real (available provider, model) — that's what made the count drift from
-  // the visible badges — then seed a sensible default if the panel is empty.
+  // a real (available provider, model) - that's what made the count drift from
+  // the visible badges - then seed a sensible default if the panel is empty.
   useEffect(() => {
     if (available.length === 0) return;
     const valid = new Set<string>();
@@ -338,9 +338,9 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
       <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-surface-warm px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
         <Check className="h-3 w-3 text-ok" /> Changes save automatically
       </div>
-      {/* Visual round table — who's seated and who chairs, at a glance. */}
+      {/* Visual round table - who's seated and who chairs, at a glance. */}
       <CouncilCircle members={[...members]} chair={chair} clis={clis} />
-      {/* Compact summary bar — what the panel is right now. */}
+      {/* Compact summary bar - what the panel is right now. */}
       <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-accent-border bg-accent-soft px-4 py-3 text-sm">
         <span className="font-semibold text-text-primary">{members.size} model{members.size === 1 ? "" : "s"} on the panel</span>
         <span className="inline-flex items-center gap-1 text-text-secondary"><Crown className="h-3.5 w-3.5 text-accent" /> chair: <span className="font-medium text-text-primary">{chairLabel}</span></span>
@@ -406,7 +406,7 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
 
 
 
-// FrameworkPickerCard was deleted with v0.2.92 — the chip-row UI
+// FrameworkPickerCard was deleted with v0.2.92 - the chip-row UI
 // it provided lived only in Settings → Defaults as a duplicate of
 // the dedicated Settings → Frameworks page. The full two-column
 // FrameworksSection is now the single source of truth.
@@ -431,7 +431,7 @@ export function ConfigurationSection({ vaultPath }: { vaultPath: string }) {
         icon={Brain}
         subtitle="Persistent memory, distillation, and the cross-domain task ledger. Your Ideal State lives in Ideals."
       />
-      {/* D2: Ideal State removed here — it has its own Ideals surface and lives in
+      {/* D2: Ideal State removed here - it has its own Ideals surface and lives in
           the Context panel, so repeating it on this page was a duplicate. */}
       <div className="space-y-2">
         <Sub id="memory" title="Memory & Context" icon={Brain} desc="Persistent memory, distillation, and what stays in context across sessions.">
@@ -535,7 +535,7 @@ export function AgentCard({
   const cliErr = liveVerify.get(cli.id);
   return (
     <div className={`rounded-lg border bg-surface transition-colors ${open ? "border-accent-border" : "border-border-subtle"}`}>
-      {/* Single-line header — same row dimensions as every other settings list. */}
+      {/* Single-line header - same row dimensions as every other settings list. */}
       <div className="flex items-center gap-3 px-4 py-3">
         <ProviderMark vendor={cli.id} size={30} />
         <button
@@ -726,7 +726,7 @@ export function AgentCard({
 // "Detected · 2"). The quietest of the three so it never competes with a
 // level-2 SubsectionHeader.
 
-// Privacy & Connectivity — the Bunker Mode control surface. The toggle + status
+// Privacy & Connectivity - the Bunker Mode control surface. The toggle + status
 // card here reflect the BACKEND policy (bunker.rs), which is the real source of
 // truth and enforcer; this screen never decides anything on its own.
 

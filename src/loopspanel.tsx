@@ -171,7 +171,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
 
   return (
     <div className="w-full space-y-4">
-      {/* Header — L1 (Monday feedback): full-width like every other page. */}
+      {/* Header - L1 (Monday feedback): full-width like every other page. */}
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-display text-2xl font-semibold tracking-tight">Loops</h2>
@@ -191,7 +191,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
         )}
       </div>
 
-      {/* How loops work — make the agentic model explicit (Monday feedback: the
+      {/* How loops work - make the agentic model explicit (Monday feedback: the
           founder couldn't tell what a loop does on enable). Collapsed by default. */}
       <CollapsibleSection icon={InfinityIcon} title="How loops work" summary="agentic · goal-driven · guardrailed">
         <div className="space-y-4">
@@ -233,7 +233,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
         </div>
       </CollapsibleSection>
 
-      {/* Needs your approval — steps a loop wants to take but that need your OK
+      {/* Needs your approval - steps a loop wants to take but that need your OK
           first (spend money, contact someone, irreversible, or a decision only
           you can make). This is the loop "asking for permission". */}
       {pending.length > 0 && (
@@ -253,7 +253,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
                   const otherRunning = execBusy !== null && !thisRunning;
                   return (
                     <button onClick={() => executePending(p.loopId, p.text)} disabled={execBusy !== null}
-                      title={otherRunning ? "Another action is running — only one at a time" : "Execute now via your connectors (email, calendar, etc.) — the agent actually does it"}
+                      title={otherRunning ? "Another action is running - only one at a time" : "Execute now via your connectors (email, calendar, etc.) - the agent actually does it"}
                       className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
                         otherRunning
                           ? "cursor-not-allowed border-border-subtle bg-surface-warm text-text-muted/60"
@@ -284,7 +284,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
         </section>
       )}
 
-      {/* S4: the Ideal State EDITOR was removed from Loops — it's context, not a
+      {/* S4: the Ideal State EDITOR was removed from Loops - it's context, not a
           loop concern, and editing it lives in the Context panel / Ideals. Loops
           still MEASURE the gap to it; the ideal is auto-mirrored into the loops doc
           on load (read-only here), so the engine keeps reading desiredState. This
@@ -293,7 +293,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
         <Target className="h-4 w-4 shrink-0 text-text-muted" />
         <div className="min-w-0 flex-1 text-xs text-text-secondary">
           Loops measure the gap to your <span className="font-semibold text-text-primary">{titleCase(domain)} ideal state</span>.
-          {" "}Edit it in the domain's Context panel{ideal.trim() ? "." : " — none set yet, so loops have no target to aim at."}
+          {" "}Edit it in the domain's Context panel{ideal.trim() ? "." : " - none set yet, so loops have no target to aim at."}
         </div>
       </section>
 
@@ -430,7 +430,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove }: {
         <div className="space-y-4 border-t border-border-subtle px-4 py-4 text-[13px]">
           {loop.purpose && <p className="leading-relaxed text-text-secondary">{loop.purpose}</p>}
 
-          {/* Signals + condition — compact "what it watches" metadata row. */}
+          {/* Signals + condition - compact "what it watches" metadata row. */}
           {(loop.signals.length > 0 || loop.condition) && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {loop.signals.length > 0 && (
@@ -448,7 +448,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove }: {
             </div>
           )}
 
-          {/* The target — highlighted, since the whole loop exists to reach it. */}
+          {/* The target - highlighted, since the whole loop exists to reach it. */}
           {loop.evaluation && (
             <div className="rounded-lg border-l-2 border-accent bg-accent-soft/20 py-2 pl-3 pr-3">
               <div className="mb-0.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-accent"><Target className="h-3 w-3" /> What good looks like</div>
@@ -456,7 +456,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove }: {
             </div>
           )}
 
-          {/* Current actions — each a distinct card, not a bullet wall. */}
+          {/* Current actions - each a distinct card, not a bullet wall. */}
           {loop.actions.length > 0 && (
             <Field label={`Current actions · ${loop.actions.length}`}>
               <ul className="space-y-1.5">
@@ -470,7 +470,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove }: {
             </Field>
           )}
 
-          {/* L3: run history — a left-railed timeline of what the loop did. */}
+          {/* L3: run history - a left-railed timeline of what the loop did. */}
           {history.length > 0 && (
             <Field label="Run history">
               <ul className="space-y-0 border-l border-border-subtle pl-4">

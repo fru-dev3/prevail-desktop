@@ -28,7 +28,7 @@ export function readCouncilChair(): string { return lsGet(COUNCIL_CHAIR_KEY) || 
 
 // G2 (Monday feedback): the council panel, visualized in the chat canvas (not only
 // in Settings). Each member shows icon + provider + specific model name; the chair
-// is crowned. Reads live — settings dispatches "prevail:council-changed" on edit.
+// is crowned. Reads live - settings dispatches "prevail:council-changed" on edit.
 export function CouncilPanelStrip({ className = "" }: { className?: string }) {
   const [members, setMembers] = useState<string[]>(() => readCouncilMembers());
   const [chair, setChair] = useState<string>(() => readCouncilChair());
@@ -59,5 +59,5 @@ export function CouncilPanelStrip({ className = "" }: { className?: string }) {
   );
 }
 
-// Council config — its own first-class section. You pick the EXACT models on the
+// Council config - its own first-class section. You pick the EXACT models on the
 // default panel (per-provider, multiple models allowed) and which one chairs.

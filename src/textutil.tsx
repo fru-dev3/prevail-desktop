@@ -51,11 +51,11 @@ export function extractCliError(stderr?: string): string | null {
       return line.replace(/^ERROR[:\s]+/i, "");
     }
   }
-  // No explicit error marker — surface the last line of output.
+  // No explicit error marker - surface the last line of output.
   return lines[lines.length - 1];
 }
 
-// Tiny semver compare — returns -1 / 0 / +1 for left vs right.
+// Tiny semver compare - returns -1 / 0 / +1 for left vs right.
 // "0.2.62" vs "0.2.62" → 0; "0.2.62" vs "0.2.59" → +1.
 export function compareSemver(a: string, b: string): number {
   const pa = a.split(".").map((n) => parseInt(n, 10) || 0);

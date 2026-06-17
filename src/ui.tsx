@@ -1,5 +1,5 @@
 // Pure, self-contained UI primitives extracted from App.tsx. None close over
-// App state — they're prop-driven leaf components, safe to live on their own.
+// App state - they're prop-driven leaf components, safe to live on their own.
 import { Brain, ChevronRight } from "lucide-react";
 
 // Canonical on/off switch. Track 36x20, thumb 16x16. Every switch routes through

@@ -60,7 +60,7 @@ import { AppHeaderBar, DomainActionsMenu, LockScreen, QuickSwitcher, ThreadsRail
 
 // Models a ChatGPT-login Codex account rejects (verified). A previously
 // saved pick like "gpt-5-codex" persists in localStorage and keeps
-// failing even after we trim the dropdown — so heal it on launch.
+// failing even after we trim the dropdown - so heal it on launch.
 
 // One-time migration: reset any stale per-CLI model pick that's no longer
 // in and replace any known-dead model id (global or per-domain)
@@ -130,7 +130,7 @@ import {
   Power,
 } from "lucide-react";
 
-// Friendly one-line descriptions for the domain cards — plain, warm, no jargon.
+// Friendly one-line descriptions for the domain cards - plain, warm, no jargon.
 // Shown as the card subtitle; falls back to a generic line for unknown domains.
 
 
@@ -144,7 +144,7 @@ const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
   { id: "benchmark", label: "Benchmark", icon: Sparkles },
 ];
 
-// Suspense fallback for the code-split panels. Quiet and centered — a lazy chunk
+// Suspense fallback for the code-split panels. Quiet and centered - a lazy chunk
 // loads in a few ms off local disk, so this should flash only on the very first
 // open of a surface.
 function PanelLoading() {
@@ -160,7 +160,7 @@ function PanelLoading() {
 
 
 // ── Bunker  (app-wide local-only trust mode) ──
-// Providers that serve models from this machine only — mirror bunker.rs LOCAL_CLIS.
+// Providers that serve models from this machine only - mirror bunker.rs LOCAL_CLIS.
 // Bunker  auto-switch target: the local provider to fall back to when a
 // cloud CLI is selected. First *available* local CLI, or null if none is
 // installed/running. Mirrors bunker.rs `preferred_local_cli` (Ollama today;
@@ -173,7 +173,7 @@ function PanelLoading() {
 
 export default function App() {
   const appearance = useAppearance();
-  // WebUI login gate — in a browser tab the app must authenticate to the
+  // WebUI login gate - in a browser tab the app must authenticate to the
   // bridge server before any invoke works. On the desktop this is always true.
   const [webAuthed, setWebAuthed] = useState(() => !isBrowser() || !!sessionStorage.getItem("prevail.web.token"));
   // Desktop app lock (F4 Phase 0). If a passcode is set we gate the whole app
@@ -190,7 +190,7 @@ export default function App() {
   }, []);
   // On the desktop, the chosen vault lives in localStorage. In the browser the
   // vault physically lives on the desktop machine, so the browser's own
-  // localStorage path is meaningless — start empty and always inherit the
+  // localStorage path is meaningless - start empty and always inherit the
   // desktop's authoritative vault from the backend (see the effect below).
   const [vaultPath, setVaultPath] = useState<string | null>(() =>
     isBrowser() ? null : localStorage.getItem(LS.vault),
@@ -210,7 +210,7 @@ export default function App() {
   }, [vaultPath]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
-  // App view — clicking an app in the sidebar opens it in the canvas: a detail
+  // App view - clicking an app in the sidebar opens it in the canvas: a detail
   // bar (schedule, cadence, last run, vault paths, domains) above a chat scoped
   // to the app's primary domain, so you converse against the app's own data
   // exactly like a domain. Cleared whenever you navigate to a domain/General.
@@ -218,15 +218,15 @@ export default function App() {
   const [appView, setAppView] = useState(false);
   // Which facet of the open app the canvas shows. "chat" = the app's own
   // conversation; the rest are app sub-views (mirror of DomainTab, but for an
-  // app's own concerns — never the grounding domain's).
+  // app's own concerns - never the grounding domain's).
   type AppTab = "chat" | "runs" | "settings" | "domains";
   const [appTab, setAppTab] = useState<AppTab>("chat");
-  // Thread scope — WHERE conversations are stored/listed. An open app gets its
+  // Thread scope - WHERE conversations are stored/listed. An open app gets its
   // OWN thread space (`_app-<id>`) that's INDEPENDENT of any domain, so you can
   // hold several ongoing conversations with an app over time without them
   // being tied to (or scattered across) the app's many bound domains. A plain
   // domain (or General) scopes to the domain itself. This is distinct from the
-  // GROUNDING domain (what the model reads) — app chats still ground in the
+  // GROUNDING domain (what the model reads) - app chats still ground in the
   // app's primary domain so engine_chat has real state to reason over.
   const threadScope = useMemo(
     () =>
@@ -294,7 +294,7 @@ export default function App() {
   }, [appView, selectedApp]);
   // When an app's binding changes (e.g. domains added/removed on its canvas),
   // refresh the OPEN app record in place so grounding + the detail bar stay
-  // current — WITHOUT re-opening it (which would reset the conversation).
+  // current - WITHOUT re-opening it (which would reset the conversation).
   useEffect(() => {
     const onAppsChanged = () => {
       if (!appView || !selectedApp) return;
@@ -309,7 +309,7 @@ export default function App() {
     window.addEventListener("prevail:apps-changed", onAppsChanged);
     return () => window.removeEventListener("prevail:apps-changed", onAppsChanged);
   }, [appView, selectedApp]);
-  // Threads — backed by <vault>/<domain>/_threads/<slug>.md files.
+  // Threads - backed by <vault>/<domain>/_threads/<slug>.md files.
   // Active thread defines what's loaded into the chat transcript.
   const [threads, setThreads] = useState<ThreadMeta[]>([]);
   const [activeThreadPath, setActiveThreadPath] = useState<string | null>(null);
@@ -360,12 +360,12 @@ export default function App() {
           setSelectedDomain(null);
         };
         // Check the persisted app mode. Production mode with a live vault is
-        // the only case where we skip demo — the user explicitly set it up.
+        // the only case where we skip demo - the user explicitly set it up.
         // Demo mode (or no mode yet) always re-seeds so the user always lands
         // in the populated sandbox with the latest bundled sample data.
         const mode = await invoke<{ mode: "demo" | "production" }>("engine_appmode_get").catch(() => null);
         if (mode?.mode === "production") {
-          // User has switched to their own vault — respect it.
+          // User has switched to their own vault - respect it.
           if (vaultPath) {
             const ok = await invoke<boolean>("vault_exists", { path: vaultPath }).catch(() => false);
             if (ok) return;
@@ -378,7 +378,7 @@ export default function App() {
             if (ok) { setVaultPath(bp); lsSet(LS.vault, bp); return; }
           }
         }
-        // Demo mode (default) — always re-seed from the bundled sample vault
+        // Demo mode (default) - always re-seed from the bundled sample vault
         // so every launch starts with fresh, up-to-date sample data.
         await seedDemo();
       } catch { /* fall through to the VaultWizard if seeding fails */ }
@@ -386,8 +386,8 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Keep the desktop's remembered vault (bootstrap-vault.txt) in lockstep with
-  // whatever vault is actually active, so the WebUI — which inherits via
-  // bootstrap_vault — always mirrors what's open on the desktop, not a stale
+  // whatever vault is actually active, so the WebUI - which inherits via
+  // bootstrap_vault - always mirrors what's open on the desktop, not a stale
   // earlier pick. Desktop only; the browser is a consumer, never the source.
   useEffect(() => {
     if (isBrowser() || !vaultPath) return;
@@ -423,7 +423,7 @@ export default function App() {
     return () => window.removeEventListener("focus", onFocus);
   }, [vaultPath, checkReminders]);
   // Refresh sidebar badge counts silently after any task write (no new
-  // notifications — just update the counts so checking a box clears the badge).
+  // notifications - just update the counts so checking a box clears the badge).
   useEffect(() => {
     if (isBrowser() || !vaultPath) return;
     const refresh = async () => {
@@ -437,7 +437,7 @@ export default function App() {
     window.addEventListener("prevail:tasks-changed", refresh);
     return () => window.removeEventListener("prevail:tasks-changed", refresh);
   }, [vaultPath]);
-  // Onboarding flow — opt-in only, opened manually via "Set up domains".
+  // Onboarding flow - opt-in only, opened manually via "Set up domains".
   // It never auto-appears (the old auto-open raced the scan and popped over
   // a populated vault). The dismissed flag is retained so manual closes are
   // tracked even though nothing auto-reopens.
@@ -468,7 +468,7 @@ export default function App() {
   }, [refreshDomains]);
   // WebUI host bridge: when running as the DESKTOP host (not a browser tab),
   // execute proxied invokes from web clients and forward events to them. This
-  // is what lets the same UI run in a browser with zero duplicate code — the
+  // is what lets the same UI run in a browser with zero duplicate code - the
   // host window is the executor (webview-proxy). No-op in a browser tab.
   useEffect(() => {
     if (isBrowser()) return;
@@ -497,10 +497,10 @@ export default function App() {
     if (isBrowser()) return;
     (async () => {
     // One-time, idempotent: migrate a legacy vault to the v3 layout (apps/ +
-    // domains/ as siblings). Safe — only moves real domains, never overwrites,
+    // domains/ as siblings). Safe - only moves real domains, never overwrites,
     // never deletes. New + already-migrated vaults are a no-op.
     await invoke<number>("vault_migrate_layout", { path: vaultPath }).catch(() => 0);
-    // If the headless learn agent (launchd) is installed, it owns distillation —
+    // If the headless learn agent (launchd) is installed, it owns distillation -
     // the in-app distiller defers so the two never double-run on the same vault.
     const headless = await invoke<boolean>("headless_learn_status").catch(() => false);
     // Distill
@@ -518,27 +518,27 @@ export default function App() {
     if (getPref(PREF.taskgenEnabled, "0") === "1") {
       invoke("taskgen_start", { cfg: taskgenCfgFromPrefs(vaultPath) }).catch((e) => console.error("taskgen_start", e));
     }
-    // Scheduled benchmark re-runs (drift tracking) — module-level timer; the
+    // Scheduled benchmark re-runs (drift tracking) - module-level timer; the
     // tick itself checks the enabled pref, so toggling needs no restart.
     startBenchScheduler(vaultPath);
-    // Scheduled vault backups (data protection) — same pattern.
+    // Scheduled vault backups (data protection) - same pattern.
     startBackupScheduler(vaultPath);
-    // Domain Loops — advance due loops behind the scenes (self-driving), not just
+    // Domain Loops - advance due loops behind the scenes (self-driving), not just
     // on the "Run loops now" button. Tick re-reads the enabled pref.
     startLoopsScheduler(vaultPath);
-    // Apps — keep connected apps fresh on their own schedule while open.
+    // Apps - keep connected apps fresh on their own schedule while open.
     startAppsScheduler(vaultPath);
-    // Omega — auto-distill the app-wide learned layer on a slow cadence (daily).
+    // Omega - auto-distill the app-wide learned layer on a slow cadence (daily).
     // Tick re-reads the enabled pref, so toggling needs no restart.
     startOmegaScheduler(vaultPath);
-    // Skill generation (self-learning) — on by default so the app learns
+    // Skill generation (self-learning) - on by default so the app learns
     // skills from conversations out of the box; togglable in Settings.
     if (getPref(PREF.skillgenEnabled, "1") === "1") {
       invoke("skillgen_start", { cfg: skillgenCfgFromPrefs(vaultPath) }).catch((e) => console.error("skillgen_start", e));
     } else {
       invoke("skillgen_stop").catch(() => {});
     }
-    // Intent distillation (self-learning) — on by default so high-level intents
+    // Intent distillation (self-learning) - on by default so high-level intents
     // + recommendations stay fresh automatically (cadence + new-prompt trigger),
     // with no manual button press.
     if (getPref(PREF.intentDaemonEnabled, "1") === "1") {
@@ -571,7 +571,7 @@ export default function App() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadScope]);
-  // Cross-domain streaming awareness — App-level map of in-flight
+  // Cross-domain streaming awareness - App-level map of in-flight
   // streams. Sidebar + ThreadsRail read this to pulse domains/threads
   // that have work happening in the background.
   type RunningStream = {
@@ -673,7 +673,7 @@ export default function App() {
   }, []);
   const runningDomains = useMemo(() => new Set(runningStreams.map((s) => s.domain ?? "")), [runningStreams]);
   const runningThreadPaths = useMemo(() => new Set(runningStreams.map((s) => s.threadPath ?? "").filter(Boolean)), [runningStreams]);
-  // Opening a domain clears its "ready" marker — you've now seen it.
+  // Opening a domain clears its "ready" marker - you've now seen it.
   useEffect(() => {
     if (!selectedDomain) return;
     setFinishedDomains((m) => {
@@ -734,7 +734,7 @@ export default function App() {
       if (d) openDomain(d);
     };
     window.addEventListener("prevail:open-domain", onOpenDomain as EventListener);
-    // Fresh chat — reset the running conversation (context meter "start fresh").
+    // Fresh chat - reset the running conversation (context meter "start fresh").
     // Long-term memory + domain context carry over; only the thread resets.
     const onNewChat = () => { setActiveThreadPath(null); setChatViewNonce((n) => n + 1); };
     window.addEventListener("prevail:new-chat", onNewChat);
@@ -779,7 +779,7 @@ export default function App() {
   const [benchScope, setBenchScope] = useState<string | null>(null);
   // The Benchmark panel stays mounted (hidden) on other tabs so an in-flight run
   // keeps its live progress when you navigate away. But it's a heavy lazy chunk,
-  // so don't load it until the tab is first opened — if it was never visited,
+  // so don't load it until the tab is first opened - if it was never visited,
   // there's no run to preserve. Once true, it stays mounted for the session.
   const [benchEverVisited, setBenchEverVisited] = useState(false);
   useEffect(() => { if (tab === "benchmark") setBenchEverVisited(true); }, [tab]);
@@ -835,11 +835,11 @@ export default function App() {
     return domains.find((d) => d.name === selectedDomain)?.path ?? null;
   }, [domains, selectedDomain]);
 
-  // Quick switcher (⌘P) — fuzzy finder over all domains + recent
+  // Quick switcher (⌘P) - fuzzy finder over all domains + recent
   // threads across all domains. Modal owns its own state when open.
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
 
-  // Keyboard shortcuts — global. Skip when a text input has focus
+  // Keyboard shortcuts - global. Skip when a text input has focus
   // (so typing ⌘B in the composer doesn't toggle the sidebar).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -852,21 +852,21 @@ export default function App() {
       const k = e.key.toLowerCase();
       if (editable && k !== "," && k !== "k" && k !== "p") return;
       switch (k) {
-        case "k": // ⌘K — new chat (no domain)
+        case "k": // ⌘K - new chat (no domain)
           e.preventDefault();
           setSelectedDomain("");
           setActiveThreadPath(null);
           setTab("chat");
           break;
-        case ",": // ⌘, — open settings
+        case ",": // ⌘, - open settings
           e.preventDefault();
           setTab("settings");
           break;
-        case "b": // ⌘B — toggle the domain rail
+        case "b": // ⌘B - toggle the domain rail
           e.preventDefault();
           setSidebarCollapsed((v) => !v);
           break;
-        case "p": // ⌘P — quick switcher
+        case "p": // ⌘P - quick switcher
           e.preventDefault();
           setQuickSwitcherOpen(true);
           break;
@@ -901,7 +901,7 @@ export default function App() {
 
   useEffect(() => {
     if (!vaultPath) return;
-    // In a browser tab, wait until authenticated — otherwise the scan fires a
+    // In a browser tab, wait until authenticated - otherwise the scan fires a
     // pre-login invoke that 401s and leaves a stale "unauthorized" error. The
     // webAuthed dep re-runs this once sign-in completes.
     if (isBrowser() && !webAuthed) return;
@@ -923,7 +923,7 @@ export default function App() {
         } catch (e) {
           attempts++;
           const msg = String(e);
-          // Transient macOS EINTR — wait briefly and retry.
+          // Transient macOS EINTR - wait briefly and retry.
           if (msg.includes("os error 4") || msg.toLowerCase().includes("interrupted")) {
             await new Promise((r) => setTimeout(r, 100 * attempts));
             continue;
@@ -953,7 +953,7 @@ export default function App() {
     // desktop runtime; calling it in a browser throws "Cannot read properties
     // of undefined (reading 'invoke')". In the WebUI the browser inherits the
     // desktop's vault automatically (bootstrap_vault), so this path is a
-    // fallback — guide the user to the desktop instead of crashing. (B4)
+    // fallback - guide the user to the desktop instead of crashing. (B4)
     if (isBrowser()) {
       window.alert(
         "Pick your vault from the Prevail desktop app on this Mac: a browser can't open a native folder picker. The web view then syncs to it automatically.",
@@ -974,7 +974,7 @@ export default function App() {
   async function loadSample() {
     try {
       const path = await invoke<string>("import_sample_vault");
-      // Loading the sample vault means you're exploring — mark demo mode so the
+      // Loading the sample vault means you're exploring - mark demo mode so the
       // Settings banner offers the switch to production. (F3) Tag the vault as a
       // demo sandbox so the switch-to-production flow can safely clear it later.
       await invoke("engine_appmode_set", { mode: "demo", vault: path }).catch(() => {});
@@ -1085,7 +1085,7 @@ export default function App() {
         <aside className="flex w-60 shrink-0 flex-col border-r border-border-subtle bg-surface" />
         )}
 
-        {/* Threads rail — visible on every tab so the domain's conversation
+        {/* Threads rail - visible on every tab so the domain's conversation
             history stays one click away and the left chrome doesn't vanish
             when you switch to Benchmark. Picking a thread on Benchmark jumps
             back to Chat with that thread open. */}
@@ -1160,7 +1160,7 @@ export default function App() {
               );
             })}
             <div className="flex-1" />
-            {/* Insights / Preferences / actions — available for General too,
+            {/* Insights / Preferences / actions - available for General too,
                 not just domains. They toggle the Chat sub-view (jumping to Chat
                 first if you're on Council/Benchmark). The actions menu hides
                 "archive" for General (you can't archive your whole workspace),
@@ -1206,7 +1206,7 @@ export default function App() {
                   </button>
                 </>
               ) : (
-                // Insights / Usage / Preferences / Apps — available for General
+                // Insights / Usage / Preferences / Apps - available for General
                 // too, not just domains. They toggle the Chat sub-view (jumping
                 // to Chat first if you're on Council/Benchmark).
                 <>
@@ -1350,7 +1350,7 @@ export default function App() {
                 onSeedConsumed={() => { setCouncilSeed(null); setCouncilAutoConvene(false); }}
               />
             )}
-            {/* Per-domain benchmark, full screen — scoped to whatever domain
+            {/* Per-domain benchmark, full screen - scoped to whatever domain
                 you're in. Remounts (via key) when you switch domains so it
                 re-scopes cleanly. STAYS MOUNTED (hidden) on other tabs so an
                 in-flight run keeps its live progress when you navigate away
@@ -1370,7 +1370,7 @@ export default function App() {
       </div>
       <BunkerRibbon enabled={bunkerEnabled} />
       <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
-      {/* A7: live bridge/WebUI chips — bottom-left, follow you across the app */}
+      {/* A7: live bridge/WebUI chips - bottom-left, follow you across the app */}
       <BridgeStatusChips />
       {quickSwitcherOpen && (
         <QuickSwitcher
