@@ -5,6 +5,7 @@ import { MODELS, MODEL_SEP } from "./constants";
 import { titleCase } from "./format";
 import { isLocalCli } from "./helpers";
 import { isBunkerOn, lsGet, lsSet } from "./storage";
+import { track } from "./telemetry";
 import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun } from "./types";
 import type { UnlistenFn } from "./bridge";
 
@@ -310,6 +311,9 @@ export async function executeBenchBatch(
   const dateLabel = `${MONTHS[now.getMonth()]} ${now.getDate()}`;
   const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const batchId = `b${now.getTime()}`;
+  // T18 (inert until keys exist; default-OFF, allowlist-scrubbed to counts only —
+  // no model ids, no domain names, no question text).
+  track("benchmark_run", { models: plannedJobs.length, domains: scopeStr ? scopeStr.split(",").filter(Boolean).length : 0 });
   const scopeDomains = scopeStr ? scopeStr.split(",").map((d) => titleCase(d.trim())).filter(Boolean) : [];
   const scopeLabel =
     scopeDomains.length === 0 ? "All domains"

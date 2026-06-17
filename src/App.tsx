@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { titleCase } from "./format";
 import type { CliInfo, Domain, DomainTab, EngineApp, TabId, ThreadMeta } from "./types";
 import { BUNKER_LS, LS, PREF, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet } from "./storage";
+import { track } from "./telemetry";
 import { BridgeStatusChips, DemoRibbon, ResizeHandle } from "./widgets";
 import { OnboardingModal } from "./panels3";
 import { AppFacetPanel, BunkerRibbon, VaultWizard } from "./shell";
@@ -708,6 +709,11 @@ export default function App() {
   useEffect(() => { void refreshThreads(); }, [refreshThreads]);
   const [clis, setClis] = useState<CliInfo[]>([]);
   const [tab, setTab] = useState<TabId>("chat");
+  // T18: record which primary surface is in use (inert until keys exist;
+  // default-OFF; "settings" is not a tracked feature so it's simply skipped).
+  useEffect(() => {
+    if (tab === "chat" || tab === "council" || tab === "benchmark") track("feature_used", { feature: tab });
+  }, [tab]);
   // Lets in-app links (e.g. the Demo ribbon) open a specific Settings section.
   const [settingsJump, setSettingsJump] = useState<{ section: string; n: number } | null>(null);
   const openSettingsAt = (section: string) => {

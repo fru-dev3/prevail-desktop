@@ -8,6 +8,13 @@ import { CollapsibleSection } from "./collapsible";
 import { DISCOVERED_MODELS, MODELS } from "./constants";
 import { refreshDiscoveredModels } from "./helpers2";
 import { LS, lsGet, lsSet } from "./storage";
+import { track } from "./telemetry";
+
+// T18: map a provider id to the telemetry enum vocabulary (anything off-list →
+// "other"), so the event records THAT a provider was configured without leaking
+// a novel vendor name. Inert until keys exist; default-OFF.
+const TELEMETRY_PROVIDERS = new Set(["openrouter", "anthropic", "openai", "google", "ollama", "lmstudio", "bedrock"]);
+const telemetryProvider = (id: string): string => (TELEMETRY_PROVIDERS.has(id) ? id : "other");
 import { SettingsHeader } from "./sectionutil";
 import { autoVerifyClis, setCliVerify, useCliVerifyLive } from "./verify";
 import { ProviderMark } from "./marks";
@@ -147,6 +154,7 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
   async function save() {
     try {
       await invoke("provider_key_set", { provider: "openrouter", key: key.trim() });
+      track("provider_configured", { provider: "openrouter" });
       setConfigured(!!key.trim());
       setKey("");
       setSaved(true);
@@ -301,6 +309,7 @@ function DirectProviderRow({ id, label, hint, onActivated }: {
     setBusy(true);
     try {
       await invoke("provider_key_set", { provider: id, key: key.trim() });
+      track("provider_configured", { provider: telemetryProvider(id) });
       setConfigured(true);
       setKey("");
       if (onActivated) {

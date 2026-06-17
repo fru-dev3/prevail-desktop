@@ -7,6 +7,13 @@ import { PrevailLogo } from "./PrevailLogo";
 import { invoke, setWebToken } from "./bridge";
 import { INTEGRATION_LABEL, PATTERN_LABEL, PATTERN_TIER, PATTERN_TINT, STATUS_TINT } from "./constants";
 import { formatFreshness, scoreColor, titleCase } from "./format";
+import { track } from "./telemetry";
+
+// T18: map a DaemonCard display name to the telemetry enum vocabulary. Off-list
+// names are skipped (no event) so nothing novel leaks. Inert until keys exist.
+const TELEMETRY_DAEMONS: Record<string, string> = {
+  "Distill": "distill", "Reminders": "reminders", "Task Gen": "taskgen", "Skill Gen": "skillgen",
+};
 import { bytesHuman, compactNum, fmtCost, formatAuditedAt } from "./helpers";
 import { LS, PREF, getPref, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
@@ -1501,11 +1508,15 @@ export function DaemonCard({
 
   async function handleStart() {
     setPhase("starting");
+    const d = TELEMETRY_DAEMONS[name];
+    if (d) track("daemon_toggled", { daemon: d, on: true });
     try { await onStart?.(); } catch {}
     setTimeout(() => setPhase((p) => p === "starting" ? "idle" : p), 4000);
   }
   async function handleStop() {
     setPhase("stopping");
+    const d = TELEMETRY_DAEMONS[name];
+    if (d) track("daemon_toggled", { daemon: d, on: false });
     try { await onStop?.(); } catch {}
     setTimeout(() => setPhase((p) => p === "stopping" ? "idle" : p), 4000);
   }
