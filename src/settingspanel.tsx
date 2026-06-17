@@ -113,7 +113,7 @@ export function SettingsPanel({
       { id: "mcp", label: "MCP", icon: Wrench },
       // A5 (Monday feedback): the WebUI/localhost toggle was orphaned (no nav
       // entry). Surface it under Connections where it's expected.
-      { id: "remote", label: "Web access", icon: Globe },
+      { id: "remote", label: "WebUI", icon: Globe },
     ]},
     { heading: "Privacy & Safety", items: [
       { id: "privacy", label: "Privacy", icon: ShieldCheck },

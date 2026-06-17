@@ -129,14 +129,23 @@ export function TelemetrySettings() {
       )}
       <CollapsibleSection icon={Activity} title="What we collect" summary={`${ALLOWED_EVENTS.length} event types`}
         subtitle="The complete, exhaustive list. Anything not here is never sent.">
-        <ul className="space-y-1.5 text-xs text-text-secondary">
-          <li><span className="font-mono text-text-primary">app_opened</span> - app version, OS family (mac/win)</li>
-          <li><span className="font-mono text-text-primary">feature_used</span> - which feature area (chat, council, benchmark…), nothing typed</li>
-          <li><span className="font-mono text-text-primary">benchmark_run</span> - counts only (number of models, number of domains)</li>
-          <li><span className="font-mono text-text-primary">provider_configured</span> - provider name (e.g. openrouter), never the key</li>
-          <li><span className="font-mono text-text-primary">daemon_toggled</span> - which daemon, on/off</li>
-          <li><span className="font-mono text-text-primary">crash reports</span> - error type + scrubbed stack trace + app version</li>
-        </ul>
+        {/* B2-14: a clean two-column table - event name as a chip, what it carries
+            on the right - instead of a plain dash-list. */}
+        <div className="overflow-hidden rounded-lg border border-border-subtle bg-background">
+          {([
+            ["app_opened", "app version, OS family (mac/win)"],
+            ["feature_used", "which feature area (chat, council, benchmark…), nothing typed"],
+            ["benchmark_run", "counts only (number of models, number of domains)"],
+            ["provider_configured", "provider name (e.g. openrouter), never the key"],
+            ["daemon_toggled", "which daemon, on/off"],
+            ["crash reports", "error type + scrubbed stack trace + app version"],
+          ] as [string, string][]).map(([name, desc], i) => (
+            <div key={name} className={`flex items-baseline gap-3 px-3 py-2 ${i > 0 ? "border-t border-border-subtle" : ""}`}>
+              <span className="w-40 shrink-0 font-mono text-[11px] text-text-primary">{name}</span>
+              <span className="flex-1 text-[11px] leading-snug text-text-secondary">{desc}</span>
+            </div>
+          ))}
+        </div>
         <div className="mt-3 rounded-md border border-border-subtle bg-background p-2 text-[11px] text-text-muted">
           Never collected: prompts, replies, vault contents, file paths, names of domains/apps/skills you created, API keys, email, name, machine name, or precise location.
         </div>
