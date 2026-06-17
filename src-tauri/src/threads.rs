@@ -300,16 +300,20 @@ pub(crate) fn load_thread(path: String) -> Result<ThreadFull, String> {
 }
 
 // Slug helper — strip non-alphanumeric chars, collapse to dashes.
-fn slugify_fragment(s: &str) -> String {
+// B3: the `slug` passed to save_thread is an EXISTING thread filename stem
+// (e.g. "2026-06-16_12-30-45_a1b2c3d4"), not free text. An earlier slugify pass
+// turned the underscores into dashes and produced a DIFFERENT filename, so an
+// Untitled thread's next save landed in a new file and the original was
+// orphaned. Preserve the existing stem verbatim, only mapping out anything
+// path-unsafe so traversal/separators can't sneak in.
+fn sanitize_existing_slug(s: &str) -> String {
     s.trim()
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
         .collect::<String>()
-        .split('-')
-        .filter(|p| !p.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
+        .trim_matches('-')
+        .to_string()
 }
 
 // Tiny stable hash for slug generation — FNV-1a 32-bit. We only need
@@ -345,7 +349,7 @@ pub(crate) fn save_thread(
     let (year, month, day, hh, mm, ss) = secs_to_ymdhms(now as i64);
     let stamp = format!("{year:04}-{month:02}-{day:02}_{hh:02}-{mm:02}-{ss:02}");
 
-    let final_slug = match slug.as_ref().map(|s| slugify_fragment(s)).filter(|s| !s.is_empty()) {
+    let final_slug = match slug.as_ref().map(|s| sanitize_existing_slug(s)).filter(|s| !s.is_empty()) {
         Some(s) => s,
         None => {
             let first_user = turns

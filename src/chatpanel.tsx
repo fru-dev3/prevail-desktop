@@ -1396,17 +1396,24 @@ export function ChatPanel({
   // Test/drag hooks — exposed on window so the sidebar's manual drag (WebKit's
   // HTML5 DnD is unreliable in WKWebView) can attach a domain or app on drop.
   // Call window.__prevailAttach('tax') / __prevailAttachApp('gmail') in DevTools.
+  // B1: keep the latest attach callbacks in refs and register the window hooks
+  // ONCE on mount. Registering them in an effect keyed on the callbacks meant the
+  // cleanup deleted the hooks every time those callbacks changed identity — a
+  // teardown race that left the sidebar's drag-drop with no hook to call.
+  const attachDomainRef = useRef(attachDomainAsContext);
+  const attachAppRef = useRef(attachAppAsContext);
+  useEffect(() => { attachDomainRef.current = attachDomainAsContext; attachAppRef.current = attachAppAsContext; });
   useEffect(() => {
     const w = window as unknown as {
       __prevailAttach?: (n: string, mode?: "light" | "full" | "folder") => void;
       __prevailAttachApp?: (id: string) => void;
     };
-    w.__prevailAttach = (n, mode) => void attachDomainAsContext(n, mode ?? "light");
-    w.__prevailAttachApp = (id) => void attachAppAsContext(id);
+    w.__prevailAttach = (n, mode) => void attachDomainRef.current(n, mode ?? "light");
+    w.__prevailAttachApp = (id) => void attachAppRef.current(id);
     return () => {
       try { delete w.__prevailAttach; delete w.__prevailAttachApp; } catch {}
     };
-  }, [attachDomainAsContext, attachAppAsContext]);
+  }, []);
   return (
     <div
       className="flex h-full"
