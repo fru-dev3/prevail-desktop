@@ -2,7 +2,7 @@
 // Council defaults, Configuration (groups the memory/tasks/ideal sub-sections),
 // and the Agents catalog (AgentCard + AgentsSection).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Brain, Check, ChevronRight, Cloud, CloudOff, Compass, Cpu, Crown, Globe, ListChecks, Search, Server, ShieldCheck, ShieldOff, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, Globe, ListChecks, Search, Server, ShieldCheck, ShieldOff, Wifi, WifiOff } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
@@ -17,7 +17,7 @@ import { SettingsHeader, authLoginCmd } from "./sectionutil";
 import { cliVerifyLive, loadVerifyMap, saveVerifyMap, setCliVerify, useCliVerifyLive, verifyCliDefaultModel } from "./verify";
 import { ProviderMark } from "./marks";
 import { MemoryContextSection, TasksCrossDomainSection } from "./settings2";
-import { IdealStateSection, TelemetrySettings } from "./settings4";
+import { TelemetrySettings } from "./settings4";
 import type { CliInfo, ModelVerifyStatus } from "./types";
 
 export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; onChange: (on: boolean) => void }) {
@@ -419,7 +419,7 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
 export function ConfigurationSection({ vaultPath }: { vaultPath: string }) {
   // Configuration's sub-sections route through the canonical CollapsibleSection
   // (icon + title/subtitle left, collapsed by default, persisted per section).
-  const Sub = ({ id, title, icon, desc, children }: { id: "ideal-state" | "memory" | "tasks"; title: string; icon: LucideIcon; desc: string; children: React.ReactNode }) => (
+  const Sub = ({ id, title, icon, desc, children }: { id: "memory" | "tasks"; title: string; icon: LucideIcon; desc: string; children: React.ReactNode }) => (
     <CollapsibleSection icon={icon} title={title} subtitle={desc} storageKey={`prevail.settings.config.${id}`}>
       {children}
     </CollapsibleSection>
@@ -427,14 +427,13 @@ export function ConfigurationSection({ vaultPath }: { vaultPath: string }) {
   return (
     <>
       <SettingsHeader
-        title="Configuration"
+        title="Memory engine"
         icon={Brain}
-        subtitle="Your constitution, context windows, and task ledger in one place."
+        subtitle="Persistent memory, distillation, and the cross-domain task ledger. Your Ideal State lives in Ideals."
       />
+      {/* D2: Ideal State removed here — it has its own Ideals surface and lives in
+          the Context panel, so repeating it on this page was a duplicate. */}
       <div className="space-y-2">
-        <Sub id="ideal-state" title="Ideal State" icon={Compass} desc="Your personal constitution: goals, values, and priorities injected into every model turn.">
-          <IdealStateSection vaultPath={vaultPath} />
-        </Sub>
         <Sub id="memory" title="Memory & Context" icon={Brain} desc="Persistent memory, distillation, and what stays in context across sessions.">
           <MemoryContextSection vaultPath={vaultPath} />
         </Sub>

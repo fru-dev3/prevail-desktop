@@ -290,8 +290,17 @@ export function ChatPanel({
   const [ctxScoreLoading, setCtxScoreLoading] = useState(false);
   const [ctxScoreRescanning, setCtxScoreRescanning] = useState(false);
   const [ctxScoreError, setCtxScoreError] = useState<string | null>(null);
+  // S1: only reset the domain tab to "chat" when the domain GENUINELY changes
+  // (a real domain switch), not on mount. Resetting on mount clobbered the
+  // Insights button when arriving from another tab — App set domainTab="insights",
+  // then ChatPanel mounted and immediately reset it to "chat", so the first click
+  // appeared to do nothing and a second was needed.
+  const prevDomainRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    setDomainTab("chat");
+    if (prevDomainRef.current !== undefined && prevDomainRef.current !== domain) {
+      setDomainTab("chat");
+    }
+    prevDomainRef.current = domain;
     const pref = loadPreferredSkills(domain);
     setPreferredSkills(pref);
     setAttachedSkills(pref);
@@ -828,7 +837,11 @@ export function ChatPanel({
           cost_usd: usage?.cost_usd ?? null,
           ok,
         },
-      }).catch((e) => console.error("usage_append failed", e));
+      })
+        // S2: nudge the Usage panel to refresh now that a new record landed, so it
+        // populates ~realtime instead of only on a thread/domain switch.
+        .then(() => window.dispatchEvent(new CustomEvent("prevail:usage-updated")))
+        .catch((e) => console.error("usage_append failed", e));
 
       // Self-learning: append the RAW reply to the intent ledger, paired
       // with the intent by session, so the turn is fully reconstructable.
