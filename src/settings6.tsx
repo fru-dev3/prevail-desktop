@@ -9,7 +9,8 @@ import { CollapsibleSection } from "./collapsible";
 import { VENDOR_BRAND } from "./constants";
 import { isLocalCli } from "./helpers";
 import { modelsFor } from "./helpers2";
-import { LS, isBunkerOn, lsGet, lsSet } from "./storage";
+import { LS, PREF, getPref, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
+import { Ghost } from "lucide-react";
 import { Toggle } from "./ui";
 import { GroupLabel } from "./panels";
 import { COUNCIL_CHAIR_KEY, COUNCIL_MEMBERS_KEY, councilModelsFor, councilSlotKey, readCouncilChair, readCouncilMembers } from "./council";
@@ -19,6 +20,27 @@ import { ProviderMark } from "./marks";
 import { MemoryContextSection, TasksCrossDomainSection } from "./settings2";
 import { TelemetrySettings } from "./settings4";
 import type { CliInfo, ModelVerifyStatus } from "./types";
+
+// G3: the global incognito master. On = chat AND council run as a plain model
+// with none of your context (profile, ideal state, omega, memory). Per-surface
+// toggles in each composer can still go incognito just there.
+function GlobalIncognitoToggle() {
+  const [on, setOn] = useState(() => getPref(PREF.incognito, "0") === "1");
+  return (
+    <div className="mt-6 border-t border-border-subtle pt-5">
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <div className="flex items-center gap-3">
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${on ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}><Ghost className="h-4 w-4" /></span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold text-text-primary">Incognito everywhere</div>
+            <div className="mt-0.5 text-xs text-text-secondary">Run every surface (chat and council) as a plain model with none of your context: no profile, ideal state, omega, or memory. Turn it on per-surface from each composer instead.</div>
+          </div>
+          <Toggle on={on} onChange={(v) => { setOn(v); setPref(PREF.incognito, v ? "1" : "0"); }} label="Incognito everywhere" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; onChange: (on: boolean) => void }) {
   type BunkerStatus = { enabled: boolean; network_blocked: boolean; web_blocked: boolean; cloud_blocked: boolean; local_available: boolean };
@@ -203,6 +225,10 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
           </div>
         </div>
       )}
+
+      {/* G3: global incognito - one switch to run EVERY surface (chat + council)
+          with none of your context. Per-surface toggles live in each composer. */}
+      <GlobalIncognitoToggle />
 
       {/* Telemetry lives under Privacy (moved from Safety). Anonymous, opt-in,
           default-OFF - see TelemetrySettings. */}
