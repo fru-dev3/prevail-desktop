@@ -831,13 +831,16 @@ export function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPa
           <div className="flex flex-col gap-2">
             {questions.length > 0 && (
               <InsightsDisclosure title="Questions worth asking" icon={Lightbulb} count={questions.length}>
+                {/* F1: numbered, scannable rows. A subtle "Ask" stays visible (not
+                    hover-only) so the action is discoverable; dismiss reveals on hover. */}
                 <div className="flex flex-col gap-2">
                   {questions.map((q, i) => (
                     <div key={i} className="group flex items-start gap-3 rounded-lg border border-border-subtle bg-surface p-3 transition-colors hover:border-accent-border">
-                      <p className="min-w-0 flex-1 text-sm leading-snug text-text-primary">{q}</p>
-                      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <button onClick={() => onPick(q)} title="Ask this in chat" className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-background hover:bg-accent-hover">Ask <ArrowRight className="h-2.5 w-2.5" /></button>
-                        <button onClick={() => dismiss(q)} title="Dismiss" className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-warn"><X className="h-3.5 w-3.5" /></button>
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft font-mono text-[10px] font-semibold text-accent">{i + 1}</span>
+                      <button onClick={() => onPick(q)} className="min-w-0 flex-1 text-left text-sm leading-snug text-text-primary hover:text-accent" title="Ask this in chat">{q}</button>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button onClick={() => onPick(q)} title="Ask this in chat" className="inline-flex items-center gap-1 rounded-md border border-accent-border px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-accent transition-colors hover:bg-accent hover:text-background">Ask <ArrowRight className="h-2.5 w-2.5" /></button>
+                        <button onClick={() => dismiss(q)} title="Dismiss" className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted opacity-0 transition-opacity hover:bg-surface-warm hover:text-warn group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button>
                       </div>
                     </div>
                   ))}
