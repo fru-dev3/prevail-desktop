@@ -91,6 +91,12 @@ export function DomainContextDrawer({
   }, [vaultPath, domain]);
 
   const [idealState, setIdealState] = useState<string>("");
+  // G2: the learned user profile - what Prevail knows about you, surfaced so it's
+  // visible what grounds the answers. Loaded from user.md (falls back to profile.md).
+  const [profile, setProfile] = useState<string>("");
+  useEffect(() => {
+    invoke<string>("read_user_md", { vault: vaultPath }).then((s) => setProfile(s || "")).catch(() => setProfile(""));
+  }, [vaultPath]);
   // C3: which decision card is expanded to its full prompt + verdict.
   const [openDecision, setOpenDecision] = useState<string | null>(null);
 
@@ -166,6 +172,25 @@ export function DomainContextDrawer({
               </pre>
             </>
           ) : <div className="text-xs text-text-muted">No Ideal State written yet. Settings → Ideal State.</div>
+        } />
+        {/* G2: what Prevail knows about you - the profile that grounds every answer. */}
+        <Section keyName="profile" title="Profile" body={
+          profile.trim() ? (
+            <>
+              <p className="mb-2 text-[11px] leading-relaxed text-text-muted">
+                What Prevail knows about you. Auto-injected into every chat and council so answers are specific to you.
+              </p>
+              <button
+                onClick={() => onInjectContext(profile, "Profile · who you are")}
+                className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+              >
+                → use in chat
+              </button>
+              <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
+                {profile.length > 1500 ? profile.slice(0, 1500) + "\n…" : profile}
+              </pre>
+            </>
+          ) : <div className="text-xs text-text-muted">No profile yet. Add a profile.md (or user.md) at your vault root; Prevail injects it so answers know who you are.</div>
         } />
         <div className="border-b border-border-subtle bg-surface-warm/40 px-4 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text-muted">{domain ? titleCase(domain) : "General"} · this domain only</div>
         <Section keyName="memory" title="Long-term memory" body={

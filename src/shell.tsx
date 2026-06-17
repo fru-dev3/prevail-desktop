@@ -203,12 +203,33 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
             {app.connections && app.connections.length > 0 && (
               <AppKV k="Strategies">{app.connections.map((c) => c.kind).join(" → ")}</AppKV>
             )}
-            {/* Pattern-specific "how to connect" so the user knows what
-                "configure" actually means for this app's integration type. */}
-            <div className="mt-2 rounded-lg border border-border-subtle bg-background px-3 py-2 text-[12px] leading-relaxed text-text-secondary">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">How to connect</span>
-              <p className="mt-1">{connectHelp(app.integration)}</p>
-            </div>
+            {/* S5: when the app isn't connected yet, lead with a clear primary
+                action and concrete steps instead of a passive status line - the
+                founder couldn't tell what "not-configured" expected them to do. */}
+            {app.status === "not-configured" && (
+              <div className="mt-2 rounded-lg border border-accent-border bg-accent-soft/40 px-3 py-2.5">
+                <div className="font-mono text-[10px] uppercase tracking-wider text-accent">Not connected yet - here's how</div>
+                <p className="mt-1 text-[12px] leading-relaxed text-text-primary">{connectHelp(app.integration)}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    onClick={test}
+                    disabled={busy === "test"}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50"
+                  >
+                    {busy === "test" ? "Checking…" : "Check setup"}
+                  </button>
+                  <span className="text-[11px] text-text-muted">Runs a real test and tells you the exact next step (a key to set, or a login).</span>
+                </div>
+              </div>
+            )}
+            {/* Pattern-specific "how to connect" - kept for already-connected apps
+                as a quiet reference (the prominent version above covers setup). */}
+            {app.status !== "not-configured" && (
+              <div className="mt-2 rounded-lg border border-border-subtle bg-background px-3 py-2 text-[12px] leading-relaxed text-text-secondary">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">How to connect</span>
+                <p className="mt-1">{connectHelp(app.integration)}</p>
+              </div>
+            )}
             {demoMode && (
               <div className="mt-2 rounded-lg border border-ai/40 bg-ai/10 px-3 py-2 text-[12px] leading-relaxed text-text-secondary">
                 You're in the <span className="font-semibold">Sandbox</span>, so this is a sample app and won't make a real connection. Switch to your own vault (Settings → Workspace) to connect real accounts.
