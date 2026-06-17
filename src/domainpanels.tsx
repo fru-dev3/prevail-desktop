@@ -91,6 +91,8 @@ export function DomainContextDrawer({
   }, [vaultPath, domain]);
 
   const [idealState, setIdealState] = useState<string>("");
+  // C3: which decision card is expanded to its full prompt + verdict.
+  const [openDecision, setOpenDecision] = useState<string | null>(null);
 
   const Section = ({
     keyName, title, count, body,
@@ -144,6 +146,9 @@ export function DomainContextDrawer({
             General is your no-domain workspace. It has its own state, journal, session logs, decisions, and skills - the same context items a domain has, kept at the vault root. Open a domain to see that domain's own context instead.
           </div>
         )}
+        {/* C2: clarify GLOBAL vs LOCAL. Global = the constitution that applies to
+            every domain. Below, "This domain" = everything scoped to {domain}. */}
+        <div className="border-b border-border-subtle bg-surface-warm/40 px-4 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text-muted">Global · applies everywhere</div>
         <Section keyName="ideal" title="Ideal state" body={
           idealState.trim() ? (
             <>
@@ -162,6 +167,7 @@ export function DomainContextDrawer({
             </>
           ) : <div className="text-xs text-text-muted">No Ideal State written yet. Settings → Ideal State.</div>
         } />
+        <div className="border-b border-border-subtle bg-surface-warm/40 px-4 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text-muted">{domain ? titleCase(domain) : "General"} · this domain only</div>
         <Section keyName="memory" title="Long-term memory" body={
           memory.trim() ? (
             <>
@@ -206,16 +212,25 @@ export function DomainContextDrawer({
                   {decisionLog.slice(0, 6).map((d, i) => {
                     const fb = typeof d.feedback === "object" && d.feedback ? d.feedback.rating : (typeof d.feedback === "string" ? d.feedback : undefined);
                     const ago = d.ts ? formatFreshness(Math.max(0, Math.floor((Date.now() - d.ts) / 1000))) : "";
+                    // C3: clicking the card expands it to the full prompt + verdict
+                    // (was truncated with no way to read the whole decision).
+                    const key = d.id ?? String(i);
+                    const expanded = openDecision === key;
                     return (
-                      <li key={d.id ?? i} className="rounded-lg border border-border-subtle bg-background p-2.5">
-                        <div className="mb-1 flex items-center justify-between gap-2 font-mono text-[9px] uppercase tracking-wider text-text-muted">
-                          <span>{d.kind ?? "decision"}{ago ? ` · ${ago}` : ""}</span>
-                          {fb === "up" && <ThumbsUp className="h-3 w-3 text-accent" />}
-                          {fb === "down" && <ThumbsDown className="h-3 w-3 text-red-500" />}
-                        </div>
-                        {d.prompt && <div className="line-clamp-1 text-[11px] font-semibold text-text-primary">{d.prompt}</div>}
-                        {d.verdict && <div className="mt-1 line-clamp-3 whitespace-pre-wrap text-[11px] leading-snug text-text-secondary">{d.verdict}</div>}
-                        {d.verdict && (
+                      <li key={key} className="rounded-lg border border-border-subtle bg-background p-2.5">
+                        <button onClick={() => setOpenDecision(expanded ? null : key)} className="w-full text-left">
+                          <div className="mb-1 flex items-center justify-between gap-2 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                            <span>{d.kind ?? "decision"}{ago ? ` · ${ago}` : ""}</span>
+                            <span className="flex items-center gap-1">
+                              {fb === "up" && <ThumbsUp className="h-3 w-3 text-accent" />}
+                              {fb === "down" && <ThumbsDown className="h-3 w-3 text-red-500" />}
+                              <ChevronRight className={`h-3 w-3 transition-transform ${expanded ? "rotate-90" : ""}`} />
+                            </span>
+                          </div>
+                          {d.prompt && <div className={`text-[11px] font-semibold text-text-primary ${expanded ? "" : "line-clamp-1"}`}>{d.prompt || "(untitled decision)"}</div>}
+                          {d.verdict && <div className={`mt-1 whitespace-pre-wrap text-[11px] leading-snug text-text-secondary ${expanded ? "" : "line-clamp-3"}`}>{d.verdict}</div>}
+                        </button>
+                        {expanded && d.verdict && (
                           <button onClick={() => onInjectContext(d.verdict!, `decision · ${(d.prompt ?? "").slice(0, 30)}`)}
                             className="mt-1.5 rounded-md border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
                             → use in chat
