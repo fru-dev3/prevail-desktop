@@ -11,7 +11,7 @@ import { lsGet, lsSet } from "./storage";
 import { SidebarGatewayLive, SidebarMcpLive } from "./panels";
 import { domainIcon } from "./icons";
 import { useAppearance } from "./hooks";
-import { SidebarBackupActive, SidebarBenchmarkRuns, SidebarBenchScheduled } from "./cards";
+import { SidebarBackupActive, SidebarBenchmarkRuns, SidebarBenchScheduled, SidebarProcesses } from "./cards";
 import { BrandMark } from "./brandmark";
 import type { Domain, EngineApp, LifeReadiness, Mode, TabId } from "./types";
 
@@ -761,6 +761,9 @@ export function Sidebar({
           )}
         </button>
       )}
+
+      {/* P2: live process indicator (chat / council / benchmark / loop). */}
+      <SidebarProcesses collapsed={collapsed} setTab={setTab} />
 
       {/* External connectivity indicators */}
       <SidebarGatewayLive collapsed={collapsed} />
