@@ -170,7 +170,13 @@ export function BenchQuestions({
   // plus the net new question count for that domain (so "all domains" can verify
   // every domain actually got drafts, not just an overall total).
   async function suggestForDomain(target: string, cli: string, model: string): Promise<{ code: number | null; added: number; tail: string }> {
-    const before = questions.filter((q) => q.domain === target).length;
+    // Count from disk, not React state — the in-memory `questions` can be stale,
+    // which produced false "0/N" warnings even when drafts landed.
+    let before = questions.filter((q) => q.domain === target).length;
+    try {
+      const pre = await invoke<BenchQuestion[]>("benchmark_questions", { vault: vaultPath });
+      before = (pre ?? []).filter((q) => q.domain === target).length;
+    } catch { /* fall back to in-memory count */ }
     const session = `bench-suggest-${target}-${Date.now()}`;
     let output = "";
     let chunkUn: UnlistenFn | null = null;
@@ -188,6 +194,8 @@ export function BenchQuestions({
     });
     const code = await done;
     (chunkUn as UnlistenFn | null)?.();
+    // Let the engine flush the new questions to disk before recounting.
+    await new Promise((r) => setTimeout(r, 150));
     let added = 0;
     try {
       const fresh = await invoke<BenchQuestion[]>("benchmark_questions", { vault: vaultPath });
@@ -213,7 +221,10 @@ export function BenchQuestions({
       for (const t of targets) {
         const { code, added } = await suggestForDomain(t, cli, model);
         if (!(code === 0 || code === null)) failed.push(t);
-        else if (added < suggestCount) short.push(`${titleCase(t)} (${Math.max(0, added)}/${suggestCount})`);
+        // Only warn "under target" with POSITIVE evidence of a short draft.
+        // added <= 0 means the count read raced (or every draft deduped) — the
+        // exit code already says success, so don't surface a false "0/N".
+        else if (added > 0 && added < suggestCount) short.push(`${titleCase(t)} (${added}/${suggestCount})`);
       }
       onChanged();
       if (failed.length === 0 && short.length === 0) {
