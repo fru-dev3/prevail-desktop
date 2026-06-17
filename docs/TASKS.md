@@ -311,10 +311,15 @@ mcpServers snippet). Active vault path is the desktop's current vaultPath.
   - DONE: plan (docs/TELEMETRY-PLAN.md) + scaffolding (telemetry.ts allowlist/scrubber/local-log,
     Settings -> Safety -> "Privacy & telemetry" consent UI default-OFF, "what we collect" page,
     app_opened wired). Inert (log-only) until build-time keys exist.
-  - REMAINING (needs founder): PostHog project key + host, Sentry DSN(s). Then install posthog-js
-    + @sentry/react, wire the send in telemetry.ts flush + Rust panic hook, add more track() call
-    sites (feature_used, benchmark_run, etc.), and the website PostHog (downloads/pageviews) +
-    consent banner. Confirm opt-in-default-OFF (recommended).
+  - DONE (2026-06-17): ALL allowlisted track() call sites now wired, each scrubbed to the
+    fixed vocabulary, all inert/local until keys exist: feature_used (App tab effect),
+    benchmark_run (executeBenchBatch, counts only), provider_configured (both key-save sites,
+    mapped to enum), daemon_toggled (DaemonCard start/stop choke point).
+  - REMAINING (genuinely needs founder — secrets + a privacy decision, NOT code I can write):
+    PostHog project key + host, Sentry DSN(s); then install posthog-js + @sentry/react and wire
+    the network send + Rust panic hook (deliberately NOT done without explicit go — installing
+    data-exfil SDKs into the privacy-flagship app is the founder's call), plus website PostHog +
+    consent banner. Opt-in default-OFF confirmed in the consent UI.
 
 - [x] **T13 — Versioning policy.** Stay in 0.8.x (patch-forever) up to 0.8.100/200/1000
   before 0.9. Never advance minor without explicit go. (Recorded in memory; reaffirmed.)
