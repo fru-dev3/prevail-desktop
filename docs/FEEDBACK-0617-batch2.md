@@ -46,4 +46,9 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
   inner duplicate (render it headerless when wrapped); headers must be visually
   bigger than subheaders.
 
+- [x] **B2-13 — Rename "Web access" nav → "WebUI".** Done. (Read as rename to
+  "WebUI"; the "Remove /" part was ambiguous — flag if a different label intended.)
+- [x] **B2-14 — Format "What we collect" telemetry list.** Done — clean two-column
+  table (event chip + what it carries) instead of a dash-list.
+
 (More to come — the founder is sending rapid feedback; appended as received.)
