@@ -141,7 +141,7 @@ export function DomainContextDrawer({
         {err && <div className="m-2 rounded border border-warn/40 bg-warn/10 p-3 text-xs text-warn">{err}</div>}
         {!domain && (
           <div className="border-b border-border-subtle px-4 py-2.5 text-[11px] leading-relaxed text-text-muted">
-            General is your no-domain workspace, so it shows only what spans everything: recent decisions, your ideal state, and long-term memory. State, journal, session logs, and skills live inside each domain's own folder, so open a domain to see those.
+            General is your no-domain workspace. It has its own state, journal, session logs, decisions, and skills — the same context items a domain has, kept at the vault root. Open a domain to see that domain's own context instead.
           </div>
         )}
         <Section keyName="ideal" title="Ideal state" body={
