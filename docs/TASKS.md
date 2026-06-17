@@ -315,14 +315,33 @@ mcpServers snippet). Active vault path is the desktop's current vaultPath.
     fixed vocabulary, all inert/local until keys exist: feature_used (App tab effect),
     benchmark_run (executeBenchBatch, counts only), provider_configured (both key-save sites,
     mapped to enum), daemon_toggled (DaemonCard start/stop choke point).
-  - REMAINING (genuinely needs founder — secrets + a privacy decision, NOT code I can write):
-    PostHog project key + host, Sentry DSN(s); then install posthog-js + @sentry/react and wire
-    the network send + Rust panic hook (deliberately NOT done without explicit go — installing
-    data-exfil SDKs into the privacy-flagship app is the founder's call), plus website PostHog +
-    consent banner. Opt-in default-OFF confirmed in the consent UI.
+  - VERIFIED 2026-06-17: posthog-js + @sentry/browser are ALREADY installed AND the send is
+    fully wired + privacy-hardened (posthog.init with autocapture/pageview/replay all OFF;
+    ensureSentry). Everything is gated purely on build-time env keys (VITE_POSTHOG_KEY /
+    VITE_SENTRY_DSN); inert with none set. So there is NO code left.
+  - REMAINING (founder-only, a secret + a go/no-go): set VITE_POSTHOG_KEY (+ host) and
+    VITE_SENTRY_DSN as release-CI build env vars. The instant they exist, telemetry activates
+    (still opt-in default-OFF per the consent UI). Optional follow-on: website PostHog + banner.
 
 - [x] **T13 — Versioning policy.** Stay in 0.8.x (patch-forever) up to 0.8.100/200/1000
   before 0.9. Never advance minor without explicit go. (Recorded in memory; reaffirmed.)
+
+## New features (founder request)
+
+- [x] **T19 — Benchmark bundles + suites (saveable, rerunnable, schedulable).** DONE
+  (2026-06-17, src/bench-presets.ts + benchpanel.tsx). Founder asked for a way to save a
+  named combination of models and re-pick it, and to combine a model set with a domain set
+  into a rerunnable/schedulable object.
+  - ModelBundle: named set of models. Bundle bar under Models — click to apply, "Save
+    selection as bundle" to create, delete inline. Active bundle highlights when the current
+    selection matches.
+  - BenchSuite: named (models + domains + mode). New Suites section: save current selection;
+    per suite Run (executes immediately from the suite's own values), Schedule (reuses the
+    existing background scheduler via its custom scope), Delete, and click-name to Load into
+    the editor. Scheduled badge persists across remounts by matching the custom schedule.
+  - Storage: localStorage JSON + live window-event hooks (single-user, no DB). Suites snapshot
+    models+domains so deleting a bundle never breaks a suite.
+  - Ships in v0.8.11.
 
 ## Added from prior-session screenshots (not in the pasted text batch)
 
