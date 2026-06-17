@@ -57,11 +57,13 @@ The Wealth context panel lists Ideal State, Long-term memory, State, Decisions,
 Activity, Skills — but it's unclear what's GLOBAL vs LOCAL to the domain, and what
 long-term memory even is vs State vs Journal vs Intent.
 
-- [?] **C1 — Define the model (decision first).** Write a short spec: what is global
-  (Ideal State; possibly global intent) vs local-to-domain (state, decisions,
-  activity, skills, domain memory). Define long-term memory vs state vs journal vs
-  intent, and whether intent exists at domain level + global. *Needs a founder call
-  on naming/structure before building.*
+- [x] **C1 — Model decided (founder, 2026-06-17): "group + simplify."**
+  - GLOBAL: Ideal State, Global intent.
+  - THIS DOMAIN: State (incl. long-term memory, merged), Decisions, Activity (the
+    journal), Skills.
+  - So: fold "long-term memory" into State; "Activity" is the journal; intent is
+    surfaced globally (Global intent) rather than a separate per-domain item in the
+    panel. C2 implements this grouping + relabel.
 - [ ] **C2 — Reflect global/local split in the UI.** Group the context panel into a
   "Global" section (Ideal State) and a "This domain" section (State, Decisions,
   Activity, Skills, Domain memory), with labels that make the separation obvious.

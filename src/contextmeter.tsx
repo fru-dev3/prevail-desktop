@@ -108,7 +108,7 @@ export function ContextMeter({
                 disabled={compacting}
                 className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:opacity-50"
               >
-                {compacting ? "Compacting…" : "Compact — summarize & continue"}
+                {compacting ? "Compacting…" : "Compact & Summarize"}
               </button>
             )}
             <button
