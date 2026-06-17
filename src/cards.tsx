@@ -4,15 +4,27 @@
 import { useEffect, useState } from "react";
 import { Activity, Archive, CalendarClock, Check, Loader2, RotateCw, SlidersHorizontal } from "lucide-react";
 import { useProcesses } from "./processes";
+import { Toggle } from "./ui";
 import { BACKUP_CFG } from "./backup";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES, MODELS, MODEL_SEP } from "./constants";
-import { formatDuration, formatFreshness, titleCase } from "./format";
+import { formatFreshness, titleCase } from "./format";
 import { isLocalCli } from "./helpers";
 import { isBunkerOn, lsGet, lsSet } from "./storage";
 import { CycleChip } from "./widgets";
 import { useFrameworkLens } from "./hooks";
 import { allBenchModelKeys, BENCH_CLI_OPTIONS, benchFreqLabel, benchFreqMs, BENCH_SCHED, cancelBenchBatch, runScheduledBatch, scheduledRunPreview, useBenchBatches } from "./bench";
+
+// B2-7: a concrete next-run label, e.g. "Mon Jun 23, 2:30 PM". Shows the weekday
+// + date only when it's not today, so a same-day run reads as just the time.
+function nextRunLabel(ts: number): string {
+  const d = new Date(ts);
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const sameDay = new Date().toDateString() === d.toDateString();
+  if (sameDay) return `today, ${time}`;
+  const date = d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  return `${date}, ${time}`;
+}
 
 // BENCH-1: a persistent indicator that a benchmark is ARMED to run on a
 // schedule (distinct from one actively running - SidebarBenchmarkRuns owns
@@ -344,8 +356,13 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
           <div className="text-xs text-text-secondary">
             Runs a benchmark on a cadence so drift shows up in the leaderboard and History without manual runs (while the app is open). Its scope is set below, independent of your manual Run selection.
             {enabled && last > 0 && ` Last ran ${formatFreshness(Math.max(0, (Date.now() - last) / 1000))}.`}
-            {enabled && ` Next ${next <= Date.now() ? "within 30 minutes" : `in ~${formatDuration(Math.max(0, (next - Date.now()) / 1000))}`}.`}
           </div>
+          {/* B2-7: show the concrete next-run date + time, not just a cadence. */}
+          {enabled && (
+            <div className="mt-1 font-mono text-[10px] text-accent">
+              Next run: {next <= Date.now() ? "within 30 minutes" : nextRunLabel(next)}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <select
@@ -370,14 +387,8 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
             </div>
           )}
         </div>
-        <button
-          onClick={() => { const v = !enabled; setEnabled(v); lsSet(BENCH_SCHED.enabled, v ? "1" : "0"); }}
-          className={`rounded-md border px-3 py-1 font-mono text-[11px] uppercase tracking-wider ${
-            enabled ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"
-          }`}
-        >
-          {enabled ? "On" : "Off"}
-        </button>
+        {/* B2-6: pill toggle, not On/Off text. */}
+        <Toggle on={enabled} onChange={(v) => { setEnabled(v); lsSet(BENCH_SCHED.enabled, v ? "1" : "0"); }} label="Scheduled runs" />
         <button
           onClick={runNow}
           disabled={busy}
