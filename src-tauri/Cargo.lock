@@ -3363,7 +3363,7 @@ dependencies = [
 
 [[package]]
 name = "prevail-desktop"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
