@@ -117,7 +117,9 @@ export const PREF = {
   // intent ledger into <vault>/<domain>/_memory.md and prepends it to prompts.
   persistentMemory: "prevail.pref.persistentMemory",       // "1" | "0" — master switch
   userProfile: "prevail.pref.userProfile",                 // "1" | "0" — prepend user.md
-  incognito: "prevail.pref.incognito",                     // "1" | "0" — plain model, no context injected
+  incognito: "prevail.pref.incognito",                     // "1" | "0" — global master: plain model everywhere
+  incognitoChat: "prevail.pref.incognitoChat",             // "1" | "0" — incognito for single Chat only
+  incognitoCouncil: "prevail.pref.incognitoCouncil",       // "1" | "0" — incognito for Council only
   memoryBudgetChars: "prevail.pref.memoryBudgetChars",     // integer chars cap on _memory.md
   profileBudgetChars: "prevail.pref.profileBudgetChars",   // integer chars cap on user.md preamble
   memoryProvider: "prevail.pref.memoryProvider",           // cli used to distill (claude/ollama/…)
@@ -182,5 +184,14 @@ export const PREF = {
 export function getPref(key: string, fallback: string): string {
   const v = lsGet(key);
   return v === "" ? fallback : v;
+}
+// Incognito: a surface runs incognito when the GLOBAL master is on OR that
+// surface's own flag is on. Lets the user go incognito everywhere at once, or
+// just for one surface (chat / council).
+export type IncognitoSurface = "chat" | "council";
+export function incognitoActive(surface: IncognitoSurface): boolean {
+  if (getPref(PREF.incognito, "0") === "1") return true;
+  const k = surface === "chat" ? PREF.incognitoChat : PREF.incognitoCouncil;
+  return getPref(k, "0") === "1";
 }
 export function setPref(key: string, v: string): void { lsSet(key, v); }

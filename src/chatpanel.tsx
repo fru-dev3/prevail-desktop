@@ -13,7 +13,7 @@ import { startProcess, endProcess } from "./processes";
 import { ContextMeter, contextWindowFor, estimateTokens } from "./contextmeter";
 import { domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
 import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, loadPreferredSkills, maybeRedact, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
-import { LS, PREF, getDomainToggle, getPref, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
+import { LS, PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
 import { ContextScoreBadge, NewSkillForm, SkillsList } from "./panels";
 import { InsightsPanel, UsageDashboard } from "./panels2";
@@ -264,10 +264,17 @@ export function ChatPanel({
   // B2: surface attach failures on-screen instead of swallowing them, so a
   // silent "$domain didn't attach" becomes a visible, diagnosable message.
   const [attachErr, setAttachErr] = useState<string | null>(null);
-  // G3: incognito mode — a plain model with NO user context injected. Persisted
-  // so it survives navigation; off by default. Read live by the prompt builder.
-  const [incognito, setIncognito] = useState(() => getPref(PREF.incognito, "0") === "1");
-  const toggleIncognito = () => setIncognito((v) => { const n = !v; setPref(PREF.incognito, n ? "1" : "0"); return n; });
+  // G3: incognito for chat - a plain model with NO user context injected.
+  // Effective state = global master OR the chat-specific flag; the toggle flips
+  // the chat flag. When the global master is on, chat stays incognito and the
+  // per-surface toggle is locked on.
+  const [incognito, setIncognito] = useState(() => incognitoActive("chat"));
+  const globalIncognito = getPref(PREF.incognito, "0") === "1";
+  const toggleIncognito = () => setIncognito(() => {
+    const next = !(getPref(PREF.incognitoChat, "0") === "1");
+    setPref(PREF.incognitoChat, next ? "1" : "0");
+    return incognitoActive("chat");
+  });
   function injectContext(body: string, label: string) {
     setAttachErr(null);
     setPrimedContext((cur) => {
@@ -1193,7 +1200,8 @@ export function ChatPanel({
     // G3: Incognito mode -> a plain model, like vanilla ChatGPT. When on, NONE of
     // the user's context is injected: no ideal state, profile, omega, memory, or
     // skills. (Explicit per-message attachments the user added are still honored.)
-    const incognito = getPref(PREF.incognito, "0") === "1";
+    // Active when the global master OR the chat-specific flag is on.
+    const incognito = incognitoActive("chat");
     const userPreamble = incognito ? "" : buildIdealStatePreamble(idealMd);
     // The person's profile/identity - auto-injected so the model always knows who
     // it's helping (no manual attach). Sits just under the Ideal State.
@@ -1801,10 +1809,11 @@ export function ChatPanel({
                   your profile/ideal/memory/omega is sent. */}
               <button
                 onClick={toggleIncognito}
-                title={incognito ? "Incognito is ON - replies use a plain model with none of your context. Click to turn off." : "Incognito: ask a plain model with NONE of your profile or context attached."}
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px] transition-colors ${incognito ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}
+                disabled={globalIncognito}
+                title={globalIncognito ? "Incognito is ON globally (Settings : Privacy). Replies use a plain model with none of your context." : incognito ? "Incognito is ON - replies use a plain model with none of your context. Click to turn off." : "Incognito: ask a plain model with NONE of your profile or context attached."}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px] transition-colors disabled:opacity-70 ${incognito ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}
               >
-                <Ghost className="h-3 w-3" /> {incognito ? "Incognito on" : "Incognito"}
+                <Ghost className="h-3 w-3" /> {incognito ? (globalIncognito ? "Incognito on (global)" : "Incognito on") : "Incognito"}
               </button>
               {primedContext.map((c, i) => (
                 <span

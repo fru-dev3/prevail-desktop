@@ -2,14 +2,14 @@
 // (CLI, model) slots over a question, stream each panelist, then synthesize a
 // chair verdict. Renders the shared DomainStatusBar + DomainContextDrawer.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, BookOpen, Check, ChevronRight, Crown, Folder, MessageSquare, PanelRightOpen, Plus, Scale, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
+import { ArrowRight, BookOpen, Check, ChevronRight, Crown, Folder, Ghost, MessageSquare, PanelRightOpen, Plus, Scale, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 import { invoke, listen } from "./bridge";
 import { MODELS } from "./constants";
 import { titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
 import { isLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
 import { buildCouncilQuickActions, buildIdealStatePreamble, buildSynthesisPrompt, loadPreferredSkills, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
-import { LS, PREF, getPref, isBunkerOn, lsGet, lsSet } from "./storage";
+import { LS, PREF, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { ThinkingDisclosure } from "./ui";
 import { Markdown } from "./Markdown";
 import { domainIcon } from "./icons";
@@ -296,6 +296,16 @@ export function CouncilPanel({
     return () => { mounted = false; };
   }, [domain, _vaultPath]);
   const [prompt, setPrompt] = useState("");
+  // G3: incognito for council. Reflects effective state (global master OR the
+  // council flag); the toggle flips the council-specific flag. When the global
+  // master is on it stays on and the per-surface toggle can't turn it off here.
+  const [incognito, setIncognito] = useState(() => incognitoActive("council"));
+  const globalIncognito = getPref(PREF.incognito, "0") === "1";
+  const toggleIncognito = () => setIncognito(() => {
+    const next = !(getPref(PREF.incognitoCouncil, "0") === "1");
+    setPref(PREF.incognitoCouncil, next ? "1" : "0");
+    return incognitoActive("council");
+  });
   // I4: a Decision/Risks card from the domain home routes here with a seeded
   // question - drop it into the composer so the user just picks panelists and
   // convenes. Consumed once so it doesn't re-fire on re-render.
@@ -616,15 +626,20 @@ export function CouncilPanel({
     setPhase("panelists");
     const trimmed = raw.trim();
     setSubmittedPrompt(trimmed);
+    // G3: incognito - a plain council with NO injected context (no ideal state,
+    // no long-term memory), so the panel answers with clear perspective. Active
+    // when the global master OR the council-specific flag is on. Explicit
+    // attachments the user added stay (deliberate intent).
+    const incognito = incognitoActive("council");
     // Ideal State (constitution) preamble - load fresh per convene so edits
     // propagate without app restart. Highest precedence; leads the prompt.
     let idealMd = "";
-    try { idealMd = await invoke<string>("read_ideal_state", { vault: _vaultPath }); } catch {}
-    const userPreamble = buildIdealStatePreamble(idealMd);
+    if (!incognito) { try { idealMd = await invoke<string>("read_ideal_state", { vault: _vaultPath }); } catch {} }
+    const userPreamble = incognito ? "" : buildIdealStatePreamble(idealMd);
     // Self-learning: prepend distilled long-term memory to the council too.
     let memoryMd = "";
-    try { memoryMd = await invoke<string>("read_memory_md", { vault: _vaultPath, domain: domain ?? null }); } catch {}
-    const memoryPreamble = (getPref(PREF.persistentMemory, "1") === "1" && memoryMd.trim())
+    if (!incognito) { try { memoryMd = await invoke<string>("read_memory_md", { vault: _vaultPath, domain: domain ?? null }); } catch {} }
+    const memoryPreamble = (!incognito && getPref(PREF.persistentMemory, "1") === "1" && memoryMd.trim())
       ? `--- Long-term memory (${domain ?? "General"}) ---\n${memoryMd.trim().slice(0, Number(getPref(PREF.memoryBudgetChars, "4000")))}\n\n`
       : "";
     const primedPreamble = primedContext.length > 0
@@ -979,6 +994,18 @@ export function CouncilPanel({
       {/* Codex-style composer - textarea + panelist pills + chair pill */}
       <div className="shrink-0 px-6 pb-6 pt-2">
         <div className="rounded-2xl border border-border bg-surface p-3 shadow-sm">
+          {/* G3: incognito toggle for the council - convene a plain panel with none
+              of your context. Shows (global) when the master switch forces it on. */}
+          <div className="mb-2 flex items-center gap-2 px-2">
+            <button
+              onClick={toggleIncognito}
+              disabled={globalIncognito}
+              title={globalIncognito ? "Incognito is ON globally (Settings : Privacy). The council gets none of your context." : incognito ? "Incognito ON for the council - none of your context is sent. Click to turn off." : "Council incognito: convene a plain panel with NONE of your profile/ideal/memory."}
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px] transition-colors disabled:opacity-70 ${incognito ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}
+            >
+              <Ghost className="h-3 w-3" /> {incognito ? (globalIncognito ? "Incognito on (global)" : "Incognito on") : "Incognito"}
+            </button>
+          </div>
           {/* Context pills - auto-primed + dragged-in domains */}
           {primedContext.length > 0 && (
             <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2">
