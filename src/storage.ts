@@ -117,6 +117,7 @@ export const PREF = {
   // intent ledger into <vault>/<domain>/_memory.md and prepends it to prompts.
   persistentMemory: "prevail.pref.persistentMemory",       // "1" | "0" — master switch
   userProfile: "prevail.pref.userProfile",                 // "1" | "0" — prepend user.md
+  incognito: "prevail.pref.incognito",                     // "1" | "0" — plain model, no context injected
   memoryBudgetChars: "prevail.pref.memoryBudgetChars",     // integer chars cap on _memory.md
   profileBudgetChars: "prevail.pref.profileBudgetChars",   // integer chars cap on user.md preamble
   memoryProvider: "prevail.pref.memoryProvider",           // cli used to distill (claude/ollama/…)
