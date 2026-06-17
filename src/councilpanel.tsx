@@ -6,6 +6,7 @@ import { ArrowRight, BookOpen, Check, ChevronRight, Crown, Folder, MessageSquare
 import { invoke, listen } from "./bridge";
 import { MODELS } from "./constants";
 import { titleCase } from "./format";
+import { startProcess, endProcess } from "./processes";
 import { isLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
 import { buildCouncilQuickActions, buildIdealStatePreamble, buildSynthesisPrompt, loadPreferredSkills, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getPref, isBunkerOn, lsGet, lsSet } from "./storage";
@@ -316,6 +317,32 @@ export function CouncilPanel({
   // the responses in the transcript.
   const [submittedPrompt, setSubmittedPrompt] = useState("");
   const [phase, setPhase] = useState<"idle" | "panelists" | "synthesizing" | "done">("idle");
+  // P1: track phase in a ref so the thread-switch effect can read "is a council
+  // running?" without re-running on every phase change.
+  const phaseRef = useRef(phase);
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
+  // P3: when a council starts running, scroll its live convene to the top of the
+  // viewport so the user always sees the latest council (with prior turns above,
+  // the live one was below the fold and needed a manual scroll).
+  const liveConveneRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (phase === "panelists") {
+      // let the block mount first
+      const t = window.setTimeout(() => liveConveneRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+      return () => window.clearTimeout(t);
+    }
+  }, [phase]);
+  // P2: register the running council in the global process registry so the
+  // sidebar shows it as a live process while it runs (and across navigation).
+  useEffect(() => {
+    const id = `council:${domain ?? "general"}`;
+    if (phase === "panelists" || phase === "synthesizing") {
+      startProcess(id, "council", `Council · ${domain ? titleCase(domain) : "General"}`, domain);
+    } else {
+      endProcess(id);
+    }
+    return () => endProcess(id);
+  }, [phase, domain]);
   const [replies, setReplies] = useState<Record<string, PanelistReply>>({});
   const [verdict, setVerdict] = useState<string>("");
   // The decision-log id for the verdict currently on screen, so the user can
@@ -474,6 +501,12 @@ export function CouncilPanel({
       councilSelfSetRef.current = null;
       return;
     }
+    // P1: do NOT wipe a RUNNING council when the thread changes. The founder
+    // expects a convened council to keep going while they move around; clearing
+    // it here was exactly the "switching threads stops my council" bug. Only
+    // reset the live state when the council is idle/done (so a finished or
+    // not-started panel reflects the newly selected thread).
+    if (phaseRef.current === "panelists" || phaseRef.current === "synthesizing") return;
     // Genuine thread switch (+ New, a different thread, or cleared on domain
     // change): clear the live convene state so the panel reflects the SELECTED
     // thread, not the previous convene's question/replies/verdict.
@@ -795,7 +828,7 @@ export function CouncilPanel({
         )}
 
         {phase !== "idle" && (
-          <div className="px-6 py-6">
+          <div className="px-6 py-6" ref={liveConveneRef}>
             <div className="mb-6 rounded-lg border border-border bg-surface px-4 py-3 font-mono text-sm">
               <span className="text-accent">$</span> {submittedPrompt || prompt}
             </div>

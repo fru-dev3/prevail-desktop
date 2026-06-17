@@ -9,6 +9,7 @@ import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
 import { MODELS } from "./constants";
 import { relTime, scoreColor, titleCase } from "./format";
+import { startProcess, endProcess } from "./processes";
 import { ContextMeter, contextWindowFor, estimateTokens } from "./contextmeter";
 import { domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
 import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, loadPreferredSkills, maybeRedact, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
@@ -606,6 +607,15 @@ export function ChatPanel({
     setHistIdx(-1);
   }
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // P2: register a "chat" process while a reply is streaming so the sidebar shows
+  // it as a live process even while the user navigates away.
+  const streamingNow = messages.some((mm) => mm.streaming);
+  useEffect(() => {
+    const id = `chat:${domain ?? "general"}`;
+    if (streamingNow) startProcess(id, "chat", `Chat · ${domain ? titleCase(domain) : "General"}`, domain);
+    else endProcess(id);
+    return () => endProcess(id);
+  }, [streamingNow, domain]);
   // Compaction: summarize the running conversation into a dense brief, then start
   // a fresh chat seeded with that summary - continuity preserved, tokens reclaimed.
   // The summary is stashed in localStorage so it survives the new-chat remount.

@@ -2,7 +2,8 @@
 // benchmark progress strip, the framework/lens cycle row, and the Settings
 // scheduled-benchmark card.
 import { useEffect, useState } from "react";
-import { Archive, CalendarClock, Check, RotateCw, SlidersHorizontal } from "lucide-react";
+import { Activity, Archive, CalendarClock, Check, Loader2, RotateCw, SlidersHorizontal } from "lucide-react";
+import { useProcesses } from "./processes";
 import { BACKUP_CFG } from "./backup";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES, MODELS, MODEL_SEP } from "./constants";
@@ -18,6 +19,45 @@ import { allBenchModelKeys, BENCH_CLI_OPTIONS, benchFreqLabel, benchFreqMs, BENC
 // that). The founder must never have a nightly benchmark running without being
 // aware of it. Mirrors the SidebarMcpLive / SidebarGatewayLive "live" pattern,
 // but with a steady (non-pulsing) dot + calendar icon to read as "armed".
+// P2: a live "N processes" indicator. Lists every long-running thing (chat,
+// council, benchmark, loop) so the user can see work continuing while they move
+// around, and click to jump back to it.
+export function SidebarProcesses({ collapsed, setTab }: { collapsed: boolean; setTab?: (t: "chat" | "council" | "benchmark" | "settings") => void }) {
+  const procs = useProcesses();
+  if (procs.length === 0) return null;
+  const n = procs.length;
+  const jump = (p: { kind: string }) => {
+    if (p.kind === "council") setTab?.("council");
+    else if (p.kind === "benchmark") setTab?.("benchmark");
+    else setTab?.("chat");
+  };
+  if (collapsed) {
+    return (
+      <div title={`${n} process${n === 1 ? "" : "es"} running`} className="flex w-full flex-col items-center gap-0.5 border-t border-border-subtle px-2 py-2 text-accent">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <span className="font-mono text-[9px]">{n}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="border-t border-border-subtle">
+      <div className="flex items-center gap-2 px-3 py-1.5">
+        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-accent" />
+        <span className="flex-1 font-mono text-[10px] uppercase tracking-wide text-accent">{n} process{n === 1 ? "" : "es"} running</span>
+        <Activity className="h-3 w-3 shrink-0 text-text-muted" />
+      </div>
+      <div className="pb-1">
+        {procs.slice(0, 4).map((p) => (
+          <button key={p.id} onClick={() => jump(p)} title="Jump to this process" className="flex w-full items-center gap-2 px-3 py-1 text-left hover:bg-surface-warm">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+            <span className="flex-1 truncate font-mono text-[10px] text-text-secondary">{p.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SidebarBenchScheduled({ collapsed }: { collapsed: boolean }) {
   const [on, setOn] = useState(() => lsGet(BENCH_SCHED.enabled, "0") === "1");
   const [freq, setFreq] = useState(() => lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
