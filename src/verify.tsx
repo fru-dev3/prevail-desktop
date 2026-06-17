@@ -22,7 +22,7 @@ export function saveVerifyMap(m: Record<string, "ok">) {
 }
 
 // Terminal command that logs each CLI in. Prevail uses the CLIs already on
-// the machine and their own credentials — it can't authenticate them — so
+// the machine and their own credentials - it can't authenticate them - so
 // when a verify fails on auth we point the user at the right login command.
 
 export const cliVerifyLive = new Map<string, CliVerifyInfo>();

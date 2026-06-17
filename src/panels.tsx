@@ -8,6 +8,7 @@ import { invoke, setWebToken } from "./bridge";
 import { INTEGRATION_LABEL, PATTERN_LABEL, PATTERN_TIER, PATTERN_TINT, STATUS_TINT } from "./constants";
 import { formatFreshness, scoreColor, titleCase } from "./format";
 import { track } from "./telemetry";
+import { Toggle } from "./ui";
 
 // T18: map a DaemonCard display name to the telemetry enum vocabulary. Off-list
 // names are skipped (no event) so nothing novel leaks. Inert until keys exist.
@@ -177,7 +178,7 @@ export function LockScreen({ vault, encrypted, onUnlock }: { vault: string | nul
   const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  // Touch ID is offered only for the plaintext app lock — it authenticates the
+  // Touch ID is offered only for the plaintext app lock - it authenticates the
   // user but doesn't release an encryption key, so an encrypted vault still
   // needs the passcode to derive the DEK.
   const touchIdOn = !encrypted && lsGet("prevail.pref.touchIdLock") === "1";
@@ -381,7 +382,7 @@ export function ThreadsRail({
   activePath: string | null;
   selectedDomain: string | null;
   // When set (e.g. an open app's title), the rail header labels the scope with
-  // this instead of the domain — the conversations belong to the app, not a
+  // this instead of the domain - the conversations belong to the app, not a
   // domain.
   scopeLabel?: string | null;
   vaultPath: string;
@@ -1010,7 +1011,7 @@ export function SkillsList({
         return (
           <li key={s.path}>
             <div className={`rounded-lg border bg-surface transition-colors ${open ? "border-accent-border" : "border-border-subtle"}`}>
-              {/* Single-line row — same dimensions as every other settings list. */}
+              {/* Single-line row - same dimensions as every other settings list. */}
               <div className="flex w-full items-center gap-2">
                 <button
                   onClick={() => toggle(s.path)}
@@ -1098,7 +1099,7 @@ export function DrawerImportsSection({
     try {
       const n = await invoke<number>("ingestion_vacuum_imports", { domain, olderThanDays: days });
       if (n > 0) {
-        // Reload the list — easier than diffing.
+        // Reload the list - easier than diffing.
         const next = await invoke<{ path: string; name: string; size: number; mtime: number }[]>(
           "ingestion_list_artifacts", { domain },
         );
@@ -1366,7 +1367,7 @@ export function ContextScoreBadge({
           style={{ color }}
         />
       </button>
-      {/* Formatted hover card — replaces the flat native title tooltip. */}
+      {/* Formatted hover card - replaces the flat native title tooltip. */}
       <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-60 translate-y-1 rounded-xl border border-border bg-surface p-3 text-left opacity-0 shadow-xl transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100">
         <div className="mb-2 flex items-center justify-between">
           <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Context score</span>
@@ -1543,25 +1544,15 @@ export function DaemonCard({
             isRunning ? "text-ok" : "text-text-primary"
           }`}>{name}</span>
         </div>
+        {/* D1: an On/Off toggle, not Start/Stop text. While a transition is in
+            flight the toggle is disabled and reflects the target state. */}
         <div className="flex items-center gap-1.5">
-          {busy ? (
-            <span className="font-mono text-[10px] text-text-muted opacity-60">
-              {phase === "starting" ? "starting…" : "stopping…"}
-            </span>
-          ) : isRunning ? (
-            onStop && (
-              <button onClick={handleStop}
-                className="rounded border border-border px-2 py-0.5 font-mono text-[10px] text-text-muted transition-colors hover:border-err/60 hover:bg-err/5 hover:text-err">
-                stop
-              </button>
-            )
-          ) : (
-            onStart && (
-              <button onClick={handleStart}
-                className="rounded border border-border px-2 py-0.5 font-mono text-[10px] text-text-muted transition-colors hover:border-ok/50 hover:bg-ok/5 hover:text-ok">
-                start
-              </button>
-            )
+          {(onStart || onStop) && (
+            <Toggle
+              on={busy ? phase === "starting" : isRunning}
+              disabled={busy}
+              onChange={(v) => { if (v) void handleStart(); else void handleStop(); }}
+            />
           )}
         </div>
       </div>
@@ -1649,7 +1640,7 @@ export function ConnectorIcon({ c }: { c: Connector }) {
   );
 }
 
-// Deterministic monogram colors from an app name — a tasteful per-brand hue
+// Deterministic monogram colors from an app name - a tasteful per-brand hue
 // (low-saturation tinted tile + darker same-hue letters) so apps without a real
 // logo still look intentional and stay scannable. The catalog has hundreds of
 // apps; most have no brand glyph, so the fallback has to carry its weight.

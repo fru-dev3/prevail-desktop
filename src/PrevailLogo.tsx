@@ -1,7 +1,7 @@
 import { motion, MotionConfig } from "framer-motion";
 
 /**
- * PrevailLogo — the Prevail mark (ascending chevrons + guiding star), drawn as
+ * PrevailLogo - the Prevail mark (ascending chevrons + guiding star), drawn as
  * inline SVG so it stays crisp at any size and the guiding star can animate on
  * its own.
  *
@@ -14,7 +14,7 @@ import { motion, MotionConfig } from "framer-motion";
  *   <PrevailLogo size={84} />                    // animated
  *   <PrevailLogo size={32} animated={false} />   // static mark
  *
- * `src` is accepted for backwards compatibility but ignored — the mark is now
+ * `src` is accepted for backwards compatibility but ignored - the mark is now
  * vector, not a raster file.
  */
 export function PrevailLogo({
@@ -31,7 +31,7 @@ export function PrevailLogo({
 }) {
   void _src;
 
-  // The static artwork — tile + chevrons. The star is rendered separately so it
+  // The static artwork - tile + chevrons. The star is rendered separately so it
   // can animate independently when `animated`.
   const Star = animated ? (
     <motion.circle

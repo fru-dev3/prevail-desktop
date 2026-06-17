@@ -1,9 +1,9 @@
-// Apps — the data-inflow surface. An app is "working" only if it's reliably
+// Apps - the data-inflow surface. An app is "working" only if it's reliably
 // refreshing the vault on a schedule, so this page's whole job is to make that
 // UNMISTAKABLE: every app shows one color-coded status, the method it connects
 // by, when it last synced and when it syncs next, and which domains it feeds.
 // Connecting a new app is a single goal sentence (the Connection Agent figures
-// out the method) — not a wall of forms. See docs/APPS-REDESIGN.md.
+// out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, ChevronRight, FolderOpen, Loader2, Pencil, Plug, Plus, RefreshCw, X } from "lucide-react";
 import { invoke } from "./bridge";
@@ -41,7 +41,7 @@ function methodLabel(integration: string): string {
   if (m.includes("browser") || m.includes("playwright")) return "Browser";
   if (m.includes("cli")) return "CLI";
   if (m.includes("api") || m.includes("http") || m.includes("oauth")) return "API";
-  return integration || "—";
+  return integration || "-";
 }
 
 function scheduleLabel(r: EngineApp["refresh"]): string {
@@ -132,7 +132,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         subtitle="Services that feed your vault. Connect each one once, then it's available to any domain's context. No duplicates."
       />
 
-      {/* Connect — one goal sentence, not forms. */}
+      {/* Connect - one goal sentence, not forms. */}
       {connecting ? (
         <ConnectAppFlow
           vaultPath={vaultPath}
@@ -207,7 +207,7 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
   const enabled = app.enabled !== false;
   const initial = (app.title || app.id || "·").charAt(0).toUpperCase();
   const runs = app.runs ?? [];
-  // APP-5 — edit which domains this app feeds (engine_app_set_domains). The
+  // APP-5 - edit which domains this app feeds (engine_app_set_domains). The
   // vault's domain list is fetched lazily when the editor opens.
   const [editDomains, setEditDomains] = useState(false);
   const [allDomains, setAllDomains] = useState<string[]>([]);
@@ -233,7 +233,7 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
     } catch (e) { console.error("set domains", e); }
     finally { setDomBusy(false); }
   };
-  // APP-4 — edit this app's autonomous-sync schedule (engine_app_set_schedule).
+  // APP-4 - edit this app's autonomous-sync schedule (engine_app_set_schedule).
   // Cadences are the ones the engine validates: hourly, every Nh, daily, weekly.
   const [editSched, setEditSched] = useState(false);
   const [schedEvery, setSchedEvery] = useState(app.refresh?.every ?? "daily");
@@ -261,10 +261,10 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
     } catch (e) { console.error("set schedule", e); }
     finally { setSchedBusy(false); }
   };
-  // P4 — re-evaluate the connection method: maybe a better one exists now.
+  // P4 - re-evaluate the connection method: maybe a better one exists now.
   const [reEval, setReEval] = useState<string | null>(null);
   const [reEvalBusy, setReEvalBusy] = useState(false);
-  // A2 — change the connection method by hand (MCP / API / OAuth / browser / manual).
+  // A2 - change the connection method by hand (MCP / API / OAuth / browser / manual).
   const [methodBusy, setMethodBusy] = useState(false);
   const changeMethod = async (integration: string) => {
     if (!integration || integration === app.integration) return;
@@ -288,7 +288,7 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
       if (r.ok && r.plan) {
         const m = methodLabel(r.plan.integration ?? "");
         const same = (r.plan.integration ?? "").toLowerCase() === (app.integration ?? "").toLowerCase();
-        setReEval(same ? `Still best via ${m}.` : `Better now: ${m}${r.plan.why ? ` — ${r.plan.why}` : ""}`);
+        setReEval(same ? `Still best via ${m}.` : `Better now: ${m}${r.plan.why ? ` - ${r.plan.why}` : ""}`);
       } else setReEval(r.error ?? "Could not re-evaluate.");
     } catch (e) { setReEval(`Re-evaluate failed: ${e}`); }
     finally { setReEvalBusy(false); }
@@ -309,7 +309,7 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
               <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>
             </span>
             <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-text-muted">
-              {status === "connected" && <span>synced {app.lastSuccessTs ? relTime(app.lastSuccessTs) : "—"}</span>}
+              {status === "connected" && <span>synced {app.lastSuccessTs ? relTime(app.lastSuccessTs) : "-"}</span>}
               {status === "attention" && <span className="text-danger">{app.lastError ? app.lastError.slice(0, 60) : "needs re-auth"}</span>}
               {status === "disconnected" && <span>not set up</span>}
               {status === "connected" && <span>· {scheduleLabel(app.refresh)}</span>}
@@ -359,7 +359,7 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
             </span>
           </Detail>
           {reEval && <div className="rounded-md border border-border-subtle bg-background px-3 py-1.5 text-xs text-text-secondary">{reEval}</div>}
-          {/* APP-4 — schedule, now editable with engine-honored cadences. */}
+          {/* APP-4 - schedule, now editable with engine-honored cadences. */}
           <Detail label="Schedule">
             {!editSched ? (
               <span className="inline-flex flex-wrap items-center gap-1.5">
@@ -411,7 +411,7 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
             )}
           </Detail>
           {app.nextDueTs ? <Detail label="Next sync">{relTime(app.nextDueTs)}</Detail> : null}
-          {/* APP-5 — domains fed, now editable. */}
+          {/* APP-5 - domains fed, now editable. */}
           <Detail label="Domains fed">
             {!editDomains ? (
               <span className="inline-flex flex-wrap items-center gap-1.5">
@@ -447,7 +447,7 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
               </div>
             )}
           </Detail>
-          {/* APP-6 — surface where the per-app (MCP/connector) config lives + reveal it. */}
+          {/* APP-6 - surface where the per-app (MCP/connector) config lives + reveal it. */}
           {app.path && (
             <Detail label="Config">
               <span className="inline-flex flex-wrap items-center gap-1.5">

@@ -1,4 +1,4 @@
-// Connect an app by describing the goal — no tier dropdowns, no auth forms.
+// Connect an app by describing the goal - no tier dropdowns, no auth forms.
 // The user types the app name + what they want from it; the Connection Agent
 // (engine) researches the best method and returns a plan + the ONE auth step.
 // See docs/APPS-REDESIGN.md.
@@ -31,7 +31,7 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ConnectResult | null>(null);
   // While the engine researches (one long async call), cycle a visible status so
-  // it's clear work is happening — a button spinner alone reads as "stuck".
+  // it's clear work is happening - a button spinner alone reads as "stuck".
   const RESEARCH_PHASES = [
     "Reading what you want to pull in…",
     "Checking for an MCP server…",
@@ -48,7 +48,7 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy]);
-  // APP-2: IntelliSense — match what's typed against already-connected apps so we
+  // APP-2: IntelliSense - match what's typed against already-connected apps so we
   // REUSE an existing one instead of silently creating a duplicate. (No dropdown;
   // a single inline match that the user can open, or override to connect anew.)
   const [existing, setExisting] = useState<EngineApp[]>([]);
@@ -105,7 +105,7 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
             rows={2}
             className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm leading-relaxed text-text-primary outline-none focus:border-accent-border"
           />
-          {/* APP-2: already-connected match — reuse instead of duplicating. */}
+          {/* APP-2: already-connected match - reuse instead of duplicating. */}
           {match && (
             <div className="flex items-center gap-2 rounded-lg border border-accent-border bg-accent-soft/40 px-3 py-2">
               <Link2 className="h-3.5 w-3.5 shrink-0 text-accent" />
@@ -126,7 +126,7 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               {busy ? "Finding the best way to connect…" : match ? "Connect a new one anyway" : "Find the best way to connect"}
             </button>
-            <span className="text-[11px] text-text-muted">Prevail researches MCP, API, CLI, Composio, or browser — and picks the best.</span>
+            <span className="text-[11px] text-text-muted">Prevail researches MCP, API, CLI, Composio, or browser - and picks the best.</span>
           </div>
           {busy && (
             <div className="mt-3 rounded-lg border border-accent-border/40 bg-accent-soft/20 p-3">
@@ -141,7 +141,7 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
                   </div>
                 ))}
               </div>
-              <div className="mt-2 text-[11px] text-text-muted">This runs a model to research + test the best path — usually 10–30s.</div>
+              <div className="mt-2 text-[11px] text-text-muted">This runs a model to research + test the best path - usually 10-30s.</div>
             </div>
           )}
         </div>
@@ -187,17 +187,17 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
 
           {authNeeded ? (
             <div className="rounded-lg border border-accent-border bg-accent-soft/40 p-3">
-              <div className="font-mono text-[10px] uppercase tracking-wider text-accent">One step only — then Prevail does the rest</div>
+              <div className="font-mono text-[10px] uppercase tracking-wider text-accent">One step only - then Prevail does the rest</div>
               <p className="mt-1 text-sm text-text-primary">{plan.auth_step!.instruction}</p>
-              <p className="mt-1 text-[11px] text-text-muted">This is the one thing only you can do (a secret/login). Do it, then mark done — Prevail tests it and syncs on schedule from then on.</p>
+              <p className="mt-1 text-[11px] text-text-muted">This is the one thing only you can do (a secret/login). Do it, then mark done - Prevail tests it and syncs on schedule from then on.</p>
             </div>
           ) : result.verified == null ? (
-            <div className="rounded-lg border border-ok/30 bg-ok/5 px-3 py-2 text-xs text-ok">No authorization needed — it's ready to sync.</div>
+            <div className="rounded-lg border border-ok/30 bg-ok/5 px-3 py-2 text-xs text-ok">No authorization needed - it's ready to sync.</div>
           ) : null}
 
           <div className="flex items-center gap-2">
             <button onClick={onDone} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover">
-              {authNeeded ? "I've done it — finish" : "Done"} <ArrowRight className="h-3.5 w-3.5" />
+              {authNeeded ? "I've done it - finish" : "Done"} <ArrowRight className="h-3.5 w-3.5" />
             </button>
             <button onClick={() => { setResult(null); setName(""); setGoal(""); }} className="rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent">Connect another</button>
           </div>

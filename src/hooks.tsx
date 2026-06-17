@@ -33,7 +33,7 @@ export function useAppearance() {
     return () => mq.removeEventListener("change", handler);
   }, []);
   // Cross-device hydrate: theme + palette are persisted on the desktop (see
-  // ui_settings_get), so the WebUI — and a re-installed desktop — inherit the
+  // ui_settings_get), so the WebUI - and a re-installed desktop - inherit the
   // same look instead of starting from an empty browser localStorage. Runs once
   // and overrides the local defaults if the backend has a saved value.
   const hydratedRef = useRef(false);

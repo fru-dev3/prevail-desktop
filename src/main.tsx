@@ -36,7 +36,7 @@ function showFatal(msg: string) {
 window.addEventListener("error", (e) =>
   showFatal((e.error && (e.error.stack || e.error.message)) || e.message || "unknown error"),
 );
-// A stray promise rejection should NOT nuke the whole app — log it and keep
+// A stray promise rejection should NOT nuke the whole app - log it and keep
 // running. Only render/startup errors (the "error" listener + ErrorBoundary
 // above) are fatal.
 window.addEventListener("unhandledrejection", (e) => {

@@ -68,7 +68,7 @@ export function Sidebar({
       return new Set(raw ? raw.split(",").filter(Boolean) : []);
     } catch { return new Set(); }
   });
-  // Group collapse — Pinned vs All. Persisted so collapsing survives
+  // Group collapse - Pinned vs All. Persisted so collapsing survives
   // app restarts.
   const [pinnedOpen, setPinnedOpen] = useState<boolean>(() => lsGet("prevail.sidebar.pinnedOpen") !== "0");
   const [allOpen, setAllOpen] = useState<boolean>(() => lsGet("prevail.sidebar.allOpen") !== "0");
@@ -84,7 +84,7 @@ export function Sidebar({
     });
   };
   const railFilter = ""; // domain filter input removed from the sidebar
-  // App-wide aggregate score (mean of every domain's context score) — the
+  // App-wide aggregate score (mean of every domain's context score) - the
   // single "how ready is my whole life-OS" number, pinned bottom-left.
   const [lifeScore, setLifeScore] = useState<{ value: number; count: number } | null>(null);
   useEffect(() => {
@@ -128,7 +128,7 @@ export function Sidebar({
   const [domainsOpen, setDomainsOpen] = useState<boolean>(() => lsGet("prevail.sidebar.domainsOpen") !== "0");
   useEffect(() => { lsSet("prevail.sidebar.domainsOpen", domainsOpen ? "1" : "0"); }, [domainsOpen]);
 
-  // Archived domains — fetched from the engine. Shown in a collapsible
+  // Archived domains - fetched from the engine. Shown in a collapsible
   // group at the bottom of the rail, each with a Restore action.
   const [archived, setArchived] = useState<string[]>([]);
   const [archivedOpen, setArchivedOpen] = useState<boolean>(() => lsGet("prevail.sidebar.archivedOpen") === "1");
@@ -140,19 +140,19 @@ export function Sidebar({
       const list = await invoke<string[]>("engine_list_archived", { vault: vaultPath });
       setArchived(list);
     } catch {
-      // Engine may not support archiving yet — keep the group hidden.
+      // Engine may not support archiving yet - keep the group hidden.
       setArchived([]);
     }
   }, [vaultPath]);
   // Refresh when the active domain set changes (e.g. after archive/restore).
   useEffect(() => { void refreshArchived(); }, [refreshArchived, domains.length]);
 
-  // Apps section — peer to Domains in the sidebar.
+  // Apps section - peer to Domains in the sidebar.
   const APP_PIN_KEY = "prevail.sidebar.pinnedApps";
   const [sidebarApps, setSidebarApps] = useState<EngineApp[]>([]);
   const [appsOpen, setAppsOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsOpen") !== "0");
   // Favorites expand by default; the full list stays collapsed so a long
-  // catalog never floods the rail — mirrors Domains' Pinned/All split.
+  // catalog never floods the rail - mirrors Domains' Pinned/All split.
   const [appsFavOpen, setAppsFavOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsFavOpen") !== "0");
   const [appsAllOpen, setAppsAllOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsAllOpen") === "1");
   const [pinnedApps, setPinnedApps] = useState<Set<string>>(() => {
@@ -226,7 +226,7 @@ export function Sidebar({
               window.removeEventListener("mouseup", onUp);
               document.body.style.userSelect = "";
               if (pill) { pill.remove(); pill = null; }
-              if (!dragging) return; // a click, not a drag — let onClick fire
+              if (!dragging) return; // a click, not a drag - let onClick fire
               ev.preventDefault();
               ev.stopPropagation();
               const hook = (window as unknown as { __prevailAttachApp?: (id: string) => void }).__prevailAttachApp;
@@ -324,7 +324,7 @@ export function Sidebar({
 
       {/* Domain list (icon rail when collapsed, full list when expanded) */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        {/* General — the home for chats not tied to any domain. Selecting it
+        {/* General - the home for chats not tied to any domain. Selecting it
             unbinds the chat from domain context; its threads live in the vault
             root _threads/. New threads are created via the threads rail's +. */}
         <div className={collapsed ? "flex justify-center p-2" : "px-2 pt-2"}>
@@ -447,7 +447,7 @@ export function Sidebar({
               >
                 <button
                   onMouseDown={(e) => {
-                    // Manual drag — WebKit's HTML5 DnD in WKWebView
+                    // Manual drag - WebKit's HTML5 DnD in WKWebView
                     // doesn't reliably fire dragstart. Track mouse
                     // movement; on mouseup, hit-test the chat composer
                     // / messages area and call its global attach hook.
@@ -484,7 +484,7 @@ export function Sidebar({
                       window.removeEventListener("mouseup", onUp);
                       document.body.style.userSelect = "";
                       if (pill) { pill.remove(); pill = null; }
-                      if (!dragging) return; // treat as a click — let onClick fire
+                      if (!dragging) return; // treat as a click - let onClick fire
                       // Don't let onClick fire after a drag ended
                       ev.preventDefault();
                       ev.stopPropagation();
@@ -615,7 +615,7 @@ export function Sidebar({
           </div>
         )}
 
-        {/* Apps — peer to Domains. Always shown so it stays first-class even
+        {/* Apps - peer to Domains. Always shown so it stays first-class even
             with nothing connected yet. Favorites expand by default; the full
             list stays collapsed so a long catalog never floods the rail. */}
         {!collapsed && (
@@ -631,7 +631,7 @@ export function Sidebar({
             </button>
             {appsOpen && (sidebarApps.length > 0 ? (
               <ul className="mt-0.5 space-y-0.5 px-2">
-                {/* Favorites — pinned apps, expanded by default. */}
+                {/* Favorites - pinned apps, expanded by default. */}
                 {pinnedSidebarApps.length > 0 && (
                   <>
                     <li className="mt-1 first:mt-0">
@@ -648,7 +648,7 @@ export function Sidebar({
                     {appsFavOpen && pinnedSidebarApps.map(renderAppRow)}
                   </>
                 )}
-                {/* All — every connected app, collapsed by default. */}
+                {/* All - every connected app, collapsed by default. */}
                 {restSidebarApps.length > 0 && (
                   <>
                     <li className="mt-1 first:mt-0">
@@ -692,7 +692,7 @@ export function Sidebar({
           </div>
         )}
 
-        {/* Archived domains — collapsible. Hidden from the active list;
+        {/* Archived domains - collapsible. Hidden from the active list;
             restore brings them back into the vault scan. */}
         {!collapsed && domainsOpen && archived.length > 0 && (
           <div className="mt-3 px-2">
@@ -731,7 +731,7 @@ export function Sidebar({
         )}
       </div>
 
-      {/* App-wide readiness — the aggregate of every domain's score. */}
+      {/* App-wide readiness - the aggregate of every domain's score. */}
       {lifeScore && (
         <button
           onClick={() => setTab("settings")}
@@ -769,7 +769,7 @@ export function Sidebar({
       <SidebarBenchScheduled collapsed={collapsed} />
       <SidebarBackupActive collapsed={collapsed} />
 
-      {/* Settings + theme — pinned to bottom (Upgrade lives in Settings) */}
+      {/* Settings + theme - pinned to bottom (Upgrade lives in Settings) */}
       <div data-tour="settings" className={`border-t border-border-subtle bg-surface-warm/30 ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1 px-2 py-1.5"}`}>
         <button
           onClick={() => setTab("settings")}
@@ -832,4 +832,4 @@ export function Sidebar({
 
 
 // One floating life-domain chip: parallaxes with the cursor (via shared
-// springs) and gently bobs. Icons only — never emojis.
+// springs) and gently bobs. Icons only - never emojis.

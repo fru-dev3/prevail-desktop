@@ -41,7 +41,7 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
   const [savingDoms, setSavingDoms] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addValue, setAddValue] = useState("");
-  // Demo mode means these are sample apps that don't really connect — surface
+  // Demo mode means these are sample apps that don't really connect - surface
   // that on the Connection card so "not-configured" reads as expected, not broken.
   const [demoMode, setDemoMode] = useState(false);
   useEffect(() => {
@@ -290,7 +290,7 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
 }
 
 
-// I8 + I6: domain-level Insights — aggregates the proactive "For You" surface
+// I8 + I6: domain-level Insights - aggregates the proactive "For You" surface
 // (questions + suggested next steps), the per-domain task list, and the recent
 // intents ledger in one place, independent of any single thread. This is where
 // "what should I work on?" and "what have I been asking?" live for a domain.
@@ -326,7 +326,7 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
           ? "Local models only • Network disabled"
           : "Cloud models and web access enabled"}
       </span>
-      {/* Version — inside the ribbon so it inherits the high-contrast ribbon
+      {/* Version - inside the ribbon so it inherits the high-contrast ribbon
           text color (the old standalone pill was invisible over the dark bar). */}
       <span className="pointer-events-none absolute right-3 select-none font-mono text-[10px] tracking-wider opacity-70">
         v{APP_VERSION}
@@ -335,33 +335,33 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
   );
 }
 
-// A7: live "bridge running" chips in the app footer — so you always know a
+// A7: live "bridge running" chips in the app footer - so you always know a
 // Telegram bridge or the WebUI is serving your vault, from anywhere in the app
 // (not just buried in Settings). Polls every 4s; renders nothing when idle.
 
 // A prominent, full-width ribbon pinned to the very bottom of the app whenever
-// you're in the demo sandbox — so you always know this is sample data. The
+// you're in the demo sandbox - so you always know this is sample data. The
 // "Switch to Production" link takes you to the configuration page. Removed
 // entirely (no ribbon) the moment you're in production.
 
-// Per-domain preferred skills — auto-attach on entering a domain.
+// Per-domain preferred skills - auto-attach on entering a domain.
 
 // Concatenates a list of chat messages into a single text payload for
 // passing as context to a stateless CLI. Drops the oldest turns until
 // the total stays under `maxChars`. Empty-content messages (the streaming
 // placeholder for an in-flight reply) are excluded automatically.
 //
-// IMPORTANT: callers pass the PRIOR conversation — at send() time React's
+// IMPORTANT: callers pass the PRIOR conversation - at send() time React's
 // state update for the just-typed user turn + its placeholder has not yet
 // committed, so `msgs` does NOT contain them. We must therefore keep every
 // prior turn (filtering only empties). A previous version sliced off the
 // last two entries on the assumption the new pair was already present, which
-// silently dropped the most-recent completed exchange — so a follow-up that
+// silently dropped the most-recent completed exchange - so a follow-up that
 // referenced it (e.g. "was he any good?") reached the model with no context,
 // most visibly when switching models mid-thread. (feedback v0.4.1 B1)
 
 // ─────────────────────────────────────────────────────────────────────
-// App root — vault picker, sidebar, tabs.
+// App root - vault picker, sidebar, tabs.
 
 export function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLoadSample: () => void }) {
   // Staggered entrance for the center column.
@@ -371,7 +371,7 @@ export function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLo
     show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 120, damping: 16 } },
   };
   const reduce = useReducedMotion();
-  // Pointer parallax — shared springs the chips read from for depth.
+  // Pointer parallax - shared springs the chips read from for depth.
   const px = useMotionValue(0);
   const py = useMotionValue(0);
   const sx = useSpring(px, { stiffness: 60, damping: 18 });
@@ -497,7 +497,7 @@ export function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLo
           ))}
         </motion.div>
 
-        {/* CTA — point to a vault, or import bundled sample data */}
+        {/* CTA - point to a vault, or import bundled sample data */}
         <motion.div variants={item} className="mt-9 flex flex-wrap items-center justify-center gap-3">
           <motion.button
             onClick={onPick}

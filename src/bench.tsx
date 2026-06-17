@@ -18,7 +18,7 @@ export const BENCH_CLI_OPTIONS = [
 ] as const;
 
 // ─────────────────────────────────────────────────────────────────────
-// BENCHMARK PAGE — run (multi-model, per-domain or global), results
+// BENCHMARK PAGE - run (multi-model, per-domain or global), results
 // (by-model leaderboard + model×domain effectiveness matrix), and a
 // questions manager. Replaces the old leaderboard+popup. No modals.
 
@@ -115,7 +115,7 @@ export const BENCH_SCHED = {
   scopeDomains: "prevail.bench.schedule.scopeDomains", // csv domains, "" = all (custom)
 };
 
-// Every benchmarkable model key (cli::model) across the known providers — the
+// Every benchmarkable model key (cli::model) across the known providers - the
 // universe "all models" draws from. Availability + Bunker filtering happens at
 // build time (some of these CLIs may not be installed).
 export function allBenchModelKeys(): string[] {
@@ -297,8 +297,8 @@ export function startBenchScheduler(vault: string) {
 }
 
 // Run a batch of benchmark jobs to completion (all jobs in parallel, then one
-// scoring pass). Lives at module scope, mutating the registry — NOT component
-// state — so the run survives whatever the user navigates to.
+// scoring pass). Lives at module scope, mutating the registry - NOT component
+// state - so the run survives whatever the user navigates to.
 
 export async function executeBenchBatch(
   vault: string,
@@ -311,7 +311,7 @@ export async function executeBenchBatch(
   const dateLabel = `${MONTHS[now.getMonth()]} ${now.getDate()}`;
   const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const batchId = `b${now.getTime()}`;
-  // T18 (inert until keys exist; default-OFF, allowlist-scrubbed to counts only —
+  // T18 (inert until keys exist; default-OFF, allowlist-scrubbed to counts only -
   // no model ids, no domain names, no question text).
   track("benchmark_run", { models: plannedJobs.length, domains: scopeStr ? scopeStr.split(",").filter(Boolean).length : 0 });
   const scopeDomains = scopeStr ? scopeStr.split(",").map((d) => titleCase(d.trim())).filter(Boolean) : [];
@@ -401,7 +401,7 @@ export async function executeBenchBatch(
   };
 
   try {
-    // ALL jobs run in parallel — each is its own engine process, and
+    // ALL jobs run in parallel - each is its own engine process, and
     // waiting serially on a 24-question run per model is far worse than
     // the occasional provider rate-limit (which surfaces as a per-job
     // error you can rerun).

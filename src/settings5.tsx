@@ -28,7 +28,7 @@ export const COMING_SOON_GATEWAYS: { name: string; icon?: { path: string; hex: s
   { name: "SMS (Twilio)", mono: MessageSquare },
 ];
 
-// U2: Gateway is the single, self-contained section (owns its header) — folds in
+// U2: Gateway is the single, self-contained section (owns its header) - folds in
 // the former "Integrations" bridge cards (A1) without the earlier double header /
 // double Telegram-card bug. Live bridges first, then coming-soon, evenly gridded.
 
@@ -80,7 +80,7 @@ export function GatewaySection() {
         <CollapsibleSection
           icon={Sparkles}
           title="More surfaces"
-          subtitle="Native bridges on the way — most are reachable today via the Webhook."
+          subtitle="Native bridges on the way - most are reachable today via the Webhook."
           summary={`${COMING_SOON_GATEWAYS.length} native pending`}
         >
           <div className="mb-3 rounded-md border border-accent-border/40 bg-accent-soft/20 px-3 py-2 text-xs text-text-secondary">
@@ -104,7 +104,7 @@ export function GatewaySection() {
 }
 
 export function TelegramCard() {
-  // Audit #7: the bot token is a secret — it lives in the Keychain, never in
+  // Audit #7: the bot token is a secret - it lives in the Keychain, never in
   // localStorage. `token` is a transient input value only; `tokenSaved` reflects
   // whether a token exists in the Keychain. chatId is just an identifier (not a
   // secret), so it stays in localStorage.
@@ -252,7 +252,7 @@ export function TelegramCard() {
 
   const ready = !!chatId.trim() && (!!token.trim() || tokenSaved);
   return (
-    // TG-1: cleaner top-to-bottom flow — header carries the live status; setup
+    // TG-1: cleaner top-to-bottom flow - header carries the live status; setup
     // (credentials + routing) is one labelled block; one primary action row;
     // running stats + feed only appear when relevant; help is a quiet footer.
     <div className="rounded-xl border border-border bg-surface p-5">
@@ -272,7 +272,7 @@ export function TelegramCard() {
       </div>
 
       <div className="mt-4 space-y-4">
-        {/* Step 1 — credentials + routing, one premium setup block. */}
+        {/* Step 1 - credentials + routing, one premium setup block. */}
         <div className="rounded-lg border border-border bg-background p-4">
           <div className="space-y-3">
             <label className="block">
@@ -313,7 +313,7 @@ export function TelegramCard() {
           </div>
         </div>
 
-        {/* Step 2 — one action row. P1 (Monday feedback): the bridge is an ON/Off
+        {/* Step 2 - one action row. P1 (Monday feedback): the bridge is an ON/Off
             toggle (was Start/Stop text); test is the secondary action. */}
         <div className="flex flex-wrap items-center gap-2">
           <label className={`inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm ${ready ? "" : "opacity-50"}`} title={ready ? "Turn the bridge on/off" : "Fill in token + chat ID first"}>
@@ -337,7 +337,7 @@ export function TelegramCard() {
           <div className="rounded border border-warn/40 bg-warn/10 px-2 py-1 text-xs text-warn">{bridge.last_error}</div>
         )}
 
-        {/* Live feed — only when there's traffic. */}
+        {/* Live feed - only when there's traffic. */}
         {feed.length > 0 && (
           <ul className="max-h-40 overflow-y-auto rounded-lg border border-border-subtle bg-background px-2 py-1.5">
             {feed.map((f, i) => (
@@ -359,7 +359,7 @@ export function TelegramCard() {
   );
 }
 
-// A6 — generic inbound Webhook surface. Credential-free (a self-generated
+// A6 - generic inbound Webhook surface. Credential-free (a self-generated
 // secret), so it's the one bridge that's fully functional out of the box: any
 // system POSTs {message} and gets the council's reply. Backend: webhook_bridge.rs.
 export function WebhookCard() {
@@ -393,7 +393,7 @@ export function WebhookCard() {
   }, []);
 
   async function generateSecret() {
-    // 32 random bytes, hex — generated in the renderer only to seed the Keychain.
+    // 32 random bytes, hex - generated in the renderer only to seed the Keychain.
     const buf = new Uint8Array(32);
     crypto.getRandomValues(buf);
     const hex = Array.from(buf).map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -477,7 +477,7 @@ export function WebhookCard() {
   );
 }
 
-// A6 — native poll bridges (Matrix, Mattermost). Two-way relays over HTTP polling
+// A6 - native poll bridges (Matrix, Mattermost). Two-way relays over HTTP polling
 // (no WebSocket), backend: native_bridge.rs. Off by default; inert until the user
 // fills in server + token + channel and toggles it on.
 export function NativeBridgeCard({ platform, label, icon, mono, urlLabel, urlPlaceholder, channelLabel, channelPlaceholder, noToken }: {
@@ -785,14 +785,14 @@ export function McpCard() {
   );
 }
 
-// BriefingsCard removed — landing back in v0.3 when wired up.
+// BriefingsCard removed - landing back in v0.3 when wired up.
 
 export function McpSection({ vaultPath }: { vaultPath: string }) {
   const [enginePath, setEnginePath] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [testing, setTesting] = useState(false);
   const [handshake, setHandshake] = useState<{ ok: boolean; msg: string } | null>(null);
-  // "Move to Applications" state — must be top-level hooks (the block that uses
+  // "Move to Applications" state - must be top-level hooks (the block that uses
   // them renders conditionally on mcpPathUnstable, which flips after the async
   // engine-path resolves; declaring them inside that block broke rules-of-hooks).
   const [moving, setMoving] = useState(false);
@@ -810,7 +810,7 @@ export function McpSection({ vaultPath }: { vaultPath: string }) {
     invoke<{ engine_bin?: string }>("app_diagnostics").then((d) => setEnginePath(d.engine_bin ?? "prevail")).catch(() => setEnginePath("prevail"));
   }, []);
   const { command: mcpCommand, unstable: mcpPathUnstable } = mcpCommandPath(enginePath);
-  // Ready-to-paste configs per client — the resolved absolute bin path baked in,
+  // Ready-to-paste configs per client - the resolved absolute bin path baked in,
   // so connecting is copy-paste instead of guesswork.
   const clients: { id: string; label: string; kind: "shell" | "json" | "toml"; body: string; note: string }[] = [
     {
@@ -1079,7 +1079,7 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
     setCheckErr(null);
     setLatest(null);
     try {
-      // Preferred path: the Tauri updater — checks the signed latest.json feed,
+      // Preferred path: the Tauri updater - checks the signed latest.json feed,
       // downloads + installs in-place, then relaunches. No browser detour.
       const update = await checkUpdate();
       if (update) {
@@ -1162,7 +1162,7 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
         {checkErr && <div className="w-full rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-xs text-warn">{checkErr}</div>}
       </div>
 
-      {/* Links — a horizontal wrap of chips (was a tall stacked list) to use the
+      {/* Links - a horizontal wrap of chips (was a tall stacked list) to use the
           full width and shave vertical height. */}
       <div className="mt-3 flex flex-wrap gap-2">
         {/* O1: replay the onboarding tour. */}
@@ -1197,7 +1197,7 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
         </a>
       </div>
 
-      {/* Config — export / import / reset */}
+      {/* Config - export / import / reset */}
       <div className="mt-3 rounded-xl border border-border bg-surface p-4 shadow-sm">
         <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Configuration</div>
         <div className="flex flex-wrap gap-2">
@@ -1211,7 +1211,7 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
         <div className="mt-2 text-xs text-text-secondary">Backs up / restores all app preferences (not your vault). Reset clears every preference and reloads.</div>
       </div>
 
-      {/* Diagnostics — a real health check, one row per thing Prevail needs. */}
+      {/* Diagnostics - a real health check, one row per thing Prevail needs. */}
       <div className="mt-3 rounded-xl border border-border bg-surface p-4 shadow-sm">
         <div className="mb-1 flex items-center justify-between">
           <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Health check</div>
@@ -1245,7 +1245,7 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
         )}
       </div>
 
-      {/* Danger zone — uninstall (never touches the vault) */}
+      {/* Danger zone - uninstall (never touches the vault) */}
       <div className="mt-3 rounded-xl border border-warn/30 bg-warn/5 p-4">
         <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-warn">Danger zone</div>
         <div className="mb-3 text-xs text-text-secondary">Removes the app and its data. Your vault is never deleted.</div>

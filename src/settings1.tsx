@@ -100,7 +100,7 @@ export function FrameworksSection() {
         subtitle="The bracketed preamble Prevail prepends to every prompt. A framework shapes the structure of the answer; a lens shapes the perspective it comes from."
       />
 
-      {/* Why this matters — collapsed by default so landing isn't noisy. */}
+      {/* Why this matters - collapsed by default so landing isn't noisy. */}
       <CollapsibleSection icon={Lightbulb} title="Why this matters" summary="how it works"
         subtitle="A framework shapes the structure; a lens shapes the perspective.">
         <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
@@ -125,7 +125,7 @@ export function FrameworksSection() {
         <p className="mt-3 text-[13px] text-text-muted">Stack a framework with a lens to pressure-test one decision from several angles at once.</p>
       </CollapsibleSection>
 
-      {/* The controls themselves — collapsible, each header showing the active
+      {/* The controls themselves - collapsible, each header showing the active
           selection so the page is calm but the current state is obvious. */}
       <CollapsibleSection icon={Diamond} title="Frameworks" summary={`Active · ${activeFramework?.label ?? "Off"}`}
         subtitle="Structure: how the answer is shaped." storageKey="prevail.settings.fw.frameworks" defaultOpen>
@@ -138,7 +138,7 @@ export function FrameworksSection() {
           active={activeLens} selectedId={fwLens.lens} onSelect={fwLens.setLens} />
       </CollapsibleSection>
 
-      {/* More coming soon + feedback — collapsed, secondary. */}
+      {/* More coming soon + feedback - collapsed, secondary. */}
       <CollapsibleSection icon={Sparkles} title="More coming soon" summary="custom + feedback">
         <p className="max-w-3xl text-sm text-text-secondary">
           Custom frameworks and lenses (write and save your own) are on the way. Today's set ships with Prevail. Have a
@@ -230,7 +230,7 @@ export function RemoteSection() {
 }
 
 // The MCP "expose" config is pasted into Claude Desktop and used long-term, so
-// it must reference a STABLE absolute path — not the transient location the app
+// it must reference a STABLE absolute path - not the transient location the app
 // happens to be running from. When launched straight off the mounted DMG
 // (/Volumes/…) or under macOS App Translocation (/private/var/folders/…), the
 // bundled-sidecar path would vanish the moment the volume ejects. Normalize

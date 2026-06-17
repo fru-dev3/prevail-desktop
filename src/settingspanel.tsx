@@ -59,7 +59,7 @@ export function SettingsPanel({
   const [settingsDeepLink, setSettingsDeepLink] = useState<string | null>(null);
   // In-settings deep links (e.g. a model row's "runs" button jumping to the
   // Benchmark cockpit) dispatch this event rather than threading props.
-  // Format: "section" or "section:detail" — detail is passed to the section.
+  // Format: "section" or "section:detail" - detail is passed to the section.
   useEffect(() => {
     const onJump = (e: Event) => {
       const raw = (e as CustomEvent<string>).detail;
@@ -77,7 +77,7 @@ export function SettingsPanel({
     return () => window.removeEventListener("prevail:settings-section", onJump as EventListener);
   }, []);
 
-  // Grouped settings nav — the flat 19-item list was hard to scan and mixed
+  // Grouped settings nav - the flat 19-item list was hard to scan and mixed
   // unrelated concerns (e.g. General vs Defaults overlap). Organized into
   // labeled sections so related settings sit together and the redundancy reads
   // as intentional structure.
@@ -93,7 +93,7 @@ export function SettingsPanel({
       { id: "skills", label: "Skills", icon: Sparkles },
       { id: "benchmark", label: "Benchmark", icon: Target },
     ]},
-    // M1 (Monday feedback): "Context & Memory", in the founder-specified order —
+    // M1 (Monday feedback): "Context & Memory", in the founder-specified order -
     // Ideals (what the user inputs) → Omega (distilled) → Intents (what the user
     // is doing) → Recommendations (things for the user) → Routines. The old
     // "Configuration" (memory-engine knobs) + cross-domain Tasks move to the App
@@ -129,7 +129,7 @@ export function SettingsPanel({
     ]},
   ];
 
-  // Live-bridge counter — used to light up the Gateway row in the nav
+  // Live-bridge counter - used to light up the Gateway row in the nav
   // when one or more routers (currently just Telegram) is running.
   const [liveBridges, setLiveBridges] = useState(0);
   useEffect(() => {
@@ -146,7 +146,7 @@ export function SettingsPanel({
     return () => window.clearInterval(id);
   }, []);
 
-  // Proactive recommendation count — a badge so the user notices suggestions
+  // Proactive recommendation count - a badge so the user notices suggestions
   // without digging into the section. Refreshed on a slow cadence.
   const [recCount, setRecCount] = useState(0);
   useEffect(() => {
@@ -159,7 +159,7 @@ export function SettingsPanel({
     return () => { alive = false; window.clearInterval(id); };
   }, [vaultPath]);
 
-  // MCP live indicator — read from localStorage; McpCard writes the same key.
+  // MCP live indicator - read from localStorage; McpCard writes the same key.
   const [mcpLive, setMcpLive] = useState(() => lsGet(LS.mcpEnabled) === "1");
   useEffect(() => {
     const id = window.setInterval(() => setMcpLive(lsGet(LS.mcpEnabled) === "1"), 2000);
@@ -168,7 +168,7 @@ export function SettingsPanel({
 
   return (
     <div className="flex h-full">
-      {/* Sidebar nav — Codex-style with Back to app at top */}
+      {/* Sidebar nav - Codex-style with Back to app at top */}
       <aside className="flex h-full min-h-0 w-56 shrink-0 flex-col overflow-y-auto border-r border-border-subtle bg-surface-warm px-2 py-3">
         {onBack && (
           <button
@@ -240,7 +240,7 @@ export function SettingsPanel({
 
       {/* Main pane */}
       <div className="min-w-0 flex-1 overflow-y-auto">
-        {/* Full width — settings use the whole pane, left-aligned, to match
+        {/* Full width - settings use the whole pane, left-aligned, to match
             the rest of the app. Long prose inside sections caps itself
             (subtitles use max-w-2xl) so readability stays intact. */}
         <div className="w-full px-8 py-10">
@@ -276,7 +276,7 @@ export function SettingsPanel({
             <>
               <AppsPanel vaultPath={vaultPath} />
               <div className="mt-8">
-                {/* APP-1: Advanced is the CATALOG + tiers only — connected apps
+                {/* APP-1: Advanced is the CATALOG + tiers only - connected apps
                     are shown once, above, in AppsPanel (catalogOnly suppresses the
                     duplicate connected list inside ConnectorsSection). */}
                 <CollapsibleSection icon={Wrench} title="Browse the catalog" summary="1000+ apps & connection tiers"

@@ -214,7 +214,7 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
     invoke<EngineApp[]>("engine_apps_list").then(setApps).catch(() => setApps([]));
   }, []);
   const domainApps = useMemo(() => (apps ?? []).filter((a) => a.domains.includes(domain)), [apps, domain]);
-  // Apps NOT yet feeding this domain — the candidates the picker offers.
+  // Apps NOT yet feeding this domain - the candidates the picker offers.
   const available = useMemo(() => (apps ?? []).filter((a) => !a.domains.includes(domain)), [apps, domain]);
 
   async function sync(id: string) {
@@ -227,7 +227,7 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
     setProbing(null);
   }
 
-  // Bind an app to THIS domain — the mirror of the app-side domain editor. Same
+  // Bind an app to THIS domain - the mirror of the app-side domain editor. Same
   // engine_app_set_domains backend, just adding `domain` to the app's set.
   async function bindApp(app: EngineApp) {
     setBinding(app.id);
@@ -345,7 +345,7 @@ export function ContextScorePanel({
   onRescan: () => void;
   vaultPath: string;
 }) {
-  // The score over time — makes the "ever-improving" nature visible: it climbs on
+  // The score over time - makes the "ever-improving" nature visible: it climbs on
   // its own as apps sync, memory distills, and context is added. Refetched when
   // the score changes (a new scan appended a point).
   const [history, setHistory] = useState<number[]>([]);
@@ -407,7 +407,7 @@ export function ContextScorePanel({
             updated {formatFreshness(score.freshness_secs)}
             {score.audit_source ? ` · ${score.audit_source}` : " · heuristic"}
           </div>
-          {/* Trend — the self-learning story: this climbs on its own as Prevail
+          {/* Trend - the self-learning story: this climbs on its own as Prevail
               syncs apps, distills memory, and you add context. */}
           {history.length >= 2 ? (
             <div className="mt-2 flex items-center gap-2">
@@ -447,7 +447,7 @@ export function ContextScorePanel({
         </div>
       )}
 
-      {/* Domain fit — the domain-intelligent relevance checklist. Only present
+      {/* Domain fit - the domain-intelligent relevance checklist. Only present
           when the CLI matched a rubric for this domain. */}
       {score.relevance && (
         <div>
@@ -614,7 +614,7 @@ export function IngestionTierCard({
   const [open, setOpen] = useState<boolean>(() => tier.active || tier.running > 0);
   const TierIcon = tier.id === "tier_a_mcp" ? Plug : tier.id === "tier_b_composio" ? Boxes : tier.id === "tier_c_browser" ? Globe : Terminal;
 
-  // Tier D — load the bundled providers and probe which CLIs are installed.
+  // Tier D - load the bundled providers and probe which CLIs are installed.
   useEffect(() => {
     if (tier.id !== "tier_d_cli") return;
     (async () => {
@@ -706,7 +706,7 @@ export function IngestionTierCard({
         </div>
       )}
 
-      {/* Tier A — MCP server list */}
+      {/* Tier A - MCP server list */}
       {tier.id === "tier_a_mcp" && mcp && (
         <div className="mt-4">
           <div className="mb-3 flex items-center gap-2">
@@ -778,7 +778,7 @@ export function IngestionTierCard({
         </div>
       )}
 
-      {/* Tier B — Composio key input + start */}
+      {/* Tier B - Composio key input + start */}
       {tier.id === "tier_b_composio" && (
         <div className="mt-4 flex flex-col gap-2">
           <div className="flex items-center gap-2">
@@ -819,14 +819,14 @@ export function IngestionTierCard({
         </div>
       )}
 
-      {/* Tier C — described inline; run UI is in IngestionBrowserRunner below */}
+      {/* Tier C - described inline; run UI is in IngestionBrowserRunner below */}
       {tier.id === "tier_c_browser" && (
         <p className="mt-3 text-xs text-text-muted">
           Run a portal automation below. Browser opens in headed mode with a persistent profile per (domain, portal). Downloads are intercepted into the domain's <code className="text-accent">imports/</code> folder.
         </p>
       )}
 
-      {/* Tier D — official CLI connectors. Read-only pull of an installed CLI. */}
+      {/* Tier D - official CLI connectors. Read-only pull of an installed CLI. */}
       {tier.id === "tier_d_cli" && (
         <div className="mt-4 flex flex-col gap-2">
           <p className="text-xs text-text-muted">
@@ -886,7 +886,7 @@ export function PaletteCard({
           : "border-border-subtle hover:border-border"
       }`}
     >
-      {/* Preview card — solid swatch of the palette */}
+      {/* Preview card - solid swatch of the palette */}
       <div
         className="relative h-24 px-4 py-3"
         style={{ backgroundColor: palette.swatch.bg }}
