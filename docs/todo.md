@@ -20,17 +20,26 @@ fixed and verified:
   Ollama all detected).
 - **G1 / M6 / A6 / W1-W3 / O1 / P1,P3,P4** confirmed done (v0.8.5 / verified now).
 
-### Genuinely remaining (need founder input — NOT done autonomously)
-- **W4 — vault file-structure reorg (engine migration).** Moving loose root files
-  into `data/` touches EVERY existing user vault on disk. Per the "never lose user
-  data" hard rule this needs a founder-reviewed safe migrator + tests before it
-  runs. Deferred pending sign-off; design note to be written.
-- **I1 — package-name convention.** Folders are consistent; package names diverge
-  (`fd-apps-prevail-desktop` vs `fd-apps-prevail-site` vs `prevail`). One-line
-  founder decision needed on the canonical convention, then a rename.
-- Minor/low-value polish: **K5** (benchmark current-domain indicator — the standalone
-  Benchmark tab spans all domains, so the ask is ambiguous), **P2** (which verbose
-  panel? needs the PDF callout), **A1** (copy tightening). Left for a polish pass.
+### Cleared in the /goal pass (2026-06-16/17)
+- **I1 — DONE.** Web was already `fd-apps-prevail-web` (todo was stale); only the cli
+  diverged. Renamed cli package `prevail` → `fd-apps-prevail-cli` (bin command stays
+  `prevail`). Convention from CLAUDE.md applied directly.
+- **K5 — DONE.** Added a current-domain indicator chip to the Benchmark header
+  (shows the domain you arrived from). (benchpanel.tsx)
+- **A1 — DONE (already).** appspanel.tsx subtitle is explicit: "Connect each one
+  once, then it's available to any domain's context. No duplicates." + APP-2 dedup.
+
+### Irreducible remainder — externally blocked (cannot be done autonomously)
+- **W4 — vault file-structure migration.** EXECUTION touches every user vault on
+  disk; per "never lose user data" it ships only with founder sign-off. Scoped plan
+  written: `docs/W4-vault-migration-plan.md` (recommend: land path-resolver +
+  fallback reads first = zero user-visible change, then enable the migrator).
+  **Blocked on: founder go.**
+- **Autonomous-connect live test.** Sidecar rebuilt + `doctor` verified, but a real
+  end-to-end connect needs real app credentials + an interactive run.
+  **Blocked on: credentials + human-in-the-loop.**
+- **P2 — trim verbose panel.** Can't identify WHICH panel without the PDF p3
+  callout. **Blocked on: which panel.**
 
 ---
 
