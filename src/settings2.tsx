@@ -470,7 +470,7 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
       <SettingsHeader
         title="Intents"
         icon={Lightbulb}
-        subtitle="Your JOURNAL is the raw record of what you asked, logged per domain across every thread. INTENTS are the distillation of it: the goal behind the questions (per-domain or cross-domain), with recommended next actions. The journal lives below as provenance; intents are lifted from it."
+        subtitle="Intents are the goal behind your questions, distilled from your journal (the raw record of what you asked), with recommended next actions. The journal lives below as provenance."
       />
 
       {/* Distilled intents — the high-level layer. */}
