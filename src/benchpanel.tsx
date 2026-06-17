@@ -1595,6 +1595,16 @@ export function BenchmarkPanel({
             </button>
           ))}
         </div>
+        {/* K5/C2: current-domain indicator — which domain you arrived from, so
+            the Benchmark page (which spans all domains) is never ambiguous. */}
+        {initialDomain && (
+          <span
+            title={`You came in from the ${titleCase(initialDomain)} domain`}
+            className="inline-flex items-center gap-1 rounded-lg border border-accent-border bg-accent-soft/40 px-2.5 py-1 font-mono text-[11px] text-accent"
+          >
+            <Target className="h-3 w-3" /> {titleCase(initialDomain)}
+          </span>
+        )}
         {/* Contextual, same bar: run mode while configuring; domain filter on
             the score views. */}
         {view === "run" && (
