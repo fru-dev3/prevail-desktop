@@ -461,7 +461,7 @@ export function ConfigurationSection({ vaultPath }: { vaultPath: string }) {
           the Context panel, so repeating it on this page was a duplicate. */}
       <div className="space-y-2">
         <Sub id="memory" title="Memory & Context" icon={Brain} desc="Persistent memory, distillation, and what stays in context across sessions.">
-          <MemoryContextSection vaultPath={vaultPath} />
+          <MemoryContextSection vaultPath={vaultPath} headerless />
         </Sub>
         <Sub id="tasks" title="Tasks" icon={ListChecks} desc="Cross-domain task ledger: every pending item across your vault in one view.">
           <TasksCrossDomainSection vaultPath={vaultPath} />
