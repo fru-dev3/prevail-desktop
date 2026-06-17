@@ -6,6 +6,34 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[?]` needs foun
 
 ---
 
+## STATUS — 2026-06-16 (post-/goal pass)
+The bulk of this list shipped in **v0.8.5** (Monday-feedback B/C/M/L/W/A/G/K/P/O). A
+later live-review surfaced a few **regressions** that slipped through; those are now
+fixed and verified:
+- **B-group: ALL fixed** — B1 (drag→context hook teardown race), B2 (prior), B3
+  (thread binding: slug round-trip mangled underscores), B4 (false benchmark
+  count), B5 (routing keywords now persisted to manifest), B6 (prior).
+- **C1** General context parity (functional already; stale note fixed). **C2** thread
+  name in canvas done.
+- **K6** AI benchmark questions now grounded in the user profile + constitution.
+- **A4** auto-detection VERIFIED via `prevail doctor` (Claude, Codex, Antigravity,
+  Ollama all detected).
+- **G1 / M6 / A6 / W1-W3 / O1 / P1,P3,P4** confirmed done (v0.8.5 / verified now).
+
+### Genuinely remaining (need founder input — NOT done autonomously)
+- **W4 — vault file-structure reorg (engine migration).** Moving loose root files
+  into `data/` touches EVERY existing user vault on disk. Per the "never lose user
+  data" hard rule this needs a founder-reviewed safe migrator + tests before it
+  runs. Deferred pending sign-off; design note to be written.
+- **I1 — package-name convention.** Folders are consistent; package names diverge
+  (`fd-apps-prevail-desktop` vs `fd-apps-prevail-site` vs `prevail`). One-line
+  founder decision needed on the canonical convention, then a rename.
+- Minor/low-value polish: **K5** (benchmark current-domain indicator — the standalone
+  Benchmark tab spans all domains, so the ask is ambiguous), **P2** (which verbose
+  panel? needs the PDF callout), **A1** (copy tightening). Left for a polish pass.
+
+---
+
 ## How I'd sequence this (recommendation)
 ~40 items. Not all equal. Proposed order, highest-leverage / lowest-risk first:
 
@@ -24,21 +52,22 @@ Two items need a decision before building: **L (Loops agentic model)** and **M1 
 
 ---
 
-## B · Bugs & regressions (do first)
-- [ ] **B1 — Drag domain → chat context broken.** Used to be able to drag a domain from the left
-  sidebar into the chat context; no longer works. (PDF p5)
-- [ ] **B2 — `$domain` reference broken.** Typing `$Wealth` (etc.) to add/reference a domain in the
-  composer + Enter does nothing. (PDF p5)
-- [ ] **B3 — Thread binding bug.** Selecting an empty "Untitled" thread and typing spawns a NEW
-  thread named after the prompt, leaving the Untitled one. Conversations must stay strictly tied to
-  the selected thread (even untitled). Also: show the thread name in the chat canvas so there's
-  never confusion about which thread you're in. (PDF p6)
-- [ ] **B4 — Benchmark "Draft with AI" false "0/3" message.** Drafting questions for a domain shows
-  "Drafted 0/3 · under target" while the questions ARE actually generated. Fix the
-  count/messaging (likely the added-count diff vs the generated questions). (PDF p8)
-- [ ] **B5 — Channel routing not populated.** The per-domain channel/routing keywords aren't being
-  filled. Fix, and add relevant contextual suggestions. (PDF p2)
-- [ ] **B6 — Models page shows Direct Providers twice.** Duplicate section. (PDF p3 — folded into G1)
+## B · Bugs & regressions (do first) — ALL DONE
+- [x] **B1 — Drag domain → chat context broken.** Fixed: `__prevailAttach` hook
+  was torn down on callback-identity change (teardown race). Register once on
+  mount via refs. (chatpanel.tsx)
+- [x] **B2 — `$domain` reference broken.** Already fixed earlier (98d6fd2) — hardened + surfaces attach failures.
+- [x] **B3 — Thread binding bug.** Fixed: save_thread re-slugified an existing
+  filename stem (underscores→dashes), creating a new file. Preserve the stem
+  (path-sanitized). Thread name already rendered in canvas (C2). (threads.rs)
+- [x] **B4 — Benchmark "Draft with AI" false "0/3" message.** Fixed: count from
+  disk not stale state, settle before recount, only warn under-target with
+  positive evidence; exit code is source of truth. (benchpanel.tsx)
+- [x] **B5 — Channel routing not populated.** Fixed: derived keywords now persist
+  to the manifest (not just localStorage) so the CLI gateway sees them; default
+  manifest seeds the domain name. (domainpanels.tsx, cli manifest.ts)
+- [x] **B6 — Models page shows Direct Providers twice.** Already fixed — duplicate
+  removed; Direct Providers lives only in ModelsSection (settings7.tsx:270).
 
 ## C · Chat / threads / context
 - [ ] **C1 — General context parity.** The right-side Context panel for **General** only shows
