@@ -96,7 +96,7 @@ export function ChatBubble({
   const { accent, tint } = vendorAccent(vendor);
   // The real failure reason from the CLI's stderr, if any.
   const cliError = empty ? extractCliError(msg.stderr) : null;
-  // Brand styling only on normal replies — error bubbles keep the warn
+  // Brand styling only on normal replies - error bubbles keep the warn
   // palette so failures still read as failures.
   const bubbleStyle: React.CSSProperties = empty
     ? {}
@@ -107,7 +107,7 @@ export function ChatBubble({
       <div className="min-w-0 flex-1">
         <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-text-secondary">
           <span className="font-display font-semibold tracking-tight" style={{ color: accent }}>{vendorName}</span>
-          {/* I9: which model + how it was shaped (framework/lens) — so each turn
+          {/* I9: which model + how it was shaped (framework/lens) - so each turn
               is self-describing, not a mystery. */}
           {msg.role === "assistant" && msg.model && (
             <span className="font-mono text-[10px] lowercase text-text-muted" title={`Model: ${msg.model}`}>{modelLabel(msg.cli, msg.model)}</span>
@@ -149,7 +149,7 @@ export function ChatBubble({
           ) : msg.streaming ? (
             <ThinkingDots />
           ) : (
-            // Empty-reply fallback — explain + offer Retry instead of
+            // Empty-reply fallback - explain + offer Retry instead of
             // dead "(empty reply)" text.
             <div className="flex items-start gap-3">
               <div className="flex-1">
@@ -258,7 +258,7 @@ export function DomainStatusBar({
   domain: string | null;
   fwLens: ReturnType<typeof useFrameworkLens>;
 }) {
-  // Hooks must be top-level — initialize state from localStorage once
+  // Hooks must be top-level - initialize state from localStorage once
   // per domain, then keep React state as the source of truth so toggles
   // re-render reliably.
   const [council, setCouncil]     = useState(false);
@@ -322,7 +322,7 @@ export function DomainStatusBar({
       </span>
     </button>
   );
-  // The composer's "Council" pill is the action button — this strip is
+  // The composer's "Council" pill is the action button - this strip is
   // for persistent per-domain settings only. Silence unused-var warnings.
   void council; void setCouncil;
   // Returns the pills as a fragment so they participate in the parent
@@ -331,13 +331,13 @@ export function DomainStatusBar({
   // Auto are per-domain so they only render when a domain is selected.
   return (
     <>
-      {/* Per-prompt reasoning controls — change often, so they sit inline.
+      {/* Per-prompt reasoning controls - change often, so they sit inline.
           Each opens a labelled list so you pick directly. */}
       <PreamblePicker glyph="◆" label="Framework" options={FRAMEWORKS} selectedId={fwLens.framework} onSelect={fwLens.setFramework} />
       <PreamblePicker glyph="◇" label="Lens" options={LENSES} selectedId={fwLens.lens} onSelect={fwLens.setLens} />
       <div ref={modesRef} className="relative inline-flex items-center">
           <span className="mx-1 select-none text-text-muted/40">·</span>
-          {/* Modes — set once, rarely changed, so they're tucked in a popover
+          {/* Modes - set once, rarely changed, so they're tucked in a popover
               with an active-count badge instead of crowding the row. Available
               everywhere, including General (stored in its own bucket). */}
           <button
@@ -401,7 +401,7 @@ export function DomainHome({
   domain: string;
   vaultPath: string;
   // When an app is open we reuse DomainHome for the conversation body but hide
-  // the "apps refreshing this domain" strip — that's a domain view, and an app
+  // the "apps refreshing this domain" strip - that's a domain view, and an app
   // shouldn't list its sibling apps.
   isApp?: boolean;
   onInjectContext: (body: string, label: string) => void;
@@ -411,13 +411,13 @@ export function DomainHome({
   onTogglePreferred: (name: string) => void;
 }) {
   type Tab = "chat" | "state" | "decisions" | "journal" | "logs" | "skills";
-  // Chat is the default — state is already auto-loaded as context, so
+  // Chat is the default - state is already auto-loaded as context, so
   // we don't dump the user into the state doc on entry.
   const [tab, setTab] = useState<Tab>("chat");
   const [ctx, setCtx] = useState<DomainContextBundle | null>(null);
   const [loading, setLoading] = useState(true);
   const [taskNonce, setTaskNonce] = useState(0); // bump to reload the tasks panel
-  // Starter prompts from the domain's PROMPTS.md (written by pack import) — the
+  // Starter prompts from the domain's PROMPTS.md (written by pack import) - the
   // one-click conversation starters that make an imported pack chat-ready.
   const [starterPrompts, setStarterPrompts] = useState<string[]>([]);
   useEffect(() => {
@@ -442,7 +442,7 @@ export function DomainHome({
   };
   const Icon = domainIcon(domain);
 
-  // Suppress unused warning — kept for future read-only views.
+  // Suppress unused warning - kept for future read-only views.
   void onInjectContext;
   void Icon;
   // Domain title lives in the ChatPanel header above; here we go
@@ -482,7 +482,7 @@ export function DomainHome({
                 <SurfacePanel vaultPath={vaultPath} domain={domain} onPick={onPickPrompt}
                   onAddTask={async (t) => { try { await invoke("tasks_add", { vault: vaultPath, domain, text: t, source: "surface" }); setTaskNonce((n) => n + 1); } catch (e) { console.error("tasks_add", e); } }} />
                 <TasksPanel vaultPath={vaultPath} domain={domain} nonce={taskNonce} />
-                {/* Quick actions — compact single-line rows (label + one-line prompt)
+                {/* Quick actions - compact single-line rows (label + one-line prompt)
                     so the home fits without scrolling; full prompt on hover. */}
                 <ul className="mt-2 flex flex-col gap-1">
                 {buildQuickActions(domain).map((q) => (

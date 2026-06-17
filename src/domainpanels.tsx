@@ -22,7 +22,7 @@ export const SECTION_LABEL =
 // agent stays expanded. Clicking sets the chat panel's primary CLI.
 // Full-canvas preferences panel for the currently-selected domain.
 // Replaces the popover. Every control writes to localStorage on
-// click; no save button — picks are immediate. Pickers use brand
+// click; no save button - picks are immediate. Pickers use brand
 // icons for CLIs, prose labels for everything else.
 
 export function DomainContextDrawer({
@@ -51,7 +51,7 @@ export function DomainContextDrawer({
     recent: true, memory: false, state: false, decisions: false, journal: false, logs: false, skills: false,
   });
   // Live decision ledger (_decisions.jsonl) + distilled long-term memory.
-  // These update the moment a verdict is saved — no waiting on distillation.
+  // These update the moment a verdict is saved - no waiting on distillation.
   type DecisionRecord = { id?: string; ts?: number; kind?: string; prompt?: string; verdict?: string; feedback?: { rating?: string } | string | null };
   const [decisionLog, setDecisionLog] = useState<DecisionRecord[]>([]);
   const [memory, setMemory] = useState<string>("");
@@ -66,7 +66,7 @@ export function DomainContextDrawer({
     const load = () => {
       // C1 (Monday feedback): General now gets the SAME context items as domains.
       // domain_context with an empty domain reads the vault ROOT, which is exactly
-      // where General's journal / session logs / skills / decisions live — so the
+      // where General's journal / session logs / skills / decisions live - so the
       // panel shows them instead of only the cross-cutting trio.
       invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain: domain || "" })
         .then((c) => { if (mounted) { setCtx(c); setErr(null); } })
@@ -141,7 +141,7 @@ export function DomainContextDrawer({
         {err && <div className="m-2 rounded border border-warn/40 bg-warn/10 p-3 text-xs text-warn">{err}</div>}
         {!domain && (
           <div className="border-b border-border-subtle px-4 py-2.5 text-[11px] leading-relaxed text-text-muted">
-            General is your no-domain workspace. It has its own state, journal, session logs, decisions, and skills — the same context items a domain has, kept at the vault root. Open a domain to see that domain's own context instead.
+            General is your no-domain workspace. It has its own state, journal, session logs, decisions, and skills - the same context items a domain has, kept at the vault root. Open a domain to see that domain's own context instead.
           </div>
         )}
         <Section keyName="ideal" title="Ideal state" body={
@@ -199,7 +199,7 @@ export function DomainContextDrawer({
             <Section keyName="decisions" title="Decisions" count={decisionLog.length || undefined} body={
               <>
               <div className="mb-2 text-[11px] leading-snug text-text-muted">
-                Council verdicts and saved decisions — latest first. The distiller folds them into a curated summary over time.
+                Council verdicts and saved decisions - latest first. The distiller folds them into a curated summary over time.
               </div>
               {decisionLog.length > 0 && (
                 <ul className="mb-2 flex flex-col gap-2">
@@ -246,7 +246,7 @@ export function DomainContextDrawer({
             <Section keyName="activity" title="Activity" count={ctx.recent_logs.length || undefined} body={
               <>
               <div className="mb-2 text-[11px] leading-snug text-text-muted">
-                The raw record — what you asked, and session logs. State, Memory, and Decisions above are distilled from this.
+                The raw record - what you asked, and session logs. State, Memory, and Decisions above are distilled from this.
               </div>
               {ctx.journal && (
                 <>
@@ -333,16 +333,16 @@ export function DomainContextDrawer({
 // Drawer section that surfaces a domain's ingested imports without
 // the user having to navigate to Settings → Ingestion. Click a row
 // to load the first chunk into the chat as primed context, or
-// "reveal" to open in Finder. Read-only — toggling for attachment
+// "reveal" to open in Finder. Read-only - toggling for attachment
 // happens via the chips above the composer.
 
-// Domain actions menu — "Back up" and "Archive" for a single domain.
+// Domain actions menu - "Back up" and "Archive" for a single domain.
 // Used in the domain header. Backs up via engine_vault_backup(domainOpt),
 // archives via engine_vault_archive. Archive never deletes data; it just
 // flips the manifest flag and hides the domain from the active sidebar.
 
 // ─────────────────────────────────────────────────────────────────────
-// Usage dashboard (P4.7 Phase 4) — reads the aggregated <vault>/usage
+// Usage dashboard (P4.7 Phase 4) - reads the aggregated <vault>/usage
 // summary written by usage_append at each turn close and renders totals
 // plus breakdowns by CLI, model, and domain, with a per-day activity
 // strip. Surfaced on the no-domain landing; renders nothing until there's
@@ -418,7 +418,7 @@ export function AgentPickerRail({
   );
 }
 
-// I7: create a reusable skill from the UI — the "build skills over time" path.
+// I7: create a reusable skill from the UI - the "build skills over time" path.
 // A skill is just a named, reusable prompt the model runs on demand (slash
 // `/name` in chat). Seeded from the composer's "Save as skill" or written here.
 
@@ -529,7 +529,7 @@ export function DomainPrefsPanel({
   onChanged: () => void;
   onBack?: () => void;
 }) {
-  // Read overrides directly so save buttons are unnecessary —
+  // Read overrides directly so save buttons are unnecessary -
   // bump tick on every write so this component re-renders.
   const [tick, setTick] = useState(0);
   const force = () => { setTick((t) => t + 1); onChanged(); };
@@ -571,7 +571,7 @@ export function DomainPrefsPanel({
     finally { setDraftingIdeal(false); }
   };
 
-  // Per-domain daemon config (_daemon.json) — taskgen + reminders toggles.
+  // Per-domain daemon config (_daemon.json) - taskgen + reminders toggles.
   // Default true so domains work without any config file.
   const daemonCfgPath = `${vaultPath}/${domain}/_daemon.json`;
   const [daemonTaskgen, setDaemonTaskgen] = useState(true);
@@ -597,7 +597,7 @@ export function DomainPrefsPanel({
 
   // Per-domain prefs are stored in the domain's manifest (config block)
   // when the engine supports it, and ALSO mirrored to localStorage so the
-  // rest of the app (ChatPanel) — which reads localStorage — keeps working.
+  // rest of the app (ChatPanel) - which reads localStorage - keeps working.
   // On mount we load the manifest and hydrate any localStorage keys that
   // aren't already set from it. When the manifest is unavailable we fall
   // back to localStorage-only (the previous behavior).
@@ -661,7 +661,7 @@ export function DomainPrefsPanel({
             const top = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([w]) => w);
             if (top.length > 0) {
               lsSet(keywordsKey, top.join(", "));
-              // B5: persist derived keywords to the manifest too — localStorage
+              // B5: persist derived keywords to the manifest too - localStorage
               // alone is invisible to the CLI gateway router, so inbound channel
               // messages never matched. Store domain name first, then the derived
               // extras (deduped), matching the edit-path convention.
@@ -670,12 +670,12 @@ export function DomainPrefsPanel({
                 vault: vaultPath,
                 domain,
                 json: JSON.stringify({ routing: { keywords: full } }),
-              }).catch(() => { /* manifest write unsupported — localStorage holds it */ });
+              }).catch(() => { /* manifest write unsupported - localStorage holds it */ });
             }
           } catch { /* derivation is best-effort */ }
         }
       } catch {
-        // Engine/manifest unavailable — localStorage remains the source.
+        // Engine/manifest unavailable - localStorage remains the source.
       } finally {
         if (!cancelled) { setManifestReady(true); force(); }
       }
@@ -690,19 +690,19 @@ export function DomainPrefsPanel({
     (config: Record<string, unknown>) => {
       const json = JSON.stringify({ config });
       invoke("engine_manifest_set", { vault: vaultPath, domain, json }).catch(() => {
-        /* manifest write unsupported — localStorage already holds the value */
+        /* manifest write unsupported - localStorage already holds the value */
       });
     },
     [vaultPath, domain],
   );
 
   // Merge an arbitrary top-level manifest patch (e.g. privacy / sandbox /
-  // routing blocks). Best-effort — same fallback contract as persistManifest.
+  // routing blocks). Best-effort - same fallback contract as persistManifest.
   const persistManifestTop = useCallback(
     (patch: Record<string, unknown>) => {
       const json = JSON.stringify(patch);
       invoke("engine_manifest_set", { vault: vaultPath, domain, json }).catch(() => {
-        /* manifest write unsupported — localStorage already holds the value */
+        /* manifest write unsupported - localStorage already holds the value */
       });
     },
     [vaultPath, domain],
@@ -768,7 +768,7 @@ export function DomainPrefsPanel({
         </button>
       </div>
 
-      {/* CLI picker — select a CLI to expand its models inline (collapse & indent) */}
+      {/* CLI picker - select a CLI to expand its models inline (collapse & indent) */}
       <PrefSection
         title="CLI"
         defaultOpen
@@ -822,7 +822,7 @@ export function DomainPrefsPanel({
                     </span>
                   )}
                 </button>
-                {/* Models — indented under the selected CLI, collapsed otherwise. */}
+                {/* Models - indented under the selected CLI, collapsed otherwise. */}
                 {picked && models.length > 0 && (
                   <div className="ml-4 mt-1.5 flex flex-col gap-1.5 border-l-2 border-accent-border/40 pl-4">
                     <div className="flex items-center justify-between pt-0.5">
@@ -866,7 +866,7 @@ export function DomainPrefsPanel({
         </div>
       </PrefSection>
 
-      {/* Framework + Lens — stacked full-width, one per row */}
+      {/* Framework + Lens - stacked full-width, one per row */}
       <PrefSection title="Framework & Lens" icon={<Compass className="h-4 w-4" />} subtitle={[pickedFw && pickedFw !== "none" ? "framework" : "", pickedLens && pickedLens !== "none" ? "lens" : ""].filter(Boolean).join(" + ") || "none set"}>
         <div className="grid grid-cols-1 gap-4">
           <PrefPickerColumn
@@ -888,7 +888,7 @@ export function DomainPrefsPanel({
         </div>
       </PrefSection>
 
-      {/* Skills — star-toggle list with avatars; collapsed by default, indented when open */}
+      {/* Skills - star-toggle list with avatars; collapsed by default, indented when open */}
       <section className="mb-6 rounded-xl border border-border bg-surface p-4">
         <button
           onClick={() => setSkillsOpen((v) => !v)}
@@ -960,7 +960,7 @@ export function DomainPrefsPanel({
         </div>
       </PrefSection>
 
-      {/* Privacy — local-only (Ollama) pin → manifest.privacy.localOnly */}
+      {/* Privacy - local-only (Ollama) pin → manifest.privacy.localOnly */}
       <PrefSection title="Privacy" icon={<Lock className="h-4 w-4" />} subtitle={localOnly ? "Local only" : "Standard"}>
         <div className="flex items-center justify-between gap-3 py-2">
           <div>
@@ -983,7 +983,7 @@ export function DomainPrefsPanel({
         </div>
       </PrefSection>
 
-      {/* Sandbox — open | locked → manifest.sandbox.mode */}
+      {/* Sandbox - open | locked → manifest.sandbox.mode */}
       <PrefSection title="Sandbox" icon={<Box className="h-4 w-4" />} subtitle={sandboxMode === "locked" ? "Locked: read-only" : "Open: read + write"}>
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-text-secondary">
@@ -1007,7 +1007,7 @@ export function DomainPrefsPanel({
         </div>
       </PrefSection>
 
-      {/* M6: per-domain Ideal State — this domain's own target, layered under the
+      {/* M6: per-domain Ideal State - this domain's own target, layered under the
           global Ideal State (which wins on conflict). Injected into this domain's
           turns by the engine. */}
       <PrefSection
@@ -1035,7 +1035,7 @@ export function DomainPrefsPanel({
             <Check className="h-3.5 w-3.5" /> Save
           </button>
           <button onClick={draftIdealWithAI} disabled={draftingIdeal}
-            title={`Draft from what Prevail knows about your ${titleCase(domain)} — review before saving`}
+            title={`Draft from what Prevail knows about your ${titleCase(domain)} - review before saving`}
             className="inline-flex items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent hover:text-background disabled:opacity-50">
             {draftingIdeal ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
             {draftingIdeal ? "Drafting…" : domainIdeal.trim() ? "Redraft with AI" : "Draft with AI"}
@@ -1045,7 +1045,7 @@ export function DomainPrefsPanel({
         {draftErr && <div className="mt-2 rounded-md border border-warn/40 bg-warn/10 px-2.5 py-1.5 text-xs text-warn">{draftErr}</div>}
       </PrefSection>
 
-      {/* Channels / routing — domain name is always matched (A6); the input
+      {/* Channels / routing - domain name is always matched (A6); the input
           holds extra keywords → manifest.routing.keywords = [domain, ...extras] */}
       <PrefSection
         title="Channels & routing"

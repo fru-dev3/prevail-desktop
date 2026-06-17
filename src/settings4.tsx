@@ -127,12 +127,12 @@ export function TelemetrySettings() {
       <CollapsibleSection icon={Activity} title="What we collect" summary={`${ALLOWED_EVENTS.length} event types`}
         subtitle="The complete, exhaustive list. Anything not here is never sent.">
         <ul className="space-y-1.5 text-xs text-text-secondary">
-          <li><span className="font-mono text-text-primary">app_opened</span> — app version, OS family (mac/win)</li>
-          <li><span className="font-mono text-text-primary">feature_used</span> — which feature area (chat, council, benchmark…), nothing typed</li>
-          <li><span className="font-mono text-text-primary">benchmark_run</span> — counts only (number of models, number of domains)</li>
-          <li><span className="font-mono text-text-primary">provider_configured</span> — provider name (e.g. openrouter), never the key</li>
-          <li><span className="font-mono text-text-primary">daemon_toggled</span> — which daemon, on/off</li>
-          <li><span className="font-mono text-text-primary">crash reports</span> — error type + scrubbed stack trace + app version</li>
+          <li><span className="font-mono text-text-primary">app_opened</span> - app version, OS family (mac/win)</li>
+          <li><span className="font-mono text-text-primary">feature_used</span> - which feature area (chat, council, benchmark…), nothing typed</li>
+          <li><span className="font-mono text-text-primary">benchmark_run</span> - counts only (number of models, number of domains)</li>
+          <li><span className="font-mono text-text-primary">provider_configured</span> - provider name (e.g. openrouter), never the key</li>
+          <li><span className="font-mono text-text-primary">daemon_toggled</span> - which daemon, on/off</li>
+          <li><span className="font-mono text-text-primary">crash reports</span> - error type + scrubbed stack trace + app version</li>
         </ul>
         <div className="mt-3 rounded-md border border-border-subtle bg-background p-2 text-[11px] text-text-muted">
           Never collected: prompts, replies, vault contents, file paths, names of domains/apps/skills you created, API keys, email, name, machine name, or precise location.
@@ -287,7 +287,7 @@ export function IdealStateSection({ vaultPath }: { vaultPath: string }) {
           </button>
         </div>
       ) : (
-        // M2 (Monday feedback): scratched the bordered-cards layout. Fresh take —
+        // M2 (Monday feedback): scratched the bordered-cards layout. Fresh take -
         // an editorial "manifesto": a large vision hero, then each pillar as a
         // numbered chapter with a left accent rule and flowing prose. Single column.
         <div>
@@ -302,7 +302,7 @@ export function IdealStateSection({ vaultPath }: { vaultPath: string }) {
               </div>
             )}
           </div>
-          {/* Pillars as numbered chapters — typographic, not card-y. */}
+          {/* Pillars as numbered chapters - typographic, not card-y. */}
           {parsed.sections.length > 0 ? (
             <div className="mt-7 space-y-7">
               {parsed.sections.map((s, idx) => {
@@ -368,7 +368,7 @@ export function IdealStateSection({ vaultPath }: { vaultPath: string }) {
   );
 }
 
-// "Demo & Production" — its own top-level Settings section (sibling of Vault):
+// "Demo & Production" - its own top-level Settings section (sibling of Vault):
 // the demo/production mode toggle (with the real clean-slate production switch)
 // plus the importable starter packs. Kept separate from Vault so the mode
 // control is easy to find.
@@ -403,7 +403,7 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
           setBudgetCap(String(s.cap_usd));
         }
       } catch {
-        /* no engine budget command — stays display-only from localStorage */
+        /* no engine budget command - stays display-only from localStorage */
       }
     })();
     return () => { alive = false; };

@@ -107,7 +107,7 @@ export function UsageDashboard({
   const inTok = summary.total_input_tokens;
   const outTok = summary.total_output_tokens;
   const avgCost = summary.total_turns > 0 ? summary.total_cost_usd / summary.total_turns : 0;
-  // Per-day activity strip — last 14 days of recorded turns.
+  // Per-day activity strip - last 14 days of recorded turns.
   const days = summary.by_day.slice(-14);
   const dayMax = Math.max(1, ...days.map((d) => d.turns));
   const stats: { label: string; value: string; sub: string; icon: LucideIcon }[] = [
@@ -140,7 +140,7 @@ export function UsageDashboard({
         Usage
       </div>
 
-      {/* hero totals — icon chip + big value + context sub, filling each card */}
+      {/* hero totals - icon chip + big value + context sub, filling each card */}
       <div className="grid grid-cols-3 gap-3">
         {stats.map((s) => (
           <div key={s.label} className="flex items-center gap-3.5 rounded-xl border border-border-subtle bg-surface p-4">
@@ -158,7 +158,7 @@ export function UsageDashboard({
         ))}
       </div>
 
-      {/* per-day activity strip — taller bars with date labels for context */}
+      {/* per-day activity strip - taller bars with date labels for context */}
       {days.length > 1 && (
         <div className="mt-3 rounded-xl border border-border-subtle bg-surface p-4">
           <div className="mb-3 flex items-center justify-between">
@@ -197,7 +197,7 @@ export function UsageDashboard({
         </div>
       )}
 
-      {/* breakdowns — three equal columns, each row filling the card width */}
+      {/* breakdowns - three equal columns, each row filling the card width */}
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <UsageBreakdown title="By agent" icon={Cpu} rows={summary.by_cli} />
         <UsageBreakdown title="By model" icon={Layers} rows={summary.by_model} />
@@ -318,7 +318,7 @@ export function IngestionBrowserRunner() {
     setLog([]);
     try {
       // The draft list reflects the user's current edits, NOT the
-      // bundled recipe — so tweaks they made stick for this run.
+      // bundled recipe - so tweaks they made stick for this run.
       await invoke("ingestion_browser_run", {
         req: {
           domain: domain.trim(),

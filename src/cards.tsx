@@ -14,7 +14,7 @@ import { useFrameworkLens } from "./hooks";
 import { allBenchModelKeys, BENCH_CLI_OPTIONS, benchFreqLabel, benchFreqMs, BENCH_SCHED, cancelBenchBatch, runScheduledBatch, scheduledRunPreview, useBenchBatches } from "./bench";
 
 // BENCH-1: a persistent indicator that a benchmark is ARMED to run on a
-// schedule (distinct from one actively running — SidebarBenchmarkRuns owns
+// schedule (distinct from one actively running - SidebarBenchmarkRuns owns
 // that). The founder must never have a nightly benchmark running without being
 // aware of it. Mirrors the SidebarMcpLive / SidebarGatewayLive "live" pattern,
 // but with a steady (non-pulsing) dot + calendar icon to read as "armed".
@@ -79,7 +79,7 @@ export function SidebarBackupActive({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-// BENCH-1: the same awareness on the home landing — a compact pill so a
+// BENCH-1: the same awareness on the home landing - a compact pill so a
 // scheduled run is visible without opening the Benchmark page.
 export function HomeBenchScheduledBadge() {
   const [on, setOn] = useState(() => lsGet(BENCH_SCHED.enabled, "0") === "1");
@@ -237,7 +237,7 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
   const [freq, setFreq] = useState(() => lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
   const [, force] = useState(0);
   // "Run now" used to call rerunLatestBatch and silently do nothing when it
-  // returned false (no prior batch, bunker filtered everything out, etc.) — so
+  // returned false (no prior batch, bunker filtered everything out, etc.) - so
   // it looked dead. Track busy + a result message so every click reports back.
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -348,7 +348,7 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
         </button>
       </div>
 
-      {/* BENCH-2: the DECOUPLED scheduled scope — independent of the manual Run
+      {/* BENCH-2: the DECOUPLED scheduled scope - independent of the manual Run
           picker. "All" tracks every model x all domains even if a manual run was
           a single model; "Custom" pins an explicit set. */}
       <div className="mt-3 border-t border-border-subtle pt-3">
@@ -427,7 +427,7 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
             Will run {preview.mode === "all" ? "(all models × all domains)" : preview.mode === "custom" ? "(your scheduled selection)" : "(repeats your latest batch)"}
           </div>
           <div className="mt-0.5 text-xs text-text-secondary">
-            {[preview.council ? "Council" : null, ...preview.models].filter(Boolean).join(" · ") || "—"}
+            {[preview.council ? "Council" : null, ...preview.models].filter(Boolean).join(" · ") || "-"}
             {" · "}<span className="text-text-primary">{preview.scopeLabel}</span>
           </div>
           {preview.mode === "latest" && preview.models.length === 1 && !preview.council && (

@@ -64,7 +64,7 @@ export const CONNECTOR_GROUPS: { category: string; items: Connector[] }[] = [
 ];
 
 
-// Catalog shapes — mirror resources/connectors/catalog.json. The Rust command
+// Catalog shapes - mirror resources/connectors/catalog.json. The Rust command
 // returns it verbatim, so the frontend owns the type.
 // A REAL app as the engine sees it (community/vault app with live state),
 // distinct from a catalog entry (a browseable directory listing).
@@ -212,7 +212,7 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
   return (
     <>
       {/* APP-1: when embedded under the top Apps panel's "Advanced", this is the
-          CATALOG ONLY — the connected-apps list lives once, in AppsPanel. The
+          CATALOG ONLY - the connected-apps list lives once, in AppsPanel. The
           standalone header + connected/empty blocks are suppressed to kill the
           AllTrails-renders-twice duplication. */}
       {!catalogOnly && (
@@ -222,7 +222,7 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
         />
       )}
 
-      {/* Connected apps — the REAL apps the engine has wired up (with live auth
+      {/* Connected apps - the REAL apps the engine has wired up (with live auth
           + sync state), distinct from the browseable catalog below. */}
       {!catalogOnly && engineApps && engineApps.length > 0 && (
         <div className="mb-6">
@@ -263,7 +263,7 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
                     <div className="flex shrink-0 items-center gap-1.5">
                       <button
                         onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }))}
-                        title={`Open ${app.title} — its chat, runs, settings, and domains`}
+                        title={`Open ${app.title} - its chat, runs, settings, and domains`}
                         className="rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent"
                       >
                         open
@@ -430,7 +430,7 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
               : `Showing ${coreTotal} core apps · toggle All for the full ${total.toLocaleString()}`}
       </div>
 
-      {/* Flat alphabetical list — category shown as secondary label on each row */}
+      {/* Flat alphabetical list - category shown as secondary label on each row */}
       <div className="space-y-1.5">
         {flatApps.map((a) => {
           const brand = brandByName[a.name.toLowerCase()];
@@ -495,11 +495,11 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
   );
 }
 
-// App lock (F4 Phase 0) — set/change/remove the passcode that gates opening the
+// App lock (F4 Phase 0) - set/change/remove the passcode that gates opening the
 // desktop app. Honest about scope: it locks the UI, it does NOT yet encrypt the
 // vault files on disk.
 
-// Vault encryption (F4 Phase 1) — encrypt the vault at rest, or decrypt it back.
+// Vault encryption (F4 Phase 1) - encrypt the vault at rest, or decrypt it back.
 // Self-verifying in the engine (auto-rollback if anything is unreadable), and
 // shows the one-time recovery code on encryption.
 

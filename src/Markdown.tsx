@@ -1,14 +1,14 @@
 // Markdown rendering subsystem, extracted from App.tsx so the chat/doc render
 // path lives in one small module. Self-contained: depends only on React and
-// react-markdown — no app-specific helpers.
+// react-markdown - no app-specific helpers.
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-// Renders LLM output as proper markdown — headings, lists, bold, inline code,
+// Renders LLM output as proper markdown - headings, lists, bold, inline code,
 // fenced blocks, tables. Wraps each block element in `prose`-like Tailwind so
 // the spacing reads.
-// Code-fence renderer for ReactMarkdown — multi-line blocks get a card with a
+// Code-fence renderer for ReactMarkdown - multi-line blocks get a card with a
 // language label + copy button at the top-right; inline `code` stays as a plain
 // <code>. Stable component identity (declared at module scope) so React doesn't
 // reuse stale closures.
@@ -51,11 +51,11 @@ const MARKDOWN_COMPONENTS = { code: MarkdownCode } as const;
 export const Markdown = React.memo(function Markdown({ source, compact = false }: { source: string; compact?: boolean }) {
   // Two flavors: default (chat reply) and compact (state/decisions/journal).
   // Compact mode is denser, sans-serif headings, smaller bullets, no emoji
-  // bloat — looks like a real doc, not AI slop.
+  // bloat - looks like a real doc, not AI slop.
   //
   // Memoized so that re-rendering a parent doesn't force ReactMarkdown to
   // reparse the source string. During streaming, each new chunk creates a new
-  // source string anyway — that's intentional. But sibling re-renders (hover
+  // source string anyway - that's intentional. But sibling re-renders (hover
   // state, neighbor message updates) no longer redo the parse.
   return (
     <div
@@ -71,7 +71,7 @@ export const Markdown = React.memo(function Markdown({ source, compact = false }
 // markdown AST per token is O(n^2) in the reply length and a major heap churner
 // on long/runaway replies (audit finding #2). The bubble switches to the full
 // Markdown renderer once the turn finalizes (streaming flips false), so the
-// finished message looks identical — only the live, mid-stream view is plain.
+// finished message looks identical - only the live, mid-stream view is plain.
 export const StreamingPlain = React.memo(function StreamingPlain({ source }: { source: string }) {
   return (
     <div className="prose-prevail max-w-none whitespace-pre-wrap break-words">{source}</div>

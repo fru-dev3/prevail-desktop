@@ -101,7 +101,7 @@ export function buildIdealStatePreamble(idealMd: string): string {
   );
 }
 
-// Omega — the app-wide LEARNED layer, injected just BELOW the Ideal State and
+// Omega - the app-wide LEARNED layer, injected just BELOW the Ideal State and
 // above domain memory. Empty when there's no omega.md yet (nothing to inject).
 export function buildOmegaPreamble(omegaMd: string): string {
   const t = omegaMd.trim();
@@ -239,6 +239,6 @@ export function migrateModelPrefs() {
       else if (v && ALIAS_REMAP[v]) lsSet(k, ALIAS_REMAP[v]);
     }
   } catch {
-    /* localStorage unavailable — ignore */
+    /* localStorage unavailable - ignore */
   }
 }

@@ -1,5 +1,5 @@
 // The ONE canonical collapsible used across the whole app. Founder rule: every
-// collapsible looks and behaves the same — a leading icon tile, a title (and
+// collapsible looks and behaves the same - a leading icon tile, a title (and
 // optional subtitle) on the left, a right-side summary of what's inside (plus an
 // optional status dot), and collapsed by default so the user scans summaries
 // first and opens only what they want. Do not hand-roll another collapsible;

@@ -57,7 +57,7 @@ export function CouncilPanel({
 }) {
   // Thread storage scope (app space when set), else the grounding domain.
   const tDomain = threadDomain !== undefined ? threadDomain : domain;
-  // All possible (cli, model) panelist slots across ALL providers —
+  // All possible (cli, model) panelist slots across ALL providers -
   // even ones not installed are listed (greyed out) so the user knows
   // what's possible. Same provider can appear multiple times with
   // different models (e.g. Opus 4.7 AND Sonnet 4.6 both on panel).
@@ -81,7 +81,7 @@ export function CouncilPanel({
 
   // Selected panelists default to first model of each AVAILABLE CLI.
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(() => new Set());
-  // Per-slot verification status — "verified" once a one-shot ping
+  // Per-slot verification status - "verified" once a one-shot ping
   // succeeds with this exact (cli, model). Persisted in localStorage
   // so repeated app launches don't keep re-pinging.
   type VerifyStatus = "unknown" | "verifying" | "ok" | "failed";
@@ -135,7 +135,7 @@ export function CouncilPanel({
     setSelectedSlots((cur) => {
       if (cur.size > 0) return cur;
       // Seed from the configured default council panel (Settings → Council),
-      // which stores exact slot keys (`${cli}::${model}`) — so a panel can hold
+      // which stores exact slot keys (`${cli}::${model}`) - so a panel can hold
       // several models from the same provider. Only keep slots that still exist
       // and whose provider is available. If nothing's configured, default to one
       // slot per available CLI.
@@ -185,7 +185,7 @@ export function CouncilPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelistSlots]);
 
-  // Chair is a single (cli, model) pair — defaults to first selected
+  // Chair is a single (cli, model) pair - defaults to first selected
   // panelist's CLI with its first model, or whatever's saved.
   const [chairSlot, setChairSlot] = useState<string>("");
   useEffect(() => {
@@ -220,7 +220,7 @@ export function CouncilPanel({
   );
 
   // Context drawer + primed extras (state.md, decisions, dragged-in
-  // domains). Same machinery as Chat — gets prepended to the convened
+  // domains). Same machinery as Chat - gets prepended to the convened
   // prompt so panelists and the chair both see it.
   const [contextOpen, setContextOpen] = useState(false);
   const [primedContext, setPrimedContext] = useState<{ label: string; body: string }[]>([]);
@@ -250,7 +250,7 @@ export function CouncilPanel({
       }
     } catch (err) { console.error("attach council domain", err); }
   }
-  // Skills attached to the next convene — same model as Chat.
+  // Skills attached to the next convene - same model as Chat.
   const [attachedSkills, setAttachedSkills] = useState<string[]>(() => loadPreferredSkills(domain));
   const [preferredSkills, setPreferredSkills] = useState<string[]>(() => loadPreferredSkills(domain));
   useEffect(() => {
@@ -296,7 +296,7 @@ export function CouncilPanel({
   }, [domain, _vaultPath]);
   const [prompt, setPrompt] = useState("");
   // I4: a Decision/Risks card from the domain home routes here with a seeded
-  // question — drop it into the composer so the user just picks panelists and
+  // question - drop it into the composer so the user just picks panelists and
   // convenes. Consumed once so it doesn't re-fire on re-render.
   useEffect(() => {
     if (seedPrompt) {
@@ -468,7 +468,7 @@ export function CouncilPanel({
   // Load (or clear) the council transcript when the active thread changes.
   useEffect(() => {
     councilThreadRef.current = activeThreadPath ?? null;
-    // We just saved this convene and adopted its own path — keep the result on
+    // We just saved this convene and adopted its own path - keep the result on
     // screen (don't clear the replies/verdict the user is reading).
     if (activeThreadPath && councilSelfSetRef.current === activeThreadPath) {
       councilSelfSetRef.current = null;
@@ -522,7 +522,7 @@ export function CouncilPanel({
     }
     const allTurns = [...prior, ...fresh];
     // Self-learning: record the verdict as a durable DECISION so the domain
-    // learns from it — feeds _state derivation, scoring, and the Insights
+    // learns from it - feeds _state derivation, scoring, and the Insights
     // surface, and can carry a thumbs up/down. (feedback v0.4.1 I1/I5)
     if (verdict.trim()) {
       const decisionId = `d-${Date.now()}`;
@@ -583,7 +583,7 @@ export function CouncilPanel({
     setPhase("panelists");
     const trimmed = raw.trim();
     setSubmittedPrompt(trimmed);
-    // Ideal State (constitution) preamble — load fresh per convene so edits
+    // Ideal State (constitution) preamble - load fresh per convene so edits
     // propagate without app restart. Highest precedence; leads the prompt.
     let idealMd = "";
     try { idealMd = await invoke<string>("read_ideal_state", { vault: _vaultPath }); } catch {}
@@ -639,7 +639,7 @@ export function CouncilPanel({
     }
   }
 
-  // Cascading menus for the composer toolbar — one for adding a
+  // Cascading menus for the composer toolbar - one for adding a
   // panelist (provider → model), one for picking the chair.
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [chairMenuOpen, setChairMenuOpen] = useState(false);
@@ -681,7 +681,7 @@ export function CouncilPanel({
         }
         if (!name || !_vaultPath) return;
         e.preventDefault();
-        // Same light/heavy behavior as Chat — default state summary, hold
+        // Same light/heavy behavior as Chat - default state summary, hold
         // Shift for the full context bundle.
         await attachCouncilDomain(name, e.shiftKey);
       }}
@@ -695,7 +695,7 @@ export function CouncilPanel({
           </div>
         </div>
       )}
-      {/* Minimal header — same shape as Chat. Domain + Finder on left. */}
+      {/* Minimal header - same shape as Chat. Domain + Finder on left. */}
       <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-6 py-3">
         {domain ? (
           <>
@@ -728,7 +728,7 @@ export function CouncilPanel({
 
       {/* Hero / transcript area */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {/* Prior council turns — multi-turn continuation history */}
+        {/* Prior council turns - multi-turn continuation history */}
         {councilTurns.length > 0 && (
           <div className="mx-auto max-w-3xl space-y-4 px-6 pt-6">
             {councilTurns.map((t, i) =>
@@ -773,7 +773,7 @@ export function CouncilPanel({
               )}
             </p>
 
-            {/* Compact starter rows — one line each (glyph · label · the short
+            {/* Compact starter rows - one line each (glyph · label · the short
                 question). Clicking loads the full prompt into the composer, so
                 the body text doesn't need to sit here as a wall. */}
             <ul className="mt-5 flex w-full max-w-2xl flex-col gap-1.5">
@@ -800,7 +800,7 @@ export function CouncilPanel({
               <span className="text-accent">$</span> {submittedPrompt || prompt}
             </div>
 
-            {/* Quorum control — once at least one panelist has answered but the
+            {/* Quorum control - once at least one panelist has answered but the
                 council isn't fully back, let the user synthesize from whoever
                 responded instead of waiting on a stuck panelist. */}
             {phase === "panelists" && respondedCount >= 1 && !allPanelistsDone && (
@@ -905,7 +905,7 @@ export function CouncilPanel({
                   )}
                   {phase === "synthesizing" && vparts.answer && <span className="cursor-blink text-accent">▌</span>}
                 </div>
-                {/* Verdict feedback — thumbs up/down trains which model + lens +
+                {/* Verdict feedback - thumbs up/down trains which model + lens +
                     framework produce verdicts the user trusts. (v0.4.1 I5) */}
                 {phase === "done" && verdict && verdictDecisionId && (
                   <div className="mt-4 flex items-center gap-2 border-t border-accent-border/40 pt-3 text-xs text-text-muted">
@@ -943,10 +943,10 @@ export function CouncilPanel({
         )}
       </div>
 
-      {/* Codex-style composer — textarea + panelist pills + chair pill */}
+      {/* Codex-style composer - textarea + panelist pills + chair pill */}
       <div className="shrink-0 px-6 pb-6 pt-2">
         <div className="rounded-2xl border border-border bg-surface p-3 shadow-sm">
-          {/* Context pills — auto-primed + dragged-in domains */}
+          {/* Context pills - auto-primed + dragged-in domains */}
           {primedContext.length > 0 && (
             <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2">
               {primedContext.map((c, i) => (
@@ -1027,7 +1027,7 @@ export function CouncilPanel({
             className="w-full resize-none bg-transparent px-2 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-50"
           />
 
-          {/* Panelist pills row — each with a verification badge */}
+          {/* Panelist pills row - each with a verification badge */}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {panelistSlots.map((s) => {
               const st = verifyStatus[s.key] ?? "unknown";
@@ -1219,7 +1219,7 @@ export function CouncilPanel({
                   try {
                     await invoke("abort_sessions", { prefix: sessionRef.current });
                   } catch (e) { console.error("abort", e); }
-                  // Mark EVERY selected slot as aborted — including
+                  // Mark EVERY selected slot as aborted - including
                   // ones that never reached the streaming state
                   // ("queued" / "thinking" cards). Bug fix: previously
                   // we only iterated existing reply keys, which left
@@ -1282,7 +1282,7 @@ export function CouncilPanel({
           onTogglePreferred={togglePreferredSkill}
         />
       ) : (
-        // Collapsed: a thin chevron rail to expand the context sidebar — no
+        // Collapsed: a thin chevron rail to expand the context sidebar - no
         // labeled button, just the collapse/expand affordance.
         <button
           onClick={() => setContextOpen(true)}

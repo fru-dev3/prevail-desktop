@@ -1,4 +1,4 @@
-// O1 (Monday feedback): a first-run onboarding tour — a welcome with the Prevail
+// O1 (Monday feedback): a first-run onboarding tour - a welcome with the Prevail
 // logo, then a real SPOTLIGHT walkthrough that highlights each section of the app
 // (sidebar domains, composer, the Chat/Council/Benchmark tabs, settings). Fully
 // dismissible. "Seen" persists in localStorage; re-runnable from About via the
@@ -16,12 +16,12 @@ const SEEN_KEY = "prevail.onboarding.seen";
 // centered (welcome + finish).
 type Step = { anchor?: string; eyebrow: string; title: string; body: string };
 const STEPS: Step[] = [
-  { eyebrow: "Welcome", title: "Welcome to Prevail", body: "Your private AI council, grounded in your real life. It learns you and gets sharper every time you use it. Quick tour — 30 seconds." },
+  { eyebrow: "Welcome", title: "Welcome to Prevail", body: "Your private AI council, grounded in your real life. It learns you and gets sharper every time you use it. Quick tour - 30 seconds." },
   { anchor: "[data-tour=\"domains\"]", eyebrow: "Step 1", title: "Your life, in domains", body: "Wealth, Health, Career… each domain keeps its own state, memory, journal, and decisions, so answers stay grounded in that part of your life. General is for anything cross-cutting." },
   { anchor: "[data-tour=\"composer\"]", eyebrow: "Step 2", title: "Ask, with real context", body: "Type here to ask. Pull in context with $domain, attach skills with /, and Prevail grounds every answer in that domain's state and your Ideal State." },
   { anchor: "[data-tour=\"nav\"]", eyebrow: "Step 3", title: "Chat, Council, Benchmark", body: "Chat is one model. Council asks several at once and a chair writes one verdict. Benchmark scores models on your real questions, so you know who to trust where." },
   { anchor: "[data-tour=\"settings\"]", eyebrow: "Step 4", title: "Where it compounds", body: "In Settings: your Ideal State and Omega (what's learned across domains), Apps that feed real data, Gateways to reach Prevail from anywhere, and Loops that quietly close the gap to your goals." },
-  { eyebrow: "Ready", title: "You're set", body: "You're in the demo sandbox with sample data — safe to explore. Switch to your own vault from Settings → Workspace whenever you're ready. Replay this tour anytime from About." },
+  { eyebrow: "Ready", title: "You're set", body: "You're in the demo sandbox with sample data - safe to explore. Switch to your own vault from Settings → Workspace whenever you're ready. Replay this tour anytime from About." },
 ];
 
 const CARD_W = 380;

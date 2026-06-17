@@ -1,5 +1,5 @@
 // A minimal context-window meter for the composer. The whole point of a context
-// window is that once it fills up, model quality degrades — so this shows, at a
+// window is that once it fills up, model quality degrades - so this shows, at a
 // glance and without noise, how full the current conversation context is, where
 // the tokens are going (history vs attached context), and lets the user reclaim
 // space by starting fresh. Just a small circular gauge; details on click.
@@ -70,7 +70,7 @@ export function ContextMeter({
         title={`Context: ${fmt(used)} / ${fmt(windowTokens)} tokens (${pct}%)`}
         className="flex items-center gap-1 rounded-md px-1 py-0.5 text-text-muted transition-colors hover:bg-surface-warm hover:text-text-secondary"
       >
-        {/* Circular gauge — the minimal "how full" clock. */}
+        {/* Circular gauge - the minimal "how full" clock. */}
         <svg width="18" height="18" viewBox="0 0 18 18" className="shrink-0">
           <circle cx="9" cy="9" r={r} fill="none" stroke="var(--color-border)" strokeWidth="2" />
           <circle
@@ -99,7 +99,7 @@ export function ContextMeter({
             </ul>
             {frac >= 0.7 && (
               <p className="mt-2 text-[11px]" style={{ color: tone }}>
-                {frac >= 0.9 ? "Nearly full — responses may degrade. Start fresh to reclaim space." : "Getting heavy. Consider starting fresh soon."}
+                {frac >= 0.9 ? "Nearly full - responses may degrade. Start fresh to reclaim space." : "Getting heavy. Consider starting fresh soon."}
               </p>
             )}
             {onCompact && (

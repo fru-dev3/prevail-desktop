@@ -1,4 +1,4 @@
-// Omega — the app-wide LEARNED knowledge layer (vault/omega.md). The learned
+// Omega - the app-wide LEARNED knowledge layer (vault/omega.md). The learned
 // counterpart to the Ideal State: durable, cross-cutting lessons + preferences
 // Prevail distills across every domain, injected into every turn just below the
 // Ideal State. This page lets the user distill, view, and hand-edit it.
@@ -12,7 +12,7 @@ import { PREF, getPref, lsGet, lsSet, setPref } from "./storage";
 import { Toggle } from "./ui";
 import { SettingsHeader } from "./sectionutil";
 
-// Omega daemon — auto-distill the app-wide learned layer on a slow cadence
+// Omega daemon - auto-distill the app-wide learned layer on a slow cadence
 // (default daily) so it compounds without a manual click. Module-level timer,
 // same pattern as the apps/bench/loops schedulers; the tick re-reads the pref so
 // toggling needs no restart. Best-effort: a "not enough learned yet" error is
@@ -98,7 +98,7 @@ export function OmegaSection({ vaultPath }: { vaultPath: string }) {
         subtitle="What Prevail has learned across your domains: durable lessons and patterns, injected into every chat just below your Ideal State. Distilled automatically; editable by hand."
       />
 
-      {/* M7 (Monday feedback): the cohesive view — show what FEEDS Omega + how it
+      {/* M7 (Monday feedback): the cohesive view - show what FEEDS Omega + how it
           sits with the Ideal State, so the flow Journals/Intents/States → Omega is
           legible. Each source links to its surface. */}
       <CollapsibleSection icon={Compass} title="What feeds Omega" summary="journals · intents · states → omega" className="mb-4">

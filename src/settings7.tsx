@@ -277,12 +277,12 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
       </div>
       {/* B6 (Monday feedback): the "Direct providers" list used to render here too,
           duplicating the dedicated "Direct Providers" section in ModelsSection.
-          Removed — Direct Providers lives in its own section now. */}
+          Removed - Direct Providers lives in its own section now. */}
     </>
   );
 }
 
-// G1 — Direct Providers. Native single-vendor keys: the user pastes their key
+// G1 - Direct Providers. Native single-vendor keys: the user pastes their key
 // for any vendor and it works (the engine's DIRECT_PROVIDERS table routes to it;
 // the desktop injects PREVAIL_<ID>_KEY from the Keychain). Each row is an
 // independent key-entry that saves to the Keychain via provider_key_set, then
@@ -374,7 +374,7 @@ export function DirectProvidersSection({ onActivated }: { onActivated?: () => Pr
   );
 }
 
-// Connectors — data sources that auto-build per-domain context, routed through
+// Connectors - data sources that auto-build per-domain context, routed through
 // a connector hub (Composio). Real brand marks (simple-icons) where available,
 // else a tinted lucide fallback. Placeholders for now; live wiring next.
 
@@ -474,7 +474,7 @@ export function ModelsSection({
           Re-check all
         </button>
       </div>
-      {/* Three collapsible groups — all collapsed by default for a clean landing */}
+      {/* Three collapsible groups - all collapsed by default for a clean landing */}
       {([
         {
           id: "clis",

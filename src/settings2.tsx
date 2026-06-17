@@ -55,7 +55,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
   const [intentEnabled, setIntentEnabled] = useState(() => getPref(PREF.intentDaemonEnabled, "1") === "1");
   const [intentMinNew, setIntentMinNew] = useState(() => getPref(PREF.intentDaemonMinNew, "10"));
   const [intentInterval, setIntentInterval] = useState(() => getPref(PREF.intentDaemonIntervalSec, "1800"));
-  // Distill (memory) tuning — moved here from Memory & Context so all routine
+  // Distill (memory) tuning - moved here from Memory & Context so all routine
   // operation lives in one place. These write the same prefs distillCfgFromPrefs reads.
   const [dProvider, setDProvider] = useState(() => getPref(PREF.memoryProvider, "claude"));
   const [dModel, setDModel] = useState(() => getPref(PREF.distillModel, "claude-haiku-4-5"));
@@ -473,7 +473,7 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
         subtitle="Intents are the goal behind your questions, distilled from your journal (the raw record of what you asked), with recommended next actions. The journal lives below as provenance."
       />
 
-      {/* Distilled intents — the high-level layer. */}
+      {/* Distilled intents - the high-level layer. */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold text-text-primary">Distilled intents</span>
         {distilled.generated_ts > 0 && (
@@ -582,7 +582,7 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
         </div>
       )}
 
-      {/* M3 (Monday feedback): this raw log IS the Journal — what you asked, the
+      {/* M3 (Monday feedback): this raw log IS the Journal - what you asked, the
           provenance intents are distilled from. Labelled so the relationship is clear. */}
       <div className="mb-1 text-sm font-semibold text-text-primary">Journal · what you asked</div>
       <div className="mb-2 text-xs text-text-secondary">The raw record across every thread. Intents above are distilled from this.</div>
@@ -790,7 +790,7 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
             ↻
           </button>
           <div className="flex-1" />
-          {/* Filter by domain — see only one domain's skills, or all. */}
+          {/* Filter by domain - see only one domain's skills, or all. */}
           <select
             value={domainFilter}
             onChange={(e) => { setDomainFilter(e.target.value); setListOpen(true); }}

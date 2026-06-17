@@ -172,7 +172,7 @@ export function BenchQuestions({
   // plus the net new question count for that domain (so "all domains" can verify
   // every domain actually got drafts, not just an overall total).
   async function suggestForDomain(target: string, cli: string, model: string): Promise<{ code: number | null; added: number; tail: string }> {
-    // Count from disk, not React state — the in-memory `questions` can be stale,
+    // Count from disk, not React state - the in-memory `questions` can be stale,
     // which produced false "0/N" warnings even when drafts landed.
     let before = questions.filter((q) => q.domain === target).length;
     try {
@@ -214,7 +214,7 @@ export function BenchQuestions({
     setInfo(null);
     try {
       // "all domains" must hit EVERY domain with its own request for `count`,
-      // not a single call that the engine spreads thin — that left some domains
+      // not a single call that the engine spreads thin - that left some domains
       // empty. Loop per domain (the path that works for a single domain) and
       // verify each one actually received drafts.
       const targets = domain === "all" ? allDomains.map((d) => d.toLowerCase()) : [domain];
@@ -224,7 +224,7 @@ export function BenchQuestions({
         const { code, added } = await suggestForDomain(t, cli, model);
         if (!(code === 0 || code === null)) failed.push(t);
         // Only warn "under target" with POSITIVE evidence of a short draft.
-        // added <= 0 means the count read raced (or every draft deduped) — the
+        // added <= 0 means the count read raced (or every draft deduped) - the
         // exit code already says success, so don't surface a false "0/N".
         else if (added > 0 && added < suggestCount) short.push(`${titleCase(t)} (${added}/${suggestCount})`);
       }
@@ -241,7 +241,7 @@ export function BenchQuestions({
           failed.length ? `failed: ${failed.map(titleCase).join(", ")}` : "",
           short.length ? `under target: ${short.join(", ")}` : "",
         ].filter(Boolean).join(" · ");
-        setInfo(`Drafted across ${targets.length - failed.length}/${targets.length} domains — ${parts}. Re-run to fill the gaps.`);
+        setInfo(`Drafted across ${targets.length - failed.length}/${targets.length} domains - ${parts}. Re-run to fill the gaps.`);
       }
     } catch (e) {
       setInfo(`Suggest failed: ${e}`);
@@ -257,7 +257,7 @@ export function BenchQuestions({
 
   async function save() {
     // K4 (Monday feedback): a NEW question can target multiple domains at once
-    // (comma-separated, no dropdown/checkboxes) — saved once per domain. Editing
+    // (comma-separated, no dropdown/checkboxes) - saved once per domain. Editing
     // an existing question keeps a single domain.
     const domains = draft.domain.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
     if (domains.length === 0 || !draft.prompt.trim()) return;
@@ -494,7 +494,7 @@ export function BenchQuestions({
 
 
 // ─────────────────────────────────────────────────────────────────────
-// SETTINGS PANEL — vault, theme, defaults, about
+// SETTINGS PANEL - vault, theme, defaults, about
 
 export function BenchRunConfig({
   mode, setMode, selModels, toggleModel, allDomains, scope, toggleScope,
@@ -528,7 +528,7 @@ export function BenchRunConfig({
 }) {
   const selCount = mode === "council" ? 1 : selModels.size;
   void setMode; // mode toggle now lives in the header bar; prop kept for the call site
-  // Collapsible provider groups — ALL collapsed by default so the page never
+  // Collapsible provider groups - ALL collapsed by default so the page never
   // opens as a wall of models. Each provider row still shows its selected
   // count, so what's on the panel stays visible while collapsed.
   const [collapsedProviders, setCollapsedProviders] = useState<Set<string>>(() =>
@@ -553,7 +553,7 @@ export function BenchRunConfig({
   const [savingSuite, setSavingSuite] = useState(false);
   const [scheduledSuiteId, setScheduledSuiteId] = useState<string | null>(null);
   const selModelArr = Array.from(selModels);
-  // Load a suite into the editor (apply its selection) WITHOUT running — so the
+  // Load a suite into the editor (apply its selection) WITHOUT running - so the
   // user can tweak then run or re-save. Distinct from the Run button.
   const loadSuite = (s: BenchSuite) => { setMode(s.mode); applyModels(s.models); applyScope(s.domains); };
   const commitBundle = () => {
@@ -623,7 +623,7 @@ export function BenchRunConfig({
           <div className="mt-1.5 font-mono text-[11px] text-text-muted">
             {jobs.length} model{jobs.length === 1 ? "" : "s"} · {jobs[0]?.total ?? 0} question{(jobs[0]?.total ?? 0) === 1 ? "" : "s"} each · running in parallel · auto-scored
           </div>
-          {/* Overall batch progress — every question across every model. */}
+          {/* Overall batch progress - every question across every model. */}
           {(() => {
             const overallTotal = jobs.reduce((a, j) => a + j.total, 0);
             const overallDone = jobs.reduce((a, j) => a + (j.status === "done" || j.status === "scoring" ? j.total : j.done), 0);
@@ -750,7 +750,7 @@ export function BenchRunConfig({
       />
       {/* Mode lives in the header bar now (one consistent control row). */}
 
-      {/* Models (multi-select) — hidden in council mode. Compact grid so the
+      {/* Models (multi-select) - hidden in council mode. Compact grid so the
           whole panel of a provider scans in two or three rows instead of a
           full-width row per model. */}
       {mode === "single" && (
@@ -758,7 +758,7 @@ export function BenchRunConfig({
           <SubsectionHeader icon={Layers} hint={`${selModels.size} selected · runs head-to-head`}>
             Models
           </SubsectionHeader>
-          {/* Saved bundles — one click drops a named set of models onto the panel.
+          {/* Saved bundles - one click drops a named set of models onto the panel.
               Save the current selection as a new bundle from the right. */}
           <div className="mb-3 flex flex-wrap items-center gap-1.5">
             <Bookmark className="h-3.5 w-3.5 shrink-0 text-text-muted" />
@@ -849,7 +849,7 @@ export function BenchRunConfig({
         </section>
       )}
 
-      {/* Domain scope — domains that HAVE questions lead (sorted by how many);
+      {/* Domain scope - domains that HAVE questions lead (sorted by how many);
           the empty ones sit behind a disclosure so 20+ domains don't become a
           wall of noise. */}
       <section>
@@ -893,7 +893,7 @@ export function BenchRunConfig({
             : (withQ.filter((d) => scope.has(d)).map(titleCase).join(", ") || `${scope.size} selected`);
           return (
             // One collapsible list (collapsed by default) so the scope reads as a
-            // single quiet line — the full domain set only appears on expand, so
+            // single quiet line - the full domain set only appears on expand, so
             // the page isn't a wall of chips.
             <details className="group">
               <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md py-0.5 font-mono text-[11px] text-text-secondary transition-colors hover:text-accent">
@@ -925,7 +925,7 @@ export function BenchRunConfig({
         })()}
       </section>
 
-      {/* Suites — a named (models + domains + mode) you can re-run as a unit or
+      {/* Suites - a named (models + domains + mode) you can re-run as a unit or
           drop onto the background schedule. Built from the current selection. */}
       <section>
         <SubsectionHeader icon={Bookmark} hint={suites.length ? `${suites.length} saved` : "save a reusable run"}>
@@ -1064,7 +1064,7 @@ export function BenchResults({
     return runs.filter((r) => r.domains.includes(domainFilter));
   }, [runs, domainFilter]);
 
-  // Run history grouped by BATCH — the models you launched together are one
+  // Run history grouped by BATCH - the models you launched together are one
   // unit, named by time + scope + panel size so several batches a day stay
   // distinct. Runs from before batch-stamping are clustered into
   // pseudo-batches by launch time (folders created within minutes of each
@@ -1115,7 +1115,7 @@ export function BenchResults({
     );
   }, [visibleRuns]);
 
-  // By-model aggregation: every run of the same model folded into one row —
+  // By-model aggregation: every run of the same model folded into one row -
   // best/latest scores, run count, and the domains it has been tested on.
   const modelAgg = useMemo(() => {
     const byModel = new Map<string, { parsed: ReturnType<typeof parseRunLabel>; runs: BenchmarkRun[] }>();
@@ -1142,7 +1142,7 @@ export function BenchResults({
       }, null);
       const latest = [...rr].sort((a, b) => b.date.localeCompare(a.date))[0];
       const domains = Array.from(new Set(rr.flatMap((r) => r.domains))).sort();
-      // Chronological judge scores — the drift line. Delta = latest vs the
+      // Chronological judge scores - the drift line. Delta = latest vs the
       // run before it.
       const history = [...scoredRuns]
         .sort((a, b) => a.created_ms - b.created_ms)
@@ -1166,7 +1166,7 @@ export function BenchResults({
   }, [visibleRuns, matrix, domainFilter]);
   const [expandedModel, setExpandedModel] = useState<string | null>(initialModel ?? null);
 
-  // K2 (Monday feedback): the "Coverage by domain" summary table was removed —
+  // K2 (Monday feedback): the "Coverage by domain" summary table was removed -
   // it restated runs/models-per-domain that the main Model × domain matrix below
   // already conveys ("What's the point of this. Remove it.").
 
@@ -1192,7 +1192,7 @@ export function BenchResults({
           ]}
           meta={`${selected.score.questionScores.length} questions`}
         />
-        {/* Dense header — model, when, where it ran, and the verdict, one row. */}
+        {/* Dense header - model, when, where it ran, and the verdict, one row. */}
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3">
           <ProviderMark vendor={p.vendor} size={28} />
           <h2 className="font-display text-xl font-bold tracking-tight">{p.model}</h2>
@@ -1273,7 +1273,7 @@ export function BenchResults({
           { label: "Benchmark", onClick: onCrumbHome },
           {
             label: resultsView === "history" ? "History" : resultsView === "matrix" ? "Model × domain" : "Leaderboard",
-            // Clickable only when a domain filter pushes it off the tail — then
+            // Clickable only when a domain filter pushes it off the tail - then
             // it walks back to the same view across all domains.
             onClick: domainFilter !== "all" ? onClearDomain : undefined,
           },
@@ -1294,11 +1294,11 @@ export function BenchResults({
         </div>
       )}
 
-      {/* K2: "Coverage by domain" table removed — redundant with the matrix. */}
+      {/* K2: "Coverage by domain" table removed - redundant with the matrix. */}
 
       {loadingDetail && <div className="mb-2 text-xs text-text-muted">loading…</div>}
 
-      {/* LEADERBOARD — the page leads with the ANSWER: which model wins.
+      {/* LEADERBOARD - the page leads with the ANSWER: which model wins.
           Podium for the top three, then full standings, one row per model. */}
       {resultsView === "board" && visibleRuns.length > 0 && (
         <>
@@ -1411,7 +1411,7 @@ export function BenchResults({
         </>
       )}
 
-      {/* HISTORY — one card per BATCH (the models launched together),
+      {/* HISTORY - one card per BATCH (the models launched together),
           collapsed by default. The summary alone says when, what scope, how
           many models, and the session's best score. */}
       {resultsView === "history" && visibleRuns.length > 0 && (
@@ -1502,7 +1502,7 @@ export function BenchResults({
   );
 }
 
-// Model × domain pivot — rows are runs (models), columns are domains, cells
+// Model × domain pivot - rows are runs (models), columns are domains, cells
 // are judge averages. Best cell per column is highlighted so "which model
 // wins which domain" reads at a glance.
 
@@ -1521,7 +1521,7 @@ export function BenchmarkPanel({
     return v || null;
   });
   // ONE flat navigation level: every destination is a top-level tab. No
-  // "Results" grouping with a second pill bar underneath — that double
+  // "Results" grouping with a second pill bar underneath - that double
   // hierarchy was genuinely confusing.
   const [view, setView] = useState<"run" | "board" | "history" | "matrix" | "questions">(
     initialModel ? "board" : initialDomain ? "run" : "board",
@@ -1594,7 +1594,7 @@ export function BenchmarkPanel({
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log]);
 
   // When a batch this panel surfaces finishes, land on the refreshed
-  // leaderboard with the "batch finished" banner — once.
+  // leaderboard with the "batch finished" banner - once.
   useEffect(() => {
     const fin = visibleBatches.find((b) => !b.running && !b.consumed);
     if (!fin) return;
@@ -1726,10 +1726,10 @@ export function BenchmarkPanel({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Sub-nav — a segmented control, deliberately a different shape from
+      {/* Sub-nav - a segmented control, deliberately a different shape from
           the underline top tab bar so the two rows don't read as twins. */}
       <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pb-3 pt-1">
-        {/* THE navigation — every destination, one level, one bar. */}
+        {/* THE navigation - every destination, one level, one bar. */}
         <div className="inline-flex items-center gap-0.5 rounded-xl border border-border-subtle bg-surface-warm/60 p-1">
           {([
             ["run", "Run", Sparkles],
@@ -1752,7 +1752,7 @@ export function BenchmarkPanel({
             </button>
           ))}
         </div>
-        {/* K5/C2: current-domain indicator — which domain you arrived from, so
+        {/* K5/C2: current-domain indicator - which domain you arrived from, so
             the Benchmark page (which spans all domains) is never ambiguous. */}
         {initialDomain && (
           <span
