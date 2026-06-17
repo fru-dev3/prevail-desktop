@@ -20,8 +20,20 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
   card still uses a text "OFF"/"ON" button. Use the toggle peel switch (recurring
   preference: pills everywhere, never On/Off text).
 
-- [ ] **B2-7 — Scheduled runs: show next run date + time.** The card says cadence
-  but not WHEN the next run fires. Show the concrete next-run timestamp.
+- [x] **B2-7 — Scheduled runs: show next run date + time.** Done — concrete
+  "Next run: today, 2:30 PM" / "Mon Jun 23, 2:30 PM" label.
+- [x] **B2-11 — MCP "failed to connect".** Root cause: `prevail mcp --vault <path>`
+  ignored --vault (parsed only --unsafe-detach/--network, then broke out of arg
+  parsing) → fell back to ~/.prevail/vault-demo (missing) → failed. FIXED in cli
+  (parse --vault inside the mcp loop; both arg orders now work). Confirmed by an
+  external Codex MCP session hitting the same fallback. Ships with sidecar rebuild.
+- [ ] **B2-12 — Vault structure: data/ + build/.** Founder wants apps + domains
+  cleanly under `data/`, and the supporting runtime files (benchmark, complete,
+  core, usage, plus loose `_decisions.jsonl`/`_intents.jsonl`/`_journal.md`/`_meta`/
+  `_surface.json`/`_threads`/`AGENTS-operating.md`) under a `build/` folder, so the
+  root is just `data/ build/ profile.md`. Engine layout change (extends W4) — needs
+  a resolver + safe migrator + path updates across cli + desktop. NOT a quick edit;
+  plan + careful migration required.
 - [ ] **B2-8 — Model label "Claude claude-opus-4-8" in WILL RUN.** Raw id leaks
   instead of "Opus 4.8" — fix the model-label formatting on that line.
 
