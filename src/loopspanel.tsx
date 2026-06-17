@@ -4,7 +4,7 @@
 // and current actions. The runner daemon (separate) evaluates enabled loops and
 // keeps their actions current; here you define and steer them.
 import { useCallback, useEffect, useState } from "react";
-import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, Plus, RefreshCw, ShieldQuestion, Sparkles, Target, Trash2, X, Zap } from "lucide-react";
+import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, Plus, RefreshCw, ShieldQuestion, Target, Trash2, X, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase } from "./format";
 import { PREF, getPref } from "./storage";
@@ -43,29 +43,20 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
   const [newAutonomy, setNewAutonomy] = useState<LoopAutonomy>("ask");
   const [savedAt, setSavedAt] = useState(0);
   const [runtime, setRuntime] = useState<LoopsRuntime>({ schema: 1, loops: {} });
-  // Unified per-domain Ideal State (the SAME ideal-state.md the domain's Ideal
-  // State editor + every chat use). Loops measure the gap against THIS — there's
-  // no separate "desired state" anymore.
+  // The per-domain Ideal State is EDITED in Context now (S4), not here. Loops only
+  // READ it to measure the gap. Load it and auto-mirror into the loops doc's
+  // desiredState so the engine (which reads desiredState) keeps working without an
+  // editor on this page.
   const [ideal, setIdeal] = useState<string>("");
-  const [idealSaved, setIdealSaved] = useState(false);
-  const [draftingIdeal, setDraftingIdeal] = useState(false);
-  const draftIdealWithAI = useCallback(async () => {
-    setDraftingIdeal(true);
-    try {
-      const provider = getPref(PREF.memoryProvider, "claude");
-      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
-      const text = await invoke<string>("domain_draft_ideal", { vault: vaultPath, domain, provider, model });
-      if (text?.trim()) {
-        setIdeal(text.trim());
-        await invoke("write_domain_ideal", { vault: vaultPath, domain, body: text.trim() });
-        setIdealSaved(true); window.setTimeout(() => setIdealSaved(false), 1500);
-      }
-    } catch (e) { console.error("draft ideal", e); }
-    finally { setDraftingIdeal(false); }
-  }, [vaultPath, domain]);
   useEffect(() => {
     invoke<string>("read_domain_ideal", { vault: vaultPath, domain }).then((s) => setIdeal(s || "")).catch(() => setIdeal(""));
   }, [vaultPath, domain]);
+  // Keep the engine mirror in sync (read-only): if the domain ideal differs from
+  // the loops doc's desiredState, write it through once loaded.
+  useEffect(() => {
+    if (doc && ideal && doc.desiredState !== ideal) persist({ ...doc, desiredState: ideal });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ideal, doc]);
 
   useEffect(() => {
     let alive = true;
@@ -293,42 +284,16 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
         </section>
       )}
 
-      {/* Ideal state — ONE per-domain target (ideal-state.md). The same field the
-          domain's Ideal State editor + every chat use; loops measure the gap to it.
-          Saving mirrors it into the loops doc so the engine reads it too. */}
-      <section className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="flex items-center gap-3 border-b border-border-subtle bg-gradient-to-r from-accent-soft/40 to-transparent px-4 py-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-background"><Target className="h-4.5 w-4.5" /></span>
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-text-primary">{titleCase(domain)} ideal state</div>
-            <div className="text-xs text-text-muted">What a thriving {titleCase(domain)} looks like. Every loop measures the gap to this, and it grounds every {titleCase(domain)} chat. One target, used everywhere.</div>
-          </div>
-          {idealSaved && <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-ok/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ok"><Check className="h-3 w-3" /> saved</span>}
-        </div>
-        <div className="p-4">
-          <textarea
-            value={ideal}
-            key={`ideal-${domain}`}
-            onChange={(e) => setIdeal(e.target.value)}
-            onBlur={async () => {
-              try {
-                await invoke("write_domain_ideal", { vault: vaultPath, domain, body: ideal });
-                if (doc && doc.desiredState !== ideal) persist({ ...doc, desiredState: ideal }); // engine mirror
-                setIdealSaved(true); window.setTimeout(() => setIdealSaved(false), 1500);
-              } catch (e) { console.error("write ideal", e); }
-            }}
-            placeholder={`e.g. "${titleCase(domain)}: abundant, growing, resilient — net worth and passive income climbing toward financial freedom." Or let AI draft it from what it knows about your ${titleCase(domain)}.`}
-            disabled={draftingIdeal}
-            className="min-h-[88px] w-full resize-y rounded-lg border border-border-subtle bg-background px-3 py-2.5 text-sm leading-relaxed text-text-primary outline-none transition-colors placeholder:text-text-muted/70 focus:border-accent-border focus:ring-2 focus:ring-accent-border/20 disabled:opacity-60"
-          />
-          <div className="mt-2">
-            <button onClick={draftIdealWithAI} disabled={draftingIdeal}
-              title={`Draft from what Prevail knows about your ${titleCase(domain)} — review before relying on it`}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent hover:text-background disabled:opacity-50">
-              {draftingIdeal ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              {draftingIdeal ? "Drafting…" : ideal.trim() ? "Redraft with AI" : "Draft with AI"}
-            </button>
-          </div>
+      {/* S4: the Ideal State EDITOR was removed from Loops — it's context, not a
+          loop concern, and editing it lives in the Context panel / Ideals. Loops
+          still MEASURE the gap to it; the ideal is auto-mirrored into the loops doc
+          on load (read-only here), so the engine keeps reading desiredState. This
+          is just a quiet pointer to where it's edited. */}
+      <section className="flex items-center gap-3 rounded-xl border border-border-subtle bg-surface px-4 py-2.5">
+        <Target className="h-4 w-4 shrink-0 text-text-muted" />
+        <div className="min-w-0 flex-1 text-xs text-text-secondary">
+          Loops measure the gap to your <span className="font-semibold text-text-primary">{titleCase(domain)} ideal state</span>.
+          {" "}Edit it in the domain's Context panel{ideal.trim() ? "." : " — none set yet, so loops have no target to aim at."}
         </div>
       </section>
 
