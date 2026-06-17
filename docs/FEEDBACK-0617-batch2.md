@@ -76,6 +76,38 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
   memory + Tasks are moved out, the page has nothing unique. Remove the nav item;
   fold the Memory & Context produced-view into Routines (or Ideals).
 
+- [ ] **B2-21 — "Keep working with the app closed": pill toggle, not "OFF" text.**
+  HeadlessLearnCard uses a text On/Off; use the toggle pill.
+- [ ] **B2-22 — Saved items need a home.** "0 active · 2 saved" (recommendations)
+  but no way to view saved ones. Anything the app lets you SAVE must be findable +
+  usable. Add a saved view/filter (recommendations, and audit other "save" spots).
+- [ ] **B2-23 — Routines: show last run + next run.** For all routine-driven things
+  (distiller, intents, taskgen, skillgen, reminders), minimally show when they last
+  ran and when they next run. (Ties to B2-19 time-format fix.)
+
+- [ ] **B2-24 — Combine Ideals + Omega into one "Ideals" section.** Two collapsible
+  subs: "Ideal State" (user input, with alignment shown) and "Omega" (what the
+  system learned). The value is comparing ideals vs omega over time. (Part of the
+  Settings IA refactor.)
+
+- [ ] **B2-25 — Top domain nav grouping.** Chat + Council prominent on the LEFT;
+  everything else (Benchmark, Insights, Usage, Preferences, Loops, Apps, Archive)
+  on the RIGHT.
+- [ ] **B2-26 — De-emphasize the right-side nav.** Make the right group smaller +
+  less prominent than Chat/Council so the bar isn't busy. (Recommend: Chat/Council
+  as the primary tabs at full size; the rest as smaller secondary icon+label
+  controls, lighter weight.)
+
+- [ ] **B2-27 — "domain not found" path bug.** Context panel shows
+  "domain not found: …/demo-vault/wealth". Likely the v4 `data/domains/<d>` layout
+  not resolved by `domain_context` (looks at flat `<vault>/<d>`). Fix path
+  resolution (ties to B2-12 vault layout).
+- [ ] **B2-28 — Graceful context panel when ctx fails.** When domain_context
+  errors, the ctx-gated sections (State, Decisions, Journal, Skills) silently
+  vanish and only a raw error shows. Design: keep all section rows visible with a
+  quiet "couldn't load this domain's local context" + retry, instead of a scary
+  raw path error and missing items.
+
 (More to come — the founder is sending rapid feedback; appended as received.)
 
 ---
