@@ -646,7 +646,7 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
 // Map an ideal-state section heading to an icon matching its theme, so the
 // rendered constitution reads as a visual map rather than a text wall.
 
-export function MemoryContextSection(_props: { vaultPath: string }) {
+export function MemoryContextSection({ headerless }: { vaultPath: string; headerless?: boolean }) {
   const [persistent, setPersistent] = useState(() => getPref(PREF.persistentMemory, "1") === "1");
   const [memBudget, setMemBudget] = useState(() => getPref(PREF.memoryBudgetChars, "4000"));
   const [status, setStatus] = useState<{ running?: boolean; last_run_ts?: number | null; last_error?: string | null; lines_distilled?: number } | null>(null);
@@ -678,10 +678,14 @@ export function MemoryContextSection(_props: { vaultPath: string }) {
 
   return (
     <>
-      <SettingsHeader
-        title="Memory & Context"
-        subtitle="What the system has learned about you. Every chat is captured as an intent; the distiller routine compacts them into per-domain long-term memory that is fed back into future chats."
-      />
+      {/* B2-10: skip the header when wrapped in a CollapsibleSection that already
+          shows the "Memory & Context" title (avoids the duplicate title). */}
+      {!headerless && (
+        <SettingsHeader
+          title="Memory & Context"
+          subtitle="What the system has learned about you. Every chat is captured as an intent; the distiller routine compacts them into per-domain long-term memory that is fed back into future chats."
+        />
+      )}
       {/* The distiller runs on the Daemons page; this is its outcome view. A
           live status chip links across so the two pages are clearly related. */}
       <button
