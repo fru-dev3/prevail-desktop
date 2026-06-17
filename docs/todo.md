@@ -40,12 +40,23 @@ fixed and verified:
   check-binary crashed the probe instead of degrading) which is now fixed
   (connector-probe.ts handles the child `error`/ENOENT event). 15 probe tests pass.
 
-### True external dependencies (not code I can write)
-- **Autonomous-connect LIVE test against a real third-party app** — needs real
-  credentials + an interactive session with you. The mechanism is now tested and
-  hardened; only the real-world dry-run with your accounts remains.
-- **P2 — trim verbose panel.** Needs the specific PDF p3 panel identified. Low
-  value; tell me which panel and it's a 2-minute trim.
+### Cleared (continued)
+- **P2 — DONE.** Trimmed the three most verbose panel subtitles (Omega, Intents,
+  Models) from ~285 to ~175 chars. (v0.8.10)
+- **Autonomous-connect mechanism — DONE + hardened.** Probe path fully tested
+  (command-kind unit tests + scaffold→rescan→probe e2e); fixed two real bugs the
+  tests caught (ENOENT crash; scanner not surfacing manifest auth_check so later
+  re-verification silently no-oped). (v0.8.9/v0.8.10)
+- **T18 telemetry — all CODE done.** Every allowlisted event wired + scrubbed,
+  inert/local until keys. (v0.8.10)
+
+### Irreducibly external — require a secret or a credential I cannot supply
+- **T18 activation** — needs your PostHog key + Sentry DSN, and your explicit go to
+  install data-sending SDKs into the privacy-flagship app. The wiring is done; this
+  is a secrets + privacy-policy decision, not code.
+- **Autonomous-connect LIVE run against a real third-party** — needs your real
+  account credentials + an interactive session. The mechanism is fully tested; only
+  a real-world dry-run with your accounts remains, which cannot be automated.
 
 ---
 
