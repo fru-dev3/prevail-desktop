@@ -3,7 +3,7 @@
 // card).
 import { useEffect, useState } from "react";
 import { confirm as tauriConfirm, open } from "@tauri-apps/plugin-dialog";
-import { Briefcase, Check, Database, Download, ExternalLink, Folder, FolderOpen, FolderTree, GraduationCap, Home, Loader2, Monitor, Moon, Package, RotateCw, ShieldCheck, Sparkles, Sun, TrendingUp, Users } from "lucide-react";
+import { Briefcase, Check, ChevronRight, Database, Download, ExternalLink, Folder, FolderOpen, FolderTree, GraduationCap, Home, Loader2, Monitor, Moon, Package, RotateCw, ShieldCheck, Sparkles, Sun, TrendingUp, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 // Pick a glyph for a starter pack from its name, so the list reads visually.
@@ -350,7 +350,6 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
 export function BackupAutomationCard({ vault, onChange }: { vault: string; onChange?: () => void }) {
   const [enabled, setEnabled] = useState(() => lsGet(BACKUP_CFG.enabled, "0") === "1");
   const [freq, setFreq] = useState(() => lsGet(BACKUP_CFG.freq, "weekly") || "weekly");
-  const [changeThreshold, setChangeThreshold] = useState(() => lsGet(BACKUP_CFG.changeThreshold, "0"));
   const [backups, setBackups] = useState<{ name: string; path: string; bytes: number; mtime: number }[]>([]);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -396,26 +395,14 @@ export function BackupAutomationCard({ vault, onChange }: { vault: string; onCha
             </div>
           )}
         </div>
-        <label className="flex items-center gap-1.5 font-mono text-[11px] text-text-muted">
-          or every
-          <input
-            type="number" min="0" value={changeThreshold}
-            onChange={(e) => { setChangeThreshold(e.target.value); lsSet(BACKUP_CFG.changeThreshold, e.target.value); }}
-            disabled={!enabled}
-            title="Also back up after this many vault changes (0 = off)"
-            className="w-14 rounded-md border border-border bg-background px-2 py-1 text-right text-[11px] disabled:opacity-40"
-          />
-          changes
-        </label>
-        <button onClick={() => { const v = !enabled; setEnabled(v); lsSet(BACKUP_CFG.enabled, v ? "1" : "0"); }}
-          className={`rounded-md border px-3 py-1 font-mono text-[11px] uppercase tracking-wider ${enabled ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
-          {enabled ? "On" : "Off"}
-        </button>
+        {/* D4: minimal - a toggle (peel switch) + schedule selector. The "or every
+            N changes" input was the clutter the founder flagged; removed. */}
         <button onClick={async () => { setBusy(true); setNote(null); const ok = await backupVaultNow(vault); setNote(ok ? "Backup created." : "Backup failed."); setBusy(false); }}
           disabled={busy}
           className="rounded-md border border-border px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
           {busy ? "…" : "Back up now"}
         </button>
+        <Toggle on={enabled} onChange={(v) => { setEnabled(v); lsSet(BACKUP_CFG.enabled, v ? "1" : "0"); }} label="Automatic backups" />
       </div>
       {note && <div className="mt-2 text-xs text-text-secondary">{note}</div>}
       {backups.length > 0 && (
@@ -543,8 +530,16 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
           </button>
         </div>
       </div>
+      {/* D4: these are rarely-needed maintenance actions - the founder found them
+          clutter on the main view. Tucked behind a collapsed "Advanced" disclosure
+          so the Workspace page stays minimal (location card + backups) while the
+          actions remain available. */}
       {(onSetupDomains || !embedded || !tidied) && (
-        <div className="mt-3 rounded-xl border border-border bg-surface px-4">
+        <details className="group mt-3 rounded-xl border border-border bg-surface px-4 py-2">
+          <summary className="flex cursor-pointer list-none items-center gap-2 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-accent">
+            <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" /> Advanced
+          </summary>
+          <div className="pt-1">
           {onSetupDomains && (
             <SettingRow label="Domains" desc="Let Prevail recommend a starter set of life domains, or add more.">
               <button onClick={onSetupDomains} className="inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-sm text-accent hover:bg-accent hover:text-background">
@@ -568,7 +563,8 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
               </button>
             </SettingRow>
           )}
-        </div>
+          </div>
+        </details>
       )}
       {moveNote && (
         <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{moveNote}</div>
