@@ -422,7 +422,7 @@ export function ModelsSection({
       <SettingsHeader
         title="Models"
         icon={Layers}
-        subtitle="Every provider Prevail can use. Each one is validated automatically at launch with a real call: binary, login, and model all have to work. Expand a provider to test individual models and set the default a new chat opens with."
+        subtitle="Every provider Prevail can use, validated at launch with a real call. Expand one to test individual models and set the default new chats open with."
       />
       {/* Validity at a glance: one badged mark per detected provider. */}
       <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-border-subtle bg-surface px-4 py-2.5">
