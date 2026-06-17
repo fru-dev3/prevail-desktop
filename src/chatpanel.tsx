@@ -1807,13 +1807,15 @@ export function ChatPanel({
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
               {/* G3: incognito toggle - always visible. On = a plain model, none of
                   your profile/ideal/memory/omega is sent. */}
+              {/* Minimal: just an icon + tooltip. Green = on, grey = off. */}
               <button
                 onClick={toggleIncognito}
                 disabled={globalIncognito}
-                title={globalIncognito ? "Incognito is ON globally (Settings : Privacy). Replies use a plain model with none of your context." : incognito ? "Incognito is ON - replies use a plain model with none of your context. Click to turn off." : "Incognito: ask a plain model with NONE of your profile or context attached."}
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px] transition-colors disabled:opacity-70 ${incognito ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}
+                title={globalIncognito ? "Incognito ON globally (Settings : Privacy) - replies use a plain model with none of your context." : incognito ? "Incognito ON - replies use a plain model with none of your context. Click to turn off." : "Incognito OFF - click to ask a plain model with NONE of your profile or context."}
+                aria-label="Toggle incognito"
+                className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors disabled:cursor-not-allowed ${incognito ? "text-ok" : "text-text-muted hover:text-text-secondary"}`}
               >
-                <Ghost className="h-3 w-3" /> {incognito ? (globalIncognito ? "Incognito on (global)" : "Incognito on") : "Incognito"}
+                <Ghost className="h-4 w-4" />
               </button>
               {primedContext.map((c, i) => (
                 <span
