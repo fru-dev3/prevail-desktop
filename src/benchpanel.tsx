@@ -219,10 +219,17 @@ export function BenchQuestions({
       // verify each one actually received drafts.
       const targets = domain === "all" ? allDomains.map((d) => d.toLowerCase()) : [domain];
       const short: string[] = [];
-      const failed: string[] = [];
+      const failed: { domain: string; reason: string }[] = [];
       for (const t of targets) {
-        const { code, added } = await suggestForDomain(t, cli, model);
-        if (!(code === 0 || code === null)) failed.push(t);
+        const { code, added, tail } = await suggestForDomain(t, cli, model);
+        if (!(code === 0 || code === null)) {
+          // S3: surface WHY it failed. The engine prints a reason on the last line
+          // ("nothing to draft from", "LLM call failed", "could not parse…"); fall
+          // back to a plain-English guess from the exit context if it's empty.
+          const reason = (tail || "").split("/").pop()?.trim()
+            || "the drafting model returned nothing usable (check the model is installed and signed in)";
+          failed.push({ domain: t, reason });
+        }
         // Only warn "under target" with POSITIVE evidence of a short draft.
         // added <= 0 means the count read raced (or every draft deduped) - the
         // exit code already says success, so don't surface a false "0/N".
@@ -236,12 +243,13 @@ export function BenchQuestions({
             : `Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} for ${titleCase(domain)}. Review the ground truth before trusting scores.`,
         );
         setSuggestOpen(false);
+      } else if (failed.length > 0) {
+        // Lead with the concrete reason for the (usually single) failed domain.
+        const f = failed[0];
+        const more = failed.length > 1 ? ` (and ${failed.length - 1} more)` : "";
+        setInfo(`Couldn't draft ${titleCase(f.domain)}${more}: ${f.reason}. Fix that, then re-run.`);
       } else {
-        const parts = [
-          failed.length ? `failed: ${failed.map(titleCase).join(", ")}` : "",
-          short.length ? `under target: ${short.join(", ")}` : "",
-        ].filter(Boolean).join(" · ");
-        setInfo(`Drafted across ${targets.length - failed.length}/${targets.length} domains - ${parts}. Re-run to fill the gaps.`);
+        setInfo(`Drafted, but under target: ${short.join(", ")}. Re-run to fill the gaps.`);
       }
     } catch (e) {
       setInfo(`Suggest failed: ${e}`);
