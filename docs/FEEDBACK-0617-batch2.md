@@ -51,4 +51,45 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
 - [x] **B2-14 — Format "What we collect" telemetry list.** Done — clean two-column
   table (event chip + what it carries) instead of a dash-list.
 
+- [ ] **B2-15 — Consolidate the Vault section.** Don't have a standalone "Vault
+  folder" card AND a separate "Starter packs & Sandbox" with Your/Demo vault
+  toggles. Make ONE "Vault" section = the Your vault + Demo vault cards, each with
+  small inline icons to change the path + open the vault (Finder). Drop the
+  redundant standalone Vault-folder card. "Starter packs" becomes its own separate
+  section. (Pairs with B2-12 vault restructure.)
+
+- [ ] **B2-16 — Backups inside each vault card.** Not a separate big "Backups"
+  section — a tiny backup control within the Your vault / Demo vault cards, since
+  backup is per-vault (back up your vault, or the demo vault). Folds into B2-15.
+- [ ] **B2-17 — New "Work" settings nav group.** Add a nav group called "Work"
+  containing Tasks, Workspace, and Recommendations (move Tasks there).
+
+- [ ] **B2-18 — Tasks duplicated.** Tasks shows inside the Memory engine
+  (Configuration) page AND has its own nav item. Remove the embedded copy; Tasks
+  lives once (in the new "Work" group, B2-17).
+- [ ] **B2-19 — Distiller time bug.** "DISTILLER running · last pass 20601 days
+  ago ago" — double "ago" and a bogus epoch-based age when last_run_ts is 0.
+  Guard the formatting.
+
+- [ ] **B2-20 — Delete the "Memory engine" (Configuration) page.** Memory already
+  lives under Routines/Daemons; the Memory & Context view duplicates it, and once
+  memory + Tasks are moved out, the page has nothing unique. Remove the nav item;
+  fold the Memory & Context produced-view into Routines (or Ideals).
+
 (More to come — the founder is sending rapid feedback; appended as received.)
+
+---
+
+## Grouped: Settings IA + Workspace refactor (do as ONE coherent unit)
+These touch the same nav structure / Workspace area, so they're done together to
+avoid breakage + rework:
+- **Nav reorg:** B2-17 (new "Work" group = Tasks + Workspace + Recommendations),
+  B2-18 (remove duplicate embedded Tasks), B2-20 (delete "Memory engine" page;
+  relocate Memory & Context into Routines/Daemons).
+- **Vault/Workspace:** B2-12 (data/ + build/ on-disk layout), B2-15 (one Vault
+  section: Your/Demo vault cards with inline change+open icons), B2-16 (per-vault
+  backup control inside those cards).
+Proposed target Settings nav order: Intelligence (Models, Council, Frameworks,
+Skills, Benchmark) · Context & Memory (Ideals, Omega, Intents, Routines) · Work
+(Tasks, Workspace, Recommendations) · Connections (Apps, Gateway, MCP, WebUI) ·
+Privacy & Safety · Appearance/About.
