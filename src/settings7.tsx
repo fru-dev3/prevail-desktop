@@ -382,10 +382,12 @@ export function ModelsSection({
   clis,
   onStartChatWith,
   onActivated,
+  vaultPath,
 }: {
   clis: CliInfo[];
   onStartChatWith?: (cliId: string, modelId?: string) => void;
   onActivated?: () => Promise<CliInfo[]>;
+  vaultPath?: string;
 }) {
   const firstAvailable = useMemo(() => clis.find((c) => c.available)?.id ?? "", [clis]);
   const [defaultChatCli, setDefaultChatCli] = useState(() => lsGet(LS.defaultChatCli) || firstAvailable);
@@ -487,6 +489,7 @@ export function ModelsSection({
               onStartChatWith={onStartChatWith}
               defaultChatCli={defaultChatCli}
               onMakeDefault={setDefaultChatCli}
+              vaultPath={vaultPath}
               embedded
             />
           ),
