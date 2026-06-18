@@ -146,7 +146,20 @@ export function DomainContextDrawer({
       </div>
       <div className="flex-1 overflow-y-auto">
         {loading && <div className="p-4 text-xs text-text-muted">loading…</div>}
-        {err && <div className="m-2 rounded border border-warn/40 bg-warn/10 p-3 text-xs text-warn">{err}</div>}
+        {/* B2-28: calm, recoverable message instead of a raw "domain not found:
+            /path" error. The Global sections (Ideal State, Profile, Memory) still
+            render below; only this domain's local context failed to load. */}
+        {err && (
+          <div className="m-2 rounded-lg border border-border-subtle bg-surface-warm/50 p-3">
+            <div className="text-xs text-text-secondary">Couldn't load this domain's local context right now.</div>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent("prevail:context-changed"))}
+              className="mt-2 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent"
+            >
+              Retry
+            </button>
+          </div>
+        )}
         {!domain && (
           <div className="border-b border-border-subtle px-4 py-2.5 text-[11px] leading-relaxed text-text-muted">
             General is your no-domain workspace. It has its own state, journal, session logs, decisions, and skills - the same context items a domain has, kept at the vault root. Open a domain to see that domain's own context instead.
