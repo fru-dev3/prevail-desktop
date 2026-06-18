@@ -784,6 +784,16 @@ pub fn engine_app_sync(id: String, vault: String) -> Result<serde_json::Value, S
     run_engine_json(&["connectors", "sync", &id, "--vault", &vault, "--json"])
 }
 
+/// Run an OAuth app's sign-in flow (`connectors oauth <id>`): opens the browser
+/// to the provider's consent screen, captures the loopback redirect, and persists
+/// the refresh token. Blocks until the flow completes. The desktop then runs a
+/// verify sync. Used by the per-app "Sign in" button.
+#[tauri::command]
+pub fn engine_app_oauth(id: String, vault: String) -> Result<serde_json::Value, String> {
+    let out = run_engine_raw(&["--vault", &vault, "connectors", "oauth", &id])?;
+    Ok(serde_json::json!({ "ok": true, "output": out }))
+}
+
 /// The proactive Recommendations feed: domains to create (from recurring
 /// intents), best model per benchmarked domain, and domains with no app feeding
 /// them. Computed from existing vault signals. Returns { ok, recommendations }.
