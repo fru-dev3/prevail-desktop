@@ -280,28 +280,23 @@ pub fn tasks_set_owner(vault: String, domain: String, id: String, owner: String)
 /// cross-domain board. Open tasks first, then done.
 #[tauri::command]
 pub fn tasks_read_all(vault: String) -> Result<Vec<serde_json::Value>, String> {
-    let root = std::path::PathBuf::from(&vault);
     let mut out: Vec<serde_json::Value> = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(&root) {
-        for e in rd.flatten() {
-            let p = e.path();
-            if !p.is_dir() { continue; }
-            let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') || name.starts_with('_') { continue; }
-            for t in tasks_read(vault.clone(), name.clone()).unwrap_or_default() {
-                let status = effective_status(&t);
-                out.push(serde_json::json!({
-                    "domain": name,
-                    "text": t.text,
-                    "done": t.done,
-                    "due": t.due,
-                    "added": t.added,
-                    "source": t.source,
-                    "owner": t.owner.unwrap_or_else(|| "me".into()),
-                    "status": status,
-                    "id": t.id,
-                }));
-            }
+    // Enumerate domains the v3-aware way (handles BOTH <vault>/<domain> and the v3
+    // <vault>/domains/<domain> container) — lightweight (names only, no state reads).
+    for name in crate::vault::list_domain_names(&vault) {
+        for t in tasks_read(vault.clone(), name.clone()).unwrap_or_default() {
+            let status = effective_status(&t);
+            out.push(serde_json::json!({
+                "domain": name,
+                "text": t.text,
+                "done": t.done,
+                "due": t.due,
+                "added": t.added,
+                "source": t.source,
+                "owner": t.owner.unwrap_or_else(|| "me".into()),
+                "status": status,
+                "id": t.id,
+            }));
         }
     }
     // Open first; then by due date (soonest first, undated last).
@@ -324,14 +319,9 @@ pub fn tasks_read_all(vault: String) -> Result<Vec<serde_json::Value>, String> {
 /// `DecisionItem[]` newest-first. Actions reuse existing plumbing in the UI.
 #[tauri::command]
 pub fn decisions_pending(vault: String) -> Result<Vec<serde_json::Value>, String> {
-    let root = std::path::PathBuf::from(&vault);
     let mut out: Vec<serde_json::Value> = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(&root) {
-        for e in rd.flatten() {
-            let p = e.path();
-            if !p.is_dir() { continue; }
-            let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') || name.starts_with('_') { continue; }
+    {
+        for name in crate::vault::list_domain_names(&vault) {
             let ddir = crate::paths::domain_dir_pub(&vault, &name);
 
             // loopId → human name (best-effort, for the "why" line).

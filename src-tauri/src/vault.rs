@@ -187,10 +187,76 @@ pub(crate) fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
     Ok(domains)
 }
 
+/// Lightweight domain discovery: just the names, in BOTH the legacy (<vault>/<d>)
+/// and v3 (<vault>/domains/<d>) layouts, WITHOUT reading each domain's state
+/// snapshot for a preview (which scan_vault does). Used by hot paths that only
+/// need the list — the cross-domain task board and the Decision Inbox poll — so
+/// they don't do N state.md reads on every refresh.
+pub(crate) fn list_domain_names(vault: &str) -> Vec<String> {
+    let root = PathBuf::from(vault);
+    if !root.exists() {
+        return Vec::new();
+    }
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut names: Vec<String> = Vec::new();
+    let mut consider = |name: String, p: PathBuf| {
+        if name.starts_with('.') || NON_DOMAIN_DIRS.contains(&name.as_str()) {
+            return;
+        }
+        if !p.is_dir() || !seen.insert(name.clone()) {
+            return;
+        }
+        // Same domain detection as scan_vault: soul.md (v2) / _state.md (derived) /
+        // state.md (v1). Cheap existence checks, no file reads.
+        if p.join("soul.md").exists() || p.join("_state.md").exists() || p.join("state.md").exists() {
+            names.push(name);
+        }
+    };
+    let domains_root = root.join("domains");
+    if domains_root.is_dir() {
+        if let Ok(es) = read_dir_retry(&domains_root) {
+            for entry in es.flatten() {
+                consider(entry.file_name().to_string_lossy().to_string(), entry.path());
+            }
+        }
+    }
+    if let Ok(es) = read_dir_retry(&root) {
+        for entry in es.flatten() {
+            consider(entry.file_name().to_string_lossy().to_string(), entry.path());
+        }
+    }
+    names.sort();
+    names
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn list_domain_names_finds_both_layouts_skips_non_domains() {
+        let vault = std::env::temp_dir().join(format!("prevail-listnames-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&vault);
+        // v3 domain (under domains/) — this is the layout that the original board bug missed.
+        let cal = vault.join("domains").join("calendar");
+        fs::create_dir_all(&cal).unwrap();
+        fs::write(cal.join("_state.md"), "# state").unwrap();
+        // legacy domain (at root)
+        let health = vault.join("health");
+        fs::create_dir_all(&health).unwrap();
+        fs::write(health.join("soul.md"), "# soul").unwrap();
+        // a folder with no state markers — NOT a domain
+        fs::create_dir_all(vault.join("random")).unwrap();
+        fs::write(vault.join("random").join("note.txt"), "x").unwrap();
+
+        let names = list_domain_names(&vault.to_string_lossy());
+        assert!(names.contains(&"calendar".to_string()), "v3 domain must be found: {names:?}");
+        assert!(names.contains(&"health".to_string()), "legacy domain must be found: {names:?}");
+        assert!(!names.contains(&"random".to_string()), "non-domain must be skipped");
+        assert!(!names.contains(&"domains".to_string()), "the v3 container itself is not a domain");
+        let _ = fs::remove_dir_all(&vault);
+    }
 
     #[test]
     fn vault_migrate_layout_moves_domains_preserves_data_skips_conflicts() {
