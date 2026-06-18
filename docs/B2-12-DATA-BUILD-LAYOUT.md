@@ -53,6 +53,29 @@ Run: `grep -rlE "_decisions\.jsonl|_intents\.jsonl|usage\.ndjson|_threads|_meta|
 - A missed site reading the old path after move → Phase 5 fallback reads cover the gap.
 - Cross-repo drift (cli sidecar vs desktop) → land resolver in both before the migrator ships.
 
+## Phase 2 findings (IMPORTANT — discovered while implementing)
+1. **Per-domain vs root.** Most runtime-file sites are PER-DOMAIN
+   (`<domain>/_intents.jsonl`, `_decisions.jsonl`, `_journal.md`) via `domain_dir`
+   — these stay INSIDE the domain (under data/domains/<d>); they do NOT move to
+   build/. Only the vault-ROOT "General" bucket + top-level dirs move.
+2. **General-bucket classification needs a founder call.** `domain_dir(None)` (the
+   General/root bucket) serves BOTH clearly-supporting files (ledgers, _journal,
+   _surface, _threads) AND arguably-content files (`_memory.md`, `_state.md`,
+   `_skills/`). A blanket resolver swap would over-move content. DECISION NEEDED:
+   for the General bucket, which go to build/ (supporting) vs stay as content?
+   Recommend: ledgers + _journal + _surface + _threads + _meta → build/;
+   _memory.md + _state.md + _skills → content (root/data).
+3. **Safe lever.** `build_root(vault)` == vault root until `build/` exists, so
+   wrapping a vault-root path in it is a RUNTIME NO-OP until the migrator runs —
+   Phase-2 routing is safe to land incrementally, even unverified.
+
+### Phase 2 progress (this branch)
+- DONE (desktop, no-op until build/): `benchmark/` (benchmark.rs ×5) and `_meta/`
+  (idealstate, intent_daemon, intents) resolve via `build_root`. cargo check green.
+- TODO: General-bucket ledgers/_threads (pending the classification call);
+  cli-side routing for usage.ndjson + benchmark + _meta (the engine owns those);
+  then Phase 3 migrator.
+
 ## Recommendation
 Land Phases 1–2 (resolver + routing, no destructive move) and ship; then Phase 3–4
 (migrator + trigger) in a follow-up once routing is proven. Two safe releases beat

@@ -143,7 +143,7 @@ fn run_dir_date(dir_name: &str) -> String {
 
 #[tauri::command]
 pub(crate) fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
-    let runs_dir = Path::new(&vault).join("benchmark").join("runs");
+    let runs_dir = crate::paths::build_root(&vault).join("benchmark").join("runs");
     if !runs_dir.exists() {
         return Ok(vec![]);
     }
@@ -366,7 +366,7 @@ fn parse_bench_question(path: &Path) -> Option<BenchQuestion> {
 
 #[tauri::command]
 pub(crate) fn benchmark_questions(vault: String) -> Result<Vec<BenchQuestion>, String> {
-    let dir = Path::new(&vault).join("benchmark").join("questions");
+    let dir = crate::paths::build_root(&vault).join("benchmark").join("questions");
     if !dir.exists() {
         return Ok(vec![]);
     }
@@ -404,7 +404,7 @@ fn slugify(s: &str) -> String {
 
 #[tauri::command]
 pub(crate) fn benchmark_save_question(vault: String, q: BenchQuestionInput) -> Result<BenchQuestion, String> {
-    let dir = Path::new(&vault).join("benchmark").join("questions");
+    let dir = crate::paths::build_root(&vault).join("benchmark").join("questions");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     // Determine the id: keep existing, else slug from domain + prompt (unique).
     let id = match &q.id {
@@ -591,7 +591,7 @@ pub(crate) fn benchmark_import_questions(vault: String, json: String) -> Result<
         .get("questions")
         .and_then(|q| q.as_array())
         .ok_or("missing \"questions\" array")?;
-    let dir = Path::new(&vault).join("benchmark").join("questions");
+    let dir = crate::paths::build_root(&vault).join("benchmark").join("questions");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let mut report = BenchImportReport { created: vec![], skipped: vec![] };
     for item in items {
@@ -659,7 +659,7 @@ pub(crate) struct MatrixRow {
 
 #[tauri::command]
 pub(crate) fn benchmark_matrix(vault: String) -> Result<Vec<MatrixRow>, String> {
-    let runs_dir = Path::new(&vault).join("benchmark").join("runs");
+    let runs_dir = crate::paths::build_root(&vault).join("benchmark").join("runs");
     if !runs_dir.exists() {
         return Ok(vec![]);
     }

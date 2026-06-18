@@ -35,7 +35,6 @@ pub(crate) fn data_root(vault: &str) -> PathBuf {
 // `runtime_path` PREFERS <vault>/build/<name> when build/ exists, else falls back
 // to the current location (vault root), so nothing changes until a migration
 // creates build/. Readers should be routed through this in Phase 2.
-#[allow(dead_code)]
 pub(crate) fn build_root(vault: &str) -> PathBuf {
     let b = PathBuf::from(vault).join("build");
     if b.is_dir() { b } else { PathBuf::from(vault) }
