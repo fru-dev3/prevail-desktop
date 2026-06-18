@@ -254,7 +254,7 @@ export function DomainContextDrawer({
                 {memory.length > 1200 ? memory.slice(0, 1200) + "\n…" : memory}
               </pre>
             </>
-          ) : <div className="text-xs text-text-muted">No distilled memory yet. The background distiller (Settings → Daemons) compacts your activity into memory once enough new material accumulates, usually within a few sessions.</div>
+          ) : <div className="text-xs text-text-muted">No distilled memory yet. The background distiller (Settings → Routines) compacts your activity into long-term memory once enough new material accumulates, usually within a few sessions.</div>
         } />
         {ctx && (
           <>
