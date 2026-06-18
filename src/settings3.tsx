@@ -427,7 +427,7 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
             ? `${shown.toLocaleString()} app${shown === 1 ? "" : "s"} in selected categories`
             : showAll
               ? `Showing all ${total.toLocaleString()} apps`
-              : `Showing ${coreTotal} core apps · toggle All for the full ${total.toLocaleString()}`}
+              : `Showing ${coreTotal} essential apps · toggle All for the full ${total.toLocaleString()}`}
       </div>
 
       {/* Flat alphabetical list - category shown as secondary label on each row */}
@@ -483,6 +483,14 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
                   </span>
                 );
               })()}
+              {a.connection_hint && (
+                <span
+                  className={`shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${a.connection_hint.privacy === "vendor-cloud" ? "border-warn/40 bg-warn/10 text-warn" : "border-accent-border bg-accent-soft text-accent"}`}
+                  title={`Suggested: ${a.connection_hint.method}${a.connection_hint.server ? " · " + a.connection_hint.server : ""}${a.connection_hint.readOnly ? " · read-only" : ""} — ${a.connection_hint.privacy === "vendor-cloud" ? "routes through the vendor's cloud" : "stays on your machine"}${a.connection_hint.note ? `. ${a.connection_hint.note}` : ""}`}
+                >
+                  {a.connection_hint.privacy === "vendor-cloud" ? "○ cloud" : "● local"}
+                </span>
+              )}
               <PatternChip pattern={a.pattern} />
             </div>
           );
