@@ -8,7 +8,7 @@ import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
 import { VENDOR_BRAND } from "./constants";
 import { isLocalCli } from "./helpers";
-import { modelsFor } from "./helpers2";
+import { modelsFor, prettyModelId } from "./helpers2";
 import { LS, PREF, getPref, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Ghost } from "lucide-react";
 import { Toggle } from "./ui";
@@ -256,7 +256,14 @@ function CouncilCircle({ members, chair, clis }: { members: string[]; chair: str
     const [cli, model] = key.split("::");
     const c = clis.find((x) => x.id === cli);
     const m = councilModelsFor(cli).find((x) => x.id === model);
-    return `${c?.label ?? cli} · ${m?.label ?? (model || "default")}`;
+    return `${c?.label ?? cli} · ${m?.label ?? prettyModelId(model || "") || "default"}`;
+  };
+  // B2-4: the short model name shown UNDER each seat (e.g. "Opus 4.7"), so the
+  // ring labels its models, not just provider glyphs.
+  const modelShort = (key: string) => {
+    const [cli, model] = key.split("::");
+    const m = councilModelsFor(cli).find((x) => x.id === model);
+    return (m?.label ?? prettyModelId(model || "") || "default").replace(/\s*\(.*?\)\s*/g, "").trim();
   };
   if (n === 0) {
     return (
@@ -302,6 +309,10 @@ function CouncilCircle({ members, chair, clis }: { members: string[]; chair: str
                     <Crown className="h-3 w-3" />
                   </span>
                 )}
+              </div>
+              {/* B2-4: model name under the seat. */}
+              <div className="absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap text-center font-mono text-[8px] leading-tight text-text-secondary">
+                {modelShort(key)}
               </div>
             </div>
           );
