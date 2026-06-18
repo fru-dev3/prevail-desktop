@@ -71,11 +71,22 @@ Run: `grep -rlE "_decisions\.jsonl|_intents\.jsonl|usage\.ndjson|_threads|_meta|
    Phase-2 routing is safe to land incrementally, even unverified.
 
 ### Phase 2 progress (this branch)
-- DONE (desktop, no-op until build/): `benchmark/` (benchmark.rs ×5) and `_meta/`
-  (idealstate, intent_daemon, intents) resolve via `build_root`. cargo check green.
-- TODO: General-bucket ledgers/_threads (pending the classification call);
-  cli-side routing for usage.ndjson + benchmark + _meta (the engine owns those);
-  then Phase 3 migrator.
+- DONE (desktop, no-op until build/, cargo green):
+  - `benchmark/` (benchmark.rs ×5), `_meta/` (idealstate, intent_daemon, intents)
+    via `build_root`.
+  - intents.rs General ledgers: `intent_append`/`intents_read`/`journal_append`/
+    `decision_append`/`decisions_read`/`decision_feedback` now use
+    `runtime_file(vault, domain, file)` (per-domain stays; General → build/).
+  - `intents_read_all` general entry seeded from `build_root`.
+  - surface.rs is always per-domain (domain_dir_pub) → correctly LEFT unchanged.
+- TODO (needs care + app verification):
+  - **Distiller split-path wrinkle:** `distill.rs ledger_dirs` pushes ONE dir per
+    bucket and reads `_intents.jsonl` + writes `_memory.md` to it. After B2-12 the
+    General `_intents.jsonl` is in build/ but `_memory.md` stays at root (content) —
+    no longer co-located. The General distill path must READ from build_root but
+    WRITE _memory.md to root. Refactor carefully; verify with a running app.
+  - `_threads/` General routing; cli-side routing (usage.ndjson, benchmark, _meta,
+    ledgers — the engine owns those); then Phase 3 migrator + Phase 4 trigger.
 
 ## Recommendation
 Land Phases 1–2 (resolver + routing, no destructive move) and ship; then Phase 3–4

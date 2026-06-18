@@ -14,7 +14,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::engine;
-use crate::paths::domain_dir;
+use crate::paths::{domain_dir, runtime_file};
 use crate::{read_dir_retry, read_to_string_retry};
 
 #[tauri::command]
@@ -25,7 +25,7 @@ pub(crate) fn intent_append(
 ) -> Result<(), String> {
     let dir = domain_dir(&vault, &domain);
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir intents: {e}"))?;
-    let file = dir.join("_intents.jsonl");
+    let file = runtime_file(&vault, &domain, "_intents.jsonl");
     let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
     engine::vault_append_line(&file, &format!("{line}\n")).map_err(|e| format!("write intent: {e}"))?;
     Ok(())
@@ -40,8 +40,7 @@ pub(crate) fn intents_read(
     domain: Option<String>,
     limit: Option<usize>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let dir = domain_dir(&vault, &domain);
-    let file = dir.join("_intents.jsonl");
+    let file = runtime_file(&vault, &domain, "_intents.jsonl");
     let text = match read_to_string_retry(&file) {
         Ok(t) => t,
         Err(_) => return Ok(vec![]),
@@ -67,7 +66,7 @@ pub(crate) fn intents_read(
 pub(crate) fn journal_append(vault: String, domain: Option<String>, entry: String) -> Result<(), String> {
     let dir = domain_dir(&vault, &domain);
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir journal: {e}"))?;
-    let path = dir.join("_journal.md");
+    let path = runtime_file(&vault, &domain, "_journal.md");
     const HEADER: &str = "# Journal\n\n";
     let existing = read_to_string_retry(&path).unwrap_or_default();
     let body = existing.strip_prefix(HEADER).unwrap_or(&existing).to_string();
@@ -82,7 +81,8 @@ pub(crate) fn journal_append(vault: String, domain: Option<String>, entry: Strin
 #[tauri::command]
 pub(crate) fn intents_read_all(vault: String, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
     let root = PathBuf::from(&vault);
-    let mut dirs: Vec<(String, PathBuf)> = vec![("general".into(), root.clone())];
+    // B2-12: the General ledger moves to build/ (no-op until build/ exists).
+    let mut dirs: Vec<(String, PathBuf)> = vec![("general".into(), crate::paths::build_root(&vault))];
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     // v3 layout first (<vault>/domains/<domain>); it wins on a name clash.
     if let Ok(it) = read_dir_retry(&root.join("domains")) {
@@ -277,7 +277,7 @@ pub(crate) fn decision_append(
 ) -> Result<(), String> {
     let dir = domain_dir(&vault, &domain);
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir decisions: {e}"))?;
-    let file = dir.join("_decisions.jsonl");
+    let file = runtime_file(&vault, &domain, "_decisions.jsonl");
     let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
     engine::vault_append_line(&file, &format!("{line}\n")).map_err(|e| format!("write decision: {e}"))?;
     Ok(())
@@ -291,8 +291,7 @@ pub(crate) fn decisions_read(
     domain: Option<String>,
     limit: Option<usize>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let dir = domain_dir(&vault, &domain);
-    let file = dir.join("_decisions.jsonl");
+    let file = runtime_file(&vault, &domain, "_decisions.jsonl");
     let text = match read_to_string_retry(&file) {
         Ok(t) => t,
         Err(_) => return Ok(vec![]),
@@ -321,8 +320,7 @@ pub(crate) fn decision_feedback(
     rating: String, // "up" | "down" | "clear"
     note: Option<String>,
 ) -> Result<(), String> {
-    let dir = domain_dir(&vault, &domain);
-    let file = dir.join("_decisions.jsonl");
+    let file = runtime_file(&vault, &domain, "_decisions.jsonl");
     let text = read_to_string_retry(&file).map_err(|e| format!("read _decisions.jsonl: {e}"))?;
     let mut lines: Vec<serde_json::Value> = text
         .lines()
