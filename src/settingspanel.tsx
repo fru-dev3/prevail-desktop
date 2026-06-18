@@ -247,7 +247,7 @@ export function SettingsPanel({
         <div className="w-full px-8 py-10">
           {section === "general" && <GeneralSection appearance={appearance} />}
           {section === "privacy" && <PrivacyConnectivitySection enabled={bunkerEnabled} onChange={onBunkerChange} />}
-          {section === "models" && <ModelsSection clis={clis} onStartChatWith={onStartChatWith} onActivated={onRefreshClis} />}
+          {section === "models" && <ModelsSection clis={clis} onStartChatWith={onStartChatWith} onActivated={onRefreshClis} vaultPath={vaultPath} />}
           {section === "benchmark" && (
             <>
               <SettingsHeader
