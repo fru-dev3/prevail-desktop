@@ -58,13 +58,14 @@ Run: `grep -rlE "_decisions\.jsonl|_intents\.jsonl|usage\.ndjson|_threads|_meta|
    (`<domain>/_intents.jsonl`, `_decisions.jsonl`, `_journal.md`) via `domain_dir`
    — these stay INSIDE the domain (under data/domains/<d>); they do NOT move to
    build/. Only the vault-ROOT "General" bucket + top-level dirs move.
-2. **General-bucket classification needs a founder call.** `domain_dir(None)` (the
-   General/root bucket) serves BOTH clearly-supporting files (ledgers, _journal,
-   _surface, _threads) AND arguably-content files (`_memory.md`, `_state.md`,
-   `_skills/`). A blanket resolver swap would over-move content. DECISION NEEDED:
-   for the General bucket, which go to build/ (supporting) vs stay as content?
-   Recommend: ledgers + _journal + _surface + _threads + _meta → build/;
-   _memory.md + _state.md + _skills → content (root/data).
+2. **General-bucket classification — DECIDED (founder, 2026-06-17).**
+   - → build/ (supporting): `_decisions.jsonl`, `_intents.jsonl`, `_journal.md`,
+     `_surface.json`, `_threads/`, `_meta/`, `benchmark/`, `usage`, `AGENTS-operating.md`.
+   - stay CONTENT (root or data/, NOT build/): General `_memory.md`, `_state.md`, `_skills/`.
+   - Implication: can't blanket-swap `domain_dir(None)` → build_root (that would move
+     _memory/_state too). Route PER FILE: when domain is None AND the file is a
+     supporting one, use `build_root(vault).join(file)`; otherwise unchanged. A
+     `general_supporting_path(vault, file)` helper keeps this in one place.
 3. **Safe lever.** `build_root(vault)` == vault root until `build/` exists, so
    wrapping a vault-root path in it is a RUNTIME NO-OP until the migrator runs —
    Phase-2 routing is safe to land incrementally, even unverified.
