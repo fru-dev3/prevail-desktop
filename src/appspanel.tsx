@@ -225,6 +225,18 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
   const enabled = app.enabled !== false;
   const initial = (app.title || app.id || "·").charAt(0).toUpperCase();
   const runs = app.runs ?? [];
+  // Apps redesign: the actual data files this connector has loaded (so the user
+  // can SEE what was pulled, and reveal it). Lazy-loaded when the card opens, and
+  // reloaded after a successful sync (lastSuccessTs change).
+  const [dataFiles, setDataFiles] = useState<{ path: string; name: string; bytes: number; mtime: number }[]>([]);
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    invoke<{ path: string; name: string; bytes: number; mtime: number }[]>("app_data_files", { vault: vaultPath, appId: app.id })
+      .then((f) => { if (alive) setDataFiles(Array.isArray(f) ? f : []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [open, app.id, vaultPath, app.lastSuccessTs]);
   // APP-5 - edit which domains this app feeds (engine_app_set_domains). The
   // vault's domain list is fetched lazily when the editor opens.
   const [editDomains, setEditDomains] = useState(false);
@@ -508,7 +520,13 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
           <Detail label="Domains fed">
             {!editDomains ? (
               <span className="inline-flex flex-wrap items-center gap-1.5">
-                <span>{(app.domains ?? []).length ? app.domains.map(titleCase).join(", ") : "none yet"}</span>
+                {(app.domains ?? []).length ? (app.domains).map((d) => (
+                  <button key={d} onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: d }))}
+                    title={`Open the ${titleCase(d)} domain`}
+                    className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
+                    {titleCase(d)}
+                  </button>
+                )) : <span>none yet</span>}
                 <button onClick={openDomainEditor}
                   className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
                   <Pencil className="h-2.5 w-2.5" /> edit
@@ -551,6 +569,24 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
                   <FolderOpen className="h-2.5 w-2.5" /> reveal
                 </button>
               </span>
+            </Detail>
+          )}
+          {dataFiles.length > 0 && (
+            <Detail label="Data loaded">
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] text-text-muted">
+                  {dataFiles.length} file{dataFiles.length === 1 ? "" : "s"}
+                  {(app.domains ?? []).length ? ` → feeding ${app.domains.map(titleCase).join(", ")}` : ""}
+                </span>
+                {dataFiles.slice(0, 5).map((f) => (
+                  <button key={f.path} onClick={() => void invoke("open_in_finder", { path: f.path }).catch(() => {})}
+                    title="Reveal in Finder"
+                    className="inline-flex w-fit items-center gap-1.5 font-mono text-[11px] text-text-secondary hover:text-accent">
+                    <FolderOpen className="h-3 w-3 shrink-0" /> {f.name}
+                  </button>
+                ))}
+                {dataFiles.length > 5 && <span className="text-[10px] text-text-muted/70">+{dataFiles.length - 5} more</span>}
+              </div>
             </Detail>
           )}
           {app.lastError && (

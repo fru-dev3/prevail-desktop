@@ -784,6 +784,36 @@ pub fn engine_app_sync(id: String, vault: String) -> Result<serde_json::Value, S
     run_engine_json(&["connectors", "sync", &id, "--vault", &vault, "--json"])
 }
 
+/// List the data files a connector has actually loaded (apps redesign: "showcase
+/// what data has been loaded in the app's folder"). Reads <vault>/data/apps/<id>/
+/// data/** recursively → [{ path, name, bytes, mtime }], newest first. Empty when
+/// nothing's been synced yet.
+#[tauri::command]
+pub fn app_data_files(vault: String, app_id: String) -> Result<Vec<serde_json::Value>, String> {
+    let base = crate::paths::data_root(&vault).join("apps").join(&app_id).join("data");
+    fn walk(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<serde_json::Value>) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() { walk(&p, base, out); continue; }
+            if !p.is_file() { continue; }
+            let meta = e.metadata().ok();
+            let bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            let mtime = meta
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let rel = p.strip_prefix(base).unwrap_or(&p).to_string_lossy().to_string();
+            out.push(serde_json::json!({ "path": p.to_string_lossy(), "name": rel, "bytes": bytes, "mtime": mtime }));
+        }
+    }
+    let mut out = Vec::new();
+    walk(&base, &base, &mut out);
+    out.sort_by(|a, b| b["mtime"].as_u64().unwrap_or(0).cmp(&a["mtime"].as_u64().unwrap_or(0)));
+    Ok(out)
+}
+
 /// Run an OAuth app's sign-in flow (`connectors oauth <id>`): opens the browser
 /// to the provider's consent screen, captures the loopback redirect, and persists
 /// the refresh token. Blocks until the flow completes. The desktop then runs a
