@@ -284,7 +284,17 @@ pub fn tasks_read_all(vault: String) -> Result<Vec<serde_json::Value>, String> {
     // Enumerate domains the v3-aware way (handles BOTH <vault>/<domain> and the v3
     // <vault>/domains/<domain> container) — lightweight (names only, no state reads).
     for name in crate::vault::list_domain_names(&vault) {
-        for t in tasks_read(vault.clone(), name.clone()).unwrap_or_default() {
+        let mut tasks = tasks_read(vault.clone(), name.clone()).unwrap_or_default();
+        // Legacy tasks (pre-Workflows-Kanban) have no id/owner. The board's
+        // move/owner/delete are id-keyed, so stamp stable ids ONCE (normalize +
+        // write) the first time such a domain is read. Non-destructive: text/done
+        // are preserved; idempotent after the first pass.
+        if tasks.iter().any(|t| t.id.as_deref().unwrap_or("").is_empty()) {
+            if tasks_set(vault.clone(), name.clone(), tasks.clone()).is_ok() {
+                tasks = tasks_read(vault.clone(), name.clone()).unwrap_or(tasks);
+            }
+        }
+        for t in tasks {
             let status = effective_status(&t);
             out.push(serde_json::json!({
                 "domain": name,
@@ -370,8 +380,8 @@ pub fn decisions_pending(vault: String) -> Result<Vec<serde_json::Value>, String
             for t in tasks_read(vault.clone(), name.clone()).unwrap_or_default() {
                 let st = effective_status(&t);
                 let (kind, why) = match st.as_str() {
-                    "blocked" => ("approval", "AI paused — needs your approval"),
-                    "review" => ("review", "AI finished — review the result"),
+                    "blocked" => ("approval", "AI paused: needs your approval"),
+                    "review" => ("review", "AI finished: review the result"),
                     _ => continue,
                 };
                 out.push(serde_json::json!({
