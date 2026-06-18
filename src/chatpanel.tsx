@@ -1806,17 +1806,25 @@ export function ChatPanel({
           <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
               {/* G3: incognito toggle - always visible. On = a plain model, none of
-                  your profile/ideal/memory/omega is sent. */}
-              {/* Minimal: just an icon + tooltip. Green = on, grey = off. */}
-              <button
-                onClick={toggleIncognito}
-                disabled={globalIncognito}
-                title={globalIncognito ? "Incognito ON globally (Settings : Privacy) - replies use a plain model with none of your context." : incognito ? "Incognito ON - replies use a plain model with none of your context. Click to turn off." : "Incognito OFF - click to ask a plain model with NONE of your profile or context."}
-                aria-label="Toggle incognito"
-                className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors disabled:cursor-not-allowed ${incognito ? "text-ok" : "text-text-muted hover:text-text-secondary"}`}
-              >
-                <Ghost className="h-4 w-4" />
-              </button>
+                  your profile/ideal/memory/omega is sent. A labelled pill (icon +
+                  word + ON/OFF, filled when on) so the state reads at a glance and
+                  never relies on color alone. */}
+              {(() => {
+                const incogOn = incognito || globalIncognito;
+                return (
+                  <button
+                    onClick={toggleIncognito}
+                    disabled={globalIncognito}
+                    title={globalIncognito ? "Incognito ON globally (Settings : Privacy) - replies use a plain model with none of your context." : incognito ? "Incognito ON - replies use a plain model with none of your context. Click to turn off." : "Incognito OFF - click to ask a plain model with NONE of your profile or context."}
+                    aria-label="Toggle incognito"
+                    aria-pressed={incogOn}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider transition-colors disabled:cursor-not-allowed ${incogOn ? "border-ok bg-ok/15 text-ok" : "border-border bg-background text-text-muted hover:border-accent-border hover:text-text-secondary"}`}
+                  >
+                    <Ghost className="h-3.5 w-3.5" />
+                    Incognito {incogOn ? "on" : "off"}
+                  </button>
+                );
+              })()}
               {primedContext.map((c, i) => (
                 <span
                   key={c.label}
