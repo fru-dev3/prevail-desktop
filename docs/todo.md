@@ -1,17 +1,24 @@
-# >>> OVERNIGHT PLAN (2026-06-17 → wake) — fixes live by morning, then Apps research <<<
+# >>> STATUS (2026-06-18) — everything merged & deployed; clean slate for new work <<<
 
-**Founder goal (going to bed):** fix everything + deploy so it's LIVE by morning, then
-deep-research the Apps area, write a detailed todo, start a NEW BRANCH (the Apps work
-= the release AFTER the bugfix one), and begin implementing. Founder reviews/tests the
-branch, then merges.
+**Live:** **v0.1.130** (Apps-area P0 merged) — building/just-published. Release chain:
+v0.1.126 (re-baseline) → v0.1.128 (Frameworks/Ideals/Memory&Context/Runtimes+table) →
+v0.1.129 (`---` chat fix + council persistence) → **v0.1.130** (Apps P0: curated ~195
+catalog, connection hints, privacy badges). v0.1.127 was cancelled/deleted (superseded).
+`feat/apps-area` merged into main and the branch deleted.
 
-**Live status:** v0.1.128 is LIVE (published, full assets). It does NOT contain the
-`---` chat fix (its build checked out cli main before the fix) nor council/benchmark
-fixes. So a NEW release is needed for the fixes.
+**What's DEPLOYED:** everything on `main` (desktop + cli main both pushed). Apps-area P0
+is now on main and shipping in v0.1.130.
 
-**Version plan:** bugfix release = **v0.1.129** on main (since 0.1.128 already published).
-Apps work goes on a new branch and becomes the release AFTER 0.1.129 (founder expected
-"apps = 0.1.29" but an intermediate bugfix release was needed — renumbered; explain on wake).
+**Remaining branches / gated work (NOT on main, deliberately):**
+- `feat/b2-12-data-build-layout` — on-disk data/+build/ layout. The committed routing is
+  no-op-until-build/-exists (safe), but the **destructive migrator is unbuilt and
+  verification-gated** (needs the running app + a real vault; hard rule: never lose data).
+  Parked — do as a dedicated verified effort, don't blind-merge.
+- **B2-29** (richer Usage Activity) — needs founder to say what "isn't enough."
+- `docs/WORKFLOW-ENGINE-PLAN.md` — net-new feature, its own branch when started.
+
+**Original overnight goal (DONE):** fix everything + deploy live, deep-research Apps,
+write todo, branch + start Apps work, then merge. All complete; Apps merged in v0.1.130.
 
 ### TONIGHT — must be live by morning (release v0.1.129)
 1. **`---` chat bug — FIXED** in prevail-cli `src/cli-bridge.ts` (commit 63eb563, pushed
