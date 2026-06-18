@@ -103,13 +103,17 @@ export function AppearanceSection({ appearance }: { appearance: ReturnType<typeo
 // Council config - its own first-class section. You pick the EXACT models on the
 // default panel (per-provider, multiple models allowed) and which one chairs.
 
-export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, headerless }: { vaultPath: string; onVaultMoved?: (path: string) => void; onSetupDomains?: () => void; headerless?: boolean }) {
+export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, headerless, view }: { vaultPath: string; onVaultMoved?: (path: string) => void; onSetupDomains?: () => void; headerless?: boolean; view?: "cards" | "packs" }) {
   const [appMode, setAppMode] = useState<"demo" | "production" | null>(null);
   const [switchingMode, setSwitchingMode] = useState(false);
   const [packs, setPacks] = useState<{ file: string; name: string; version: string; description: string | null; domains: string[] }[]>([]);
   const [importingPack, setImportingPack] = useState<string | null>(null);
   const [importedPacks, setImportedPacks] = useState<Set<string>>(new Set());
   const [note, setNote] = useState<string | null>(null);
+  // B2-16: per-vault backup toggle on the active card. Backup snapshots the
+  // ACTIVE vault, so this reflects/controls BACKUP_CFG.enabled.
+  const [backupOn, setBackupOn] = useState(() => lsGet(BACKUP_CFG.enabled, "0") === "1");
+  const toggleBackup = (v: boolean) => { setBackupOn(v); lsSet(BACKUP_CFG.enabled, v ? "1" : "0"); window.dispatchEvent(new Event("prevail:bench-sched")); };
   // The remembered production vault path, so switching demo<->production never
   // re-asks for the folder, and both locations can be shown.
   const [prodVault, setProdVault] = useState<string>(() => lsGet(LS.vaultProduction) || "");
@@ -267,17 +271,17 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
       {/* DEMO-1 / IA-1: "Demo Mode" was a misnomer (it hosts starter packs that
           populate the REAL vault). Renamed "Sandbox" - the throwaway exploration
           space - with starter packs framed as production setup. */}
-      {!headerless && (
+      {!headerless && view !== "cards" && (
         <SettingsHeader
           icon={Sparkles}
           title="Sandbox"
           subtitle="Explore Prevail with throwaway sample data, then set up your own vault when you're ready. Starter packs below populate your real vault."
         />
       )}
-      {/* W1 (Monday feedback): Your Vault vs Demo Vault as MUTUALLY-EXCLUSIVE
-          toggles - exactly one is ON; the other grays off. Toggling switches mode
-          (your vault may run first-time setup). Starter packs import into whichever
-          is active. */}
+      {/* B2-15: with view="packs" the cards are hidden (they live in the Vault
+          section); view="cards" hides packs. Default renders both (back-compat).
+          W1: Your Vault vs Demo Vault as MUTUALLY-EXCLUSIVE toggles. */}
+      {view !== "packs" && (<>
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className={`rounded-xl border p-4 transition-opacity ${!isDemo ? "border-warn/40 bg-warn/5" : "border-border bg-surface opacity-60"}`}>
           <div className="flex items-center gap-2">
@@ -294,6 +298,13 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
             )}
           </div>
           <div className="mt-0.5 text-[10px] text-text-muted">Real data, backed up. {isDemo && !prodVault ? "Toggling on walks you through a quick 3-step setup." : "Switching to demo never touches it."}</div>
+          {/* B2-16: per-vault backup toggle (active vault only). */}
+          {!isDemo && (
+            <div className="mt-2 flex items-center gap-2 border-t border-border-subtle/60 pt-2">
+              <span className="flex-1 text-[10px] text-text-muted">Automatic backups</span>
+              <Toggle on={backupOn} onChange={toggleBackup} label="Back up your vault" />
+            </div>
+          )}
         </div>
         <div className={`rounded-xl border p-4 transition-opacity ${isDemo ? "border-accent-border bg-accent-soft" : "border-border bg-surface opacity-60"}`}>
           <div className="flex items-center gap-2">
@@ -308,10 +319,17 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
             )}
           </div>
           <div className="mt-0.5 text-[10px] text-text-muted">Sample data, re-seeded. Safe to explore; nothing here is your real data.</div>
+          {isDemo && (
+            <div className="mt-2 flex items-center gap-2 border-t border-border-subtle/60 pt-2">
+              <span className="flex-1 text-[10px] text-text-muted">Automatic backups</span>
+              <Toggle on={backupOn} onChange={toggleBackup} label="Back up demo vault" />
+            </div>
+          )}
         </div>
       </div>
       {switchingMode && <div className="mb-4 text-xs text-text-muted">Switching…</div>}
-      {packs.length > 0 && (
+      </>)}
+      {view !== "cards" && packs.length > 0 && (
         <div className="mt-4">
           <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">
             <Sparkles className="h-3.5 w-3.5" /> Starter packs
@@ -358,14 +376,16 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
         </div>
       )}
       {/* Footer so the page closes cleanly instead of ending abruptly. */}
-      <div className="mt-6 flex items-center gap-2 border-t border-border-subtle pt-4 text-xs text-text-muted">
-        <Sparkles className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-        <span>
-          {isDemo
-            ? "You're in the sandbox. Importing a pack sets up your own vault and moves you out of the sandbox: or use the button above to set up your vault first."
-            : "You're in your own vault. Import a starter pack any time to add ready-made domains."}
-        </span>
-      </div>
+      {view !== "cards" && (
+        <div className="mt-6 flex items-center gap-2 border-t border-border-subtle pt-4 text-xs text-text-muted">
+          <Sparkles className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+          <span>
+            {isDemo
+              ? "You're in the sandbox. Importing a pack sets up your own vault and moves you out of the sandbox: or use the button above to set up your vault first."
+              : "You're in your own vault. Import a starter pack any time to add ready-made domains."}
+          </span>
+        </div>
+      )}
     </>
   );
 }
@@ -468,7 +488,7 @@ export function BackupAutomationCard({ vault, onChange }: { vault: string; onCha
   );
 }
 
-export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved, headerless, hideBackups }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void; headerless?: boolean; hideBackups?: boolean }) {
+export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMoved, headerless, hideBackups, advancedOnly }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void; headerless?: boolean; hideBackups?: boolean; advancedOnly?: boolean }) {
   // "Move vault into the app" - copy the current vault into the app-owned
   // location (~/.prevail/vault) via the engine, non-destructively, then repoint.
   const [moving, setMoving] = useState(false);
@@ -530,9 +550,12 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
       {/* VAULT-1: premium hierarchy - a location card leading with an icon chip,
           the path shown in a styled mono box with an in-app badge + Finder
           reveal; domains/move-into-app grouped as rows; backups cluster below. */}
-      {!headerless && (
+      {/* B2-15: advancedOnly renders just the Advanced disclosure (the Vault
+          location now lives in the Your/Demo vault cards). */}
+      {!headerless && !advancedOnly && (
         <SettingsHeader icon={FolderTree} title="Vault" subtitle="Where Prevail reads + writes your domain folders. Each child folder with a state.md becomes a life domain." />
       )}
+      {!advancedOnly && (
       <div className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><FolderOpen className="h-5 w-5" /></span>
@@ -553,6 +576,7 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
           </button>
         </div>
       </div>
+      )}
       {/* D4: these are rarely-needed maintenance actions - the founder found them
           clutter on the main view. Tucked behind a collapsed "Advanced" disclosure
           so the Workspace page stays minimal (location card + backups) while the
@@ -618,18 +642,20 @@ function WorkspaceSubLabel({ icon: Icon, label, desc }: { icon: LucideIcon; labe
 export function WorkspaceSection({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void }) {
   return (
     <>
-      <SettingsHeader icon={FolderTree} title="Workspace" subtitle="Everything about where your data lives and how you set it up: your vault, domains, backups, starter packs, and the throwaway sandbox for exploring with sample data." />
+      <SettingsHeader icon={FolderTree} title="Workspace" subtitle="Where your data lives and how you set it up: your vault, backups, and starter packs." />
+      {/* B2-15/16: ONE Vault section = the Your/Demo vault cards (with inline
+          change+open icons and a per-vault backup toggle), plus the Advanced
+          maintenance disclosure. The standalone Vault-folder card and the
+          separate Backups section are gone (folded in). */}
       <div className="mb-7">
-        <WorkspaceSubLabel icon={FolderOpen} label="Vault" desc="location · domains" />
-        <VaultSettings vaultPath={vaultPath} onChange={onChange} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} headerless hideBackups />
+        <WorkspaceSubLabel icon={FolderOpen} label="Vault" desc="your vault · demo vault · backups" />
+        <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} headerless view="cards" />
+        <VaultSettings vaultPath={vaultPath} onChange={onChange} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} headerless advancedOnly hideBackups />
       </div>
-      <div className="mb-7">
-        <WorkspaceSubLabel icon={RotateCw} label="Backups" desc="automatic snapshots · restore points" />
-        <BackupAutomationCard vault={vaultPath} onChange={onChange} />
-      </div>
+      {/* Starter packs as its own section. */}
       <div>
-        <WorkspaceSubLabel icon={Sparkles} label="Starter packs & Sandbox" desc="set up real domains · explore safely" />
-        <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} headerless />
+        <WorkspaceSubLabel icon={Sparkles} label="Starter packs" desc="ready-made domains for your situation" />
+        <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} headerless view="packs" />
       </div>
     </>
   );
