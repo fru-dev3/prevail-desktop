@@ -15,7 +15,7 @@ import { RecommendationsPanel } from "./recommendationspanel";
 import { OmegaSection } from "./omega";
 import { CollapsibleSection } from "./collapsible";
 import { GeneralSection, IdealStateSection, SafetySection } from "./settings4";
-import { AboutSection, GatewaySection, McpSection } from "./settings5";
+import { AboutSection, GatewayLogsCard, GatewaySection, McpSection } from "./settings5";
 import { CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6";
 import { ModelsSection } from "./settings7";
 import { AppearanceSection, WorkspaceSection } from "./settings8";
@@ -304,7 +304,7 @@ export function SettingsPanel({
             </>
           )}
           {section === "safety" && <SafetySection vaultPath={vaultPath} />}
-          {section === "gateway" && <GatewaySection />}
+          {section === "gateway" && <><GatewaySection /><GatewayLogsCard vaultPath={vaultPath} /></>}
           {section === "mcp" && <McpSection vaultPath={vaultPath} />}
           {section === "remote" && <RemoteSection />}
           {/* IA-1: "workspace" is the umbrella; "vault"/"demo" remain as
