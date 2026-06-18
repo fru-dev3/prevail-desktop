@@ -719,7 +719,7 @@ export function MemoryContextSection({ headerless }: { vaultPath: string; header
           {status?.last_run_ts ? ` · last pass ${formatFreshness(Math.max(0, Date.now() / 1000 - status.last_run_ts))}` : ""}
           {status?.lines_distilled ? ` · ${status.lines_distilled} lines` : ""}
         </span>
-        <span className="ml-auto font-mono text-[10px] text-accent">Schedule & controls in Daemons →</span>
+        <span className="ml-auto font-mono text-[10px] text-accent">Schedule & controls in Routines →</span>
       </button>
       <div className="rounded-lg border border-border bg-surface px-5">
         <Row title="Persistent memory" desc="Distill the intent ledger into per-domain memory and prepend it to prompts. Master switch."
@@ -735,7 +735,7 @@ export function MemoryContextSection({ headerless }: { vaultPath: string; header
           } />
       </div>
       <div className="mt-3 rounded-lg border border-border-subtle bg-surface px-4 py-2.5 text-xs text-text-muted">
-        The distiller (its provider, interval, threshold, and a manual "distill now") is configured on the Daemons page. This page is what it produces.
+        The distiller (its provider, interval, threshold, and a manual "distill now") is configured on the Routines page. This page is what it produces.
       </div>
     </>
   );
