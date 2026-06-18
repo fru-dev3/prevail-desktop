@@ -2,7 +2,8 @@
 // Tasks, Intents, Memory & Context, and Skills. vaultPath-driven; no App-root
 // state closure.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Bell, Brain, Check, ChevronRight, Folder, GraduationCap, Lightbulb, ListChecks, Loader2, Pencil, Sparkles, X } from "lucide-react";
+import { ArrowRight, Bell, Brain, Check, ChevronRight, Folder, GraduationCap, Lightbulb, ListChecks, Loader2, Pencil, Sparkles, Upload, X } from "lucide-react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
@@ -740,6 +741,11 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
   const [filter, setFilter] = useState<string>("");
   const [domainFilter, setDomainFilter] = useState<string>("all");
   const [listOpen, setListOpen] = useState(false);
+  // B2-5: upload a skill — pick a SKILL.md, choose a domain, install it.
+  const [allDomains, setAllDomains] = useState<string[]>([]);
+  const [upload, setUpload] = useState<{ name: string; body: string } | null>(null);
+  const [uploadDomain, setUploadDomain] = useState<string>("general");
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -768,8 +774,38 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
     });
   }, [skills, filter, domainFilter]);
 
+  // All vault domains (not just those with skills) for the install target.
+  useEffect(() => {
+    invoke<{ name: string }[]>("scan_vault", { path: vaultPath })
+      .then((ds) => setAllDomains(Array.isArray(ds) ? ds.map((d) => d.name.toLowerCase()) : []))
+      .catch(() => setAllDomains([]));
+  }, [vaultPath]);
+
   async function openSkill(p: string) {
     try { await invoke("open_in_finder", { path: p }); } catch {}
+  }
+  // B2-5: pick a SKILL.md (or .md) and stage it for install.
+  async function pickSkillFile() {
+    setUploadMsg(null);
+    try {
+      const f = await openDialog({ filters: [{ name: "Skill", extensions: ["md"] }], multiple: false });
+      if (!f || typeof f !== "string") return;
+      const body = await invoke<string>("read_text_file", { path: f });
+      const parts = f.split("/");
+      const file = parts.pop() ?? "";
+      const parent = parts.pop() ?? "";
+      const name = /^skill\.md$/i.test(file) ? parent : file.replace(/\.md$/i, "");
+      setUpload({ name: name || "skill", body });
+    } catch (e) { setUploadMsg(`Couldn't read that file: ${e}`); }
+  }
+  async function installSkill() {
+    if (!upload) return;
+    try {
+      await invoke("skill_create", { vault: vaultPath, domain: uploadDomain === "general" ? null : uploadDomain, name: upload.name, body: upload.body });
+      setUploadMsg(`Installed "${upload.name}" into ${titleCase(uploadDomain)}.`);
+      setUpload(null);
+      await rescan();
+    } catch (e) { setUploadMsg(`Install failed: ${e}`); }
   }
   async function rescan() {
     setLoading(true);
@@ -784,7 +820,7 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
     <>
       <SettingsHeader
         title="Skills"
-        subtitle="Drop a folder under any domain's skills/ directory to expose it here. The first non-empty line of SKILL.md or README.md becomes the description."
+        subtitle="Upload a SKILL.md to install it into a domain, or drop a folder under a domain's _skills/ directory. The first non-empty line of SKILL.md or README.md becomes the description."
       />
 
       <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
@@ -800,6 +836,13 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
             ↻
           </button>
           <div className="flex-1" />
+          {/* B2-5: upload a skill from a file. */}
+          <button
+            onClick={pickSkillFile}
+            className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1.5 text-sm font-medium text-accent hover:bg-accent hover:text-background"
+          >
+            <Upload className="h-3.5 w-3.5" /> Upload skill
+          </button>
           {/* Filter by domain - see only one domain's skills, or all. */}
           <select
             value={domainFilter}
@@ -820,6 +863,22 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
             />
           </div>
         </div>
+
+        {/* B2-5: staged upload — choose the install domain, then install. */}
+        {upload && (
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-accent-border bg-accent-soft/30 px-3 py-2.5">
+            <Sparkles className="h-4 w-4 shrink-0 text-accent" />
+            <span className="text-sm text-text-primary">Install <span className="font-semibold">{upload.name}</span> into</span>
+            <select value={uploadDomain} onChange={(e) => setUploadDomain(e.target.value)}
+              className="rounded-md border border-border bg-background px-2 py-1 text-sm focus:border-accent-border focus:outline-none">
+              <option value="general">General (vault root)</option>
+              {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+            </select>
+            <button onClick={installSkill} className="rounded-md bg-accent px-3 py-1 text-sm font-semibold text-background hover:bg-accent-hover">Install</button>
+            <button onClick={() => setUpload(null)} className="text-text-muted hover:text-text-primary"><X className="h-4 w-4" /></button>
+          </div>
+        )}
+        {uploadMsg && <div className="mb-4 rounded-lg border border-border-subtle bg-background px-3 py-2 text-xs text-text-secondary">{uploadMsg}</div>}
 
         {/* Path bar */}
         <div className="mb-4 flex items-center gap-2 rounded-md bg-background px-3 py-2 font-mono text-[11px] text-text-secondary">
