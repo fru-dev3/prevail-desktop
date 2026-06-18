@@ -138,10 +138,11 @@ import {
 // Top-level tabs. Council is NOT its own tab (a mode toggle inside Chat) and
 // Tools is NOT its own tab (a section inside Settings), keeping the surface
 // count low so each tab has a clear job.
+// B2-25: Chat + Council are the prominent primary tabs on the LEFT. Benchmark and
+// the rest live in the smaller, de-emphasized right cluster.
 const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
   { id: "chat", label: "Chat", icon: MessageSquare },
   { id: "council", label: "Council", icon: Scale },
-  { id: "benchmark", label: "Benchmark", icon: Sparkles },
 ];
 
 // Suspense fallback for the code-split panels. Quiet and centered - a lazy chunk
@@ -1210,10 +1211,20 @@ export default function App() {
                 // too, not just domains. They toggle the Chat sub-view (jumping
                 // to Chat first if you're on Council/Benchmark).
                 <>
+                  {/* B2-25: Benchmark moved into the de-emphasized right cluster. */}
+                  <button
+                    onClick={() => setTab("benchmark")}
+                    title="Benchmark: score models on your questions"
+                    className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
+                      tab === "benchmark" ? "bg-accent-soft text-accent" : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" /> Benchmark
+                  </button>
                   <button
                     onClick={() => { setTab("chat"); setDomainTab("insights"); }}
                     title="Insights: what to work on, your tasks, and recent intents (use the Chat tab to return to the conversation)"
-                    className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                    className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
                       tab === "chat" && domainTab === "insights"
                         ? "bg-accent-soft text-accent"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
@@ -1224,7 +1235,7 @@ export default function App() {
                   <button
                     onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "usage" ? "chat" : "usage"); }}
                     title={selectedDomain ? "Usage: queries, tokens, and cost for this domain" : "Usage: queries, tokens, and cost across everything"}
-                    className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                    className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
                       tab === "chat" && domainTab === "usage"
                         ? "bg-accent-soft text-accent"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
@@ -1235,7 +1246,7 @@ export default function App() {
                   <button
                     onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "prefs" ? "chat" : "prefs"); }}
                     title={selectedDomain ? "Domain preferences" : "General preferences"}
-                    className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                    className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
                       tab === "chat" && domainTab === "prefs"
                         ? "bg-accent-soft text-accent"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
@@ -1247,7 +1258,7 @@ export default function App() {
                     <button
                       onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "loops" ? "chat" : "loops"); }}
                       title="Loops: the standing forces working to reach this domain's desired state"
-                      className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                      className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
                         tab === "chat" && domainTab === "loops"
                           ? "bg-accent-soft text-accent"
                           : "text-text-muted hover:bg-surface-warm hover:text-accent"
@@ -1260,7 +1271,7 @@ export default function App() {
                     <button
                       onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "apps" ? "chat" : "apps"); }}
                       title="Apps that refresh this domain"
-                      className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                      className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
                         tab === "chat" && domainTab === "apps"
                           ? "bg-accent-soft text-accent"
                           : "text-text-muted hover:bg-surface-warm hover:text-accent"
