@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::paths::domain_dir;
+use crate::paths::{domain_dir, domain_dir_pub};
 use crate::read_dir_retry;
 use crate::read_to_string_retry;
 use crate::secs_to_ymdhms;
@@ -115,7 +115,9 @@ pub(crate) fn read_domain_prompts(vault: String, domain: String) -> Result<Vec<S
 /// "attach the whole folder" can hand the model a map of what it may read.
 #[tauri::command]
 pub(crate) fn domain_tree(vault: String, domain: String) -> Result<serde_json::Value, String> {
-    let root = PathBuf::from(&vault).join(&domain);
+    // B2-27: resolve via the v4-aware path (data/domains/<d>, then v3, then flat)
+    // so a migrated vault still finds its domains.
+    let root = domain_dir_pub(&vault, &domain);
     if !root.exists() {
         return Err(format!("domain not found: {}", root.display()));
     }
@@ -151,7 +153,9 @@ pub(crate) fn domain_tree(vault: String, domain: String) -> Result<serde_json::V
 
 #[tauri::command]
 pub(crate) fn domain_context(vault: String, domain: String) -> Result<DomainContext, String> {
-    let root = PathBuf::from(&vault).join(&domain);
+    // B2-27: v4-aware resolution (data/domains/<d>, v3, then flat) so a migrated
+    // vault's context panel still loads instead of "domain not found".
+    let root = domain_dir_pub(&vault, &domain);
     if !root.exists() {
         return Err(format!("domain not found: {}", root.display()));
     }
