@@ -169,6 +169,12 @@ impl BridgeState {
             *s = BridgeStatus::default();
             s.running = true;
         }
+        // BP2: keep a durable gateway log. Capture the vault for the task too.
+        let log_vault = cfg.vault.clone().unwrap_or_default();
+        if !log_vault.is_empty() {
+            crate::gateway_log::append(&log_vault, "[telegram] bridge started");
+        }
+        let log_vault_task = log_vault.clone();
         let status_for_task = status_arc.clone();
 
         let handle = tauri::async_runtime::spawn(async move {
@@ -232,6 +238,9 @@ impl BridgeState {
                                         s.inbound_count += 1;
                                         s.last_inbound_ts = Some(now_secs());
                                         s.last_error = None;
+                                    }
+                                    if !log_vault_task.is_empty() {
+                                        crate::gateway_log::append(&log_vault_task, "[telegram] inbound message");
                                     }
                                     let _ = app.emit(
                                         "tg:message_in",
