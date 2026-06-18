@@ -427,7 +427,7 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
             ? `${shown.toLocaleString()} app${shown === 1 ? "" : "s"} in selected categories`
             : showAll
               ? `Showing all ${total.toLocaleString()} apps`
-              : `Showing ${coreTotal} core apps · toggle All for the full ${total.toLocaleString()}`}
+              : `Showing ${coreTotal} essential apps · toggle All for the full ${total.toLocaleString()}`}
       </div>
 
       {/* Flat alphabetical list - category shown as secondary label on each row */}
