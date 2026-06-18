@@ -14,23 +14,28 @@ import { SettingsHeader } from "./sectionutil";
 import { ConnectAppFlow } from "./appconnect";
 import type { EngineApp } from "./types";
 
-type AppStatus = "connected" | "attention" | "connecting" | "disconnected";
+type AppStatus = "connected" | "authorized" | "attention" | "connecting" | "disconnected";
 
-// Fold the engine's many status strings + flags into the four states the user
-// actually needs to tell apart.
+// Fold the engine's many status strings + flags into the states the user actually
+// needs to tell apart. CRITICAL (apps redesign): "connected" is NOT the optimistic
+// default — it requires a REAL successful sync (lastSuccessTs set). Credentials
+// present but no successful fetch yet = "authorized" (verifying), shown amber, not
+// green. This kills the old "configured ⇒ green" lie.
 export function appStatus(a: EngineApp): AppStatus {
   const s = (a.status || "").toLowerCase();
   if (s.includes("sync") || s.includes("connecting") || s.includes("probing")) return "connecting";
   if (!a.configured) return "disconnected";
   if (a.lastError || s.includes("error") || s.includes("expired") || s.includes("fail") || s.includes("auth")) return "attention";
+  if (!a.lastSuccessTs) return "authorized"; // creds present, but we haven't pulled real data yet
   return "connected";
 }
 
 const STATUS_META: Record<AppStatus, { glyph: string; label: string; tint: string; ring: string; dot: string }> = {
-  connected:    { glyph: "●", label: "Connected",      tint: "text-ok",        ring: "border-ok/40",     dot: "bg-ok" },
-  connecting:   { glyph: "◐", label: "Connecting",     tint: "text-warn",      ring: "border-warn/40",   dot: "bg-warn" },
-  attention:    { glyph: "▲", label: "Needs attention", tint: "text-danger",   ring: "border-danger/40", dot: "bg-danger" },
-  disconnected: { glyph: "○", label: "Not connected",  tint: "text-text-muted", ring: "border-border",   dot: "bg-text-muted/40" },
+  connected:    { glyph: "●", label: "Connected",       tint: "text-ok",         ring: "border-ok/40",     dot: "bg-ok" },
+  authorized:   { glyph: "◌", label: "Authorized · verifying", tint: "text-warn", ring: "border-warn/40",  dot: "bg-warn/70" },
+  connecting:   { glyph: "◐", label: "Connecting",      tint: "text-warn",       ring: "border-warn/40",   dot: "bg-warn" },
+  attention:    { glyph: "▲", label: "Needs attention", tint: "text-danger",     ring: "border-danger/40", dot: "bg-danger" },
+  disconnected: { glyph: "○", label: "Not connected",   tint: "text-text-muted", ring: "border-border",    dot: "bg-text-muted/40" },
 };
 
 // "MCP" / "API" / "Browser" / "CLI" / "Composio" from the engine's integration id.
@@ -116,8 +121,8 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // Group by status so the eye lands on what needs attention first, then live,
   // then unconnected.
   const groups = useMemo(() => {
-    const order: AppStatus[] = ["attention", "connecting", "connected", "disconnected"];
-    const by: Record<AppStatus, EngineApp[]> = { attention: [], connecting: [], connected: [], disconnected: [] };
+    const order: AppStatus[] = ["attention", "connecting", "authorized", "connected", "disconnected"];
+    const by: Record<AppStatus, EngineApp[]> = { attention: [], connecting: [], authorized: [], connected: [], disconnected: [] };
     for (const a of apps ?? []) by[appStatus(a)].push(a);
     return order.map((k) => ({ key: k, apps: by[k] })).filter((g) => g.apps.length > 0);
   }, [apps]);
@@ -261,6 +266,30 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
     } catch (e) { console.error("set schedule", e); }
     finally { setSchedBusy(false); }
   };
+  // Apps redesign P0: real credential entry. The system resolved PayPal → REST
+  // client-credentials; the user's one step is pasting Client ID + Secret. On
+  // save we store them in the Keychain (app_secret_set) and immediately run a
+  // real sync — the card only turns green if that fetch actually succeeds.
+  const needsCreds = app.id === "paypal";
+  const [ppId, setPpId] = useState("");
+  const [ppSecret, setPpSecret] = useState("");
+  const [ppSandbox, setPpSandbox] = useState(false);
+  const [credBusy, setCredBusy] = useState(false);
+  const [credMsg, setCredMsg] = useState<string | null>(null);
+  const saveCreds = async () => {
+    setCredBusy(true); setCredMsg("Saving + verifying by a real fetch…");
+    try {
+      if (ppId.trim()) await invoke("app_secret_set", { name: "PAYPAL_CLIENT_ID", value: ppId.trim() });
+      if (ppSecret.trim()) await invoke("app_secret_set", { name: "PAYPAL_CLIENT_SECRET", value: ppSecret.trim() });
+      await invoke("app_secret_set", { name: "PAYPAL_ENV", value: ppSandbox ? "sandbox" : "live" });
+      await invoke("engine_app_sync", { id: app.id, vault: vaultPath });
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+      await onReload();
+      setPpId(""); setPpSecret("");
+      setCredMsg("Verified — pulled your PayPal transactions. (Card turns green once a sync succeeds.)");
+    } catch (e) { setCredMsg(`Failed: ${String(e).slice(0, 200)}`); }
+    finally { setCredBusy(false); }
+  };
   // P4 - re-evaluate the connection method: maybe a better one exists now.
   const [reEval, setReEval] = useState<string | null>(null);
   const [reEvalBusy, setReEvalBusy] = useState(false);
@@ -359,6 +388,26 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
             </span>
           </Detail>
           {reEval && <div className="rounded-md border border-border-subtle bg-background px-3 py-1.5 text-xs text-text-secondary">{reEval}</div>}
+          {needsCreds && (
+            <Detail label="Credentials">
+              <div className="flex flex-col gap-1.5">
+                <input type="password" value={ppId} onChange={(e) => setPpId(e.target.value)} placeholder="PayPal Client ID" autoComplete="off"
+                  className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
+                <input type="password" value={ppSecret} onChange={(e) => setPpSecret(e.target.value)} placeholder="Secret" autoComplete="off"
+                  className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
+                <label className="flex items-center gap-2 text-[11px] text-text-secondary">
+                  <input type="checkbox" checked={ppSandbox} onChange={(e) => setPpSandbox(e.target.checked)} className="h-3 w-3 accent-[var(--color-accent)]" />
+                  Sandbox (test credentials)
+                </label>
+                <button onClick={saveCreds} disabled={credBusy || (!ppId.trim() && !ppSecret.trim())}
+                  className="inline-flex w-fit items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+                  {credBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}{credBusy ? "Verifying…" : "Save & verify"}
+                </button>
+                {credMsg && <span className="text-[11px] text-text-muted">{credMsg}</span>}
+                <span className="text-[10px] text-text-muted/70">Create a REST app at developer.paypal.com with Transaction Search enabled, then paste its Client ID + Secret. Stored in your Keychain; used read-only.</span>
+              </div>
+            </Detail>
+          )}
           {/* APP-4 - schedule, now editable with engine-honored cadences. */}
           <Detail label="Schedule">
             {!editSched ? (

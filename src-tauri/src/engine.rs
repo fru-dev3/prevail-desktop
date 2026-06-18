@@ -428,6 +428,14 @@ pub async fn run_engine_stream_stdin(
                 }
             }
         }
+        // App connector secrets (PayPal Client ID/Secret, etc.): each app's
+        // auth_env_vars are stored in the Keychain (service "prevail.appsecrets")
+        // and injected here by exact env-var name so the engine's connectors can
+        // authenticate + fetch. Index of names lives at ~/.prevail/appsecrets.index
+        // (names only, never values). Cloud creds → gated by Bunker, like above.
+        for (k, v) in app_secret_env_pairs() {
+            cmd.env(k, v);
+        }
     }
     // Per-call env overrides (e.g. PREVAIL_OLLAMA_URL redirect so the engine's
     // local provider path reaches LM Studio / MLX instead of Ollama). Local-only,
@@ -957,6 +965,29 @@ pub(crate) const DIRECT_PROVIDER_ENVS: &[(&str, &str)] = &[
     ("deepseek", "PREVAIL_DEEPSEEK_KEY"),
     ("google", "PREVAIL_GOOGLE_KEY"),
 ];
+
+/// Path to the app-secret name index (env-var NAMES only, never values).
+pub(crate) fn app_secret_index_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    Some(std::path::Path::new(&home).join(".prevail").join("appsecrets.index"))
+}
+
+/// Every stored app-connector secret as (env-var name, value) pairs, read from
+/// the Keychain via the name index. Spawn-type agnostic so both the tokio and
+/// std engine spawns can inject them.
+pub(crate) fn app_secret_env_pairs() -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let Some(p) = app_secret_index_path() else { return out };
+    let Ok(txt) = std::fs::read_to_string(&p) else { return out };
+    for name in txt.lines().map(|l| l.trim()).filter(|l| !l.is_empty()) {
+        if let Ok(v) = crate::ingestion::keychain::get("prevail.appsecrets", name) {
+            if !v.is_empty() {
+                out.push((name.to_string(), v));
+            }
+        }
+    }
+    out
+}
 
 /// The session DEK, iff `path` is inside the unlocked, encrypted vault.
 fn session_key_for(path: &std::path::Path) -> Option<[u8; 32]> {
