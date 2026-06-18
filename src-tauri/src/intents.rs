@@ -232,7 +232,7 @@ pub(crate) async fn distill_intents_core(
         "source_count": intents.len(),
         "intents": arr,
     });
-    let meta_dir = PathBuf::from(vault).join("_meta");
+    let meta_dir = crate::paths::build_root(vault).join("_meta");
     fs::create_dir_all(&meta_dir).map_err(|e| format!("mkdir _meta: {e}"))?;
     let path = meta_dir.join("intents_distilled.json");
     let body = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
@@ -254,7 +254,7 @@ pub(crate) async fn intents_distill(
 /// Read the last distilled-intents document (empty shell if none yet).
 #[tauri::command]
 pub(crate) fn intents_distilled_read(vault: String) -> Result<serde_json::Value, String> {
-    let path = PathBuf::from(&vault).join("_meta").join("intents_distilled.json");
+    let path = crate::paths::build_root(&vault).join("_meta").join("intents_distilled.json");
     match read_to_string_retry(&path) {
         Ok(raw) => {
             let text = engine::maybe_decrypt(&path, raw);

@@ -57,7 +57,7 @@ pub(crate) fn write_ideal_state(vault: String, body: String) -> Result<(), Strin
     // edits always leave a dated trace and nothing is ever lost.
     if let Ok(existing) = read_to_string_retry(&p) {
         if existing.trim() != body.trim() && !existing.trim().is_empty() {
-            let vdir = PathBuf::from(&vault).join("_meta").join("ideal-state-versions");
+            let vdir = crate::paths::build_root(&vault).join("_meta").join("ideal-state-versions");
             let _ = fs::create_dir_all(&vdir);
             let secs = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -74,7 +74,7 @@ pub(crate) fn write_ideal_state(vault: String, body: String) -> Result<(), Strin
 /// Dated snapshots of the constitution, newest first.
 #[tauri::command]
 pub(crate) fn ideal_state_versions(vault: String) -> Result<Vec<serde_json::Value>, String> {
-    let vdir = PathBuf::from(&vault).join("_meta").join("ideal-state-versions");
+    let vdir = crate::paths::build_root(&vault).join("_meta").join("ideal-state-versions");
     let mut out = Vec::new();
     if let Ok(it) = read_dir_retry(&vdir) {
         for e in it.flatten() {
