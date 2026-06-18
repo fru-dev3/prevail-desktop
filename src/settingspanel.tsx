@@ -110,7 +110,7 @@ export function SettingsPanel({
     { heading: "Work", items: [
       { id: "tasks", label: "Tasks", icon: Check },
       { id: "workspace", label: "Workspace", icon: Folder },
-      { id: "recommendations", label: "Recommendations", icon: Sparkles },
+      { id: "recommendations", label: "Insights", icon: Sparkles }, // renamed from "Recommendations"
     ]},
     { heading: "Connections", items: [
       { id: "connectors", label: "Apps", icon: Plug },
