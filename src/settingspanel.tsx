@@ -1,14 +1,16 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, Compass, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Target, Wrench, Zap } from "lucide-react";
+import { ArrowLeft, Check, Compass, Folder, Github, Globe, Inbox, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Target, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { LS, lsGet } from "./storage";
 import { useAppearance } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
 import { BenchScheduleCard } from "./cards";
 import { FrameworksSection, IngestionSection, RemoteSection, ShortcutsSection } from "./settings1";
-import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection, TasksCrossDomainSection } from "./settings2";
+import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection } from "./settings2";
+import { BoardPanel } from "./boardpanel";
+import { DecisionInbox } from "./decisioninbox";
 import { ConnectorsSection } from "./settings3";
 import { AppsPanel } from "./appspanel";
 import { RecommendationsPanel } from "./recommendationspanel";
@@ -49,7 +51,7 @@ export function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
@@ -108,7 +110,8 @@ export function SettingsPanel({
     ]},
     // B2-17: "Work" — what you're doing: Tasks, Workspace, Recommendations.
     { heading: "Work", items: [
-      { id: "tasks", label: "Tasks", icon: Check },
+      { id: "tasks", label: "Board", icon: Check },
+      { id: "decisions", label: "Decisions", icon: Inbox },
       { id: "workspace", label: "Workspace", icon: Folder },
       { id: "recommendations", label: "Insights", icon: Sparkles }, // renamed from "Recommendations"
     ]},
@@ -160,6 +163,22 @@ export function SettingsPanel({
     return () => { alive = false; window.clearInterval(id); };
   }, [vaultPath]);
 
+  // Decision Inbox count - a badge so pending approvals / AI-finished reviews are
+  // visible without opening the inbox. Refreshed on a slow cadence + on events.
+  const [decCount, setDecCount] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const poll = () => invoke<unknown[]>("decisions_pending", { vault: vaultPath })
+      .then((d) => { if (alive) setDecCount(Array.isArray(d) ? d.length : 0); })
+      .catch(() => {});
+    void poll();
+    const id = window.setInterval(poll, 60000);
+    const onEvt = () => poll();
+    window.addEventListener("prevail:tasks-changed", onEvt);
+    window.addEventListener("prevail:loops-advanced", onEvt);
+    return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:tasks-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
+  }, [vaultPath]);
+
   // MCP live indicator - read from localStorage; McpCard writes the same key.
   const [mcpLive, setMcpLive] = useState(() => lsGet(LS.mcpEnabled) === "1");
   useEffect(() => {
@@ -194,6 +213,7 @@ export function SettingsPanel({
               const showLiveGateway = it.id === "gateway" && liveBridges > 0;
               const showLiveMcp = it.id === "mcp" && mcpLive;
               const showRecCount = it.id === "recommendations" && recCount > 0;
+              const showDecCount = it.id === "decisions" && decCount > 0;
               return (
                 <button
                   key={it.id}
@@ -230,6 +250,14 @@ export function SettingsPanel({
                       title={`${recCount} recommendation${recCount === 1 ? "" : "s"}`}
                     >
                       {recCount}
+                    </span>
+                  )}
+                  {showDecCount && (
+                    <span
+                      className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1.5 py-0 font-mono text-[9px] font-bold text-background"
+                      title={`${decCount} decision${decCount === 1 ? "" : "s"} need you`}
+                    >
+                      {decCount}
                     </span>
                   )}
                 </button>
@@ -299,7 +327,8 @@ export function SettingsPanel({
           {section === "omega" && <OmegaSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
           {section === "intents" && <IntentsSection vaultPath={vaultPath} />}
-          {section === "tasks" && <TasksCrossDomainSection vaultPath={vaultPath} />}
+          {section === "tasks" && <BoardPanel vaultPath={vaultPath} />}
+          {section === "decisions" && <DecisionInbox vaultPath={vaultPath} />}
           {section === "recommendations" && <RecommendationsPanel vaultPath={vaultPath} />}
           {/* B2-20 / image #29: Memory engine page deleted; Memory & Context now
               lives inside Routines as a peer collapsible group (in DaemonsSection),

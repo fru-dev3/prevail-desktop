@@ -317,6 +317,91 @@ pub fn tasks_read_all(vault: String) -> Result<Vec<serde_json::Value>, String> {
     Ok(out)
 }
 
+/// Cross-domain **Decision Inbox** (read-model, no new store). Aggregates two
+/// things that need the user's call: (1) loop **approvals** queued in every
+/// domain's `_loops_runtime.json:loops[*].pending[]`, and (2) AI-owned tasks now
+/// sitting in `status:review` (a workflow finished and wants sign-off). Returns
+/// `DecisionItem[]` newest-first. Actions reuse existing plumbing in the UI.
+#[tauri::command]
+pub fn decisions_pending(vault: String) -> Result<Vec<serde_json::Value>, String> {
+    let root = std::path::PathBuf::from(&vault);
+    let mut out: Vec<serde_json::Value> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&root) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if !p.is_dir() { continue; }
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || name.starts_with('_') { continue; }
+            let ddir = crate::paths::domain_dir_pub(&vault, &name);
+
+            // loopId → human name (best-effort, for the "why" line).
+            let mut loop_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            if let Ok(raw) = std::fs::read_to_string(ddir.join("_loops.json")) {
+                if let Ok(doc) = serde_json::from_str::<serde_json::Value>(&raw) {
+                    if let Some(loops) = doc.get("loops").and_then(|v| v.as_array()) {
+                        for l in loops {
+                            if let (Some(id), Some(nm)) = (l.get("id").and_then(|v| v.as_str()), l.get("name").and_then(|v| v.as_str())) {
+                                loop_names.insert(id.to_string(), nm.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 1. loop approvals
+            if let Ok(raw) = std::fs::read_to_string(ddir.join("_loops_runtime.json")) {
+                if let Ok(doc) = serde_json::from_str::<serde_json::Value>(&raw) {
+                    if let Some(loops) = doc.get("loops").and_then(|v| v.as_object()) {
+                        for (loop_id, entry) in loops {
+                            let Some(pending) = entry.get("pending").and_then(|v| v.as_array()) else { continue };
+                            for (idx, pitem) in pending.iter().enumerate() {
+                                let text = pitem.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                if text.trim().is_empty() { continue; }
+                                let ts = pitem.get("ts").and_then(|v| v.as_i64()).unwrap_or(0);
+                                let why = loop_names.get(loop_id).map(|n| format!("workflow “{n}”"));
+                                out.push(serde_json::json!({
+                                    "id": format!("{name}:{loop_id}:{idx}"),
+                                    "domain": name,
+                                    "kind": "approval",
+                                    "source": "loop",
+                                    "loopId": loop_id,
+                                    "text": text,
+                                    "why": why,
+                                    "ts": ts,
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. AI tasks the steward paused (blocked → approval) or finished
+            //    (review → sign-off). Both are decisions only the user can make.
+            for t in tasks_read(vault.clone(), name.clone()).unwrap_or_default() {
+                let st = effective_status(&t);
+                let (kind, why) = match st.as_str() {
+                    "blocked" => ("approval", "AI paused — needs your approval"),
+                    "review" => ("review", "AI finished — review the result"),
+                    _ => continue,
+                };
+                out.push(serde_json::json!({
+                    "id": format!("task:{}", t.id.clone().unwrap_or_default()),
+                    "domain": name,
+                    "kind": kind,
+                    "source": "task",
+                    "taskId": t.id,
+                    "text": t.text,
+                    "why": why,
+                    "ts": 0,
+                }));
+            }
+        }
+    }
+    // Newest first (review items with ts 0 sink to the bottom).
+    out.sort_by(|a, b| b["ts"].as_i64().unwrap_or(0).cmp(&a["ts"].as_i64().unwrap_or(0)));
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
