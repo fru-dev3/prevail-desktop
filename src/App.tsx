@@ -812,6 +812,12 @@ export default function App() {
   // there's no run to preserve. Once true, it stays mounted for the session.
   const [benchEverVisited, setBenchEverVisited] = useState(false);
   useEffect(() => { if (tab === "benchmark") setBenchEverVisited(true); }, [tab]);
+  // Same treatment for the council: a convened council is a long-running stream,
+  // so once you've opened the tab keep the panel MOUNTED (hidden) on other tabs.
+  // Otherwise switching to chat unmounts it and the in-flight run + verdict are
+  // lost. Lazy-mount on first visit so there's nothing to preserve before then.
+  const [councilEverVisited, setCouncilEverVisited] = useState(false);
+  useEffect(() => { if (tab === "council") setCouncilEverVisited(true); }, [tab]);
   useEffect(() => {
     const onBench = (e: Event) => {
       const d = (e as CustomEvent<string>).detail || null;
@@ -1371,23 +1377,29 @@ export default function App() {
                 setDomainTab={setDomainTab}
               />
             )}
-            {tab === "council" && (
-              <CouncilPanel
-                domain={selectedDomain}
-                domainPath={selectedDomainPath}
-                threadDomain={threadScope}
-                vaultPath={vaultPath}
-                clis={clis}
-                fwLens={fwLens}
-                activeThreadPath={activeThreadPath}
-                onActiveThreadChange={setActiveThreadPath}
-                onOpenInFinder={() => openInFinder(selectedDomainPath)}
-                onSwitchToChat={() => setTab("chat")}
-                onThreadsChanged={() => void refreshThreads()}
-                seedPrompt={councilSeed}
-                seedAutoConvene={councilAutoConvene}
-                onSeedConsumed={() => { setCouncilSeed(null); setCouncilAutoConvene(false); }}
-              />
+            {/* Council STAYS MOUNTED (hidden) on other tabs so a convened council
+                keeps streaming and holds its replies/verdict when you navigate to
+                chat and back. Lazy-mounted on first visit. */}
+            {councilEverVisited && (
+              <div className={tab === "council" ? "h-full" : "hidden"}>
+                <CouncilPanel
+                  domain={selectedDomain}
+                  domainPath={selectedDomainPath}
+                  threadDomain={threadScope}
+                  vaultPath={vaultPath}
+                  clis={clis}
+                  fwLens={fwLens}
+                  activeThreadPath={activeThreadPath}
+                  onActiveThreadChange={setActiveThreadPath}
+                  onOpenInFinder={() => openInFinder(selectedDomainPath)}
+                  onSwitchToChat={() => setTab("chat")}
+                  onThreadsChanged={() => void refreshThreads()}
+                  seedPrompt={councilSeed}
+                  seedAutoConvene={councilAutoConvene}
+                  onSeedConsumed={() => { setCouncilSeed(null); setCouncilAutoConvene(false); }}
+                  active={tab === "council"}
+                />
+              </div>
             )}
             {/* Per-domain benchmark, full screen - scoped to whatever domain
                 you're in. Remounts (via key) when you switch domains so it
