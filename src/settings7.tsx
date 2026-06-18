@@ -429,9 +429,9 @@ export function ModelsSection({
   return (
     <>
       <SettingsHeader
-        title="Models"
+        title="Runtimes"
         icon={Layers}
-        subtitle="Every provider Prevail can use, validated at launch with a real call. Expand one to test individual models and set the default new chats open with."
+        subtitle="A runtime is a model plus a way to run it — a local CLI, a direct vendor key, or an aggregator. The same model can run several ways, each with its own cost, speed, and privacy. Validated at launch with a real call; expand one to test individual models and set the default new chats open with."
       />
       {/* Validity at a glance: one badged mark per detected provider. */}
       <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-border-subtle bg-surface px-4 py-2.5">
@@ -478,9 +478,9 @@ export function ModelsSection({
       {([
         {
           id: "clis",
-          label: "Installed CLIs",
+          label: "CLI runtimes",
           icon: Sparkles,
-          desc: `${clis.filter((c) => c.available).length} detected · ${clis.filter((c) => !c.available).length} not installed`,
+          desc: `local · uses your subscription · ${clis.filter((c) => c.available).length} detected · ${clis.filter((c) => !c.available).length} not installed`,
           content: (
             <AgentsSection
               clis={clis}
@@ -493,7 +493,7 @@ export function ModelsSection({
         },
         {
           id: "api",
-          label: "API Providers",
+          label: "Aggregator runtimes",
           icon: Layers,
           desc: "OpenRouter, AWS Bedrock: one key for hundreds of models",
           content: (
@@ -505,7 +505,7 @@ export function ModelsSection({
         },
         {
           id: "direct",
-          label: "Direct Providers",
+          label: "Direct runtimes",
           icon: Globe,
           desc: "Anthropic, OpenAI, xAI, Kimi, DeepSeek, Google: your own key per vendor",
           content: <DirectProvidersSection onActivated={onActivated} />,

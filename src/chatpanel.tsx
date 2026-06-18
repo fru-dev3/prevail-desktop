@@ -2223,7 +2223,7 @@ export function ChatPanel({
               <button
                 onClick={() => setModelMenuOpen((v) => !v)}
                 className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2 py-1 transition-colors hover:bg-surface-warm"
-                title="Pick model"
+                title="Pick runtime (model + how it runs)"
               >
                 {selectedCli && <ProviderMark vendor={selectedCli} size={18} />}
                 <span className="font-mono text-xs text-text-primary">
@@ -2243,7 +2243,7 @@ export function ChatPanel({
                 // non-maximized widths, hiding the left-aligned model names.)
                 <div className="absolute bottom-full left-0 z-40 mb-1 w-72 overflow-hidden rounded-lg border border-border bg-surface shadow-xl">
                   <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-                    Model
+                    Runtime
                   </div>
                   <div className="max-h-80 overflow-y-auto">
                     {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
