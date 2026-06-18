@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import { ArrowUpRight, BookOpen, Boxes, Check, ChevronRight, FileText, Folder, Ghost, Layers, PanelRightOpen, Paperclip, Plus, Scale, Sparkles } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
-import { MODELS } from "./constants";
+import { MODELS, isHarnessRuntime } from "./constants";
 import { relTime, scoreColor, titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
 import { ContextMeter, contextWindowFor, estimateTokens } from "./contextmeter";
@@ -2254,7 +2254,7 @@ export function ChatPanel({
                     Runtime
                   </div>
                   <div className="max-h-80 overflow-y-auto">
-                    {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
+                    {clis.filter((c) => !isHarnessRuntime(c.id)).filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
                       const cliModels = MODELS[c.id] ?? [];
                       if (cliModels.length === 0) return null;
                       return (
