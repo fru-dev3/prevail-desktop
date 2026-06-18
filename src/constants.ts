@@ -49,8 +49,58 @@ export const VENDOR_BRAND: Record<string, { hex: string; accent: string; name: s
   lmstudio:    { hex: "#4f46e5", accent: "#6366f1", name: "LM Studio (local)" },
   mlx:         { hex: "#1f2937", accent: "#9ca3af", name: "oMLX (local)" },
   openrouter:  { hex: "#6566f1", accent: "#6566f1", name: "OpenRouter" },
+  // Additional CLI runtime families (shown in the Runtimes catalog so the user
+  // can set them up). Brand-ish accents; monogram tiles render in marks.tsx.
+  codebuddy:   { hex: "#1e6fff", accent: "#1e6fff", name: "Tencent CodeBuddy" },
+  copilot:     { hex: "#0a0a0a", accent: "#8957e5", name: "GitHub Copilot" },
+  opencode:    { hex: "#374151", accent: "#9ca3af", name: "OpenCode" },
+  openclaw:    { hex: "#e5533c", accent: "#e5533c", name: "OpenClaw" },
+  hermes:      { hex: "#111827", accent: "#a78bfa", name: "Hermes" },
+  gemini:      { hex: "#ffffff", accent: "#4285f4", name: "Google Gemini" },
+  pi:          { hex: "#0a0a0a", accent: "#f59e0b", name: "Pi" },
+  cursor:      { hex: "#0a0a0a", accent: "#6b7280", name: "Cursor" },
+  kimi:        { hex: "#111827", accent: "#7c3aed", name: "Kimi (Moonshot)" },
+  kiro:        { hex: "#7c3aed", accent: "#a855f7", name: "Kiro" },
+  paperclip:   { hex: "#0f766e", accent: "#14b8a6", name: "Paperclip" },
+  motorcar:    { hex: "#9a3412", accent: "#f97316", name: "Motorcar" },
   other:       { hex: "#6b7280", accent: "#6b7280", name: "-" },
 };
+
+// Runtime catalog metadata. `category` separates the two kinds of runtime:
+//   • "cli"     — a primary vendor coding-agent CLI (Claude Code, Codex, Gemini,
+//                 Antigravity, …). These are the ones offered on the homepage
+//                 composer picker.
+//   • "harness" — a separate agent harness/wrapper that runs ON a base protocol
+//                 (Pi, OpenCode, Hermes, OpenClaw, Paperclip, Motorcar). These
+//                 are listed ONLY in the Runtimes catalog (their own group), never
+//                 on the homepage.
+// `protocol` is the base CLI protocol the runtime speaks (so dispatch can route to
+// a known handler). `install` drives the "Set up" prompt. Detection: detect_clis.
+export const RUNTIME_META: Record<string, { blurb: string; install: string; protocol: "claude" | "codex" | "gemini" | "openai"; category: "cli" | "harness" }> = {
+  // ── Primary CLIs (homepage + catalog) ──
+  claude:      { blurb: "Anthropic's agentic CLI.", install: "https://claude.com/claude-code", protocol: "claude", category: "cli" },
+  codex:       { blurb: "OpenAI's coding agent CLI.", install: "https://developers.openai.com/codex/cli", protocol: "codex", category: "cli" },
+  antigravity: { blurb: "Google's agentic CLI (agy).", install: "https://antigravity.google", protocol: "gemini", category: "cli" },
+  gemini:      { blurb: "Google Gemini CLI.", install: "https://github.com/google-gemini/gemini-cli", protocol: "gemini", category: "cli" },
+  codebuddy:   { blurb: "Tencent's coding agent CLI.", install: "https://codebuddy.ai", protocol: "claude", category: "cli" },
+  copilot:     { blurb: "GitHub Copilot CLI.", install: "https://github.com/github/copilot-cli", protocol: "openai", category: "cli" },
+  cursor:      { blurb: "Cursor's agent CLI (cursor-agent).", install: "https://cursor.com/cli", protocol: "openai", category: "cli" },
+  kimi:        { blurb: "Moonshot Kimi CLI.", install: "https://platform.moonshot.ai", protocol: "openai", category: "cli" },
+  kiro:        { blurb: "AWS Kiro agent CLI.", install: "https://kiro.dev", protocol: "openai", category: "cli" },
+  // ── Harnesses (catalog only, NOT homepage) ──
+  opencode:    { blurb: "Open-source terminal coding harness.", install: "https://opencode.ai", protocol: "openai", category: "harness" },
+  openclaw:    { blurb: "Claude-protocol gateway harness.", install: "https://github.com/openclaw/openclaw", protocol: "claude", category: "harness" },
+  hermes:      { blurb: "Hermes agent harness.", install: "https://github.com/hermes-cli/hermes", protocol: "openai", category: "harness" },
+  pi:          { blurb: "Pi agent harness.", install: "https://pi.ai", protocol: "openai", category: "harness" },
+  paperclip:   { blurb: "Paperclip multi-agent harness.", install: "https://github.com/fru-dev3/paperclip", protocol: "claude", category: "harness" },
+  motorcar:    { blurb: "Motorcar agent harness.", install: "https://github.com/fru-dev3/motorcar", protocol: "claude", category: "harness" },
+};
+
+// Convenience: is this runtime id a harness (vs a primary CLI)? Unknown ids are
+// treated as CLIs (the conservative homepage default).
+export function isHarnessRuntime(id: string): boolean {
+  return RUNTIME_META[id]?.category === "harness";
+}
 export const SEVERITY_ORDER: Record<string, number> = { critical: 0, warn: 1, info: 2 };
 export const SEVERITY_LABEL: Record<string, string> = {
   critical: "Critical",

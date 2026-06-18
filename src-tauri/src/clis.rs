@@ -35,6 +35,9 @@ const CLIS: &[(&str, &str, &str)] = &[
     ("pi", "Pi", "pi"),
     ("cursor", "Cursor", "cursor-agent"),
     ("kiro", "Kiro", "kiro"),
+    // Harnesses (separate category in the UI; detected the same PATH way).
+    ("paperclip", "Paperclip", "paperclip"),
+    ("motorcar", "Motorcar", "motorcar"),
     ("ollama", "Ollama", "ollama"),
 ];
 
