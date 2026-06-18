@@ -112,9 +112,13 @@ export function ChatBubble({
     : { borderLeftColor: accent, borderLeftWidth: 3, background: tint };
   return (
     <div className="group mb-8 flex items-start gap-3">
-      <ProviderMark vendor={vendor} size={32} />
+      {/* BP3 (clarified): the Prevail logo is the assistant identity; the provider
+          mark + model/lens/framework still appear as metadata in the header. */}
+      <img src="/logo.png" alt="Prevail" className="h-8 w-8 shrink-0 rounded-lg shadow-sm" />
       <div className="min-w-0 flex-1">
         <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-text-secondary">
+          <span className="font-display font-semibold tracking-tight text-text-primary">Assistant</span>
+          <ProviderMark vendor={vendor} size={14} />
           <span className="font-display font-semibold tracking-tight" style={{ color: accent }}>{vendorName}</span>
           {/* I9: which model + how it was shaped (framework/lens) - so each turn
               is self-describing, not a mystery. */}
