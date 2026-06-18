@@ -202,7 +202,7 @@ export function DomainContextDrawer({
         )}
         {/* C2: clarify GLOBAL vs LOCAL. Global = the constitution that applies to
             every domain. Below, "This domain" = everything scoped to {domain}. */}
-        <div className="border-b border-border-subtle bg-surface-warm/40 px-4 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text-muted">Global · applies everywhere</div>
+        <div title="Applies everywhere" className="cursor-help border-b border-border-subtle bg-surface-warm/40 px-4 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text-muted">Globals</div>
         <Section keyName="ideal" title="Ideal state" body={
           idealState.trim() ? (
             <>
@@ -240,7 +240,7 @@ export function DomainContextDrawer({
             </>
           ) : <div className="text-xs text-text-muted">No profile yet. Add a profile.md (or user.md) at your vault root; Prevail injects it so answers know who you are.</div>
         } />
-        <div className="border-b border-border-subtle bg-surface-warm/40 px-4 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text-muted">{domain ? titleCase(domain) : "General"} · this domain only</div>
+        <div title="This domain only" className="cursor-help border-b border-border-subtle bg-surface-warm/40 px-4 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text-muted">{domain ? titleCase(domain) : "Generals"}</div>
         <Section keyName="memory" title="Long-term memory" body={
           memory.trim() ? (
             <>
