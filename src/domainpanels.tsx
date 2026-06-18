@@ -879,7 +879,7 @@ export function DomainPrefsPanel({
           </button>
         ) : undefined}
       >
-        <p className="mb-3 text-sm text-text-secondary">Which agent runs every prompt in {titleCase(domain)}. Pick one to choose its model.</p>
+        <p className="mb-3 text-sm text-text-secondary">Which runtime runs every prompt in {titleCase(domain)}. Pick a provider, then its model.</p>
         {/* List rows; the selected CLI expands to show its models indented below. */}
         <div className="flex flex-col gap-1.5">
           {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
