@@ -1882,11 +1882,34 @@ export function AlignmentCard({ vaultPath }: { vaultPath: string }) {
         ))}
       </div>
       {rep.actions.length > 0 && (
-        <div className="mt-4 rounded-lg border border-border-subtle bg-background/50 p-3">
-          <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-text-muted">Top actions to close the gap</div>
-          <ul className="mt-1.5 space-y-1">
-            {rep.actions.map((a, i) => <li key={i} className="flex gap-1.5 text-xs text-text-secondary"><span className="text-accent">▸</span>{a}</li>)}
-          </ul>
+        <div className="mt-4">
+          <div className="mb-2 font-mono text-[10px] font-bold uppercase tracking-wider text-text-muted">Top actions to close the gap</div>
+          {/* B2-9: each action is a clickable card that opens the relevant domain.
+              "Strengthen <domain>: <detail>" -> bold domain + quiet detail + arrow. */}
+          <div className="flex flex-col gap-1.5">
+            {rep.actions.map((a, i) => {
+              const m = a.match(/^\s*strengthen\s+([^:]+):\s*(.*)$/i);
+              const domain = m ? m[1].trim() : null;
+              const detail = m ? m[2].trim() : a;
+              return (
+                <button
+                  key={i}
+                  onClick={() => { if (domain) window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: domain.toLowerCase() })); }}
+                  disabled={!domain}
+                  title={domain ? `Open ${titleCase(domain)} to act on this` : a}
+                  className="group flex items-center gap-2.5 rounded-lg border border-border-subtle bg-background px-3 py-2 text-left transition-colors enabled:hover:border-accent-border enabled:hover:bg-surface-warm disabled:cursor-default"
+                >
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft font-mono text-[10px] font-semibold text-accent">{i + 1}</span>
+                  <span className="min-w-0 flex-1">
+                    {domain
+                      ? <><span className="text-xs font-semibold text-text-primary">Strengthen {titleCase(domain)}</span><span className="ml-1 text-[11px] text-text-muted">{detail}</span></>
+                      : <span className="text-xs text-text-secondary">{a}</span>}
+                  </span>
+                  {domain && <ArrowRight className="h-3.5 w-3.5 shrink-0 text-text-muted transition-colors group-hover:text-accent" />}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
