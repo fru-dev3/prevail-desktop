@@ -3,7 +3,7 @@
 // as workflows via the Loop steward; anything consequential surfaces in the
 // Decision Inbox. Reads tasks_read_all; moves via tasks_set_status/tasks_set_owner.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Check, Plus, User, X } from "lucide-react";
+import { Bot, Check, Columns3, List, Plus, Trash2, User } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
@@ -30,7 +30,12 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
   const [tasks, setTasks] = useState<BoardTask[]>([]);
   const [ownerFilter, setOwnerFilter] = useState<"all" | "me" | "ai">("all");
   const [domainFilter, setDomainFilter] = useState<string>("all");
+  const [view, setView] = useState<"board" | "list">(() => (localStorage.getItem("prevail.board.view") === "list" ? "list" : "board"));
   const [busy, setBusy] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragCol, setDragCol] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editVal, setEditVal] = useState("");
   const [addText, setAddText] = useState("");
   const [addDomain, setAddDomain] = useState("");
   const [addDue, setAddDue] = useState("");
@@ -82,9 +87,32 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
     finally { setBusy(null); }
   };
   const setStatus = (t: BoardTask, status: string) =>
-    t.id && act(`s:${t.id}`, () => invoke("tasks_set_status", { vault: vaultPath, domain: t.domain, id: t.id, status }));
-  const setOwner = (t: BoardTask, owner: string) =>
-    t.id && act(`o:${t.id}`, () => invoke("tasks_set_owner", { vault: vaultPath, domain: t.domain, id: t.id, owner }));
+    t.id && t.status !== status && act(`s:${t.id}`, () => invoke("tasks_set_status", { vault: vaultPath, domain: t.domain, id: t.id, status }));
+  // Hand to AI: also move todo→doing so it visibly lands in Doing and the steward
+  // picks it up. Take back: just flip owner, leave the column where it is.
+  const toggleOwner = (t: BoardTask) => {
+    if (!t.id) return;
+    const toAi = t.owner !== "ai";
+    return act(`o:${t.id}`, async () => {
+      await invoke("tasks_set_owner", { vault: vaultPath, domain: t.domain, id: t.id, owner: toAi ? "ai" : "me" });
+      if (toAi && t.status === "todo") await invoke("tasks_set_status", { vault: vaultPath, domain: t.domain, id: t.id, status: "doing" });
+    });
+  };
+  const saveEdit = (t: BoardTask) => {
+    const next = editVal.trim();
+    setEditId(null);
+    if (!t.id || !next || next === t.text) return;
+    void act(`e:${t.id}`, async () => {
+      const cur = await invoke<BoardTask[]>("tasks_read", { vault: vaultPath, domain: t.domain });
+      await invoke("tasks_set", { vault: vaultPath, domain: t.domain, tasks: cur.map((x) => (x.id === t.id ? { ...x, text: next } : x)) });
+    });
+  };
+  const onDrop = (status: string) => {
+    setDragCol(null);
+    const t = tasks.find((x) => x.id === dragId);
+    setDragId(null);
+    if (t) setStatus(t, status);
+  };
   const del = async (t: BoardTask) => {
     if (!t.id) return;
     await act(`d:${t.id}`, async () => {
@@ -92,6 +120,63 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
       await invoke("tasks_set", { vault: vaultPath, domain: t.domain, tasks: cur.filter((x) => x.id !== t.id) });
     });
   };
+  const setViewMode = (v: "board" | "list") => { setView(v); localStorage.setItem("prevail.board.view", v); };
+
+  const renderCard = (t: BoardTask) => {
+    const ai = t.owner === "ai";
+    const blocked = t.status === "blocked";
+    const editing = editId === t.id;
+    return (
+      <div key={`${t.domain}:${t.id ?? t.text}`}
+        draggable={!editing && !!t.id}
+        onDragStart={() => t.id && setDragId(t.id)}
+        onDragEnd={() => { setDragId(null); setDragCol(null); }}
+        className={`rounded-lg border bg-surface px-2.5 py-2 transition-opacity ${blocked ? "border-warn/40" : "border-border"} ${dragId === t.id ? "opacity-40" : ""} ${editing ? "" : "cursor-grab active:cursor-grabbing"}`}>
+        <div className="flex items-start gap-1.5">
+          <span title={ai ? "AI" : "Me"} className={`mt-0.5 shrink-0 ${ai ? "text-accent" : "text-text-muted"}`}>
+            {ai ? <Bot className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
+          </span>
+          {editing ? (
+            <input autoFocus value={editVal} onChange={(e) => setEditVal(e.target.value)}
+              onBlur={() => saveEdit(t)}
+              onKeyDown={(e) => { if (e.key === "Enter") saveEdit(t); if (e.key === "Escape") setEditId(null); }}
+              className="min-w-0 flex-1 rounded border border-accent-border bg-background px-1 py-0.5 text-[13px] text-text-primary focus:outline-none" />
+          ) : (
+            <span onDoubleClick={() => { setEditId(t.id ?? null); setEditVal(t.text); }} title="Double-click to edit"
+              className="min-w-0 flex-1 text-[13px] leading-snug text-text-primary">{t.text}</span>
+          )}
+          <button onClick={() => del(t)} title="Delete task" disabled={busy === `d:${t.id}`} className="shrink-0 text-text-muted/40 transition-colors hover:text-danger">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-5 font-mono text-[10px]">
+          <span className="rounded-full bg-surface-warm px-1.5 py-px text-text-muted">{titleCase(t.domain)}</span>
+          {t.due && <span className={dueTone(t.due)}>{t.due}</span>}
+          {blocked && <span className="text-warn">⏸ needs decision</span>}
+        </div>
+        <div className="mt-1.5 flex items-center gap-1.5 pl-5">
+          <select value={t.status} onChange={(e) => setStatus(t, e.target.value)} disabled={busy === `s:${t.id}`}
+            className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none">
+            {["todo", "doing", "review", "blocked", "done"].map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <button onClick={() => toggleOwner(t)} disabled={busy === `o:${t.id}`}
+            title={ai ? "Take it back" : "Hand to AI to run as a workflow"}
+            className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
+            {ai ? "→ Me" : "→ AI"}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // List view ordering: open work first (by column order), done last; then by due.
+  const ORDER: Record<string, number> = { todo: 0, doing: 1, blocked: 1, review: 2, done: 3 };
+  const listed = useMemo(
+    () => [...shown].sort((a, b) =>
+      (ORDER[a.status] ?? 0) - (ORDER[b.status] ?? 0) ||
+      (a.due || "9999").localeCompare(b.due || "9999")),
+    [shown],
+  );
   const addTask = () => {
     const text = addText.trim(); const domain = addDomain.trim();
     if (!text || !domain) return;
@@ -122,6 +207,16 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
           <option value="all">All domains</option>
           {domains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
         </select>
+        <div className="flex overflow-hidden rounded-md border border-border">
+          <button onClick={() => setViewMode("board")} title="Board view"
+            className={`px-2 py-1 transition-colors ${view === "board" ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
+            <Columns3 className="h-3.5 w-3.5" />
+          </button>
+          <button onClick={() => setViewMode("list")} title="List view"
+            className={`px-2 py-1 transition-colors ${view === "list" ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
+            <List className="h-3.5 w-3.5" />
+          </button>
+        </div>
         <div className="ml-auto flex items-center gap-1.5">
           <input value={addText} onChange={(e) => setAddText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addTask(); }}
             placeholder="Add a task…" className="w-48 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
@@ -140,55 +235,38 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
         </div>
       </div>
 
-      {/* Columns */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
-        {COLUMNS.map((col) => {
-          const items = byColumn[col.key] ?? [];
-          return (
-            <section key={col.key} className="rounded-xl border border-border-subtle bg-surface/40 p-2">
-              <div className="mb-2 flex items-center gap-2 px-1 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
-                {col.label}<span className="text-text-muted/50">· {items.length}</span>
-              </div>
-              <div className="flex flex-col gap-2">
-                {items.map((t) => {
-                  const ai = t.owner === "ai";
-                  const blocked = t.status === "blocked";
-                  return (
-                    <div key={`${t.domain}:${t.id ?? t.text}`} className={`group rounded-lg border bg-surface px-2.5 py-2 ${blocked ? "border-warn/40" : "border-border"}`}>
-                      <div className="flex items-start gap-1.5">
-                        <span title={ai ? "AI" : "Me"} className={`mt-0.5 shrink-0 ${ai ? "text-accent" : "text-text-muted"}`}>
-                          {ai ? <Bot className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
-                        </span>
-                        <span className="min-w-0 flex-1 text-[13px] leading-snug text-text-primary">{t.text}</span>
-                        <button onClick={() => del(t)} title="Delete" className="shrink-0 text-text-muted/0 transition-colors group-hover:text-text-muted hover:!text-danger">
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-5 font-mono text-[10px]">
-                        <span className="rounded-full bg-surface-warm px-1.5 py-px text-text-muted">{titleCase(t.domain)}</span>
-                        {t.due && <span className={dueTone(t.due)}>{t.due}</span>}
-                        {blocked && <span className="text-warn">⏸ needs decision</span>}
-                      </div>
-                      <div className="mt-1.5 flex items-center gap-1.5 pl-5">
-                        <select value={t.status} onChange={(e) => setStatus(t, e.target.value)} disabled={busy === `s:${t.id}`}
-                          className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none">
-                          {["todo", "doing", "review", "blocked", "done"].map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                        <button onClick={() => setOwner(t, ai ? "me" : "ai")} disabled={busy === `o:${t.id}`}
-                          title={ai ? "Take it back" : "Hand to AI to run as a workflow"}
-                          className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
-                          {ai ? "→ Me" : "→ AI"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-                {items.length === 0 && <div className="px-1 py-3 text-center text-[11px] text-text-muted/50">—</div>}
-              </div>
-            </section>
-          );
-        })}
-      </div>
+      {view === "board" ? (
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+          {COLUMNS.map((col) => {
+            const items = byColumn[col.key] ?? [];
+            const over = dragCol === col.key && dragId;
+            return (
+              <section key={col.key}
+                onDragOver={(e) => { if (dragId) { e.preventDefault(); setDragCol(col.key); } }}
+                onDragLeave={() => setDragCol((c) => (c === col.key ? null : c))}
+                onDrop={() => onDrop(col.key)}
+                className={`rounded-xl border p-2 transition-colors ${over ? "border-accent-border bg-accent-soft/40" : "border-border-subtle bg-surface/40"}`}>
+                <div className="mb-2 flex items-center gap-2 px-1 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
+                  {col.label}<span className="text-text-muted/50">· {items.length}</span>
+                </div>
+                <div className="flex min-h-[2.5rem] flex-col gap-2">
+                  {items.map(renderCard)}
+                  {items.length === 0 && <div className="px-1 py-3 text-center text-[11px] text-text-muted/50">{over ? "drop here" : "—"}</div>}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="mx-auto flex max-w-2xl flex-col gap-2">
+          {listed.map(renderCard)}
+          {listed.length === 0 && (
+            <div className="rounded-xl border border-dashed border-border-subtle px-4 py-10 text-center text-sm text-text-muted">
+              No tasks yet. Add one above, or hand work to AI.
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
