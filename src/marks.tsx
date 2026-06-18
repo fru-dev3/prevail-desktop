@@ -2,11 +2,12 @@
 // Claude and Ollama; a faithful OpenAI mark (not in simple-icons) and the
 // multicolor Google G for Antigravity; monograms for lmstudio/mlx.
 import React from "react";
-import { siClaude as siClaudeRaw, siOllama as siOllamaRaw } from "simple-icons";
+import { siClaude as siClaudeRaw, siCursor as siCursorRaw, siOllama as siOllamaRaw } from "simple-icons";
 import { VENDOR_BRAND } from "./constants";
 
 export const siClaude = siClaudeRaw as { path: string };
 export const siOllama = siOllamaRaw as { path: string };
+export const siCursor = siCursorRaw as { path: string };
 
 export function ProviderMark({ vendor, size = 28 }: { vendor: string; size?: number }) {
   const v = VENDOR_BRAND[vendor] ?? VENDOR_BRAND.other;
@@ -54,6 +55,13 @@ export function ProviderMark({ vendor, size = 28 }: { vendor: string; size?: num
       break;
     case "mlx":
       inner = <span className="font-mono font-semibold text-white" style={{ fontSize: Math.round(size * 0.3) }}>MLX</span>;
+      break;
+    case "cursor":
+      inner = (
+        <svg viewBox="0 0 24 24" width={glyphSize} height={glyphSize} fill="white" aria-hidden="true">
+          <path d={siCursor.path} />
+        </svg>
+      );
       break;
     case "gemini":
       // Google product → the same four-color G on a white tile.
