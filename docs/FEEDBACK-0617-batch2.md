@@ -51,14 +51,14 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
 - [x] **B2-14 — Format "What we collect" telemetry list.** Done — clean two-column
   table (event chip + what it carries) instead of a dash-list.
 
-- [~] **B2-15 — Consolidate the Vault section.** Don't have a standalone "Vault
+- [x] **B2-15 — Consolidate the Vault section.** Don't have a standalone "Vault
   folder" card AND a separate "Starter packs & Sandbox" with Your/Demo vault
   toggles. Make ONE "Vault" section = the Your vault + Demo vault cards, each with
   small inline icons to change the path + open the vault (Finder). Drop the
   redundant standalone Vault-folder card. "Starter packs" becomes its own separate
   section. (Pairs with B2-12 vault restructure.)
 
-- [ ] **B2-16 — Backups inside each vault card.** Not a separate big "Backups"
+- [x] **B2-16 — Backups inside each vault card.** Not a separate big "Backups"
   section — a tiny backup control within the Your vault / Demo vault cards, since
   backup is per-vault (back up your vault, or the demo vault). Folds into B2-15.
 - [x] **B2-17 — New "Work" settings nav group.** Add a nav group called "Work"

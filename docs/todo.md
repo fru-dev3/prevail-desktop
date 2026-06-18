@@ -14,21 +14,19 @@ incognito-everywhere (chat+council+global).
 ### DONE (batch 2, shipped through v0.8.15): B2-1..B2-11, B2-13,14,17,18,19,20,
 21,22,23,24,25,26,27,28 + incognito-everywhere + B2-15 partial (inline card icons).
 
-### REMAINING (4 items — the deliberately-larger / needs-care ones)
-1. **B2-15 (finish) + B2-16 — Workspace recomposition.** Make ONE Vault section =
-   Your/Demo vault cards (inline Change+Open icons DONE) and move Starter packs to
-   its OWN section; drop the standalone "Vault folder" card + the standalone
-   "Backups" section; put a per-vault backup toggle on the active card. Needs
-   DemoModeSection split (cards vs packs) + thread onChange + decide per-vault
-   backup semantics (global BACKUP_CFG = "back up the active vault"). settings8.tsx.
-2. **B2-12 — on-disk data/ + build/ vault layout.** Apps+domains under data/,
-   runtime files (benchmark/complete/core/usage + loose _*.jsonl/_meta/_threads/
-   AGENTS-operating.md) under build/, root = data/ build/ profile.md. Engine
-   migration (extends W4): resolver + safe migrator + path updates across cli +
-   desktop. Do deliberately; never lose user data.
-3. **B2-29 — Usage Activity.** The Activity heatmap already renders on Usage;
-   clarify with founder what "isn't enough" means before changing.
-4. **B2-30 — macOS tray menu.** Design what the menubar icon opens (quick chat,
+### DONE since: B2-15/16 (Workspace recomposition) shipped in v0.8.16.
+
+### REMAINING
+1. **B2-12 — data/ + build/ on-disk layout.** Phase 1 DONE on branch
+   `feat/b2-12-data-build-layout` (additive build/ resolver in desktop paths.rs +
+   cli path-safety.ts, zero behavior change). Plan: `docs/B2-12-DATA-BUILD-LAYOUT.md`.
+   REMAINING (on that branch): Phase 2 route ~44 runtime-path sites through
+   runtimePath(); Phase 3 migrator (copy→verify→opt-in archive); Phase 4 desktop
+   "Tidy into data/+build/" trigger; Phase 5 fallback reads. Destructive — finish
+   on the branch with tests; never lose user data.
+2. **B2-29 — Usage Activity.** Heatmap already renders; need 1 word from founder on
+   what "isn't enough."
+3. **B2-30 — macOS tray menu.** Design what the menubar icon opens (quick chat,
    today's briefing, running processes, incognito toggle, open app). Design+build.
 THEN (separate branch, founder request): implement `docs/WORKFLOW-ENGINE-PLAN.md`.
 
