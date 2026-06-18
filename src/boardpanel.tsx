@@ -1,4 +1,4 @@
-// Workflows-Kanban (P0) — the cross-domain task board. Tasks are owned by Me or
+// Workflows-Kanban (P0) - the cross-domain task board. Tasks are owned by Me or
 // AI and flow across columns (To-do / Doing / Review / Done). AI-owned tasks run
 // as workflows via the Loop steward; anything consequential surfaces in the
 // Decision Inbox. Reads tasks_read_all; moves via tasks_set_status/tasks_set_owner.
@@ -150,7 +150,7 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
   const renderCard = (t: BoardTask) => {
     const ai = t.owner === "ai";
     const blocked = t.status === "blocked";
-    const editing = editId === t.id;
+    const editing = editId != null && editId === t.id;
     return (
       <div key={`${t.domain}:${t.id ?? t.text}`}
         draggable={!editing && !!t.id}
@@ -198,7 +198,7 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
   const renderRow = (t: BoardTask) => {
     const ai = t.owner === "ai";
     const blocked = t.status === "blocked";
-    const editing = editId === t.id;
+    const editing = editId != null && editId === t.id;
     return (
       <div key={`row:${t.domain}:${t.id ?? t.text}`}
         className={`flex items-center gap-3 rounded-lg border bg-surface px-3 py-2 ${blocked ? "border-warn/40" : "border-border"}`}>
@@ -258,9 +258,9 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
           backdrop goes edge-to-edge and flush to the top. */}
       <div className="sticky top-0 z-20 -mx-8 -mt-10 border-b border-border-subtle bg-background px-8 pb-3 pt-8">
       <SettingsHeader title="Board" icon={Check}
-        subtitle="Your tasks as a board — owned by you or handed to AI. AI-owned tasks run as workflows and ask you to decide anything consequential in the Decision Inbox." />
+        subtitle="Your tasks as a board - owned by you or handed to AI. AI-owned tasks run as workflows and ask you to decide anything consequential in the Decision Inbox." />
 
-      {/* AI workflow status strip — only when AI is involved or something waits on you */}
+      {/* AI workflow status strip - only when AI is involved or something waits on you */}
       {(flow.inFlight + flow.queued + flow.waiting > 0 || running) && (
         <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border-subtle bg-surface/40 px-3 py-2 text-xs text-text-muted">
           {running
@@ -336,7 +336,7 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
                 </div>
                 <div className="flex min-h-[2.5rem] flex-col gap-2">
                   {items.map(renderCard)}
-                  {items.length === 0 && <div className="px-1 py-3 text-center text-[11px] text-text-muted/50">{over ? "drop here" : "—"}</div>}
+                  {items.length === 0 && <div className="px-1 py-3 text-center text-[11px] text-text-muted/50">{over ? "drop here" : "-"}</div>}
                 </div>
               </section>
             );

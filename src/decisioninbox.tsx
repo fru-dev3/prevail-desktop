@@ -1,4 +1,4 @@
-// Decision Inbox (Workflows-Kanban P0) — one cross-domain list of the things that
+// Decision Inbox (Workflows-Kanban P0) - one cross-domain list of the things that
 // need YOUR call: loop approvals queued in any domain, plus AI tasks that finished
 // and want sign-off. The labor is the AI's; the decision is yours. Reads
 // decisions_pending; actions reuse the existing loop execute / task plumbing.
@@ -176,7 +176,7 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
           </button>
         )}
       </div>
-      <p className="mb-4 text-xs text-text-muted">AI does the work and asks you here for anything consequential — approvals, and finished work waiting on your sign-off.</p>
+      <p className="mb-4 text-xs text-text-muted">AI does the work and asks you here for anything consequential - approvals, and finished work waiting on your sign-off.</p>
 
       <div className="flex flex-col gap-2.5">
         {active.length === 0 && (
