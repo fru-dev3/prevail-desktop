@@ -27,7 +27,7 @@ import { Toggle } from "./ui";
 import { PaletteCard } from "./panels3";
 import { useAppearance } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
-import { BACKUP_CFG, backupVaultNow } from "./backup";
+import { BACKUP_CFG, backupFreqMs, backupVaultNow } from "./backup";
 import type { Mode } from "./types";
 
 export function AppearanceSection({ appearance }: { appearance: ReturnType<typeof useAppearance> }) {
@@ -114,6 +114,42 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
   // ACTIVE vault, so this reflects/controls BACKUP_CFG.enabled.
   const [backupOn, setBackupOn] = useState(() => lsGet(BACKUP_CFG.enabled, "0") === "1");
   const toggleBackup = (v: boolean) => { setBackupOn(v); lsSet(BACKUP_CFG.enabled, v ? "1" : "0"); window.dispatchEvent(new Event("prevail:bench-sched")); };
+  // Backup status surfaced next to the toggle: schedule, next-run, run-now, folder.
+  const [backupTick, setBackupTick] = useState(0);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const backupFreq = lsGet(BACKUP_CFG.freq, "weekly") || "weekly";
+  const backupFreqLabel = (() => {
+    const m = /^custom:(\d+)$/.exec(backupFreq);
+    if (m) return `Every ${m[1]} day${m[1] === "1" ? "" : "s"}`;
+    return backupFreq.charAt(0).toUpperCase() + backupFreq.slice(1);
+  })();
+  const backupNextLabel = (() => {
+    void backupTick; // re-evaluate after a manual backup
+    const last = Number(lsGet(BACKUP_CFG.lastRun, "0")) || 0;
+    if (!last) return "on next check";
+    const next = last + backupFreqMs(backupFreq);
+    return new Date(next).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  })();
+  const backupNow = async () => {
+    setBackupBusy(true);
+    try { await backupVaultNow(vaultPath); setBackupTick((t) => t + 1); } finally { setBackupBusy(false); }
+  };
+  const openBackupsFolder = async () => {
+    try {
+      const list = await invoke<{ path: string }[]>("vault_backups_list", { destDir: lsGet(BACKUP_CFG.dest) || null });
+      const p = Array.isArray(list) && list[0]?.path;
+      if (p) await invoke("open_in_finder", { path: p });
+    } catch (e) { console.error("open backups folder", e); }
+  };
+  const BackupStatusLine = () => (
+    backupOn ? (
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] text-text-muted">
+        <span title="How often automatic backups run (Backups settings)">{backupFreqLabel} · next ~{backupNextLabel}</span>
+        <button onClick={backupNow} disabled={backupBusy} className="rounded border border-border px-1.5 py-0.5 uppercase tracking-wider hover:border-accent-border hover:text-accent disabled:opacity-50">{backupBusy ? "backing up…" : "Back up now"}</button>
+        <button onClick={openBackupsFolder} className="rounded border border-border px-1.5 py-0.5 uppercase tracking-wider hover:border-accent-border hover:text-accent">Open folder</button>
+      </div>
+    ) : null
+  );
   // The remembered production vault path, so switching demo<->production never
   // re-asks for the folder, and both locations can be shown.
   const [prodVault, setProdVault] = useState<string>(() => lsGet(LS.vaultProduction) || "");
@@ -300,9 +336,12 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
           <div className="mt-0.5 text-[10px] text-text-muted">Real data, backed up. {isDemo && !prodVault ? "Toggling on walks you through a quick 3-step setup." : "Switching to demo never touches it."}</div>
           {/* B2-16: per-vault backup toggle (active vault only). */}
           {!isDemo && (
-            <div className="mt-2 flex items-center gap-2 border-t border-border-subtle/60 pt-2">
-              <span className="flex-1 text-[10px] text-text-muted">Automatic backups</span>
-              <Toggle on={backupOn} onChange={toggleBackup} label="Back up your vault" />
+            <div className="mt-2 border-t border-border-subtle/60 pt-2">
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-[10px] text-text-muted">Automatic backups</span>
+                <Toggle on={backupOn} onChange={toggleBackup} label="Back up your vault" />
+              </div>
+              <BackupStatusLine />
             </div>
           )}
         </div>
@@ -320,9 +359,12 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
           </div>
           <div className="mt-0.5 text-[10px] text-text-muted">Sample data, re-seeded. Safe to explore; nothing here is your real data.</div>
           {isDemo && (
-            <div className="mt-2 flex items-center gap-2 border-t border-border-subtle/60 pt-2">
-              <span className="flex-1 text-[10px] text-text-muted">Automatic backups</span>
-              <Toggle on={backupOn} onChange={toggleBackup} label="Back up demo vault" />
+            <div className="mt-2 border-t border-border-subtle/60 pt-2">
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-[10px] text-text-muted">Automatic backups</span>
+                <Toggle on={backupOn} onChange={toggleBackup} label="Back up demo vault" />
+              </div>
+              <BackupStatusLine />
             </div>
           )}
         </div>
