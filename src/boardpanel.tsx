@@ -3,10 +3,11 @@
 // as workflows via the Loop steward; anything consequential surfaces in the
 // Decision Inbox. Reads tasks_read_all; moves via tasks_set_status/tasks_set_owner.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Check, Columns3, List, Plus, Trash2, User } from "lucide-react";
+import { Bot, Check, Columns3, List, Loader2, Play, Plus, Trash2, User } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
+import { PREF, getPref } from "./storage";
 import type { BoardTask } from "./types";
 
 const COLUMNS: { key: string; label: string }[] = [
@@ -39,6 +40,7 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
   const [addText, setAddText] = useState("");
   const [addDomain, setAddDomain] = useState("");
   const [addDue, setAddDue] = useState("");
+  const [running, setRunning] = useState(false);
 
   const [allDomains, setAllDomains] = useState<string[]>([]);
 
@@ -79,6 +81,29 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
     for (const t of shown) (m[columnFor(t.status)] ??= []).push(t);
     return m;
   }, [shown]);
+
+  // Live read on the AI workflow (across all owners/domains, ignoring filters):
+  // what AI is actively working, what's queued to it, what's waiting on you.
+  const flow = useMemo(() => ({
+    inFlight: tasks.filter((t) => t.owner === "ai" && t.status === "doing").length,
+    queued: tasks.filter((t) => t.owner === "ai" && t.status === "todo").length,
+    waiting: tasks.filter((t) => t.status === "review" || t.status === "blocked").length,
+  }), [tasks]);
+
+  // Trigger one engine pass now (advances loops + works AI-owned tasks) so handing
+  // a task to AI produces visible movement instead of waiting for the daemon tick.
+  const runNow = async () => {
+    setRunning(true);
+    try {
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      await invoke("loops_run_once", { vault: vaultPath, provider, model });
+      reload();
+      window.dispatchEvent(new Event("prevail:tasks-changed"));
+      window.dispatchEvent(new Event("prevail:loops-advanced"));
+    } catch (e) { console.error("run now", e); }
+    finally { setRunning(false); }
+  };
 
   const act = async (key: string, fn: () => Promise<unknown>) => {
     setBusy(key);
@@ -191,6 +216,21 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
     <>
       <SettingsHeader title="Board" icon={Check}
         subtitle="Your tasks as a board — owned by you or handed to AI. AI-owned tasks run as workflows and ask you to decide anything consequential in the Decision Inbox." />
+
+      {/* AI workflow status strip — only when AI is involved or something waits on you */}
+      {(flow.inFlight + flow.queued + flow.waiting > 0 || running) && (
+        <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border-subtle bg-surface/40 px-3 py-2 text-xs text-text-muted">
+          {running
+            ? <span className="inline-flex items-center gap-1.5 text-accent"><Loader2 className="h-3.5 w-3.5 animate-spin" /> AI is working…</span>
+            : <span className="inline-flex items-center gap-1.5"><Bot className="h-3.5 w-3.5 text-accent" /> {flow.inFlight} in flight · {flow.queued} queued to AI</span>}
+          {flow.waiting > 0 && <span className="text-warn">{flow.waiting} waiting on you in Decisions</span>}
+          <button onClick={runNow} disabled={running}
+            title="Run one engine pass now: advance loops + work AI-owned tasks"
+            className="ml-auto inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+            <Play className="h-3 w-3" /> Run now
+          </button>
+        </div>
+      )}
 
       {/* Controls: owner filter · domain filter · add */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
