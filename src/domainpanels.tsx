@@ -1,7 +1,7 @@
 // Domain-scoped panels extracted from App.tsx: the context drawer (right rail),
 // the agent picker rail, the pref-picker column, and the domain prefs panel.
 import { useCallback, useEffect, useState } from "react";
-import { Box, Check, ChevronRight, Compass, Cpu, Folder, Loader2, Lock, MessageSquare, PanelRightClose, Pin, Share2, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Box, Check, ChevronRight, Code, Compass, Cpu, Eye, Folder, Loader2, Lock, MessageSquare, PanelRightClose, Pin, Share2, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES, MODELS } from "./constants";
 import { formatFreshness, titleCase } from "./format";
@@ -10,6 +10,7 @@ import { PREF, getPref, isBunkerOn, lsGet, lsSet } from "./storage";
 import { Toggle } from "./ui";
 import { ResizeHandle } from "./widgets";
 import { DrawerImportsSection } from "./panels";
+import { Markdown } from "./Markdown";
 import { domainIcon } from "./icons";
 import { pickSkillColor } from "./sectionutil";
 import { useCliVerifyLive } from "./verify";
@@ -24,6 +25,35 @@ export const SECTION_LABEL =
 // Replaces the popover. Every control writes to localStorage on
 // click; no save button - picks are immediate. Pickers use brand
 // icons for CLIs, prose labels for everything else.
+
+// BP1 (2026-06-27 feedback): clicking a .md/markdown context item opens this
+// preview overlay — rendered markdown by default, with a "View Raw Text" toggle.
+export function MarkdownPreview({ title, source, onClose, onUseInChat }: { title: string; source: string; onClose: () => void; onUseInChat?: () => void }) {
+  const [raw, setRaw] = useState(false);
+  return (
+    <div className="absolute inset-0 z-40 flex flex-col bg-background">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border-subtle px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Markdown preview</div>
+          <div className="truncate font-display text-sm font-semibold text-text-primary" title={title}>{title}</div>
+        </div>
+        <button onClick={() => setRaw((v) => !v)} title={raw ? "Show formatted" : "Show raw text"}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">
+          {raw ? <><Eye className="h-3 w-3" /> Formatted</> : <><Code className="h-3 w-3" /> Raw text</>}
+        </button>
+        {onUseInChat && (
+          <button onClick={onUseInChat} title="Use in chat" className="rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">→ use</button>
+        )}
+        <button onClick={onClose} title="Close preview" className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"><X className="h-4 w-4" /></button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {raw
+          ? <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-text-secondary">{source}</pre>
+          : <div className="prose-sm text-sm leading-relaxed text-text-primary"><Markdown source={source} /></div>}
+      </div>
+    </div>
+  );
+}
 
 export function DomainContextDrawer({
   domain,
@@ -91,6 +121,9 @@ export function DomainContextDrawer({
   }, [vaultPath, domain]);
 
   const [idealState, setIdealState] = useState<string>("");
+  // BP1: the markdown preview overlay (title + body). Opened by clicking a context
+  // item / session log; rendered markdown with a raw-text toggle.
+  const [preview, setPreview] = useState<{ title: string; body: string; inject?: () => void } | null>(null);
   // G2: the learned user profile - what Prevail knows about you, surfaced so it's
   // visible what grounds the answers. Loaded from user.md (falls back to profile.md).
   const [profile, setProfile] = useState<string>("");
@@ -124,7 +157,9 @@ export function DomainContextDrawer({
         ariaLabel="Resize context drawer"
         onChange={(dx) => setDrawerWidth((w) => Math.max(260, Math.min(640, w - dx)))}
       />
-      <aside className="flex shrink-0 flex-col border-l border-border-subtle bg-surface-warm" style={{ width: drawerWidth }}>
+      <aside className="relative flex shrink-0 flex-col border-l border-border-subtle bg-surface-warm" style={{ width: drawerWidth }}>
+      {/* BP1: markdown preview overlay (covers the drawer when a .md is opened). */}
+      {preview && <MarkdownPreview title={preview.title} source={preview.body} onClose={() => setPreview(null)} onUseInChat={preview.inject ? () => { preview.inject!(); setPreview(null); } : undefined} />}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-4 py-3">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Context</div>
@@ -226,15 +261,22 @@ export function DomainContextDrawer({
             <Section keyName="state" title="State" body={
               ctx.state ? (
                 <>
-                  <button
-                    onClick={() => onInjectContext(ctx.state!, `${titleCase(domain)}/state.md`)}
-                    className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
-                  >
-                    → use in chat
+                  <div className="mb-2 flex items-center gap-1.5">
+                    <button
+                      onClick={() => onInjectContext(ctx.state!, `${titleCase(domain)}/state.md`)}
+                      className="rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+                    >
+                      → use in chat
+                    </button>
+                    {/* BP1: open the full doc in the markdown preview (rendered + raw). */}
+                    <button onClick={() => setPreview({ title: `${titleCase(domain)}/state.md`, body: ctx.state!, inject: () => onInjectContext(ctx.state!, `${titleCase(domain)}/state.md`) })}
+                      title="Preview (rendered / raw)" className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"><Eye className="h-3 w-3" /> preview</button>
+                  </div>
+                  <button onClick={() => setPreview({ title: `${titleCase(domain)}/state.md`, body: ctx.state!, inject: () => onInjectContext(ctx.state!, `${titleCase(domain)}/state.md`) })} className="block w-full text-left" title="Click to preview">
+                    <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
+                      {ctx.state.length > 1200 ? ctx.state.slice(0, 1200) + "\n…" : ctx.state}
+                    </pre>
                   </button>
-                  <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
-                    {ctx.state.length > 1200 ? ctx.state.slice(0, 1200) + "\n…" : ctx.state}
-                  </pre>
                 </>
               ) : <div className="text-xs text-text-muted">No state yet. The distiller derives a state snapshot from your activity in this domain; it appears after your first few chats here.</div>
             } />
@@ -319,7 +361,8 @@ export function DomainContextDrawer({
                   <ul className="space-y-1">
                     {ctx.recent_logs.map((l) => (
                       <li key={l.path}>
-                        <button onClick={async () => { try { const body = await invoke<string>("read_file", { path: l.path }); onInjectContext(body, l.name); } catch (e) { console.error(e); } }}
+                        {/* BP1: click opens the markdown preview (rendered + raw toggle). */}
+                        <button onClick={async () => { try { const body = await invoke<string>("read_file", { path: l.path }); setPreview({ title: l.name, body, inject: () => onInjectContext(body, l.name) }); } catch (e) { console.error(e); } }}
                           className="w-full rounded border border-border-subtle bg-background px-2 py-1.5 text-left hover:border-accent-border hover:bg-surface-warm">
                           <div className="font-mono text-[11px] text-text-primary">{l.name}</div>
                           {l.preview && <div className="mt-0.5 line-clamp-2 text-[10px] text-text-muted">{l.preview}</div>}
