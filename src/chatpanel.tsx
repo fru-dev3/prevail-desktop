@@ -903,7 +903,13 @@ export function ChatPanel({
   );
 
   useEffect(() => {
-    if (!selectedCli && available.length > 0) setSelectedCli(available[0].id);
+    // Harnesses are catalog-only, never a chat runtime. If nothing is selected —
+    // OR a stale/"Start chat" selection points at a harness (which would dispatch
+    // to "unknown cli") — fall back to a real CLI.
+    const cliOnly = available.filter((c) => !isHarnessRuntime(c.id));
+    if ((!selectedCli || isHarnessRuntime(selectedCli)) && cliOnly.length > 0) {
+      setSelectedCli(cliOnly[0].id);
+    }
   }, [available, selectedCli]);
 
   // Bunker Mode auto-switch: if the persisted/selected CLI is a cloud one (a
