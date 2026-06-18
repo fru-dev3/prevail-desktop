@@ -1354,6 +1354,12 @@ export default function App() {
               />
             ) : tab === "chat" && (
               <ChatPanel
+                // Scope the chat view to its domain: a fresh instance per domain
+                // (and per app) so a stream running in one domain can't bleed its
+                // session/messages into another's view when you switch. The old
+                // domain's stream keeps running in the engine and re-hydrates from
+                // its thread when you return.
+                key={`chat:${threadScope ?? "general"}`}
                 domain={selectedDomain}
                 domainPath={selectedDomainPath}
                 threadDomain={threadScope}
