@@ -30,6 +30,26 @@ pub(crate) fn data_root(vault: &str) -> PathBuf {
     }
 }
 
+// B2-12 (Phase 1, additive — no behavior change yet): the `build/` container for
+// supporting/runtime files (ledgers, _meta, _threads, benchmark, usage, …).
+// `runtime_path` PREFERS <vault>/build/<name> when build/ exists, else falls back
+// to the current location (vault root), so nothing changes until a migration
+// creates build/. Readers should be routed through this in Phase 2.
+#[allow(dead_code)]
+pub(crate) fn build_root(vault: &str) -> PathBuf {
+    let b = PathBuf::from(vault).join("build");
+    if b.is_dir() { b } else { PathBuf::from(vault) }
+}
+#[allow(dead_code)]
+pub(crate) fn runtime_path(vault: &str, name: &str) -> PathBuf {
+    let in_build = PathBuf::from(vault).join("build").join(name);
+    if in_build.exists() {
+        return in_build;
+    }
+    // Fallback: today's location at the vault root (pre-migration, or un-migrated).
+    PathBuf::from(vault).join(name)
+}
+
 // Resolve a domain's base directory. Resolution order (newest wins, all readable
 // for zero-migration compatibility): v4 <vault>/data/domains/<d>, then v3
 // <vault>/domains/<d>, then legacy <vault>/<d>. New domains default to the v4
