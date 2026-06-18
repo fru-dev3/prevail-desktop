@@ -1,7 +1,7 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, Compass, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sparkles, Target, Wrench, Zap } from "lucide-react";
+import { ArrowLeft, Check, Compass, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Target, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { LS, lsGet } from "./storage";
 import { useAppearance } from "./hooks";
@@ -15,7 +15,7 @@ import { RecommendationsPanel } from "./recommendationspanel";
 import { OmegaSection } from "./omega";
 import { CollapsibleSection } from "./collapsible";
 import { GeneralSection, IdealStateSection, SafetySection } from "./settings4";
-import { AboutSection, GatewaySection, McpSection } from "./settings5";
+import { AboutSection, GatewayLogsCard, GatewaySection, McpSection } from "./settings5";
 import { CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6";
 import { ModelsSection } from "./settings7";
 import { AppearanceSection, WorkspaceSection } from "./settings8";
@@ -87,7 +87,7 @@ export function SettingsPanel({
   // the guardrails (Privacy & Safety), where data lives (Vault), and the app.
   const navGroups: Array<{ heading: string; items: NavItem[] }> = [
     { heading: "Intelligence", items: [
-      { id: "models", label: "Models", icon: Layers },
+      { id: "models", label: "Runtimes", icon: Layers },
       { id: "council", label: "Council", icon: Scale },
       { id: "frameworks", label: "Frameworks", icon: Lightbulb },
       { id: "skills", label: "Skills", icon: Sparkles },
@@ -110,7 +110,7 @@ export function SettingsPanel({
     { heading: "Work", items: [
       { id: "tasks", label: "Tasks", icon: Check },
       { id: "workspace", label: "Workspace", icon: Folder },
-      { id: "recommendations", label: "Recommendations", icon: Sparkles },
+      { id: "recommendations", label: "Insights", icon: Sparkles }, // renamed from "Recommendations"
     ]},
     { heading: "Connections", items: [
       { id: "connectors", label: "Apps", icon: Plug },
@@ -247,7 +247,7 @@ export function SettingsPanel({
         <div className="w-full px-8 py-10">
           {section === "general" && <GeneralSection appearance={appearance} />}
           {section === "privacy" && <PrivacyConnectivitySection enabled={bunkerEnabled} onChange={onBunkerChange} />}
-          {section === "models" && <ModelsSection clis={clis} onStartChatWith={onStartChatWith} onActivated={onRefreshClis} />}
+          {section === "models" && <ModelsSection clis={clis} onStartChatWith={onStartChatWith} onActivated={onRefreshClis} vaultPath={vaultPath} />}
           {section === "benchmark" && (
             <>
               <SettingsHeader
@@ -264,11 +264,35 @@ export function SettingsPanel({
               </div>
             </>
           )}
-          {/* B2-24: Ideals = Ideal State + Omega on one page (compare over time). */}
+          {/* B2-24 / image #28: Ideals = page header + two big collapsible sections
+              (Constitution, Omega). Big-header collapsibles so each reads above the
+              sub-headers inside; Constitution open by default. */}
           {section === "ideal-state" && (
             <>
-              <IdealStateSection vaultPath={vaultPath} />
-              <div className="mt-8 border-t border-border-subtle pt-6"><OmegaSection vaultPath={vaultPath} /></div>
+              <SettingsHeader
+                title="Ideals"
+                icon={Compass}
+                subtitle="The vision and values everything optimizes for. Every chat, council, insight, plan, and routine reads these first and aligns to them."
+              />
+              <CollapsibleSection
+                large
+                icon={Compass}
+                title="Constitution"
+                subtitle="Your operating vision and principles — highest precedence everywhere."
+                defaultOpen
+                storageKey="prevail.settings.ideals.constitution"
+              >
+                <IdealStateSection vaultPath={vaultPath} headerless />
+              </CollapsibleSection>
+              <CollapsibleSection
+                large
+                icon={Sigma}
+                title="Omega"
+                subtitle="Cross-system shared context that travels with you."
+                storageKey="prevail.settings.ideals.omega"
+              >
+                <OmegaSection vaultPath={vaultPath} headerless />
+              </CollapsibleSection>
             </>
           )}
           {/* "omega" kept as a deep-link target (no nav item) — folded into Ideals. */}
@@ -277,14 +301,10 @@ export function SettingsPanel({
           {section === "intents" && <IntentsSection vaultPath={vaultPath} />}
           {section === "tasks" && <TasksCrossDomainSection vaultPath={vaultPath} />}
           {section === "recommendations" && <RecommendationsPanel vaultPath={vaultPath} />}
-          {/* B2-20: Memory engine page deleted; its Memory & Context view folds
-              into Routines so nothing is lost. */}
-          {section === "daemons" && (
-            <>
-              <DaemonsSection vaultPath={vaultPath} />
-              <div className="mt-8 border-t border-border-subtle pt-6"><MemoryContextSection vaultPath={vaultPath} /></div>
-            </>
-          )}
+          {/* B2-20 / image #29: Memory engine page deleted; Memory & Context now
+              lives inside Routines as a peer collapsible group (in DaemonsSection),
+              not a divider-separated section. */}
+          {section === "daemons" && <DaemonsSection vaultPath={vaultPath} />}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {section === "connectors" && (
             <>
@@ -304,7 +324,7 @@ export function SettingsPanel({
             </>
           )}
           {section === "safety" && <SafetySection vaultPath={vaultPath} />}
-          {section === "gateway" && <GatewaySection />}
+          {section === "gateway" && <><GatewaySection /><GatewayLogsCard vaultPath={vaultPath} /></>}
           {section === "mcp" && <McpSection vaultPath={vaultPath} />}
           {section === "remote" && <RemoteSection />}
           {/* IA-1: "workspace" is the umbrella; "vault"/"demo" remain as

@@ -1,9 +1,73 @@
-# >>> PICK UP HERE (2026-06-17, live-review batch 2) <<<
+# >>> STATUS (2026-06-18) — everything merged & deployed; clean slate for new work <<<
+
+**Live:** **v0.1.130** (Apps-area P0 merged) — building/just-published. Release chain:
+v0.1.126 (re-baseline) → v0.1.128 (Frameworks/Ideals/Memory&Context/Runtimes+table) →
+v0.1.129 (`---` chat fix + council persistence) → **v0.1.130** (Apps P0: curated ~195
+catalog, connection hints, privacy badges). v0.1.127 was cancelled/deleted (superseded).
+`feat/apps-area` merged into main and the branch deleted.
+
+**What's DEPLOYED:** everything on `main` (desktop + cli main both pushed). Apps-area P0
+is now on main and shipping in v0.1.130.
+
+**Remaining branches / gated work (NOT on main, deliberately):**
+- `feat/b2-12-data-build-layout` — on-disk data/+build/ layout. The committed routing is
+  no-op-until-build/-exists (safe), but the **destructive migrator is unbuilt and
+  verification-gated** (needs the running app + a real vault; hard rule: never lose data).
+  Parked — do as a dedicated verified effort, don't blind-merge.
+- **B2-29** (richer Usage Activity) — needs founder to say what "isn't enough."
+- `docs/WORKFLOW-ENGINE-PLAN.md` — net-new feature, its own branch when started.
+
+**Original overnight goal (DONE):** fix everything + deploy live, deep-research Apps,
+write todo, branch + start Apps work, then merge. All complete; Apps merged in v0.1.130.
+
+### TONIGHT — must be live by morning (release v0.1.129)
+1. **`---` chat bug — FIXED** in prevail-cli `src/cli-bridge.ts` (commit 63eb563, pushed
+   to cli main). Root cause: live dispatchTurn passed framedPrompt (which begins with our
+   '--- ... ---' context headers / md frontmatter) straight to `claude -p` / codex /
+   gemini, so the runtime parsed it as an unknown flag and exited 1. Guard: leading space
+   if prompt starts with '-'. Needs sidecar rebuild via release CI (picks up cli main).
+2. **Council persistence** — running council dies when navigating to chat and back. Must
+   keep running (own thread) + re-hydrate on return. (recon agent mapping run lifecycle.)
+3. **Benchmark persistence** — running benchmark must survive navigating away/back.
+4. Bump version (4 files) → 0.1.129; tsc; scrub-gate; commit; push; tag v0.1.129; verify live.
+
+### TONIGHT/ONGOING — Apps area (new branch, becomes next release)
+5. Deep research → `docs/APPS-AREA-RESEARCH.md` (agent running): current apps impl map,
+   connection automation (MCP-first), curate ~100-200 essential apps (no real bank-account
+   listing — work from app list), "set up once, runs by itself" scheduled sync, UX/layout,
+   phased TODO.
+6. New branch `feat/apps-area` off main (after 0.1.129). Start implementing per the todo.
+
+---
+
+# >>> PICK UP HERE (2026-06-17, live-review batch 2 + runtime reframe) <<<
 
 **Full batch-2 plan + status:** `docs/FEEDBACK-0617-batch2.md` (30 items, B2-1..B2-30).
-**Latest release:** v0.8.14 (carries the critical fixes: MCP --vault, the `---` chat
-crash, incognito, Journal, toggles, scheduled next-run, telemetry table, WebUI,
-distiller-time). All committed fixes are on `main`.
+**Latest release:** v0.1.127 (BUILDING as of 2026-06-17, run 27734949143). v0.1.126
+is LIVE (published, full asset set). NOTE re-baseline: 0.1.x < old 0.8.x so the
+auto-updater will NOT push 0.1.x to existing 0.8.x installs — manual reinstall to cross.
+
+### Shipped in v0.1.127 (this session)
+- Frameworks page (image #31): removed collapse, two-column (Frameworks ◆ | Lenses ◇),
+  fits one page. (settings1.tsx)
+- Ideals page (image #28): page header "Ideals" + big collapsible "Constitution"
+  (open) + "Omega"; added `large` variant to CollapsibleSection; IdealStateSection
+  headerless. (collapsible.tsx, settings4.tsx, settingspanel.tsx)
+- Memory & Context (image #29): folded into Routines as a peer collapsible group
+  (DaemonsSection), no longer a divider-separated orphan. (settings2.tsx)
+- **Models → Runtimes reframe** (founder concept, "full rename"): page+nav "Runtimes";
+  groups = CLI/Aggregator/Direct runtimes; chat picker "Pick runtime"; domain override
+  "Which runtime runs". Definition: runtime = model + way to run it. Borrowed Multica's
+  vocabulary, NOT its remote-machine/fleet model (stays local-first single-machine).
+  (settings7.tsx, settingspanel.tsx, chatpanel.tsx, domainpanels.tsx). Memory:
+  prevail-runtimes-concept.md.
+- Earlier batch-2 already shipped through v0.8.17/v0.1.126: tagline one-line,
+  Recommendations→Insights, intent distillation last/next-run, BP1 markdown preview,
+  BP2 gateway logs, BP3 chat headers, tray menu, incognito, Journal, etc.
+
+### Latest release (older note, superseded)
+v0.8.14 carried critical fixes: MCP --vault, `---` chat crash, incognito, Journal,
+toggles, scheduled next-run, telemetry table, WebUI, distiller-time.
 
 ### Shipped/committed so far (batch 2)
 B2-1 incognito icon · B2-2 Journal · B2-3 `---` CLI crash · B2-6 scheduled pill toggle ·
@@ -14,21 +78,19 @@ incognito-everywhere (chat+council+global).
 ### DONE (batch 2, shipped through v0.8.15): B2-1..B2-11, B2-13,14,17,18,19,20,
 21,22,23,24,25,26,27,28 + incognito-everywhere + B2-15 partial (inline card icons).
 
-### REMAINING (4 items — the deliberately-larger / needs-care ones)
-1. **B2-15 (finish) + B2-16 — Workspace recomposition.** Make ONE Vault section =
-   Your/Demo vault cards (inline Change+Open icons DONE) and move Starter packs to
-   its OWN section; drop the standalone "Vault folder" card + the standalone
-   "Backups" section; put a per-vault backup toggle on the active card. Needs
-   DemoModeSection split (cards vs packs) + thread onChange + decide per-vault
-   backup semantics (global BACKUP_CFG = "back up the active vault"). settings8.tsx.
-2. **B2-12 — on-disk data/ + build/ vault layout.** Apps+domains under data/,
-   runtime files (benchmark/complete/core/usage + loose _*.jsonl/_meta/_threads/
-   AGENTS-operating.md) under build/, root = data/ build/ profile.md. Engine
-   migration (extends W4): resolver + safe migrator + path updates across cli +
-   desktop. Do deliberately; never lose user data.
-3. **B2-29 — Usage Activity.** The Activity heatmap already renders on Usage;
-   clarify with founder what "isn't enough" means before changing.
-4. **B2-30 — macOS tray menu.** Design what the menubar icon opens (quick chat,
+### DONE since: B2-15/16 (Workspace recomposition) shipped in v0.8.16.
+
+### REMAINING
+1. **B2-12 — data/ + build/ on-disk layout.** Phase 1 DONE on branch
+   `feat/b2-12-data-build-layout` (additive build/ resolver in desktop paths.rs +
+   cli path-safety.ts, zero behavior change). Plan: `docs/B2-12-DATA-BUILD-LAYOUT.md`.
+   REMAINING (on that branch): Phase 2 route ~44 runtime-path sites through
+   runtimePath(); Phase 3 migrator (copy→verify→opt-in archive); Phase 4 desktop
+   "Tidy into data/+build/" trigger; Phase 5 fallback reads. Destructive — finish
+   on the branch with tests; never lose user data.
+2. **B2-29 — Usage Activity.** Heatmap already renders; need 1 word from founder on
+   what "isn't enough."
+3. **B2-30 — macOS tray menu.** Design what the menubar icon opens (quick chat,
    today's briefing, running processes, incognito toggle, open app). Design+build.
 THEN (separate branch, founder request): implement `docs/WORKFLOW-ENGINE-PLAN.md`.
 

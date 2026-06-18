@@ -37,7 +37,7 @@ export function startOmegaScheduler(vault: string) {
   window.setTimeout(() => void tick(), 90_000); // first check shortly after launch
 }
 
-export function OmegaSection({ vaultPath }: { vaultPath: string }) {
+export function OmegaSection({ vaultPath, headerless }: { vaultPath: string; headerless?: boolean }) {
   const [body, setBody] = useState<string>("");
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -92,11 +92,13 @@ export function OmegaSection({ vaultPath }: { vaultPath: string }) {
 
   return (
     <>
-      <SettingsHeader
-        title="Omega"
-        icon={Sigma}
-        subtitle="What Prevail has learned across your domains: durable lessons and patterns, injected into every chat just below your Ideal State. Distilled automatically; editable by hand."
-      />
+      {!headerless && (
+        <SettingsHeader
+          title="Omega"
+          icon={Sigma}
+          subtitle="What Prevail has learned across your domains: durable lessons and patterns, injected into every chat just below your Ideal State. Distilled automatically; editable by hand."
+        />
+      )}
 
       {/* M7 (Monday feedback): the cohesive view - show what FEEDS Omega + how it
           sits with the Ideal State, so the flow Journals/Intents/States → Omega is
