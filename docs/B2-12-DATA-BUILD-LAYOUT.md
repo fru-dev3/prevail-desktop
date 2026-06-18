@@ -85,7 +85,7 @@ Run: `grep -rlE "_decisions\.jsonl|_intents\.jsonl|usage\.ndjson|_threads|_meta|
     General `_intents.jsonl` is in build/ but `_memory.md` stays at root (content) —
     no longer co-located. The General distill path must READ from build_root but
     WRITE _memory.md to root. Refactor carefully; verify with a running app.
-  - `_threads/` General routing; cli-side routing (usage.ndjson, benchmark, _meta,
+  - DONE: General _threads -> build/ (safe_domain_subdir). REMAINING (verification-gated): distiller split-path; cli-side routing; Phase 3 migrator + Phase 4 trigger.
     ledgers — the engine owns those); then Phase 3 migrator + Phase 4 trigger.
 
 ## Recommendation
