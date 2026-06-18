@@ -1481,12 +1481,15 @@ export function DaemonCard({
   extra,
   onStart,
   onStop,
+  intervalSec,
 }: {
   name: string;
   status: DaemonStatus | null;
   extra?: string | null;
   onStart?: () => Promise<void>;
   onStop?: () => Promise<void>;
+  // B2-23: cadence (seconds) so the card can show when the routine next runs.
+  intervalSec?: number;
 }) {
   const [phase, setPhase] = useState<"idle" | "starting" | "stopping">("idle");
 
@@ -1502,12 +1505,14 @@ export function DaemonCard({
   const fmtTs = (ts: number | null | undefined) =>
     ts ? new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
 
+  // B2-23: next run = last run + cadence (only when running + cadence known).
+  const nextTs = isRunning && status?.last_run_ts && intervalSec ? status.last_run_ts + intervalSec : null;
   const statusLine = phase === "starting"
     ? "starting…"
     : phase === "stopping"
     ? "stopping…"
     : isRunning
-    ? `running${status?.last_run_ts ? ` · checked ${fmtTs(status.last_run_ts)}` : ""}`
+    ? `running${status?.last_run_ts ? ` · last ${fmtTs(status.last_run_ts)}` : ""}${nextTs ? ` · next ~${fmtTs(nextTs)}` : ""}`
     : `idle${status?.last_run_ts ? ` · last ran ${fmtTs(status.last_run_ts)}` : ""}`;
 
   async function handleStart() {

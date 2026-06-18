@@ -142,6 +142,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
       >
         <DaemonCard
           name="Distill"
+          intervalSec={Number(dInterval) || undefined}
           status={distillSt}
           extra={distillSt?.lines_distilled ? `${distillSt.lines_distilled} lines distilled` : null}
           onStop={async () => { await invoke("distill_stop"); }}
@@ -189,6 +190,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
       >
         <DaemonCard
           name="Reminders"
+          intervalSec={Number(remInterval) || undefined}
           status={remindersSt}
           extra={remindersSt?.last_due_count != null
             ? remindersSt.last_due_count > 0
@@ -221,6 +223,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
       >
         <DaemonCard
           name="Task Gen"
+          intervalSec={Number(taskgenInterval) || undefined}
           status={taskgenSt}
           extra={taskgenSt?.tasks_generated ? `${taskgenSt.tasks_generated} tasks generated` : null}
           onStop={async () => { await invoke("taskgen_stop"); }}
@@ -261,6 +264,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
       >
         <DaemonCard
           name="Skill Gen"
+          intervalSec={Number(skillgenInterval) || undefined}
           status={skillgenSt}
           extra={skillgenSt?.skills_created ? `${skillgenSt.skills_created} skill${skillgenSt.skills_created === 1 ? "" : "s"} learned` : null}
           onStop={async () => { await invoke("skillgen_stop"); }}
