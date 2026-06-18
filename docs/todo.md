@@ -1,3 +1,39 @@
+# >>> PICK UP HERE (2026-06-17, live-review batch 2) <<<
+
+**Full batch-2 plan + status:** `docs/FEEDBACK-0617-batch2.md` (30 items, B2-1..B2-30).
+**Latest release:** v0.8.14 (carries the critical fixes: MCP --vault, the `---` chat
+crash, incognito, Journal, toggles, scheduled next-run, telemetry table, WebUI,
+distiller-time). All committed fixes are on `main`.
+
+### Shipped/committed so far (batch 2)
+B2-1 incognito icon · B2-2 Journal · B2-3 `---` CLI crash · B2-6 scheduled pill toggle ·
+B2-7 next-run time · B2-8 model-id prettify · B2-10 dup header · B2-11 MCP --vault ·
+B2-13 WebUI · B2-14 telemetry table · B2-19 distiller time · B2-21 headless toggle ·
+incognito-everywhere (chat+council+global).
+
+### Remaining (do next, in this order)
+1. Standalone fixes: **B2-4** council node labels (use modelLabel now) · **B2-9**
+   alignment top-actions clickable+formatted · **B2-28** graceful context panel when
+   ctx fails · **B2-27** "domain not found" path bug (v4 data/domains resolution) ·
+   **B2-22** saved-items home · **B2-23** routines last/next run · **B2-5** skills upload ·
+   **B2-29** usage Activity (clarify intent) · **B2-30** macOS tray menu (design).
+2. Settings IA + Workspace refactor (ONE unit, founder-approved direction):
+   **B2-17** Work nav group (Tasks+Workspace+Recommendations) · **B2-18** remove dup
+   Tasks · **B2-20** delete Memory-engine page (fold Memory&Context into Routines) ·
+   **B2-24** combine Ideals+Omega · **B2-15** one Vault section (Your/Demo cards w/
+   inline change+open icons) · **B2-16** per-vault backup · **B2-25/26** top-nav
+   (Chat/Council prominent left; rest smaller right) · **B2-12** on-disk data/+build/ layout.
+3. THEN (separate branch, founder request): implement `docs/WORKFLOW-ENGINE-PLAN.md`
+   on its own branch.
+
+### Release procedure (reminder)
+Bump version in package.json + src-tauri/tauri.conf.json + src-tauri/Cargo.toml +
+src-tauri/Cargo.lock; `npx tsc --noEmit`; `bash scripts/scrub-gate.sh`; commit;
+`git push origin main`; `git tag vX.Y.Z && git push origin vX.Y.Z`. CLI fixes need the
+sidecar rebuild (release CI checks out prevail-cli main automatically).
+
+---
+
 # Monday Feedback — 2026-06-15 · Plan & TODO
 
 **Source:** `~/Downloads/Prevail - Monday Feedback 06.15.2026.pdf`
