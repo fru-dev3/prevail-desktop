@@ -18,10 +18,23 @@ pub struct CliInfo {
     pub version: Option<String>,
 }
 
+// Every CLI runtime family Prevail knows about. Detection is a PATH lookup on
+// the binary; families that aren't installed are still returned (available=false)
+// so the Runtimes page can list them all and prompt the user to set them up.
+// (id, label, bin). API/direct providers and local servers are appended below.
 const CLIS: &[(&str, &str, &str)] = &[
     ("claude", "Claude", "claude"),
     ("codex", "Codex", "codex"),
     ("antigravity", "Antigravity", "agy"),
+    ("codebuddy", "Codebuddy", "codebuddy"),
+    ("copilot", "Copilot", "copilot"),
+    ("opencode", "Opencode", "opencode"),
+    ("openclaw", "Openclaw", "openclaw"),
+    ("hermes", "Hermes", "hermes"),
+    ("gemini", "Gemini", "gemini"),
+    ("pi", "Pi", "pi"),
+    ("cursor", "Cursor", "cursor-agent"),
+    ("kiro", "Kiro", "kiro"),
     ("ollama", "Ollama", "ollama"),
 ];
 
