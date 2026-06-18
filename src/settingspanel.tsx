@@ -87,7 +87,7 @@ export function SettingsPanel({
   // the guardrails (Privacy & Safety), where data lives (Vault), and the app.
   const navGroups: Array<{ heading: string; items: NavItem[] }> = [
     { heading: "Intelligence", items: [
-      { id: "models", label: "Models", icon: Layers },
+      { id: "models", label: "Runtimes", icon: Layers },
       { id: "council", label: "Council", icon: Scale },
       { id: "frameworks", label: "Frameworks", icon: Lightbulb },
       { id: "skills", label: "Skills", icon: Sparkles },
