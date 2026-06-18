@@ -1528,7 +1528,7 @@ export function ChatPanel({
             <h2 className="mt-6 font-display text-5xl font-bold tracking-tight">
               What should we work on?
             </h2>
-            <p className="mt-3 max-w-lg text-center text-lg text-text-muted">
+            <p className="mt-3 max-w-none whitespace-nowrap text-center text-sm text-text-muted">
               Your private AI that learns you and gets sharper every time you use it.
             </p>
             {lifeReadiness && lifeReadiness.life_readiness !== null && (
