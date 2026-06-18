@@ -178,7 +178,7 @@ export function TelemetrySettings() {
 
 // WhatsApp is rendered as its own (fuller) card below, so it's excluded here.
 
-export function IdealStateSection({ vaultPath }: { vaultPath: string }) {
+export function IdealStateSection({ vaultPath, headerless = false }: { vaultPath: string; headerless?: boolean }) {
   const [body, setBody] = useState<string>("");
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -232,11 +232,13 @@ export function IdealStateSection({ vaultPath }: { vaultPath: string }) {
 
   return (
     <>
-      <SettingsHeader
-        title="Ideal State"
-        icon={Compass}
-        subtitle="The vision and values everything optimizes for. Every chat, council, recommendation, plan, and background routine reads this first and aligns to it. Saved to vault/ideal-state.md the moment you hit Save."
-      />
+      {!headerless && (
+        <SettingsHeader
+          title="Ideal State"
+          icon={Compass}
+          subtitle="The vision and values everything optimizes for. Every chat, council, recommendation, plan, and background routine reads this first and aligns to it. Saved to vault/ideal-state.md the moment you hit Save."
+        />
+      )}
       <AlignmentCard vaultPath={vaultPath} />
       <div className="mb-4 flex items-center justify-between gap-2">
         <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
@@ -304,9 +306,11 @@ export function IdealStateSection({ vaultPath }: { vaultPath: string }) {
         // numbered chapter with a left accent rule and flowing prose. Single column.
         <div>
           <div className="rounded-2xl border border-border bg-gradient-to-b from-accent-soft/40 to-surface px-6 py-7">
-            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.28em] text-accent">My constitution</div>
+            {!headerless && (
+              <div className="font-mono text-[10px] font-bold uppercase tracking-[0.28em] text-accent">My constitution</div>
+            )}
             {parsed.title && (
-              <h2 className="mt-2 font-display text-3xl font-extrabold leading-tight tracking-tight text-text-primary">{parsed.title}</h2>
+              <h2 className={`font-display font-extrabold leading-tight tracking-tight text-text-primary ${headerless ? "text-lg" : "mt-2 text-3xl"}`}>{parsed.title}</h2>
             )}
             {parsed.intro && (
               <div className="mt-3 max-w-2xl text-[15px] leading-relaxed text-text-secondary">

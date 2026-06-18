@@ -20,10 +20,13 @@ export function CollapsibleSection({
   defaultOpen = false,
   storageKey,
   className = "",
+  large = false,
   children,
 }: {
   icon?: LucideIcon;
   title: string;
+  /** Page-level section header: bigger title/icon so it reads above sub-headers. */
+  large?: boolean;
   /** Optional secondary line under the title (what this section is). */
   subtitle?: string;
   /** Right-aligned one-glance summary of what's inside (count, current value…). */
@@ -57,17 +60,17 @@ export function CollapsibleSection({
     <section className={`mb-3 overflow-hidden rounded-xl border border-border bg-surface ${className}`}>
       <button
         onClick={toggle}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-warm"
+        className={`flex w-full items-center gap-3 text-left transition-colors hover:bg-surface-warm ${large ? "px-5 py-4" : "px-4 py-3"}`}
       >
-        <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
+        <ChevronRight className={`${large ? "h-5 w-5" : "h-4 w-4"} shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
         {Icon && (
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-warm text-text-secondary">
-            <Icon className="h-4 w-4" />
+          <span className={`flex shrink-0 items-center justify-center rounded-md bg-surface-warm text-text-secondary ${large ? "h-9 w-9 text-accent" : "h-7 w-7"}`}>
+            <Icon className={large ? "h-5 w-5" : "h-4 w-4"} />
           </span>
         )}
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-semibold text-text-primary">{title}</span>
-          {subtitle && <span className="truncate text-xs text-text-muted">{subtitle}</span>}
+          <span className={`truncate text-text-primary ${large ? "font-display text-xl font-bold tracking-tight" : "text-sm font-semibold"}`}>{title}</span>
+          {subtitle && <span className={`truncate text-text-muted ${large ? "text-[13px]" : "text-xs"}`}>{subtitle}</span>}
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-2">
           {summary != null && summary !== "" && (
