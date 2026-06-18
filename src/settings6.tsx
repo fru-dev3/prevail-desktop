@@ -256,14 +256,14 @@ function CouncilCircle({ members, chair, clis }: { members: string[]; chair: str
     const [cli, model] = key.split("::");
     const c = clis.find((x) => x.id === cli);
     const m = councilModelsFor(cli).find((x) => x.id === model);
-    return `${c?.label ?? cli} · ${m?.label ?? prettyModelId(model || "") || "default"}`;
+    return `${c?.label ?? cli} · ${m?.label ?? (prettyModelId(model || "") || "default")}`;
   };
   // B2-4: the short model name shown UNDER each seat (e.g. "Opus 4.7"), so the
   // ring labels its models, not just provider glyphs.
   const modelShort = (key: string) => {
     const [cli, model] = key.split("::");
     const m = councilModelsFor(cli).find((x) => x.id === model);
-    return (m?.label ?? prettyModelId(model || "") || "default").replace(/\s*\(.*?\)\s*/g, "").trim();
+    return (m?.label ?? (prettyModelId(model || "") || "default")).replace(/\s*\(.*?\)\s*/g, "").trim();
   };
   if (n === 0) {
     return (
