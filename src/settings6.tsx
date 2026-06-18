@@ -19,7 +19,7 @@ import { cliVerifyLive, loadVerifyMap, saveVerifyMap, setCliVerify, useCliVerify
 import { ProviderMark } from "./marks";
 import { MemoryContextSection, TasksCrossDomainSection } from "./settings2";
 import { TelemetrySettings } from "./settings4";
-import type { CliInfo, ModelVerifyStatus } from "./types";
+import type { CliInfo, ModelVerifyStatus, UsageSummary } from "./types";
 
 // G3: the global incognito master. On = chat AND council run as a plain model
 // with none of your context (profile, ideal state, omega, memory). Per-surface
@@ -487,11 +487,14 @@ export function AgentCard({
   onStartChat,
   isDefault,
   onMakeDefault,
+  cost,
 }: {
   cli: CliInfo;
   onStartChat?: (cliId: string, modelId?: string) => void;
   isDefault?: boolean;
   onMakeDefault?: () => void;
+  /** Cumulative spend on this runtime (USD), from the usage ledger. */
+  cost?: number;
 }) {
   const brand = VENDOR_BRAND[cli.id] ?? VENDOR_BRAND.other;
   const liveVerify = useCliVerifyLive();
@@ -572,9 +575,11 @@ export function AgentCard({
   const cliErr = liveVerify.get(cli.id);
   return (
     <div className={`rounded-lg border bg-surface transition-colors ${open ? "border-accent-border" : "border-border-subtle"}`}>
-      {/* Single-line header - same row dimensions as every other settings list. */}
+      {/* Single-line runtime row, Multica-style columns: Runtime · Health · Cost
+          · Version · action. Column widths mirror the header strip in AgentsSection. */}
       <div className="flex items-center gap-3 px-4 py-3">
         <ProviderMark vendor={cli.id} size={30} />
+        {/* Runtime identity (click to expand the model list). */}
         <button
           onClick={() => cli.available && setOpen((v) => !v)}
           disabled={!cli.available || models.length === 0}
@@ -583,7 +588,16 @@ export function AgentCard({
           {cli.available && models.length > 0 && (
             <span className="shrink-0 text-[11px] text-text-muted">{open ? "▾" : "▸"}</span>
           )}
-          <span className="shrink-0 font-display text-sm font-semibold tracking-tight">{cli.label}</span>
+          <span className="truncate font-display text-sm font-semibold tracking-tight">{cli.label}</span>
+          {isDefault && (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-background">
+              <Check className="h-2.5 w-2.5" strokeWidth={3} /> Default
+            </span>
+          )}
+          <span className="truncate font-mono text-[10px] text-text-muted/60">{brand.name}</span>
+        </button>
+        {/* Health column. */}
+        <div className="flex w-[124px] shrink-0 flex-col items-start gap-0.5">
           {(() => {
             const v = cli.available ? cliVerifyLive.get(cli.id) : undefined;
             const chip = !cli.available
@@ -596,27 +610,29 @@ export function AgentCard({
                     ? { cls: "border-border bg-background text-text-muted animate-pulse", label: "◐ Checking" }
                     : { cls: "border-border bg-background text-text-muted", label: "Detected" };
             return (
-              <span className={`shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ${chip.cls}`}>
+              <span className={`rounded-full border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ${chip.cls}`}>
                 {chip.label}
               </span>
             );
           })()}
-          {isDefault && (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-background">
-              <Check className="h-2.5 w-2.5" strokeWidth={3} /> Default
-            </span>
-          )}
           {cli.available && models.length > 0 && (
-            <span className="shrink-0 font-mono text-[10px] text-text-muted">{models.filter((m) => status[m.id] === "ok").length}/{models.length} verified</span>
+            <span className="font-mono text-[10px] text-text-muted">{models.filter((m) => status[m.id] === "ok").length}/{models.length} verified</span>
           )}
-          <span className="truncate font-mono text-[10px] text-text-muted/70">
-            {cli.available ? (cli.version ?? `${cli.bin} in PATH`) : `install ${cli.bin}`} · {brand.name}
-          </span>
-        </button>
+        </div>
+        {/* Cost column (cumulative spend on this runtime). */}
+        <div className="w-[64px] shrink-0 text-right font-mono text-[11px] text-text-secondary" title="Total spend on this runtime (local usage ledger)">
+          {typeof cost === "number" && cost > 0
+            ? `$${cost < 1 ? cost.toFixed(2) : cost < 100 ? cost.toFixed(1) : Math.round(cost)}`
+            : <span className="text-text-muted/50">—</span>}
+        </div>
+        {/* Version column. */}
+        <div className="w-[116px] shrink-0 truncate text-right font-mono text-[10px] text-text-muted/80">
+          {cli.available ? (cli.version ?? `${cli.bin} in PATH`) : `install ${cli.bin}`}
+        </div>
         <button
           onClick={() => cli.available && onStartChat?.(cli.id)}
           disabled={!cli.available}
-          className={`shrink-0 rounded-md border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition-colors ${
+          className={`w-[92px] shrink-0 rounded-md border py-1.5 text-center font-mono text-[11px] uppercase tracking-wider transition-colors ${
             cli.available
               ? "border-accent-border bg-accent-soft text-accent hover:bg-accent hover:text-background"
               : "cursor-not-allowed border-border bg-background text-text-muted/60"
@@ -773,12 +789,14 @@ export function AgentsSection({
   embedded,
   defaultChatCli,
   onMakeDefault,
+  vaultPath,
 }: {
   clis: CliInfo[];
   onStartChatWith?: (cliId: string, modelId?: string) => void;
   embedded?: boolean;
   defaultChatCli?: string;
   onMakeDefault?: (cliId: string) => void;
+  vaultPath?: string;
 }) {
   const detected = clis.filter((c) => c.available);
   const missing = clis.filter((c) => !c.available);
@@ -787,6 +805,22 @@ export function AgentsSection({
   // collapsible per the collapse-and-indent convention.
   const [showDetected, setShowDetected] = useState(true);
   const [showMissing, setShowMissing] = useState(false);
+  // Per-runtime spend (cumulative), from the local usage ledger. Multica-style
+  // Cost column; "—" when nothing has been spent / no vault.
+  const [costByCli, setCostByCli] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!vaultPath) return;
+    let alive = true;
+    invoke<UsageSummary>("usage_summary", { vault: vaultPath })
+      .then((s) => {
+        if (!alive) return;
+        const m: Record<string, number> = {};
+        for (const b of s.by_cli || []) m[b.key] = b.cost_usd;
+        setCostByCli(m);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [vaultPath]);
   return (
     <>
       {!embedded && (
@@ -806,6 +840,15 @@ export function AgentsSection({
           </button>
           {showDetected && (
             <div className="flex flex-col gap-3 pl-5">
+              {/* Multica-style column header: aligns with each runtime row's
+                  right-hand Health / Cost / Version columns. */}
+              <div className="flex items-center gap-3 px-4 font-mono text-[9px] uppercase tracking-[0.16em] text-text-muted/70">
+                <span className="flex-1">Runtime</span>
+                <span className="w-[124px] shrink-0">Health</span>
+                <span className="w-[64px] shrink-0 text-right">Cost</span>
+                <span className="w-[116px] shrink-0 text-right">Version</span>
+                <span className="w-[92px] shrink-0" />
+              </div>
               {detected.map((c) => (
                 <AgentCard
                   key={c.id}
@@ -813,6 +856,7 @@ export function AgentsSection({
                   onStartChat={onStartChatWith}
                   isDefault={defaultChatCli === c.id}
                   onMakeDefault={onMakeDefault ? () => onMakeDefault(c.id) : undefined}
+                  cost={costByCli[c.id]}
                 />
               ))}
             </div>

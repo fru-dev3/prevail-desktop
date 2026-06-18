@@ -124,15 +124,6 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         title="Routines"
         subtitle="The background workers. Each runs continuously: distill intents into memory, fire task reminders, proactively generate tasks, and learn reusable skills from your conversations."
       />
-      <button
-        onClick={() => window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: "memory" }))}
-        className="mb-4 flex w-full items-center gap-2 rounded-lg border border-border-subtle bg-surface px-4 py-2.5 text-left hover:border-accent-border"
-      >
-        <Brain className="h-3.5 w-3.5 shrink-0 text-accent" />
-        <span className="font-mono text-[10px] uppercase tracking-wider text-text-secondary">What they produce</span>
-        <span className="ml-auto font-mono text-[10px] text-accent">Distilled memory & budget in Memory & Context →</span>
-      </button>
-
       {/* One collapsible group per routine: status + tuning + run-now together. */}
       <DaemonGroup
         icon={Brain}
@@ -304,6 +295,22 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         running={!!intentSt?.running}
         summary={intentSt?.last_intent_count ? `${intentSt.last_intent_count} intents` : intentEnabled ? "auto" : "off"}
       >
+        {/* Like the other routines: when it last ran + when it runs next. */}
+        {(() => {
+          const fmt = (sec: number) => new Date(sec * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+          const last = intentSt?.last_run_ts ?? 0;
+          const nextSec = last && intentEnabled ? last + (Number(intentInterval) || 0) : 0;
+          return (
+            <div className="mb-2 flex items-center gap-2 px-1 font-mono text-[10px] text-text-muted">
+              <Lightbulb className="h-3 w-3 shrink-0 text-accent" />
+              <span>
+                {intentSt?.running ? "running" : "idle"}
+                {last ? ` · last pass ${formatFreshness(Math.max(0, Date.now() / 1000 - last))}` : ""}
+                {nextSec ? ` · next ~${fmt(nextSec)}` : ""}
+              </span>
+            </div>
+          );
+        })()}
         <div className="rounded-lg border border-border-subtle bg-background px-5">
           <Row title="Automatic intent distillation"
             desc="Infer your high-level intents + recommended actions automatically, with no manual click. Runs on a cadence and whenever enough new prompts pile up."
@@ -325,6 +332,12 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
       </DaemonGroup>
 
       <HeadlessLearnCard vaultPath={vaultPath} />
+
+      {/* image #29: Memory & Context is what these routines PRODUCE, so it lives
+          here as a peer collapsible group — not a divider-separated orphan page. */}
+      <DaemonGroup icon={Brain} title="Memory & Context" summary="what the routines produce">
+        <MemoryContextSection vaultPath={vaultPath} headerless />
+      </DaemonGroup>
     </>
   );
 }
