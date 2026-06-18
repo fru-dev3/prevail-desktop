@@ -37,7 +37,7 @@ export function startOmegaScheduler(vault: string) {
   window.setTimeout(() => void tick(), 90_000); // first check shortly after launch
 }
 
-export function OmegaSection({ vaultPath }: { vaultPath: string }) {
+export function OmegaSection({ vaultPath, headerless }: { vaultPath: string; headerless?: boolean }) {
   const [body, setBody] = useState<string>("");
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(false);

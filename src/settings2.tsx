@@ -304,6 +304,22 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         running={!!intentSt?.running}
         summary={intentSt?.last_intent_count ? `${intentSt.last_intent_count} intents` : intentEnabled ? "auto" : "off"}
       >
+        {/* Like the other routines: when it last ran + when it runs next. */}
+        {(() => {
+          const fmt = (sec: number) => new Date(sec * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+          const last = intentSt?.last_run_ts ?? 0;
+          const nextSec = last && intentEnabled ? last + (Number(intentInterval) || 0) : 0;
+          return (
+            <div className="mb-2 flex items-center gap-2 px-1 font-mono text-[10px] text-text-muted">
+              <Lightbulb className="h-3 w-3 shrink-0 text-accent" />
+              <span>
+                {intentSt?.running ? "running" : "idle"}
+                {last ? ` · last pass ${formatFreshness(Math.max(0, Date.now() / 1000 - last))}` : ""}
+                {nextSec ? ` · next ~${fmt(nextSec)}` : ""}
+              </span>
+            </div>
+          );
+        })()}
         <div className="rounded-lg border border-border-subtle bg-background px-5">
           <Row title="Automatic intent distillation"
             desc="Infer your high-level intents + recommended actions automatically, with no manual click. Runs on a cadence and whenever enough new prompts pile up."
