@@ -70,6 +70,75 @@ const CURATED = [
   "Duolingo", "Audible", "Goodreads", "Udemy", "MasterClass",
 ];
 
+// connection_hint: a starting rung for the Connection Agent + a privacy badge,
+// grounded in docs/APPS-AREA-RESEARCH.md §2.3 (sourced). Shape:
+// { method, server?, privacy: "local"|"vendor-cloud", readOnly?, note? }.
+// Keyed by catalog name (normalized). Only high-confidence entries — the agent
+// still researches live; this just keeps it from starting cold.
+const HINTS = {
+  // Google bundle — one local, read-only community server covers all of it.
+  "Gmail": { method: "mcp", server: "taylorwilsdon/google_workspace_mcp", privacy: "local", readOnly: true, note: "Local stdio, gmail.readonly scope." },
+  "Google Calendar": { method: "mcp", server: "taylorwilsdon/google_workspace_mcp", privacy: "local", readOnly: true },
+  "Google Drive": { method: "mcp", server: "taylorwilsdon/google_workspace_mcp", privacy: "local", readOnly: true },
+  "Google Docs": { method: "mcp", server: "taylorwilsdon/google_workspace_mcp", privacy: "local", readOnly: true },
+  "Google Sheets": { method: "mcp", server: "taylorwilsdon/google_workspace_mcp", privacy: "local", readOnly: true },
+  "Google Photos": { method: "mcp", server: "taylorwilsdon/google_workspace_mcp", privacy: "local", readOnly: true },
+  "Google Contacts": { method: "mcp", server: "taylorwilsdon/google_workspace_mcp", privacy: "local", readOnly: true },
+  // Microsoft bundle — one local server, --read-only.
+  "Outlook Email": { method: "mcp", server: "softeria/ms-365-mcp-server", privacy: "local", readOnly: true, note: "--read-only; no Copilot license needed." },
+  "Outlook.com / Hotmail": { method: "mcp", server: "softeria/ms-365-mcp-server", privacy: "local", readOnly: true },
+  "Microsoft Outlook Calendar": { method: "mcp", server: "softeria/ms-365-mcp-server", privacy: "local", readOnly: true },
+  "Microsoft OneDrive": { method: "mcp", server: "softeria/ms-365-mcp-server", privacy: "local", readOnly: true },
+  // Apple (macOS-local).
+  "Apple Calendar (macOS/iOS app)": { method: "mcp", server: "FradSer/mcp-server-apple-events", privacy: "local", note: "EventKit, macOS." },
+  "Apple Health": { method: "mcp", server: "neiltron/apple-health-mcp", privacy: "local", readOnly: true, note: "Reads a Health XML export." },
+  // Files (official remote).
+  "Dropbox": { method: "mcp", server: "mcp.dropbox.com/mcp", privacy: "vendor-cloud", readOnly: true, note: "Official, beta." },
+  "Box": { method: "mcp", server: "mcp.box.com", privacy: "vendor-cloud", readOnly: true, note: "Official, folder-scoped." },
+  // Productivity / notes (official remote unless noted).
+  "Notion": { method: "mcp", server: "mcp.notion.com/mcp", privacy: "vendor-cloud" },
+  "Linear": { method: "mcp", server: "mcp.linear.app/mcp", privacy: "vendor-cloud" },
+  "Jira": { method: "mcp", server: "Atlassian Rovo (official)", privacy: "vendor-cloud" },
+  "Asana": { method: "mcp", server: "mcp.asana.com/v2/mcp", privacy: "vendor-cloud" },
+  "ClickUp": { method: "mcp", server: "ClickUp official (beta)", privacy: "vendor-cloud" },
+  "Todoist": { method: "mcp", server: "ai.todoist.net/mcp", privacy: "vendor-cloud", note: "Community local server also exists." },
+  "Obsidian": { method: "mcp", server: "Local REST API plugin", privacy: "local", note: "Fully local." },
+  "Trello": { method: "mcp", server: "delorenj/mcp-server-trello", privacy: "local" },
+  // Comms.
+  "Slack": { method: "mcp", server: "Slack official (GA)", privacy: "vendor-cloud" },
+  "Discord": { method: "mcp", server: "community (bot token)", privacy: "local" },
+  "Telegram": { method: "mcp", server: "community (MTProto/bot)", privacy: "local" },
+  "WhatsApp": { method: "mcp", server: "lharries/whatsapp-mcp", privacy: "local", note: "Local SQLite, QR pair." },
+  // Finance — local-first banking is SimpleFIN; brokerages/payments per §2.3.
+  "SimpleFIN Bridge": { method: "api", server: "SimpleFIN Bridge", privacy: "local", readOnly: true, note: "Recommended banking path: read-only, user-revocable, service-level (no account numbers)." },
+  "Stripe": { method: "mcp", server: "mcp.stripe.com", privacy: "vendor-cloud", readOnly: true, note: "Read-only key." },
+  "PayPal": { method: "mcp", server: "paypal/paypal-mcp-server", privacy: "vendor-cloud", readOnly: true, note: "Transaction reports." },
+  "Intuit QuickBooks": { method: "mcp", server: "intuit/quickbooks-online-mcp-server", privacy: "local", readOnly: true },
+  "Coinbase": { method: "mcp", server: "Coinbase AgentKit/CDP", privacy: "local" },
+  "Charles Schwab": { method: "mcp", server: "sudowealth/schwab-mcp", privacy: "local", readOnly: true, note: "Real Schwab OAuth." },
+  "Fidelity Investments": { method: "simplefin", privacy: "local", note: "No clean API/MCP; prefer SimpleFIN Bridge over the fragile browser route." },
+  // Banking institutions: route via SimpleFIN, never account numbers.
+  "Chase": { method: "simplefin", privacy: "local", note: "Connect via SimpleFIN Bridge (service-level, no account numbers)." },
+  "Bank of America": { method: "simplefin", privacy: "local", note: "Connect via SimpleFIN Bridge." },
+  "Wells Fargo": { method: "simplefin", privacy: "local", note: "Connect via SimpleFIN Bridge." },
+  "Capital One": { method: "simplefin", privacy: "local", note: "Connect via SimpleFIN Bridge." },
+  "Citibank": { method: "simplefin", privacy: "local", note: "Connect via SimpleFIN Bridge." },
+  "American Express": { method: "simplefin", privacy: "local", note: "Connect via SimpleFIN Bridge." },
+  "Ally Bank": { method: "simplefin", privacy: "local", note: "Connect via SimpleFIN Bridge." },
+  // Health / wearables.
+  "Oura Ring": { method: "mcp", server: "tomekkorbak/oura-mcp-server", privacy: "local", readOnly: true, note: "Personal access token." },
+  "Whoop": { method: "mcp", server: "community (official OAuth API)", privacy: "local", readOnly: true },
+  "Fitbit": { method: "mcp", server: "TheDigitalNinja/mcp-fitbit", privacy: "local", readOnly: true },
+  "Garmin Connect": { method: "mcp", server: "community (reverse-engineered)", privacy: "local", note: "Best-effort; can break." },
+  // Other.
+  "GitHub": { method: "mcp", server: "GitHub official", privacy: "local", readOnly: true, note: "Local PAT or remote OAuth; read-only toolsets." },
+  "Google Maps": { method: "mcp", server: "Google official", privacy: "vendor-cloud", readOnly: true },
+  "Spotify": { method: "mcp", server: "Anthropic connector + community OAuth", privacy: "vendor-cloud" },
+  "YouTube": { method: "api", server: "Data API v3 key", privacy: "local", readOnly: true, note: "Read via API key." },
+  "YouTube Music": { method: "api", server: "Data API v3 key", privacy: "local", readOnly: true },
+  "1Password": { method: "cli", server: "op", privacy: "local", note: "Official CLI." },
+};
+
 const cat = JSON.parse(readFileSync(PATH, "utf8"));
 const byNorm = new Map();
 for (const a of cat.apps) {
@@ -110,12 +179,18 @@ if (process.argv.includes("--write")) {
     });
     matched.add(cat.apps[cat.apps.length - 1]);
   }
-  let t1 = 0;
+  // Normalize the hint map keys once for matching.
+  const hintByNorm = new Map(Object.entries(HINTS).map(([k, v]) => [norm(k), v]));
+  let t1 = 0, hinted = 0;
   for (const a of cat.apps) {
     if (matched.has(a)) { a.tier = 1; a.obscure = false; a.curated = true; t1++; }
     else { a.tier = 2; if (a.curated) delete a.curated; }
+    const h = hintByNorm.get(norm(a.name));
+    if (h) { a.connection_hint = h; hinted++; }
+    else if (a.connection_hint) delete a.connection_hint;
   }
   cat.curatedCount = t1;
+  console.log(`connection_hint attached to ${hinted} apps.`);
   cat.note = (cat.note || "") + " | Curated to a ~150 life-OS set (tier 1); the long tail is re-tiered to 2 and reachable via search / show-all. See docs/APPS-AREA-RESEARCH.md.";
   writeFileSync(PATH, JSON.stringify(cat, null, 2) + "\n");
   console.log(`\nWROTE catalog.json — tier-1 (curated) now ${t1}, tier-2 ${cat.apps.length - t1}.`);
