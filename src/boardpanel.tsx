@@ -35,6 +35,8 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
   const [addDomain, setAddDomain] = useState("");
   const [addDue, setAddDue] = useState("");
 
+  const [allDomains, setAllDomains] = useState<string[]>([]);
+
   const reload = useCallback(() => {
     invoke<BoardTask[]>("tasks_read_all", { vault: vaultPath })
       .then((t) => setTasks(Array.isArray(t) ? t : []))
@@ -46,9 +48,20 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
     window.addEventListener("prevail:tasks-changed", f);
     return () => window.removeEventListener("prevail:tasks-changed", f);
   }, [reload]);
+  // Full domain list (so you can add a task to a domain that has none yet).
+  useEffect(() => {
+    invoke<{ name: string }[]>("scan_vault", { path: vaultPath })
+      .then((ds) => setAllDomains(Array.isArray(ds) ? ds.map((d) => d.name) : []))
+      .catch(() => {});
+  }, [vaultPath]);
 
+  // Filter dropdown shows only domains with tasks; the add picker offers every domain.
   const domains = useMemo(() => [...new Set(tasks.map((t) => t.domain))].sort(), [tasks]);
-  useEffect(() => { if (!addDomain && domains.length) setAddDomain(domains[0]); }, [domains, addDomain]);
+  const addDomains = useMemo(
+    () => [...new Set([...allDomains, ...domains])].sort(),
+    [allDomains, domains],
+  );
+  useEffect(() => { if (!addDomain && addDomains.length) setAddDomain(addDomains[0]); }, [addDomains, addDomain]);
 
   const shown = useMemo(
     () => tasks.filter((t) =>
@@ -112,10 +125,10 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
         <div className="ml-auto flex items-center gap-1.5">
           <input value={addText} onChange={(e) => setAddText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addTask(); }}
             placeholder="Add a task…" className="w-48 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
-          {domains.length > 0 && (
+          {addDomains.length > 0 && (
             <select value={addDomain} onChange={(e) => setAddDomain(e.target.value)} title="Domain"
               className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none">
-              {domains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+              {addDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
             </select>
           )}
           <input type="date" value={addDue} onChange={(e) => setAddDue(e.target.value)} title="Due date"
