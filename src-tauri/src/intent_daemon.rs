@@ -46,7 +46,7 @@ struct Cursor {
 }
 
 fn cursor_path(vault: &str) -> PathBuf {
-    PathBuf::from(vault).join("_meta").join("intents_distill_cursor.json")
+    crate::paths::build_root(vault).join("_meta").join("intents_distill_cursor.json")
 }
 fn read_cursor(vault: &str) -> Cursor {
     std::fs::read_to_string(cursor_path(vault))

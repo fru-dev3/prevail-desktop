@@ -415,6 +415,8 @@ pub fn run() {
             engine::engine_vault_embed,
             engine::engine_vault_migrate_data,
             engine::engine_vault_archive_data,
+            engine::engine_vault_migrate_build,
+            engine::engine_vault_archive_build,
             engine::engine_appmode_get,
             engine::engine_appmode_set,
             engine::engine_production_init,
