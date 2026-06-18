@@ -92,11 +92,13 @@ export function OmegaSection({ vaultPath, headerless }: { vaultPath: string; hea
 
   return (
     <>
-      <SettingsHeader
-        title="Omega"
-        icon={Sigma}
-        subtitle="What Prevail has learned across your domains: durable lessons and patterns, injected into every chat just below your Ideal State. Distilled automatically; editable by hand."
-      />
+      {!headerless && (
+        <SettingsHeader
+          title="Omega"
+          icon={Sigma}
+          subtitle="What Prevail has learned across your domains: durable lessons and patterns, injected into every chat just below your Ideal State. Distilled automatically; editable by hand."
+        />
+      )}
 
       {/* M7 (Monday feedback): the cohesive view - show what FEEDS Omega + how it
           sits with the Ideal State, so the flow Journals/Intents/States → Omega is
