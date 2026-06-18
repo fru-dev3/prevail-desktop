@@ -18,6 +18,7 @@ mod chat;
 mod children;
 mod clis;
 mod distill;
+mod gateway_log;
 mod intent_daemon;
 mod domain;
 mod intents;
@@ -489,6 +490,8 @@ pub fn run() {
             telegram_bridge::telegram_bridge_start,
             telegram_bridge::telegram_bridge_stop,
             telegram_bridge::telegram_bridge_status,
+            gateway_log::gateway_log_read,
+            gateway_log::gateway_log_clear,
             webhook_bridge::webhook_bridge_start,
             webhook_bridge::webhook_bridge_stop,
             webhook_bridge::webhook_bridge_status,
