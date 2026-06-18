@@ -285,7 +285,9 @@ export interface ChatEvent {
 
 export interface SurfaceResult { questions: string[]; actions: string[]; generated_at: number; stale: boolean }
 
-export interface DomainTask { text: string; done: boolean; due?: string | null; added?: string | null; source?: string | null }
+export interface DomainTask { text: string; done: boolean; due?: string | null; added?: string | null; source?: string | null; owner?: string | null; status?: string | null; id?: string | null }
+// A task as returned by tasks_read_all (carries its domain + normalized owner/status/id).
+export interface BoardTask { domain: string; text: string; done: boolean; due?: string | null; added?: string | null; source?: string | null; owner: string; status: string; id?: string | null }
 
 export type AppRun = { ts: number; ok: boolean; skill: string; summary?: string; error?: string; duration_ms: number; artifacts: number };
 
