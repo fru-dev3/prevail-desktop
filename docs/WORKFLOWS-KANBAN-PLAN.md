@@ -1,6 +1,6 @@
-# Life-OS Plan — Task Board, Decision-Participation Assistant, Journaling & Growth (2026-06-18)
+# Workflows-Kanban Plan — Task Board, Decision-Participation Assistant, Journaling & Growth (2026-06-18)
 
-Branch: `feat/life-os`. Design-first; for founder review before building.
+Branch: `feat/workflows-kanban`. Design-first; for founder review before building.
 
 Founder's three asks (verbatim intent):
 1. **Task board** — tasks done by me, vs assigned to AI vs assigned to "me", in one board.
@@ -153,6 +153,6 @@ no calendar **read/organize** (Google Calendar not wired); no growth/time recomm
 - Don't build a new vision store — `ideal-state.md` + alignment.ts are the vision + the gap metric.
 
 ## 7. Version / branch
-Branch `feat/life-os`; ships as the version after the apps redesign lands. Founder reviews this
+Branch `feat/workflows-kanban`; ships as the version after the apps redesign lands. Founder reviews this
 plan, we pick the P0 slice (recommended: **Task-board owner/status + Decision Inbox**, since it's
 the shared spine all three pillars hang off), build it, then iterate P1/P2.
