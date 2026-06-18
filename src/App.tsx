@@ -1265,14 +1265,18 @@ export default function App() {
                 // to Chat first if you're on Council/Benchmark).
                 <>
                   {/* Workflows-Kanban: a pill appears only when AI work needs your
-                      call; opens the Decision Inbox. */}
+                      call; opens the Board's "Needs you" view. */}
                   {decisionsCount > 0 && (
                     <button
-                      onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "decisions" }))}
+                      onClick={() => {
+                        localStorage.setItem("prevail.board.openNeeds", "1");
+                        window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "tasks" }));
+                        window.dispatchEvent(new CustomEvent("prevail:board-view", { detail: "needs" }));
+                      }}
                       title={`${decisionsCount} decision${decisionsCount === 1 ? "" : "s"} need you`}
                       className="flex items-center gap-1 rounded px-2 py-1 text-xs text-warn transition-colors hover:bg-surface-warm"
                     >
-                      <Inbox className="h-3.5 w-3.5" /> Decisions
+                      <Inbox className="h-3.5 w-3.5" /> Needs you
                       <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[9px] font-bold text-background">{decisionsCount}</span>
                     </button>
                   )}

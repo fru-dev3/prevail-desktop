@@ -1,7 +1,7 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, Compass, Folder, Github, Globe, Inbox, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Target, Wrench, Zap } from "lucide-react";
+import { ArrowLeft, Check, Compass, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Target, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { LS, lsGet } from "./storage";
 import { useAppearance } from "./hooks";
@@ -10,7 +10,6 @@ import { BenchScheduleCard } from "./cards";
 import { FrameworksSection, IngestionSection, RemoteSection, ShortcutsSection } from "./settings1";
 import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection } from "./settings2";
 import { BoardPanel } from "./boardpanel";
-import { DecisionInbox } from "./decisioninbox";
 import { ConnectorsSection } from "./settings3";
 import { AppsPanel } from "./appspanel";
 import { RecommendationsPanel } from "./recommendationspanel";
@@ -88,32 +87,28 @@ export function SettingsPanel({
   // how it runs itself (Memory & Automation), what it reaches (Connections),
   // the guardrails (Privacy & Safety), where data lives (Vault), and the app.
   const navGroups: Array<{ heading: string; items: NavItem[] }> = [
+    // Work is the first thing you see: bring your work up when you open the app.
+    // The pipeline reads top to bottom - Board (committed tasks, you + AI), Insights
+    // (AI proposals you add to the board), Workspace (files). Decisions is NOT a
+    // separate page: it folds into the Board as a "Needs you" view + the top-bar pill.
+    { heading: "Work", items: [
+      { id: "tasks", label: "Board", icon: Check },
+      { id: "recommendations", label: "Insights", icon: Sparkles },
+      { id: "workspace", label: "Workspace", icon: Folder },
+    ]},
+    // What shapes the work: Ideals (you author) -> Intents (your goals, distilled)
+    // -> Routines (standing loops that drive toward them).
+    { heading: "Context & Memory", items: [
+      { id: "ideal-state", label: "Ideals", icon: Compass },
+      { id: "intents", label: "Intents", icon: Lightbulb },
+      { id: "daemons", label: "Routines", icon: Zap },
+    ]},
     { heading: "Intelligence", items: [
       { id: "models", label: "Runtimes", icon: Layers },
       { id: "council", label: "Council", icon: Scale },
       { id: "frameworks", label: "Frameworks", icon: Lightbulb },
       { id: "skills", label: "Skills", icon: Sparkles },
       { id: "benchmark", label: "Benchmark", icon: Target },
-    ]},
-    // M1 (Monday feedback): "Context & Memory", in the founder-specified order -
-    // Ideals (what the user inputs) → Omega (distilled) → Intents (what the user
-    // is doing) → Recommendations (things for the user) → Routines. The old
-    // "Configuration" (memory-engine knobs) + cross-domain Tasks move to the App
-    // group so nothing is orphaned.
-    // B2-24: Ideals now contains Ideal State + Omega (combined). B2-20: "Memory
-    // engine" deleted (its Memory & Context view folds into Routines). B2-17:
-    // Recommendations moves to the new "Work" group.
-    { heading: "Context & Memory", items: [
-      { id: "ideal-state", label: "Ideals", icon: Compass },
-      { id: "intents", label: "Intents", icon: Lightbulb },
-      { id: "daemons", label: "Routines", icon: Zap },
-    ]},
-    // B2-17: "Work" — what you're doing: Tasks, Workspace, Recommendations.
-    { heading: "Work", items: [
-      { id: "tasks", label: "Board", icon: Check },
-      { id: "decisions", label: "Decisions", icon: Inbox },
-      { id: "workspace", label: "Workspace", icon: Folder },
-      { id: "recommendations", label: "Insights", icon: Sparkles }, // renamed from "Recommendations"
     ]},
     { heading: "Connections", items: [
       { id: "connectors", label: "Apps", icon: Plug },
@@ -163,22 +158,6 @@ export function SettingsPanel({
     return () => { alive = false; window.clearInterval(id); };
   }, [vaultPath]);
 
-  // Decision Inbox count - a badge so pending approvals / AI-finished reviews are
-  // visible without opening the inbox. Refreshed on a slow cadence + on events.
-  const [decCount, setDecCount] = useState(0);
-  useEffect(() => {
-    let alive = true;
-    const poll = () => invoke<unknown[]>("decisions_pending", { vault: vaultPath })
-      .then((d) => { if (alive) setDecCount(Array.isArray(d) ? d.length : 0); })
-      .catch(() => {});
-    void poll();
-    const id = window.setInterval(poll, 60000);
-    const onEvt = () => poll();
-    window.addEventListener("prevail:tasks-changed", onEvt);
-    window.addEventListener("prevail:loops-advanced", onEvt);
-    return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:tasks-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
-  }, [vaultPath]);
-
   // MCP live indicator - read from localStorage; McpCard writes the same key.
   const [mcpLive, setMcpLive] = useState(() => lsGet(LS.mcpEnabled) === "1");
   useEffect(() => {
@@ -213,7 +192,6 @@ export function SettingsPanel({
               const showLiveGateway = it.id === "gateway" && liveBridges > 0;
               const showLiveMcp = it.id === "mcp" && mcpLive;
               const showRecCount = it.id === "recommendations" && recCount > 0;
-              const showDecCount = it.id === "decisions" && decCount > 0;
               return (
                 <button
                   key={it.id}
@@ -250,14 +228,6 @@ export function SettingsPanel({
                       title={`${recCount} recommendation${recCount === 1 ? "" : "s"}`}
                     >
                       {recCount}
-                    </span>
-                  )}
-                  {showDecCount && (
-                    <span
-                      className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1.5 py-0 font-mono text-[9px] font-bold text-background"
-                      title={`${decCount} decision${decCount === 1 ? "" : "s"} need you`}
-                    >
-                      {decCount}
                     </span>
                   )}
                 </button>
@@ -328,7 +298,6 @@ export function SettingsPanel({
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
           {section === "intents" && <IntentsSection vaultPath={vaultPath} />}
           {section === "tasks" && <BoardPanel vaultPath={vaultPath} />}
-          {section === "decisions" && <DecisionInbox vaultPath={vaultPath} />}
           {section === "recommendations" && <RecommendationsPanel vaultPath={vaultPath} />}
           {/* B2-20 / image #29: Memory engine page deleted; Memory & Context now
               lives inside Routines as a peer collapsible group (in DaemonsSection),
