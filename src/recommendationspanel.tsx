@@ -104,6 +104,8 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
   const [saved, setSaved] = useState<Set<string>>(() => loadSet(REC_SAVED));
   const [openWhy, setOpenWhy] = useState<string | null>(null);
   const [showDismissed, setShowDismissed] = useState(false);
+  // B2-22: filter to only the saved recommendations so saved items have a home.
+  const [showSavedOnly, setShowSavedOnly] = useState(false);
   const persistDismissed = (s: Set<string>) => { setDismissed(new Set(s)); lsSet(REC_DISMISSED, JSON.stringify([...s])); };
   const persistSaved = (s: Set<string>) => { setSaved(new Set(s)); lsSet(REC_SAVED, JSON.stringify([...s])); };
   const dismissRec = (id: string) => { const s = new Set(dismissed); s.add(id); persistDismissed(s); };
@@ -146,7 +148,9 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
           <p className="mt-1 text-xs text-text-muted">Keep chatting, benchmarking, and connecting apps - recommendations appear as Prevail learns your patterns.</p>
         </div>
       ) : (() => {
-        const visible = recs.filter((r) => showDismissed || !dismissed.has(r.id));
+        const visible = recs
+          .filter((r) => showDismissed || !dismissed.has(r.id))
+          .filter((r) => !showSavedOnly || saved.has(r.id));
         const dismissedCount = recs.filter((r) => dismissed.has(r.id)).length;
         const savedCount = recs.filter((r) => saved.has(r.id)).length;
         return (
@@ -155,7 +159,14 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-muted">
             <span>{visible.filter((r) => !dismissed.has(r.id)).length} active{savedCount > 0 ? ` · ${savedCount} saved` : ""}</span>
             <span className="ml-auto flex items-center gap-2">
-              {visible.some((r) => !dismissed.has(r.id)) && (
+              {/* B2-22: click to view only saved recs (so saved items are findable). */}
+              {savedCount > 0 && (
+                <button onClick={() => setShowSavedOnly((v) => !v)}
+                  className={`rounded border px-2 py-0.5 font-mono uppercase tracking-wider ${showSavedOnly ? "border-accent-border bg-accent-soft text-accent" : "border-border hover:border-accent-border hover:text-accent"}`}>
+                  {showSavedOnly ? "Showing saved" : "Show saved"} · {savedCount}
+                </button>
+              )}
+              {!showSavedOnly && visible.some((r) => !dismissed.has(r.id)) && (
                 <button onClick={() => { const s = new Set(dismissed); recs.forEach((r) => s.add(r.id)); persistDismissed(s); }}
                   className="rounded border border-border px-2 py-0.5 font-mono uppercase tracking-wider hover:border-accent-border hover:text-accent">Dismiss all</button>
               )}
