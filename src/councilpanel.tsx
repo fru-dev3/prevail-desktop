@@ -38,6 +38,7 @@ export function CouncilPanel({
   seedPrompt,
   seedAutoConvene,
   onSeedConsumed,
+  active = true,
 }: {
   domain: string | null;
   domainPath: string | null;
@@ -55,6 +56,10 @@ export function CouncilPanel({
   seedPrompt?: string | null;
   seedAutoConvene?: boolean;
   onSeedConsumed?: () => void;
+  /** Whether the council tab is the visible one. When false the panel stays
+      mounted (so a convened run keeps streaming) but ignores shared-thread
+      changes driven by chat, so it doesn't clobber its own run/verdict. */
+  active?: boolean;
 }) {
   // Thread storage scope (app space when set), else the grounding domain.
   const tDomain = threadDomain !== undefined ? threadDomain : domain;
@@ -502,8 +507,16 @@ export function CouncilPanel({
   const [councilTurns, setCouncilTurns] = useState<ThreadTurn[]>([]);
   const councilThreadRef = useRef<string | null>(activeThreadPath);
   const councilSelfSetRef = useRef<string | null>(null);
+  // Track tab visibility in a ref so the thread effect (keyed on activeThreadPath
+  // only) can bail when we're hidden, without re-firing when visibility flips.
+  const activeRef = useRef(active);
+  useEffect(() => { activeRef.current = active; }, [active]);
   // Load (or clear) the council transcript when the active thread changes.
   useEffect(() => {
+    // Hidden (chat is the visible tab): the shared activeThreadPath is being
+    // driven by chat, not us. Ignore it entirely so a convened council — running
+    // OR finished — keeps its replies/verdict on screen when we come back.
+    if (!activeRef.current) return;
     councilThreadRef.current = activeThreadPath ?? null;
     // We just saved this convene and adopted its own path - keep the result on
     // screen (don't clear the replies/verdict the user is reading).

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { confirm as tauriConfirm, open, save } from "@tauri-apps/plugin-dialog";
 import { check as checkUpdate } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { Check, Folder, Loader2, Mail, MessageSquare, MessagesSquare, Network, Radio, Send, Sparkles, Webhook, Wrench, Zap } from "lucide-react";
+import { Check, ChevronRight, Folder, Loader2, Mail, MessageSquare, MessagesSquare, Network, Radio, Send, Sparkles, Webhook, Wrench, Zap } from "lucide-react";
 import { siDiscord, siMatrix, siMattermost, siSignal, siTelegram } from "simple-icons";
 import { invoke, listen } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
@@ -31,6 +31,35 @@ export const COMING_SOON_GATEWAYS: { name: string; icon?: { path: string; hex: s
 // U2: Gateway is the single, self-contained section (owns its header) - folds in
 // the former "Integrations" bridge cards (A1) without the earlier double header /
 // double Telegram-card bug. Live bridges first, then coming-soon, evenly gridded.
+
+// BP2: persistent gateway activity log (kept on disk; survives restart).
+export function GatewayLogsCard({ vaultPath }: { vaultPath: string }) {
+  const [lines, setLines] = useState<string[]>([]);
+  const [open, setOpen] = useState(false);
+  const load = () => { invoke<string[]>("gateway_log_read", { vault: vaultPath, limit: 300 }).then((l) => setLines(Array.isArray(l) ? l : [])).catch(() => setLines([])); };
+  useEffect(() => { if (open) load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [open, vaultPath]);
+  return (
+    <div className="mt-6 rounded-xl border border-border bg-surface">
+      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2 px-4 py-3 text-left">
+        <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} />
+        <span className="font-display text-sm font-semibold tracking-tight">Gateway logs</span>
+        <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-secondary">{lines.length}</span>
+        <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-text-muted">kept on disk</span>
+      </button>
+      {open && (
+        <div className="border-t border-border-subtle p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <button onClick={load} className="rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">Refresh</button>
+            <button onClick={() => { invoke("gateway_log_clear", { vault: vaultPath }).then(load).catch(() => {}); }} className="rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-danger hover:text-danger">Clear</button>
+          </div>
+          {lines.length === 0
+            ? <div className="px-1 py-2 text-xs text-text-muted">No gateway activity logged yet. Start a bridge (Telegram, etc.) and events appear here, kept across restarts.</div>
+            : <pre className="max-h-72 overflow-auto rounded-md border border-border-subtle bg-background p-2 font-mono text-[10px] leading-relaxed text-text-secondary">{lines.join("\n")}</pre>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function GatewaySection() {
   const [liveTg, setLiveTg] = useState(false);
