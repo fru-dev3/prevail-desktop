@@ -557,6 +557,34 @@ export default function App() {
     })();
     return () => { if (unl) unl(); };
   }, [refreshDomainStats]);
+  // B2-30: tray-menu quick actions (emitted from the Rust tray after revealing
+  // the window). Route each to the matching surface.
+  useEffect(() => {
+    let unl: UnlistenFn | null = null;
+    (async () => {
+      unl = await listen<string>("prevail:tray-action", (e) => {
+        switch (e.payload) {
+          case "new-chat":
+            setTab("chat"); setDomainTab("chat");
+            setActiveThreadPath(null); setChatViewNonce((n) => n + 1);
+            break;
+          case "council":
+            setTab("council");
+            break;
+          case "briefing":
+            setTab("chat"); setDomainTab("insights");
+            break;
+          case "incognito": {
+            const next = getPref(PREF.incognito, "0") === "1" ? "0" : "1";
+            lsSet(PREF.incognito, next);
+            window.dispatchEvent(new Event("prevail:incognito-changed"));
+            break;
+          }
+        }
+      });
+    })();
+    return () => { if (unl) unl(); };
+  }, []);
   // Switching domains never drags the previous domain's thread pointer
   // along (the next auto-save would write into the wrong domain folder),
   // but returning to a domain lands on what you were working on: a stream
