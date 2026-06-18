@@ -2,11 +2,11 @@
 // Council defaults, Configuration (groups the memory/tasks/ideal sub-sections),
 // and the Agents catalog (AgentCard + AgentsSection).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, Globe, ListChecks, Search, Server, ShieldCheck, ShieldOff, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, Globe, ListChecks, Search, Server, ShieldCheck, ShieldOff, Wifi, WifiOff } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
-import { VENDOR_BRAND } from "./constants";
+import { RUNTIME_META, VENDOR_BRAND, isHarnessRuntime } from "./constants";
 import { isLocalCli } from "./helpers";
 import { modelsFor, prettyModelId } from "./helpers2";
 import { LS, PREF, getPref, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
@@ -627,19 +627,27 @@ export function AgentCard({
         </div>
         {/* Version column. */}
         <div className="w-[116px] shrink-0 truncate text-right font-mono text-[10px] text-text-muted/80">
-          {cli.available ? (cli.version ?? `${cli.bin} in PATH`) : `install ${cli.bin}`}
+          {cli.available ? (cli.version ?? `${cli.bin} in PATH`) : `${cli.bin} not found`}
         </div>
-        <button
-          onClick={() => cli.available && onStartChat?.(cli.id)}
-          disabled={!cli.available}
-          className={`w-[92px] shrink-0 rounded-md border py-1.5 text-center font-mono text-[11px] uppercase tracking-wider transition-colors ${
-            cli.available
-              ? "border-accent-border bg-accent-soft text-accent hover:bg-accent hover:text-background"
-              : "cursor-not-allowed border-border bg-background text-text-muted/60"
-          }`}
-        >
-          Start chat
-        </button>
+        {cli.available ? (
+          <button
+            onClick={() => onStartChat?.(cli.id)}
+            className="w-[92px] shrink-0 rounded-md border border-accent-border bg-accent-soft py-1.5 text-center font-mono text-[11px] uppercase tracking-wider text-accent transition-colors hover:bg-accent hover:text-background"
+          >
+            Start chat
+          </button>
+        ) : (
+          // Not installed → prompt setup with a link to the install docs.
+          <a
+            href={RUNTIME_META[cli.id]?.install ?? "#"}
+            target="_blank"
+            rel="noreferrer"
+            title={RUNTIME_META[cli.id]?.blurb ? `${RUNTIME_META[cli.id]?.blurb} — opens setup docs` : "Open setup docs"}
+            className="inline-flex w-[92px] shrink-0 items-center justify-center gap-1 rounded-md border border-border bg-background py-1.5 text-center font-mono text-[11px] uppercase tracking-wider text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
+          >
+            Set up <ArrowUpRight className="h-3 w-3" />
+          </a>
+        )}
       </div>
 
       {/* Why it's not valid, on the card face: usually an auth/token problem,
@@ -798,13 +806,16 @@ export function AgentsSection({
   onMakeDefault?: (cliId: string) => void;
   vaultPath?: string;
 }) {
-  const detected = clis.filter((c) => c.available);
-  const missing = clis.filter((c) => !c.available);
-  // Detected (the active set) opens by default; Not installed stays collapsed
-  // so the landing view shows only what's usable. Both are individually
-  // collapsible per the collapse-and-indent convention.
-  const [showDetected, setShowDetected] = useState(true);
-  const [showMissing, setShowMissing] = useState(false);
+  // Two distinct kinds of runtime, shown as SEPARATE groups: primary vendor CLIs
+  // (Claude Code, Codex, Gemini, Antigravity, …) and harnesses that wrap a base
+  // protocol (Pi, OpenCode, Hermes, OpenClaw, Paperclip, Motorcar). Within each,
+  // installed runtimes sort first; not-installed show a "Set up" link. Both groups
+  // open by default so every supported runtime is visible to set up.
+  const sortReady = (a: CliInfo, b: CliInfo) => Number(b.available) - Number(a.available) || a.label.localeCompare(b.label);
+  const cliRuntimes = clis.filter((c) => !isHarnessRuntime(c.id)).sort(sortReady);
+  const harnesses = clis.filter((c) => isHarnessRuntime(c.id)).sort(sortReady);
+  const [showClis, setShowClis] = useState(true);
+  const [showHarnesses, setShowHarnesses] = useState(true);
   // Per-runtime spend (cumulative), from the local usage ledger. Multica-style
   // Cost column; "—" when nothing has been spent / no vault.
   const [costByCli, setCostByCli] = useState<Record<string, number>>({});
@@ -829,58 +840,44 @@ export function AgentsSection({
           subtitle="CLIs Prevail can route prompts to. Each agent is detected from your machine. Prevail doesn't install or update them."
         />
       )}
-      {detected.length > 0 && (
-        <section className="mb-6">
-          <button
-            onClick={() => setShowDetected((v) => !v)}
-            className="mb-2 flex w-full items-center gap-2 text-left"
-          >
-            <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${showDetected ? "rotate-90" : ""}`} strokeWidth={2.5} />
-            <GroupLabel className="mb-0">Detected · {detected.length}</GroupLabel>
-          </button>
-          {showDetected && (
-            <div className="flex flex-col gap-3 pl-5">
-              {/* Multica-style column header: aligns with each runtime row's
-                  right-hand Health / Cost / Version columns. */}
-              <div className="flex items-center gap-3 px-4 font-mono text-[9px] uppercase tracking-[0.16em] text-text-muted/70">
-                <span className="flex-1">Runtime</span>
-                <span className="w-[124px] shrink-0">Health</span>
-                <span className="w-[64px] shrink-0 text-right">Cost</span>
-                <span className="w-[116px] shrink-0 text-right">Version</span>
-                <span className="w-[92px] shrink-0" />
+      {[
+        { key: "cli", label: "CLIs", hint: "Primary vendor coding-agent CLIs — offered on the chat composer.", list: cliRuntimes, open: showClis, toggle: () => setShowClis((v) => !v) },
+        { key: "harness", label: "Harnesses", hint: "Agent harnesses that wrap a base protocol. Set up here; not shown on the homepage composer.", list: harnesses, open: showHarnesses, toggle: () => setShowHarnesses((v) => !v) },
+      ].filter((g) => g.list.length > 0).map((g) => {
+        const ready = g.list.filter((c) => c.available).length;
+        return (
+          <section key={g.key} className="mb-6">
+            <button onClick={g.toggle} className="mb-2 flex w-full items-center gap-2 text-left" title={g.hint}>
+              <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${g.open ? "rotate-90" : ""}`} strokeWidth={2.5} />
+              <GroupLabel className="mb-0">{g.label} · {g.list.length}</GroupLabel>
+              <span className="font-mono text-[10px] text-text-muted/60">{ready}/{g.list.length} set up</span>
+            </button>
+            {g.open && (
+              <div className="flex flex-col gap-3 pl-5">
+                {/* Multica-style column header: aligns with each row's right-hand
+                    Health / Cost / Version columns. */}
+                <div className="flex items-center gap-3 px-4 font-mono text-[9px] uppercase tracking-[0.16em] text-text-muted/70">
+                  <span className="flex-1">Runtime</span>
+                  <span className="w-[124px] shrink-0">Health</span>
+                  <span className="w-[64px] shrink-0 text-right">Cost</span>
+                  <span className="w-[116px] shrink-0 text-right">Version</span>
+                  <span className="w-[92px] shrink-0" />
+                </div>
+                {g.list.map((c) => (
+                  <AgentCard
+                    key={c.id}
+                    cli={c}
+                    onStartChat={onStartChatWith}
+                    isDefault={defaultChatCli === c.id}
+                    onMakeDefault={onMakeDefault ? () => onMakeDefault(c.id) : undefined}
+                    cost={costByCli[c.id]}
+                  />
+                ))}
               </div>
-              {detected.map((c) => (
-                <AgentCard
-                  key={c.id}
-                  cli={c}
-                  onStartChat={onStartChatWith}
-                  isDefault={defaultChatCli === c.id}
-                  onMakeDefault={onMakeDefault ? () => onMakeDefault(c.id) : undefined}
-                  cost={costByCli[c.id]}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-      {missing.length > 0 && (
-        <section>
-          <button
-            onClick={() => setShowMissing((v) => !v)}
-            className="mb-2 flex w-full items-center gap-2 text-left"
-          >
-            <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${showMissing ? "rotate-90" : ""}`} strokeWidth={2.5} />
-            <GroupLabel className="mb-0">Not installed · {missing.length}</GroupLabel>
-          </button>
-          {showMissing && (
-            <div className="flex flex-col gap-3 pl-5">
-              {missing.map((c) => (
-                <AgentCard key={c.id} cli={c} onStartChat={onStartChatWith} />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
+            )}
+          </section>
+        );
+      })}
     </>
   );
 }
