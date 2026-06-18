@@ -189,19 +189,41 @@ pub fn run() {
         // a JS-set flag is awkward in Rust, so we always hide-on-close and let
         // Quit (tray menu / ⌘Q) actually exit).
         .setup(|app| {
-            use tauri::menu::{MenuBuilder, MenuItemBuilder};
+            use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
             use tauri::tray::TrayIconBuilder;
             use tauri::Manager;
+            // B2-30: a purposeful tray menu — the fastest ways into Prevail without
+            // hunting for the window. Quick actions emit to the frontend (which
+            // shows the window + navigates); Show/Quit are window controls.
+            let new_chat = MenuItemBuilder::with_id("new_chat", "New chat").build(app)?;
+            let council = MenuItemBuilder::with_id("council", "Ask the council").build(app)?;
+            let briefing = MenuItemBuilder::with_id("briefing", "Today's briefing").build(app)?;
+            let incognito = MenuItemBuilder::with_id("incognito", "Toggle incognito").build(app)?;
+            let sep1 = PredefinedMenuItem::separator(app)?;
             let show = MenuItemBuilder::with_id("show", "Show Prevail").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "Quit Prevail").build(app)?;
-            let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
+            let menu = MenuBuilder::new(app)
+                .items(&[&new_chat, &council, &briefing, &incognito, &sep1, &show, &quit])
+                .build()?;
             let _ = TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| {
-                    use tauri::Manager;
+                    use tauri::{Emitter, Manager};
+                    // Bring the window up, then tell the frontend which action to run.
+                    let reveal_and_emit = |action: &str| {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                            let _ = w.emit("prevail:tray-action", action.to_string());
+                        }
+                    };
                     match event.id().as_ref() {
+                        "new_chat" => reveal_and_emit("new-chat"),
+                        "council" => reveal_and_emit("council"),
+                        "briefing" => reveal_and_emit("briefing"),
+                        "incognito" => reveal_and_emit("incognito"),
                         "show" => {
                             if let Some(w) = app.get_webview_window("main") {
                                 let _ = w.show();
