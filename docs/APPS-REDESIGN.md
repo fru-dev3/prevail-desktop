@@ -244,6 +244,21 @@ backstop.
 
 ## PART C — The redesign
 
+### C0. The user NEVER picks the connection method (founder, 2026-06-18)
+Choosing MCP vs API vs OAuth vs browser is the SYSTEM's job, not the user's — no
+one can know the right method for every connector. The connect flow is:
+- The user says what they want ("connect PayPal, pull my transactions").
+- Prevail resolves the method automatically via the connection ladder
+  (`connections[]`, probed in order: local MCP → official API/OAuth → browser
+  fallback), authenticates that rung, and verifies by a real fetch (C1/C3).
+- The user is asked for a credential ONLY when the chosen rung genuinely needs
+  one and it can't be obtained automatically (an inline key field, or a "Sign in"
+  button that runs OAuth). They never see a "pick a method" dropdown as a required
+  step. The manual `METHOD` dropdown stays only as an advanced override.
+- "PayPal via REST" is the SYSTEM's resolution for PayPal, not a user choice;
+  PayPal is just the first connector proven end-to-end. The same auto-resolution
+  applies to every connector.
+
 ### C1. Core principle: connected == we pulled real data once
 Introduce a hard gate. An app may be `configured` (creds present, probe passes)
 **without** being `connected`. **`connected` is only set after a real sync writes
