@@ -166,7 +166,9 @@ export function SettingsPanel({
   }, []);
 
   return (
-    <div className="flex h-full">
+    // min-h-0 + flex-1 so the panel fills the space ABOVE the app footer ribbon
+    // instead of taking the full screen height and pushing the ribbon off-screen.
+    <div className="flex min-h-0 flex-1">
       {/* Sidebar nav - Codex-style with Back to app at top */}
       <aside className="flex h-full min-h-0 w-56 shrink-0 flex-col overflow-y-auto border-r border-border-subtle bg-surface-warm px-2 py-3">
         {onBack && (
