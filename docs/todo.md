@@ -1,3 +1,38 @@
+# >>> OVERNIGHT PLAN (2026-06-17 → wake) — fixes live by morning, then Apps research <<<
+
+**Founder goal (going to bed):** fix everything + deploy so it's LIVE by morning, then
+deep-research the Apps area, write a detailed todo, start a NEW BRANCH (the Apps work
+= the release AFTER the bugfix one), and begin implementing. Founder reviews/tests the
+branch, then merges.
+
+**Live status:** v0.1.128 is LIVE (published, full assets). It does NOT contain the
+`---` chat fix (its build checked out cli main before the fix) nor council/benchmark
+fixes. So a NEW release is needed for the fixes.
+
+**Version plan:** bugfix release = **v0.1.129** on main (since 0.1.128 already published).
+Apps work goes on a new branch and becomes the release AFTER 0.1.129 (founder expected
+"apps = 0.1.29" but an intermediate bugfix release was needed — renumbered; explain on wake).
+
+### TONIGHT — must be live by morning (release v0.1.129)
+1. **`---` chat bug — FIXED** in prevail-cli `src/cli-bridge.ts` (commit 63eb563, pushed
+   to cli main). Root cause: live dispatchTurn passed framedPrompt (which begins with our
+   '--- ... ---' context headers / md frontmatter) straight to `claude -p` / codex /
+   gemini, so the runtime parsed it as an unknown flag and exited 1. Guard: leading space
+   if prompt starts with '-'. Needs sidecar rebuild via release CI (picks up cli main).
+2. **Council persistence** — running council dies when navigating to chat and back. Must
+   keep running (own thread) + re-hydrate on return. (recon agent mapping run lifecycle.)
+3. **Benchmark persistence** — running benchmark must survive navigating away/back.
+4. Bump version (4 files) → 0.1.129; tsc; scrub-gate; commit; push; tag v0.1.129; verify live.
+
+### TONIGHT/ONGOING — Apps area (new branch, becomes next release)
+5. Deep research → `docs/APPS-AREA-RESEARCH.md` (agent running): current apps impl map,
+   connection automation (MCP-first), curate ~100-200 essential apps (no real bank-account
+   listing — work from app list), "set up once, runs by itself" scheduled sync, UX/layout,
+   phased TODO.
+6. New branch `feat/apps-area` off main (after 0.1.129). Start implementing per the todo.
+
+---
+
 # >>> PICK UP HERE (2026-06-17, live-review batch 2 + runtime reframe) <<<
 
 **Full batch-2 plan + status:** `docs/FEEDBACK-0617-batch2.md` (30 items, B2-1..B2-30).
