@@ -11,20 +11,26 @@ B2-7 next-run time · B2-8 model-id prettify · B2-10 dup header · B2-11 MCP --
 B2-13 WebUI · B2-14 telemetry table · B2-19 distiller time · B2-21 headless toggle ·
 incognito-everywhere (chat+council+global).
 
-### Remaining (do next, in this order)
-1. Standalone fixes: **B2-4** council node labels (use modelLabel now) · **B2-9**
-   alignment top-actions clickable+formatted · **B2-28** graceful context panel when
-   ctx fails · **B2-27** "domain not found" path bug (v4 data/domains resolution) ·
-   **B2-22** saved-items home · **B2-23** routines last/next run · **B2-5** skills upload ·
-   **B2-29** usage Activity (clarify intent) · **B2-30** macOS tray menu (design).
-2. Settings IA + Workspace refactor (ONE unit, founder-approved direction):
-   **B2-17** Work nav group (Tasks+Workspace+Recommendations) · **B2-18** remove dup
-   Tasks · **B2-20** delete Memory-engine page (fold Memory&Context into Routines) ·
-   **B2-24** combine Ideals+Omega · **B2-15** one Vault section (Your/Demo cards w/
-   inline change+open icons) · **B2-16** per-vault backup · **B2-25/26** top-nav
-   (Chat/Council prominent left; rest smaller right) · **B2-12** on-disk data/+build/ layout.
-3. THEN (separate branch, founder request): implement `docs/WORKFLOW-ENGINE-PLAN.md`
-   on its own branch.
+### DONE (batch 2, shipped through v0.8.15): B2-1..B2-11, B2-13,14,17,18,19,20,
+21,22,23,24,25,26,27,28 + incognito-everywhere + B2-15 partial (inline card icons).
+
+### REMAINING (4 items — the deliberately-larger / needs-care ones)
+1. **B2-15 (finish) + B2-16 — Workspace recomposition.** Make ONE Vault section =
+   Your/Demo vault cards (inline Change+Open icons DONE) and move Starter packs to
+   its OWN section; drop the standalone "Vault folder" card + the standalone
+   "Backups" section; put a per-vault backup toggle on the active card. Needs
+   DemoModeSection split (cards vs packs) + thread onChange + decide per-vault
+   backup semantics (global BACKUP_CFG = "back up the active vault"). settings8.tsx.
+2. **B2-12 — on-disk data/ + build/ vault layout.** Apps+domains under data/,
+   runtime files (benchmark/complete/core/usage + loose _*.jsonl/_meta/_threads/
+   AGENTS-operating.md) under build/, root = data/ build/ profile.md. Engine
+   migration (extends W4): resolver + safe migrator + path updates across cli +
+   desktop. Do deliberately; never lose user data.
+3. **B2-29 — Usage Activity.** The Activity heatmap already renders on Usage;
+   clarify with founder what "isn't enough" means before changing.
+4. **B2-30 — macOS tray menu.** Design what the menubar icon opens (quick chat,
+   today's briefing, running processes, incognito toggle, open app). Design+build.
+THEN (separate branch, founder request): implement `docs/WORKFLOW-ENGINE-PLAN.md`.
 
 ### Release procedure (reminder)
 Bump version in package.json + src-tauri/tauri.conf.json + src-tauri/Cargo.toml +

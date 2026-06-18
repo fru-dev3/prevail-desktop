@@ -51,7 +51,7 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
 - [x] **B2-14 — Format "What we collect" telemetry list.** Done — clean two-column
   table (event chip + what it carries) instead of a dash-list.
 
-- [ ] **B2-15 — Consolidate the Vault section.** Don't have a standalone "Vault
+- [~] **B2-15 — Consolidate the Vault section.** Don't have a standalone "Vault
   folder" card AND a separate "Starter packs & Sandbox" with Your/Demo vault
   toggles. Make ONE "Vault" section = the Your vault + Demo vault cards, each with
   small inline icons to change the path + open the vault (Finder). Drop the
@@ -61,17 +61,17 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
 - [ ] **B2-16 — Backups inside each vault card.** Not a separate big "Backups"
   section — a tiny backup control within the Your vault / Demo vault cards, since
   backup is per-vault (back up your vault, or the demo vault). Folds into B2-15.
-- [ ] **B2-17 — New "Work" settings nav group.** Add a nav group called "Work"
+- [x] **B2-17 — New "Work" settings nav group.** Add a nav group called "Work"
   containing Tasks, Workspace, and Recommendations (move Tasks there).
 
-- [ ] **B2-18 — Tasks duplicated.** Tasks shows inside the Memory engine
+- [x] **B2-18 — Tasks duplicated.** Tasks shows inside the Memory engine
   (Configuration) page AND has its own nav item. Remove the embedded copy; Tasks
   lives once (in the new "Work" group, B2-17).
 - [x] **B2-19 — Distiller time bug.** "DISTILLER running · last pass 20601 days
   ago ago" — double "ago" and a bogus epoch-based age when last_run_ts is 0.
   Guard the formatting.
 
-- [ ] **B2-20 — Delete the "Memory engine" (Configuration) page.** Memory already
+- [x] **B2-20 — Delete the "Memory engine" (Configuration) page.** Memory already
   lives under Routines/Daemons; the Memory & Context view duplicates it, and once
   memory + Tasks are moved out, the page has nothing unique. Remove the nav item;
   fold the Memory & Context produced-view into Routines (or Ideals).
@@ -85,15 +85,15 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
   (distiller, intents, taskgen, skillgen, reminders), minimally show when they last
   ran and when they next run. (Ties to B2-19 time-format fix.)
 
-- [ ] **B2-24 — Combine Ideals + Omega into one "Ideals" section.** Two collapsible
+- [x] **B2-24 — Combine Ideals + Omega into one "Ideals" section.** Two collapsible
   subs: "Ideal State" (user input, with alignment shown) and "Omega" (what the
   system learned). The value is comparing ideals vs omega over time. (Part of the
   Settings IA refactor.)
 
-- [ ] **B2-25 — Top domain nav grouping.** Chat + Council prominent on the LEFT;
+- [x] **B2-25 — Top domain nav grouping.** Chat + Council prominent on the LEFT;
   everything else (Benchmark, Insights, Usage, Preferences, Loops, Apps, Archive)
   on the RIGHT.
-- [ ] **B2-26 — De-emphasize the right-side nav.** Make the right group smaller +
+- [x] **B2-26 — De-emphasize the right-side nav.** Make the right group smaller +
   less prominent than Chat/Council so the bar isn't busy. (Recommend: Chat/Council
   as the primary tabs at full size; the rest as smaller secondary icon+label
   controls, lighter weight.)
