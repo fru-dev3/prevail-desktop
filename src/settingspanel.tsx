@@ -6,6 +6,8 @@ import { invoke } from "./bridge";
 import { LS, lsGet } from "./storage";
 import { useAppearance } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
+import { PrevailLogo } from "./PrevailLogo";
+import { BrandMark } from "./brandmark";
 import { BenchScheduleCard } from "./cards";
 import { FrameworksSection, IngestionSection, RemoteSection, ShortcutsSection } from "./settings1";
 import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection } from "./settings2";
@@ -171,6 +173,11 @@ export function SettingsPanel({
     <div className="flex min-h-0 flex-1">
       {/* Sidebar nav - Codex-style with Back to app at top */}
       <aside className="flex h-full min-h-0 w-56 shrink-0 flex-col overflow-y-auto border-r border-border-subtle bg-surface-warm px-2 py-3">
+        {/* Brand lockup so it's always clear you're in Prevail. */}
+        <div className="mb-3 flex items-center gap-2 px-3 pt-1">
+          <PrevailLogo size={22} animated={false} />
+          <BrandMark className="font-mono text-sm font-bold tracking-[0.22em] text-text-primary" />
+        </div>
         {onBack && (
           <button
             onClick={onBack}
