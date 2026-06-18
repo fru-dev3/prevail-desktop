@@ -337,6 +337,8 @@ pub fn run() {
             appcmds::app_uninstall,
             settings::set_close_to_tray,
             settings::provider_key_set,
+            settings::app_secret_set,
+            settings::app_secret_exists,
             settings::provider_key_exists,
             settings::provider_key_last4,
             settings::provider_key_del,

@@ -16,6 +16,44 @@ use crate::read_to_string_retry;
 pub(crate) fn provider_key_set(provider: String, key: String) -> Result<(), String> {
     ingestion::keychain::set("prevail.providers", &provider, &key)
 }
+
+// App-connector secrets (e.g. PayPal PAYPAL_CLIENT_ID/SECRET). Stored in the
+// Keychain (service "prevail.appsecrets") keyed by the EXACT env-var name the
+// connector reads. The set of names is tracked in a plaintext index file (names
+// only, never values) so the engine spawn can inject them all. `name` is the
+// env-var name; on save it's added to the index (deduped).
+#[tauri::command]
+pub(crate) fn app_secret_set(name: String, value: String) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("empty secret name".into());
+    }
+    ingestion::keychain::set("prevail.appsecrets", &name, &value)?;
+    if let Some(p) = crate::engine::app_secret_index_path() {
+        if let Some(dir) = p.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+        let mut names: Vec<String> = fs::read_to_string(&p)
+            .unwrap_or_default()
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty())
+            .collect();
+        if !names.iter().any(|n| n == &name) {
+            names.push(name.clone());
+            let _ = fs::write(&p, names.join("\n") + "\n");
+        }
+    }
+    Ok(())
+}
+
+// Presence check only — never returns the secret value.
+#[tauri::command]
+pub(crate) fn app_secret_exists(name: String) -> bool {
+    ingestion::keychain::get("prevail.appsecrets", &name)
+        .ok()
+        .map(|v| !v.is_empty())
+        .unwrap_or(false)
+}
 // Presence check only — never returns the secret value to the frontend.
 #[tauri::command]
 pub(crate) fn provider_key_last4(provider: String) -> Option<String> {
