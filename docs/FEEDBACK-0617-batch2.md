@@ -11,9 +11,9 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
   claude/codex/antigravity CLI as a flag → exit 1. Fixed in cli-bridge buildCliArgs
   (prepend a leading space when the prompt starts with "-"). Needs sidecar rebuild
   (ships with the next release).
-- [ ] **B2-4 — Council circle: show model name + number.** Each node should label
+- [x] **B2-4 — Council circle: show model name + number.** Each node should label
   its model, e.g. "Opus 4.7", not just the provider glyph.
-- [ ] **B2-5 — Skills: let the user UPLOAD skills.** The Skills page only explains
+- [x] **B2-5 — Skills: let the user UPLOAD skills.** The Skills page only explains
   the drop-a-folder convention. Add an actual upload/import affordance (pick a
   folder / SKILL.md and install it into a domain's skills/).
 - [x] **B2-6 — Scheduled runs: pill toggle, not "OFF" text.** The scheduled-runs
@@ -34,10 +34,10 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
   root is just `data/ build/ profile.md`. Engine layout change (extends W4) — needs
   a resolver + safe migrator + path updates across cli + desktop. NOT a quick edit;
   plan + careful migration required.
-- [ ] **B2-8 — Model label "Claude claude-opus-4-8" in WILL RUN.** Raw id leaks
+- [x] **B2-8 — Model label "Claude claude-opus-4-8" in WILL RUN.** Raw id leaks
   instead of "Opus 4.8" — fix the model-label formatting on that line.
 
-- [ ] **B2-9 — Alignment card "Top actions to close the gap".** Format nicely
+- [x] **B2-9 — Alignment card "Top actions to close the gap".** Format nicely
   (not plain bullets) and make each action clickable to take the action (open the
   domain / start a chat or loop on it).
 
@@ -78,10 +78,10 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
 
 - [ ] **B2-21 — "Keep working with the app closed": pill toggle, not "OFF" text.**
   HeadlessLearnCard uses a text On/Off; use the toggle pill.
-- [ ] **B2-22 — Saved items need a home.** "0 active · 2 saved" (recommendations)
+- [x] **B2-22 — Saved items need a home.** "0 active · 2 saved" (recommendations)
   but no way to view saved ones. Anything the app lets you SAVE must be findable +
   usable. Add a saved view/filter (recommendations, and audit other "save" spots).
-- [ ] **B2-23 — Routines: show last run + next run.** For all routine-driven things
+- [x] **B2-23 — Routines: show last run + next run.** For all routine-driven things
   (distiller, intents, taskgen, skillgen, reminders), minimally show when they last
   ran and when they next run. (Ties to B2-19 time-format fix.)
 
@@ -98,11 +98,11 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
   as the primary tabs at full size; the rest as smaller secondary icon+label
   controls, lighter weight.)
 
-- [ ] **B2-27 — "domain not found" path bug.** Context panel shows
+- [x] **B2-27 — "domain not found" path bug.** Context panel shows
   "domain not found: …/demo-vault/wealth". Likely the v4 `data/domains/<d>` layout
   not resolved by `domain_context` (looks at flat `<vault>/<d>`). Fix path
   resolution (ties to B2-12 vault layout).
-- [ ] **B2-28 — Graceful context panel when ctx fails.** When domain_context
+- [x] **B2-28 — Graceful context panel when ctx fails.** When domain_context
   errors, the ctx-gated sections (State, Decisions, Journal, Skills) silently
   vanish and only a raw error shows. Design: keep all section rows visible with a
   quiet "couldn't load this domain's local context" + retry, instead of a scary
