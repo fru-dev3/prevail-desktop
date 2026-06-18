@@ -121,6 +121,7 @@ import {
   Layers,
   
   Lightbulb,
+  Inbox,
   Plug,
   
   
@@ -743,6 +744,24 @@ export default function App() {
   useEffect(() => {
     if (tab === "chat" || tab === "council" || tab === "benchmark") track("feature_used", { feature: tab });
   }, [tab]);
+  // Cross-domain Decision Inbox count — surfaced as a top-bar pill so pending
+  // approvals / AI reviews are visible without opening Settings. Cheap call
+  // (list_domain_names, no state reads); refreshed slowly + on task/loop events.
+  const [decisionsCount, setDecisionsCount] = useState(0);
+  useEffect(() => {
+    if (!vaultPath) return;
+    let alive = true;
+    const poll = () => invoke<unknown[]>("decisions_pending", { vault: vaultPath })
+      .then((d) => { if (alive) setDecisionsCount(Array.isArray(d) ? d.length : 0); })
+      .catch(() => {});
+    void poll();
+    const id = window.setInterval(poll, 60000);
+    const onEvt = () => poll();
+    window.addEventListener("prevail:tasks-changed", onEvt);
+    window.addEventListener("prevail:loops-advanced", onEvt);
+    return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:tasks-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
+  }, [vaultPath]);
+
   // Lets in-app links (e.g. the Demo ribbon) open a specific Settings section.
   const [settingsJump, setSettingsJump] = useState<{ section: string; n: number } | null>(null);
   const openSettingsAt = (section: string) => {
@@ -1245,6 +1264,18 @@ export default function App() {
                 // too, not just domains. They toggle the Chat sub-view (jumping
                 // to Chat first if you're on Council/Benchmark).
                 <>
+                  {/* Workflows-Kanban: a pill appears only when AI work needs your
+                      call; opens the Decision Inbox. */}
+                  {decisionsCount > 0 && (
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "decisions" }))}
+                      title={`${decisionsCount} decision${decisionsCount === 1 ? "" : "s"} need you`}
+                      className="flex items-center gap-1 rounded px-2 py-1 text-xs text-warn transition-colors hover:bg-surface-warm"
+                    >
+                      <Inbox className="h-3.5 w-3.5" /> Decisions
+                      <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[9px] font-bold text-background">{decisionsCount}</span>
+                    </button>
+                  )}
                   {/* B2-25: Benchmark moved into the de-emphasized right cluster. */}
                   <button
                     onClick={() => setTab("benchmark")}
