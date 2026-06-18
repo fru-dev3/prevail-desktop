@@ -4,6 +4,7 @@
 import React from "react";
 import { siClaude as siClaudeRaw, siCursor as siCursorRaw, siOllama as siOllamaRaw } from "simple-icons";
 import { VENDOR_BRAND } from "./constants";
+import { RUNTIME_LOGOS } from "./runtimelogos";
 
 export const siClaude = siClaudeRaw as { path: string };
 export const siOllama = siOllamaRaw as { path: string };
@@ -14,6 +15,33 @@ export function ProviderMark({ vendor, size = 28 }: { vendor: string; size?: num
   const glyphSize = Math.round(size * 0.62);
   let inner: React.ReactNode;
   let bg = v.hex;
+  // Fetched brand logos (copilot/opencode/kimi/kiro/codebuddy/openclaw) take
+  // precedence over the monogram fallback. Single-path → white fill on the brand
+  // tile; multicolor markup → rendered as-is on a white tile.
+  const logo = RUNTIME_LOGOS[vendor];
+  if (logo) {
+    if (logo.path) {
+      inner = (
+        <svg viewBox={logo.viewBox} width={glyphSize} height={glyphSize} fill="white" aria-hidden="true">
+          <path d={logo.path} />
+        </svg>
+      );
+    } else if (logo.svg) {
+      bg = "#ffffff";
+      inner = (
+        <svg viewBox={logo.viewBox} width={glyphSize} height={glyphSize} aria-hidden="true" dangerouslySetInnerHTML={{ __html: logo.svg }} />
+      );
+    }
+    return (
+      <span
+        className="flex shrink-0 items-center justify-center rounded-md ring-1 ring-black/5"
+        style={{ background: bg, height: size, width: size }}
+        title={v.name}
+      >
+        {inner}
+      </span>
+    );
+  }
   switch (vendor) {
     case "claude":
       inner = (
