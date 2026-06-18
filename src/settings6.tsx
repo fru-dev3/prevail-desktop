@@ -488,6 +488,7 @@ export function AgentCard({
   isDefault,
   onMakeDefault,
   cost,
+  chattable = true,
 }: {
   cli: CliInfo;
   onStartChat?: (cliId: string, modelId?: string) => void;
@@ -495,6 +496,9 @@ export function AgentCard({
   onMakeDefault?: () => void;
   /** Cumulative spend on this runtime (USD), from the usage ledger. */
   cost?: number;
+  /** Whether this runtime can power the chat composer. Harnesses are false —
+      they're catalog-only and never offered "Start chat". */
+  chattable?: boolean;
 }) {
   const brand = VENDOR_BRAND[cli.id] ?? VENDOR_BRAND.other;
   const liveVerify = useCliVerifyLive();
@@ -629,13 +633,18 @@ export function AgentCard({
         <div className="w-[116px] shrink-0 truncate text-right font-mono text-[10px] text-text-muted/80">
           {cli.available ? (cli.version ?? `${cli.bin} in PATH`) : `${cli.bin} not found`}
         </div>
-        {cli.available ? (
+        {cli.available && chattable ? (
           <button
             onClick={() => onStartChat?.(cli.id)}
             className="w-[92px] shrink-0 rounded-md border border-accent-border bg-accent-soft py-1.5 text-center font-mono text-[11px] uppercase tracking-wider text-accent transition-colors hover:bg-accent hover:text-background"
           >
             Start chat
           </button>
+        ) : cli.available && !chattable ? (
+          // Harness, installed: catalog-only (not a homepage chat runtime).
+          <span className="inline-flex w-[92px] shrink-0 items-center justify-center font-mono text-[10px] uppercase tracking-wider text-text-muted/60" title="Harness — set up here; not a chat runtime">
+            Ready
+          </span>
         ) : (
           // Not installed → prompt setup with a link to the install docs.
           <a
@@ -871,6 +880,7 @@ export function AgentsSection({
                     isDefault={defaultChatCli === c.id}
                     onMakeDefault={onMakeDefault ? () => onMakeDefault(c.id) : undefined}
                     cost={costByCli[c.id]}
+                    chattable={g.key === "cli"}
                   />
                 ))}
               </div>
