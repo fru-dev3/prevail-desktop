@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { invoke, listen } from "./bridge";
 import { MODELS, MODEL_SEP } from "./constants";
 import { titleCase } from "./format";
+import { modelLabel } from "./helpers2";
 import { isLocalCli } from "./helpers";
 import { isBunkerOn, lsGet, lsSet } from "./storage";
 import { track } from "./telemetry";
@@ -171,7 +172,7 @@ export async function rerunLatestBatch(vault: string): Promise<boolean> {
       .filter((q) => domSet.size === 0 || domSet.has(q.domain.toLowerCase()))
       .map((q) => q.id)
       .sort();
-    const ml = MODELS[r.cli]?.find((m) => m.id === (r.model ?? ""))?.label ?? (r.model || "default");
+    const ml = modelLabel(r.cli, r.model ?? "") || "default";
     jobs.push({
       key: `sched-${k}-${Date.now()}`,
       cli: r.cli,
@@ -196,7 +197,7 @@ export async function rerunLatestBatch(vault: string): Promise<boolean> {
 
 function modelKeyLabel(k: string): string {
   const [cli, model] = k.split(MODEL_SEP);
-  const ml = MODELS[cli]?.find((m) => m.id === model)?.label ?? (model || "default");
+  const ml = modelLabel(cli, model) || "default";
   return `${titleCase(cli)} ${ml}`;
 }
 function domainScopeLabel(domains: string[]): string {
@@ -256,7 +257,7 @@ export async function buildScheduledJobs(vault: string): Promise<{ jobs: BenchJo
   const qids = questions.filter((q) => domSet.size === 0 || domSet.has(q.domain.toLowerCase())).map((q) => q.id).sort();
   const jobs: BenchJob[] = keys.map((k) => {
     const [cli, model] = k.split(MODEL_SEP);
-    const ml = MODELS[cli]?.find((m) => m.id === model)?.label ?? model;
+    const ml = modelLabel(cli, model) || model;
     return { key: `sched-${k}-${Date.now()}`, cli, model, label: `${titleCase(cli)} · ${ml}`, status: "queued", done: 0, total: qids.length, qids, qdone: {} };
   });
   return { jobs, scopeStr: [...domSet].join(",") };
