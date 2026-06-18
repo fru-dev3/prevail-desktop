@@ -38,6 +38,19 @@ const STATUS_META: Record<AppStatus, { glyph: string; label: string; tint: strin
   disconnected: { glyph: "○", label: "Not connected",   tint: "text-text-muted", ring: "border-border",    dot: "bg-text-muted/40" },
 };
 
+// Per-app credential fields for key-based connectors (apps redesign P1). Each
+// app's auth_env_vars are rendered as inline fields and stored in the Keychain
+// via app_secret_set. OAuth apps are NOT listed here — they use the "Sign in"
+// button. Grow this as connectors are brought to the fetch-gated model (P2 reads
+// it from each manifest's auth_env_vars instead of this static map).
+const CREDS_FIELDS: Record<string, { env: string; label: string; kind: "secret" | "toggle"; on?: string; off?: string }[]> = {
+  paypal: [
+    { env: "PAYPAL_CLIENT_ID", label: "Client ID", kind: "secret" },
+    { env: "PAYPAL_CLIENT_SECRET", label: "Secret", kind: "secret" },
+    { env: "PAYPAL_ENV", label: "Sandbox (test credentials)", kind: "toggle", on: "sandbox", off: "live" },
+  ],
+};
+
 // "MCP" / "API" / "Browser" / "CLI" / "Composio" from the engine's integration id.
 function methodLabel(integration: string): string {
   const m = (integration || "").toLowerCase();
@@ -266,28 +279,46 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
     } catch (e) { console.error("set schedule", e); }
     finally { setSchedBusy(false); }
   };
-  // Apps redesign P0: real credential entry. The system resolved PayPal → REST
-  // client-credentials; the user's one step is pasting Client ID + Secret. On
-  // save we store them in the Keychain (app_secret_set) and immediately run a
-  // real sync — the card only turns green if that fetch actually succeeds.
-  const needsCreds = app.id === "paypal";
-  const [ppId, setPpId] = useState("");
-  const [ppSecret, setPpSecret] = useState("");
-  const [ppSandbox, setPpSandbox] = useState(false);
+  // Apps redesign P1: generic credential entry, driven by a per-app field spec
+  // (CREDS_FIELDS) instead of a PayPal hardcode. The user's only step is pasting
+  // what a key-based connector needs; on save we store each value in the Keychain
+  // (app_secret_set) and immediately run a real sync — the card only turns green
+  // if that fetch actually succeeds. OAuth apps use the "Sign in" button instead.
+  const credSpec = CREDS_FIELDS[app.id];
+  const isOAuth = (app.integration || "").toLowerCase().includes("oauth");
+  const needsCreds = !!credSpec || isOAuth;
+  const [credVals, setCredVals] = useState<Record<string, string>>({});
   const [credBusy, setCredBusy] = useState(false);
   const [credMsg, setCredMsg] = useState<string | null>(null);
+  const verifySync = async () => {
+    await invoke("engine_app_sync", { id: app.id, vault: vaultPath });
+    window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+    await onReload();
+  };
   const saveCreds = async () => {
+    if (!credSpec) return;
     setCredBusy(true); setCredMsg("Saving + verifying by a real fetch…");
     try {
-      if (ppId.trim()) await invoke("app_secret_set", { name: "PAYPAL_CLIENT_ID", value: ppId.trim() });
-      if (ppSecret.trim()) await invoke("app_secret_set", { name: "PAYPAL_CLIENT_SECRET", value: ppSecret.trim() });
-      await invoke("app_secret_set", { name: "PAYPAL_ENV", value: ppSandbox ? "sandbox" : "live" });
-      await invoke("engine_app_sync", { id: app.id, vault: vaultPath });
-      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
-      await onReload();
-      setPpId(""); setPpSecret("");
-      setCredMsg("Verified — pulled your PayPal transactions. (Card turns green once a sync succeeds.)");
+      for (const f of credSpec) {
+        if (f.kind === "toggle") {
+          await invoke("app_secret_set", { name: f.env, value: credVals[f.env] === "on" ? (f.on ?? "on") : (f.off ?? "off") });
+        } else if ((credVals[f.env] ?? "").trim()) {
+          await invoke("app_secret_set", { name: f.env, value: credVals[f.env].trim() });
+        }
+      }
+      await verifySync();
+      setCredVals((v) => { const n = { ...v }; for (const f of credSpec) if (f.kind === "secret") delete n[f.env]; return n; });
+      setCredMsg("Verified — pulled real data. (The card turns green once a sync succeeds.)");
     } catch (e) { setCredMsg(`Failed: ${String(e).slice(0, 200)}`); }
+    finally { setCredBusy(false); }
+  };
+  const signIn = async () => {
+    setCredBusy(true); setCredMsg("Opening sign-in… complete it in your browser.");
+    try {
+      await invoke("engine_app_oauth", { id: app.id, vault: vaultPath });
+      await verifySync();
+      setCredMsg("Signed in — verified by a real fetch.");
+    } catch (e) { setCredMsg(`Sign-in failed: ${String(e).slice(0, 200)}`); }
     finally { setCredBusy(false); }
   };
   // P4 - re-evaluate the connection method: maybe a better one exists now.
@@ -389,22 +420,35 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
           </Detail>
           {reEval && <div className="rounded-md border border-border-subtle bg-background px-3 py-1.5 text-xs text-text-secondary">{reEval}</div>}
           {needsCreds && (
-            <Detail label="Credentials">
+            <Detail label={isOAuth ? "Sign in" : "Credentials"}>
               <div className="flex flex-col gap-1.5">
-                <input type="password" value={ppId} onChange={(e) => setPpId(e.target.value)} placeholder="PayPal Client ID" autoComplete="off"
-                  className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
-                <input type="password" value={ppSecret} onChange={(e) => setPpSecret(e.target.value)} placeholder="Secret" autoComplete="off"
-                  className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
-                <label className="flex items-center gap-2 text-[11px] text-text-secondary">
-                  <input type="checkbox" checked={ppSandbox} onChange={(e) => setPpSandbox(e.target.checked)} className="h-3 w-3 accent-[var(--color-accent)]" />
-                  Sandbox (test credentials)
-                </label>
-                <button onClick={saveCreds} disabled={credBusy || (!ppId.trim() && !ppSecret.trim())}
-                  className="inline-flex w-fit items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-                  {credBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}{credBusy ? "Verifying…" : "Save & verify"}
-                </button>
+                {isOAuth ? (
+                  <>
+                    <button onClick={signIn} disabled={credBusy}
+                      className="inline-flex w-fit items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+                      {credBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}{credBusy ? "Signing in…" : `Sign in to ${app.title || app.id}`}
+                    </button>
+                    <span className="text-[10px] text-text-muted/70">Opens your browser to authorize, then verifies by a real fetch. Token stored locally; used read-only.</span>
+                  </>
+                ) : (
+                  <>
+                    {credSpec!.map((f) => f.kind === "toggle" ? (
+                      <label key={f.env} className="flex items-center gap-2 text-[11px] text-text-secondary">
+                        <input type="checkbox" checked={credVals[f.env] === "on"} onChange={(e) => setCredVals((v) => ({ ...v, [f.env]: e.target.checked ? "on" : "off" }))} className="h-3 w-3 accent-[var(--color-accent)]" />
+                        {f.label}
+                      </label>
+                    ) : (
+                      <input key={f.env} type="password" value={credVals[f.env] ?? ""} onChange={(e) => setCredVals((v) => ({ ...v, [f.env]: e.target.value }))} placeholder={f.label} autoComplete="off"
+                        className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
+                    ))}
+                    <button onClick={saveCreds} disabled={credBusy || !credSpec!.some((f) => f.kind === "secret" && (credVals[f.env] ?? "").trim())}
+                      className="inline-flex w-fit items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+                      {credBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}{credBusy ? "Verifying…" : "Save & verify"}
+                    </button>
+                  </>
+                )}
                 {credMsg && <span className="text-[11px] text-text-muted">{credMsg}</span>}
-                <span className="text-[10px] text-text-muted/70">Create a REST app at developer.paypal.com with Transaction Search enabled, then paste its Client ID + Secret. Stored in your Keychain; used read-only.</span>
+                {app.id === "paypal" && !isOAuth && <span className="text-[10px] text-text-muted/70">Create a REST app at developer.paypal.com with Transaction Search enabled. Stored in your Keychain; used read-only.</span>}
               </div>
             </Detail>
           )}
