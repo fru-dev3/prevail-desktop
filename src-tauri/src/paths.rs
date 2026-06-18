@@ -145,7 +145,17 @@ pub(crate) fn safe_domain_subdir(vault: &str, domain: &Option<String>, sub: &str
     match domain {
         Some(d) if is_safe_domain(d) => Ok(resolve_domain_base(vault, d).join(sub)),
         Some(d) => Err(format!("invalid domain: {d}")),
-        None => Ok(PathBuf::from(vault).join(sub)),
+        // B2-12: General SUPPORTING subdirs (e.g. _threads) live in build/ once
+        // migrated (build_root falls back to the vault root until then, so no-op).
+        // Content subdirs for General stay at the root.
+        None => {
+            const SUPPORTING: &[&str] = &["_threads"];
+            if SUPPORTING.contains(&sub) {
+                Ok(build_root(vault).join(sub))
+            } else {
+                Ok(PathBuf::from(vault).join(sub))
+            }
+        }
     }
 }
 
