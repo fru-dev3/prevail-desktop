@@ -523,6 +523,35 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
       setTidying(false);
     }
   }
+  // B2-12 - "Tidy runtime files into build/": move the General/root SUPPORTING
+  // files (ledgers, benchmark, _meta, _threads, usage, …) into <vault>/build/ so
+  // the root holds just content + build/. Non-destructive copy + verify; originals
+  // are kept until you archive. No repoint needed (resolvers find build/).
+  const [tidyingBuild, setTidyingBuild] = useState(false);
+  const [tidyBuildNote, setTidyBuildNote] = useState<string | null>(null);
+  async function tidyIntoBuild() {
+    setTidyingBuild(true);
+    setTidyBuildNote(null);
+    try {
+      const r = await invoke<{ buildDir: string; ok: boolean; copiedFiles?: number; sourceFiles?: number; movedEntries?: string[] }>(
+        "engine_vault_migrate_build",
+        { vault: vaultPath },
+      );
+      if (r.ok) {
+        const n = r.movedEntries?.length ?? 0;
+        setTidyBuildNote(n === 0
+          ? "Nothing to tidy — no loose runtime files at the vault root."
+          : `Moved runtime files into build/ (${r.copiedFiles ?? "the"} files). Originals are kept until you archive them; nothing was deleted.`);
+        onChange();
+      } else {
+        setTidyBuildNote(`Tidy incomplete (${r.copiedFiles}/${r.sourceFiles} files). Your vault is unchanged; nothing was moved.`);
+      }
+    } catch (e) {
+      setTidyBuildNote(`Tidy failed: ${String(e)}`);
+    } finally {
+      setTidyingBuild(false);
+    }
+  }
   async function moveIntoApp() {
     setMoving(true);
     setMoveNote(null);
@@ -610,6 +639,12 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
               </button>
             </SettingRow>
           )}
+          <SettingRow label="Tidy runtime files into build/" desc="Move generated runtime files (decision + intent ledgers, _meta, benchmark) into a build/ folder so the root holds just your content. Copied + verified first; originals are kept until you archive — never deleted.">
+            <button onClick={tidyIntoBuild} disabled={tidyingBuild} className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50">
+              {tidyingBuild ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderTree className="h-3.5 w-3.5" />}
+              {tidyingBuild ? "Tidying…" : "Tidy into build/"}
+            </button>
+          </SettingRow>
           </div>
         </details>
       )}
@@ -618,6 +653,9 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
       )}
       {tidyNote && (
         <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{tidyNote}</div>
+      )}
+      {tidyBuildNote && (
+        <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-4 py-2 text-xs text-text-secondary">{tidyBuildNote}</div>
       )}
       {/* W2 (Monday feedback): backups can render as their own section in Workspace. */}
       {!hideBackups && <BackupAutomationCard vault={vaultPath} onChange={onChange} />}
