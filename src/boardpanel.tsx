@@ -194,6 +194,45 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
     );
   };
 
+  // List view: a full-width horizontal row (text grows, controls sit on the right).
+  const renderRow = (t: BoardTask) => {
+    const ai = t.owner === "ai";
+    const blocked = t.status === "blocked";
+    const editing = editId === t.id;
+    return (
+      <div key={`row:${t.domain}:${t.id ?? t.text}`}
+        className={`flex items-center gap-3 rounded-lg border bg-surface px-3 py-2 ${blocked ? "border-warn/40" : "border-border"}`}>
+        <span title={ai ? "AI" : "Me"} className={`shrink-0 ${ai ? "text-accent" : "text-text-muted"}`}>
+          {ai ? <Bot className="h-4 w-4" /> : <User className="h-4 w-4" />}
+        </span>
+        {editing ? (
+          <input autoFocus value={editVal} onChange={(e) => setEditVal(e.target.value)}
+            onBlur={() => saveEdit(t)}
+            onKeyDown={(e) => { if (e.key === "Enter") saveEdit(t); if (e.key === "Escape") setEditId(null); }}
+            className="min-w-0 flex-1 rounded border border-accent-border bg-background px-1.5 py-0.5 text-[13px] text-text-primary focus:outline-none" />
+        ) : (
+          <span onDoubleClick={() => { setEditId(t.id ?? null); setEditVal(t.text); }} title="Double-click to edit"
+            className={`min-w-0 flex-1 truncate text-[13px] ${t.status === "done" ? "text-text-muted line-through" : "text-text-primary"}`}>{t.text}</span>
+        )}
+        <span className="hidden shrink-0 rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-muted sm:inline">{titleCase(t.domain)}</span>
+        {blocked && <span className="shrink-0 font-mono text-[10px] text-warn">⏸ decision</span>}
+        <span className={`hidden w-20 shrink-0 text-right font-mono text-[10px] md:inline ${dueTone(t.due)}`}>{t.due || ""}</span>
+        <select value={t.status} onChange={(e) => setStatus(t, e.target.value)} disabled={busy === `s:${t.id}`}
+          className="shrink-0 rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none">
+          {["todo", "doing", "review", "blocked", "done"].map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <button onClick={() => toggleOwner(t)} disabled={busy === `o:${t.id}`}
+          title={ai ? "Take it back" : "Hand to AI to run as a workflow"}
+          className="shrink-0 rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
+          {ai ? "→ Me" : "→ AI"}
+        </button>
+        <button onClick={() => del(t)} title="Delete task" disabled={busy === `d:${t.id}`} className="shrink-0 text-text-muted/40 transition-colors hover:text-danger">
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  };
+
   // List view ordering: open work first (by column order), done last; then by due.
   const ORDER: Record<string, number> = { todo: 0, doing: 1, blocked: 1, review: 2, done: 3 };
   const listed = useMemo(
@@ -214,6 +253,10 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
 
   return (
     <>
+      {/* Pinned header: title, AI status, and all controls stay visible while the
+          board/list scrolls. Negative margins cancel the page's px-8/py-10 so the
+          backdrop goes edge-to-edge and flush to the top. */}
+      <div className="sticky top-0 z-20 -mx-8 -mt-10 border-b border-border-subtle bg-background px-8 pb-3 pt-8">
       <SettingsHeader title="Board" icon={Check}
         subtitle="Your tasks as a board — owned by you or handed to AI. AI-owned tasks run as workflows and ask you to decide anything consequential in the Decision Inbox." />
 
@@ -233,7 +276,7 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
       )}
 
       {/* Controls: owner filter · domain filter · add */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex overflow-hidden rounded-md border border-border">
           {(["all", "me", "ai"] as const).map((o) => (
             <button key={o} onClick={() => setOwnerFilter(o)}
@@ -274,7 +317,9 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
           </button>
         </div>
       </div>
+      </div>
 
+      <div className="pt-4">
       {view === "board" ? (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
           {COLUMNS.map((col) => {
@@ -298,8 +343,8 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
           })}
         </div>
       ) : (
-        <div className="mx-auto flex max-w-2xl flex-col gap-2">
-          {listed.map(renderCard)}
+        <div className="flex flex-col gap-1.5">
+          {listed.map(renderRow)}
           {listed.length === 0 && (
             <div className="rounded-xl border border-dashed border-border-subtle px-4 py-10 text-center text-sm text-text-muted">
               No tasks yet. Add one above, or hand work to AI.
@@ -307,6 +352,7 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
           )}
         </div>
       )}
+      </div>
     </>
   );
 }
