@@ -30,6 +30,25 @@ pub(crate) fn data_root(vault: &str) -> PathBuf {
     }
 }
 
+// B2-12 (Phase 1, additive — no behavior change yet): the `build/` container for
+// supporting/runtime files (ledgers, _meta, _threads, benchmark, usage, …).
+// `runtime_path` PREFERS <vault>/build/<name> when build/ exists, else falls back
+// to the current location (vault root), so nothing changes until a migration
+// creates build/. Readers should be routed through this in Phase 2.
+pub(crate) fn build_root(vault: &str) -> PathBuf {
+    let b = PathBuf::from(vault).join("build");
+    if b.is_dir() { b } else { PathBuf::from(vault) }
+}
+#[allow(dead_code)]
+pub(crate) fn runtime_path(vault: &str, name: &str) -> PathBuf {
+    let in_build = PathBuf::from(vault).join("build").join(name);
+    if in_build.exists() {
+        return in_build;
+    }
+    // Fallback: today's location at the vault root (pre-migration, or un-migrated).
+    PathBuf::from(vault).join(name)
+}
+
 // Resolve a domain's base directory. Resolution order (newest wins, all readable
 // for zero-migration compatibility): v4 <vault>/data/domains/<d>, then v3
 // <vault>/domains/<d>, then legacy <vault>/<d>. New domains default to the v4
@@ -57,6 +76,18 @@ pub(crate) fn domain_dir(vault: &str, domain: &Option<String>) -> PathBuf {
     match domain {
         Some(d) if is_safe_domain(d) => resolve_domain_base(vault, d),
         _ => PathBuf::from(vault),
+    }
+}
+
+// B2-12: resolve a SUPPORTING runtime file (ledger / journal / surface / threads).
+// Per-domain (Some) → stays inside the domain. General (None) → the build/ bucket
+// (build_root falls back to the vault root until a migration creates build/, so
+// this is a no-op until then). Do NOT use for CONTENT files (_memory.md,
+// _state.md, _skills) — those stay at root/data for the General bucket.
+pub(crate) fn runtime_file(vault: &str, domain: &Option<String>, file: &str) -> PathBuf {
+    match domain {
+        Some(d) if is_safe_domain(d) => resolve_domain_base(vault, d).join(file),
+        _ => build_root(vault).join(file),
     }
 }
 
@@ -114,7 +145,17 @@ pub(crate) fn safe_domain_subdir(vault: &str, domain: &Option<String>, sub: &str
     match domain {
         Some(d) if is_safe_domain(d) => Ok(resolve_domain_base(vault, d).join(sub)),
         Some(d) => Err(format!("invalid domain: {d}")),
-        None => Ok(PathBuf::from(vault).join(sub)),
+        // B2-12: General SUPPORTING subdirs (e.g. _threads) live in build/ once
+        // migrated (build_root falls back to the vault root until then, so no-op).
+        // Content subdirs for General stay at the root.
+        None => {
+            const SUPPORTING: &[&str] = &["_threads"];
+            if SUPPORTING.contains(&sub) {
+                Ok(build_root(vault).join(sub))
+            } else {
+                Ok(PathBuf::from(vault).join(sub))
+            }
+        }
     }
 }
 
