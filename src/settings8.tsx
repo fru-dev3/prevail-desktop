@@ -319,10 +319,11 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
           W1: Your Vault vs Demo Vault as MUTUALLY-EXCLUSIVE toggles. */}
       {view !== "packs" && (<>
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className={`rounded-xl border p-4 transition-opacity ${!isDemo ? "border-warn/40 bg-warn/5" : "border-border bg-surface opacity-60"}`}>
+        <div className={`rounded-xl border p-4 transition-all ${!isDemo ? "border-2 border-warn bg-warn/10 shadow-sm" : "border border-border bg-surface opacity-55"}`}>
           <div className="flex items-center gap-2">
             <ShieldCheck className={`h-4 w-4 ${!isDemo ? "text-warn" : "text-text-muted"}`} />
             <span className="text-sm font-semibold text-text-primary">Your vault</span>
+            {!isDemo && <span className="rounded-full bg-warn px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-background">Active</span>}
             <span className="ml-auto"><Toggle on={!isDemo} disabled={switchingMode} onChange={(v) => { if (v) void switchToProduction(); else void switchToDemo(); }} label="Use my own vault" /></span>
           </div>
           {/* B2-15: inline icons to change the path + open the vault in Finder. */}
@@ -345,10 +346,11 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
             </div>
           )}
         </div>
-        <div className={`rounded-xl border p-4 transition-opacity ${isDemo ? "border-accent-border bg-accent-soft" : "border-border bg-surface opacity-60"}`}>
+        <div className={`rounded-xl border p-4 transition-all ${isDemo ? "border-2 border-accent bg-accent-soft shadow-sm" : "border border-border bg-surface opacity-55"}`}>
           <div className="flex items-center gap-2">
             <Sparkles className={`h-4 w-4 ${isDemo ? "text-accent" : "text-text-muted"}`} />
             <span className="text-sm font-semibold text-text-primary">Demo vault</span>
+            {isDemo && <span className="rounded-full bg-accent px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-background">Active</span>}
             <span className="ml-auto"><Toggle on={isDemo} disabled={switchingMode} onChange={(v) => { if (v) void switchToDemo(); else void switchToProduction(); }} label="Explore the demo sandbox" /></span>
           </div>
           <div className="mt-1.5 flex items-center gap-1.5">
