@@ -331,12 +331,19 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
       </>)}
       {view !== "cards" && packs.length > 0 && (
         <div className="mt-4">
-          <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">
-            <Sparkles className="h-3.5 w-3.5" /> Starter packs
-          </div>
-          <p className="mb-3 text-xs text-text-muted">
-            Import a ready-made set of domains for your situation. Import one at a time; existing domains are always kept, never overwritten.
-          </p>
+          {/* Suppress this inner header when rendered as the Workspace "Starter
+              packs" section (view==="packs") — the WorkspaceSubLabel already
+              titles it, so showing both read as a duplicate. */}
+          {view !== "packs" && (
+            <>
+              <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">
+                <Sparkles className="h-3.5 w-3.5" /> Starter packs
+              </div>
+              <p className="mb-3 text-xs text-text-muted">
+                Import a ready-made set of domains for your situation. Import one at a time; existing domains are always kept, never overwritten.
+              </p>
+            </>
+          )}
           {/* Visible result right where you're looking, not just a footer. */}
           {note && (
             <div className="mb-3 flex items-start gap-2 rounded-lg border border-accent-border bg-accent-soft px-3 py-2 text-xs text-text-primary">

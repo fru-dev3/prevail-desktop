@@ -704,7 +704,22 @@ pub(crate) async fn run_cli(cli: &str, model: Option<&str>, prompt: &str) -> Res
             let m = model.unwrap_or("llama3.2");
             ("ollama", vec!["run".into(), m.to_string(), "--".into(), prompt.to_string()])
         }
-        _ => return Err(format!("unknown cli: {cli}")),
+        "gemini" => {
+            let mut v = vec!["--skip-trust".to_string()];
+            if let Some(m) = model { v.push("-m".into()); v.push(m.to_string()); }
+            v.push(format!("--prompt={prompt}"));
+            ("gemini", v)
+        }
+        _ => {
+            // Additional CLI families: best-effort `<bin> -p -- <prompt>`.
+            let bin = if cli == "cursor" { "cursor-agent" } else { cli };
+            let mut v = Vec::new();
+            if let Some(m) = model { v.push("--model".into()); v.push(m.to_string()); }
+            v.push("-p".into());
+            v.push("--".into());
+            v.push(prompt.to_string());
+            (bin, v)
+        }
     };
 
     let bin_abs = crate::resolve_bin_abs(bin);

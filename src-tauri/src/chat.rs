@@ -92,7 +92,36 @@ fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String
                 vec!["run".to_string(), m.to_string(), "--".to_string(), prompt.to_string()],
             )
         }
-        _ => ("echo".to_string(), vec![format!("unknown cli: {}", cli)]),
+        "gemini" => {
+            // Legacy Gemini CLI: --skip-trust, -m <model>, -p <prompt> (value).
+            let mut v = vec!["--skip-trust".to_string()];
+            if let Some(m) = model {
+                v.push("-m".to_string());
+                v.push(m.to_string());
+            }
+            v.push(format!("--prompt={prompt}"));
+            ("gemini".to_string(), v)
+        }
+        _ => {
+            // Additional CLI runtime families (codebuddy/copilot/cursor/kiro/…):
+            // best-effort via the de-facto headless convention `<bin> -p -- <prompt>`.
+            // No claude-only flags (other CLIs may reject them). The bin is the kind
+            // except where they differ (cursor ships `cursor-agent`). A wrong-flag
+            // run surfaces as a visible error, never silent.
+            let bin = match cli {
+                "cursor" => "cursor-agent",
+                other => other,
+            };
+            let mut v = Vec::new();
+            if let Some(m) = model {
+                v.push("--model".to_string());
+                v.push(m.to_string());
+            }
+            v.push("-p".to_string());
+            v.push("--".to_string());
+            v.push(prompt.to_string());
+            (bin.to_string(), v)
+        }
     }
 }
 
