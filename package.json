@@ -1,7 +1,7 @@
 {
   "name": "fd-apps-prevail-desktop",
   "private": true,
-  "version": "0.1.132",
+  "version": "0.1.133",
   "description": "Prevail desktop — native macOS cockpit for AI council deliberation",
   "license": "GPL-3.0-only",
   "type": "module",
