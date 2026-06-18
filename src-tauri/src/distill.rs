@@ -150,8 +150,8 @@ async fn run_once(cfg: &DistillConfig) -> Result<(u64, u64), String> {
     }
     let mut domains_done = 0u64;
     let mut lines_done = 0u64;
-    for dir in ledger_dirs(&vault) {
-        match distill_dir(&dir, cfg).await {
+    for target in ledger_dirs(&vault) {
+        match distill_dir(&target, cfg).await {
             Ok(n) if n > 0 => {
                 domains_done += 1;
                 lines_done += n;
@@ -159,19 +159,34 @@ async fn run_once(cfg: &DistillConfig) -> Result<(u64, u64), String> {
             Ok(_) => {}
             Err(e) => {
                 // Record per-dir error in its cursor but keep going.
-                let mut c = read_cursor(&dir);
+                let mut c = read_cursor(&target.ledger_dir);
                 c.last_error = Some(e);
                 c.last_run_ts = now_secs();
                 c.last_run_ok = false;
-                write_cursor(&dir, &c);
+                write_cursor(&target.ledger_dir, &c);
             }
         }
     }
     Ok((domains_done, lines_done))
 }
 
-// Distill one directory's ledger. Returns the number of ledger lines consumed.
-async fn distill_dir(dir: &Path, cfg: &DistillConfig) -> Result<u64, String> {
+// B2-12 split-path: a bucket's append-only LEDGER (_intents.jsonl, cursor,
+// rotation, _decisions.jsonl) and its CONTENT (_memory.md, _state.md) can live in
+// different dirs. For domains they're the same dir (unchanged). For the General
+// bucket the ledger moves to <vault>/build/ but memory/state stay at the vault
+// root, so the two are split.
+struct DistillTarget {
+    ledger_dir: PathBuf,
+    content_dir: PathBuf,
+}
+
+// Distill one bucket. Returns the number of ledger lines consumed. The ledger
+// (intents/cursor/rotation/decisions) is read from `ledger_dir`; the distilled
+// memory/state are written to `content_dir` (same dir for domains; split for the
+// General bucket, where the ledger is under build/ but memory stays at root).
+async fn distill_dir(target: &DistillTarget, cfg: &DistillConfig) -> Result<u64, String> {
+    let dir = target.ledger_dir.as_path();
+    let content_dir = target.content_dir.as_path();
     let ledger = dir.join("_intents.jsonl");
     if !ledger.exists() {
         return Ok(0);
@@ -210,11 +225,11 @@ async fn distill_dir(dir: &Path, cfg: &DistillConfig) -> Result<u64, String> {
         return Ok(0);
     }
 
-    let memory_path = dir.join("_memory.md");
-    let state_path = dir.join("_state.md");
+    let memory_path = content_dir.join("_memory.md");
+    let state_path = content_dir.join("_state.md");
     let existing_memory = std::fs::read_to_string(&memory_path).unwrap_or_default();
     let existing_state = std::fs::read_to_string(&state_path).unwrap_or_default();
-    let domain_label = dir
+    let domain_label = content_dir
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("General")
@@ -222,7 +237,7 @@ async fn distill_dir(dir: &Path, cfg: &DistillConfig) -> Result<u64, String> {
     // Prepend the user's Ideal State (constitution) so distilled memory/state
     // is shaped by the same values that govern chat. Vault root is the domain
     // dir's parent.
-    let ideal = dir
+    let ideal = content_dir
         .parent()
         .map(crate::ideal_state_preamble)
         .unwrap_or_default();
@@ -525,18 +540,25 @@ fn title_case_label(slug: &str) -> String {
         .join(" ")
 }
 
-fn ledger_dirs(vault: &Path) -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-    // No-domain (General) ledger at the vault root.
-    if vault.join("_intents.jsonl").exists() {
-        dirs.push(vault.to_path_buf());
+fn ledger_dirs(vault: &Path) -> Vec<DistillTarget> {
+    let mut targets = Vec::new();
+    let mut seen: Vec<PathBuf> = Vec::new();
+    // No-domain (General) bucket. B2-12: the ledger moves to <vault>/build/ once
+    // migrated (build_root falls back to the vault root until then), but the
+    // distilled _memory.md/_state.md stay at the vault root (content). So the
+    // ledger dir and content dir are SPLIT for General.
+    let general_ledger = crate::paths::build_root(&vault.to_string_lossy());
+    if general_ledger.join("_intents.jsonl").exists() {
+        targets.push(DistillTarget { ledger_dir: general_ledger, content_dir: vault.to_path_buf() });
+        seen.push(vault.to_path_buf());
     }
-    // Legacy layout: domains directly under the vault root.
+    // Legacy layout: domains directly under the vault root (ledger == content).
     if let Ok(rd) = std::fs::read_dir(vault) {
         for e in rd.flatten() {
             let p = e.path();
-            if p.is_dir() && p.join("_intents.jsonl").exists() {
-                dirs.push(p);
+            if p.is_dir() && p.join("_intents.jsonl").exists() && !seen.contains(&p) {
+                seen.push(p.clone());
+                targets.push(DistillTarget { ledger_dir: p.clone(), content_dir: p });
             }
         }
     }
@@ -545,12 +567,13 @@ fn ledger_dirs(vault: &Path) -> Vec<PathBuf> {
     if let Ok(rd) = std::fs::read_dir(vault.join("domains")) {
         for e in rd.flatten() {
             let p = e.path();
-            if p.is_dir() && p.join("_intents.jsonl").exists() && !dirs.contains(&p) {
-                dirs.push(p);
+            if p.is_dir() && p.join("_intents.jsonl").exists() && !seen.contains(&p) {
+                seen.push(p.clone());
+                targets.push(DistillTarget { ledger_dir: p.clone(), content_dir: p });
             }
         }
     }
-    dirs
+    targets
 }
 
 fn read_cursor(dir: &Path) -> Cursor {
@@ -698,6 +721,26 @@ mod tests {
         std::fs::create_dir_all(base.join("empty")).unwrap();
         let dirs = ledger_dirs(&base);
         assert_eq!(dirs.len(), 2); // root + wealth, not empty
+        // General bucket: ledger and content both resolve to root pre-migration.
+        let general = dirs.iter().find(|t| t.content_dir == base).unwrap();
+        assert_eq!(general.ledger_dir, base); // no build/ yet -> build_root == root
+        // Per-domain: ledger and content are the same dir.
+        let wealth = dirs.iter().find(|t| t.content_dir == base.join("wealth")).unwrap();
+        assert_eq!(wealth.ledger_dir, wealth.content_dir);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn general_ledger_splits_to_build_when_migrated() {
+        let base = std::env::temp_dir().join(format!("prevail-distill-split-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("build")).unwrap();
+        // Migrated: the General _intents.jsonl now lives under build/.
+        std::fs::write(base.join("build").join("_intents.jsonl"), "{}\n").unwrap();
+        let dirs = ledger_dirs(&base);
+        let general = dirs.iter().find(|t| t.content_dir == base).unwrap();
+        assert_eq!(general.ledger_dir, base.join("build")); // ledger -> build/
+        assert_eq!(general.content_dir, base); // memory/state stay at root
         let _ = std::fs::remove_dir_all(&base);
     }
 }
