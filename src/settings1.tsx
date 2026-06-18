@@ -2,9 +2,8 @@
 // & Lenses, Remote/WebUI, and Ingestion. Each renders shared panel components and
 // the SettingsHeader; none close over App root state.
 import { Fragment, useEffect, useState } from "react";
-import { Aperture, ArrowRight, Diamond, Globe, Lightbulb, MessageSquare, Sparkles } from "lucide-react";
+import { Aperture, ArrowRight, Diamond, Globe, MessageSquare } from "lucide-react";
 import { invoke, listen } from "./bridge";
-import { CollapsibleSection } from "./collapsible";
 import { FRAMEWORKS, LENSES } from "./constants";
 import { PREF, getPref, setPref } from "./storage";
 import { Toggle } from "./ui";
@@ -100,69 +99,47 @@ export function FrameworksSection() {
         subtitle="The bracketed preamble Prevail prepends to every prompt. A framework shapes the structure of the answer; a lens shapes the perspective it comes from."
       />
 
-      {/* Why this matters - collapsed by default so landing isn't noisy. */}
-      <CollapsibleSection icon={Lightbulb} title="Why this matters" summary="how it works"
-        subtitle="A framework shapes the structure; a lens shapes the perspective.">
-        <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-          <div className="flex flex-1 flex-col items-center rounded-xl border border-border-subtle bg-background px-3 py-3 text-center">
-            <MessageSquare className="h-5 w-5 text-text-muted" />
-            <div className="mt-1.5 text-sm font-semibold text-text-primary">Your question</div>
-            <div className="text-[11px] text-text-muted">as you'd type it</div>
-          </div>
-          <ArrowRight className="mx-auto h-4 w-4 shrink-0 rotate-90 text-accent sm:rotate-0" />
-          <div className="flex flex-1 flex-col items-center rounded-xl border border-accent-border bg-accent-soft px-3 py-3 text-center">
-            <div className="flex items-center gap-1.5 text-lg text-accent">◆<span className="text-text-muted">+</span>◇</div>
-            <div className="mt-1.5 text-sm font-semibold text-accent">Framework + Lens</div>
-            <div className="text-[11px] text-text-muted">a deliberate shape</div>
-          </div>
-          <ArrowRight className="mx-auto h-4 w-4 shrink-0 rotate-90 text-accent sm:rotate-0" />
-          <div className="flex flex-1 flex-col items-center rounded-xl border border-border-subtle bg-background px-3 py-3 text-center">
-            <Sparkles className="h-5 w-5 text-accent" />
-            <div className="mt-1.5 text-sm font-semibold text-text-primary">Sharper answer</div>
-            <div className="text-[11px] text-text-muted">structured, on-angle</div>
-          </div>
-        </div>
-        <p className="mt-3 text-[13px] text-text-muted">Stack a framework with a lens to pressure-test one decision from several angles at once.</p>
-      </CollapsibleSection>
+      {/* No collapse: everything on one page. A compact "how it works" strip, then
+          Frameworks + Lenses side by side (two columns). */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-border-subtle bg-background px-3 py-2 text-[12px] text-text-secondary">
+        <MessageSquare className="h-4 w-4 shrink-0 text-text-muted" />
+        <span>Your question</span>
+        <ArrowRight className="h-3.5 w-3.5 shrink-0 text-accent" />
+        <span className="text-accent">◆ Framework + ◇ Lens</span>
+        <ArrowRight className="h-3.5 w-3.5 shrink-0 text-accent" />
+        <span>sharper answer.</span>
+        <span className="ml-auto text-[11px] text-text-muted">structure × perspective</span>
+      </div>
 
-      {/* The controls themselves - collapsible, each header showing the active
-          selection so the page is calm but the current state is obvious. */}
-      <CollapsibleSection icon={Diamond} title="Frameworks" summary={`Active · ${activeFramework?.label ?? "Off"}`}
-        subtitle="Structure: how the answer is shaped." storageKey="prevail.settings.fw.frameworks" defaultOpen>
-        <PreambleColumn headerless glyph="◆" title="Frameworks" options={FRAMEWORKS}
-          active={activeFramework} selectedId={fwLens.framework} onSelect={fwLens.setFramework} />
-      </CollapsibleSection>
-      <CollapsibleSection icon={Aperture} title="Lenses" summary={`Active · ${activeLens?.label ?? "Off"}`}
-        subtitle="Perspective: the angle the answer comes from." storageKey="prevail.settings.fw.lenses">
-        <PreambleColumn headerless glyph="◇" title="Lenses" options={LENSES}
-          active={activeLens} selectedId={fwLens.lens} onSelect={fwLens.setLens} />
-      </CollapsibleSection>
-
-      {/* More coming soon + feedback - collapsed, secondary. */}
-      <CollapsibleSection icon={Sparkles} title="More coming soon" summary="custom + feedback">
-        <p className="max-w-3xl text-sm text-text-secondary">
-          Custom frameworks and lenses (write and save your own) are on the way. Today's set ships with Prevail. Have a
-          framework or lens you'd want built in? Tell us, it shapes what we add next.
-        </p>
-        <div className="mt-3.5 flex flex-wrap gap-2">
-          <a
-            href="https://github.com/fru-dev3/prevail-desktop/issues/new"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
-          >
-            <MessageSquare className="h-3.5 w-3.5" /> Suggestions & feedback
-          </a>
-          <a
-            href="https://prevail.sh"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
-          >
-            <Globe className="h-3.5 w-3.5" /> prevail.sh
-          </a>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <div className="mb-2 flex items-baseline gap-2">
+            <Diamond className="h-4 w-4 shrink-0 text-accent" />
+            <h3 className="text-sm font-semibold text-text-primary">Frameworks</h3>
+            <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-text-muted">{activeFramework?.label ?? "Off"}</span>
+          </div>
+          <div className="mb-2 text-[11px] text-text-muted">Structure: how the answer is shaped.</div>
+          <PreambleColumn headerless glyph="◆" title="Frameworks" options={FRAMEWORKS}
+            active={activeFramework} selectedId={fwLens.framework} onSelect={fwLens.setFramework} />
         </div>
-      </CollapsibleSection>
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <div className="mb-2 flex items-baseline gap-2">
+            <Aperture className="h-4 w-4 shrink-0 text-accent" />
+            <h3 className="text-sm font-semibold text-text-primary">Lenses</h3>
+            <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-text-muted">{activeLens?.label ?? "Off"}</span>
+          </div>
+          <div className="mb-2 text-[11px] text-text-muted">Perspective: the angle the answer comes from.</div>
+          <PreambleColumn headerless glyph="◇" title="Lenses" options={LENSES}
+            active={activeLens} selectedId={fwLens.lens} onSelect={fwLens.setLens} />
+        </div>
+      </div>
+
+      {/* Custom + feedback — a quiet one-line footer, not a section. */}
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border-subtle pt-3 text-[12px] text-text-muted">
+        <span>Custom frameworks &amp; lenses are coming.</span>
+        <a href="https://github.com/fru-dev3/prevail-desktop/issues/new" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-accent"><MessageSquare className="h-3 w-3" /> Suggest one</a>
+        <a href="https://prevail.sh" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-accent"><Globe className="h-3 w-3" /> prevail.sh</a>
+      </div>
     </>
   );
 }
