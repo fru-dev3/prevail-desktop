@@ -1,7 +1,7 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { ArrowLeft, Brain, Check, Compass, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Target, Wrench, Zap } from "lucide-react";
+import { ArrowLeft, Check, Compass, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sparkles, Target, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { LS, lsGet } from "./storage";
 import { useAppearance } from "./hooks";
@@ -16,7 +16,7 @@ import { OmegaSection } from "./omega";
 import { CollapsibleSection } from "./collapsible";
 import { GeneralSection, IdealStateSection, SafetySection } from "./settings4";
 import { AboutSection, GatewaySection, McpSection } from "./settings5";
-import { ConfigurationSection, CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6";
+import { CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6";
 import { ModelsSection } from "./settings7";
 import { AppearanceSection, WorkspaceSection } from "./settings8";
 import { BenchmarkPanel } from "./benchpanel";
@@ -98,14 +98,19 @@ export function SettingsPanel({
     // is doing) → Recommendations (things for the user) → Routines. The old
     // "Configuration" (memory-engine knobs) + cross-domain Tasks move to the App
     // group so nothing is orphaned.
+    // B2-24: Ideals now contains Ideal State + Omega (combined). B2-20: "Memory
+    // engine" deleted (its Memory & Context view folds into Routines). B2-17:
+    // Recommendations moves to the new "Work" group.
     { heading: "Context & Memory", items: [
       { id: "ideal-state", label: "Ideals", icon: Compass },
-      { id: "omega", label: "Omega", icon: Sigma },
       { id: "intents", label: "Intents", icon: Lightbulb },
-      { id: "recommendations", label: "Recommendations", icon: Sparkles },
       { id: "daemons", label: "Routines", icon: Zap },
-      // Memory engine (distillation knobs) belongs with memory, not orphaned in App.
-      { id: "configuration", label: "Memory engine", icon: Brain },
+    ]},
+    // B2-17: "Work" — what you're doing: Tasks, Workspace, Recommendations.
+    { heading: "Work", items: [
+      { id: "tasks", label: "Tasks", icon: Check },
+      { id: "workspace", label: "Workspace", icon: Folder },
+      { id: "recommendations", label: "Recommendations", icon: Sparkles },
     ]},
     { heading: "Connections", items: [
       { id: "connectors", label: "Apps", icon: Plug },
@@ -119,12 +124,8 @@ export function SettingsPanel({
       { id: "privacy", label: "Privacy", icon: ShieldCheck },
       { id: "safety", label: "Safety", icon: Shield },
     ]},
-    { heading: "Workspace", items: [
-      { id: "workspace", label: "Workspace", icon: Folder },
-    ]},
     { heading: "App", items: [
       { id: "general", label: "General", icon: SettingsIcon },
-      { id: "tasks", label: "Tasks", icon: Check },
       { id: "about", label: "About", icon: Github },
     ]},
   ];
@@ -263,14 +264,27 @@ export function SettingsPanel({
               </div>
             </>
           )}
-          {section === "configuration" && <ConfigurationSection vaultPath={vaultPath} />}
-          {section === "ideal-state" && <IdealStateSection vaultPath={vaultPath} />}
+          {/* B2-24: Ideals = Ideal State + Omega on one page (compare over time). */}
+          {section === "ideal-state" && (
+            <>
+              <IdealStateSection vaultPath={vaultPath} />
+              <div className="mt-8 border-t border-border-subtle pt-6"><OmegaSection vaultPath={vaultPath} /></div>
+            </>
+          )}
+          {/* "omega" kept as a deep-link target (no nav item) — folded into Ideals. */}
           {section === "omega" && <OmegaSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
           {section === "intents" && <IntentsSection vaultPath={vaultPath} />}
           {section === "tasks" && <TasksCrossDomainSection vaultPath={vaultPath} />}
           {section === "recommendations" && <RecommendationsPanel vaultPath={vaultPath} />}
-          {section === "daemons" && <DaemonsSection vaultPath={vaultPath} />}
+          {/* B2-20: Memory engine page deleted; its Memory & Context view folds
+              into Routines so nothing is lost. */}
+          {section === "daemons" && (
+            <>
+              <DaemonsSection vaultPath={vaultPath} />
+              <div className="mt-8 border-t border-border-subtle pt-6"><MemoryContextSection vaultPath={vaultPath} /></div>
+            </>
+          )}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {section === "connectors" && (
             <>
