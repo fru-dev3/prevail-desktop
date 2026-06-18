@@ -108,6 +108,11 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
   quiet "couldn't load this domain's local context" + retry, instead of a scary
   raw path error and missing items.
 
+- [ ] **B2-29 — Usage page: richer Activity.** The Activity contribution-heatmap
+  is the good view; the daily bar chart alone isn't enough. Keep/feature the
+  Activity heatmap on the Usage page; don't change the other usage cards.
+  (Clarify exact intent — Activity already renders there.)
+
 (More to come — the founder is sending rapid feedback; appended as received.)
 
 ---
