@@ -4,6 +4,7 @@
 // the tokens are going (history vs attached context), and lets the user reclaim
 // space by starting fresh. Just a small circular gauge; details on click.
 import { useState } from "react";
+import { Toggle } from "./ui";
 
 // Rough token estimate: ~4 chars/token for English prose. Good enough to drive a
 // fill gauge and warn before degradation; exact tokenization isn't needed here.
@@ -106,28 +107,24 @@ export function ContextMeter({
               <button
                 onClick={() => { onCompact(); }}
                 disabled={compacting}
+                title="Summarize the conversation so far into a compact gist, freeing space. Memory + domain context carry over."
                 className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:opacity-50"
               >
-                {compacting ? "Compacting…" : "Compact & Summarize"}
+                {compacting ? "Compacting…" : "Compact"}
               </button>
             )}
             <button
               onClick={() => { onReset(); setOpen(false); }}
+              title="Clear the conversation and start over. Long-term memory + domain context still carry over."
               className="mt-2 w-full rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-border hover:bg-accent-soft hover:text-accent"
             >
-              Start a fresh chat
+              Start fresh
             </button>
-            <p className="mt-1.5 text-[10px] text-text-muted">Compact keeps the gist as a summary; Start fresh clears it. Long-term memory + domain context carry over either way.</p>
             {onToggleAutoCompact && (
-              <label className="mt-2.5 flex cursor-pointer items-center gap-2 border-t border-border-subtle pt-2.5 text-[11px] text-text-secondary">
-                <input
-                  type="checkbox"
-                  checked={!!autoCompact}
-                  onChange={(e) => onToggleAutoCompact(e.target.checked)}
-                  className="h-3 w-3 accent-[var(--color-accent)]"
-                />
-                Auto-compact when the window gets full
-              </label>
+              <div className="mt-2.5 flex items-center gap-2 border-t border-border-subtle pt-2.5" title="Automatically compact when the window gets full">
+                <span className="flex-1 text-[11px] text-text-secondary">Auto-compact</span>
+                <Toggle on={!!autoCompact} onChange={(v) => onToggleAutoCompact(v)} label="Auto-compact when the window gets full" />
+              </div>
             )}
           </div>
         </>
