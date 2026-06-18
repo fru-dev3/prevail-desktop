@@ -3,12 +3,15 @@
 // as workflows via the Loop steward; anything consequential surfaces in the
 // Decision Inbox. Reads tasks_read_all; moves via tasks_set_status/tasks_set_owner.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Check, Columns3, List, Loader2, Play, Plus, Trash2, User } from "lucide-react";
+import { Bot, Check, Columns3, Inbox, List, Loader2, Play, Plus, Trash2, User } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
 import { PREF, getPref } from "./storage";
+import { DecisionInbox } from "./decisioninbox";
 import type { BoardTask } from "./types";
+
+type BoardView = "board" | "list" | "needs";
 
 const COLUMNS: { key: string; label: string }[] = [
   { key: "todo", label: "To-do" },
@@ -31,7 +34,8 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
   const [tasks, setTasks] = useState<BoardTask[]>([]);
   const [ownerFilter, setOwnerFilter] = useState<"all" | "me" | "ai">("all");
   const [domainFilter, setDomainFilter] = useState<string>("all");
-  const [view, setView] = useState<"board" | "list">(() => (localStorage.getItem("prevail.board.view") === "list" ? "list" : "board"));
+  const [view, setView] = useState<BoardView>(() => (localStorage.getItem("prevail.board.view") === "list" ? "list" : "board"));
+  const [decisionsCount, setDecisionsCount] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragCol, setDragCol] = useState<string | null>(null);
@@ -55,6 +59,32 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
     window.addEventListener("prevail:tasks-changed", f);
     return () => window.removeEventListener("prevail:tasks-changed", f);
   }, [reload]);
+  // Decision count for the "Needs you" tab. Cheap; refreshed on a slow cadence + events.
+  useEffect(() => {
+    let alive = true;
+    const poll = () => invoke<unknown[]>("decisions_pending", { vault: vaultPath })
+      .then((d) => { if (alive) setDecisionsCount(Array.isArray(d) ? d.length : 0); })
+      .catch(() => {});
+    void poll();
+    const id = window.setInterval(poll, 60000);
+    const onEvt = () => poll();
+    window.addEventListener("prevail:tasks-changed", onEvt);
+    window.addEventListener("prevail:loops-advanced", onEvt);
+    return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:tasks-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
+  }, [vaultPath]);
+  // The top-bar Decisions pill opens the board straight into the "Needs you" view.
+  useEffect(() => {
+    const onView = (e: Event) => {
+      const v = (e as CustomEvent<string>).detail;
+      if (v === "needs" || v === "board" || v === "list") setView(v);
+    };
+    window.addEventListener("prevail:board-view", onView as EventListener);
+    if (localStorage.getItem("prevail.board.openNeeds") === "1") {
+      localStorage.removeItem("prevail.board.openNeeds");
+      setView("needs");
+    }
+    return () => window.removeEventListener("prevail:board-view", onView as EventListener);
+  }, []);
   // Full domain list (so you can add a task to a domain that has none yet).
   useEffect(() => {
     invoke<{ name: string }[]>("scan_vault", { path: vaultPath })
@@ -300,6 +330,14 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
             <List className="h-3.5 w-3.5" />
           </button>
         </div>
+        {/* Needs you: the work that's waiting on your call (folds in the old Decisions page). */}
+        <button onClick={() => setView("needs")} title="Work waiting on your decision"
+          className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors ${view === "needs" ? "border-accent-border bg-accent-soft text-accent" : decisionsCount > 0 ? "border-warn/40 text-warn hover:bg-surface-warm" : "border-border text-text-muted hover:bg-surface-warm"}`}>
+          <Inbox className="h-3.5 w-3.5" /> Needs you
+          {decisionsCount > 0 && (
+            <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[9px] font-bold text-background">{decisionsCount}</span>
+          )}
+        </button>
         <div className="ml-auto flex items-center gap-1.5">
           <input value={addText} onChange={(e) => setAddText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addTask(); }}
             placeholder="Add a task…" className="w-48 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
@@ -320,7 +358,9 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
       </div>
 
       <div className="pt-4">
-      {view === "board" ? (
+      {view === "needs" ? (
+        <DecisionInbox vaultPath={vaultPath} />
+      ) : view === "board" ? (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
           {COLUMNS.map((col) => {
             const items = byColumn[col.key] ?? [];
