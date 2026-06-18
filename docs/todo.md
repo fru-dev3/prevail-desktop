@@ -1,9 +1,31 @@
-# >>> PICK UP HERE (2026-06-17, live-review batch 2) <<<
+# >>> PICK UP HERE (2026-06-17, live-review batch 2 + runtime reframe) <<<
 
 **Full batch-2 plan + status:** `docs/FEEDBACK-0617-batch2.md` (30 items, B2-1..B2-30).
-**Latest release:** v0.8.14 (carries the critical fixes: MCP --vault, the `---` chat
-crash, incognito, Journal, toggles, scheduled next-run, telemetry table, WebUI,
-distiller-time). All committed fixes are on `main`.
+**Latest release:** v0.1.127 (BUILDING as of 2026-06-17, run 27734949143). v0.1.126
+is LIVE (published, full asset set). NOTE re-baseline: 0.1.x < old 0.8.x so the
+auto-updater will NOT push 0.1.x to existing 0.8.x installs — manual reinstall to cross.
+
+### Shipped in v0.1.127 (this session)
+- Frameworks page (image #31): removed collapse, two-column (Frameworks ◆ | Lenses ◇),
+  fits one page. (settings1.tsx)
+- Ideals page (image #28): page header "Ideals" + big collapsible "Constitution"
+  (open) + "Omega"; added `large` variant to CollapsibleSection; IdealStateSection
+  headerless. (collapsible.tsx, settings4.tsx, settingspanel.tsx)
+- Memory & Context (image #29): folded into Routines as a peer collapsible group
+  (DaemonsSection), no longer a divider-separated orphan. (settings2.tsx)
+- **Models → Runtimes reframe** (founder concept, "full rename"): page+nav "Runtimes";
+  groups = CLI/Aggregator/Direct runtimes; chat picker "Pick runtime"; domain override
+  "Which runtime runs". Definition: runtime = model + way to run it. Borrowed Multica's
+  vocabulary, NOT its remote-machine/fleet model (stays local-first single-machine).
+  (settings7.tsx, settingspanel.tsx, chatpanel.tsx, domainpanels.tsx). Memory:
+  prevail-runtimes-concept.md.
+- Earlier batch-2 already shipped through v0.8.17/v0.1.126: tagline one-line,
+  Recommendations→Insights, intent distillation last/next-run, BP1 markdown preview,
+  BP2 gateway logs, BP3 chat headers, tray menu, incognito, Journal, etc.
+
+### Latest release (older note, superseded)
+v0.8.14 carried critical fixes: MCP --vault, `---` chat crash, incognito, Journal,
+toggles, scheduled next-run, telemetry table, WebUI, distiller-time.
 
 ### Shipped/committed so far (batch 2)
 B2-1 incognito icon · B2-2 Journal · B2-3 `---` CLI crash · B2-6 scheduled pill toggle ·
