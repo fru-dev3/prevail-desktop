@@ -1,7 +1,7 @@
 // Chat-display leaf components extracted from App.tsx: ChatBubble (one rendered
 // turn), MessageList (windowed transcript), DomainStatusBar, and DomainHome.
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, SlidersHorizontal, Sparkles } from "lucide-react";
+import { ArrowRight, SlidersHorizontal, Sparkles, User } from "lucide-react";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES } from "./constants";
 import { titleCase } from "./format";
@@ -53,11 +53,20 @@ export function ChatBubble({
     </button>
   );
 
+  // BP3 (06-27 feedback): a timestamp on every message (like the reference).
+  const stamp = msg.ts ? new Date(msg.ts).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+
   if (msg.role === "user") {
     // Right-aligned card with accent tint + tail. Hover reveals
     // Copy + Edit actions in a thin tray below the bubble.
     return (
       <div className="group mb-6 flex flex-col items-end">
+        {/* BP3: "You · <time>" header with a person icon. */}
+        <div className="mb-1 flex items-center gap-1.5 pr-1 text-[11px] text-text-muted">
+          <span className="font-medium text-text-secondary">You</span>
+          {stamp && <span>· {stamp}</span>}
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-soft text-accent"><User className="h-3 w-3" /></span>
+        </div>
         <div className="max-w-[78%] rounded-2xl rounded-br-md border border-accent-border/50 bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-text-primary shadow-sm">
           <div className="whitespace-pre-wrap">{renderSkillTokens(msg.content)}</div>
         </div>
@@ -118,6 +127,8 @@ export function ChatBubble({
           {msg.role === "assistant" && msg.lens && (
             <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Lens in effect">{msg.lens}</span>
           )}
+          {/* BP3: timestamp on the assistant turn. */}
+          {stamp && <span className="font-mono text-[10px] text-text-muted/70">· {stamp}</span>}
           {msg.streaming && (
             <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider" style={{ color: accent, background: tint }}>
               <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
