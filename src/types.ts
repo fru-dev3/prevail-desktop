@@ -288,6 +288,9 @@ export interface SurfaceResult { questions: string[]; actions: string[]; generat
 export interface DomainTask { text: string; done: boolean; due?: string | null; added?: string | null; source?: string | null; owner?: string | null; status?: string | null; id?: string | null }
 // A task as returned by tasks_read_all (carries its domain + normalized owner/status/id).
 export interface BoardTask { domain: string; text: string; done: boolean; due?: string | null; added?: string | null; source?: string | null; owner: string; status: string; id?: string | null }
+// A cross-domain item that needs the user's decision (from decisions_pending):
+// a loop approval or an AI task awaiting review.
+export interface DecisionItem { id: string; domain: string; kind: "approval" | "review"; source: "loop" | "task"; loopId?: string; taskId?: string | null; text: string; why?: string | null; ts: number }
 
 export type AppRun = { ts: number; ok: boolean; skill: string; summary?: string; error?: string; duration_ms: number; artifacts: number };
 
