@@ -41,7 +41,7 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
   (not plain bullets) and make each action clickable to take the action (open the
   domain / start a chat or loop on it).
 
-- [ ] **B2-10 — Memory & Context shows the title twice.** The CollapsibleSection
+- [x] **B2-10 — Memory & Context shows the title twice.** The CollapsibleSection
   header AND the inner SettingsHeader both render "Memory & Context". Drop the
   inner duplicate (render it headerless when wrapped); headers must be visually
   bigger than subheaders.
@@ -67,7 +67,7 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
 - [ ] **B2-18 — Tasks duplicated.** Tasks shows inside the Memory engine
   (Configuration) page AND has its own nav item. Remove the embedded copy; Tasks
   lives once (in the new "Work" group, B2-17).
-- [ ] **B2-19 — Distiller time bug.** "DISTILLER running · last pass 20601 days
+- [x] **B2-19 — Distiller time bug.** "DISTILLER running · last pass 20601 days
   ago ago" — double "ago" and a bogus epoch-based age when last_run_ts is 0.
   Guard the formatting.
 
@@ -76,7 +76,7 @@ Running list of the live-review feedback. Status: `[ ]` todo · `[~]` wip · `[x
   memory + Tasks are moved out, the page has nothing unique. Remove the nav item;
   fold the Memory & Context produced-view into Routines (or Ideals).
 
-- [ ] **B2-21 — "Keep working with the app closed": pill toggle, not "OFF" text.**
+- [x] **B2-21 — "Keep working with the app closed": pill toggle, not "OFF" text.**
   HeadlessLearnCard uses a text On/Off; use the toggle pill.
 - [x] **B2-22 — Saved items need a home.** "0 active · 2 saved" (recommendations)
   but no way to view saved ones. Anything the app lets you SAVE must be findable +
