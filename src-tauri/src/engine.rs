@@ -1304,6 +1304,23 @@ pub fn engine_vault_archive_data(vault: String) -> Result<serde_json::Value, Str
     run_engine_json(&["--vault", &vault, "vault", "archive-data", "--force"])
 }
 
+/// B2-12 — `prevail --vault <vault> vault migrate-build --json`
+/// Tidy the General/root SUPPORTING runtime files into <vault>/build/
+/// (non-destructive copy + verify, originals left). No config repoint needed —
+/// buildRoot()/runtime_file() resolve to build/ once it exists.
+#[tauri::command]
+pub fn engine_vault_migrate_build(vault: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["--vault", &vault, "vault", "migrate-build"])
+}
+
+/// B2-12 — `prevail --vault <vault> vault archive-build --force --json`
+/// AFTER a verified build/ migration, move the duplicated root originals into a
+/// timestamped `_pre-build-*` backup (never deletes).
+#[tauri::command]
+pub fn engine_vault_archive_build(vault: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["--vault", &vault, "vault", "archive-build", "--force"])
+}
+
 /// `prevail --vault <vault> score <domain> [--audit] --json`
 /// Returns a fully typed ContextScore.
 #[tauri::command]
