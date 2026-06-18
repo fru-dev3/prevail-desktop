@@ -181,6 +181,17 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
       setSwitchingMode(false);
     }
   }
+  // B2-15: change the vault folder from the card icon — pick a new directory and
+  // point the app at it (same path the 3-step setup uses).
+  async function changeVaultPath() {
+    const picked = await open({ directory: true, multiple: false, title: "Choose your vault folder" });
+    if (!picked || typeof picked !== "string") return;
+    setSwitchingMode(true);
+    setNote(null);
+    try { await enterProduction(picked, true); }
+    catch (e) { setNote(`Could not switch vault: ${String(e)}`); }
+    finally { setSwitchingMode(false); }
+  }
   // Return to the demo sandbox: repoint the app at the demo vault (re-seeding
   // the bundled sample data) and flip the flag. The production vault is
   // remembered, untouched, and one click away.
@@ -274,7 +285,14 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
             <span className="text-sm font-semibold text-text-primary">Your vault</span>
             <span className="ml-auto"><Toggle on={!isDemo} disabled={switchingMode} onChange={(v) => { if (v) void switchToProduction(); else void switchToDemo(); }} label="Use my own vault" /></span>
           </div>
-          <div className="mt-1.5 truncate font-mono text-[11px] text-text-secondary" title={prodVault || "not set up yet"}>{prodVault || (isDemo ? "not set up yet - toggle on to set up" : vaultPath)}</div>
+          {/* B2-15: inline icons to change the path + open the vault in Finder. */}
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary" title={prodVault || "not set up yet"}>{prodVault || (isDemo ? "not set up yet - toggle on to set up" : vaultPath)}</span>
+            <button onClick={changeVaultPath} disabled={switchingMode} title="Change vault folder" className="shrink-0 rounded p-1 text-text-muted hover:text-accent disabled:opacity-40"><FolderOpen className="h-3.5 w-3.5" /></button>
+            {(prodVault || !isDemo) && (
+              <button onClick={() => void invoke("open_in_finder", { path: prodVault || vaultPath }).catch(() => {})} title="Open in Finder" className="shrink-0 rounded p-1 text-text-muted hover:text-accent"><ExternalLink className="h-3.5 w-3.5" /></button>
+            )}
+          </div>
           <div className="mt-0.5 text-[10px] text-text-muted">Real data, backed up. {isDemo && !prodVault ? "Toggling on walks you through a quick 3-step setup." : "Switching to demo never touches it."}</div>
         </div>
         <div className={`rounded-xl border p-4 transition-opacity ${isDemo ? "border-accent-border bg-accent-soft" : "border-border bg-surface opacity-60"}`}>
@@ -283,7 +301,12 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
             <span className="text-sm font-semibold text-text-primary">Demo vault</span>
             <span className="ml-auto"><Toggle on={isDemo} disabled={switchingMode} onChange={(v) => { if (v) void switchToDemo(); else void switchToProduction(); }} label="Explore the demo sandbox" /></span>
           </div>
-          <div className="mt-1.5 truncate font-mono text-[11px] text-text-secondary" title={isDemo ? vaultPath : "sample data"}>{isDemo ? vaultPath : "throwaway sample data"}</div>
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary" title={isDemo ? vaultPath : "sample data"}>{isDemo ? vaultPath : "throwaway sample data"}</span>
+            {isDemo && (
+              <button onClick={() => void invoke("open_in_finder", { path: vaultPath }).catch(() => {})} title="Open in Finder" className="shrink-0 rounded p-1 text-text-muted hover:text-accent"><ExternalLink className="h-3.5 w-3.5" /></button>
+            )}
+          </div>
           <div className="mt-0.5 text-[10px] text-text-muted">Sample data, re-seeded. Safe to explore; nothing here is your real data.</div>
         </div>
       </div>
