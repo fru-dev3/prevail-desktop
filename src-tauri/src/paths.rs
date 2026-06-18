@@ -79,6 +79,18 @@ pub(crate) fn domain_dir(vault: &str, domain: &Option<String>) -> PathBuf {
     }
 }
 
+// B2-12: resolve a SUPPORTING runtime file (ledger / journal / surface / threads).
+// Per-domain (Some) → stays inside the domain. General (None) → the build/ bucket
+// (build_root falls back to the vault root until a migration creates build/, so
+// this is a no-op until then). Do NOT use for CONTENT files (_memory.md,
+// _state.md, _skills) — those stay at root/data for the General bucket.
+pub(crate) fn runtime_file(vault: &str, domain: &Option<String>, file: &str) -> PathBuf {
+    match domain {
+        Some(d) if is_safe_domain(d) => resolve_domain_base(vault, d).join(file),
+        _ => build_root(vault).join(file),
+    }
+}
+
 /// Every domain directory across BOTH layouts — v3 (<vault>/domains/<d>) and
 /// legacy (<vault>/<d>) — deduped by name (v3 wins). Skips hidden/underscore
 /// entries and the structural "domains"/"apps" containers. The one place daemons
