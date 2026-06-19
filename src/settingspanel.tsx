@@ -192,7 +192,7 @@ export function SettingsPanel({
         {/* Branded banner - mirrors the home sidebar header (dark, logo + serif
             wordmark), with the Back button underneath. pt-9 clears the macOS
             traffic-light controls so nothing is hidden under them. Draggable. */}
-        <div data-tauri-drag-region className="-mx-2 -mt-3 mb-3 border-b border-black/30 bg-[#141416] px-4 pb-3 pt-9">
+        <div data-tauri-drag-region className="-mx-2 -mt-3 mb-3 border-b border-black/30 bg-[#141416] px-4 pb-3 pt-3">
           <div className="flex items-center gap-2.5">
             <span className="shrink-0 overflow-hidden rounded-lg ring-1 ring-white/20"><PrevailLogo size={26} animated={false} /></span>
             <BrandMark fill className="min-w-0 flex-1 font-display text-2xl font-bold text-white [text-shadow:0_2px_6px_rgba(0,0,0,0.5)]" />
