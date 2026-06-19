@@ -1069,7 +1069,6 @@ export default function App() {
         <SettingsPanel
           appearance={appearance}
           vaultPath={vaultPath}
-          onChangeVault={pickVault}
           clis={clis}
           onRefreshClis={refreshClis}
           bunkerEnabled={bunkerEnabled}
