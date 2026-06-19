@@ -382,20 +382,22 @@ export async function executeBenchBatch(
     const chunkUnlisten = listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
       if (e.payload.session !== session) return;
       buf += e.payload.data;
-      // Completed questions are full "  <id>… <info>" lines; the question
-      // currently in flight is a trailing "  <id>…" with no info yet.
+      // The CLI emits one "> <id>" line when a question STARTS and one
+      // "  <id>… <info>" line when it FINISHES. Count completions for the bar;
+      // surface the most recent start (not yet finished) as the live question so
+      // the run never looks frozen while a slow model is answering.
       const qdone: Record<string, string> = {};
-      const lines = buf.split("\n");
-      for (const line of lines) {
-        const m = line.match(/^ {2}(\S+)…\s*(.+)$/);
-        if (m) qdone[m[1]] = m[2].trim();
+      let lastStart: string | undefined;
+      for (const line of buf.split("\n")) {
+        const done = line.match(/^ {2}(\S+)…\s*(.+)$/);
+        if (done) { qdone[done[1]] = done[2].trim(); continue; }
+        const start = line.match(/^> (\S+)/);
+        if (start) lastStart = start[1];
       }
-      const tail = lines[lines.length - 1] ?? "";
-      const cm = tail.match(/^ {2}(\S+)…\s*$/);
       benchPatchJob(batch, job.key, {
         done: Math.min(Object.keys(qdone).length, job.total),
         qdone,
-        qcur: cm?.[1],
+        qcur: lastStart && !qdone[lastStart] ? lastStart : undefined,
       });
     });
     try {
