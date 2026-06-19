@@ -428,9 +428,14 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {/* Owner filter (icon + label segmented) */}
         <div className="flex items-center overflow-hidden rounded-lg border border-border">
-          {([["all", "All", LayoutGrid], ["me", "Me", User], ["ai", "AI", Bot]] as const).map(([k, label, Icon]) => (
+          {([["all", "All", LayoutGrid], ["me", "Me", User], ["ai", "AI", Bot]] as const).map(([k, label, Icon], i) => (
             <button key={k} onClick={() => setOwnerFilter(k)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 font-medium transition-colors ${ownerFilter === k ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
+              aria-pressed={ownerFilter === k}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${i > 0 ? "border-l border-border" : ""} ${
+                ownerFilter === k
+                  ? "bg-accent text-background shadow-inner"
+                  : "bg-background text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+              }`}>
               <Icon className="h-3.5 w-3.5" /> {label}
             </button>
           ))}
