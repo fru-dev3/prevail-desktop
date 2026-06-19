@@ -120,6 +120,12 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
   const executePending = useCallback(async (loopId: string, text: string) => {
     setExecBusy(text);
     setExecReport(null);
+    // Register a global process so executing an approval shows in the sidebar's
+    // "processes running" indicator (it actually runs the agent + connectors, so
+    // it's a real background process the user should see).
+    const procId = `exec-${loopId}-${Date.now()}`;
+    const short = text.length > 48 ? `${text.slice(0, 48)}…` : text;
+    startProcess(procId, "loop", `${titleCase(domain || "general")} · Executing: ${short}`, domain);
     try {
       const provider = getPref(PREF.memoryProvider, "claude");
       const model = getPref(PREF.distillModel, "claude-haiku-4-5");
@@ -134,6 +140,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
       setExecReport({ action: text, report: `Execution failed: ${e}` });
     } finally {
       setExecBusy(null);
+      endProcess(procId);
     }
   }, [vaultPath, domain, dropPending]);
 
