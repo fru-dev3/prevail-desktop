@@ -116,7 +116,7 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
   useEffect(() => {
     const onView = (e: Event) => {
       const v = (e as CustomEvent<string>).detail;
-      if (v === "needs" || v === "board" || v === "list") setView(v);
+      if (v === "needs" || v === "board" || v === "list" || v === "horizon" || v === "trash") setView(v);
     };
     window.addEventListener("prevail:board-view", onView as EventListener);
     if (localStorage.getItem("prevail.board.openNeeds") === "1") {
