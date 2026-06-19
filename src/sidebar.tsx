@@ -772,41 +772,43 @@ export function Sidebar({
       <SidebarBenchScheduled collapsed={collapsed} />
       <SidebarBackupActive collapsed={collapsed} />
 
-      {/* Settings + theme - pinned to bottom. Styled as a clear ACTION button (border
-          + fill) so it stands out from the muted status lines (MCP / Backups) above. */}
-      <div data-tour="settings" className={`border-t border-border-subtle bg-surface-warm/30 ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1.5 p-2"}`}>
-        <button
-          onClick={() => setTab("settings")}
-          title="Settings"
-          className={
-            collapsed
-              ? `flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
-                  tab === "settings"
-                    ? "border-accent-border bg-accent-soft text-accent"
-                    : "border-border bg-surface text-text-secondary hover:border-accent-border hover:text-accent"
-                }`
-              : `flex flex-1 items-center gap-2 rounded-md border px-2.5 py-2 text-left font-medium transition-colors ${
-                  tab === "settings"
-                    ? "border-accent-border bg-accent-soft text-accent"
-                    : "border-border bg-surface text-text-secondary hover:border-accent-border hover:bg-accent-soft hover:text-accent"
-                }`
-          }
-        >
-          <SettingsIcon className="h-4 w-4 shrink-0" />
-          {!collapsed && <span className="text-[13px]">Settings</span>}
-        </button>
-        <button
-          onClick={() => {
-            const cycle: Mode[] = ["light", "dark", "system"];
-            const i = cycle.indexOf(appearance.mode);
-            appearance.setMode(cycle[(i + 1) % cycle.length]);
-          }}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-colors hover:border-accent-border hover:text-accent"
-          title={`Theme: ${appearance.mode}: click to cycle`}
-        >
-          {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-        </button>
-      </div>
+      {/* Settings + theme - a full-width ribbon pinned to the bottom: a solid
+          edge-to-edge bar so it reads as the app's footer action, distinct from the
+          muted status lines (MCP / Backups) above. */}
+      {collapsed ? (
+        <div data-tour="settings" className="flex flex-col items-center gap-1 border-t border-border-subtle p-2">
+          <button onClick={() => setTab("settings")} title="Settings"
+            className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${tab === "settings" ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}>
+            <SettingsIcon className="h-4 w-4" />
+          </button>
+          <button onClick={() => { const cycle: Mode[] = ["light", "dark", "system"]; const i = cycle.indexOf(appearance.mode); appearance.setMode(cycle[(i + 1) % cycle.length]); }}
+            title={`Theme: ${appearance.mode}: click to cycle`} className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:text-text-secondary">
+            {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          </button>
+        </div>
+      ) : (
+        <div data-tour="settings" className="flex items-stretch border-t border-border">
+          <button
+            onClick={() => setTab("settings")}
+            title="Settings"
+            className={`flex flex-1 items-center gap-2.5 px-4 py-3 text-left text-[13px] font-semibold tracking-wide transition-colors ${
+              tab === "settings"
+                ? "bg-accent text-background"
+                : "bg-surface-warm text-text-secondary hover:bg-accent-soft hover:text-accent"
+            }`}
+          >
+            <SettingsIcon className="h-4 w-4 shrink-0" />
+            Settings
+          </button>
+          <button
+            onClick={() => { const cycle: Mode[] = ["light", "dark", "system"]; const i = cycle.indexOf(appearance.mode); appearance.setMode(cycle[(i + 1) % cycle.length]); }}
+            className={`flex w-12 shrink-0 items-center justify-center border-l border-border transition-colors ${tab === "settings" ? "bg-accent text-background hover:bg-accent-hover" : "bg-surface-warm text-text-muted hover:bg-accent-soft hover:text-accent"}`}
+            title={`Theme: ${appearance.mode}: click to cycle`}
+          >
+            {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          </button>
+        </div>
+      )}
       {!collapsed && (
         <div className="shrink-0 border-t border-border-subtle p-2.5">
           <div className="rounded-lg border border-border-subtle/70 bg-surface-warm/40 p-2.5">
