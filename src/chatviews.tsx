@@ -269,9 +269,13 @@ export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit }: {
 export function DomainStatusBar({
   domain,
   fwLens,
+  surface = "chat",
 }: {
   domain: string | null;
   fwLens: ReturnType<typeof useFrameworkLens>;
+  // Which surface this bar's Modes control - so Chat and Council share the same
+  // Modes menu (incognito included) but toggle their own per-surface flag.
+  surface?: "chat" | "council";
 }) {
   // Hooks must be top-level - initialize state from localStorage once
   // per domain, then keep React state as the source of truth so toggles
@@ -284,13 +288,14 @@ export function DomainStatusBar({
   const [autoMode, setAutoMode]   = useState(() => getPref(`prevail.domain.${domain}.autoMode`, "smart"));
   // Incognito now lives in Modes (a plain model, none of your context sent). The
   // master switch (Settings: Privacy) can force it on globally.
-  const [incognito, setIncognito] = useState(() => incognitoActive("chat"));
+  const [incognito, setIncognito] = useState(() => incognitoActive(surface));
   const globalIncognito = getPref(PREF.incognito, "0") === "1";
+  const incogPref = surface === "council" ? PREF.incognitoCouncil : PREF.incognitoChat;
   const toggleIncognito = () => {
     if (globalIncognito) return; // forced on globally
-    const next = !(getPref(PREF.incognitoChat, "0") === "1");
-    setPref(PREF.incognitoChat, next ? "1" : "0");
-    setIncognito(incognitoActive("chat"));
+    const next = !(getPref(incogPref, "0") === "1");
+    setPref(incogPref, next ? "1" : "0");
+    setIncognito(incognitoActive(surface));
     window.dispatchEvent(new Event("prevail:incognito-changed"));
   };
   useEffect(() => {
