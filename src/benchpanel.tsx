@@ -563,7 +563,9 @@ export function BenchRunConfig({
   // user can tweak then run or re-save. Distinct from the Run button.
   const loadSuite = (s: BenchSuite) => { setMode(s.mode); applyModels(s.models); applyScope(s.domains); };
   const commitSuite = () => {
-    if (saveSuite({ name: suiteName, mode, models: selModelArr, domains: Array.from(scope) })) {
+    // A Council is a named group of MODELS (reusable in the Arena + Chat council),
+    // so we save models only - the domain scope is chosen per-run.
+    if (saveSuite({ name: suiteName, mode, models: selModelArr, domains: [] })) {
       setSuiteName(""); setSavingSuite(false);
     }
   };
@@ -890,7 +892,7 @@ export function BenchRunConfig({
 
       {/* Suites - a named (models + domains + mode) you can re-run as a unit or
           drop onto the background schedule. Built from the current selection. */}
-      <CollapsibleSection icon={Bookmark} title="Benchmark Suites" summary={suites.length ? `${suites.length} saved` : "save a reusable run"} storageKey="prevail.bench.sec.suites" defaultOpen>
+      <CollapsibleSection icon={Bookmark} title="Councils" summary={suites.length ? `${suites.length} saved` : "save a reusable model group"} storageKey="prevail.bench.sec.suites" defaultOpen>
         <div className="space-y-2">
           {suites.map((s) => {
             const isScheduled = scheduledSuiteId === s.id;
@@ -902,7 +904,7 @@ export function BenchRunConfig({
                     {isScheduled && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] text-accent"><CalendarClock className="h-2.5 w-2.5" /> {schedFreq}</span>}
                   </div>
                   <div className="mt-0.5 font-mono text-[10px] text-text-muted">
-                    {s.mode === "council" ? "Council" : `${s.models.length} model${s.models.length === 1 ? "" : "s"}`} · {suiteScopeLabel(s)}
+                    {s.models.length} model{s.models.length === 1 ? "" : "s"}{s.domains.length ? ` · ${suiteScopeLabel(s)}` : ""}
                   </div>
                 </button>
                 <button onClick={() => onRunSuite(s)} disabled={running} title="Run this suite now" className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
@@ -922,13 +924,13 @@ export function BenchRunConfig({
                 onKeyDown={(e) => { if (e.key === "Enter") commitSuite(); if (e.key === "Escape") { setSavingSuite(false); setSuiteName(""); } }}
                 placeholder="suite name (e.g. Frontier x Finance)" className="flex-1 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] outline-none focus:border-accent-border"
               />
-              <span className="font-mono text-[10px] text-text-muted">{mode === "council" ? "Council" : `${selModels.size} model${selModels.size === 1 ? "" : "s"}`} · {scope.size === 0 ? "all domains" : `${scope.size} domain${scope.size === 1 ? "" : "s"}`}</span>
-              <button onClick={commitSuite} disabled={!suiteName.trim() || (mode === "single" && selModels.size === 0)} className="rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background disabled:opacity-40">Save</button>
+              <span className="font-mono text-[10px] text-text-muted">{selModels.size} model{selModels.size === 1 ? "" : "s"}</span>
+              <button onClick={commitSuite} disabled={!suiteName.trim() || selModels.size === 0} className="rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background disabled:opacity-40">Save</button>
               <button onClick={() => { setSavingSuite(false); setSuiteName(""); }} className="text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
             </div>
           ) : (
             <button onClick={() => setSavingSuite(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-accent-border hover:text-accent">
-              <Plus className="h-3.5 w-3.5" /> Save current models + domains as a suite
+              <Plus className="h-3.5 w-3.5" /> Save selected models as a council
             </button>
           )}
         </div>
@@ -1623,8 +1625,11 @@ export function BenchmarkPanel({
   function runSuite(s: { mode: "single" | "council"; models: string[]; domains: string[] }) {
     setMode(s.mode);
     setSelModels(new Set(s.models));
-    setScope(new Set(s.domains));
-    executeRun(s.models, new Set(s.domains), s.mode);
+    // A council is models-only; benchmark it against the CURRENT domain scope
+    // (fall back to the council's own saved domains for legacy suites).
+    const doms = s.domains.length ? new Set(s.domains) : scope;
+    setScope(doms);
+    executeRun(s.models, doms, s.mode);
   }
   const applyModels = (keys: string[]) => setSelModels(new Set(keys));
   const applyScope = (domains: string[]) => setScope(new Set(domains));
