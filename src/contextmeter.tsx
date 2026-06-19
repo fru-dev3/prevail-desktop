@@ -3,7 +3,7 @@
 // glance and without noise, how full the current conversation context is, where
 // the tokens are going (history vs attached context), and lets the user reclaim
 // space by starting fresh. Just a small circular gauge; details on click.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Toggle } from "./ui";
 
 // Rough token estimate: ~4 chars/token for English prose. Good enough to drive a
@@ -57,6 +57,10 @@ export function ContextMeter({
   onToggleAutoCompact?: (v: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Local mirror so the toggle flips instantly on click (the parent's autoCompact
+  // is read from a pref and doesn't re-render on its own).
+  const [auto, setAuto] = useState(!!autoCompact);
+  useEffect(() => { setAuto(!!autoCompact); }, [autoCompact]);
   const used = conversationTokens + attachedTokens + draftTokens;
   const frac = Math.max(0, Math.min(1, used / Math.max(1, windowTokens)));
   const pct = Math.round(frac * 100);
@@ -123,7 +127,7 @@ export function ContextMeter({
             {onToggleAutoCompact && (
               <div className="mt-2.5 flex items-center gap-2 border-t border-border-subtle pt-2.5" title="Automatically compact when the window gets full">
                 <span className="flex-1 text-[11px] text-text-secondary">Auto-compact</span>
-                <Toggle on={!!autoCompact} onChange={(v) => onToggleAutoCompact(v)} label="Auto-compact when the window gets full" />
+                <Toggle on={auto} onChange={(v) => { setAuto(v); onToggleAutoCompact(v); }} label="Auto-compact when the window gets full" />
               </div>
             )}
           </div>
