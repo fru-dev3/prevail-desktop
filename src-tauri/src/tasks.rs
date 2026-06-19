@@ -356,6 +356,42 @@ pub fn task_detail_add_comment(vault: String, domain: String, id: String, text: 
     Ok(doc.get(&id).cloned().unwrap_or(serde_json::json!({})))
 }
 
+/// Cheap cross-domain OPEN-task count for the top-nav Work badge. Reads each
+/// domain's `_tasks.md` DIRECTLY via the canonical enumerator (handles every
+/// vault layout), counting `- [ ]` lines and bucketing by their `@<due>` date.
+/// `today` is passed in (YYYY-MM-DD) so we need no date crate. This is the one
+/// the badge trusts: it never goes through tasks_read's per-domain resolution,
+/// which returned empty for some layouts and left the badge blank.
+#[tauri::command]
+pub fn work_count(vault: String, today: String) -> Result<serde_json::Value, String> {
+    let mut open: u32 = 0;
+    let mut overdue: u32 = 0;
+    let mut due_today: u32 = 0;
+    for (_name, dir) in crate::paths::enumerate_domain_dirs(std::path::Path::new(&vault)) {
+        let md = match crate::read_to_string_retry(dir.join("_tasks.md")) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        for line in md.lines() {
+            if !line.trim_start().starts_with("- [ ]") {
+                continue; // open (unchecked) tasks only
+            }
+            open += 1;
+            if let Some(at) = line.find('@') {
+                let date: String = line[at + 1..].chars().take(10).collect();
+                if date.len() == 10 && date.as_bytes()[4] == b'-' {
+                    if date.as_str() < today.as_str() {
+                        overdue += 1;
+                    } else if date == today {
+                        due_today += 1;
+                    }
+                }
+            }
+        }
+    }
+    Ok(serde_json::json!({ "open": open, "overdue": overdue, "today": due_today }))
+}
+
 /// Every task across every domain, tagged with its domain — powers the
 /// cross-domain board. Open tasks first, then done.
 #[tauri::command]

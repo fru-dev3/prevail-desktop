@@ -368,6 +368,7 @@ pub fn run() {
             tasks::tasks_set,
             tasks::tasks_add,
             tasks::tasks_read_all,
+            tasks::work_count,
             tasks::tasks_set_status,
             tasks::tasks_set_owner,
             tasks::task_detail_get,
