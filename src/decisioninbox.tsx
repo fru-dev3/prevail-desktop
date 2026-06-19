@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bot, Check, Inbox, Loader2, ListPlus, Play, RotateCcw, Clock, X } from "lucide-react";
 import { invoke } from "./bridge";
-import { titleCase } from "./format";
+import { titleCase, relTime } from "./format";
 import { PREF, getPref } from "./storage";
 import { startProcess, endProcess } from "./processes";
 import type { DecisionItem } from "./types";
@@ -133,6 +133,7 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
           <span className={isReview ? "text-accent" : "text-warn"}>{isReview ? <Bot className="h-3 w-3" /> : <Play className="h-3 w-3" />}</span>
           {titleCase(it.domain)}
           <span className="text-text-muted/50">· {isReview ? "review" : "approval"}</span>
+          {it.ts ? <span className="text-text-muted/50">· queued {relTime(it.ts)}</span> : null}
         </div>
         <div className="text-[13px] leading-snug text-text-primary">{it.text}</div>
         {it.why && <div className="mt-0.5 text-[11px] text-text-muted">{it.why}</div>}
