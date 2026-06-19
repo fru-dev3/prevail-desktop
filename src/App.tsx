@@ -1287,6 +1287,11 @@ export default function App() {
 
         <main className="flex min-w-0 flex-1 flex-col">
           <div data-tour="nav" className="flex shrink-0 items-center gap-1 border-b border-border-subtle bg-background px-4">
+            {/* DEV-only marker: lets you tell THIS live window apart from a stale
+                installed build at a glance. Stripped from production bundles. */}
+            {import.meta.env.DEV && (
+              <span className="mr-1 shrink-0 rounded bg-danger px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-background">DEV</span>
+            )}
             {/* An open app is isolated: it shows only its own facet chips
                 (Chat / Runs / Settings / Domains) on the right, so the global
                 domain tabs (Chat | Council) are hidden to avoid a duplicate
@@ -1408,11 +1413,7 @@ export default function App() {
                   >
                     <Briefcase className="h-3.5 w-3.5" /> Work
                     {dueAlert.open > 0 && (
-                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${
-                        tab === "chat" && domainTab === "work"
-                          ? (dueAlert.overdue ? "bg-background text-danger" : dueAlert.today ? "bg-background text-warn" : "bg-background text-text-primary")
-                          : dueAlert.overdue ? "bg-danger text-background" : dueAlert.today ? "bg-warn text-background" : "bg-accent text-background"
-                      }`}>{dueAlert.open}</span>
+                      <span className={`inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 font-mono text-[10px] font-bold leading-none text-white ${dueAlert.overdue ? "bg-danger" : dueAlert.today ? "bg-warn" : "bg-ai"}`}>{dueAlert.open}</span>
                     )}
                   </button>
                   {/* Order (founder): Insights · Usage · Benchmark · Preferences,
@@ -1428,7 +1429,7 @@ export default function App() {
                   >
                     <Lightbulb className="h-3.5 w-3.5" /> Insights
                     {recCount > 0 && (
-                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${tab === "chat" && domainTab === "insights" ? "bg-background text-text-primary" : "bg-accent text-background"}`}>{recCount}</span>
+                      <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ai px-1.5 font-mono text-[10px] font-bold leading-none text-white">{recCount}</span>
                     )}
                   </button>
                   {/* Loops right after Insights so Work · Insights · Loops read as
@@ -1444,7 +1445,7 @@ export default function App() {
                   >
                     <Repeat className="h-3.5 w-3.5" /> Loops
                     {loopCount > 0 && (
-                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${tab === "chat" && domainTab === "loops" ? "bg-background text-text-primary" : "bg-accent text-background"}`}>{loopCount}</span>
+                      <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ai px-1.5 font-mono text-[10px] font-bold leading-none text-white">{loopCount}</span>
                     )}
                   </button>
                   <button
