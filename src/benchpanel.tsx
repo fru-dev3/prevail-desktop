@@ -682,6 +682,12 @@ export function BenchRunConfig({
     const allDone = !running;
     const doneCount = jobs.filter((j) => j.status === "done").length;
     const errCount = jobs.filter((j) => j.status === "error").length;
+    // Phase: once every model has answered (nothing queued/running), the batch
+    // moves to the judge-scoring pass. The progress bar hits 100% at the END of
+    // the answering phase, so without this it reads as "done" while scoring is
+    // still underway.
+    const answersDone = jobs.length > 0 && jobs.every((j) => j.status !== "queued" && j.status !== "running");
+    const scoringPhase = running && answersDone;
     return (
       <div className="w-full space-y-4 px-8 py-5">
         <BenchCrumbs
@@ -692,45 +698,60 @@ export function BenchRunConfig({
           ]}
           meta={`${jobs.length} model${jobs.length === 1 ? "" : "s"} · ${jobs[0]?.total ?? 0} questions each`}
         />
-        <div className="text-center">
-          <div className="font-display text-xl font-semibold tracking-tight">
-            {running ? "Benchmarking…" : jobs.some((j) => j.status === "cancelled") ? "Run cancelled" : errCount > 0 ? "Finished with errors" : "Benchmark complete"}
+        {/* Progress card: one contained block with a clear status, a single quiet
+            meta line, the answer-progress bar, and a distinct scoring phase so a
+            full bar never reads as "done" while the judge is still scoring. */}
+        <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-surface px-8 py-6 shadow-sm">
+          <div className="flex items-center justify-center gap-2.5">
+            {running
+              ? <Loader2 className="h-5 w-5 shrink-0 animate-spin text-accent" />
+              : jobs.some((j) => j.status === "cancelled") ? <X className="h-5 w-5 shrink-0 text-text-muted" />
+              : errCount > 0 ? <AlertTriangle className="h-5 w-5 shrink-0 text-warn" />
+              : <Check className="h-5 w-5 shrink-0 text-ok" strokeWidth={3} />}
+            <h2 className="font-display text-xl font-semibold tracking-tight text-text-primary">
+              {scoringPhase ? "Scoring answers…"
+                : running ? "Benchmarking…"
+                : jobs.some((j) => j.status === "cancelled") ? "Run cancelled"
+                : errCount > 0 ? "Finished with errors"
+                : "Benchmark complete"}
+            </h2>
           </div>
-          <div className="mt-2 flex flex-wrap items-center justify-center gap-1">
-            {(activeBatch?.domains?.length ? activeBatch.domains : ["All domains"]).slice(0, 10).map((d) => (
-              <span key={d} className="rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] text-accent">{d}</span>
-            ))}
-            {(activeBatch?.domains?.length ?? 0) > 10 && (
-              <span className="font-mono text-[10px] text-text-muted">+{(activeBatch?.domains?.length ?? 0) - 10} more</span>
-            )}
+          <div className="mt-2 text-center font-mono text-[11px] text-text-muted">
+            {(activeBatch?.domains?.length
+              ? activeBatch.domains.slice(0, 3).map(titleCase).join(", ") + (activeBatch.domains.length > 3 ? ` +${activeBatch.domains.length - 3}` : "")
+              : "All domains")}
+            {" · "}{jobs.length} model{jobs.length === 1 ? "" : "s"}{" · "}{jobs[0]?.total ?? 0} q each{" · auto-scored"}
           </div>
-          <div className="mt-1.5 font-mono text-[11px] text-text-muted">
-            {jobs.length} model{jobs.length === 1 ? "" : "s"} · {jobs[0]?.total ?? 0} question{(jobs[0]?.total ?? 0) === 1 ? "" : "s"} each · running in parallel · auto-scored
-          </div>
-          {/* Overall batch progress - every question across every model. */}
           {(() => {
             const overallTotal = jobs.reduce((a, j) => a + j.total, 0);
             const overallDone = jobs.reduce((a, j) => a + (j.status === "done" || j.status === "scoring" ? j.total : j.done), 0);
             const pct = overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0;
             return (
-              <div className="mx-auto mt-4 max-w-xl">
-                <div className="mb-1 flex items-baseline justify-between font-mono text-[11px]">
-                  <span className="text-text-muted">overall</span>
-                  <span className="tabular-nums text-text-primary">{overallDone}/{overallTotal} · <span className="font-semibold text-accent">{pct}%</span></span>
+              <div className="mt-6">
+                <div className="mb-1.5 flex items-baseline justify-between font-mono text-[11px]">
+                  <span className="text-text-muted">{scoringPhase || allDone ? "answers" : "answering"}</span>
+                  <span className="tabular-nums text-text-secondary">{overallDone}/{overallTotal} · <span className="font-semibold text-text-primary">{pct}%</span></span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-surface-warm">
-                  <div className="h-full rounded-full bg-accent transition-all duration-500" style={{ width: `${pct}%` }} />
+                  <div className={`h-full rounded-full transition-all duration-500 ${scoringPhase ? "bg-text-primary/70" : "bg-accent"}`} style={{ width: `${pct}%` }} />
                 </div>
+                {scoringPhase && (
+                  <div className="mt-3 flex items-center justify-center gap-1.5 font-mono text-[11px] text-accent">
+                    <Loader2 className="h-3 w-3 animate-spin" /> answers in · scoring with the judge, almost done
+                  </div>
+                )}
               </div>
             );
           })()}
           {running && onCancel && (
-            <button
-              onClick={onCancel}
-              className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1 font-mono text-[11px] text-text-secondary hover:border-danger hover:text-danger"
-            >
-              ✗ Cancel run
-            </button>
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={onCancel}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3.5 py-1.5 font-mono text-[11px] text-text-secondary transition-colors hover:border-danger hover:text-danger"
+              >
+                <X className="h-3.5 w-3.5" /> Cancel run
+              </button>
+            </div>
           )}
         </div>
         <div className="space-y-2">
@@ -1068,7 +1089,9 @@ export function BenchResults({
   const [selectedFrom, setSelectedFrom] = useState<{ view: string; batch?: string } | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [expandedQ, setExpandedQ] = useState<string | null>(null);
-  const [scoringRun, setScoringRun] = useState<string | null>(null);
+  // Set of run_dirs currently being scored, so you can fire scoring on several
+  // runs at once - each scores independently instead of one lock blocking all.
+  const [scoringRuns, setScoringRuns] = useState<Set<string>>(() => new Set());
 
   async function loadRun(runDir: string, from?: { view: string; batch?: string }) {
     setLoadingDetail(true);
@@ -1086,8 +1109,10 @@ export function BenchResults({
   async function scoreNow(run: BenchmarkRun) {
     const runName = run.run_dir.split("/").pop() ?? "";
     if (!runName) return;
-    const session = `bench-score-one-${Date.now()}`;
-    setScoringRun(run.run_dir);
+    const dir = run.run_dir;
+    if (scoringRuns.has(dir)) return; // already scoring this one
+    const session = `bench-score-one-${Date.now()}-${runName}`;
+    setScoringRuns((s) => new Set(s).add(dir));
     try {
       const done = new Promise<void>((resolve) => {
         let un: UnlistenFn | null = null;
@@ -1099,7 +1124,7 @@ export function BenchResults({
       await done;
       onChanged();
     } catch { /* surfaced via refresh */ } finally {
-      setScoringRun(null);
+      setScoringRuns((s) => { const n = new Set(s); n.delete(dir); return n; });
     }
   }
 
@@ -1516,11 +1541,11 @@ export function BenchResults({
                       ) : (
                         <button
                           onClick={() => scoreNow(r)}
-                          disabled={scoringRun !== null}
+                          disabled={scoringRuns.has(r.run_dir)}
                           className="inline-flex items-center gap-1 rounded-md border border-warn/50 bg-warn/10 px-2 py-0.5 font-mono text-[10px] text-warn hover:bg-warn/20 disabled:opacity-50"
                         >
-                          {scoringRun === r.run_dir ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                          {scoringRun === r.run_dir ? "scoring…" : "unscored · score now"}
+                          {scoringRuns.has(r.run_dir) ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                          {scoringRuns.has(r.run_dir) ? "scoring…" : "unscored · score now"}
                         </button>
                       )}
                       <button
@@ -1819,18 +1844,10 @@ export function BenchmarkPanel({
             </button>
           ))}
         </div>
-        {/* K5/C2: current-domain indicator - which domain you arrived from, so
-            the Benchmark page (which spans all domains) is never ambiguous. */}
-        {initialDomain && (
-          <span
-            title={`You came in from the ${titleCase(initialDomain)} domain`}
-            className="inline-flex items-center gap-1 rounded-lg border border-accent-border bg-accent-soft/40 px-2.5 py-1 font-mono text-[11px] text-accent"
-          >
-            <Target className="h-3 w-3" /> {titleCase(initialDomain)}
-          </span>
-        )}
+        {/* The domain you're scoped to is shown ONCE, by the "scoped to ..."
+            pill on the right - no redundant chip here. */}
         {/* Contextual, same bar: run mode while configuring; domain filter on
-            the score views. */}
+            the score views (global Arena only - inside a domain it's fixed). */}
         {view === "run" && (
           <div className="inline-flex items-center gap-0.5 rounded-xl border border-border-subtle bg-surface-warm/60 p-1">
             {([
@@ -1860,7 +1877,7 @@ export function BenchmarkPanel({
             ))}
           </div>
         )}
-        {(view === "board" || view === "history") && allDomains.length > 0 && (
+        {!initialDomain && (view === "board" || view === "history") && allDomains.length > 0 && (
           <select
             value={domainFilter}
             onChange={(e) => setDomainFilter(e.target.value)}
