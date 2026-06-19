@@ -483,6 +483,17 @@ export function BackupAutomationCard({ vault, onChange }: { vault: string; onCha
   const [backups, setBackups] = useState<{ name: string; path: string; bytes: number; mtime: number }[]>([]);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // Where backups are written: a saved override (BACKUP_CFG.dest) or the default.
+  // We show the effective resolved path so it's never a mystery.
+  const [dest, setDest] = useState<string>(() => lsGet(BACKUP_CFG.dest) || "");
+  const [effectiveDir, setEffectiveDir] = useState<string>("");
+  const loadDir = () => invoke<string>("vault_backup_dir", { destDir: lsGet(BACKUP_CFG.dest) || null }).then(setEffectiveDir).catch(() => {});
+  useEffect(() => { loadDir(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [dest]);
+  const changeBackupDir = async () => {
+    const picked = await open({ directory: true, multiple: false, title: "Choose a backup folder" });
+    if (typeof picked === "string" && picked) { lsSet(BACKUP_CFG.dest, picked); setDest(picked); refresh(); }
+  };
+  const resetBackupDir = () => { lsSet(BACKUP_CFG.dest, ""); setDest(""); refresh(); };
   const refresh = () =>
     invoke<{ name: string; path: string; bytes: number; mtime: number }[]>("vault_backups_list", { destDir: lsGet(BACKUP_CFG.dest) || null })
       .then((b) => setBackups(Array.isArray(b) ? b : []))
@@ -535,6 +546,17 @@ export function BackupAutomationCard({ vault, onChange }: { vault: string; onCha
         <Toggle on={enabled} onChange={(v) => { setEnabled(v); lsSet(BACKUP_CFG.enabled, v ? "1" : "0"); }} label="Automatic backups" />
       </div>
       {note && <div className="mt-2 text-xs text-text-secondary">{note}</div>}
+      {/* Backup location: the effective folder + change / reset. Kept OUTSIDE the
+          vault on purpose (a backup inside what it backs up is circular). */}
+      <div className="mt-3 flex items-center gap-2 border-t border-border-subtle pt-2.5">
+        <FolderOpen className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+        <div className="min-w-0 flex-1">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Backup location {dest ? "" : "· default"}</div>
+          <div className="truncate font-mono text-[11px] text-text-secondary" title={effectiveDir}>{effectiveDir || "…"}</div>
+        </div>
+        <button onClick={changeBackupDir} title="Choose a different backup folder" className="shrink-0 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">Change</button>
+        {dest && <button onClick={resetBackupDir} title="Reset to the default location" className="shrink-0 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">Reset</button>}
+      </div>
       {backups.length > 0 && (
         <details className="mt-3 rounded-lg border border-border-subtle bg-background px-3 py-2">
           <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">

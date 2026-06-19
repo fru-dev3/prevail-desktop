@@ -1595,6 +1595,17 @@ fn default_backup_dir() -> Option<std::path::PathBuf> {
     Some(std::path::Path::new(&home).join("Library/Application Support/sh.prevail.desktop/backups"))
 }
 
+/// The directory backups are written to right now: the saved override if set,
+/// else the default. Lets the UI show the user exactly where backups live.
+#[tauri::command]
+pub fn vault_backup_dir(dest_dir: Option<String>) -> Result<String, String> {
+    let dir = match dest_dir.filter(|d| !d.trim().is_empty()) {
+        Some(d) => std::path::PathBuf::from(d),
+        None => default_backup_dir().ok_or("no HOME")?,
+    };
+    Ok(dir.to_string_lossy().to_string())
+}
+
 /// Back up the whole vault into a directory (default: app-support/backups) as a
 /// timestamped archive, then prune old ones. Returns the engine BackupResult
 /// plus the archive path. Used by manual + scheduled + pre-event backups.
