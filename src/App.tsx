@@ -6,6 +6,7 @@ import type { CliInfo, Domain, DomainTab, EngineApp, TabId, ThreadMeta } from ".
 import { BUNKER_LS, LS, PREF, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet } from "./storage";
 import { track } from "./telemetry";
 import { BridgeStatusChips, DemoRibbon, ResizeHandle } from "./widgets";
+import { useProcesses } from "./processes";
 import { OnboardingModal } from "./panels3";
 import { AppFacetPanel, BunkerRibbon, VaultWizard } from "./shell";
 // Heavy surfaces are code-split: each loads its own chunk on first use instead of
@@ -701,7 +702,17 @@ export default function App() {
       return cur.filter((x) => x.sessionId !== sessionId);
     });
   }, []);
-  const runningDomains = useMemo(() => new Set(runningStreams.map((s) => s.domain ?? "")), [runningStreams]);
+  // A domain reads as "running" if it has a live chat/council stream OR a loop
+  // running (so a loop firing lights up its domain in the sidebar, and the dot
+  // persists when you navigate away and back).
+  const liveProcs = useProcesses();
+  const runningDomains = useMemo(
+    () => new Set([
+      ...runningStreams.map((s) => s.domain ?? ""),
+      ...liveProcs.filter((p) => p.kind === "loop" && p.domain).map((p) => p.domain as string),
+    ]),
+    [runningStreams, liveProcs],
+  );
   const runningThreadPaths = useMemo(() => new Set(runningStreams.map((s) => s.threadPath ?? "").filter(Boolean)), [runningStreams]);
   // Opening a domain clears its "ready" marker - you've now seen it.
   useEffect(() => {
