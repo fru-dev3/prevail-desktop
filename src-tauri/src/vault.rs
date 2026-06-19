@@ -126,21 +126,24 @@ pub(crate) fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
     // Domain candidates from BOTH the legacy root layout (<vault>/<domain>) and
     // the v3 container (<vault>/domains/<domain>); v3 wins on a name clash.
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut candidates: Vec<(String, PathBuf)> = Vec::new();
-    // Scan a domains container into candidates (first occurrence of a name wins).
-    let mut scan_container = |dir: &PathBuf, candidates: &mut Vec<(String, PathBuf)>, seen: &mut std::collections::HashSet<String>| {
+    // (name, path, from_container): from_container = a child of data/domains or
+    // domains/, which is a domain by location even without a state marker.
+    let mut candidates: Vec<(String, PathBuf, bool)> = Vec::new();
+    let mut scan_container = |dir: &PathBuf, candidates: &mut Vec<(String, PathBuf, bool)>, seen: &mut std::collections::HashSet<String>| {
         if !dir.is_dir() {
             return;
         }
         if let Ok(es) = read_dir_retry(dir) {
             for entry in es.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with('.') {
+                // "general" has its own dedicated top-level entry in the UI, so it
+                // is not listed again among the domains.
+                if name.starts_with('.') || name == "general" {
                     continue;
                 }
                 let p = entry.path();
                 if p.is_dir() && seen.insert(name.clone()) {
-                    candidates.push((name, p));
+                    candidates.push((name, p, true));
                 }
             }
         }
@@ -156,25 +159,25 @@ pub(crate) fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
     }
     for entry in read_dir_retry(&root).map_err(|e| e.to_string())?.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') || NON_DOMAIN_DIRS.contains(&name.as_str()) {
+        if name.starts_with('.') || name == "general" || NON_DOMAIN_DIRS.contains(&name.as_str()) {
             continue;
         }
         let p = entry.path();
         if p.is_dir() && seen.insert(name.clone()) {
-            candidates.push((name, p));
+            candidates.push((name, p, false)); // legacy root: needs a marker
         }
     }
 
     let mut domains: Vec<Domain> = Vec::new();
-    for (name, p) in candidates {
-        // Domain detection — forward + backward compatible across the v1→v2
-        // migration. v2: a folder is a domain because the human declared intent
-        // (`soul.md`). v1: detected by hand-written `state.md`. Transition: the
-        // agent's derived `_state.md`. Any of the three makes it a domain.
+    for (name, p, from_container) in candidates {
+        // Domain detection. A child of the domains container IS a domain by
+        // location (even a freshly-created one with no _state.md yet) so the
+        // sidebar and the chat engine agree. The marker heuristic (soul.md /
+        // _state.md / state.md) only gates the flat LEGACY root layout.
         let soul_path = p.join("soul.md");
         let state_v2 = p.join("_state.md"); // v2 derived snapshot
         let state_v1 = p.join("state.md"); // v1 hand-written snapshot
-        let is_domain = soul_path.exists() || state_v2.exists() || state_v1.exists();
+        let is_domain = from_container || soul_path.exists() || state_v2.exists() || state_v1.exists();
         if !is_domain {
             continue;
         }
@@ -214,34 +217,34 @@ pub(crate) fn list_domain_names(vault: &str) -> Vec<String> {
     }
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut names: Vec<String> = Vec::new();
-    let mut consider = |name: String, p: PathBuf| {
-        if name.starts_with('.') || NON_DOMAIN_DIRS.contains(&name.as_str()) {
+    let mut consider = |name: String, p: PathBuf, from_container: bool| {
+        if name.starts_with('.') || name == "general" || NON_DOMAIN_DIRS.contains(&name.as_str()) {
             return;
         }
         if !p.is_dir() || !seen.insert(name.clone()) {
             return;
         }
-        // Same domain detection as scan_vault: soul.md (v2) / _state.md (derived) /
-        // state.md (v1). Cheap existence checks, no file reads.
-        if p.join("soul.md").exists() || p.join("_state.md").exists() || p.join("state.md").exists() {
+        // A child of the domains container is a domain by location; the legacy
+        // root layout still needs a marker (soul.md / _state.md / state.md).
+        if from_container || p.join("soul.md").exists() || p.join("_state.md").exists() || p.join("state.md").exists() {
             names.push(name);
         }
     };
-    let mut scan = |dir: &PathBuf| {
+    let mut scan = |dir: &PathBuf, from_container: bool| {
         if let Ok(es) = read_dir_retry(dir) {
             for entry in es.flatten() {
-                consider(entry.file_name().to_string_lossy().to_string(), entry.path());
+                consider(entry.file_name().to_string_lossy().to_string(), entry.path(), from_container);
             }
         }
     };
     // v4 canonical (data/domains), then v3 (domains/), then legacy root.
     let v4_domains = crate::paths::data_root(vault).join("domains");
-    scan(&v4_domains);
+    scan(&v4_domains, true);
     let domains_root = root.join("domains");
     if domains_root != v4_domains {
-        scan(&domains_root);
+        scan(&domains_root, true);
     }
-    scan(&root);
+    scan(&root, false);
     names.sort();
     names
 }
