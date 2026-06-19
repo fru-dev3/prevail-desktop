@@ -111,6 +111,18 @@ export function ContextCanvas() {
   );
 }
 
+// Consistent action pair for every context item: View (opens the left canvas) and
+// Use in chat (adds to the composer context). Icon-only with tooltips - the whole
+// Context area uses this so nothing renders content inline anymore.
+function CtxActions({ onView, onUse }: { onView: () => void; onUse?: () => void }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      <button onClick={onView} title="View (opens the canvas on the left)" className="rounded p-1 text-text-muted transition-colors hover:text-accent"><Eye className="h-3.5 w-3.5" /></button>
+      {onUse && <button onClick={onUse} title="Use in chat (add to the composer context)" className="rounded p-1 text-text-muted transition-colors hover:text-accent"><ArrowRight className="h-3.5 w-3.5" /></button>}
+    </div>
+  );
+}
+
 // A tiny "rebuild" icon for the State / Memory section headers: runs the distiller
 // on demand so you can build a domain's state/memory from its activity without
 // waiting for the background pass. Reports when there isn't enough material yet.
@@ -121,13 +133,14 @@ function RebuildStateButton({ vaultPath, domain, field }: { vaultPath: string; d
     e.stopPropagation();
     setBusy(true); setNote(null);
     try {
-      await invoke("distill_run_once", { cfg: distillCfgFromPrefs(vaultPath) });
-      const has = field === "state"
-        ? !!(await invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain: domain || "" }).then((c) => c?.state?.trim()).catch(() => null))
-        : !!(await invoke<string>("read_memory_md", { vault: vaultPath, domain: domain || null }).then((m) => m?.trim()).catch(() => null));
+      const cfg = distillCfgFromPrefs(vaultPath);
+      // Build from the JOURNAL on demand (works without an intents ledger).
+      const res = await invoke<{ built: boolean; reason: string }>("build_domain_state", {
+        vault: vaultPath, domain: domain || null, provider: cfg.provider, model: cfg.model,
+      });
       window.dispatchEvent(new CustomEvent("prevail:context-changed"));
-      if (!has) setNote("not enough activity yet");
-      else window.setTimeout(() => setNote(null), 1500);
+      if (res.built) window.setTimeout(() => setNote(null), 1500);
+      else setNote("no activity yet");
     } catch (err) { setNote(`failed: ${String(err).slice(0, 32)}`); }
     finally { setBusy(false); }
   };
@@ -300,16 +313,7 @@ export function DomainContextDrawer({
               <p className="mb-2 text-[11px] leading-relaxed text-text-muted">
                 Your constitution. It is already injected at highest precedence into every chat and council turn; pull it in explicitly when you want the model to reason against it at length.
               </p>
-              <div className="flex flex-wrap gap-1.5">
-                <button onClick={() => openCanvas("Ideal State", idealState)}
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">
-                  <Eye className="h-3 w-3" /> view
-                </button>
-                <button onClick={() => onInjectContext(idealState, "Ideal State · constitution")}
-                  className="rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
-                  → use in chat
-                </button>
-              </div>
+              <CtxActions onView={() => openCanvas("Ideal", idealState)} onUse={() => onInjectContext(idealState, "Ideal · constitution")} />
             </>
           ) : <div className="text-xs text-text-muted">No Ideal State written yet. Settings → Ideal State.</div>
         } />
@@ -320,16 +324,7 @@ export function DomainContextDrawer({
               <p className="mb-2 text-[11px] leading-relaxed text-text-muted">
                 What Prevail knows about you. Auto-injected into every chat and council so answers are specific to you.
               </p>
-              <div className="flex flex-wrap gap-1.5">
-                <button onClick={() => openCanvas("Profile", profile)}
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">
-                  <Eye className="h-3 w-3" /> view
-                </button>
-                <button onClick={() => onInjectContext(profile, "Profile · who you are")}
-                  className="rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
-                  → use in chat
-                </button>
-              </div>
+              <CtxActions onView={() => openCanvas("User", profile)} onUse={() => onInjectContext(profile, "User · who you are")} />
             </>
           ) : <div className="text-xs text-text-muted">No profile yet. Add a profile.md (or user.md) at your vault root; Prevail injects it so answers know who you are.</div>
         } />
@@ -340,16 +335,7 @@ export function DomainContextDrawer({
         <Section keyName="memory" title="Memory" action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="memory" />} body={
           memory.trim() ? (
             <>
-              <div className="flex flex-wrap gap-1.5">
-                <button onClick={() => openCanvas(`${domain ? titleCase(domain) : "General"} memory`, memory)}
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">
-                  <Eye className="h-3 w-3" /> view
-                </button>
-                <button onClick={() => onInjectContext(memory, `${domain ? titleCase(domain) : "General"} · memory`)}
-                  className="rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
-                  → use in chat
-                </button>
-              </div>
+              <CtxActions onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} memory`, memory)} onUse={() => onInjectContext(memory, `${domain ? titleCase(domain) : "General"} · memory`)} />
             </>
           ) : <div className="text-xs text-text-muted">No distilled memory yet. The background distiller (Settings → Routines) compacts your activity into long-term memory once enough new material accumulates, usually within a few sessions.</div>
         } />
@@ -357,25 +343,8 @@ export function DomainContextDrawer({
           <>
             <Section keyName="state" title="State" action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="state" />} body={
               ctx.state ? (
-                <>
-                  <div className="mb-2 flex items-center gap-1.5">
-                    <button
-                      onClick={() => onInjectContext(ctx.state!, `${titleCase(domain)}/state.md`)}
-                      className="rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
-                    >
-                      → use in chat
-                    </button>
-                    {/* BP1: open the full doc in the markdown preview (rendered + raw). */}
-                    <button onClick={() => openCanvas(`${titleCase(domain)}/state.md`, ctx.state!)}
-                      title="Preview (rendered / raw)" className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"><Eye className="h-3 w-3" /> preview</button>
-                  </div>
-                  <button onClick={() => openCanvas(`${titleCase(domain)}/state.md`, ctx.state!)} className="block w-full text-left" title="Click to open in canvas">
-                    <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
-                      {ctx.state.length > 1200 ? ctx.state.slice(0, 1200) + "\n…" : ctx.state}
-                    </pre>
-                  </button>
-                </>
-              ) : <div className="text-xs text-text-muted">No state yet. The distiller derives a state snapshot from your activity once <span className="text-text-secondary">Routines → persistent memory</span> is on (Settings → Routines); it appears after enough new material, usually within a few sessions.</div>
+                <CtxActions onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} state`, ctx.state!)} onUse={() => onInjectContext(ctx.state!, `${domain ? titleCase(domain) : "General"} · state`)} />
+              ) : <div className="text-xs text-text-muted">No state yet. The distiller derives a state snapshot from your activity once <span className="text-text-secondary">Routines → persistent memory</span> is on (Settings → Routines), or use the refresh icon above to build it now.</div>
             } />
             {/* Decisions = the live ledger (latest, raw) + the distiller's curated
                 summary, in ONE section (was split into "Recent decisions" + "Decisions"). */}
@@ -412,16 +381,10 @@ export function DomainContextDrawer({
                 </ul>
               )}
               {ctx.decisions ? (
-                <>
-                  <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">Curated summary</div>
-                  <button onClick={() => onInjectContext(ctx.decisions!, `${titleCase(domain)}/decisions.md`)}
-                    className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
-                    → use in chat
-                  </button>
-                  <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
-                    {ctx.decisions.length > 1200 ? ctx.decisions.slice(0, 1200) + "\n…" : ctx.decisions}
-                  </pre>
-                </>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted/70">Curated summary</span>
+                  <CtxActions onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} decisions`, ctx.decisions!)} onUse={() => onInjectContext(ctx.decisions!, `${domain ? titleCase(domain) : "General"} · decisions`)} />
+                </div>
               ) : (decisionLog.length === 0 && <div className="text-xs text-text-muted">No decisions yet. Run a council or save a decision; the distiller curates a summary over time.</div>)}
               </>
             } />
@@ -434,16 +397,10 @@ export function DomainContextDrawer({
                 The raw record - what you asked, and session logs. State, Memory, and Decisions above are distilled from this.
               </div>
               {ctx.journal && (
-                <>
-                  <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">What you asked</div>
-                  <button onClick={() => onInjectContext(ctx.journal!, `${titleCase(domain)}/_journal`)}
-                    className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
-                    → use in chat
-                  </button>
-                  <pre className="mb-3 whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
-                    {ctx.journal.length > 1200 ? ctx.journal.slice(0, 1200) + "\n…" : ctx.journal}
-                  </pre>
-                </>
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted/70">What you asked</span>
+                  <CtxActions onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} journal`, ctx.journal!)} onUse={() => onInjectContext(ctx.journal!, `${domain ? titleCase(domain) : "General"} · journal`)} />
+                </div>
               )}
               {ctx.recent_logs.length > 0 ? (
                 <>
