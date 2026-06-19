@@ -2,8 +2,8 @@
 // Work Board for tasks. See all loops across domains, filter by domain, see what's
 // running / scheduled next, run one now, toggle it, or jump into its domain to
 // edit. Loops are also editable per-domain (the Loops tab); this is the bird's-eye.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowDownAZ, CalendarClock, Infinity as InfinityIcon, Layers, Loader2, Mail, Play, RefreshCw, Repeat } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDownAZ, CalendarClock, Check, ChevronDown, Infinity as InfinityIcon, Layers, Loader2, Mail, Play, RefreshCw, Repeat, Search } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
@@ -26,6 +26,16 @@ export function LoopBoard({ vaultPath }: { vaultPath: string }) {
   const [sort, setSort] = useState<"schedule" | "name" | "domain">("schedule");
   const [grouped, setGrouped] = useState(true);
   const [running, setRunning] = useState<string | null>(null);
+  // Domain filter popover (scales to any number of domains: searchable + scrollable).
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterQuery, setFilterQuery] = useState("");
+  const filterRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!filterOpen) return;
+    const onDoc = (e: MouseEvent) => { if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [filterOpen]);
   const procs = useProcesses();
 
   const load = useCallback(async () => {
@@ -141,15 +151,37 @@ export function LoopBoard({ vaultPath }: { vaultPath: string }) {
     <>
       <SettingsHeader icon={Repeat} title="Loop Board"
         subtitle="Every standing loop across your domains - the mirror of the Work Board for tasks. See what's running, when each runs next, run one now, or jump into its domain to edit." />
-      {/* Domain filter as chips - click one to focus, click again (or "All") to clear. */}
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        <Chip active={domainFilter === "all"} onClick={() => setDomainFilter("all")} label="All" count={rows.length} />
-        {domains.map((d) => (
-          <Chip key={d} active={domainFilter === d} onClick={() => setDomainFilter(domainFilter === d ? "all" : d)} label={titleCase(d)} count={countFor(d)} />
-        ))}
-      </div>
-      {/* Sort + grouping + refresh. */}
+      {/* Toolbar: a compact searchable domain filter (scales to any count) + sort
+          + grouping + refresh, all on one line. */}
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+        <div ref={filterRef} className="relative">
+          <button onClick={() => setFilterOpen((v) => !v)}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 font-medium transition-colors ${domainFilter !== "all" ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-secondary hover:bg-surface-warm"}`}>
+            <Layers className="h-3.5 w-3.5" /> {domainFilter === "all" ? "All domains" : titleCase(domainFilter)}
+            <ChevronDown className="h-3 w-3 opacity-60" />
+          </button>
+          {filterOpen && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-xl border border-border bg-surface shadow-xl">
+              <div className="flex items-center gap-1.5 border-b border-border-subtle px-2.5 py-1.5">
+                <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                <input autoFocus value={filterQuery} onChange={(e) => setFilterQuery(e.target.value)} placeholder="Filter domains…"
+                  className="w-full bg-transparent text-xs text-text-primary outline-none placeholder:text-text-muted" />
+              </div>
+              <div className="max-h-64 overflow-y-auto py-1">
+                {[{ name: "all", count: rows.length }, ...domains.map((d) => ({ name: d, count: countFor(d) }))]
+                  .filter((o) => o.name === "all" || o.name.toLowerCase().includes(filterQuery.trim().toLowerCase()))
+                  .map((o) => (
+                    <button key={o.name} onClick={() => { setDomainFilter(o.name); setFilterOpen(false); setFilterQuery(""); }}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-surface-warm">
+                      <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center text-accent">{domainFilter === o.name && <Check className="h-3 w-3" strokeWidth={3} />}</span>
+                      <span className="flex-1 truncate text-text-primary">{o.name === "all" ? "All domains" : titleCase(o.name)}</span>
+                      <span className="shrink-0 font-mono text-[10px] text-text-muted">{o.count}</span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
         <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Sort</span>
         <div className="flex items-center overflow-hidden rounded-lg border border-border">
           {([["schedule", "Next run", CalendarClock], ["name", "Name", ArrowDownAZ], ["domain", "Domain", Layers]] as const).map(([k, lbl, Icon], i) => (
@@ -200,18 +232,5 @@ export function LoopBoard({ vaultPath }: { vaultPath: string }) {
         </div>
       )}
     </>
-  );
-}
-
-// A filter chip: label + count, filled when active.
-function Chip({ active, onClick, label, count }: { active: boolean; onClick: () => void; label: string; count: number }) {
-  return (
-    <button onClick={onClick} aria-pressed={active}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
-        active ? "border-accent bg-accent text-background" : "border-border bg-background text-text-secondary hover:border-accent-border hover:text-text-primary"
-      }`}>
-      {label}
-      <span className={`rounded-full px-1 font-mono text-[9px] ${active ? "bg-background/25" : "bg-surface-warm text-text-muted"}`}>{count}</span>
-    </button>
   );
 }
