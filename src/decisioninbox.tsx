@@ -171,23 +171,22 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
   };
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <div className="mb-1 flex items-center gap-2">
-        <Inbox className="h-4 w-4 text-accent" />
-        <h2 className="text-sm font-semibold text-text-primary">Decisions</h2>
-        <span className="text-xs text-text-muted">{active.length ? `${active.length} need you` : "all clear"}</span>
+    <div className="w-full">
+      {/* Section header matches the board's column headers (compact mono caps). */}
+      <div className="mb-2 flex items-center gap-2 px-1 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
+        <Inbox className="h-3 w-3" /> Needs you
+        <span className="text-text-muted/50">· {active.length || "0"}</span>
         {sleeping.length > 0 && (
-          <button onClick={() => setShowSnoozed((s) => !s)} className="ml-auto text-xs text-text-muted hover:text-text-secondary">
+          <button onClick={() => setShowSnoozed((s) => !s)} className="ml-auto normal-case tracking-normal text-text-muted hover:text-text-secondary">
             snoozed ({sleeping.length}) {showSnoozed ? "▾" : "▸"}
           </button>
         )}
       </div>
-      <p className="mb-4 text-xs text-text-muted">AI does the work and asks you here for anything consequential - approvals, and finished work waiting on your sign-off.</p>
 
       <div className="flex flex-col gap-2.5">
         {active.length === 0 && (
           <div className="rounded-xl border border-dashed border-border-subtle px-4 py-10 text-center text-sm text-text-muted">
-            Nothing needs you right now. AI-owned tasks will queue their decisions here.
+            Nothing needs you right now. AI-owned tasks queue their approvals and sign-offs here.
           </div>
         )}
         {active.map(card)}
@@ -195,7 +194,7 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
 
       {showSnoozed && sleeping.length > 0 && (
         <div className="mt-5">
-          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">Snoozed</div>
+          <div className="mb-2 px-1 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">Snoozed</div>
           <div className="flex flex-col gap-2.5 opacity-70">{sleeping.map(card)}</div>
         </div>
       )}
