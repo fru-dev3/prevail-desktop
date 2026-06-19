@@ -23,7 +23,7 @@ import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, ta
 import { autoVerifyClis } from "./verify";
 import { startBenchScheduler } from "./bench";
 import { bumpBackupChangeCount, startBackupScheduler } from "./backup";
-import { startLoopsScheduler } from "./loops";
+import { startLoopsScheduler, readLoops } from "./loops";
 import { startAppsScheduler } from "./appspanel";
 import { startOmegaScheduler } from "./omega";
 import { OnboardingTour } from "./onboarding";
@@ -807,6 +807,47 @@ export default function App() {
   }, [vaultPath]);
   const dueAlertCount = dueAlert.overdue + dueAlert.today + dueAlert.critical;
 
+  // Insights (recommendations) + Loops counts — surfaced as always-visible badges on
+  // the top-nav tabs so the user sees how much is waiting without opening either view.
+  // Both are computed in the background on a slow poll + event refresh, same cadence as
+  // the decisions/due pills. Recommendations come from the learning engine; loop count
+  // is summed across every domain's loop doc (mirrors the Loop Board's own aggregation).
+  const [recCount, setRecCount] = useState(0);
+  useEffect(() => {
+    if (!vaultPath) return;
+    let alive = true;
+    const poll = () => invoke<{ ok?: boolean; recommendations?: unknown[] }>("engine_recommendations", { vault: vaultPath })
+      .then((r) => { if (alive) setRecCount(Array.isArray(r?.recommendations) ? r.recommendations.length : 0); })
+      .catch(() => {});
+    void poll();
+    const id = window.setInterval(poll, 120000);
+    const onEvt = () => poll();
+    window.addEventListener("prevail:recommendations-changed", onEvt);
+    window.addEventListener("prevail:loops-advanced", onEvt);
+    return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:recommendations-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
+  }, [vaultPath]);
+
+  const [loopCount, setLoopCount] = useState(0);
+  useEffect(() => {
+    if (!vaultPath || domains.length === 0) return;
+    let alive = true;
+    const poll = async () => {
+      try {
+        const docs = await Promise.all(domains.map((d) => readLoops(d.path).catch(() => null)));
+        if (!alive) return;
+        let n = 0;
+        for (const doc of docs) n += Array.isArray(doc?.loops) ? doc!.loops.length : 0;
+        setLoopCount(n);
+      } catch { /* ignore */ }
+    };
+    void poll();
+    const id = window.setInterval(poll, 120000);
+    const onEvt = () => { void poll(); };
+    window.addEventListener("prevail:loops-advanced", onEvt);
+    window.addEventListener("prevail:loops-changed", onEvt);
+    return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:loops-advanced", onEvt); window.removeEventListener("prevail:loops-changed", onEvt); };
+  }, [vaultPath, domains]);
+
   // Lets in-app links (e.g. the Demo ribbon) open a specific Settings section.
   const [settingsJump, setSettingsJump] = useState<{ section: string; n: number } | null>(null);
   const openSettingsAt = (section: string) => {
@@ -1375,7 +1416,7 @@ export default function App() {
                   >
                     <Briefcase className="h-3.5 w-3.5" /> Work
                     {dueAlertCount > 0 && (
-                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${tab === "chat" && domainTab === "work" ? "bg-background/25 text-background" : dueAlert.overdue ? "bg-danger text-background" : "bg-warn text-background"}`}>{dueAlertCount}</span>
+                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${tab === "chat" && domainTab === "work" ? (dueAlert.overdue ? "bg-background text-danger" : "bg-background text-warn") : dueAlert.overdue ? "bg-danger text-background" : "bg-warn text-background"}`}>{dueAlertCount}</span>
                     )}
                   </button>
                   {/* Order (founder): Insights · Usage · Benchmark · Preferences,
@@ -1390,6 +1431,9 @@ export default function App() {
                     }`}
                   >
                     <Lightbulb className="h-3.5 w-3.5" /> Insights
+                    {recCount > 0 && (
+                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${tab === "chat" && domainTab === "insights" ? "bg-background text-accent" : "bg-accent text-background"}`}>{recCount}</span>
+                    )}
                   </button>
                   {/* Loops right after Insights so Work · Insights · Loops read as
                       one group (Context is in the right-side drawer). */}
@@ -1403,6 +1447,9 @@ export default function App() {
                     }`}
                   >
                     <Repeat className="h-3.5 w-3.5" /> Loops
+                    {loopCount > 0 && (
+                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${tab === "chat" && domainTab === "loops" ? "bg-background text-accent" : "bg-accent text-background"}`}>{loopCount}</span>
+                    )}
                   </button>
                   <button
                     onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "usage" ? "chat" : "usage"); }}
