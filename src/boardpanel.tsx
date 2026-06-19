@@ -3,7 +3,7 @@
 // as workflows via the Loop steward; anything consequential surfaces in the
 // Decision Inbox. Reads tasks_read_all; moves via tasks_set_status/tasks_set_owner.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Check, Columns3, Filter, Inbox, LayoutGrid, List, Loader2, Play, Plus, RotateCcw, Trash2, User } from "lucide-react";
+import { Bot, CalendarRange, Check, Columns3, Filter, Flag, Inbox, LayoutGrid, List, Loader2, Play, Plus, RotateCcw, Trash2, User } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
@@ -11,7 +11,7 @@ import { PREF, getPref } from "./storage";
 import { DecisionInbox } from "./decisioninbox";
 import type { BoardTask } from "./types";
 
-type BoardView = "board" | "list" | "needs" | "trash";
+type BoardView = "board" | "list" | "horizon" | "needs" | "trash";
 
 const COLUMNS: { key: string; label: string }[] = [
   { key: "todo", label: "To-do" },
@@ -19,6 +19,43 @@ const COLUMNS: { key: string; label: string }[] = [
   { key: "review", label: "Review" },
   { key: "done", label: "Done" },
 ];
+
+// Time-horizon buckets by due date, for planning. A task with no due date sits in
+// "Someday". Order matters: rendered top-to-bottom, soonest first.
+const HORIZONS: { key: string; label: string }[] = [
+  { key: "overdue", label: "Overdue" },
+  { key: "today", label: "Today" },
+  { key: "week", label: "This week" },
+  { key: "month", label: "This month" },
+  { key: "quarter", label: "This quarter" },
+  { key: "year", label: "This year" },
+  { key: "later", label: "Later" },
+  { key: "someday", label: "Someday (no date)" },
+];
+// Classify a due date (YYYY-MM-DD) into a horizon bucket relative to today.
+function horizonFor(due?: string | null): string {
+  if (!due) return "someday";
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const d = new Date(due + "T00:00:00");
+  if (isNaN(d.getTime())) return "someday";
+  const dayMs = 86_400_000;
+  const days = Math.round((d.getTime() - today.getTime()) / dayMs);
+  if (days < 0) return "overdue";
+  if (days === 0) return "today";
+  // End of the current week (Sunday-based: through the coming Sunday).
+  const endOfWeek = 7 - today.getDay();
+  if (days <= endOfWeek) return "week";
+  // Rest of this calendar month.
+  if (d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth()) return "month";
+  // Rest of this calendar quarter.
+  const q = Math.floor(today.getMonth() / 3);
+  const dq = Math.floor(d.getMonth() / 3);
+  if (d.getFullYear() === today.getFullYear() && dq === q) return "quarter";
+  // Rest of this calendar year.
+  if (d.getFullYear() === today.getFullYear()) return "year";
+  return "later";
+}
 // "blocked" tasks live visually in the Doing column with a flag.
 const columnFor = (status: string) => (status === "blocked" ? "doing" : status);
 
@@ -34,7 +71,10 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
   const [tasks, setTasks] = useState<BoardTask[]>([]);
   const [ownerFilter, setOwnerFilter] = useState<"all" | "me" | "ai">("all");
   const [domainFilter, setDomainFilter] = useState<string>("all");
-  const [view, setView] = useState<BoardView>(() => (localStorage.getItem("prevail.board.view") === "list" ? "list" : "board"));
+  const [view, setView] = useState<BoardView>(() => {
+    const v = localStorage.getItem("prevail.board.view");
+    return v === "list" || v === "horizon" ? v : "board";
+  });
   const [decisionsCount, setDecisionsCount] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -121,6 +161,21 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
     for (const t of shown) (m[columnFor(t.status)] ??= []).push(t);
     return m;
   }, [shown]);
+  // Horizon view groups OPEN tasks by due-date bucket (done tasks drop out - the
+  // horizon is about what's ahead). Critical/high first, then by due date.
+  const byHorizon = useMemo(() => {
+    const m: Record<string, BoardTask[]> = {};
+    for (const h of HORIZONS) m[h.key] = [];
+    const prioRank = (p?: string | null) => (p === "critical" ? 0 : p === "high" ? 1 : 2);
+    for (const t of shown) {
+      if (t.status === "done" || t.done) continue;
+      (m[horizonFor(t.due)] ??= []).push(t);
+    }
+    for (const k of Object.keys(m)) {
+      m[k].sort((a, b) => prioRank(a.priority) - prioRank(b.priority) || (a.due || "9999").localeCompare(b.due || "9999"));
+    }
+    return m;
+  }, [shown]);
 
   // Live read on the AI workflow (across all owners/domains, ignoring filters):
   // what AI is actively working, what's queued to it, what's waiting on you.
@@ -178,6 +233,16 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
     setDragId(null);
     if (t) setStatus(t, status);
   };
+  // Cycle priority normal -> high -> critical -> normal (the importance signal
+  // that drives due/critical alerting).
+  const cyclePriority = async (t: BoardTask) => {
+    if (!t.id) return;
+    const next = t.priority === "critical" ? null : t.priority === "high" ? "critical" : "high";
+    await act(`pr:${t.id}`, async () => {
+      const cur = await invoke<BoardTask[]>("tasks_read", { vault: vaultPath, domain: t.domain });
+      await invoke("tasks_set", { vault: vaultPath, domain: t.domain, tasks: cur.map((x) => (x.id === t.id ? { ...x, priority: next } : x)) });
+    });
+  };
   // Delete = soft-delete: tag the task ~trashed:<today> so it moves to Trash
   // (recoverable), never silently lost. Honors the "never delete user data" rule.
   const del = async (t: BoardTask) => {
@@ -205,7 +270,7 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
       await invoke("tasks_set", { vault: vaultPath, domain: t.domain, tasks: cur.filter((x) => x.id !== t.id) });
     });
   };
-  const setViewMode = (v: "board" | "list") => { setView(v); localStorage.setItem("prevail.board.view", v); };
+  const setViewMode = (v: "board" | "list" | "horizon") => { setView(v); localStorage.setItem("prevail.board.view", v); };
 
   const renderCard = (t: BoardTask) => {
     const ai = t.owner === "ai";
@@ -236,6 +301,10 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
             <span onDoubleClick={() => { setEditId(t.id ?? null); setEditVal(t.text); }} title="Double-click to edit"
               className="min-w-0 flex-1 text-[13px] leading-snug text-text-primary">{t.text}</span>
           )}
+          <button onClick={() => cyclePriority(t)} title={`Priority: ${t.priority || "normal"} - click to change`} disabled={busy === `pr:${t.id}`}
+            className={`shrink-0 transition-colors ${t.priority === "critical" ? "text-danger" : t.priority === "high" ? "text-warn" : "text-text-muted/30 hover:text-text-muted"}`}>
+            <Flag className="h-3.5 w-3.5" fill={t.priority === "critical" || t.priority === "high" ? "currentColor" : "none"} />
+          </button>
           <button onClick={() => del(t)} title="Delete task" disabled={busy === `d:${t.id}`} className="shrink-0 text-text-muted/40 transition-colors hover:text-danger">
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -243,6 +312,8 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-5 font-mono text-[10px]">
           <span className="rounded-full bg-surface-warm px-1.5 py-px text-text-muted">{titleCase(t.domain)}</span>
           {t.due && <span className={dueTone(t.due)}>{t.due}</span>}
+          {t.priority === "critical" && <span className="text-danger">critical</span>}
+          {t.priority === "high" && <span className="text-warn">important</span>}
           {blocked && <span className="text-warn">⏸ needs decision</span>}
         </div>
         <div className="mt-1.5 flex items-center gap-1.5 pl-5">
@@ -283,6 +354,10 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
         <span className="hidden shrink-0 rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-muted sm:inline">{titleCase(t.domain)}</span>
         {blocked && <span className="shrink-0 font-mono text-[10px] text-warn">⏸ decision</span>}
         <span className={`hidden w-20 shrink-0 text-right font-mono text-[10px] md:inline ${dueTone(t.due)}`}>{t.due || ""}</span>
+        <button onClick={() => cyclePriority(t)} title={`Priority: ${t.priority || "normal"} - click to change`} disabled={busy === `pr:${t.id}`}
+          className={`shrink-0 transition-colors ${t.priority === "critical" ? "text-danger" : t.priority === "high" ? "text-warn" : "text-text-muted/30 hover:text-text-muted"}`}>
+          <Flag className="h-3.5 w-3.5" fill={t.priority === "critical" || t.priority === "high" ? "currentColor" : "none"} />
+        </button>
         <select value={t.status} onChange={(e) => setStatus(t, e.target.value)} disabled={busy === `s:${t.id}`}
           className="shrink-0 rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none">
           {["todo", "doing", "review", "blocked", "done"].map((s) => <option key={s} value={s}>{s}</option>)}
@@ -376,6 +451,10 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
             className={`px-2.5 py-1.5 transition-colors ${view === "list" ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
             <List className="h-3.5 w-3.5" />
           </button>
+          <button onClick={() => setViewMode("horizon")} title="Horizon view: tasks by due date (today / week / month / quarter / year)"
+            className={`px-2.5 py-1.5 transition-colors ${view === "horizon" ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
+            <CalendarRange className="h-3.5 w-3.5" />
+          </button>
         </div>
         {/* Needs you: the work that's waiting on your call (folds in the old Decisions page). */}
         <button onClick={() => setView("needs")} title="Work waiting on your decision"
@@ -442,6 +521,29 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
           {trashed.length === 0 && (
             <div className="rounded-xl border border-dashed border-border-subtle px-4 py-10 text-center text-sm text-text-muted">
               Trash is empty. Deleted tasks land here and can be restored.
+            </div>
+          )}
+        </div>
+      ) : view === "horizon" ? (
+        <div className="flex flex-col gap-4">
+          {HORIZONS.map((h) => {
+            const items = byHorizon[h.key] ?? [];
+            if (items.length === 0) return null; // only show buckets that have work
+            const tone = h.key === "overdue" ? "text-danger" : h.key === "today" ? "text-warn" : "text-text-muted";
+            return (
+              <section key={h.key}>
+                <div className={`mb-2 flex items-center gap-2 px-1 font-mono text-[10px] uppercase tracking-[0.16em] ${tone}`}>
+                  {h.label}<span className="opacity-50">· {items.length}</span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {items.map(renderRow)}
+                </div>
+              </section>
+            );
+          })}
+          {HORIZONS.every((h) => (byHorizon[h.key] ?? []).length === 0) && (
+            <div className="rounded-xl border border-dashed border-border-subtle px-4 py-10 text-center text-sm text-text-muted">
+              No open tasks with due dates. Add due dates to plan by horizon.
             </div>
           )}
         </div>
