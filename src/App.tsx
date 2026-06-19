@@ -1336,22 +1336,9 @@ export default function App() {
                   >
                     <SettingsIcon className="h-3.5 w-3.5" /> Preferences
                   </button>
-                  {/* General has no domain header (it owns the hero canvas), so give
-                      it a Context tab here for parity with regular domains. */}
-                  {!selectedDomain && (
-                    <button
-                      onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "context" ? "chat" : "context"); }}
-                      title="Context: what General knows - state, memory, decisions, journal"
-                      className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
-                        tab === "chat" && domainTab === "context"
-                          ? "bg-accent-soft text-accent"
-                          : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                      }`}
-                    >
-                      <Layers className="h-3.5 w-3.5" /> Context
-                    </button>
-                  )}
-                  {/* Loops - now shown for General too (it's a first-class domain). */}
+                  {/* Loops - now shown for General too (it's a first-class domain).
+                      Context is reached via the right-side drawer, same as every
+                      domain, so there's no Context tab up here. */}
                   <button
                     onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "loops" ? "chat" : "loops"); }}
                     title="Loops: the standing forces working to reach this domain's desired state"
