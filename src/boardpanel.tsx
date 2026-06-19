@@ -7,10 +7,19 @@ import { ArrowRight, Bot, Briefcase, CalendarRange, Columns3, Filter, Flag, Inbo
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
+import { DOMAIN_PALETTE } from "./constants";
 import { PREF, getPref } from "./storage";
 import { DecisionInbox } from "./decisioninbox";
 import { TaskDetailPanel } from "./taskdetail";
 import type { BoardTask } from "./types";
+
+// Stable per-domain color (hashed into the shared palette) so each domain reads
+// at a glance on the board. Returns the hex; callers tint bg + text from it.
+function domainColor(domain: string): string {
+  let h = 0;
+  for (let i = 0; i < domain.length; i++) h = (h * 31 + domain.charCodeAt(i)) >>> 0;
+  return DOMAIN_PALETTE[h % DOMAIN_PALETTE.length];
+}
 
 type BoardView = "board" | "list" | "horizon" | "needs" | "trash";
 
@@ -293,7 +302,7 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
         onDragEnd={() => { setDragId(null); setDragCol(null); }}
         className={`rounded-lg border bg-surface px-2.5 py-2 transition-opacity ${blocked ? "border-warn/40" : "border-border"} ${dragId === t.id ? "opacity-40" : ""} ${editing ? "" : "cursor-grab active:cursor-grabbing"}`}>
         <div className="flex items-start gap-1.5">
-          <span title={ai ? "AI" : "Me"} className={`mt-0.5 shrink-0 ${ai ? "text-accent" : "text-text-muted"}`}>
+          <span title={ai ? "AI-owned" : "Yours"} className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${ai ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>
             {ai ? <Bot className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
           </span>
           {editing ? (
@@ -314,7 +323,7 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
           </button>
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-5 font-mono text-[10px]">
-          <span className="rounded-full bg-surface-warm px-1.5 py-px text-text-muted">{titleCase(t.domain)}</span>
+          <span className="rounded-full px-1.5 py-px font-semibold" style={{ color: domainColor(t.domain), backgroundColor: `${domainColor(t.domain)}1f` }}>{titleCase(t.domain)}</span>
           {t.due && <span className={dueTone(t.due)}>{t.due}</span>}
           {t.priority === "critical" && <span className="text-danger">critical</span>}
           {t.priority === "high" && <span className="text-warn">important</span>}
@@ -343,8 +352,8 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
     return (
       <div key={`row:${t.domain}:${t.id ?? t.text}`}
         className={`flex items-center gap-3 rounded-lg border bg-surface px-3 py-2 ${blocked ? "border-warn/40" : "border-border"}`}>
-        <span title={ai ? "AI" : "Me"} className={`shrink-0 ${ai ? "text-accent" : "text-text-muted"}`}>
-          {ai ? <Bot className="h-4 w-4" /> : <User className="h-4 w-4" />}
+        <span title={ai ? "AI-owned" : "Yours"} className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${ai ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>
+          {ai ? <Bot className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
         </span>
         {editing ? (
           <input autoFocus value={editVal} onChange={(e) => setEditVal(e.target.value)}
