@@ -1375,7 +1375,7 @@ export default function App() {
                   >
                     <Briefcase className="h-3.5 w-3.5" /> Work
                     {dueAlertCount > 0 && (
-                      <span className={`absolute -right-1 -top-1 inline-flex min-w-[14px] items-center justify-center rounded-full px-1 font-mono text-[9px] font-bold text-background ${dueAlert.overdue ? "bg-danger" : "bg-warn"}`}>{dueAlertCount}</span>
+                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${tab === "chat" && domainTab === "work" ? "bg-background/25 text-background" : dueAlert.overdue ? "bg-danger text-background" : "bg-warn text-background"}`}>{dueAlertCount}</span>
                     )}
                   </button>
                   {/* Order (founder): Insights · Usage · Benchmark · Preferences,
