@@ -837,6 +837,39 @@ pub fn engine_recommendations(vault: String) -> Result<serde_json::Value, String
     run_engine_json(&["recommendations", "--vault", &vault, "--json"])
 }
 
+/// Read the stored per-domain app suggestions (the learning layer's output).
+/// Reads the file directly (build-first, legacy fallback) so it's cheap to call
+/// on every Apps view mount. Returns {} when none generated yet.
+#[tauri::command]
+pub fn app_suggestions_read(vault: String) -> Result<serde_json::Value, String> {
+    let p = crate::paths::runtime_path(&vault, "_meta").join("app_suggestions.json");
+    match crate::read_to_string_retry(&p) {
+        Ok(raw) => Ok(serde_json::from_str(&raw).unwrap_or(serde_json::json!({}))),
+        Err(_) => Ok(serde_json::json!({})),
+    }
+}
+
+/// Generate app suggestions for a domain (or "all") by learning from its signals,
+/// then return the full suggestions map. This is a model call, so it blocks until
+/// the CLI finishes; the UI awaits it. A daily daemon can call the same path.
+#[tauri::command]
+pub fn app_suggestions_generate(
+    vault: String,
+    domain: String,
+    cli: Option<String>,
+    model: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let mut args: Vec<String> = vec![
+        "suggest-apps".into(),
+        "--domain".into(), domain,
+        "--vault".into(), vault,
+    ];
+    if let Some(c) = cli.filter(|s| !s.is_empty()) { args.push("--cli".into()); args.push(c); }
+    if let Some(m) = model.filter(|s| !s.is_empty()) { args.push("--model".into()); args.push(m); }
+    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_engine_json(&refs)
+}
+
 /// Run one autonomous-sync pass over every DUE app (the in-app scheduler calls
 /// this on a tick; the headless `daemon --sync` runs the same on a loop).
 /// Returns { ran, ok, failed }.
