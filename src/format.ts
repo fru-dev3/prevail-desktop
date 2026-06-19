@@ -44,6 +44,13 @@ export function titleCase(slug: string): string {
     .join(" ");
 }
 
+// App titles sometimes arrive with a connection suffix (e.g. "AllTrails via
+// InfoseekAI MCP"). The UI should always show just the app's name, so strip a
+// trailing " via …" segment. App names don't legitimately contain " via …".
+export function appName(title: string): string {
+  return (title ?? "").replace(/\s+via\s+.+$/i, "").trim() || (title ?? "");
+}
+
 // Relative "time ago" from an epoch-ms timestamp (null = "never").
 export function relTime(ts: number | null): string {
   if (!ts) return "never";
