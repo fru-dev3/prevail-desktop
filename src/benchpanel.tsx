@@ -11,7 +11,8 @@ import { isLocalCli } from "./helpers";
 import { modelLabel, parseRunLabel } from "./helpers2";
 import { isBunkerOn, lsGet, lsSet } from "./storage";
 import { Sparkline } from "./ui";
-import { BenchCrumbs, Field, ScoreBar, SubsectionHeader } from "./panels";
+import { BenchCrumbs, Field, ScoreBar } from "./panels";
+import { CollapsibleSection } from "./collapsible";
 import { domainIcon } from "./icons";
 import { BENCH_CLI_OPTIONS, BENCH_SCHED, benchBatches, benchFreqLabel, benchNotify, cancelBenchBatch, executeBenchBatch, useBenchBatches } from "./bench";
 import { deleteSuite, saveSuite, useSuites } from "./bench-presets";
@@ -756,10 +757,7 @@ export function BenchRunConfig({
           whole panel of a provider scans in two or three rows instead of a
           full-width row per model. */}
       {mode === "single" && (
-        <section>
-          <SubsectionHeader icon={Layers} hint={`${selModels.size} selected · runs head-to-head`}>
-            Models
-          </SubsectionHeader>
+        <CollapsibleSection icon={Layers} title="Models" summary={`${selModels.size} selected · runs head-to-head`} storageKey="prevail.bench.sec.models" defaultOpen>
           {/* One concept: a Benchmark Suite (models + domains) you save + rerun,
               listed in the Suites section below. (The old model-only "bundle" was a
               confusing duplicate and has been removed.) */}
@@ -814,16 +812,13 @@ export function BenchRunConfig({
               );
             })}
           </div>
-        </section>
+        </CollapsibleSection>
       )}
 
       {/* Domain scope - domains that HAVE questions lead (sorted by how many);
           the empty ones sit behind a disclosure so 20+ domains don't become a
           wall of noise. */}
-      <section>
-        <SubsectionHeader icon={Target} hint={scope.size === 0 ? "all domains" : `${scope.size} selected`}>
-          Domain scope
-        </SubsectionHeader>
+      <CollapsibleSection icon={Target} title="Domain scope" summary={scope.size === 0 ? "all domains" : `${scope.size} selected`} storageKey="prevail.bench.sec.scope" defaultOpen>
         {allDomains.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-xs text-text-muted">
             No questions yet: add some in the <span className="text-accent">Questions</span> tab first.
@@ -891,14 +886,11 @@ export function BenchRunConfig({
             </details>
           );
         })()}
-      </section>
+      </CollapsibleSection>
 
       {/* Suites - a named (models + domains + mode) you can re-run as a unit or
           drop onto the background schedule. Built from the current selection. */}
-      <section>
-        <SubsectionHeader icon={Bookmark} hint={suites.length ? `${suites.length} saved` : "save a reusable run"}>
-          Benchmark Suites
-        </SubsectionHeader>
+      <CollapsibleSection icon={Bookmark} title="Benchmark Suites" summary={suites.length ? `${suites.length} saved` : "save a reusable run"} storageKey="prevail.bench.sec.suites" defaultOpen>
         <div className="space-y-2">
           {suites.map((s) => {
             const isScheduled = scheduledSuiteId === s.id;
@@ -940,7 +932,7 @@ export function BenchRunConfig({
             </button>
           )}
         </div>
-      </section>
+      </CollapsibleSection>
 
       {/* Run */}
       <section className="flex items-center gap-3">
