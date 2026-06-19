@@ -83,6 +83,33 @@ export function FileCanvas({ title, source, width, onClose }: { title: string; s
   );
 }
 
+// Self-contained canvas that docks immediately to the LEFT of the context drawer
+// (rendered as its sibling in chat/council). Listens for prevail:open-canvas and
+// shows the file side-by-side with Context; resizable up to half the screen.
+export function ContextCanvas() {
+  const [canvas, setCanvas] = useState<{ title: string; body: string } | null>(null);
+  const [width, setWidth] = useState(460);
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const d = (e as CustomEvent<{ title?: string; body?: string }>).detail;
+      if (d && d.body != null) setCanvas({ title: d.title || "File", body: String(d.body) });
+    };
+    const onClose = () => setCanvas(null);
+    window.addEventListener("prevail:open-canvas", onOpen as EventListener);
+    window.addEventListener("prevail:close-canvas", onClose);
+    return () => { window.removeEventListener("prevail:open-canvas", onOpen as EventListener); window.removeEventListener("prevail:close-canvas", onClose); };
+  }, []);
+  if (!canvas) return null;
+  return (
+    <>
+      {/* Handle on the canvas's left edge: drag left to widen (clamped to half). */}
+      <ResizeHandle ariaLabel="Resize file canvas"
+        onChange={(dx) => setWidth((w) => Math.max(300, Math.min(Math.round(window.innerWidth * 0.5), w - dx)))} />
+      <FileCanvas title={canvas.title} source={canvas.body} width={width} onClose={() => setCanvas(null)} />
+    </>
+  );
+}
+
 export function DomainContextDrawer({
   domain,
   vaultPath,
