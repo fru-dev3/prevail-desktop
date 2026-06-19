@@ -293,6 +293,69 @@ pub fn tasks_set_owner(vault: String, domain: String, id: String, owner: String)
     tasks_read(vault, domain)
 }
 
+// ── Task details sidecar ─────────────────────────────────────────────────────
+// The one-line _tasks.md record stays the fast, canonical handle; the RICH parts
+// of a task object (a long description, a comment/activity thread) live in a
+// per-domain sidecar <domain>/_task_details.json, a map of task id -> detail. This
+// keeps the board fast and lets a task be opened as a full object with notes you
+// (and the AI) build up over time.
+fn details_path(vault: &str, domain: &str) -> PathBuf {
+    crate::paths::domain_dir_pub(vault, domain).join("_task_details.json")
+}
+
+fn read_details_doc(vault: &str, domain: &str) -> serde_json::Value {
+    let p = details_path(vault, domain);
+    match crate::read_to_string_retry(&p) {
+        Ok(s) => {
+            let raw = crate::engine::maybe_decrypt(&p, s);
+            serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({}))
+        }
+        Err(_) => serde_json::json!({}),
+    }
+}
+
+fn write_details_doc(vault: &str, domain: &str, doc: &serde_json::Value) -> Result<(), String> {
+    let p = details_path(vault, domain);
+    if let Some(parent) = p.parent() { let _ = std::fs::create_dir_all(parent); }
+    let body = serde_json::to_string_pretty(doc).map_err(|e| e.to_string())?;
+    std::fs::write(&p, crate::engine::maybe_encrypt(&p, &body)).map_err(|e| format!("write _task_details.json: {e}"))
+}
+
+/// The detail object for one task: { description, comments: [{ts, text, author}] }.
+/// Returns an empty shell when nothing has been recorded yet.
+#[tauri::command]
+pub fn task_detail_get(vault: String, domain: String, id: String) -> Result<serde_json::Value, String> {
+    let doc = read_details_doc(&vault, &domain);
+    let entry = doc.get(&id).cloned().unwrap_or_else(|| serde_json::json!({ "description": "", "comments": [] }));
+    Ok(entry)
+}
+
+/// Set a task's long-form description (sidecar). Returns the updated detail.
+#[tauri::command]
+pub fn task_detail_set_description(vault: String, domain: String, id: String, description: String) -> Result<serde_json::Value, String> {
+    let mut doc = read_details_doc(&vault, &domain);
+    let entry = doc.as_object_mut().ok_or("corrupt details doc")?
+        .entry(id.clone()).or_insert_with(|| serde_json::json!({ "description": "", "comments": [] }));
+    entry["description"] = serde_json::Value::String(description);
+    write_details_doc(&vault, &domain, &doc)?;
+    Ok(doc.get(&id).cloned().unwrap_or(serde_json::json!({})))
+}
+
+/// Append a comment to a task's thread. author is "me" or "ai". Returns updated detail.
+#[tauri::command]
+pub fn task_detail_add_comment(vault: String, domain: String, id: String, text: String, author: Option<String>) -> Result<serde_json::Value, String> {
+    let text = text.trim().to_string();
+    if text.is_empty() { return Err("empty comment".into()); }
+    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let mut doc = read_details_doc(&vault, &domain);
+    let entry = doc.as_object_mut().ok_or("corrupt details doc")?
+        .entry(id.clone()).or_insert_with(|| serde_json::json!({ "description": "", "comments": [] }));
+    let comments = entry["comments"].as_array_mut().ok_or("corrupt comments")?;
+    comments.push(serde_json::json!({ "ts": ts, "text": text, "author": author.unwrap_or_else(|| "me".into()) }));
+    write_details_doc(&vault, &domain, &doc)?;
+    Ok(doc.get(&id).cloned().unwrap_or(serde_json::json!({})))
+}
+
 /// Every task across every domain, tagged with its domain — powers the
 /// cross-domain board. Open tasks first, then done.
 #[tauri::command]

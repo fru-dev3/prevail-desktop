@@ -211,6 +211,16 @@ export function ChatPanel({
     return () => window.removeEventListener("mousedown", onClick);
   }, [modelMenuOpen]);
   const [input, setInput] = useState("");
+  // Seed the composer from elsewhere (e.g. the task detail panel's "Discuss with
+  // AI"): prefill the prompt + jump to the chat tab so the user can just hit send.
+  useEffect(() => {
+    const onSeed = (e: Event) => {
+      const text = (e as CustomEvent<string>).detail;
+      if (typeof text === "string" && text) { setInput(text); setDomainTab("chat"); }
+    };
+    window.addEventListener("prevail:compose-seed", onSeed as EventListener);
+    return () => window.removeEventListener("prevail:compose-seed", onSeed as EventListener);
+  }, []);
   // The user's Ideal State (vault/ideal-state.md) - their constitution, always
   // prepended as the highest-precedence preamble so every turn aligns with it.
   // Loaded per vault path; read_ideal_state returns the starter template when
