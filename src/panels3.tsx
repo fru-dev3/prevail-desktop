@@ -1,6 +1,6 @@
 // Components extracted from App.tsx.
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Boxes, Check, ChevronRight, Circle, Globe, Loader2, Plug, Plus, Sparkles, Terminal, X } from "lucide-react";
+import { AlertTriangle, Boxes, Check, ChevronRight, Circle, ExternalLink, Globe, Loader2, Plug, Plus, Settings as SettingsIcon, Sparkles, Terminal, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { PALETTES, SCORE_DIMENSIONS, SETTINGS_ROW, SEVERITY_LABEL, SEVERITY_ORDER, STATUS_TINT } from "./constants";
@@ -8,7 +8,31 @@ import { formatFreshness, relTime, scoreColor, titleCase } from "./format";
 import { formatAuditedAt } from "./helpers";
 import { ScoreBar } from "./panels";
 import { Sparkline } from "./ui";
-import type { CliProvider, ContextScore, EngineApp, IngestionMcpServer, IngestionTierStatus, MissingItem, OnboardingRecommendation } from "./types";
+import type { BrandLogo, CliProvider, ContextScore, EngineApp, IngestionMcpServer, IngestionTierStatus, MissingItem, OnboardingRecommendation } from "./types";
+
+// Resolve an app's brand logo from the simple-icons map by slugging its title
+// or id; falls back to a colored monogram tile so every app shows something.
+function AppRowLogo({ app, logos }: { app: EngineApp; logos: Record<string, BrandLogo> }) {
+  const slugs = [
+    app.title.toLowerCase().replace(/[^a-z0-9]/g, ""),
+    app.id.toLowerCase().replace(/[^a-z0-9]/g, ""),
+    app.id.split(/[-_:]/)[0]?.toLowerCase() ?? "",
+  ];
+  const logo = slugs.map((s) => logos[s]).find(Boolean);
+  if (logo) {
+    return (
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-white">
+        <svg width={18} height={18} viewBox="0 0 24 24" fill={`#${logo.hex}`} aria-hidden><path d={logo.path} /></svg>
+      </span>
+    );
+  }
+  const initials = app.title.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  return (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-warm font-display text-[11px] font-bold text-text-secondary" aria-hidden>
+      {initials}
+    </span>
+  );
+}
 
 // Turn a raw engine error (e.g. "prevail exited 1: <stderr>") into something a
 // human can act on. The bare "exited 1" is meaningless to the user.
@@ -247,8 +271,10 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
   const [addOpen, setAddOpen] = useState(false);
   const [addValue, setAddValue] = useState("");
   const [binding, setBinding] = useState<string | null>(null);
+  const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
   useEffect(() => {
     invoke<EngineApp[]>("engine_apps_list").then(setApps).catch(() => setApps([]));
+    invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {});
   }, []);
   const domainApps = useMemo(() => (apps ?? []).filter((a) => a.domains.includes(domain)), [apps, domain]);
   // Apps NOT yet feeding this domain - the candidates the picker offers.
@@ -338,27 +364,45 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
       </div>
       {domainApps.map((app) => {
         const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
+        const openConfig = () => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }));
         return (
           <div key={app.id} className={`${SETTINGS_ROW} hover:border-accent-border hover:bg-surface-warm`}>
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: tint }} title={app.status} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="truncate text-sm font-medium text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
-                <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">{app.integration}</span>
+            {/* Logo + status dot. The whole identity block links to the app's
+                config page so you can authenticate / configure it. */}
+            <button onClick={openConfig} title={`Open ${app.title} configuration`} className="group flex min-w-0 flex-1 items-center gap-3 text-left">
+              <span className="relative shrink-0">
+                <AppRowLogo app={app} logos={logos} />
+                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-surface" style={{ backgroundColor: tint }} title={app.status} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-medium text-text-primary group-hover:text-accent">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
+                  <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">{app.integration}</span>
+                  <ExternalLink className="h-3 w-3 shrink-0 text-text-muted/0 transition-colors group-hover:text-accent" />
+                </div>
+                <div className="font-mono text-[10px] text-text-muted">
+                  {app.configured ? app.status : <span className="text-warn">not configured · click to set up</span>}{app.refresh?.every ? ` · every ${app.refresh.every}` : ""} · synced {relTime(app.lastSuccessTs)}
+                  {probeResult[app.id] && <span className="ml-2 text-text-secondary">{probeResult[app.id]}</span>}
+                  {app.lastError && !probeResult[app.id] && <span className="ml-2 text-warn">{app.lastError}</span>}
+                </div>
               </div>
-              <div className="font-mono text-[10px] text-text-muted">
-                {app.status}{app.refresh?.every ? ` · every ${app.refresh.every}` : ""} · synced {relTime(app.lastSuccessTs)}
-                {probeResult[app.id] && <span className="ml-2 text-text-secondary">{probeResult[app.id]}</span>}
-                {app.lastError && !probeResult[app.id] && <span className="ml-2 text-warn">{app.lastError}</span>}
-              </div>
-            </div>
-            <button
-              onClick={() => sync(app.id)}
-              disabled={probing === app.id}
-              className="shrink-0 rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
-            >
-              {probing === app.id ? "syncing" : "sync"}
             </button>
+            {app.configured ? (
+              <button
+                onClick={() => sync(app.id)}
+                disabled={probing === app.id}
+                className="shrink-0 rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
+              >
+                {probing === app.id ? "syncing" : "sync"}
+              </button>
+            ) : (
+              <button
+                onClick={openConfig}
+                className="inline-flex shrink-0 items-center gap-1 rounded border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+              >
+                <SettingsIcon className="h-3 w-3" /> set up
+              </button>
+            )}
           </div>
         );
       })}
