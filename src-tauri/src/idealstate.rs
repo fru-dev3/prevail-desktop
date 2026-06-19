@@ -29,23 +29,25 @@ pub(crate) fn config_write_path(vault: &str, f: &str) -> PathBuf {
 // OpenClaw / Hermes user-profile pattern. Read/write via these calls.
 #[tauri::command]
 pub(crate) fn read_user_md(vault: String) -> Result<String, String> {
-    // Prefer user.md; fall back to profile.md (some vaults — incl. the demo —
-    // keep the identity there) so the profile is auto-injected either way.
-    let p = config_read_path(&vault, "user.md");
-    if p.exists() {
-        return read_to_string_retry(&p).map_err(|e| e.to_string());
-    }
+    // profile.md is the canonical user-profile file (matches the vault layout and
+    // the CLI, which reads profile.md first). user.md is honored only as a legacy
+    // fallback for older vaults that used that name.
     let profile = config_read_path(&vault, "profile.md");
     if profile.exists() {
         return read_to_string_retry(&profile).map_err(|e| e.to_string());
+    }
+    let legacy = config_read_path(&vault, "user.md");
+    if legacy.exists() {
+        return read_to_string_retry(&legacy).map_err(|e| e.to_string());
     }
     Ok(String::new())
 }
 #[tauri::command]
 pub(crate) fn write_user_md(vault: String, body: String) -> Result<(), String> {
-    let p = config_write_path(&vault, "user.md");
+    // Write the canonical profile.md (not the legacy user.md).
+    let p = config_write_path(&vault, "profile.md");
     if let Some(parent) = p.parent() { let _ = fs::create_dir_all(parent); }
-    fs::write(&p, body).map_err(|e| format!("write user.md: {e}"))
+    fs::write(&p, body).map_err(|e| format!("write profile.md: {e}"))
 }
 
 // The user's Ideal State — their constitution. A single `<vault>/ideal-state.md`
