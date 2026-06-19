@@ -77,9 +77,12 @@ pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
     if !root.is_dir() {
         return Err(format!("vault path does not exist: {}", path));
     }
-    let domains_root = root.join("domains");
-    std::fs::create_dir_all(&domains_root).map_err(|e| format!("mkdir domains: {e}"))?;
-    std::fs::create_dir_all(root.join("apps")).map_err(|e| format!("mkdir apps: {e}"))?;
+    // Canonical layout: apps + domains live ONLY under data/. Create those (not
+    // root-level), so loading a vault never re-seeds stray root domains/ + apps/.
+    let data = root.join("data");
+    let domains_root = data.join("domains");
+    std::fs::create_dir_all(&domains_root).map_err(|e| format!("mkdir data/domains: {e}"))?;
+    std::fs::create_dir_all(data.join("apps")).map_err(|e| format!("mkdir data/apps: {e}"))?;
 
     let mut moved = 0u64;
     let entries = match read_dir_retry(&root) {
@@ -272,11 +275,11 @@ mod tests {
         // A non-domain dir at the root must NOT be moved.
         fs::create_dir_all(vault.join("random")).unwrap();
         fs::write(vault.join("random").join("note.txt"), "x").unwrap();
-        // A pre-existing v3 domain that clashes by name must NOT be overwritten.
-        let v3_wealth = vault.join("domains").join("wealth");
-        fs::create_dir_all(&v3_wealth).unwrap();
-        fs::write(v3_wealth.join("_state.md"), "KEEP ME").unwrap();
-        // A legacy domain with the same name as the v3 one — should be skipped.
+        // A pre-existing canonical (data/) domain that clashes by name must NOT be overwritten.
+        let v4_wealth = vault.join("data").join("domains").join("wealth");
+        fs::create_dir_all(&v4_wealth).unwrap();
+        fs::write(v4_wealth.join("_state.md"), "KEEP ME").unwrap();
+        // A legacy domain with the same name as the canonical one — should be skipped.
         let legacy_wealth = vault.join("wealth");
         fs::create_dir_all(&legacy_wealth).unwrap();
         fs::write(legacy_wealth.join("_state.md"), "legacy").unwrap();
@@ -284,17 +287,17 @@ mod tests {
         let moved = vault_migrate_layout(vs.clone()).unwrap();
         assert_eq!(moved, 1, "only 'health' should move");
 
-        // health moved into domains/, data intact.
-        assert!(vault.join("domains").join("health").join("_intents.jsonl").exists());
+        // health moved into data/domains/, data intact.
+        assert!(vault.join("data").join("domains").join("health").join("_intents.jsonl").exists());
         assert!(!vault.join("health").exists());
         // non-domain left in place.
         assert!(vault.join("random").join("note.txt").exists());
-        // v3 wealth untouched; legacy wealth left in place (conflict skipped).
-        assert_eq!(fs::read_to_string(v3_wealth.join("_state.md")).unwrap(), "KEEP ME");
+        // canonical wealth untouched; legacy wealth left in place (conflict skipped).
+        assert_eq!(fs::read_to_string(v4_wealth.join("_state.md")).unwrap(), "KEEP ME");
         assert!(vault.join("wealth").exists());
-        // apps/ + domains/ now exist as siblings.
-        assert!(vault.join("apps").is_dir());
-        assert!(vault.join("domains").is_dir());
+        // apps/ + domains/ now exist under data/ (not the root).
+        assert!(vault.join("data").join("apps").is_dir());
+        assert!(vault.join("data").join("domains").is_dir());
 
         // Idempotent: a second run moves nothing new.
         assert_eq!(vault_migrate_layout(vs).unwrap(), 0);
