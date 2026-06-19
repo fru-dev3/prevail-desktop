@@ -22,7 +22,7 @@ const AUTO_END: &str = "<!-- omega:auto:end -->";
 /// authored ideal-state.md). The UI shows an empty state + "Distill now".
 #[tauri::command]
 pub(crate) fn read_omega(vault: String) -> Result<String, String> {
-    let p = PathBuf::from(&vault).join("omega.md");
+    let p = crate::idealstate::config_read_path(&vault, "omega.md");
     if !p.exists() {
         return Ok(String::new());
     }
@@ -34,7 +34,8 @@ pub(crate) fn read_omega(vault: String) -> Result<String, String> {
 /// _meta/omega-versions/ first (same safety as the constitution).
 #[tauri::command]
 pub(crate) fn write_omega(vault: String, body: String) -> Result<(), String> {
-    let p = PathBuf::from(&vault).join("omega.md");
+    let p = crate::idealstate::config_write_path(&vault, "omega.md");
+    if let Some(parent) = p.parent() { let _ = fs::create_dir_all(parent); }
     if let Ok(existing) = read_to_string_retry(&p) {
         let existing = engine::maybe_decrypt(&p, existing);
         if existing.trim() != body.trim() && !existing.trim().is_empty() {

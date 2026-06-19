@@ -9,6 +9,21 @@ use crate::engine;
 use crate::paths::domain_dir;
 use crate::{read_dir_retry, read_to_string_retry, secs_to_ymdhms};
 
+// Canonical layout keeps root-config (ideal-state.md, omega.md, user/profile.md)
+// under <vault>/build/. Read prefers build/<f>, falling back to the legacy root
+// <vault>/<f>; write goes to build/ when it exists (else root). Keeps the root
+// clean (PREVAIL.md + data/ + build/ only) while staying back-compatible.
+pub(crate) fn config_read_path(vault: &str, f: &str) -> PathBuf {
+    let in_build = crate::paths::build_root(vault).join(f);
+    if in_build.exists() {
+        return in_build;
+    }
+    PathBuf::from(vault).join(f)
+}
+pub(crate) fn config_write_path(vault: &str, f: &str) -> PathBuf {
+    crate::paths::build_root(vault).join(f)
+}
+
 // User-level context — a single `<vault>/user.md` that captures who
 // the user is, persistent preferences, recurring details. Mirrors the
 // OpenClaw / Hermes user-profile pattern. Read/write via these calls.
@@ -16,11 +31,11 @@ use crate::{read_dir_retry, read_to_string_retry, secs_to_ymdhms};
 pub(crate) fn read_user_md(vault: String) -> Result<String, String> {
     // Prefer user.md; fall back to profile.md (some vaults — incl. the demo —
     // keep the identity there) so the profile is auto-injected either way.
-    let p = PathBuf::from(&vault).join("user.md");
+    let p = config_read_path(&vault, "user.md");
     if p.exists() {
         return read_to_string_retry(&p).map_err(|e| e.to_string());
     }
-    let profile = PathBuf::from(&vault).join("profile.md");
+    let profile = config_read_path(&vault, "profile.md");
     if profile.exists() {
         return read_to_string_retry(&profile).map_err(|e| e.to_string());
     }
@@ -28,7 +43,8 @@ pub(crate) fn read_user_md(vault: String) -> Result<String, String> {
 }
 #[tauri::command]
 pub(crate) fn write_user_md(vault: String, body: String) -> Result<(), String> {
-    let p = PathBuf::from(&vault).join("user.md");
+    let p = config_write_path(&vault, "user.md");
+    if let Some(parent) = p.parent() { let _ = fs::create_dir_all(parent); }
     fs::write(&p, body).map_err(|e| format!("write user.md: {e}"))
 }
 
@@ -43,7 +59,7 @@ pub(crate) const DEFAULT_IDEAL_STATE: &str = include_str!("default_ideal_state.m
 
 #[tauri::command]
 pub(crate) fn read_ideal_state(vault: String) -> Result<String, String> {
-    let p = PathBuf::from(&vault).join("ideal-state.md");
+    let p = config_read_path(&vault, "ideal-state.md");
     if !p.exists() {
         return Ok(DEFAULT_IDEAL_STATE.to_string());
     }
@@ -51,7 +67,8 @@ pub(crate) fn read_ideal_state(vault: String) -> Result<String, String> {
 }
 #[tauri::command]
 pub(crate) fn write_ideal_state(vault: String, body: String) -> Result<(), String> {
-    let p = PathBuf::from(&vault).join("ideal-state.md");
+    let p = config_write_path(&vault, "ideal-state.md");
+    if let Some(parent) = p.parent() { let _ = fs::create_dir_all(parent); }
     // The constitution is never silently overwritten: every save that changes
     // it first snapshots the prior text into _meta/ideal-state-versions/, so
     // edits always leave a dated trace and nothing is ever lost.
