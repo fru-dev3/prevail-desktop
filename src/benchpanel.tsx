@@ -781,7 +781,7 @@ export function BenchRunConfig({
                   >
                     <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${collapsed ? "" : "rotate-90"}`} strokeWidth={2.5} />
                     <ProviderMark vendor={c.id} size={16} />
-                    <span className="font-display text-[13px] font-semibold tracking-tight">{c.label}</span>
+                    <span className="text-[13px] font-medium text-text-primary">{c.label}</span>
                     {selectedHere > 0 && (
                       <span className="rounded-full bg-accent px-1.5 py-px font-mono text-[9px] font-semibold text-background">{selectedHere}</span>
                     )}
@@ -835,9 +835,9 @@ export function BenchRunConfig({
                 key={d}
                 onClick={() => toggleScope(d)}
                 title={count === 0 ? "No questions yet: add or AI-suggest some in Questions" : `${count} question${count === 1 ? "" : "s"}`}
-                className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] ${
+                className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] transition-colors ${
                   on
-                    ? "border-accent-border bg-accent-soft text-accent"
+                    ? "border-accent bg-accent font-semibold text-background shadow-sm"
                     : count === 0
                       ? "border-border-subtle bg-background text-text-muted/60 hover:bg-surface-warm"
                       : "border-border bg-background text-text-secondary hover:bg-surface-warm"
@@ -846,7 +846,7 @@ export function BenchRunConfig({
                 {Icon && <Icon className="h-3 w-3" />}
                 {titleCase(d)}
                 {count > 0 && (
-                  <span className={`ml-0.5 rounded-full px-1 text-[9px] ${on ? "bg-accent/15 text-accent" : "bg-surface-warm text-text-muted"}`}>{count}</span>
+                  <span className={`ml-0.5 rounded-full px-1 text-[9px] ${on ? "bg-background/25 text-background" : "bg-surface-warm text-text-muted"}`}>{count}</span>
                 )}
               </button>
             );
@@ -898,7 +898,7 @@ export function BenchRunConfig({
               <div key={s.id} className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-3 py-2">
                 <button onClick={() => loadSuite(s)} title="Load into the editor to tweak (does not run)" className="min-w-0 flex-1 text-left">
                   <div className="flex items-center gap-2">
-                    <span className="truncate font-display text-sm font-semibold tracking-tight hover:text-accent">{s.name}</span>
+                    <span className="truncate text-sm font-medium text-text-primary hover:text-accent">{s.name}</span>
                     {isScheduled && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] text-accent"><CalendarClock className="h-2.5 w-2.5" /> {schedFreq}</span>}
                   </div>
                   <div className="mt-0.5 font-mono text-[10px] text-text-muted">
