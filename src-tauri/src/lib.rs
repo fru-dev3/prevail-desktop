@@ -22,6 +22,7 @@ mod gateway_log;
 mod intent_daemon;
 mod domain;
 mod intents;
+mod normalize;
 mod idealstate;
 mod omega;
 mod paths;
@@ -295,6 +296,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             vault::scan_vault,
             vault::vault_migrate_layout,
+            normalize::vault_normalize_plan,
+            normalize::vault_normalize_apply,
             clis::detect_clis,
             appcmds::log_fatal,
             appcmds::import_sample_vault,
