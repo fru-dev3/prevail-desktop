@@ -337,7 +337,7 @@ export function DomainContextDrawer({
                     </pre>
                   </button>
                 </>
-              ) : <div className="text-xs text-text-muted">No state yet. The distiller derives a state snapshot from your activity in this domain; it appears after your first few chats here.</div>
+              ) : <div className="text-xs text-text-muted">No state yet. The distiller derives a state snapshot from your activity once <span className="text-text-secondary">Routines → persistent memory</span> is on (Settings → Routines); it appears after enough new material, usually within a few sessions.</div>
             } />
             {/* Decisions = the live ledger (latest, raw) + the distiller's curated
                 summary, in ONE section (was split into "Recent decisions" + "Decisions"). */}

@@ -278,6 +278,20 @@ pub(crate) fn decision_append(
     let dir = domain_dir(&vault, &domain);
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir decisions: {e}"))?;
     let file = runtime_file(&vault, &domain, "_decisions.jsonl");
+    // Dedup: skip if an identical decision (same prompt + verdict + action) is
+    // already logged - a re-render or retry shouldn't create a duplicate entry.
+    let dkey = |v: &serde_json::Value| -> String {
+        let g = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").trim().to_string();
+        format!("{}\u{1}{}\u{1}{}", g("prompt"), g("verdict"), g("action"))
+    };
+    let nk = dkey(&record);
+    if nk != "\u{1}\u{1}" {
+        if let Ok(existing) = read_to_string_retry(&file) {
+            if existing.lines().filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok()).any(|v| dkey(&v) == nk) {
+                return Ok(()); // already recorded
+            }
+        }
+    }
     let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
     engine::vault_append_line(&file, &format!("{line}\n")).map_err(|e| format!("write decision: {e}"))?;
     Ok(())
@@ -291,17 +305,27 @@ pub(crate) fn decisions_read(
     domain: Option<String>,
     limit: Option<usize>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let file = runtime_file(&vault, &domain, "_decisions.jsonl");
-    let text = match read_to_string_retry(&file) {
-        Ok(t) => t,
-        Err(_) => return Ok(vec![]),
-    };
-    let mut out: Vec<serde_json::Value> = text
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .filter_map(|l| serde_json::from_str(l).ok())
-        .collect();
-    out.reverse(); // newest first
+    // Read the primary ledger, plus (for General) the pre-build/ root copy, and
+    // merge - so a tidied vault that split decisions across root + build/ shows a
+    // single deduped list instead of hiding half of them.
+    let primary = runtime_file(&vault, &domain, "_decisions.jsonl");
+    let mut files = vec![primary.clone()];
+    if domain.is_none() {
+        let root_copy = std::path::PathBuf::from(&vault).join("_decisions.jsonl");
+        if root_copy != primary { files.push(root_copy); }
+    }
+    let mut out: Vec<serde_json::Value> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for f in files {
+        let Ok(text) = read_to_string_retry(&f) else { continue };
+        for v in text.lines().filter(|l| !l.trim().is_empty()).filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok()) {
+            let g = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").trim().to_string();
+            let key = format!("{}\u{1}{}\u{1}{}", g("prompt"), g("verdict"), g("action"));
+            if seen.insert(key) { out.push(v); }
+        }
+    }
+    // Newest first (entries carry an epoch-ms `ts`).
+    out.sort_by(|a, b| b.get("ts").and_then(|x| x.as_i64()).unwrap_or(0).cmp(&a.get("ts").and_then(|x| x.as_i64()).unwrap_or(0)));
     if let Some(n) = limit {
         out.truncate(n);
     }
