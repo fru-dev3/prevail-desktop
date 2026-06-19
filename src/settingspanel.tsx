@@ -191,22 +191,19 @@ export function SettingsPanel({
         {/* Branded banner - mirrors the home sidebar header (dark, logo + serif
             wordmark), with the Back button underneath. pt-9 clears the macOS
             traffic-light controls so nothing is hidden under them. Draggable. */}
-        <div data-tauri-drag-region className="-mx-2 -mt-3 mb-3 border-b border-black/30 bg-[#141416] px-4 pb-3 pt-3">
+        {/* Inverted BACKGROUND vs the home header (dark): a prominent bluish
+            banner so it's unmistakable you're in Settings, not on home. */}
+        <div data-tauri-drag-region className="-mx-2 -mt-3 mb-3 border-b border-black/20 bg-gradient-to-br from-[#5fa4bd] via-[#558fa6] to-[#467a8f] px-4 pb-3 pt-3">
           <div className="flex items-center gap-2.5">
-            <span className="shrink-0 overflow-hidden rounded-lg ring-1 ring-ai/40"><PrevailLogo size={26} animated={false} /></span>
-            {/* Inverted wordmark vs the home header (which is white with a blue
-                "AI"): here the base letters are the bluish accent and "AI" is
-                white, so it's unmistakable you're in Settings, not on home. */}
-            <span className="flex min-w-0 flex-1 items-center justify-between font-display text-2xl font-bold text-ai [text-shadow:0_2px_6px_rgba(0,0,0,0.5)]" aria-label="Prevail">
-              <span>P</span><span>R</span><span>E</span><span>V</span>
-              <span className="text-white">A</span><span className="text-white">I</span>
-              <span>L</span>
+            <span className="shrink-0 overflow-hidden rounded-lg ring-1 ring-white/40"><PrevailLogo size={26} animated={false} /></span>
+            <span className="flex min-w-0 flex-1 items-center justify-between font-display text-2xl font-bold text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.35)]" aria-label="Prevail">
+              <span>P</span><span>R</span><span>E</span><span>V</span><span>A</span><span>I</span><span>L</span>
             </span>
           </div>
           {onBack && (
             <button
               onClick={onBack}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-white/10 px-2.5 py-1 text-sm font-medium text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-white/15 px-2.5 py-1 text-sm font-medium text-white transition-colors hover:bg-white/30"
             >
               <ArrowLeft className="h-4 w-4" />
               Back to app
