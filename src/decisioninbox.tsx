@@ -7,6 +7,7 @@ import { Bot, Check, Inbox, Loader2, ListPlus, Play, RotateCcw, Clock, X } from 
 import { invoke } from "./bridge";
 import { titleCase } from "./format";
 import { PREF, getPref } from "./storage";
+import { startProcess, endProcess } from "./processes";
 import type { DecisionItem } from "./types";
 
 const SNOOZE_KEY = "prevail:decisions:snoozed";
@@ -56,6 +57,10 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
 
   const approveRun = async (it: DecisionItem) => {
     setBusy(it.id); setReport(null);
+    // Show it as a running process so executing an approval is visible system-wide.
+    const procId = `exec-${it.id}-${Date.now()}`;
+    const short = it.text.length > 48 ? `${it.text.slice(0, 48)}…` : it.text;
+    startProcess(procId, "loop", `${titleCase(it.domain || "general")} · Executing: ${short}`, it.domain);
     try {
       const provider = getPref(PREF.memoryProvider, "claude");
       const model = getPref(PREF.distillModel, "claude-haiku-4-5");
@@ -74,7 +79,7 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
       after();
     } catch (e) {
       setReport({ text: it.text, report: `Execution failed: ${e}` });
-    } finally { setBusy(null); }
+    } finally { setBusy(null); endProcess(procId); }
   };
 
   // Loop approval → file it as your own task (then clear the approval). Blocked AI
