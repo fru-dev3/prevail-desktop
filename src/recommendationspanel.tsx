@@ -3,12 +3,15 @@
 // per domain, apps to connect. Each is one-click. Computed fresh from your vault
 // signals (intents, benchmark, apps), so it stays current as you use the app.
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, BarChart3, Bookmark, Check, ChevronRight, Compass, Gauge, Lightbulb, Loader2, Plug, Sparkles, X } from "lucide-react";
+import { ArrowRight, BarChart3, Bookmark, Check, ChevronRight, Compass, Gauge, Lightbulb, Loader2, Plug, RotateCw, Sparkles, X } from "lucide-react";
 import { invoke } from "./bridge";
-import { titleCase } from "./format";
+import { relTime, titleCase } from "./format";
 import { modelLabel } from "./helpers2";
+import { distillCfgFromPrefs } from "./daemoncfg";
 import { lsGet, lsSet } from "./storage";
 import { SettingsHeader } from "./sectionutil";
+
+type DistillStatus = { running: boolean; last_run_ts?: number | null };
 
 type Rec = {
   id: string;
@@ -121,13 +124,23 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
   const restoreRec = (id: string) => { const s = new Set(dismissed); s.delete(id); persistDismissed(s); };
   const toggleSave = (id: string) => { const s = new Set(saved); s.has(id) ? s.delete(id) : s.add(id); persistSaved(s); };
 
+  const [daemon, setDaemon] = useState<DistillStatus | null>(null);
+  const [running, setRunning] = useState(false);
   const load = useCallback(async () => {
     try {
       const r = await invoke<{ ok: boolean; recommendations?: Rec[] }>("engine_recommendations", { vault: vaultPath });
       setRecs(Array.isArray(r?.recommendations) ? r.recommendations : []);
     } catch { setRecs([]); }
+    try { setDaemon(await invoke<DistillStatus>("distill_status")); } catch { /* daemon not started */ }
   }, [vaultPath]);
   useEffect(() => { void load(); }, [load]);
+
+  // Force a learning pass now, then refresh the feed - "come up with recommendations".
+  const runNow = useCallback(async () => {
+    setRunning(true);
+    try { await invoke("distill_run_once", { cfg: distillCfgFromPrefs(vaultPath) }); } catch { /* surfaced by reload */ }
+    finally { setRunning(false); await load(); }
+  }, [vaultPath, load]);
 
   const accept = useCallback(async (rec: Rec) => {
     setBusy(rec.id);
@@ -148,6 +161,22 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
         icon={Lightbulb}
         subtitle="What Prevail suggests next, learned from how you actually use it: domains worth creating, the model that scores best per domain, and apps that would keep a domain fresh. Updated continuously."
       />
+      {/* Daemon status + force-run. Minimal: a status line and one icon button. */}
+      <div className="mb-4 flex items-center gap-2 text-[11px] text-text-muted">
+        <span className={`h-1.5 w-1.5 rounded-full ${daemon?.running || running ? "bg-accent" : "bg-text-muted/40"}`} />
+        <span>
+          {running || daemon?.running ? "learning now" : daemon?.last_run_ts ? `last learned ${relTime(daemon.last_run_ts * 1000)}` : "not run yet"}
+        </span>
+        <button
+          onClick={runNow}
+          disabled={running || daemon?.running}
+          title="Run now: force the learning pass and refresh recommendations"
+          aria-label="Run recommendations now"
+          className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent disabled:opacity-40"
+        >
+          {running || daemon?.running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
+        </button>
+      </div>
       {recs === null ? (
         <div className="text-sm text-text-muted">loading recommendations…</div>
       ) : recs.length === 0 ? (
