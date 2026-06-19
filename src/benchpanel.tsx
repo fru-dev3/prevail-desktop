@@ -865,10 +865,10 @@ export function BenchRunConfig({
         </CollapsibleSection>
       )}
 
-      {/* Domain scope - domains that HAVE questions lead (sorted by how many);
-          the empty ones sit behind a disclosure so 20+ domains don't become a
-          wall of noise. */}
-      <CollapsibleSection icon={Target} title="Domain scope" summary={scope.size === 0 ? "all domains" : `${scope.size} selected`} storageKey="prevail.bench.sec.scope" defaultOpen>
+      {/* Domains - which domains' questions this run covers. Sorted by how many
+          questions each has; empty ones sit behind a disclosure so 20+ domains
+          don't become a wall of noise. */}
+      <CollapsibleSection icon={Target} title="Domains" summary={scope.size === 0 ? "all domains" : `${scope.size} selected`} storageKey="prevail.bench.sec.scope" defaultOpen>
         {allDomains.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-xs text-text-muted">
             No questions yet: add some in the <span className="text-accent">Questions</span> tab first.
