@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Box, Check, ChevronRight, Code, Compass, Cpu, Eye, Folder, Loader2, Lock, MessageSquare, PanelRightClose, Pin, Share2, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { invoke } from "./bridge";
-import { FRAMEWORKS, LENSES, MODELS } from "./constants";
+import { FRAMEWORKS, LENSES, MODELS, isHarnessRuntime } from "./constants";
 import { formatFreshness, titleCase } from "./format";
 import { isLocalCli } from "./helpers";
 import { PREF, getPref, isBunkerOn, lsGet, lsSet } from "./storage";
@@ -537,6 +537,9 @@ export function AgentPickerRail({
   return (
     <div className="mt-3 flex items-center gap-1 rounded-full border border-border bg-surface px-1.5 py-1 shadow-sm">
       {clis
+        // Harnesses (Hermes, Paperclip, OpenClaw, …) are not chat CLIs - you can't
+        // converse with them here, so keep them off the homepage launcher.
+        .filter((c) => !isHarnessRuntime(c.id))
         .filter((c) => !isBunkerOn() || isLocalCli(c.id))
         // A provider that failed validation is not offered for chat: pick a
         // dead provider and the send just errors. It stays on the Models page
