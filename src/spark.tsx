@@ -97,8 +97,12 @@ function SparkCard({ s, onSave, onDismiss, saved, vaultPath }: {
     const lead = asRoutine ? "I'd like to turn this spark into a recurring routine. Help me set one up:" : "Let's explore this spark together:";
     const seed = `${lead}\n\n${s.title ? s.title + "\n\n" : ""}${s.body}`;
     // Persist so the seed survives navigating from Settings to the (then-mounting)
-    // chat panel; ChatPanel reads it on mount. App leaves Settings -> Chat on this event.
+    // chat panel; ChatPanel reads it on mount.
     try { localStorage.setItem("prevail.compose.pending", seed); } catch { /* ignore */ }
+    // A spark is a general, untied idea - explore it in GENERAL, not whatever
+    // domain happened to be selected. open-domain "" routes to General chat and
+    // leaves Settings; compose-seed handles the already-on-General case.
+    window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: "" }));
     window.dispatchEvent(new CustomEvent("prevail:compose-seed", { detail: seed }));
   }
   return (
