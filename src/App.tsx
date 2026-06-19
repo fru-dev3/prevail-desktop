@@ -780,32 +780,41 @@ export default function App() {
   // overdue, due today, or flagged critical (open, not trashed). Visible app-wide so
   // time-sensitive work (tax this quarter, a critical item) surfaces without opening
   // the board. Cheap-ish read, slow poll + event refresh, same as the decisions pill.
-  const [dueAlert, setDueAlert] = useState<{ overdue: number; today: number; critical: number; open: number }>({ overdue: 0, today: 0, critical: 0, open: 0 });
+  // Count open work by reading each domain's _tasks.md DIRECTLY (same proven
+  // read_file + domain.path mechanism the Loop count uses). tasks_read_all was
+  // returning empty at app scope for some vault layouts, so the badge never lit;
+  // reading the files we know exist is layout-proof. Task line format:
+  //   `- [ ] text @<due> +<added> ~daemon ~id:xxx`  (@ = due date)
+  const [dueAlert, setDueAlert] = useState<{ overdue: number; today: number; open: number }>({ overdue: 0, today: 0, open: 0 });
   useEffect(() => {
-    if (!vaultPath) return;
+    if (!vaultPath || domains.length === 0) return;
     let alive = true;
-    const poll = () => invoke<{ done?: boolean; status?: string; due?: string | null; trashed?: string | null; priority?: string | null }[]>("tasks_read_all", { vault: vaultPath })
-      .then((rows) => {
-        if (!alive) return;
+    const poll = async () => {
+      try {
         const today = new Date().toISOString().slice(0, 10);
-        let overdue = 0, dueToday = 0, critical = 0, open = 0;
-        for (const t of Array.isArray(rows) ? rows : []) {
-          if (t.trashed || t.done || t.status === "done") continue;
-          open++;
-          if (t.due && t.due < today) overdue++;
-          else if (t.due && t.due === today) dueToday++;
-          if (t.priority === "critical") critical++;
+        const texts = await Promise.all(
+          domains.map((d) => invoke<string>("read_file", { path: `${d.path.replace(/\/+$/, "")}/_tasks.md` }).catch(() => "")),
+        );
+        if (!alive) return;
+        let overdue = 0, dueToday = 0, open = 0;
+        for (const md of texts) {
+          for (const line of (md || "").split("\n")) {
+            if (!/^- \[ \]/.test(line)) continue; // open task only
+            open++;
+            const m = line.match(/@(\d{4}-\d{2}-\d{2})/);
+            if (m) { if (m[1] < today) overdue++; else if (m[1] === today) dueToday++; }
+          }
         }
-        setDueAlert({ overdue, today: dueToday, critical, open });
-      })
-      .catch(() => {});
+        setDueAlert({ overdue, today: dueToday, open });
+      } catch { /* ignore */ }
+    };
     void poll();
     const id = window.setInterval(poll, 60000);
-    const onEvt = () => poll();
+    const onEvt = () => { void poll(); };
     window.addEventListener("prevail:tasks-changed", onEvt);
     window.addEventListener("prevail:loops-advanced", onEvt);
     return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:tasks-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
-  }, [vaultPath]);
+  }, [vaultPath, domains]);
   // Insights (recommendations) + Loops counts — surfaced as always-visible badges on
   // the top-nav tabs so the user sees how much is waiting without opening either view.
   // Both are computed in the background on a slow poll + event refresh, same cadence as
@@ -1406,7 +1415,6 @@ export default function App() {
                       `${dueAlert.open} open`,
                       dueAlert.overdue ? `${dueAlert.overdue} overdue` : "",
                       dueAlert.today ? `${dueAlert.today} due today` : "",
-                      dueAlert.critical ? `${dueAlert.critical} critical` : "",
                     ].filter(Boolean).join(" · ") : "Work: this domain's tasks, in-panel"}
                     className={`relative flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "chat" && domainTab === "work"
@@ -1418,7 +1426,7 @@ export default function App() {
                     {dueAlert.open > 0 && (
                       <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${
                         tab === "chat" && domainTab === "work"
-                          ? (dueAlert.overdue ? "bg-background text-danger" : dueAlert.today ? "bg-background text-warn" : "bg-background text-accent")
+                          ? (dueAlert.overdue ? "bg-background text-danger" : dueAlert.today ? "bg-background text-warn" : "bg-background text-text-primary")
                           : dueAlert.overdue ? "bg-danger text-background" : dueAlert.today ? "bg-warn text-background" : "bg-accent text-background"
                       }`}>{dueAlert.open}</span>
                     )}
@@ -1436,7 +1444,7 @@ export default function App() {
                   >
                     <Lightbulb className="h-3.5 w-3.5" /> Insights
                     {recCount > 0 && (
-                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${tab === "chat" && domainTab === "insights" ? "bg-background text-accent" : "bg-accent text-background"}`}>{recCount}</span>
+                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${tab === "chat" && domainTab === "insights" ? "bg-background text-text-primary" : "bg-accent text-background"}`}>{recCount}</span>
                     )}
                   </button>
                   {/* Loops right after Insights so Work · Insights · Loops read as
@@ -1452,7 +1460,7 @@ export default function App() {
                   >
                     <Repeat className="h-3.5 w-3.5" /> Loops
                     {loopCount > 0 && (
-                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${tab === "chat" && domainTab === "loops" ? "bg-background text-accent" : "bg-accent text-background"}`}>{loopCount}</span>
+                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${tab === "chat" && domainTab === "loops" ? "bg-background text-text-primary" : "bg-accent text-background"}`}>{loopCount}</span>
                     )}
                   </button>
                   <button
