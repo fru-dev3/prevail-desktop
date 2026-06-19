@@ -896,9 +896,11 @@ export default function App() {
   const fwLens = useFrameworkLens();
 
   const selectedDomainPath = useMemo(() => {
-    if (!selectedDomain) return null;
+    // General is a first-class domain backed by the vault ROOT (its _state.md,
+    // _loops.json, _threads, etc. live there), so its path is the vault itself.
+    if (!selectedDomain) return vaultPath || null;
     return domains.find((d) => d.name === selectedDomain)?.path ?? null;
-  }, [domains, selectedDomain]);
+  }, [domains, selectedDomain, vaultPath]);
 
   // Quick switcher (⌘P) - fuzzy finder over all domains + recent
   // threads across all domains. Modal owns its own state when open.
@@ -1334,19 +1336,33 @@ export default function App() {
                   >
                     <SettingsIcon className="h-3.5 w-3.5" /> Preferences
                   </button>
-                  {selectedDomain && (
+                  {/* General has no domain header (it owns the hero canvas), so give
+                      it a Context tab here for parity with regular domains. */}
+                  {!selectedDomain && (
                     <button
-                      onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "loops" ? "chat" : "loops"); }}
-                      title="Loops: the standing forces working to reach this domain's desired state"
+                      onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "context" ? "chat" : "context"); }}
+                      title="Context: what General knows - state, memory, decisions, journal"
                       className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
-                        tab === "chat" && domainTab === "loops"
+                        tab === "chat" && domainTab === "context"
                           ? "bg-accent-soft text-accent"
                           : "text-text-muted hover:bg-surface-warm hover:text-accent"
                       }`}
                     >
-                      <Repeat className="h-3.5 w-3.5" /> Loops
+                      <Layers className="h-3.5 w-3.5" /> Context
                     </button>
                   )}
+                  {/* Loops - now shown for General too (it's a first-class domain). */}
+                  <button
+                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "loops" ? "chat" : "loops"); }}
+                    title="Loops: the standing forces working to reach this domain's desired state"
+                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+                      tab === "chat" && domainTab === "loops"
+                        ? "bg-accent-soft text-accent"
+                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <Repeat className="h-3.5 w-3.5" /> Loops
+                  </button>
                   {selectedDomain && (
                     <button
                       onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "apps" ? "chat" : "apps"); }}

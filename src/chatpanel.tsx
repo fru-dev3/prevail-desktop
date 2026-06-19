@@ -311,7 +311,9 @@ export function ChatPanel({
     const pref = loadPreferredSkills(domain);
     setPreferredSkills(pref);
     setAttachedSkills(pref);
-    if (!domain || !vaultPath) { setDomainCtx(null); return; }
+    // General (empty domain) reads the vault root, where its context lives, so it
+    // gets the same Context view as a regular domain.
+    if (!vaultPath) { setDomainCtx(null); return; }
     let mounted = true;
     invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain })
       .then((c) => { if (mounted) setDomainCtx(c); })
@@ -320,7 +322,7 @@ export function ChatPanel({
   }, [domain, vaultPath]);
   // Re-pull the domain bundle (e.g. after creating a skill) without a remount.
   const refreshDomainCtx = useCallback(() => {
-    if (!domain || !vaultPath) return;
+    if (!vaultPath) return;
     invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain })
       .then(setDomainCtx)
       .catch(() => {});
@@ -1523,7 +1525,7 @@ export function ChatPanel({
         </div>
       )}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-        {messages.length === 0 && !domain && (
+        {messages.length === 0 && !domain && domainTab === "chat" && (
           <div className="flex h-full flex-col items-center justify-center px-6 py-8">
             <PrevailLogo size={64} src="/logo-512.png" />
             <h2 className="mt-6 font-display text-5xl font-bold tracking-tight">
@@ -1600,7 +1602,7 @@ export function ChatPanel({
         )}
         {domainTab !== "chat" && (
           <div className="w-full px-6 py-6">
-            {domain && domainTab === "context" && (
+            {domainTab === "context" && (
               <ContextScorePanel
                 score={ctxScore}
                 loading={ctxScoreLoading}
@@ -1623,8 +1625,8 @@ export function ChatPanel({
             {domainTab === "apps" && domain && (
               <DomainAppsTab domain={domain} vaultPath={vaultPath} />
             )}
-            {domainTab === "loops" && domain && domainPath && (
-              <LoopsPanel domain={domain} vaultPath={vaultPath} domainPath={domainPath} />
+            {domainTab === "loops" && domainPath && (
+              <LoopsPanel domain={domain || "general"} vaultPath={vaultPath} domainPath={domainPath} />
             )}
             {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && domainTab !== "insights" && domainTab !== "usage" && domainTab !== "apps" && domainTab !== "loops" && <div className="text-sm text-text-muted">loading…</div>}
             {domainCtx && domainTab === "state" && (domainCtx.state ? <Markdown source={domainCtx.state} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">state.md</code> in this domain.</div>)}
@@ -1685,7 +1687,7 @@ export function ChatPanel({
             )}
           </div>
         )}
-        {!domain && messages.length > 0 && (
+        {!domain && domainTab === "chat" && messages.length > 0 && (
           <div className="mx-auto w-full max-w-3xl px-6 py-8">
             <MessageList
               messages={messages}
