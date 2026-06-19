@@ -124,6 +124,7 @@ import {
   Lightbulb,
   Inbox,
   CalendarRange,
+  Check,
   Plug,
   
   
@@ -1342,10 +1343,23 @@ export default function App() {
                       ].filter(Boolean).join(" · ")}
                       className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors hover:bg-surface-warm ${dueAlert.overdue ? "text-danger" : "text-warn"}`}
                     >
-                      <CalendarRange className="h-3.5 w-3.5" /> Due
+                      <CalendarRange className="h-3.5 w-3.5" /> Work
                       <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[9px] font-bold text-background ${dueAlert.overdue ? "bg-danger" : "bg-warn"}`}>{dueAlertCount}</span>
                     </button>
                   )}
+                  {/* Work: this domain's tasks in-panel (scoped board) without
+                      leaving for the full Work Board. */}
+                  <button
+                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "work" ? "chat" : "work"); }}
+                    title="Work: this domain's tasks, in-panel"
+                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+                      tab === "chat" && domainTab === "work"
+                        ? "bg-accent-soft text-accent"
+                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <Check className="h-3.5 w-3.5" /> Work
+                  </button>
                   {/* Order (founder): Insights · Usage · Benchmark · Preferences,
                       then Back up (actions menu). Compact px/text so the cluster stays small. */}
                   <button
