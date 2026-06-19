@@ -4,7 +4,7 @@
 // and current actions. The runner daemon (separate) evaluates enabled loops and
 // keeps their actions current; here you define and steer them.
 import { useCallback, useEffect, useState } from "react";
-import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, Plus, RefreshCw, ShieldQuestion, Target, Trash2, X, Zap } from "lucide-react";
+import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, ListPlus, Play, Plus, RefreshCw, ShieldQuestion, Target, Trash2, X, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase } from "./format";
 import { PREF, getPref } from "./storage";
@@ -325,6 +325,8 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
               onToggleOpen={() => toggleOpen(l.id)}
               onChange={(patch) => mutateLoop(l.id, patch)}
               onRemove={() => removeLoop(l.id)}
+              vaultPath={vaultPath}
+              domain={domain}
             />
           ))}
         </section>
@@ -387,7 +389,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
         <section className="space-y-2 pt-2">
           <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Completed · {done.length}</div>
           {done.map((l) => (
-            <LoopCard key={l.id} loop={l} rt={runtime.loops[l.id]} open={openIds.has(l.id)} onToggleOpen={() => toggleOpen(l.id)} onChange={(patch) => mutateLoop(l.id, patch)} onRemove={() => removeLoop(l.id)} />
+            <LoopCard key={l.id} loop={l} rt={runtime.loops[l.id]} open={openIds.has(l.id)} onToggleOpen={() => toggleOpen(l.id)} onChange={(patch) => mutateLoop(l.id, patch)} onRemove={() => removeLoop(l.id)} vaultPath={vaultPath} domain={domain} />
           ))}
         </section>
       )}
@@ -397,17 +399,43 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
   );
 }
 
-function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove }: {
+function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath, domain }: {
   loop: Loop;
   rt?: LoopRtEntry;
   open: boolean;
   onToggleOpen: () => void;
   onChange: (patch: Partial<Loop>) => void;
   onRemove: () => void;
+  vaultPath: string;
+  domain: string;
 }) {
   const done = loop.status === "done";
   const autonomy = loop.autonomy ?? "ask";
   const history = (rt?.history ?? []).slice().reverse();
+
+  // Per-loop "Run now": run this one loop immediately, apply per its autonomy, and
+  // show exactly what it did (actions + dispositions, tasks created, approvals).
+  type RunResult = { ok: boolean; note: string; done: boolean; actions: { text: string; disposition: "task" | "approval" | "suggested" }[]; tasksCreated: string[]; pending: string[]; error?: string };
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<RunResult | null>(null);
+  const runNow = async () => {
+    setRunning(true); setResult(null);
+    try {
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      const r = await invoke<RunResult>("loop_run_now", { vault: vaultPath, domain, loopId: loop.id, provider, model });
+      setResult(r);
+      window.dispatchEvent(new Event("prevail:loops-advanced"));
+      window.dispatchEvent(new Event("prevail:tasks-changed"));
+    } catch (e) { setResult({ ok: false, note: "", done: false, actions: [], tasksCreated: [], pending: [], error: String(e) }); }
+    finally { setRunning(false); }
+  };
+
+  // Next scheduled run = last run + cadence interval (continuous ≈ hourly).
+  const CADENCE_MS: Record<LoopCadence, number> = { continuous: 3600e3, daily: 864e5, weekly: 6048e5, monthly: 2592e6 };
+  const nextRun = loop.enabled && loop.status === "active" && loop.lastRunTs
+    ? new Date(loop.lastRunTs + (CADENCE_MS[loop.cadence] ?? 6048e5))
+    : null;
   const dot = done ? "#9aa0a6" : loop.status === "paused" ? "#d9a441" : "#0d7a6e";
   return (
     <div className={`overflow-hidden rounded-xl border bg-surface ${done ? "border-border-subtle opacity-70" : "border-border"}`}>
@@ -488,8 +516,37 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove }: {
               </ul>
             </Field>
           )}
+          {/* Run-now result: exactly what this pass did. */}
+          {result && (
+            <div className={`rounded-lg border px-3 py-2.5 ${result.ok ? "border-accent-border bg-accent-soft/30" : "border-danger/40 bg-danger/10"}`}>
+              {result.ok ? (
+                <>
+                  <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-accent"><Play className="h-3 w-3" /> Ran just now</div>
+                  {result.note && <div className="mb-2 text-[12px] leading-relaxed text-text-secondary">{result.note}</div>}
+                  {result.actions.length > 0 ? (
+                    <ul className="space-y-1">
+                      {result.actions.map((a, i) => (
+                        <li key={i} className="flex items-start gap-2 text-[12px] text-text-secondary">
+                          <span className={`mt-0.5 inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider ${a.disposition === "task" ? "bg-accent-soft text-accent" : a.disposition === "approval" ? "bg-warn/15 text-warn" : "bg-surface-warm text-text-muted"}`}>
+                            {a.disposition === "task" ? <><ListPlus className="h-2.5 w-2.5" /> task</> : a.disposition === "approval" ? <><ShieldQuestion className="h-2.5 w-2.5" /> approval</> : "idea"}
+                          </span>
+                          <span>{a.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <div className="text-[12px] text-text-muted">No new actions this pass — the gap looks handled.</div>}
+                  <div className="mt-2 font-mono text-[10px] text-text-muted">{result.tasksCreated.length} task{result.tasksCreated.length === 1 ? "" : "s"} filed · {result.pending.length} awaiting approval</div>
+                </>
+              ) : <div className="text-[12px] text-danger">Run failed: {result.error}</div>}
+            </div>
+          )}
           {/* Controls */}
           <div className="flex flex-wrap items-center gap-2 border-t border-border-subtle pt-2.5">
+            <button onClick={runNow} disabled={running} title="Run this loop now: measure the gap, then apply per its autonomy" className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+              {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} {running ? "Running…" : "Run now"}
+            </button>
+            {nextRun && <span className="font-mono text-[10px] text-text-muted" title="Next scheduled run">next ~{nextRun.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>}
+            <span className="mx-0.5 text-text-muted/40">·</span>
             <select value={loop.cadence} onChange={(e) => onChange({ cadence: e.target.value as LoopCadence })} className="rounded-md border border-border bg-background px-2 py-1 text-xs" title="How often the runner evaluates this loop">
               {CADENCES.map((c) => <option key={c} value={c}>{CADENCE_LABEL[c]}</option>)}
             </select>

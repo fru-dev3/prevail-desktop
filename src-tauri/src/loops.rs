@@ -84,6 +84,41 @@ pub(crate) async fn loop_execute_action(
     .map_err(|e| format!("loop exec task failed: {e}"))?
 }
 
+/// Run ONE loop right now (the per-loop "Run now" button). Shells the engine's
+/// `daemon --loops --run-loop` for that single loop; it applies the result per the
+/// loop's autonomy and prints a `__LOOPRESULT__<json>` line we parse back into a
+/// structured result the UI shows (actions + dispositions, tasks created, pending).
+#[tauri::command]
+pub(crate) async fn loop_run_now(
+    vault: String,
+    domain: String,
+    loop_id: String,
+    provider: Option<String>,
+    model: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        let mut args: Vec<String> = vec![
+            "--vault".into(), vault,
+            "daemon".into(), "--loops".into(), "--run-loop".into(),
+            "--domain".into(), domain,
+            "--loop".into(), loop_id,
+        ];
+        if let Some(p) = provider { if !p.trim().is_empty() { args.push("--cli".into()); args.push(p); } }
+        if let Some(m) = model { if !m.trim().is_empty() { args.push("--model".into()); args.push(m); } }
+        let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        engine::run_engine_raw(&refs)
+    })
+    .await
+    .map_err(|e| format!("run-loop task failed: {e}"))??;
+    // The engine may print incidental logs; the result is the __LOOPRESULT__ line.
+    let json = out
+        .lines()
+        .rev()
+        .find_map(|l| l.trim().strip_prefix("__LOOPRESULT__"))
+        .ok_or_else(|| format!("loop run produced no result: {}", out.chars().take(200).collect::<String>()))?;
+    serde_json::from_str(json).map_err(|e| format!("parse loop result: {e}"))
+}
+
 /// Drop one queued pending approval from a domain's `_loops_runtime.json`
 /// (matched by loop id + exact text). Used by the cross-domain Decision Inbox to
 /// dismiss/clear an item after it's been approved or declined — the per-domain
