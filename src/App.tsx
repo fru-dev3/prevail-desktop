@@ -118,11 +118,12 @@ import {
   
   
   Activity,
-  
+
   Layers,
-  
+
   Lightbulb,
   Inbox,
+  CalendarRange,
   Plug,
   
   
@@ -773,6 +774,37 @@ export default function App() {
     return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:tasks-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
   }, [vaultPath]);
 
+  // Due/critical alerting — a top-bar pill counting tasks that need attention NOW:
+  // overdue, due today, or flagged critical (open, not trashed). Visible app-wide so
+  // time-sensitive work (tax this quarter, a critical item) surfaces without opening
+  // the board. Cheap-ish read, slow poll + event refresh, same as the decisions pill.
+  const [dueAlert, setDueAlert] = useState<{ overdue: number; today: number; critical: number }>({ overdue: 0, today: 0, critical: 0 });
+  useEffect(() => {
+    if (!vaultPath) return;
+    let alive = true;
+    const poll = () => invoke<{ done?: boolean; status?: string; due?: string | null; trashed?: string | null; priority?: string | null }[]>("tasks_read_all", { vault: vaultPath })
+      .then((rows) => {
+        if (!alive) return;
+        const today = new Date().toISOString().slice(0, 10);
+        let overdue = 0, dueToday = 0, critical = 0;
+        for (const t of Array.isArray(rows) ? rows : []) {
+          if (t.trashed || t.done || t.status === "done") continue;
+          if (t.due && t.due < today) overdue++;
+          else if (t.due && t.due === today) dueToday++;
+          if (t.priority === "critical") critical++;
+        }
+        setDueAlert({ overdue, today: dueToday, critical });
+      })
+      .catch(() => {});
+    void poll();
+    const id = window.setInterval(poll, 60000);
+    const onEvt = () => poll();
+    window.addEventListener("prevail:tasks-changed", onEvt);
+    window.addEventListener("prevail:loops-advanced", onEvt);
+    return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:tasks-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
+  }, [vaultPath]);
+  const dueAlertCount = dueAlert.overdue + dueAlert.today + dueAlert.critical;
+
   // Lets in-app links (e.g. the Demo ribbon) open a specific Settings section.
   const [settingsJump, setSettingsJump] = useState<{ section: string; n: number } | null>(null);
   const openSettingsAt = (section: string) => {
@@ -1290,6 +1322,25 @@ export default function App() {
                     >
                       <Inbox className="h-3.5 w-3.5" /> Needs you
                       <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[9px] font-bold text-background">{decisionsCount}</span>
+                    </button>
+                  )}
+                  {/* Due/critical pill: time-sensitive work needing attention now
+                      (overdue, due today, or critical). Opens the Horizon view. */}
+                  {dueAlertCount > 0 && (
+                    <button
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "tasks" }));
+                        window.dispatchEvent(new CustomEvent("prevail:board-view", { detail: "horizon" }));
+                      }}
+                      title={[
+                        dueAlert.overdue ? `${dueAlert.overdue} overdue` : "",
+                        dueAlert.today ? `${dueAlert.today} due today` : "",
+                        dueAlert.critical ? `${dueAlert.critical} critical` : "",
+                      ].filter(Boolean).join(" · ")}
+                      className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors hover:bg-surface-warm ${dueAlert.overdue ? "text-danger" : "text-warn"}`}
+                    >
+                      <CalendarRange className="h-3.5 w-3.5" /> Due
+                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[9px] font-bold text-background ${dueAlert.overdue ? "bg-danger" : "bg-warn"}`}>{dueAlertCount}</span>
                     </button>
                   )}
                   {/* Order (founder): Insights · Usage · Benchmark · Preferences,
