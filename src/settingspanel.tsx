@@ -1,7 +1,7 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, Compass, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Target, Wrench, Zap } from "lucide-react";
+import { Activity, ArrowLeft, Check, Compass, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Target, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { LS, lsGet } from "./storage";
 import { useAppearance } from "./hooks";
@@ -15,6 +15,7 @@ import { BoardPanel } from "./boardpanel";
 import { ConnectorsSection } from "./settings3";
 import { AppsPanel } from "./appspanel";
 import { RecommendationsPanel } from "./recommendationspanel";
+import { SystemActivity } from "./activitypanel";
 import { OmegaSection } from "./omega";
 import { CollapsibleSection } from "./collapsible";
 import { GeneralSection, IdealStateSection, SafetySection } from "./settings4";
@@ -50,7 +51,7 @@ export function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity";
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
@@ -102,6 +103,7 @@ export function SettingsPanel({
       { id: "ideal-state", label: "Ideals", icon: Compass },
       { id: "intents", label: "Intents", icon: Lightbulb },
       { id: "daemons", label: "Routines", icon: Zap },
+      { id: "activity", label: "Activity", icon: Activity },
     ]},
     { heading: "Intelligence", items: [
       { id: "models", label: "Runtimes", icon: Layers },
@@ -322,6 +324,7 @@ export function SettingsPanel({
               lives inside Routines as a peer collapsible group (in DaemonsSection),
               not a divider-separated section. */}
           {section === "daemons" && <DaemonsSection vaultPath={vaultPath} />}
+          {section === "activity" && <SystemActivity vaultPath={vaultPath} />}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {section === "connectors" && (
             <>
