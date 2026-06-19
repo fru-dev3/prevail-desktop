@@ -733,18 +733,16 @@ function WorkspaceSubLabel({ icon: Icon, label, desc }: { icon: LucideIcon; labe
   );
 }
 
-export function WorkspaceSection({ vaultPath, onChange, onSetupDomains, onVaultMoved }: { vaultPath: string; onChange: () => void; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void }) {
+export function WorkspaceSection({ vaultPath, onSetupDomains, onVaultMoved }: { vaultPath: string; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void }) {
   return (
     <>
       <SettingsHeader icon={FolderTree} title="Workspace" subtitle="Where your data lives and how you set it up: your vault, backups, and starter packs." />
-      {/* B2-15/16: ONE Vault section = the Your/Demo vault cards (with inline
-          change+open icons and a per-vault backup toggle), plus the Advanced
-          maintenance disclosure. The standalone Vault-folder card and the
-          separate Backups section are gone (folded in). */}
+      {/* ONE Vault section = the Your/Demo vault cards (inline change+open icons and
+          a per-vault backup toggle). The "Advanced" maintenance disclosure (move /
+          tidy into data/build, manual domain setup) was removed as unnecessary. */}
       <div className="mb-7">
         <WorkspaceSubLabel icon={FolderOpen} label="Vault" desc="your vault · demo vault · backups" />
         <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} headerless view="cards" />
-        <VaultSettings vaultPath={vaultPath} onChange={onChange} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} headerless advancedOnly hideBackups />
       </div>
       {/* Starter packs as its own section. */}
       <div>
