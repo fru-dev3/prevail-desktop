@@ -870,6 +870,39 @@ pub fn app_suggestions_generate(
     run_engine_json(&refs)
 }
 
+/// Read the Model Scout's latest web-search results (models worth adding to the
+/// Arena benchmark). Cheap file read; returns {} when the scout hasn't run yet.
+#[tauri::command]
+pub fn model_suggestions_read(vault: String) -> Result<serde_json::Value, String> {
+    let p = crate::paths::runtime_path(&vault, "_meta").join("model_suggestions.json");
+    match crate::read_to_string_retry(&p) {
+        Ok(raw) => Ok(serde_json::from_str(&raw).unwrap_or(serde_json::json!({}))),
+        Err(_) => Ok(serde_json::json!({})),
+    }
+}
+
+/// Force a Model Scout pass now (web search). Blocks until the CLI finishes, then
+/// returns the refreshed suggestions. `known` is a comma-joined list of models
+/// already in the benchmark, so the scout proposes only NEW ones.
+#[tauri::command]
+pub fn model_scout_run(
+    vault: String,
+    known: Option<String>,
+    cli: Option<String>,
+    model: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let mut args: Vec<String> = vec![
+        "scout-models".into(),
+        "--vault".into(), vault,
+        "--json".into(),
+    ];
+    if let Some(k) = known.filter(|s| !s.is_empty()) { args.push("--known".into()); args.push(k); }
+    if let Some(c) = cli.filter(|s| !s.is_empty()) { args.push("--cli".into()); args.push(c); }
+    if let Some(m) = model.filter(|s| !s.is_empty()) { args.push("--model".into()); args.push(m); }
+    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_engine_json(&refs)
+}
+
 /// Run one autonomous-sync pass over every DUE app (the in-app scheduler calls
 /// this on a tick; the headless `daemon --sync` runs the same on a loop).
 /// Returns { ran, ok, failed }.

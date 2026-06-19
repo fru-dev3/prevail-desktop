@@ -435,6 +435,8 @@ pub fn run() {
             engine::engine_recommendations,
             engine::app_suggestions_read,
             engine::app_suggestions_generate,
+            engine::model_suggestions_read,
+            engine::model_scout_run,
             engine::engine_alignment,
             engine::engine_app_skills,
             engine::engine_vault_embed,
