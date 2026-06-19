@@ -872,6 +872,7 @@ pub(crate) struct BenchmarkScoreArgs {
     pub vault: String,
     pub run: Option<String>,
     pub all: Option<bool>,
+    pub batch: Option<String>,
     pub judge_cli: Option<String>,
     pub judge_model: Option<String>,
     pub no_judge: Option<bool>,
@@ -886,7 +887,11 @@ pub(crate) async fn benchmark_score(
         "--vault".into(), args.vault.clone(),
         "bench".into(), "score".into(),
     ];
-    if args.all.unwrap_or(false) {
+    if let Some(b) = &args.batch {
+        // Score only the runs from this batch (fast) instead of every historical run.
+        cli_args.push("--batch".into());
+        cli_args.push(b.clone());
+    } else if args.all.unwrap_or(false) {
         cli_args.push("--all".into());
     } else if let Some(r) = &args.run {
         cli_args.push("--run".into());

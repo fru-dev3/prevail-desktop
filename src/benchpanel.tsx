@@ -307,7 +307,7 @@ export function BenchQuestions({
       <div className="w-full px-8 py-5">
         <BenchCrumbs
           items={[
-            { label: "Benchmark" },
+            { label: "Arena" },
             { label: "Questions", onClick: () => setEditing(null) },
             { label: editing === "new" ? "New question" : draft.id },
           ]}
@@ -361,7 +361,7 @@ export function BenchQuestions({
     <div className="w-full px-8 py-5">
       <BenchCrumbs
         items={[
-          { label: "Benchmark" },
+          { label: "Arena" },
           { label: "Questions" },
           ...(filter !== "all" ? [{ label: titleCase(filter) }] : []),
         ]}
@@ -605,7 +605,7 @@ export function BenchRunConfig({
       <div className="w-full space-y-4 px-8 py-5">
         <BenchCrumbs
           items={[
-            { label: "Benchmark", onClick: onCrumbHome },
+            { label: "Arena", onClick: onCrumbHome },
             { label: "Run", onClick: allDone ? onReset : undefined },
             { label: activeBatch?.label ?? (running ? "Running…" : "Finished") },
           ]}
@@ -748,7 +748,7 @@ export function BenchRunConfig({
   return (
     <div className="w-full space-y-7 px-8 py-5">
       <BenchCrumbs
-        items={[{ label: "Benchmark", onClick: onCrumbHome }, { label: "Run" }]}
+        items={[{ label: "Arena", onClick: onCrumbHome }, { label: "Run" }]}
         meta={`${questionCount} question${questionCount === 1 ? "" : "s"}${scope.size > 0 ? " · scoped" : ""}`}
       />
       {/* Mode lives in the header bar now (one consistent control row). */}
@@ -1145,7 +1145,7 @@ export function BenchResults({
       <div className="w-full px-8 py-5">
         <BenchCrumbs
           items={[
-            { label: "Benchmark" },
+            { label: "Arena" },
             { label: selectedFrom?.view ?? "Leaderboard", onClick: () => setSelected(null) },
             ...(crumbBatch ? [{ label: crumbBatch, onClick: () => setSelected(null) }] : []),
             { label: p.model },
@@ -1230,7 +1230,7 @@ export function BenchResults({
     <div className="w-full px-8 py-5">
       <BenchCrumbs
         items={[
-          { label: "Benchmark", onClick: onCrumbHome },
+          { label: "Arena", onClick: onCrumbHome },
           {
             label: resultsView === "history" ? "History" : resultsView === "matrix" ? "Model × domain" : "Leaderboard",
             // Clickable only when a domain filter pushes it off the tail - then
