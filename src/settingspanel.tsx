@@ -7,7 +7,6 @@ import { LS, lsGet } from "./storage";
 import { useAppearance } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
 import { PrevailLogo } from "./PrevailLogo";
-import { BrandMark } from "./brandmark";
 import { BenchScheduleCard } from "./cards";
 import { FrameworksSection, IngestionSection, RemoteSection, ShortcutsSection } from "./settings1";
 import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection } from "./settings2";
@@ -194,8 +193,15 @@ export function SettingsPanel({
             traffic-light controls so nothing is hidden under them. Draggable. */}
         <div data-tauri-drag-region className="-mx-2 -mt-3 mb-3 border-b border-black/30 bg-[#141416] px-4 pb-3 pt-3">
           <div className="flex items-center gap-2.5">
-            <span className="shrink-0 overflow-hidden rounded-lg ring-1 ring-white/20"><PrevailLogo size={26} animated={false} /></span>
-            <BrandMark fill className="min-w-0 flex-1 font-display text-2xl font-bold text-white [text-shadow:0_2px_6px_rgba(0,0,0,0.5)]" />
+            <span className="shrink-0 overflow-hidden rounded-lg ring-1 ring-ai/40"><PrevailLogo size={26} animated={false} /></span>
+            {/* Inverted wordmark vs the home header (which is white with a blue
+                "AI"): here the base letters are the bluish accent and "AI" is
+                white, so it's unmistakable you're in Settings, not on home. */}
+            <span className="flex min-w-0 flex-1 items-center justify-between font-display text-2xl font-bold text-ai [text-shadow:0_2px_6px_rgba(0,0,0,0.5)]" aria-label="Prevail">
+              <span>P</span><span>R</span><span>E</span><span>V</span>
+              <span className="text-white">A</span><span className="text-white">I</span>
+              <span>L</span>
+            </span>
           </div>
           {onBack && (
             <button
