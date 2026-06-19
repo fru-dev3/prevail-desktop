@@ -338,7 +338,12 @@ export async function executeBenchBatch(
   const shortModel = (j: BenchJob) =>
     `${titleCase(j.cli)} ${(MODELS[j.cli]?.find((m) => m.id === j.model)?.label ?? j.model).replace(/\s*\(.*?\)/, "")}`.trim();
   const modelPart = plannedJobs.length === 1 ? shortModel(plannedJobs[0]) : `${plannedJobs.length} models`;
-  const batchLabel = `${dateLabel} ${hhmm.replace(":", "-")} ${scopeLabel} ${modelPart}`;
+  // Structured, readable batch label that leads with WHAT was tested (domain),
+  // then the model set, then when - so you can scan history and know each batch
+  // at a glance. The time disambiguates multiple runs on the same day.
+  //   "Wealth · 4 models · Jun 19 14:52"
+  //   "3 domains · Claude Opus 4.8 · Jun 19 14:52"
+  const batchLabel = `${scopeLabel} · ${modelPart} · ${dateLabel} ${hhmm}`;
   // Drop stale finished batches so the registry never accumulates.
   for (const [k, v] of benchBatches) if (!v.running && v.consumed) benchBatches.delete(k);
   const batch: BenchBatch = {

@@ -1294,7 +1294,7 @@ export default function App() {
                       title={title}
                       className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
                         tab === "chat" && appTab === key
-                          ? "bg-accent-soft text-accent"
+                          ? "bg-accent text-background shadow-sm"
                           : "text-text-muted hover:bg-surface-warm hover:text-accent"
                       }`}
                     >
@@ -1344,15 +1344,15 @@ export default function App() {
                       dueAlert.today ? `${dueAlert.today} due today` : "",
                       dueAlert.critical ? `${dueAlert.critical} critical` : "",
                     ].filter(Boolean).join(" · ") : "Work: this domain's tasks, in-panel"}
-                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+                    className={`relative flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "chat" && domainTab === "work"
-                        ? "bg-accent-soft text-accent"
+                        ? "bg-accent text-background shadow-sm"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
                     }`}
                   >
                     <Briefcase className="h-3.5 w-3.5" /> Work
                     {dueAlertCount > 0 && (
-                      <span className={`inline-flex min-w-[15px] items-center justify-center rounded-full px-1 font-mono text-[9px] font-bold text-background ${dueAlert.overdue ? "bg-danger" : "bg-warn"}`}>{dueAlertCount}</span>
+                      <span className={`absolute -right-1 -top-1 inline-flex min-w-[14px] items-center justify-center rounded-full px-1 font-mono text-[9px] font-bold text-background ${dueAlert.overdue ? "bg-danger" : "bg-warn"}`}>{dueAlertCount}</span>
                     )}
                   </button>
                   {/* Order (founder): Insights · Usage · Benchmark · Preferences,
@@ -1362,7 +1362,7 @@ export default function App() {
                     title="Insights: what to work on, your tasks, and recent intents (use the Chat tab to return to the conversation)"
                     className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "chat" && domainTab === "insights"
-                        ? "bg-accent-soft text-accent"
+                        ? "bg-accent text-background shadow-sm"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
                     }`}
                   >
@@ -1373,7 +1373,7 @@ export default function App() {
                     title={selectedDomain ? "Usage: queries, tokens, and cost for this domain" : "Usage: queries, tokens, and cost across everything"}
                     className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "chat" && domainTab === "usage"
-                        ? "bg-accent-soft text-accent"
+                        ? "bg-accent text-background shadow-sm"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
                     }`}
                   >
@@ -1383,7 +1383,7 @@ export default function App() {
                     onClick={() => setTab("benchmark")}
                     title="Arena: score models head-to-head on your questions"
                     className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
-                      tab === "benchmark" ? "bg-accent-soft text-accent" : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                      tab === "benchmark" ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-accent"
                     }`}
                   >
                     <Swords className="h-3.5 w-3.5" /> Arena
@@ -1393,7 +1393,7 @@ export default function App() {
                     title={selectedDomain ? "Domain preferences" : "General preferences"}
                     className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "chat" && domainTab === "prefs"
-                        ? "bg-accent-soft text-accent"
+                        ? "bg-accent text-background shadow-sm"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
                     }`}
                   >
@@ -1407,7 +1407,7 @@ export default function App() {
                     title="Loops: the standing forces working to reach this domain's desired state"
                     className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "chat" && domainTab === "loops"
-                        ? "bg-accent-soft text-accent"
+                        ? "bg-accent text-background shadow-sm"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
                     }`}
                   >
@@ -1419,7 +1419,7 @@ export default function App() {
                       title="Apps that refresh this domain"
                       className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
                         tab === "chat" && domainTab === "apps"
-                          ? "bg-accent-soft text-accent"
+                          ? "bg-accent text-background shadow-sm"
                           : "text-text-muted hover:bg-surface-warm hover:text-accent"
                       }`}
                     >
