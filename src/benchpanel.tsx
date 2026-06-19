@@ -3,7 +3,7 @@
 // run registry + executor live in ./bench; this is the presentation layer.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm, open, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
-import { Activity, AlertTriangle, Archive, Bookmark, CalendarClock, Check, ChevronRight, Circle, Crown, Download, FileText, Layers, Loader2, MessagesSquare, Play, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X } from "lucide-react";
+import { Activity, AlertTriangle, Archive, Bookmark, BrainCircuit, CalendarClock, Check, ChevronRight, Circle, Crown, DollarSign, Download, FileText, Layers, Loader2, MessagesSquare, Play, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X, Zap } from "lucide-react";
 import { invoke, listen } from "./bridge";
 import { MODELS, MODEL_SEP } from "./constants";
 import { scoreColor, titleCase } from "./format";
@@ -20,6 +20,54 @@ import type { BenchSuite } from "./bench-presets";
 import { ProviderMark } from "./marks";
 import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Domain, MatrixRow, RunDetail } from "./types";
 import type { UnlistenFn } from "./bridge";
+
+// --- 3D Arena formatting (intelligence · speed · cost) --------------------
+// Latency: show ms under a second, else seconds.
+export function fmtLatency(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined) return "-";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)}s`;
+}
+// Throughput tokens/sec.
+export function fmtThroughput(tps: number | null | undefined): string {
+  if (tps === null || tps === undefined) return "-";
+  return `${tps >= 100 ? Math.round(tps) : tps.toFixed(1)} tok/s`;
+}
+// Cost: local runs are free; priced runs show $ to a sensible precision.
+export function fmtCost(usd: number | null | undefined, basis?: string | null): string {
+  if (basis === "local") return "free";
+  if (usd === null || usd === undefined) return "-";
+  if (usd === 0) return "free";
+  if (usd < 0.01) return `$${usd.toFixed(4)}`;
+  if (usd < 1) return `$${usd.toFixed(3)}`;
+  return `$${usd.toFixed(2)}`;
+}
+
+// The three dimensions as a compact inline strip: intelligence (judge /10),
+// speed (avg latency), and cost (estimated $ or "free" for local). Always
+// shows all three so every run is comparable on all axes.
+export function RunDims({ run, judge }: { run: BenchmarkRun; judge?: number | null }) {
+  const j = judge !== undefined ? judge : run.judge_avg;
+  return (
+    <span className="flex shrink-0 items-center gap-2.5 font-mono text-[11px]">
+      <span className="inline-flex items-center gap-1 text-accent" title="Intelligence: judge score /10">
+        <BrainCircuit className="h-3 w-3" />
+        <span className="font-semibold">{j !== null && j !== undefined ? j.toFixed(1) : "-"}</span>
+      </span>
+      <span className="inline-flex items-center gap-1 text-text-muted" title="Speed: average latency per question">
+        <Zap className="h-3 w-3" />
+        {fmtLatency(run.ms_avg)}
+      </span>
+      <span
+        className={`inline-flex items-center gap-1 ${run.cost_basis === "local" || run.cost_usd_est === 0 ? "text-ok" : "text-text-muted"}`}
+        title={`Cost: estimated ${run.cost_basis === "local" ? "(local model, free to run)" : "from token usage"}`}
+      >
+        <DollarSign className="h-3 w-3" />
+        {fmtCost(run.cost_usd_est, run.cost_basis)}
+      </span>
+    </span>
+  );
+}
 
 export function BenchMatrix({
   matrix, allDomains, onPick,
@@ -1166,8 +1214,10 @@ export function BenchResults({
             {(selectedRun?.domains.length ?? 0) > 6 && <span className="font-mono text-[10px] text-text-muted">+{(selectedRun?.domains.length ?? 0) - 6}</span>}
           </span>
           <div className="ml-auto flex items-center gap-5 font-mono text-sm">
-            <span><span className="font-display text-2xl font-bold text-accent">{selected.score.judge_avg?.toFixed(1) ?? "-"}</span><span className="text-[11px] text-text-muted"> /10</span></span>
+            <span title="Intelligence: judge score /10"><span className="font-display text-2xl font-bold text-accent">{selected.score.judge_avg?.toFixed(1) ?? "-"}</span><span className="text-[11px] text-text-muted"> /10</span></span>
             <span className="text-text-secondary">{selected.score.keyword_avg !== null ? Math.round(selected.score.keyword_avg) + "% kw" : ""}</span>
+            <span className="inline-flex items-center gap-1 text-text-muted" title="Speed: average latency per question"><Zap className="h-3.5 w-3.5" />{fmtLatency(selectedRun?.ms_avg ?? selected.score.ms_avg)}</span>
+            <span className={`inline-flex items-center gap-1 ${(selectedRun?.cost_basis ?? selected.score.cost_basis) === "local" ? "text-ok" : "text-text-muted"}`} title="Cost: estimated from token usage (free for local models)"><DollarSign className="h-3.5 w-3.5" />{fmtCost(selectedRun?.cost_usd_est ?? selected.score.cost_usd_est, selectedRun?.cost_basis ?? selected.score.cost_basis)}</span>
             <span className="text-text-muted">{selected.score.questionScores.length} q</span>
             {selectedRun && (
               <button
@@ -1350,7 +1400,7 @@ export function BenchResults({
                           </span>
                           <span className="font-mono text-[10px] text-text-muted">{r.questions} q</span>
                           {r.scored ? (
-                            <span className="w-12 text-right font-mono text-xs font-semibold text-accent">{r.judge_avg?.toFixed(1) ?? "-"}</span>
+                            <RunDims run={r} />
                           ) : (
                             <span className="font-mono text-[10px] text-warn">unscored</span>
                           )}
@@ -1426,10 +1476,7 @@ export function BenchResults({
                       </button>
                       <span className="font-mono text-[10px] text-text-muted">{r.questions} q</span>
                       {r.scored ? (
-                        <>
-                          <span className="w-12 text-right font-mono text-sm font-semibold text-accent">{r.judge_avg?.toFixed(1) ?? "-"}</span>
-                          <span className="w-10 text-right font-mono text-[11px] text-text-muted">{r.keyword_avg !== null ? Math.round(r.keyword_avg) + "%" : "-"}</span>
-                        </>
+                        <RunDims run={r} />
                       ) : (
                         <button
                           onClick={() => scoreNow(r)}

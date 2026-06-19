@@ -45,6 +45,11 @@ pub(crate) struct BenchmarkRun {
     pub cli: Option<String>,
     pub model: Option<String>,
     pub council: Option<bool>,
+    /// 3D Arena: speed + cost dimensions (from score.json; None on older runs).
+    pub ms_avg: Option<f64>,
+    pub tokens_per_sec: Option<f64>,
+    pub cost_usd_est: Option<f64>,
+    pub cost_basis: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -114,6 +119,14 @@ struct ScoreFile {
     keyword_avg: Option<f64>,
     #[serde(rename = "questionScores")]
     question_scores: Vec<serde_json::Value>,
+    #[serde(default)]
+    ms_avg: Option<f64>,
+    #[serde(default)]
+    tokens_per_sec: Option<f64>,
+    #[serde(default)]
+    cost_usd_est: Option<f64>,
+    #[serde(default)]
+    cost_basis: Option<String>,
 }
 
 /// Distinct `domain` fields from an array of question records.
@@ -178,6 +191,10 @@ pub(crate) fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String>
                         cli: meta.cli,
                         model: meta.model,
                         council: meta.council,
+                        ms_avg: parsed.ms_avg,
+                        tokens_per_sec: parsed.tokens_per_sec,
+                        cost_usd_est: parsed.cost_usd_est,
+                        cost_basis: parsed.cost_basis,
                     });
                     continue;
                 }
@@ -208,6 +225,10 @@ pub(crate) fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String>
                         cli: meta.cli.clone(),
                         model: meta.model.clone(),
                         council: meta.council,
+                        ms_avg: None,
+                        tokens_per_sec: None,
+                        cost_usd_est: None,
+                        cost_basis: None,
                     });
                 }
             }

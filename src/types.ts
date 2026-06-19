@@ -187,6 +187,11 @@ export interface BenchmarkRun {
   cli?: string | null;
   model?: string | null;
   council?: boolean | null;
+  // 3D Arena: speed + cost dimensions (null on older runs scored before this).
+  ms_avg?: number | null;
+  tokens_per_sec?: number | null;
+  cost_usd_est?: number | null;
+  cost_basis?: "local" | "frontier" | "mixed" | "unknown" | null;
 }
 
 export interface QuestionScore {
@@ -217,6 +222,10 @@ export interface RunDetail {
     questionScores: QuestionScore[];
     keyword_avg: number | null;
     judge_avg: number | null;
+    ms_avg?: number | null;
+    tokens_per_sec?: number | null;
+    cost_usd_est?: number | null;
+    cost_basis?: "local" | "frontier" | "mixed" | "unknown" | null;
   };
 }
 
