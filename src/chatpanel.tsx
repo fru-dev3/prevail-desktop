@@ -22,6 +22,7 @@ import { useFrameworkLens } from "./hooks";
 import { ProviderMark } from "./marks";
 import { DomainHome, DomainStatusBar, MessageList } from "./chatviews";
 import { LoopsPanel } from "./loopspanel";
+import { BoardPanel } from "./boardpanel";
 import { AgentPickerRail, ContextCanvas, DomainContextDrawer, DomainPrefsPanel } from "./domainpanels";
 import { HomeBriefing } from "./recommendationspanel";
 import { HomeBenchScheduledBadge } from "./cards";
@@ -1640,6 +1641,9 @@ export function ChatPanel({
             )}
             {domainTab === "loops" && domainPath && (
               <LoopsPanel domain={domain || "general"} vaultPath={vaultPath} domainPath={domainPath} />
+            )}
+            {domainTab === "work" && (
+              <BoardPanel vaultPath={vaultPath} initialDomain={domain || "general"} />
             )}
             {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && domainTab !== "insights" && domainTab !== "usage" && domainTab !== "apps" && domainTab !== "loops" && <div className="text-sm text-text-muted">loading…</div>}
             {domainCtx && domainTab === "state" && (domainCtx.state ? <Markdown source={domainCtx.state} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">state.md</code> in this domain.</div>)}

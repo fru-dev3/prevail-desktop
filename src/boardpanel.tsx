@@ -68,10 +68,11 @@ const dueTone = (due?: string | null): string => {
   return "text-text-muted";
 };
 
-export function BoardPanel({ vaultPath }: { vaultPath: string }) {
+export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; initialDomain?: string }) {
   const [tasks, setTasks] = useState<BoardTask[]>([]);
   const [ownerFilter, setOwnerFilter] = useState<"all" | "me" | "ai">("all");
-  const [domainFilter, setDomainFilter] = useState<string>("all");
+  // When opened scoped to a domain (the in-domain Work tab), pre-filter to it.
+  const [domainFilter, setDomainFilter] = useState<string>(initialDomain || "all");
   const [view, setView] = useState<BoardView>(() => {
     const v = localStorage.getItem("prevail.board.view");
     return v === "list" || v === "horizon" ? v : "board";
