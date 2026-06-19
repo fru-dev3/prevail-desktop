@@ -20,7 +20,7 @@ import { extractCliError } from "./textutil";
 import { ProviderMark } from "./marks";
 import { BrandMark } from "./brandmark";
 import { DomainStatusBar } from "./chatviews";
-import { DomainContextDrawer } from "./domainpanels";
+import { ContextCanvas, DomainContextDrawer } from "./domainpanels";
 import type { CliInfo, DomainContextBundle, ModelPick, PanelistReply, PanelistSlot, ThreadMeta, ThreadTurn } from "./types";
 import type { UnlistenFn } from "./bridge";
 
@@ -1384,6 +1384,7 @@ export function CouncilPanel({
         </div>
       </div>
       </div>
+      <ContextCanvas />
       {_vaultPath && (contextOpen ? (
         <DomainContextDrawer
           domain={domain ?? ""}
