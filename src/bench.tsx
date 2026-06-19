@@ -84,7 +84,8 @@ export function benchWaitDone(b: BenchBatch, session: string, phase: string, tim
     let unlisten: UnlistenFn | null = null;
     let chunkUn: UnlistenFn | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const cleanup = () => { unlisten?.(); chunkUn?.(); if (timer) clearTimeout(timer); };
+    let cancelPoll: ReturnType<typeof setInterval> | null = null;
+    const cleanup = () => { unlisten?.(); chunkUn?.(); if (timer) clearTimeout(timer); if (cancelPoll) clearInterval(cancelPoll); };
     listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
       if (e.payload.session === session && e.payload.phase === phase) {
         cleanup();
@@ -96,6 +97,10 @@ export function benchWaitDone(b: BenchBatch, session: string, phase: string, tim
       // attached, don't leak it.
       if (b.cancelled) { cleanup(); resolve(BENCH_TIMEOUT); }
     });
+    // Cancel must unstick an in-flight wait immediately: if the engine never
+    // emits `done` (a hung model call), the only way out otherwise is the long
+    // watchdog. Poll the batch's cancelled flag so Cancel finalizes right away.
+    cancelPoll = setInterval(() => { if (b.cancelled) { cleanup(); resolve(BENCH_TIMEOUT); } }, 400);
     listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
       if (e.payload.session === session) {
         b.log = (b.log + e.payload.data).slice(-8000);
