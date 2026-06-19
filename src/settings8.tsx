@@ -141,6 +141,24 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
       if (p) await invoke("open_in_finder", { path: p });
     } catch (e) { console.error("open backups folder", e); }
   };
+  // Rescan the workspace: re-read domains/apps from disk (picks up anything added
+  // outside the app, or a file that went missing) and refresh every surface.
+  const [rescanning, setRescanning] = useState(false);
+  const [rescanNote, setRescanNote] = useState<string | null>(null);
+  const rescanVault = async () => {
+    setRescanning(true); setRescanNote(null);
+    try {
+      const ds = await invoke<{ name: string }[]>("scan_vault", { path: vaultPath });
+      window.dispatchEvent(new Event("prevail:domains-changed"));
+      window.dispatchEvent(new Event("prevail:apps-changed"));
+      window.dispatchEvent(new Event("prevail:tasks-changed"));
+      const n = Array.isArray(ds) ? ds.length : 0;
+      setRescanNote(`Rescanned: ${n} domain${n === 1 ? "" : "s"} found.`);
+      window.setTimeout(() => setRescanNote(null), 4000);
+    } catch (e) {
+      setRescanNote(`Rescan failed: ${e}`);
+    } finally { setRescanning(false); }
+  };
   const BackupStatusLine = () => (
     backupOn ? (
       <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] text-text-muted">
@@ -325,26 +343,31 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
       {view !== "packs" && (<>
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className={`rounded-xl border p-4 transition-all ${!isDemo ? "border-2 border-warn bg-warn/10 shadow-sm" : "border border-border bg-surface opacity-55"}`}>
+          {/* Header: shield + title + Active, toggle hard-right. */}
           <div className="flex items-center gap-2">
-            <ShieldCheck className={`h-4 w-4 ${!isDemo ? "text-warn" : "text-text-muted"}`} />
+            <ShieldCheck className={`h-4 w-4 shrink-0 ${!isDemo ? "text-warn" : "text-text-muted"}`} />
             <span className="text-sm font-semibold text-text-primary">Your vault</span>
             {!isDemo && <span className="rounded-full bg-warn px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-background">Active</span>}
             <span className="ml-auto"><Toggle on={!isDemo} disabled={switchingMode} onChange={(v) => { if (v) void switchToProduction(); else void switchToDemo(); }} label="Use my own vault" /></span>
           </div>
-          {/* B2-15: inline icons to change the path + open the vault in Finder. */}
-          <div className="mt-1.5 flex items-center gap-1.5">
+          {/* Path + an even, aligned row of icon actions: rescan, change folder, open. */}
+          <div className="mt-2 flex items-center gap-2">
             <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary" title={prodVault || "not set up yet"}>{prodVault || (isDemo ? "not set up yet - toggle on to set up" : vaultPath)}</span>
-            <button onClick={changeVaultPath} disabled={switchingMode} title="Change vault folder" className="shrink-0 rounded p-1 text-text-muted hover:text-accent disabled:opacity-40"><FolderOpen className="h-3.5 w-3.5" /></button>
-            {(prodVault || !isDemo) && (
-              <button onClick={() => void invoke("open_in_finder", { path: prodVault || vaultPath }).catch(() => {})} title="Open in Finder" className="shrink-0 rounded p-1 text-text-muted hover:text-accent"><ExternalLink className="h-3.5 w-3.5" /></button>
-            )}
+            <div className="flex shrink-0 items-center gap-0.5">
+              <button onClick={rescanVault} disabled={rescanning} title="Rescan the workspace for the canonical structure" className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent disabled:opacity-40"><RotateCw className={`h-3.5 w-3.5 ${rescanning ? "animate-spin" : ""}`} /></button>
+              <button onClick={changeVaultPath} disabled={switchingMode} title="Change vault folder" className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent disabled:opacity-40"><FolderOpen className="h-3.5 w-3.5" /></button>
+              {(prodVault || !isDemo) && (
+                <button onClick={() => void invoke("open_in_finder", { path: prodVault || vaultPath }).catch(() => {})} title="Open in Finder" className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"><ExternalLink className="h-3.5 w-3.5" /></button>
+              )}
+            </div>
           </div>
-          <div className="mt-0.5 text-[10px] text-text-muted">Real data, backed up. {isDemo && !prodVault ? "Toggling on walks you through a quick 3-step setup." : "Switching to demo never touches it."}</div>
-          {/* B2-16: per-vault backup toggle (active vault only). */}
+          <div className="mt-1 text-[11px] leading-relaxed text-text-muted">Real data, backed up. {isDemo && !prodVault ? "Toggling on walks you through a quick 3-step setup." : "Switching to demo never touches it."}</div>
+          {rescanNote && <div className="mt-1.5 font-mono text-[10px] text-accent">{rescanNote}</div>}
+          {/* Per-vault backup toggle (active vault only). */}
           {!isDemo && (
-            <div className="mt-2 border-t border-border-subtle/60 pt-2">
+            <div className="mt-3 border-t border-border-subtle/60 pt-2.5">
               <div className="flex items-center gap-2">
-                <span className="flex-1 text-[10px] text-text-muted">Automatic backups</span>
+                <span className="flex-1 text-[11px] text-text-secondary">Automatic backups</span>
                 <Toggle on={backupOn} onChange={toggleBackup} label="Back up your vault" />
               </div>
               <BackupStatusLine />
