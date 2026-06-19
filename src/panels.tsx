@@ -325,6 +325,9 @@ export function SidebarMcpLive({ collapsed, setTab }: { collapsed: boolean; setT
   useEffect(() => {
     let alive = true;
     const check = async () => {
+      // Respect the in-app MCP toggle: if the user turned it off, don't show "Live"
+      // just because the CLI can still handshake an MCP server out of process.
+      if (lsGet(LS.mcpEnabled) !== "1") { if (alive) setLive(false); return; }
       try {
         const s = await invoke<{ running: boolean }>("mcp_server_status");
         if (alive) setLive(!!s.running);
