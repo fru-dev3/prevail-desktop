@@ -18,6 +18,7 @@ import { ThinkingDots, useFrameworkLens } from "./hooks";
 import { COUNCIL_CHAIR_KEY, readCouncilChair, readCouncilMembers } from "./council";
 import { extractCliError } from "./textutil";
 import { ProviderMark } from "./marks";
+import { useSuites } from "./bench-presets";
 import { BrandMark } from "./brandmark";
 import { DomainStatusBar } from "./chatviews";
 import { ContextCanvas, DomainContextDrawer } from "./domainpanels";
@@ -727,10 +728,15 @@ export function CouncilPanel({
   // panelist (provider → model), one for picking the chair.
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [chairMenuOpen, setChairMenuOpen] = useState(false);
+  const [councilMenuOpen, setCouncilMenuOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const chairMenuRef = useRef<HTMLDivElement>(null);
+  const councilMenuRef = useRef<HTMLDivElement>(null);
+  // Saved councils (named model groups) - shared with the Arena. Picking one
+  // here replaces the current panel with exactly that council's models.
+  const savedCouncils = useSuites();
   useEffect(() => {
-    if (!addMenuOpen && !chairMenuOpen) return;
+    if (!addMenuOpen && !chairMenuOpen && !councilMenuOpen) return;
     const onClick = (e: MouseEvent) => {
       if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
         setAddMenuOpen(false);
@@ -738,10 +744,13 @@ export function CouncilPanel({
       if (chairMenuRef.current && !chairMenuRef.current.contains(e.target as Node)) {
         setChairMenuOpen(false);
       }
+      if (councilMenuRef.current && !councilMenuRef.current.contains(e.target as Node)) {
+        setCouncilMenuOpen(false);
+      }
     };
     window.addEventListener("mousedown", onClick);
     return () => window.removeEventListener("mousedown", onClick);
-  }, [addMenuOpen, chairMenuOpen]);
+  }, [addMenuOpen, chairMenuOpen, councilMenuOpen]);
 
   const [dragOver, setDragOver] = useState(false);
   return (
@@ -1188,6 +1197,43 @@ export function CouncilPanel({
                 </span>
               );
             })}
+
+            {/* Use a saved council (named model group, shared with the Arena) */}
+            {savedCouncils.length > 0 && (
+              <div className="relative" ref={councilMenuRef}>
+                <button
+                  onClick={() => setCouncilMenuOpen((v) => !v)}
+                  title="Convene a saved council"
+                  className="inline-flex items-center gap-1 rounded-full border border-dashed border-border bg-background px-2 py-0.5 font-mono text-[11px] text-text-muted hover:border-accent-border hover:text-accent"
+                >
+                  <Crown className="h-3 w-3" /> council
+                </button>
+                {councilMenuOpen && (
+                  <div className="absolute bottom-full left-0 z-40 mb-1 w-64 overflow-hidden rounded-lg border border-border bg-surface shadow-xl">
+                    <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+                      Convene a council
+                    </div>
+                    <div className="max-h-80 overflow-y-auto py-1">
+                      {savedCouncils.map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => {
+                            setSelectedSlots(new Set(c.models));
+                            setCouncilMenuOpen(false);
+                          }}
+                          className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-surface-warm"
+                        >
+                          <span className="truncate text-xs font-medium text-text-primary">{c.name}</span>
+                          <span className="shrink-0 font-mono text-[10px] text-text-muted">
+                            {c.models.length} model{c.models.length === 1 ? "" : "s"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* + add panelist */}
             <div className="relative" ref={addMenuRef}>
