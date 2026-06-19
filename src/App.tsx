@@ -820,12 +820,19 @@ export default function App() {
       if (s) openSettingsAt(s);
     };
     window.addEventListener("prevail:open-settings", onOpen as EventListener);
-    // Jump straight to a domain (from the Recommendations "Open" action).
+    // Jump straight to a domain (from the Recommendations "Open" action or the
+    // Loop Board). "" = General (a real domain now), so accept any string.
     const onOpenDomain = (e: Event) => {
       const d = (e as CustomEvent<string>).detail;
-      if (d) openDomain(d);
+      if (typeof d === "string") openDomain(d);
     };
     window.addEventListener("prevail:open-domain", onOpenDomain as EventListener);
+    // Switch the active domain sub-tab (e.g. Loop Board "open in domain" -> Loops).
+    const onDomainTabEvt = (e: Event) => {
+      const t = (e as CustomEvent<string>).detail as DomainTab;
+      if (t) { setTab("chat"); setDomainTab(t); }
+    };
+    window.addEventListener("prevail:domain-tab", onDomainTabEvt as EventListener);
     // Fresh chat - reset the running conversation (context meter "start fresh").
     // Long-term memory + domain context carry over; only the thread resets.
     const onNewChat = () => { setActiveThreadPath(null); setChatViewNonce((n) => n + 1); };
@@ -837,6 +844,7 @@ export default function App() {
     return () => {
       window.removeEventListener("prevail:open-settings", onOpen as EventListener);
       window.removeEventListener("prevail:open-domain", onOpenDomain as EventListener);
+      window.removeEventListener("prevail:domain-tab", onDomainTabEvt as EventListener);
       window.removeEventListener("prevail:new-chat", onNewChat);
       window.removeEventListener("prevail:context-changed", bump);
       window.removeEventListener("prevail:tasks-changed", bump);
