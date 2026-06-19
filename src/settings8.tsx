@@ -733,16 +733,52 @@ function WorkspaceSubLabel({ icon: Icon, label, desc }: { icon: LucideIcon; labe
   );
 }
 
+// Copy-safe normalizer: aligns variant context filenames (MEMORY.md, state.md, …)
+// to Prevail's canonical names (_memory.md, _state.md, …) so the Context panel
+// reads them. Dry-run first, the user confirms, originals are always kept.
+function NormalizeVaultRow({ vaultPath }: { vaultPath: string }) {
+  type Op = { domain: string; from_name: string; to_name: string };
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  async function run() {
+    setBusy(true); setNote(null);
+    try {
+      const plan = await invoke<Op[]>("vault_normalize_plan", { vault: vaultPath });
+      if (!plan.length) { setNote("Already canonical - nothing to normalize."); return; }
+      const preview = plan.slice(0, 8).map((o) => `• ${o.domain}: ${o.from_name} → ${o.to_name}`).join("\n");
+      const ok = await tauriConfirm(
+        `Normalize ${plan.length} file name(s)? Each is COPIED to its canonical name; the originals are kept and nothing is deleted.\n\n${preview}${plan.length > 8 ? `\n…and ${plan.length - 8} more` : ""}`,
+        { title: "Normalize vault", kind: "info", okLabel: "Normalize", cancelLabel: "Cancel" },
+      );
+      if (!ok) return;
+      const done = await invoke<Op[]>("vault_normalize_apply", { vault: vaultPath });
+      setNote(`Normalized ${done.length} file(s). Reopen a domain to see its context.`);
+    } catch (e) { setNote(`Failed: ${e}`); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 text-xs text-text-secondary">Normalize filenames so the app reads existing content: copies variant names (e.g. <code className="font-mono text-text-muted">MEMORY.md</code>) to canonical (<code className="font-mono text-text-muted">_memory.md</code>). Copy-safe, never deletes.</span>
+        <button onClick={run} disabled={busy} className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs hover:border-accent-border hover:text-accent disabled:opacity-50">
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderTree className="h-3.5 w-3.5" />} Normalize
+        </button>
+      </div>
+      {note && <div className="mt-1.5 text-[11px] text-text-muted">{note}</div>}
+    </div>
+  );
+}
+
 export function WorkspaceSection({ vaultPath, onSetupDomains, onVaultMoved }: { vaultPath: string; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void }) {
   return (
     <>
       <SettingsHeader icon={FolderTree} title="Workspace" subtitle="Where your data lives and how you set it up: your vault, backups, and starter packs." />
       {/* ONE Vault section = the Your/Demo vault cards (inline change+open icons and
-          a per-vault backup toggle). The "Advanced" maintenance disclosure (move /
-          tidy into data/build, manual domain setup) was removed as unnecessary. */}
+          a per-vault backup toggle), plus a copy-safe filename normalizer. */}
       <div className="mb-7">
         <WorkspaceSubLabel icon={FolderOpen} label="Vault" desc="your vault · demo vault · backups" />
         <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} headerless view="cards" />
+        <NormalizeVaultRow vaultPath={vaultPath} />
       </div>
       {/* Starter packs as its own section. */}
       <div>
