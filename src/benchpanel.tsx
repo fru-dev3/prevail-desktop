@@ -819,7 +819,7 @@ export function BenchRunConfig({
                 <div key={c.id}>
                   <button
                     onClick={() => toggleProvider(c.id)}
-                    className="mb-1.5 flex w-full items-center gap-2 rounded-md py-0.5 text-left transition-colors hover:text-accent"
+                    className="mb-1.5 flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-left transition-colors hover:border-accent-border hover:bg-surface-warm"
                   >
                     <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${collapsed ? "" : "rotate-90"}`} strokeWidth={2.5} />
                     <ProviderMark vendor={c.id} size={16} />
