@@ -324,13 +324,17 @@ export function HomeBriefing({ vaultPath }: { vaultPath: string }) {
               </div>
               {done[r.id] ? (
                 <Check className="h-4 w-4 shrink-0 text-ok" />
-              ) : (
-                <button onClick={() => act(r)} disabled={busy === r.id}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-semibold text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-40">
-                  {busy === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                  {r.category === "domain" ? "Create" : r.category === "app" ? "Connect" : r.category === "context" ? "Open" : "Set"}
-                </button>
-              )}
+              ) : (() => {
+                // Icon + tooltip instead of a text button - keeps the row uncluttered.
+                const ActIcon = r.category === "domain" ? Sparkles : r.category === "app" ? Plug : r.category === "model" ? Gauge : ArrowRight;
+                const tip = r.category === "domain" ? "Create domain" : r.category === "app" ? "Connect app" : r.category === "model" ? "Set as default" : "Open";
+                return (
+                  <button onClick={() => act(r)} disabled={busy === r.id} title={tip} aria-label={tip}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent disabled:opacity-40">
+                    {busy === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ActIcon className="h-3.5 w-3.5" />}
+                  </button>
+                );
+              })()}
             </div>
           );
         })}
