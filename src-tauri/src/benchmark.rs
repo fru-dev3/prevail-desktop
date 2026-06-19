@@ -5,7 +5,7 @@
 // crate::children and the shared env builders.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
@@ -154,16 +154,45 @@ fn run_dir_date(dir_name: &str) -> String {
     if ok { head } else { String::new() }
 }
 
+/// Every benchmark run directory, merged from the canonical `build/benchmark/runs`
+/// and the legacy `<vault>/benchmark/runs` root. A dir present in both (same
+/// name) is taken once, build/ winning. This keeps runs written by an older
+/// sidecar - which wrote to the legacy root - visible alongside current ones;
+/// otherwise a whole batch can silently vanish from History.
+fn run_dirs(vault: &str) -> Vec<PathBuf> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    let build = crate::paths::build_root(vault).join("benchmark").join("runs");
+    let legacy = PathBuf::from(vault).join("benchmark").join("runs");
+    for base in [build, legacy] {
+        if !base.is_dir() {
+            continue;
+        }
+        if let Ok(rd) = std::fs::read_dir(&base) {
+            for entry in rd.flatten() {
+                let p = entry.path();
+                if !p.is_dir() {
+                    continue;
+                }
+                let name = p
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                if name.is_empty() || !seen.insert(name) {
+                    continue;
+                }
+                out.push(p);
+            }
+        }
+    }
+    out
+}
+
 #[tauri::command]
 pub(crate) fn benchmark_runs(vault: String) -> Result<Vec<BenchmarkRun>, String> {
-    let runs_dir = crate::paths::build_root(&vault).join("benchmark").join("runs");
-    if !runs_dir.exists() {
-        return Ok(vec![]);
-    }
-    let entries = std::fs::read_dir(&runs_dir).map_err(|e| e.to_string())?;
     let mut out = Vec::new();
-    for entry in entries.flatten() {
-        let p = entry.path();
+    for p in run_dirs(&vault) {
         if !p.is_dir() {
             continue;
         }
@@ -680,13 +709,9 @@ pub(crate) struct MatrixRow {
 
 #[tauri::command]
 pub(crate) fn benchmark_matrix(vault: String) -> Result<Vec<MatrixRow>, String> {
-    let runs_dir = crate::paths::build_root(&vault).join("benchmark").join("runs");
-    if !runs_dir.exists() {
-        return Ok(vec![]);
-    }
     let mut rows = Vec::new();
-    for entry in fs::read_dir(&runs_dir).map_err(|e| e.to_string())?.flatten() {
-        let score_file = entry.path().join("score.json");
+    for run_path in run_dirs(&vault) {
+        let score_file = run_path.join("score.json");
         if !score_file.exists() {
             continue;
         }
