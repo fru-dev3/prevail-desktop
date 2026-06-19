@@ -42,21 +42,14 @@ pub(crate) fn build_root(vault: &str) -> PathBuf {
 #[allow(dead_code)]
 pub(crate) fn runtime_path(vault: &str, name: &str) -> PathBuf {
     let build_dir = PathBuf::from(vault).join("build");
-    let in_build = build_dir.join(name);
-    // 1) Already in build/ → use it.
-    if in_build.exists() {
-        return in_build;
-    }
-    // 2) Legacy at root → keep using it (no orphan, no migration needed).
-    let at_root = PathBuf::from(vault).join(name);
-    if at_root.exists() {
-        return at_root;
-    }
-    // 3) Fresh: write under build/ when build/ exists (keeps the root pristine).
+    // build/ is the SINGLE canonical home for app-support. When it exists, ALWAYS
+    // resolve under it (reads and writes) and never fall back to a root-level
+    // legacy path - that fallback produced split state outside data/ and build/.
+    // Only a pre-build vault uses the root, and only until build/ is created.
     if build_dir.is_dir() {
-        return in_build;
+        return build_dir.join(name);
     }
-    at_root
+    PathBuf::from(vault).join(name)
 }
 
 // Resolve a domain's base directory. Resolution order (newest wins, all readable

@@ -332,7 +332,7 @@ export function DomainContextDrawer({
         <Section keyName="profile" title="User" count={profile.trim() ? 1 : undefined} body={
           profile.trim()
             ? <CtxRow desc="What Prevail knows about you (profile.md)." onView={() => openCanvas("User", profile)} onUse={() => onInjectContext(profile, "User · who you are")} />
-            : <div className="text-[11px] text-text-muted">Not set. Add a profile.md at the vault root.</div>
+            : <div className="text-[11px] text-text-muted">Not set. Prevail keeps your profile at build/_profile.md.</div>
         } />
         <div title={domain ? `Specific to ${titleCase(domain)}` : "Specific to General (the no-domain workspace)"} className="flex cursor-help items-center gap-1.5 border-b border-border-subtle bg-surface-warm/60 px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
           {(() => { const I = domain ? domainIcon(domain) : MessageSquare; return I ? <I className="h-3.5 w-3.5 text-accent" /> : <span className="text-accent">◆</span>; })()}
