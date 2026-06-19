@@ -103,8 +103,35 @@ export function ThinkingWord() {
   return <>{useThinkingWord()}</>;
 }
 
+// A playful, ever-changing vocabulary for "the model is working" states (Spark,
+// council/chat thinking). "Prevailing" always belongs; the rest mix real and
+// invented words so it never feels mechanical.
+export const PLAYFUL_WORDS = [
+  "Prevailing", "Conjuring", "Convopulating", "Maximizing", "Jambalaya-ing",
+  "Pondering", "Synthesizing", "Marinating", "Percolating", "Noodling",
+  "Ruminating", "Cogitating", "Brewing", "Distilling", "Spelunking",
+  "Confabulating", "Effervescing", "Concocting", "Crystallizing", "Untangling",
+  "Foraging", "Scheming", "Mulling", "Tinkering", "Whisking", "Riffing",
+  "Galavanting", "Wizarding", "Simmering", "Orbiting", "Kindling", "Frolicking",
+];
+
+export function randomPlayfulWord(): string {
+  return PLAYFUL_WORDS[Math.floor(Math.random() * PLAYFUL_WORDS.length)];
+}
+
+// Rotates a random playful word every ~2.4s. Used by the agent thinking
+// indicator and Spark so "working" reads with personality.
+export function usePlayfulWord(): string {
+  const [word, setWord] = useState(() => randomPlayfulWord());
+  useEffect(() => {
+    const id = window.setInterval(() => setWord(randomPlayfulWord()), 2400);
+    return () => window.clearInterval(id);
+  }, []);
+  return word;
+}
+
 export function ThinkingDots() {
-  const word = useThinkingWord();
+  const word = usePlayfulWord();
   return (
     <span className="inline-flex items-center gap-1 font-mono">
       <span className="thinking-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "0ms" }} />

@@ -838,6 +838,11 @@ export default function App() {
     // Long-term memory + domain context carry over; only the thread resets.
     const onNewChat = () => { setActiveThreadPath(null); setChatViewNonce((n) => n + 1); };
     window.addEventListener("prevail:new-chat", onNewChat);
+    // Seeding the composer (e.g. Spark "Explore in chat") must also LEAVE any
+    // settings/council/arena view and land on Chat so the seeded composer is
+    // visible. ChatPanel reads the pending seed on mount (survives this nav).
+    const onComposeSeed = () => { setTab("chat"); setDomainTab("chat"); };
+    window.addEventListener("prevail:compose-seed", onComposeSeed);
     // Count vault-affecting changes for the change-based backup trigger.
     const bump = () => bumpBackupChangeCount();
     window.addEventListener("prevail:context-changed", bump);
@@ -847,6 +852,7 @@ export default function App() {
       window.removeEventListener("prevail:open-domain", onOpenDomain as EventListener);
       window.removeEventListener("prevail:domain-tab", onDomainTabEvt as EventListener);
       window.removeEventListener("prevail:new-chat", onNewChat);
+      window.removeEventListener("prevail:compose-seed", onComposeSeed);
       window.removeEventListener("prevail:context-changed", bump);
       window.removeEventListener("prevail:tasks-changed", bump);
     };

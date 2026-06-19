@@ -220,6 +220,12 @@ export function ChatPanel({
       if (typeof text === "string" && text) { setInput(text); setDomainTab("chat"); }
     };
     window.addEventListener("prevail:compose-seed", onSeed as EventListener);
+    // Pending seed from a view that wasn't mounted when it fired (e.g. Spark in
+    // Settings): pick it up on mount so "Explore in chat" reliably lands here.
+    try {
+      const pending = localStorage.getItem("prevail.compose.pending");
+      if (pending) { localStorage.removeItem("prevail.compose.pending"); setInput(pending); setDomainTab("chat"); }
+    } catch { /* ignore */ }
     return () => window.removeEventListener("prevail:compose-seed", onSeed as EventListener);
   }, []);
   // Incognito now toggles from the Modes menu; keep this panel's state + glow in sync.
