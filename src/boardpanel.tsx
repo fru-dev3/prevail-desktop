@@ -406,7 +406,7 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
           board/list scrolls. Negative margins cancel the page's px-8/py-10 so the
           backdrop goes edge-to-edge and flush to the top. */}
       <div className="sticky top-0 z-20 -mx-8 -mt-10 border-b border-border-subtle bg-background px-8 pb-3 pt-8">
-      <SettingsHeader title="Board" icon={Check}
+      <SettingsHeader title="Work Board" icon={Check}
         subtitle="Your tasks as a board - owned by you or handed to AI. AI-owned tasks run as workflows and ask you to decide anything consequential in the Decision Inbox." />
 
       {/* AI workflow status strip - only when AI is involved or something waits on you */}

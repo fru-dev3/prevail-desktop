@@ -62,7 +62,7 @@ export const VENDOR_BRAND: Record<string, { hex: string; accent: string; name: s
   kimi:        { hex: "#111827", accent: "#7c3aed", name: "Kimi (Moonshot)" },
   kiro:        { hex: "#7c3aed", accent: "#a855f7", name: "Kiro" },
   paperclip:   { hex: "#0f766e", accent: "#14b8a6", name: "Paperclip" },
-  motorcar:    { hex: "#9a3412", accent: "#f97316", name: "Motorcar" },
+  motorcar:    { hex: "#9a3412", accent: "#f97316", name: "Multica AI" },
   other:       { hex: "#6b7280", accent: "#6b7280", name: "-" },
 };
 
@@ -93,7 +93,7 @@ export const RUNTIME_META: Record<string, { blurb: string; install: string; prot
   hermes:      { blurb: "Hermes agent harness.", install: "https://github.com/hermes-cli/hermes", protocol: "openai", category: "harness" },
   pi:          { blurb: "Pi agent harness.", install: "https://pi.ai", protocol: "openai", category: "harness" },
   paperclip:   { blurb: "Paperclip multi-agent harness.", install: "https://github.com/fru-dev3/paperclip", protocol: "claude", category: "harness" },
-  motorcar:    { blurb: "Motorcar agent harness.", install: "https://github.com/fru-dev3/motorcar", protocol: "claude", category: "harness" },
+  motorcar:    { blurb: "Multica AI agent harness.", install: "https://multica.ai", protocol: "claude", category: "harness" },
 };
 
 // Convenience: is this runtime id a harness (vs a primary CLI)? Unknown ids are

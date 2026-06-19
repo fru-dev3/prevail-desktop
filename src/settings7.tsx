@@ -180,16 +180,14 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
   return (
     <>
       {!embedded && <SettingsHeader title="Providers" subtitle="Bring your own models. OpenRouter is one key for 200+ models (Claude, GPT, Gemini, Grok, DeepSeek, Qwen…). Direct providers are coming next." />}
+      <CollapsibleSection
+        icon={Layers}
+        title="OpenRouter"
+        summary={configured ? `Recommended · configured${last4 ? ` · ····${last4}` : ""}` : "Recommended · one key, 200+ models"}
+        storageKey="prevail.settings.aggregator.openrouter"
+        defaultOpen
+      >
       <div className="rounded-lg border border-border bg-surface p-5">
-        <div className="mb-1 flex items-center gap-2">
-          <span className="font-semibold text-text-primary">OpenRouter</span>
-          <span className="rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">Recommended</span>
-          {configured && (
-            <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
-              <Check className="h-3 w-3" strokeWidth={3} /> Configured{last4 ? ` · ····${last4}` : ""}
-            </span>
-          )}
-        </div>
         <div className="mb-3 text-xs text-text-secondary">One API key unlocks every model. Used by the engine inside any domain. <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="text-accent hover:underline">Get a key ›</a></div>
         <div className="flex items-center gap-2">
           <input type="password" value={key} placeholder={configured ? "•••••••• (replace)" : "sk-or-v1-…"} onChange={(e) => setKey(e.target.value)}
@@ -275,10 +273,41 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
           )}
         </div>
       </div>
-      {/* B6 (Monday feedback): the "Direct providers" list used to render here too,
-          duplicating the dedicated "Direct Providers" section in ModelsSection.
-          Removed - Direct Providers lives in its own section now. */}
+      </CollapsibleSection>
+      {/* Other aggregators - one key, many models - landing next. Shown so the
+          roadmap is visible; each is a disabled "coming soon" card like OpenRouter. */}
+      <ComingSoonAggregators />
     </>
+  );
+}
+
+// Aggregators (one key -> many hosted models) on the roadmap. Rendered as
+// disabled cards beneath OpenRouter so the user sees what's coming.
+const COMING_SOON_AGGREGATORS: { name: string; blurb: string }[] = [
+  { name: "AWS Bedrock", blurb: "Anthropic, Llama, Mistral, Titan via your AWS account." },
+  { name: "Google Vertex AI", blurb: "Gemini + partner models on Google Cloud." },
+  { name: "Azure AI Foundry", blurb: "OpenAI + open models on Azure." },
+  { name: "Together AI", blurb: "Fast hosted open models (Llama, Qwen, DeepSeek)." },
+  { name: "Fireworks AI", blurb: "Low-latency open-model inference." },
+  { name: "Groq", blurb: "Ultra-fast inference on LPUs." },
+];
+
+function ComingSoonAggregators() {
+  return (
+    <div className="mt-3 space-y-2">
+      {COMING_SOON_AGGREGATORS.map((a) => (
+        <div key={a.name} className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface/50 px-4 py-3 opacity-70">
+          <Layers className="h-4 w-4 shrink-0 text-text-muted" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-text-secondary">{a.name}</span>
+              <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">Coming soon</span>
+            </div>
+            <div className="mt-0.5 text-xs text-text-muted">{a.blurb}</div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

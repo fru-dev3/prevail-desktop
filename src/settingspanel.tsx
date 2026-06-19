@@ -93,7 +93,7 @@ export function SettingsPanel({
     // (AI proposals you add to the board), Workspace (files). Decisions is NOT a
     // separate page: it folds into the Board as a "Needs you" view + the top-bar pill.
     { heading: "Work", items: [
-      { id: "tasks", label: "Board", icon: Check },
+      { id: "tasks", label: "Work Board", icon: Check },
       { id: "recommendations", label: "Insights", icon: Sparkles },
       { id: "workspace", label: "Workspace", icon: Folder },
     ]},
