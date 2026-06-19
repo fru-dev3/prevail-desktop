@@ -189,20 +189,23 @@ export function SettingsPanel({
     <div className="flex min-h-0 flex-1">
       {/* Sidebar nav - Codex-style with Back to app at top */}
       <aside className="flex h-full min-h-0 w-56 shrink-0 flex-col overflow-y-auto border-r border-border-subtle bg-surface-warm px-2 py-3">
-        {/* Brand lockup so it's always clear you're in Prevail. */}
-        <div className="mb-3 flex items-center gap-2 px-3 pt-1">
-          <PrevailLogo size={22} animated={false} />
-          <BrandMark className="font-mono text-sm font-bold tracking-[0.22em] text-text-primary" />
+        {/* Branded banner - a dark lockup so it's always clear you're in Prevail,
+            echoing the home sidebar header without copying it verbatim. */}
+        <div className="-mx-2 -mt-3 mb-3 overflow-hidden border-b border-black/30 bg-gradient-to-br from-[#1c1c20] via-[#161618] to-[#0f0f11] px-4 pb-3 pt-4 shadow-[inset_0_-1px_0_rgba(255,255,255,0.04)]">
+          <div className="flex items-center gap-2.5">
+            <PrevailLogo size={30} animated={false} />
+            <BrandMark className="font-display text-2xl font-bold tracking-tight text-white [text-shadow:0_2px_8px_rgba(0,0,0,0.6)]" />
+          </div>
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-white/10 px-2.5 py-1 text-xs font-medium text-white/75 transition-colors hover:bg-white/20 hover:text-white"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Back to app
+            </button>
+          )}
         </div>
-        {onBack && (
-          <button
-            onClick={onBack}
-            className="mb-3 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-text-muted hover:bg-surface-warm hover:text-text-primary"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to app
-          </button>
-        )}
         <div className="mb-1 px-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
           Settings
         </div>
