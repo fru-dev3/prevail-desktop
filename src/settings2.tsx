@@ -121,7 +121,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
   return (
     <>
       <SettingsHeader
-        title="Routines"
+        title="Daemons"
         subtitle="The background workers. Each runs continuously: distill intents into memory, fire task reminders, proactively generate tasks, and learn reusable skills from your conversations."
       />
       {/* One collapsible group per routine: status + tuning + run-now together. */}
@@ -332,7 +332,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
 
       {/* image #29: Memory & Context is what these routines PRODUCE, so it lives
           here as a peer collapsible group — not a divider-separated orphan page. */}
-      <DaemonGroup icon={Brain} title="Memory & Context" summary="what the routines produce">
+      <DaemonGroup icon={Brain} title="Memory & Context" summary="what the daemons produce">
         <MemoryContextSection vaultPath={vaultPath} headerless />
       </DaemonGroup>
 
@@ -720,7 +720,7 @@ export function MemoryContextSection({ headerless }: { vaultPath: string; header
           {status?.last_run_ts ? ` · last pass ${formatFreshness(Math.max(0, Date.now() / 1000 - status.last_run_ts))}` : ""}
           {status?.lines_distilled ? ` · ${status.lines_distilled} lines` : ""}
         </span>
-        <span className="ml-auto font-mono text-[10px] text-accent">Schedule & controls in Routines →</span>
+        <span className="ml-auto font-mono text-[10px] text-accent">Schedule & controls in Daemons →</span>
       </button>
       <div className="rounded-lg border border-border bg-surface px-5">
         <Row title="Persistent memory" desc="Distill the intent ledger into per-domain memory and prepend it to prompts. Master switch."
@@ -736,7 +736,7 @@ export function MemoryContextSection({ headerless }: { vaultPath: string; header
           } />
       </div>
       <div className="mt-3 rounded-lg border border-border-subtle bg-surface px-4 py-2.5 text-xs text-text-muted">
-        The distiller (its provider, interval, threshold, and a manual "distill now") is configured on the Routines page. This page is what it produces.
+        The distiller (its provider, interval, threshold, and a manual "distill now") is configured on the Daemons page. This page is what it produces.
       </div>
     </>
   );
