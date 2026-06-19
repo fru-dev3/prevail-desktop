@@ -3,7 +3,7 @@
 // card).
 import { useEffect, useState } from "react";
 import { confirm as tauriConfirm, open } from "@tauri-apps/plugin-dialog";
-import { Briefcase, Check, ChevronRight, Database, Download, ExternalLink, Folder, FolderOpen, FolderTree, GraduationCap, Home, Loader2, Monitor, Moon, Package, RotateCw, ShieldCheck, Sparkles, Sun, TrendingUp, Users } from "lucide-react";
+import { Archive, Briefcase, Check, ChevronRight, Database, DatabaseBackup, Download, ExternalLink, Folder, FolderOpen, FolderTree, GraduationCap, Home, Loader2, Monitor, Moon, Package, RotateCw, ShieldCheck, Sparkles, Sun, TrendingUp, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 // Pick a glyph for a starter pack from its name, so the list reads visually.
@@ -161,10 +161,18 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
   };
   const BackupStatusLine = () => (
     backupOn ? (
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] text-text-muted">
-        <span title="How often automatic backups run (Backups settings)">{backupFreqLabel} · next ~{backupNextLabel}</span>
-        <button onClick={backupNow} disabled={backupBusy} className="rounded border border-border px-1.5 py-0.5 uppercase tracking-wider hover:border-accent-border hover:text-accent disabled:opacity-50">{backupBusy ? "backing up…" : "Back up now"}</button>
-        <button onClick={openBackupsFolder} className="rounded border border-border px-1.5 py-0.5 uppercase tracking-wider hover:border-accent-border hover:text-accent">Open folder</button>
+      // Schedule on the left; actions as right-aligned icon buttons (with tooltips)
+      // that match the path row's icon-button style for an even, clean layout.
+      <div className="mt-1.5 flex items-center gap-2 font-mono text-[10px] text-text-muted">
+        <span className="min-w-0 flex-1 truncate" title="How often automatic backups run (Backups settings)">{backupFreqLabel} · next ~{backupNextLabel}</span>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button onClick={backupNow} disabled={backupBusy} title="Back up now" className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent disabled:opacity-40">
+            {backupBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DatabaseBackup className="h-3.5 w-3.5" />}
+          </button>
+          <button onClick={openBackupsFolder} title="Open backups folder" className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent">
+            <Archive className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     ) : null
   );
