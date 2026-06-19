@@ -196,8 +196,11 @@ export function SettingsPanel({
         <div data-tauri-drag-region className="-mx-2 -mt-3 mb-3 border-b border-black/20 bg-gradient-to-br from-[#5fa4bd] via-[#558fa6] to-[#467a8f] px-4 pb-3 pt-3">
           <div className="flex items-center gap-2.5">
             <span className="shrink-0 overflow-hidden rounded-lg ring-1 ring-white/40"><PrevailLogo size={26} animated={false} /></span>
+            {/* White letters on the bluish banner, with "AI" in black so it pops. */}
             <span className="flex min-w-0 flex-1 items-center justify-between font-display text-2xl font-bold text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.35)]" aria-label="Prevail">
-              <span>P</span><span>R</span><span>E</span><span>V</span><span>A</span><span>I</span><span>L</span>
+              <span>P</span><span>R</span><span>E</span><span>V</span>
+              <span className="text-black [text-shadow:none]">A</span><span className="text-black [text-shadow:none]">I</span>
+              <span>L</span>
             </span>
           </div>
           {onBack && (
