@@ -1624,7 +1624,10 @@ export function BenchmarkPanel({
   // (so nothing is hidden, but the list always matches the actual vault).
   const questionCounts = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const q of questions) m[q.domain] = (m[q.domain] ?? 0) + 1;
+    // Only NON-archived questions are runnable - the CLI runner skips archived
+    // ones, so counting them here made a run look like it had work to do when it
+    // had none (e.g. "13 career questions" that all errored to nothing).
+    for (const q of questions) { if (q.archived) continue; m[q.domain] = (m[q.domain] ?? 0) + 1; }
     return m;
   }, [questions]);
   const allDomains = useMemo(() => {
@@ -1713,10 +1716,19 @@ export function BenchmarkPanel({
   // it the current UI selection.
   function executeRun(modelKeys: string[], domains: Set<string>, runMode: "single" | "council") {
     const scopeStr = Array.from(domains).join(",");
+    // Archived questions are excluded - the CLI runner skips them, so a run must
+    // be planned only over the questions that will actually execute.
+    const active = questions.filter((q) => !q.archived);
     const scoped = domains.size === 0
-      ? questions
-      : questions.filter((q) => domains.has(q.domain.toLowerCase()));
+      ? active
+      : active.filter((q) => domains.has(q.domain.toLowerCase()));
     const qids = scoped.map((q) => q.id).sort();
+    if (qids.length === 0) {
+      setErr(domains.size === 0
+        ? "No active questions to run. Add some in the Questions tab (archived questions don't run)."
+        : `No active questions in ${Array.from(domains).map(titleCase).join(", ")}. They may all be archived - add or unarchive some in the Questions tab.`);
+      return;
+    }
     const blankJob = { status: "queued" as BenchJobStatus, done: 0, total: qids.length, qids, qdone: {} };
     const plannedJobs: BenchJob[] =
       runMode === "council"
@@ -1907,8 +1919,8 @@ export function BenchmarkPanel({
             questionCounts={questionCounts}
             questionCount={
               scope.size === 0
-                ? questions.length
-                : questions.filter((q) => scope.has(q.domain.toLowerCase())).length
+                ? questions.filter((q) => !q.archived).length
+                : questions.filter((q) => !q.archived && scope.has(q.domain.toLowerCase())).length
             }
             running={running} jobs={jobs} log={log} logRef={logRef}
             activeBatch={activeBatch}
