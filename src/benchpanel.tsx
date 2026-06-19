@@ -14,7 +14,7 @@ import { Sparkline } from "./ui";
 import { BenchCrumbs, Field, ScoreBar, SubsectionHeader } from "./panels";
 import { domainIcon } from "./icons";
 import { BENCH_CLI_OPTIONS, BENCH_SCHED, benchBatches, benchFreqLabel, benchNotify, cancelBenchBatch, executeBenchBatch, useBenchBatches } from "./bench";
-import { deleteBundle, deleteSuite, saveBundle, saveSuite, useBundles, useSuites } from "./bench-presets";
+import { deleteSuite, saveSuite, useSuites } from "./bench-presets";
 import type { BenchSuite } from "./bench-presets";
 import { ProviderMark } from "./marks";
 import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Domain, MatrixRow, RunDetail } from "./types";
@@ -552,11 +552,8 @@ export function BenchRunConfig({
   // Which job card is expanded to its question-by-question detail.
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
 
-  // ── Saved presets (bundles of models, and suites of models+domains) ─────────
-  const bundles = useBundles();
+  // ── Saved Benchmark Suites (models + domains + mode), the one reusable unit ──
   const suites = useSuites();
-  const [bundleName, setBundleName] = useState("");
-  const [savingBundle, setSavingBundle] = useState(false);
   const [suiteName, setSuiteName] = useState("");
   const [savingSuite, setSavingSuite] = useState(false);
   const [scheduledSuiteId, setScheduledSuiteId] = useState<string | null>(null);
@@ -564,9 +561,6 @@ export function BenchRunConfig({
   // Load a suite into the editor (apply its selection) WITHOUT running - so the
   // user can tweak then run or re-save. Distinct from the Run button.
   const loadSuite = (s: BenchSuite) => { setMode(s.mode); applyModels(s.models); applyScope(s.domains); };
-  const commitBundle = () => {
-    if (saveBundle(bundleName, selModelArr)) { setBundleName(""); setSavingBundle(false); }
-  };
   const commitSuite = () => {
     if (saveSuite({ name: suiteName, mode, models: selModelArr, domains: Array.from(scope) })) {
       setSuiteName(""); setSavingSuite(false);
@@ -766,43 +760,9 @@ export function BenchRunConfig({
           <SubsectionHeader icon={Layers} hint={`${selModels.size} selected · runs head-to-head`}>
             Models
           </SubsectionHeader>
-          {/* Saved bundles - one click drops a named set of models onto the panel.
-              Save the current selection as a new bundle from the right. */}
-          <div className="mb-3 flex flex-wrap items-center gap-1.5">
-            <Bookmark className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-            {bundles.length === 0 && !savingBundle && (
-              <span className="font-mono text-[11px] text-text-muted">No saved bundles yet.</span>
-            )}
-            {bundles.map((b) => {
-              const active = b.models.length === selModels.size && b.models.every((m) => selModels.has(m));
-              return (
-                <span key={b.id} className={`group inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-mono text-[11px] ${active ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-secondary"}`}>
-                  <button onClick={() => applyModels(b.models)} title={`Apply ${b.models.length} model${b.models.length === 1 ? "" : "s"}`} className="inline-flex items-center gap-1 hover:text-accent">
-                    {b.name}
-                    <span className={`rounded-full px-1 text-[9px] ${active ? "bg-accent/15" : "bg-surface-warm text-text-muted"}`}>{b.models.length}</span>
-                  </button>
-                  <button onClick={() => deleteBundle(b.id)} title="Delete bundle" className="text-text-muted/50 hover:text-danger"><X className="h-3 w-3" /></button>
-                </span>
-              );
-            })}
-            {savingBundle ? (
-              <span className="inline-flex items-center gap-1">
-                <input
-                  autoFocus value={bundleName} onChange={(e) => setBundleName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") commitBundle(); if (e.key === "Escape") { setSavingBundle(false); setBundleName(""); } }}
-                  placeholder="bundle name" className="w-32 rounded-md border border-accent-border bg-background px-2 py-0.5 font-mono text-[11px] outline-none"
-                />
-                <button onClick={commitBundle} disabled={!bundleName.trim()} className="rounded-md bg-accent px-2 py-0.5 font-mono text-[11px] text-background disabled:opacity-40">Save</button>
-                <button onClick={() => { setSavingBundle(false); setBundleName(""); }} className="text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
-              </span>
-            ) : (
-              selModels.size > 0 && (
-                <button onClick={() => setSavingBundle(true)} className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-1 font-mono text-[11px] text-text-muted hover:border-accent-border hover:text-accent">
-                  <Plus className="h-3 w-3" /> Save selection as bundle
-                </button>
-              )
-            )}
-          </div>
+          {/* One concept: a Benchmark Suite (models + domains) you save + rerun,
+              listed in the Suites section below. (The old model-only "bundle" was a
+              confusing duplicate and has been removed.) */}
           {isBunkerOn() && (
             <div className="mb-3 flex items-center gap-2 rounded-lg border border-border bg-surface-warm/60 px-3 py-2">
               <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-accent" />
@@ -937,7 +897,7 @@ export function BenchRunConfig({
           drop onto the background schedule. Built from the current selection. */}
       <section>
         <SubsectionHeader icon={Bookmark} hint={suites.length ? `${suites.length} saved` : "save a reusable run"}>
-          Suites
+          Benchmark Suites
         </SubsectionHeader>
         <div className="space-y-2">
           {suites.map((s) => {
