@@ -1602,7 +1602,7 @@ export function ChatPanel({
         )}
         {domainTab !== "chat" && (
           <div className="w-full px-6 py-6">
-            {domainTab === "context" && (
+            {domain && domainTab === "context" && (
               <ContextScorePanel
                 score={ctxScore}
                 loading={ctxScoreLoading}
