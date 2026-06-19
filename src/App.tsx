@@ -787,34 +787,18 @@ export default function App() {
   //   `- [ ] text @<due> +<added> ~daemon ~id:xxx`  (@ = due date)
   const [dueAlert, setDueAlert] = useState<{ overdue: number; today: number; open: number }>({ overdue: 0, today: 0, open: 0 });
   useEffect(() => {
-    if (!vaultPath || domains.length === 0) return;
+    if (!vaultPath) return;
     let alive = true;
-    const poll = async () => {
-      try {
-        const today = new Date().toISOString().slice(0, 10);
-        const texts = await Promise.all(
-          domains.map((d) => invoke<string>("read_file", { path: `${d.path.replace(/\/+$/, "")}/_tasks.md` }).catch(() => "")),
-        );
-        if (!alive) return;
-        let overdue = 0, dueToday = 0, open = 0;
-        for (const md of texts) {
-          for (const line of (md || "").split("\n")) {
-            if (!/^- \[ \]/.test(line)) continue; // open task only
-            open++;
-            const m = line.match(/@(\d{4}-\d{2}-\d{2})/);
-            if (m) { if (m[1] < today) overdue++; else if (m[1] === today) dueToday++; }
-          }
-        }
-        setDueAlert({ overdue, today: dueToday, open });
-      } catch { /* ignore */ }
-    };
+    const poll = () => invoke<{ open?: number; overdue?: number; today?: number }>("work_count", { vault: vaultPath, today: new Date().toISOString().slice(0, 10) })
+      .then((r) => { if (alive) setDueAlert({ open: r?.open ?? 0, overdue: r?.overdue ?? 0, today: r?.today ?? 0 }); })
+      .catch(() => {});
     void poll();
     const id = window.setInterval(poll, 60000);
-    const onEvt = () => { void poll(); };
+    const onEvt = () => poll();
     window.addEventListener("prevail:tasks-changed", onEvt);
     window.addEventListener("prevail:loops-advanced", onEvt);
     return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:tasks-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
-  }, [vaultPath, domains]);
+  }, [vaultPath]);
   // Insights (recommendations) + Loops counts — surfaced as always-visible badges on
   // the top-nav tabs so the user sees how much is waiting without opening either view.
   // Both are computed in the background on a slow poll + event refresh, same cadence as
