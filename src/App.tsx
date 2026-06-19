@@ -1264,13 +1264,14 @@ export default function App() {
                     // (Insights / Preferences / Context) to the conversation.
                     if (t.id === "chat") setDomainTab("chat");
                   }}
-                  className={`relative -mb-px flex items-center gap-2 px-4 py-3 text-sm transition-colors ${
-                    active ? "text-accent" : "text-text-muted hover:text-text-secondary"
+                  className={`my-1.5 flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                    active
+                      ? "bg-accent text-background shadow-sm"
+                      : "text-text-muted hover:bg-surface-warm hover:text-text-secondary"
                   }`}
                 >
                   <Icon className="h-4 w-4" />
                   {t.label}
-                  {active && <span className="absolute bottom-0 left-0 right-0 h-px bg-accent" />}
                 </button>
               );
             })}
