@@ -1391,6 +1391,19 @@ export default function App() {
                   >
                     <Lightbulb className="h-3.5 w-3.5" /> Insights
                   </button>
+                  {/* Loops right after Insights so Work · Insights · Loops read as
+                      one group (Context is in the right-side drawer). */}
+                  <button
+                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "loops" ? "chat" : "loops"); }}
+                    title="Loops: the standing forces working to reach this domain's desired state"
+                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+                      tab === "chat" && domainTab === "loops"
+                        ? "bg-accent text-background shadow-sm"
+                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <Repeat className="h-3.5 w-3.5" /> Loops
+                  </button>
                   <button
                     onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "usage" ? "chat" : "usage"); }}
                     title={selectedDomain ? "Usage: queries, tokens, and cost for this domain" : "Usage: queries, tokens, and cost across everything"}
@@ -1421,20 +1434,6 @@ export default function App() {
                     }`}
                   >
                     <SettingsIcon className="h-3.5 w-3.5" /> Preferences
-                  </button>
-                  {/* Loops - now shown for General too (it's a first-class domain).
-                      Context is reached via the right-side drawer, same as every
-                      domain, so there's no Context tab up here. */}
-                  <button
-                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "loops" ? "chat" : "loops"); }}
-                    title="Loops: the standing forces working to reach this domain's desired state"
-                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
-                      tab === "chat" && domainTab === "loops"
-                        ? "bg-accent text-background shadow-sm"
-                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                    }`}
-                  >
-                    <Repeat className="h-3.5 w-3.5" /> Loops
                   </button>
                   {selectedDomain && (
                     <button
