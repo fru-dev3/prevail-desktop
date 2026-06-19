@@ -107,23 +107,25 @@ export function ContextMeter({
                 {frac >= 0.9 ? "Nearly full - responses may degrade. Start fresh to reclaim space." : "Getting heavy. Consider starting fresh soon."}
               </p>
             )}
-            {onCompact && (
+            <div className="mt-3 flex items-center gap-3">
+              {onCompact && (
+                <button
+                  onClick={() => { onCompact(); }}
+                  disabled={compacting}
+                  title="Summarize the conversation so far into a compact gist, freeing space. Memory + domain context carry over."
+                  className="font-mono text-[11px] uppercase tracking-wider text-accent transition-colors hover:text-accent-hover disabled:opacity-50"
+                >
+                  {compacting ? "Compacting…" : "Compact"}
+                </button>
+              )}
               <button
-                onClick={() => { onCompact(); }}
-                disabled={compacting}
-                title="Summarize the conversation so far into a compact gist, freeing space. Memory + domain context carry over."
-                className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:opacity-50"
+                onClick={() => { onReset(); setOpen(false); }}
+                title="Clear the conversation and start over. Long-term memory + domain context still carry over."
+                className="font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
               >
-                {compacting ? "Compacting…" : "Compact"}
+                Start fresh
               </button>
-            )}
-            <button
-              onClick={() => { onReset(); setOpen(false); }}
-              title="Clear the conversation and start over. Long-term memory + domain context still carry over."
-              className="mt-2 w-full rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-border hover:bg-accent-soft hover:text-accent"
-            >
-              Start fresh
-            </button>
+            </div>
             {onToggleAutoCompact && (
               <div className="mt-2.5 flex items-center gap-2 border-t border-border-subtle pt-2.5" title="Automatically compact when the window gets full">
                 <span className="flex-1 text-[11px] text-text-secondary">Auto-compact</span>
