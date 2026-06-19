@@ -10,6 +10,25 @@ import { ScoreBar } from "./panels";
 import { Sparkline } from "./ui";
 import type { BrandLogo, CliProvider, ContextScore, EngineApp, IngestionMcpServer, IngestionTierStatus, MissingItem, OnboardingRecommendation } from "./types";
 
+// Brand tile from a plain product name (used for AI suggestions, which only
+// carry a name): slug the name, look it up in the simple-icons map, else a
+// monogram fallback.
+function BrandTile({ name, logos }: { name: string; logos: Record<string, BrandLogo> }) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const logo = logos[slug] ?? logos[slug.replace(/connect$|app$|inc$/, "")];
+  if (logo) {
+    return (
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-white">
+        <svg width={18} height={18} viewBox="0 0 24 24" fill={`#${logo.hex}`} aria-hidden><path d={logo.path} /></svg>
+      </span>
+    );
+  }
+  const initials = name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  return (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-warm font-display text-[11px] font-bold text-text-secondary" aria-hidden>{initials}</span>
+  );
+}
+
 // Resolve an app's brand logo from the simple-icons map by slugging its title
 // or id; falls back to a colored monogram tile so every app shows something.
 function AppRowLogo({ app, logos }: { app: EngineApp; logos: Record<string, BrandLogo> }) {
@@ -272,10 +291,28 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
   const [addValue, setAddValue] = useState("");
   const [binding, setBinding] = useState<string | null>(null);
   const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
+  // Learned app suggestions for this domain (the "you should connect X" layer).
+  const [suggestions, setSuggestions] = useState<{ name: string; reason: string }[]>([]);
+  const [suggesting, setSuggesting] = useState(false);
+  const loadSuggestions = () => {
+    invoke<Record<string, { items?: { name: string; reason: string }[] }>>("app_suggestions_read", { vault: vaultPath })
+      .then((all) => setSuggestions(all?.[domain.toLowerCase()]?.items ?? []))
+      .catch(() => {});
+  };
   useEffect(() => {
     invoke<EngineApp[]>("engine_apps_list").then(setApps).catch(() => setApps([]));
     invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {});
-  }, []);
+    loadSuggestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domain]);
+
+  async function generateSuggestions() {
+    setSuggesting(true);
+    try {
+      const all = await invoke<Record<string, { items?: { name: string; reason: string }[] }>>("app_suggestions_generate", { vault: vaultPath, domain });
+      setSuggestions(all?.[domain.toLowerCase()]?.items ?? []);
+    } catch { /* surfaced by empty state */ } finally { setSuggesting(false); }
+  }
   const domainApps = useMemo(() => (apps ?? []).filter((a) => a.domains.includes(domain)), [apps, domain]);
   // Apps NOT yet feeding this domain - the candidates the picker offers.
   const available = useMemo(() => (apps ?? []).filter((a) => !a.domains.includes(domain)), [apps, domain]);
@@ -406,6 +443,47 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
           </div>
         );
       })}
+      {/* Learned suggestions: real apps to connect, inferred from what you do in
+          this domain. Refreshed on demand here and by the daily daemon. */}
+      <div className="mt-4 rounded-lg border border-border-subtle bg-surface/60 p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+            <Sparkles className="h-3 w-3 text-accent" /> Suggested for {titleCase(domain)}
+          </span>
+          <button
+            onClick={generateSuggestions}
+            disabled={suggesting}
+            className="inline-flex items-center gap-1 rounded border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
+          >
+            {suggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+            {suggesting ? "thinking" : suggestions.length ? "refresh" : "suggest apps"}
+          </button>
+        </div>
+        {suggestions.length === 0 ? (
+          <div className="px-1 py-2 text-[12px] text-text-muted">
+            {suggesting ? "Learning from your activity in this domain…" : "No suggestions yet. Hit suggest apps to learn from your activity and propose apps to connect."}
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {suggestions.map((s) => (
+              <div key={s.name} className="flex items-center gap-3 rounded-md px-1 py-1.5">
+                <BrandTile name={s.name} logos={logos} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-text-primary">{s.name}</div>
+                  <div className="truncate text-[11px] text-text-muted">{s.reason}</div>
+                </div>
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
+                  title={`Set up ${s.name} in the Apps catalog`}
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+                >
+                  <Plus className="h-3 w-3" /> connect
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="pt-1">{addPicker}</div>
     </div>
   );

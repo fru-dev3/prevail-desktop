@@ -432,6 +432,8 @@ pub fn run() {
             engine::engine_apps_sync_due,
             engine::engine_app_connect,
             engine::engine_recommendations,
+            engine::app_suggestions_read,
+            engine::app_suggestions_generate,
             engine::engine_alignment,
             engine::engine_app_skills,
             engine::engine_vault_embed,
