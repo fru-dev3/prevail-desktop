@@ -554,7 +554,7 @@ export function BenchQuestions({
 // SETTINGS PANEL - vault, theme, defaults, about
 
 export function BenchRunConfig({
-  mode, setMode, selModels, toggleModel, allDomains, scope, toggleScope,
+  mode, setMode, selModels, toggleModel, allDomains, scope, toggleScope, scoped,
   applyModels, applyScope, onRunSuite,
   questionCounts, questionCount, running, jobs, log, logRef, activeBatch, onRun, onViewResults, onReset, onCancel, onCrumbHome,
 }: {
@@ -565,6 +565,10 @@ export function BenchRunConfig({
   allDomains: string[];
   scope: Set<string>;
   toggleScope: (d: string) => void;
+  // True when the Arena is opened from inside a domain: the run is already
+  // scoped to that domain, so the Domains picker is hidden (it only shows in
+  // the global/Settings Arena where you choose which domains to benchmark).
+  scoped: boolean;
   // Saved-preset plumbing: apply a bundle's models / a suite's domains to the
   // live selection, and run a suite as a unit.
   applyModels: (keys: string[]) => void;
@@ -865,9 +869,11 @@ export function BenchRunConfig({
         </CollapsibleSection>
       )}
 
-      {/* Domains - which domains' questions this run covers. Sorted by how many
-          questions each has; empty ones sit behind a disclosure so 20+ domains
-          don't become a wall of noise. */}
+      {/* Domains - which domains' questions this run covers. Only shown in the
+          global/Settings Arena; inside a domain the run is already scoped to it,
+          so the picker is hidden. Sorted by question count; empty ones sit behind
+          a disclosure so 20+ domains don't become a wall of noise. */}
+      {!scoped && (
       <CollapsibleSection icon={Target} title="Domains" summary={scope.size === 0 ? "all domains" : `${scope.size} selected`} storageKey="prevail.bench.sec.scope" defaultOpen>
         {allDomains.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-xs text-text-muted">
@@ -937,6 +943,7 @@ export function BenchRunConfig({
           );
         })()}
       </CollapsibleSection>
+      )}
 
       {/* Suites - a named (models + domains + mode) you can re-run as a unit or
           drop onto the background schedule. Built from the current selection. */}
@@ -1850,7 +1857,7 @@ export function BenchmarkPanel({
           <BenchRunConfig
             mode={mode} setMode={setMode}
             selModels={selModels} toggleModel={toggleModel}
-            allDomains={allDomains} scope={scope} toggleScope={toggleScope}
+            allDomains={allDomains} scope={scope} toggleScope={toggleScope} scoped={!!initialDomain}
             applyModels={applyModels} applyScope={applyScope} onRunSuite={runSuite}
             questionCounts={questionCounts}
             questionCount={
