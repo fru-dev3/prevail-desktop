@@ -37,7 +37,16 @@ function recTitle(r: Rec): string {
     const clean = modelLabel(r.action.cli, r.action.model) || r.action.model;
     return r.action.domain ? `${titleCase(r.action.domain)}: switch to ${clean}` : `Switch to ${clean}`;
   }
-  return r.title;
+  // Strip a trailing "(34/100)" score out of the title — it's rendered separately
+  // as a small score chip, not jammed into the heading text.
+  return r.title.replace(/\s*\(\s*\d{1,3}\s*\/\s*100\s*\)\s*$/, "").trim();
+}
+
+// The context score embedded in a rec, as "NN/100", or null. Rendered as a small
+// italic figure to the right of the title so the heading reads cleanly.
+function recScore(r: Rec): string | null {
+  const m = r.title.match(/(\d{1,3})\s*\/\s*100/);
+  return m ? `${m[1]}/100` : null;
 }
 
 // M5 (Monday feedback): show severity/impact, human-readably. Context recs carry
@@ -203,6 +212,7 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-sm font-semibold text-text-primary">{recTitle(r)}</span>
+                              {recScore(r) && <span className="font-mono text-[10px] italic text-text-muted" title="Current context score">{recScore(r)}</span>}
                               <span className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${impact.cls}`}>{impact.label}</span>
                             </div>
                             <p className="mt-0.5 text-xs text-text-secondary">{r.detail}</p>
@@ -306,7 +316,10 @@ export function HomeBriefing({ vaultPath }: { vaultPath: string }) {
             <div key={r.id} className={`flex items-center gap-3 px-4 py-2.5 ${i > 0 ? "border-t border-border-subtle" : ""}`}>
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Icon className="h-3.5 w-3.5" /></span>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-text-primary">{recTitle(r)}</div>
+                <div className="flex items-baseline gap-2">
+                  <span className="truncate text-sm font-medium text-text-primary">{recTitle(r)}</span>
+                  {recScore(r) && <span className="shrink-0 font-mono text-[10px] italic text-text-muted" title="Current context score">{recScore(r)}</span>}
+                </div>
                 <div className="truncate text-xs text-text-secondary">{r.detail}</div>
               </div>
               {done[r.id] ? (
