@@ -1541,7 +1541,10 @@ export function BenchmarkPanel({
     !homeDomain || b.scopeKey === "" || b.scopeKey.split(",").includes(homeDomain);
   const visibleBatches = allBatches.filter(matchesHome);
   const current =
-    [...visibleBatches].reverse().find((b) => b.running) ??
+    // A RUNNING batch always surfaces (even if its scope differs from this panel's
+    // home domain) - otherwise launching a run scoped to another domain looks like
+    // "nothing happened". Finished batches still respect the home filter.
+    [...allBatches].reverse().find((b) => b.running) ??
     [...visibleBatches].reverse().find((b) => !b.consumed) ??
     null;
   const jobs = current?.jobs ?? [];
