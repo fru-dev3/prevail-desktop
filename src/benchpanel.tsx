@@ -21,6 +21,72 @@ import { ProviderMark } from "./marks";
 import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Domain, MatrixRow, RunDetail } from "./types";
 import type { UnlistenFn } from "./bridge";
 
+// --- Model Scout suggestions ---------------------------------------------------
+// The General domain's daily Model Scout loop web-searches for AI models worth
+// adding to the benchmark (open-weight + frontier) and writes them to
+// build/_meta/model_suggestions.json. This panel surfaces that list in the Arena
+// and lets the user force a fresh scan. Models in the benchmark are defined in
+// the MODELS catalog, so this RECOMMENDS - the user folds the ones they want in.
+interface ScoutItem { name: string; provider: string; kind: "open" | "frontier"; reason: string }
+interface ScoutFile { generated?: number; model?: string; items?: ScoutItem[] }
+
+function ModelScoutSuggestions({ vaultPath }: { vaultPath: string }) {
+  const [doc, setDoc] = useState<ScoutFile | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const load = useCallback(() => {
+    invoke<ScoutFile>("model_suggestions_read", { vault: vaultPath })
+      .then((d) => setDoc(d && typeof d === "object" ? d : null)).catch(() => {});
+  }, [vaultPath]);
+  useEffect(() => { load(); }, [load]);
+  const known = useMemo(() => Object.values(MODELS).flat().map((m) => m.label).join(","), []);
+  const rescan = async () => {
+    setScanning(true);
+    try { await invoke("model_scout_run", { vault: vaultPath, known }); load(); }
+    catch { /* surfaced as no change */ }
+    finally { setScanning(false); }
+  };
+  const items = doc?.items ?? [];
+  return (
+    <CollapsibleSection
+      icon={BrainCircuit}
+      title="Model Scout"
+      defaultOpen={items.length > 0}
+      summary={items.length ? `${items.length} suggested${doc?.generated ? ` · scanned ${new Date(doc.generated).toLocaleDateString()}` : ""}` : "daily web scan"}
+    >
+      <div className="space-y-2 px-1">
+        <div className="flex items-center gap-2 text-[11px] text-text-muted">
+          <BrainCircuit className="h-3.5 w-3.5 text-accent" />
+          <span>The General domain's daily loop searches the web for new AI models to benchmark.</span>
+          <button
+            onClick={rescan}
+            disabled={scanning}
+            title="Scan the web for models now"
+            className="ml-auto inline-flex items-center gap-1 rounded-md border border-border-subtle px-2 py-1 text-[11px] text-text-secondary hover:bg-surface-warm hover:text-accent disabled:opacity-40"
+          >
+            <RotateCw className={`h-3 w-3 ${scanning ? "animate-spin" : ""}`} /> {scanning ? "Scanning…" : "Scan now"}
+          </button>
+        </div>
+        {items.length === 0 ? (
+          <p className="text-[11px] text-text-muted">No suggestions yet. Run a scan, or open General → Loops to activate the daily Model Scout.</p>
+        ) : (
+          <ul className="space-y-1">
+            {items.map((it, i) => (
+              <li key={`${it.name}-${i}`} className="flex items-start gap-2 rounded-md border border-border-subtle bg-surface-warm/40 px-2 py-1.5">
+                <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase ${it.kind === "open" ? "bg-accent/15 text-accent" : "bg-warn/15 text-warn"}`}>{it.kind}</span>
+                <span className="min-w-0">
+                  <span className="text-xs font-medium text-text-primary">{it.name}</span>
+                  <span className="ml-1 text-[11px] text-text-muted">({it.provider})</span>
+                  {it.reason && <span className="block text-[11px] leading-snug text-text-muted">{it.reason}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </CollapsibleSection>
+  );
+}
+
 // --- 3D Arena formatting (intelligence · speed · cost) --------------------
 // Latency: show ms under a second, else seconds.
 export function fmtLatency(ms: number | null | undefined): string {
@@ -1930,6 +1996,11 @@ export function BenchmarkPanel({
             onCancel={current?.running ? () => void cancelBenchBatch(current.id) : undefined}
             onCrumbHome={() => setView("board")}
           />
+        )}
+        {view === "run" && !running && (
+          <div className="mx-4 mb-4">
+            <ModelScoutSuggestions vaultPath={vaultPath} />
+          </div>
         )}
         {(view === "board" || view === "history" || view === "matrix") && (
           <BenchResults

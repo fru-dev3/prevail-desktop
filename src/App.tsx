@@ -23,7 +23,7 @@ import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, ta
 import { autoVerifyClis } from "./verify";
 import { startBenchScheduler } from "./bench";
 import { bumpBackupChangeCount, startBackupScheduler } from "./backup";
-import { startLoopsScheduler, readLoops, ensureBriefingLoop } from "./loops";
+import { startLoopsScheduler, readLoops, ensureBriefingLoop, ensureModelScoutLoop } from "./loops";
 import { startAppsScheduler } from "./appspanel";
 import { startOmegaScheduler } from "./omega";
 import { OnboardingTour } from "./onboarding";
@@ -825,7 +825,7 @@ export default function App() {
     let alive = true;
     const poll = async () => {
       try {
-        const docs = await Promise.all(domains.map((d) => readLoops(d.path).then((doc) => ensureBriefingLoop(doc, d.name).doc).catch(() => null)));
+        const docs = await Promise.all(domains.map((d) => readLoops(d.path).then((doc) => ensureModelScoutLoop(ensureBriefingLoop(doc, d.name).doc, d.name).doc).catch(() => null)));
         if (!alive) return;
         let n = 0;
         for (const doc of docs) n += Array.isArray(doc?.loops) ? doc!.loops.length : 0;
