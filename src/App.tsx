@@ -928,10 +928,13 @@ export default function App() {
   const fwLens = useFrameworkLens();
 
   const selectedDomainPath = useMemo(() => {
-    // General is a first-class domain backed by the vault ROOT (its _state.md,
-    // _loops.json, _threads, etc. live there), so its path is the vault itself.
-    if (!selectedDomain) return vaultPath || null;
-    return domains.find((d) => d.name === selectedDomain)?.path ?? null;
+    if (selectedDomain) return domains.find((d) => d.name === selectedDomain)?.path ?? null;
+    // General is a first-class domain at data/domains/general on a v4 vault (one
+    // whose domains live under data/domains/), else the legacy vault root. Mirrors
+    // the engine's generalDir() / paths.rs general_dir().
+    if (!vaultPath) return null;
+    const v4 = domains.some((d) => d.path.replace(/\\/g, "/").includes("/data/domains/"));
+    return v4 ? `${vaultPath.replace(/\/+$/, "")}/data/domains/general` : vaultPath;
   }, [domains, selectedDomain, vaultPath]);
 
   // Quick switcher (⌘P) - fuzzy finder over all domains + recent
