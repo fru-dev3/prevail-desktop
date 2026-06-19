@@ -41,12 +41,22 @@ pub(crate) fn build_root(vault: &str) -> PathBuf {
 }
 #[allow(dead_code)]
 pub(crate) fn runtime_path(vault: &str, name: &str) -> PathBuf {
-    let in_build = PathBuf::from(vault).join("build").join(name);
+    let build_dir = PathBuf::from(vault).join("build");
+    let in_build = build_dir.join(name);
+    // 1) Already in build/ → use it.
     if in_build.exists() {
         return in_build;
     }
-    // Fallback: today's location at the vault root (pre-migration, or un-migrated).
-    PathBuf::from(vault).join(name)
+    // 2) Legacy at root → keep using it (no orphan, no migration needed).
+    let at_root = PathBuf::from(vault).join(name);
+    if at_root.exists() {
+        return at_root;
+    }
+    // 3) Fresh: write under build/ when build/ exists (keeps the root pristine).
+    if build_dir.is_dir() {
+        return in_build;
+    }
+    at_root
 }
 
 // Resolve a domain's base directory. Resolution order (newest wins, all readable
@@ -72,23 +82,38 @@ pub(crate) fn resolve_domain_base(vault: &str, d: &str) -> PathBuf {
     v4
 }
 
-pub(crate) fn domain_dir(vault: &str, domain: &Option<String>) -> PathBuf {
-    match domain {
-        Some(d) if is_safe_domain(d) => resolve_domain_base(vault, d),
-        _ => PathBuf::from(vault),
+// The General space is a first-class domain. Canonical home: data/domains/general
+// on a v4 vault (one with a data/ dir); legacy vaults (no data/) keep General at
+// the vault root so older content still reads without a migration. MUST mirror the
+// engine's generalDir() (decisions.ts) exactly.
+pub(crate) fn general_dir(vault: &str) -> PathBuf {
+    let dr = data_root(vault);
+    if dr != PathBuf::from(vault) {
+        dr.join("domains").join("general")
+    } else {
+        PathBuf::from(vault)
     }
 }
 
-// B2-12: resolve a SUPPORTING runtime file (ledger / journal / surface / threads).
-// Per-domain (Some) → stays inside the domain. General (None) → the build/ bucket
-// (build_root falls back to the vault root until a migration creates build/, so
-// this is a no-op until then). Do NOT use for CONTENT files (_memory.md,
-// _state.md, _skills) — those stay at root/data for the General bucket.
-pub(crate) fn runtime_file(vault: &str, domain: &Option<String>, file: &str) -> PathBuf {
+fn is_general(d: &str) -> bool {
+    d.is_empty() || d == "general" || d == "__general__"
+}
+
+pub(crate) fn domain_dir(vault: &str, domain: &Option<String>) -> PathBuf {
     match domain {
-        Some(d) if is_safe_domain(d) => resolve_domain_base(vault, d).join(file),
-        _ => build_root(vault).join(file),
+        Some(d) if is_general(d) => general_dir(vault),
+        Some(d) if is_safe_domain(d) => resolve_domain_base(vault, d),
+        _ => general_dir(vault), // None or unsafe → the general domain
     }
+}
+
+// Resolve a SUPPORTING runtime file (ledger / journal / surface / threads). Now
+// that General is a real domain, ALL of a domain's supporting files (General's
+// included) live inside its domain dir. Truly GLOBAL app-support (_meta, activity)
+// goes through runtime_path/build_root directly, not here. Do NOT use for CONTENT
+// files unless the domain dir is the intended home (it now is, for General too).
+pub(crate) fn runtime_file(vault: &str, domain: &Option<String>, file: &str) -> PathBuf {
+    domain_dir(vault, domain).join(file)
 }
 
 /// Every domain directory across BOTH layouts — v3 (<vault>/domains/<d>) and
@@ -143,19 +168,13 @@ pub(crate) fn domain_dir_pub(vault: &str, domain: &str) -> PathBuf {
 // for the no-domain General space.
 pub(crate) fn safe_domain_subdir(vault: &str, domain: &Option<String>, sub: &str) -> Result<PathBuf, String> {
     match domain {
+        Some(d) if is_general(d) => Ok(general_dir(vault).join(sub)),
         Some(d) if is_safe_domain(d) => Ok(resolve_domain_base(vault, d).join(sub)),
         Some(d) => Err(format!("invalid domain: {d}")),
-        // B2-12: General SUPPORTING subdirs (e.g. _threads) live in build/ once
-        // migrated (build_root falls back to the vault root until then, so no-op).
-        // Content subdirs for General stay at the root.
-        None => {
-            const SUPPORTING: &[&str] = &["_threads"];
-            if SUPPORTING.contains(&sub) {
-                Ok(build_root(vault).join(sub))
-            } else {
-                Ok(PathBuf::from(vault).join(sub))
-            }
-        }
+        // General (no domain) is a first-class domain now: all its subdirs
+        // (_threads included) live under general_dir (data/domains/general on v4,
+        // else the vault root), consistent with a named domain.
+        None => Ok(general_dir(vault).join(sub)),
     }
 }
 
