@@ -190,7 +190,13 @@ export function BenchQuestions({
   });
 
   const inFilter = filter === "all" ? questions : questions.filter((q) => q.domain === filter);
-  const shown = inFilter.filter((q) => !q.archived);
+  // AI drafts float to the top so a fresh "Suggest with AI" run is immediately
+  // visible (and obviously needs your review) instead of sorting into the middle
+  // of the list where you'd never notice it landed.
+  const shown = inFilter
+    .filter((q) => !q.archived)
+    .slice()
+    .sort((a, b) => (a.source === "ai" ? 0 : 1) - (b.source === "ai" ? 0 : 1));
   const archivedShown = inFilter.filter((q) => q.archived);
   async function setArchived(q: BenchQuestion, archived: boolean) {
     try {
@@ -493,7 +499,9 @@ export function BenchQuestions({
         </div>
       )}
       {info && (
-        <div className="mb-4 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-xs text-text-secondary">{info}</div>
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-accent-border bg-accent-soft/50 px-3 py-2 text-xs text-text-primary">
+          <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" /> {info}
+        </div>
       )}
       {shown.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
@@ -506,10 +514,15 @@ export function BenchQuestions({
               <button onClick={() => openEditor(q)} className="flex min-w-0 flex-1 items-start gap-3 text-left">
                 <span className="mt-0.5 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{q.domain}</span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm text-text-primary">{q.prompt || <span className="text-text-muted">(empty prompt)</span>}</div>
+                  <div className="flex items-center gap-2">
+                    {q.source === "ai" && (
+                      <span className="shrink-0 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-accent">Draft · review</span>
+                    )}
+                    <span className="truncate text-sm text-text-primary">{q.prompt || <span className="text-text-muted">(empty prompt)</span>}</span>
+                  </div>
                   {q.expected_decision && <div className="mt-0.5 truncate text-[11px] text-ok">→ {q.expected_decision}</div>}
                   <div className="mt-0.5 font-mono text-[9px] text-text-muted">
-                    {q.source === "ai" ? "AI-suggested" : "written by you"}{q.created ? ` · added ${q.created}` : ""}{q.edited ? ` · edited ${q.edited} (prior version kept)` : ""}
+                    {q.source === "ai" ? "AI-drafted - click to review and confirm the ground truth" : "written by you"}{q.created ? ` · added ${q.created}` : ""}{q.edited ? ` · edited ${q.edited} (prior version kept)` : ""}
                   </div>
                 </div>
                 {/* K3 (Monday feedback): tooltip on the per-question icon. */}
