@@ -117,7 +117,7 @@ export function BenchMatrix({
           <tr className="border-b border-border bg-surface">
             <th className="sticky left-0 bg-surface px-3 py-2 text-left font-mono text-[10px] uppercase tracking-wider text-text-muted">Model</th>
             {orderedDomains.map((d) => (
-              <th key={d} className={`px-3 py-2 text-center font-mono text-[10px] uppercase tracking-wider ${d === cur ? "border-x border-accent-border bg-accent-soft/60 text-accent" : "text-text-muted"}`}>{titleCase(d)}</th>
+              <th key={d} className={`px-3 py-2 text-center font-mono text-[10px] uppercase tracking-wider ${d === cur ? "bg-accent font-bold text-background" : "text-text-muted"}`}>{titleCase(d)}</th>
             ))}
             <th className="px-3 py-2 text-center font-mono text-[10px] uppercase tracking-wider text-accent">Overall</th>
           </tr>
@@ -128,9 +128,9 @@ export function BenchMatrix({
             return (
               <tr key={m.run_dir} className="border-b border-border-subtle last:border-0 hover:bg-surface-warm">
                 <td className="sticky left-0 bg-background px-3 py-2">
-                  <button onClick={() => onPick(m.run_dir)} className="inline-flex items-center gap-1.5 hover:text-accent">
+                  <button onClick={() => onPick(m.run_dir)} className="inline-flex max-w-[200px] items-center gap-1.5 hover:text-accent">
                     <ProviderMark vendor={parsed.vendor} size={16} />
-                    <span className="font-mono text-xs text-text-primary">{parsed.model || m.label}</span>
+                    <span className="truncate whitespace-nowrap font-mono text-xs text-text-primary" title={parsed.model || m.label}>{parsed.model || m.label}</span>
                   </button>
                 </td>
                 {orderedDomains.map((d) => {
@@ -138,7 +138,7 @@ export function BenchMatrix({
                   const v = cell?.judge_avg ?? null;
                   const isBest = v != null && v === bestPerDomain[d] && v >= 0;
                   return (
-                    <td key={d} className={`px-3 py-2 text-center font-mono text-xs ${d === cur ? "border-x border-accent-border bg-accent-soft/25" : ""}`}>
+                    <td key={d} className={`px-3 py-2 text-center font-mono text-xs ${d === cur ? "bg-accent-soft/50" : ""}`}>
                       {v == null ? (
                         <span className="text-text-muted/40">-</span>
                       ) : (
