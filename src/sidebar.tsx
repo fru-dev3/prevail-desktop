@@ -772,27 +772,28 @@ export function Sidebar({
       <SidebarBenchScheduled collapsed={collapsed} />
       <SidebarBackupActive collapsed={collapsed} />
 
-      {/* Settings + theme - pinned to bottom (Upgrade lives in Settings) */}
-      <div data-tour="settings" className={`border-t border-border-subtle bg-surface-warm/30 ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1 px-2 py-1.5"}`}>
+      {/* Settings + theme - pinned to bottom. Styled as a clear ACTION button (border
+          + fill) so it stands out from the muted status lines (MCP / Backups) above. */}
+      <div data-tour="settings" className={`border-t border-border-subtle bg-surface-warm/30 ${collapsed ? "flex flex-col items-center gap-1 p-2" : "flex items-center gap-1.5 p-2"}`}>
         <button
           onClick={() => setTab("settings")}
           title="Settings"
           className={
             collapsed
-              ? `flex h-8 w-8 items-center justify-center rounded transition-colors ${
+              ? `flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
                   tab === "settings"
-                    ? "bg-accent-soft text-accent"
-                    : "text-text-muted hover:text-text-primary"
+                    ? "border-accent-border bg-accent-soft text-accent"
+                    : "border-border bg-surface text-text-secondary hover:border-accent-border hover:text-accent"
                 }`
-              : `flex flex-1 items-center gap-2 rounded px-2 py-1.5 text-left transition-colors ${
+              : `flex flex-1 items-center gap-2 rounded-md border px-2.5 py-2 text-left font-medium transition-colors ${
                   tab === "settings"
-                    ? "text-accent"
-                    : "text-text-muted hover:text-text-secondary"
+                    ? "border-accent-border bg-accent-soft text-accent"
+                    : "border-border bg-surface text-text-secondary hover:border-accent-border hover:bg-accent-soft hover:text-accent"
                 }`
           }
         >
-          <SettingsIcon className="h-3.5 w-3.5 shrink-0" />
-          {!collapsed && <span className="font-mono text-[11px] tracking-wide uppercase">Settings</span>}
+          <SettingsIcon className="h-4 w-4 shrink-0" />
+          {!collapsed && <span className="text-[13px]">Settings</span>}
         </button>
         <button
           onClick={() => {
@@ -800,7 +801,7 @@ export function Sidebar({
             const i = cycle.indexOf(appearance.mode);
             appearance.setMode(cycle[(i + 1) % cycle.length]);
           }}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:text-text-secondary transition-colors"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-colors hover:border-accent-border hover:text-accent"
           title={`Theme: ${appearance.mode}: click to cycle`}
         >
           {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
