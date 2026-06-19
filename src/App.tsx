@@ -95,8 +95,8 @@ import {
   Scale,
   
   Settings as SettingsIcon,
-  Sparkles,
-  
+  Swords,
+
   
   
   
@@ -1394,12 +1394,12 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => setTab("benchmark")}
-                    title="Benchmark: score models on your questions"
+                    title="Arena: score models head-to-head on your questions"
                     className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "benchmark" ? "bg-accent-soft text-accent" : "text-text-muted hover:bg-surface-warm hover:text-accent"
                     }`}
                   >
-                    <Sparkles className="h-3.5 w-3.5" /> Benchmark
+                    <Swords className="h-3.5 w-3.5" /> Arena
                   </button>
                   <button
                     onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "prefs" ? "chat" : "prefs"); }}

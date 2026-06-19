@@ -408,10 +408,11 @@ export async function executeBenchBatch(
     // error you can rerun).
     await Promise.all(plannedJobs.map(runOne));
     if (!batch.cancelled) {
-      // Score every new (unscored) run in one robust pass.
+      // Score ONLY this batch's runs (fast) - not every historical run, which
+      // would re-score dozens of old runs and stall the fresh scores from landing.
       const scoreSession = `bench-score-${Date.now()}`;
       batch.sessions.push(scoreSession);
-      await invoke("benchmark_score", { args: { session_id: scoreSession, vault, all: true } });
+      await invoke("benchmark_score", { args: { session_id: scoreSession, vault, batch: batchId } });
       await benchWaitDone(batch, scoreSession, "score");
       if (!batch.cancelled) {
         batch.jobs = batch.jobs.map((j) =>
