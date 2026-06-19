@@ -367,7 +367,13 @@ export function DomainContextDrawer({
                             </span>
                           </div>
                           {d.prompt && <div className={`text-[11px] font-semibold text-text-primary ${expanded ? "" : "line-clamp-1"}`}>{d.prompt || "(untitled decision)"}</div>}
-                          {d.verdict && <div className={`mt-1 whitespace-pre-wrap text-[11px] leading-snug text-text-secondary ${expanded ? "" : "line-clamp-3"}`}>{d.verdict}</div>}
+                          {/* Collapsed: collapse whitespace + slice so the card stays
+                              compact (line-clamp + pre-wrap mis-sizes in WKWebView when
+                              the verdict has newlines). Expanded: full pre-wrapped text. */}
+                          {d.verdict && (expanded
+                            ? <div className="mt-1 whitespace-pre-wrap text-[11px] leading-snug text-text-secondary">{d.verdict}</div>
+                            : <div className="mt-1 line-clamp-3 text-[11px] leading-snug text-text-secondary">{d.verdict.replace(/\s+/g, " ").trim().slice(0, 240)}{d.verdict.length > 240 ? "…" : ""}</div>
+                          )}
                         </button>
                         {expanded && d.verdict && (
                           <button onClick={() => onInjectContext(d.verdict!, `decision · ${(d.prompt ?? "").slice(0, 30)}`)}
