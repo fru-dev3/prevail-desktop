@@ -310,6 +310,7 @@ export function Sidebar({
           </div>
         ) : (
           <>
+            <span className="shrink-0"><PrevailLogo size={24} animated={false} /></span>
             <BrandMark fill className="min-w-0 flex-1 font-display text-2xl font-bold text-white [text-shadow:0_2px_6px_rgba(0,0,0,0.5)]" />
             <button
               onClick={() => setCollapsed(true)}
