@@ -118,6 +118,24 @@ fn split_frontmatter(raw: &str) -> (HashMap<String, String>, String) {
     (meta, body)
 }
 
+// True when a "## " header line is a real turn delimiter (what the serializer
+// writes) and not a markdown section header inside an assistant message. The
+// serializer emits "## You" or "## <cli>[ · <model>]" where <cli> is a
+// lowercase, space-free identifier; content headers ("## The math", "## Council
+// Verdict: ...") are Title Case / contain spaces and must be left as content.
+fn is_turn_header(header: &str) -> bool {
+    let h = header.trim();
+    if h.eq_ignore_ascii_case("You") {
+        return true;
+    }
+    let cli = h.split(" · ").next().unwrap_or(h).trim();
+    !cli.is_empty()
+        && cli == cli.to_lowercase()
+        && cli
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
 // Parse the body of a thread into ThreadTurns by splitting on `## `
 // headers at the start of lines. The header tells us the role.
 fn parse_thread_body(body: &str) -> Vec<ThreadTurn> {
@@ -157,7 +175,13 @@ fn parse_thread_body(body: &str) -> Vec<ThreadTurn> {
         }
     };
     for line in body.lines() {
-        if let Some(rest) = line.strip_prefix("## ") {
+        // A "## " line is a TURN delimiter only when it matches the shape the
+        // serializer writes: "You", or "<cli>" / "<cli> · <model>" where <cli> is
+        // a lowercase, space-free token (claude, codex, antigravity, ...).
+        // Assistant content legitimately contains its own "## Section" markdown
+        // headers (e.g. a council verdict starts with "## Council Verdict: ..."),
+        // which must NOT fragment the turn - that was duplicating the verdict.
+        if let Some(rest) = line.strip_prefix("## ").filter(|r| is_turn_header(r)) {
             flush(&current_header, &current_content, &mut turns);
             current_header = Some(rest.to_string());
             current_content = String::new();
