@@ -206,9 +206,9 @@ export function SettingsPanel({
           {onBack && (
             <button
               onClick={onBack}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-white/15 px-2.5 py-1 text-sm font-medium text-white transition-colors hover:bg-white/30"
+              className="mt-2 inline-flex items-center gap-1 px-1 text-xs font-medium text-white/70 transition-colors hover:text-white"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="h-3.5 w-3.5" />
               Back to app
             </button>
           )}
