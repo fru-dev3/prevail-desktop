@@ -3,7 +3,7 @@
 // as workflows via the Loop steward; anything consequential surfaces in the
 // Decision Inbox. Reads tasks_read_all; moves via tasks_set_status/tasks_set_owner.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, CalendarRange, Check, Columns3, Filter, Flag, Inbox, LayoutGrid, List, Loader2, Play, Plus, RotateCcw, Trash2, User } from "lucide-react";
+import { ArrowRight, Bot, Briefcase, CalendarRange, Columns3, Filter, Flag, Inbox, LayoutGrid, List, Loader2, Play, Plus, RotateCcw, Trash2, User } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
@@ -326,9 +326,9 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
             {["todo", "doing", "review", "blocked", "done"].map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
           <button onClick={() => toggleOwner(t)} disabled={busy === `o:${t.id}`}
-            title={ai ? "Take it back" : "Hand to AI to run as a workflow"}
-            className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
-            {ai ? "→ Me" : "→ AI"}
+            title={ai ? "Take it back (hand to me)" : "Hand to AI to run as a workflow"}
+            className="inline-flex items-center gap-0.5 rounded border border-border px-1.5 py-1 text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
+            <ArrowRight className="h-3 w-3" />{ai ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
           </button>
         </div>
       </div>
@@ -367,9 +367,9 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
           {["todo", "doing", "review", "blocked", "done"].map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <button onClick={() => toggleOwner(t)} disabled={busy === `o:${t.id}`}
-          title={ai ? "Take it back" : "Hand to AI to run as a workflow"}
-          className="shrink-0 rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
-          {ai ? "→ Me" : "→ AI"}
+          title={ai ? "Take it back (hand to me)" : "Hand to AI to run as a workflow"}
+          className="inline-flex shrink-0 items-center gap-0.5 rounded border border-border px-1.5 py-1 text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
+          <ArrowRight className="h-3 w-3" />{ai ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
         </button>
         <button onClick={() => del(t)} title="Delete task" disabled={busy === `d:${t.id}`} className="shrink-0 text-text-muted/40 transition-colors hover:text-danger">
           <Trash2 className="h-3.5 w-3.5" />
@@ -407,7 +407,7 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
           board/list scrolls. Negative margins cancel the page's px-8/py-10 so the
           backdrop goes edge-to-edge and flush to the top. */}
       <div className="sticky top-0 z-20 -mx-8 -mt-10 border-b border-border-subtle bg-background px-8 pb-3 pt-8">
-      <SettingsHeader title="Work Board" icon={Check}
+      <SettingsHeader title="Work Board" icon={Briefcase}
         subtitle="Your tasks as a board - owned by you or handed to AI. AI-owned tasks run as workflows and ask you to decide anything consequential in the Decision Inbox." />
 
       {/* AI workflow status strip - only when AI is involved or something waits on you */}
@@ -429,15 +429,15 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {/* Owner filter (icon + label segmented) */}
         <div className="flex items-center overflow-hidden rounded-lg border border-border">
-          {([["all", "All", LayoutGrid], ["me", "Me", User], ["ai", "AI", Bot]] as const).map(([k, label, Icon], i) => (
+          {([["all", "All tasks", LayoutGrid], ["me", "Mine", User], ["ai", "AI-owned", Bot]] as const).map(([k, label, Icon], i) => (
             <button key={k} onClick={() => setOwnerFilter(k)}
-              aria-pressed={ownerFilter === k}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${i > 0 ? "border-l border-border" : ""} ${
+              aria-pressed={ownerFilter === k} title={label}
+              className={`inline-flex items-center justify-center px-3 py-1.5 transition-colors ${i > 0 ? "border-l border-border" : ""} ${
                 ownerFilter === k
                   ? "bg-accent text-background shadow-inner"
                   : "bg-background text-text-secondary hover:bg-surface-warm hover:text-text-primary"
               }`}>
-              <Icon className="h-3.5 w-3.5" /> {label}
+              <Icon className="h-3.5 w-3.5" />
             </button>
           ))}
         </div>

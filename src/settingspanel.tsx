@@ -1,7 +1,7 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { Activity, ArrowLeft, Check, Compass, Dices, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Repeat, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Swords, Target, Wrench, Zap } from "lucide-react";
+import { Activity, ArrowLeft, Briefcase, Compass, Dices, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Repeat, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Swords, Target, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { LS, lsGet } from "./storage";
 import { useAppearance } from "./hooks";
@@ -95,7 +95,7 @@ export function SettingsPanel({
     // (AI proposals you add to the board), Workspace (files). Decisions is NOT a
     // separate page: it folds into the Board as a "Needs you" view + the top-bar pill.
     { heading: "Work", items: [
-      { id: "tasks", label: "Work", icon: Check },
+      { id: "tasks", label: "Work", icon: Briefcase },
       { id: "loopboard", label: "Loops", icon: Repeat },
       { id: "recommendations", label: "Insights", icon: Sparkles },
       { id: "spark", label: "Spark", icon: Dices },
