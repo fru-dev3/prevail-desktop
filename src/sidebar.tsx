@@ -6,7 +6,7 @@ import { Archive, ChevronDown, ChevronLeft, ChevronRight, Folder, Layers, Loader
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { STATUS_TINT } from "./constants";
-import { scoreColor, titleCase } from "./format";
+import { appName, scoreColor, titleCase } from "./format";
 import { lsGet, lsSet } from "./storage";
 import { SidebarGatewayLive, SidebarMcpLive } from "./panels";
 import { domainIcon } from "./icons";
@@ -163,7 +163,7 @@ export function Sidebar({
   useEffect(() => { lsSet("prevail.sidebar.appsAllOpen", appsAllOpen ? "1" : "0"); }, [appsAllOpen]);
   useEffect(() => {
     let alive = true;
-    const pull = () => { invoke<EngineApp[]>("engine_apps_list").then((a) => { if (alive) setSidebarApps(a ?? []); }).catch(() => {}); };
+    const pull = () => { invoke<EngineApp[]>("engine_apps_list").then((a) => { if (alive) setSidebarApps((a ?? []).map((x) => ({ ...x, title: appName(x.title) }))); }).catch(() => {}); };
     pull();
     // Re-pull when an app is added/removed elsewhere (e.g. the Apps catalog).
     const onChanged = () => pull();

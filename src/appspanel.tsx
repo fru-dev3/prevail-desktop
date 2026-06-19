@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, ChevronRight, FolderOpen, Loader2, Pencil, Plug, Plus, RefreshCw, X } from "lucide-react";
 import { invoke } from "./bridge";
-import { relTime, titleCase } from "./format";
+import { appName, relTime, titleCase } from "./format";
 import { PREF, getPref, lsGet, lsSet } from "./storage";
 import { Toggle } from "./ui";
 import { SettingsHeader } from "./sectionutil";
@@ -101,7 +101,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   const reload = useCallback(async () => {
     try {
       const list = await invoke<EngineApp[]>("engine_apps_list");
-      setApps(Array.isArray(list) ? list : []);
+      setApps(Array.isArray(list) ? list.map((x) => ({ ...x, title: appName(x.title) })) : []);
     } catch { setApps([]); }
   }, []);
   useEffect(() => {
