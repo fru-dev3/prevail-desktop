@@ -8,6 +8,7 @@ import { track } from "./telemetry";
 import { BridgeStatusChips, DemoRibbon, ResizeHandle } from "./widgets";
 import { OnboardingModal } from "./panels3";
 import { AppFacetPanel, BunkerRibbon, VaultWizard } from "./shell";
+import { FileCanvas } from "./domainpanels";
 // Heavy surfaces are code-split: each loads its own chunk on first use instead of
 // inflating the initial bundle (and the live memory footprint). SettingsPanel
 // alone transitively pulls in every settings section, so deferring it is the
@@ -762,6 +763,22 @@ export default function App() {
     return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:tasks-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
   }, [vaultPath]);
 
+  // Left "canvas" pane: a file viewer opened by clicking a file/section in the
+  // context drawer (prevail:open-canvas). Resizable up to half the screen; the
+  // content shows raw or formatted markdown (toggle lives in FileCanvas).
+  const [canvas, setCanvas] = useState<{ title: string; body: string } | null>(null);
+  const [canvasWidth, setCanvasWidth] = useState(480);
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const d = (e as CustomEvent<{ title?: string; body?: string }>).detail;
+      if (d && d.body != null) setCanvas({ title: d.title || "File", body: String(d.body) });
+    };
+    const onClose = () => setCanvas(null);
+    window.addEventListener("prevail:open-canvas", onOpen as EventListener);
+    window.addEventListener("prevail:close-canvas", onClose);
+    return () => { window.removeEventListener("prevail:open-canvas", onOpen as EventListener); window.removeEventListener("prevail:close-canvas", onClose); };
+  }, []);
+
   // Lets in-app links (e.g. the Demo ribbon) open a specific Settings section.
   const [settingsJump, setSettingsJump] = useState<{ section: string; n: number } | null>(null);
   const openSettingsAt = (section: string) => {
@@ -1181,6 +1198,23 @@ export default function App() {
             <ResizeHandle
               ariaLabel="Resize threads rail"
               onChange={(dx) => setThreadsRailWidth((w) => Math.max(180, Math.min(480, w + dx)))}
+            />
+          </>
+        )}
+
+        {/* Left canvas pane: file viewer, opened from the context drawer. Sits left
+            of the chat; drag the handle to resize (clamped to half the screen). */}
+        {canvas && (
+          <>
+            <FileCanvas
+              title={canvas.title}
+              source={canvas.body}
+              width={canvasWidth}
+              onClose={() => setCanvas(null)}
+            />
+            <ResizeHandle
+              ariaLabel="Resize file canvas"
+              onChange={(dx) => setCanvasWidth((w) => Math.max(300, Math.min(Math.round(window.innerWidth * 0.5), w + dx)))}
             />
           </>
         )}

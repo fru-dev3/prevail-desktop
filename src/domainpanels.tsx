@@ -55,6 +55,34 @@ export function MarkdownPreview({ title, source, onClose, onUseInChat }: { title
   );
 }
 
+// A standalone file-viewer pane that lives on the LEFT of the chat (not an overlay
+// of the context drawer). Opened by dispatching `prevail:open-canvas` with
+// { title, body }; the App mounts it and owns its width + resize. Same raw /
+// formatted-markdown toggle as the inline preview.
+export function FileCanvas({ title, source, width, onClose }: { title: string; source: string; width: number; onClose: () => void }) {
+  const [raw, setRaw] = useState(false);
+  return (
+    <aside style={{ width }} className="flex h-full shrink-0 flex-col border-r border-border-subtle bg-background">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border-subtle px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">File</div>
+          <div className="truncate font-display text-sm font-semibold text-text-primary" title={title}>{title}</div>
+        </div>
+        <button onClick={() => setRaw((v) => !v)} title={raw ? "Show formatted" : "Show raw text"}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">
+          {raw ? <><Eye className="h-3 w-3" /> Formatted</> : <><Code className="h-3 w-3" /> Raw text</>}
+        </button>
+        <button onClick={onClose} title="Close" className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"><X className="h-4 w-4" /></button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        {raw
+          ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-text-secondary">{source}</pre>
+          : <div className="prose-sm max-w-none text-sm leading-relaxed text-text-primary"><Markdown source={source} /></div>}
+      </div>
+    </aside>
+  );
+}
+
 export function DomainContextDrawer({
   domain,
   vaultPath,
@@ -121,9 +149,12 @@ export function DomainContextDrawer({
   }, [vaultPath, domain]);
 
   const [idealState, setIdealState] = useState<string>("");
-  // BP1: the markdown preview overlay (title + body). Opened by clicking a context
-  // item / session log; rendered markdown with a raw-text toggle.
-  const [preview, setPreview] = useState<{ title: string; body: string; inject?: () => void } | null>(null);
+  // Clicking a file/section opens it in the LEFT canvas pane (owned by App), not
+  // inline here - so the drawer stays a compact index and the content gets room.
+  const openCanvas = (title: string, body: string) => {
+    if (!body || !body.trim()) return;
+    window.dispatchEvent(new CustomEvent("prevail:open-canvas", { detail: { title, body } }));
+  };
   // G2: the learned user profile - what Prevail knows about you, surfaced so it's
   // visible what grounds the answers. Loaded from user.md (falls back to profile.md).
   const [profile, setProfile] = useState<string>("");
@@ -155,11 +186,9 @@ export function DomainContextDrawer({
     <div className="flex shrink-0">
       <ResizeHandle
         ariaLabel="Resize context drawer"
-        onChange={(dx) => setDrawerWidth((w) => Math.max(260, Math.min(640, w - dx)))}
+        onChange={(dx) => setDrawerWidth((w) => Math.max(260, Math.min(Math.round(window.innerWidth * 0.5), w - dx)))}
       />
       <aside className="relative flex shrink-0 flex-col border-l border-border-subtle bg-surface-warm" style={{ width: drawerWidth }}>
-      {/* BP1: markdown preview overlay (covers the drawer when a .md is opened). */}
-      {preview && <MarkdownPreview title={preview.title} source={preview.body} onClose={() => setPreview(null)} onUseInChat={preview.inject ? () => { preview.inject!(); setPreview(null); } : undefined} />}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-4 py-3">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Context</div>
@@ -209,15 +238,16 @@ export function DomainContextDrawer({
               <p className="mb-2 text-[11px] leading-relaxed text-text-muted">
                 Your constitution. It is already injected at highest precedence into every chat and council turn; pull it in explicitly when you want the model to reason against it at length.
               </p>
-              <button
-                onClick={() => onInjectContext(idealState, "Ideal State · constitution")}
-                className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
-              >
-                → use in chat
-              </button>
-              <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
-                {idealState.length > 1200 ? idealState.slice(0, 1200) + "\n…" : idealState}
-              </pre>
+              <div className="flex flex-wrap gap-1.5">
+                <button onClick={() => openCanvas("Ideal State", idealState)}
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">
+                  <Eye className="h-3 w-3" /> view
+                </button>
+                <button onClick={() => onInjectContext(idealState, "Ideal State · constitution")}
+                  className="rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
+                  → use in chat
+                </button>
+              </div>
             </>
           ) : <div className="text-xs text-text-muted">No Ideal State written yet. Settings → Ideal State.</div>
         } />
@@ -228,15 +258,16 @@ export function DomainContextDrawer({
               <p className="mb-2 text-[11px] leading-relaxed text-text-muted">
                 What Prevail knows about you. Auto-injected into every chat and council so answers are specific to you.
               </p>
-              <button
-                onClick={() => onInjectContext(profile, "Profile · who you are")}
-                className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
-              >
-                → use in chat
-              </button>
-              <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
-                {profile.length > 1500 ? profile.slice(0, 1500) + "\n…" : profile}
-              </pre>
+              <div className="flex flex-wrap gap-1.5">
+                <button onClick={() => openCanvas("Profile", profile)}
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">
+                  <Eye className="h-3 w-3" /> view
+                </button>
+                <button onClick={() => onInjectContext(profile, "Profile · who you are")}
+                  className="rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
+                  → use in chat
+                </button>
+              </div>
             </>
           ) : <div className="text-xs text-text-muted">No profile yet. Add a profile.md (or user.md) at your vault root; Prevail injects it so answers know who you are.</div>
         } />
@@ -244,15 +275,16 @@ export function DomainContextDrawer({
         <Section keyName="memory" title="Long-term memory" body={
           memory.trim() ? (
             <>
-              <button
-                onClick={() => onInjectContext(memory, `${domain ? titleCase(domain) : "General"} · memory`)}
-                className="mb-2 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
-              >
-                → use in chat
-              </button>
-              <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
-                {memory.length > 1200 ? memory.slice(0, 1200) + "\n…" : memory}
-              </pre>
+              <div className="flex flex-wrap gap-1.5">
+                <button onClick={() => openCanvas(`${domain ? titleCase(domain) : "General"} memory`, memory)}
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">
+                  <Eye className="h-3 w-3" /> view
+                </button>
+                <button onClick={() => onInjectContext(memory, `${domain ? titleCase(domain) : "General"} · memory`)}
+                  className="rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
+                  → use in chat
+                </button>
+              </div>
             </>
           ) : <div className="text-xs text-text-muted">No distilled memory yet. The background distiller (Settings → Routines) compacts your activity into long-term memory once enough new material accumulates, usually within a few sessions.</div>
         } />
@@ -269,10 +301,10 @@ export function DomainContextDrawer({
                       → use in chat
                     </button>
                     {/* BP1: open the full doc in the markdown preview (rendered + raw). */}
-                    <button onClick={() => setPreview({ title: `${titleCase(domain)}/state.md`, body: ctx.state!, inject: () => onInjectContext(ctx.state!, `${titleCase(domain)}/state.md`) })}
+                    <button onClick={() => openCanvas(`${titleCase(domain)}/state.md`, ctx.state!)}
                       title="Preview (rendered / raw)" className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"><Eye className="h-3 w-3" /> preview</button>
                   </div>
-                  <button onClick={() => setPreview({ title: `${titleCase(domain)}/state.md`, body: ctx.state!, inject: () => onInjectContext(ctx.state!, `${titleCase(domain)}/state.md`) })} className="block w-full text-left" title="Click to preview">
+                  <button onClick={() => openCanvas(`${titleCase(domain)}/state.md`, ctx.state!)} className="block w-full text-left" title="Click to open in canvas">
                     <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary">
                       {ctx.state.length > 1200 ? ctx.state.slice(0, 1200) + "\n…" : ctx.state}
                     </pre>
@@ -362,7 +394,7 @@ export function DomainContextDrawer({
                     {ctx.recent_logs.map((l) => (
                       <li key={l.path}>
                         {/* BP1: click opens the markdown preview (rendered + raw toggle). */}
-                        <button onClick={async () => { try { const body = await invoke<string>("read_file", { path: l.path }); setPreview({ title: l.name, body, inject: () => onInjectContext(body, l.name) }); } catch (e) { console.error(e); } }}
+                        <button onClick={async () => { try { const body = await invoke<string>("read_file", { path: l.path }); openCanvas(l.name, body); } catch (e) { console.error(e); } }}
                           className="w-full rounded border border-border-subtle bg-background px-2 py-1.5 text-left hover:border-accent-border hover:bg-surface-warm">
                           <div className="font-mono text-[11px] text-text-primary">{l.name}</div>
                           {l.preview && <div className="mt-0.5 line-clamp-2 text-[10px] text-text-muted">{l.preview}</div>}
