@@ -299,7 +299,7 @@ export function Sidebar({
       >
         {collapsed ? (
           <div className="mx-auto flex flex-col items-center gap-2">
-            <PrevailLogo size={30} src="/logo-512.png" animated={false} />
+            <span className="overflow-hidden rounded-lg ring-1 ring-white/20"><PrevailLogo size={30} animated={false} /></span>
             <button
               onClick={() => setCollapsed(false)}
               title="Expand sidebar"
@@ -310,7 +310,7 @@ export function Sidebar({
           </div>
         ) : (
           <>
-            <span className="shrink-0"><PrevailLogo size={24} animated={false} /></span>
+            <span className="shrink-0 overflow-hidden rounded-lg ring-1 ring-white/20"><PrevailLogo size={24} animated={false} /></span>
             <BrandMark fill className="min-w-0 flex-1 font-display text-2xl font-bold text-white [text-shadow:0_2px_6px_rgba(0,0,0,0.5)]" />
             <button
               onClick={() => setCollapsed(true)}
