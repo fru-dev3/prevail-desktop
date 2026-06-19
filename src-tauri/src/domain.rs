@@ -163,6 +163,13 @@ pub(crate) fn domain_context(vault: String, domain: String) -> Result<DomainCont
         if !p.exists() { return None; }
         read_to_string_retry(&p).ok()
     };
+    // General's SUPPORTING files (journal, decisions ledger) may live in build/
+    // (the engine writes there once a vault is tidied), while older copies remain
+    // at the root. Read both and merge so nothing silently disappears.
+    let extra_base: Option<PathBuf> = if domain.trim().is_empty() {
+        let b = crate::paths::build_root(&vault);
+        if b != root { Some(b) } else { None }
+    } else { None };
     // v2 layout first (_state.md, written by the distill daemon), v1 fallback
     // (state.md). The panel showed "no state.md found" forever because it only
     // knew the v1 name while everything else wrote v2.
@@ -173,7 +180,8 @@ pub(crate) fn domain_context(vault: String, domain: String) -> Result<DomainCont
     let decisions = read(root.join("_journal").join("decisions.md"))
         .or_else(|| read(root.join("decisions.md")))
         .or_else(|| {
-            let ledger = read(root.join("_decisions.jsonl"))?;
+            let ledger = read(root.join("_decisions.jsonl"))
+                .or_else(|| extra_base.as_ref().and_then(|b| read(b.join("_decisions.jsonl"))))?;
             let lines: Vec<String> = ledger
                 .lines()
                 .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
@@ -197,10 +205,12 @@ pub(crate) fn domain_context(vault: String, domain: String) -> Result<DomainCont
                 .collect();
             if lines.is_empty() { None } else { Some(lines.join("\n")) }
         });
-    // Journal can live as a single _journal.md or a _journal/ folder
-    // of dated entries — concat the latter into newest-first order.
-    let journal = read(root.join("_journal.md")).or_else(|| {
-        let dir = root.join("_journal");
+    // Journal can live as a single _journal.md or a _journal/ folder of dated
+    // entries. For General it may exist at BOTH the root and build/ (after a tidy),
+    // so read every base and merge. Strip duplicate "# Journal" headers on join.
+    let read_journal_at = |base: &PathBuf| -> Option<String> {
+        if let Some(j) = read(base.join("_journal.md")) { return Some(j); }
+        let dir = base.join("_journal");
         if !dir.is_dir() { return None; }
         let mut entries: Vec<(String, PathBuf)> = match read_dir_retry(&dir) {
             Ok(it) => it
@@ -216,7 +226,17 @@ pub(crate) fn domain_context(vault: String, domain: String) -> Result<DomainCont
             .filter_map(|(_, p)| read_to_string_retry(&p).ok())
             .collect();
         if bodies.is_empty() { None } else { Some(bodies.join("\n\n---\n\n")) }
-    });
+    };
+    let journal = {
+        let mut parts: Vec<String> = Vec::new();
+        for base in std::iter::once(&root).chain(extra_base.iter()) {
+            if let Some(j) = read_journal_at(base) {
+                let cleaned = j.trim_start_matches("# Journal").trim().to_string();
+                if !cleaned.is_empty() && !parts.iter().any(|p| p == &cleaned) { parts.push(cleaned); }
+            }
+        }
+        if parts.is_empty() { None } else { Some(format!("# Journal\n\n{}", parts.join("\n"))) }
+    };
 
     // Recent logs — newest 10 .md files from _log/ (sorted by mtime).
     let log_dir = root.join("_log");
