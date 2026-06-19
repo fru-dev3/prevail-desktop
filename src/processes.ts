@@ -19,6 +19,12 @@ export function startProcess(id: string, kind: ProcKind, label: string, domain?:
 export function endProcess(id: string) {
   if (procs.delete(id)) emit();
 }
+// Update a live process's label in place (e.g. a loop's current phase), so the
+// sidebar indicator reflects what it's doing, not just that it's running.
+export function updateProcess(id: string, label: string) {
+  const p = procs.get(id);
+  if (p) { procs.set(id, { ...p, label }); emit(); }
+}
 export function listProcesses(): Proc[] {
   return [...procs.values()].sort((a, b) => a.startedAt - b.startedAt);
 }

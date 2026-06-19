@@ -462,6 +462,7 @@ pub fn run() {
             loops::loops_run_once,
             loops::loop_execute_action,
             loops::loop_run_now,
+            loops::loop_run_now_stream,
             loops::loop_pending_drop,
             engine::engine_score_history,
             engine::engine_onboard_recommend,

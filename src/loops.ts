@@ -52,6 +52,7 @@ export interface Loop {
   enabled: boolean;         // the runner only evaluates enabled loops
   lastRunTs: number | null;
   createdTs: number;
+  model?: string;           // per-loop model override ("" = use the global loops model)
 }
 
 export interface LoopsDoc {
@@ -117,6 +118,7 @@ function normalizeLoop(l: Partial<Loop>): Loop {
     enabled: l.enabled !== false,
     lastRunTs: typeof l.lastRunTs === "number" ? l.lastRunTs : null,
     createdTs: typeof l.createdTs === "number" ? l.createdTs : Date.now(),
+    ...(typeof l.model === "string" && l.model.trim() ? { model: l.model.trim() } : {}),
   };
 }
 
