@@ -26,18 +26,10 @@ const CLIS: &[(&str, &str, &str)] = &[
     ("claude", "Claude", "claude"),
     ("codex", "Codex", "codex"),
     ("antigravity", "Antigravity", "agy"),
-    ("codebuddy", "Codebuddy", "codebuddy"),
-    ("copilot", "Copilot", "copilot"),
     ("opencode", "Opencode", "opencode"),
     ("openclaw", "Openclaw", "openclaw"),
     ("hermes", "Hermes", "hermes"),
-    ("gemini", "Gemini", "gemini"),
     ("pi", "Pi", "pi"),
-    ("cursor", "Cursor", "cursor-agent"),
-    ("kiro", "Kiro", "kiro"),
-    // Harnesses (separate category in the UI; detected the same PATH way).
-    ("paperclip", "Paperclip", "paperclip"),
-    ("motorcar", "Motorcar", "motorcar"),
     ("ollama", "Ollama", "ollama"),
 ];
 
