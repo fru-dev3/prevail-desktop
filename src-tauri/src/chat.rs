@@ -463,6 +463,64 @@ pub(crate) async fn verify_cli_model(args: VerifyArgs) -> Result<String, String>
     }
 }
 
+// One-shot generation — run a CLI once with an arbitrary prompt and return
+// the FULL reply. Like verify_cli_model but caller-supplied prompt, no output
+// cap, and a tunable timeout. Used by Spark (the serendipity surface) to ask a
+// rotating model for a single random thing and show who generated it.
+#[derive(Deserialize)]
+pub struct OneshotArgs {
+    pub cli: String,
+    pub model: Option<String>,
+    pub prompt: String,
+    pub timeout_sec: Option<u64>,
+}
+#[tauri::command]
+pub(crate) async fn model_oneshot(args: OneshotArgs) -> Result<String, String> {
+    use tokio::io::AsyncReadExt;
+    use tokio::process::Command as TokioCommand;
+    use tokio::time::{timeout, Duration};
+
+    let (bin_name, cli_args) = cli_args(&args.cli, &args.prompt, args.model.as_deref());
+    let bin_abs = resolve_bin_abs(&bin_name);
+    let (combined_path, user, logname) = build_cli_env();
+
+    let mut child = TokioCommand::new(&bin_abs)
+        .args(&cli_args)
+        .env_clear()
+        .envs(scrubbed_env_pairs())
+        .env("PATH", combined_path)
+        .env("USER", &user)
+        .env("LOGNAME", &logname)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn {bin_abs} failed: {e}"))?;
+    let mut stdout = child.stdout.take().ok_or("no stdout")?;
+    let mut stderr = child.stderr.take().ok_or("no stderr")?;
+
+    let fut = async move {
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let _ = stdout.read_to_end(&mut out).await;
+        let _ = stderr.read_to_end(&mut err).await;
+        let code = child.wait().await.ok().and_then(|s| s.code()).unwrap_or(-1);
+        (code, String::from_utf8_lossy(&out).into_owned(), String::from_utf8_lossy(&err).into_owned())
+    };
+
+    let secs = args.timeout_sec.unwrap_or(60).clamp(5, 300);
+    match timeout(Duration::from_secs(secs), fut).await {
+        Ok((code, out, err)) => {
+            if code == 0 && !out.trim().is_empty() {
+                Ok(out.trim().to_string())
+            } else {
+                Err(format!("exit {code}: {}", best_error_line(&err, &out)))
+            }
+        }
+        Err(_) => Err(format!("timed out after {secs}s")),
+    }
+}
+
 /// Pick the most useful error line out of a CLI's combined output.
 ///
 /// Lots of CLIs (claude, codex) print a startup banner + harmless
