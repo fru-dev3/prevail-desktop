@@ -25,6 +25,17 @@ export function OnboardingModal({
   const [picks, setPicks] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Domains the vault ALREADY has - never offer to create these again.
+  const [existing, setExisting] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    invoke<{ name: string }[]>("scan_vault", { path: vaultPath })
+      .then((ds) => setExisting(new Set((ds ?? []).map((d) => d.name.toLowerCase()))))
+      .catch(() => setExisting(new Set()));
+  }, [vaultPath]);
+  // Only the proposed domains that don't already exist in the vault.
+  const offered = useMemo(() => (rec?.domains ?? []).filter((d) => !existing.has(d.name.toLowerCase())), [rec, existing]);
+  // Pre-select the recommended NEW domains whenever the proposal or existing set changes.
+  useEffect(() => { setPicks(new Set(offered.filter((d) => d.recommended).map((d) => d.name))); }, [offered]);
 
   // No questionnaire. Prevail proposes a starter set automatically; the user
   // just picks what to keep. Recommendation runs once on open.
@@ -39,8 +50,7 @@ export function OnboardingModal({
         answersJson,
       });
       setRec(value);
-      // Pre-select the recommended set.
-      setPicks(new Set(value.domains.filter((d) => d.recommended).map((d) => d.name)));
+      // Picks are derived from `offered` (recommended minus existing) by an effect.
       setStep("review");
     } catch (e) {
       setError(String(e));
@@ -113,7 +123,15 @@ export function OnboardingModal({
             </div>
           )}
 
-          {step === "review" && rec && (
+          {step === "review" && rec && offered.length === 0 && (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+              <Check className="h-7 w-7 text-ok" />
+              <div className="text-sm font-semibold text-text-primary">This vault is already set up</div>
+              <div className="max-w-sm text-xs text-text-muted">It already has {existing.size} domain{existing.size === 1 ? "" : "s"}. There's nothing to create here - close this and start working.</div>
+            </div>
+          )}
+
+          {step === "review" && rec && offered.length > 0 && (
             <>
               {rec.rationale && (
                 <p className="mb-4 rounded-md border border-border-subtle bg-background px-3 py-2 text-sm text-text-secondary">
@@ -124,7 +142,7 @@ export function OnboardingModal({
                 Recommended domains · {picks.size} selected
               </div>
               <ul className="flex flex-col gap-2">
-                {rec.domains.map((d) => {
+                {offered.map((d) => {
                   const on = picks.has(d.name);
                   return (
                     <li key={d.name}>
@@ -175,7 +193,14 @@ export function OnboardingModal({
 
         {/* Footer actions */}
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border-subtle px-6 py-4">
-          {step === "review" ? (
+          {step === "review" && offered.length === 0 ? (
+            <button
+              onClick={onClose}
+              className="ml-auto flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-opacity hover:opacity-90"
+            >
+              <Check className="h-4 w-4" /> Done
+            </button>
+          ) : step === "review" ? (
             <>
               <button
                 onClick={requestRecommendation}

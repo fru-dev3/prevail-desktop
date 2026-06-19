@@ -181,7 +181,12 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
     setAppMode("production");
     window.dispatchEvent(new Event("prevail:appmode"));
     onVaultMoved?.(picked);
-    if (runOnboarding) onSetupDomains?.();
+    // Only onboard a genuinely EMPTY vault. If the folder you pointed at already
+    // has domains, it's ready to use - scan it and skip the setup modal entirely.
+    if (runOnboarding) {
+      const existing = await invoke<{ name: string }[]>("scan_vault", { path: picked }).catch(() => [] as { name: string }[]);
+      if (!existing || existing.length === 0) onSetupDomains?.();
+    }
   }
 
   // Leave the demo sandbox for your own vault. If a production vault is already
