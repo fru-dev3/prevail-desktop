@@ -7,7 +7,7 @@ import { FRAMEWORKS, LENSES } from "./constants";
 import { titleCase } from "./format";
 import { splitThinking, vendorAccent } from "./helpers";
 import { buildQuickActions, modelLabel } from "./helpers2";
-import { PREF, getDomainToggle, getPref, isBunkerOn, setDomainToggle, setPref } from "./storage";
+import { PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, setDomainToggle, setPref } from "./storage";
 import { ThinkingDisclosure } from "./ui";
 import { Markdown, StreamingPlain } from "./Markdown";
 import { DomainAppsStrip, PreamblePicker, SkillsList, SurfacePanel, TasksPanel } from "./panels";
@@ -282,6 +282,17 @@ export function DomainStatusBar({
   const [serendipity, setSeren]   = useState(false);
   const [auto, setAuto]           = useState(false);
   const [autoMode, setAutoMode]   = useState(() => getPref(`prevail.domain.${domain}.autoMode`, "smart"));
+  // Incognito now lives in Modes (a plain model, none of your context sent). The
+  // master switch (Settings: Privacy) can force it on globally.
+  const [incognito, setIncognito] = useState(() => incognitoActive("chat"));
+  const globalIncognito = getPref(PREF.incognito, "0") === "1";
+  const toggleIncognito = () => {
+    if (globalIncognito) return; // forced on globally
+    const next = !(getPref(PREF.incognitoChat, "0") === "1");
+    setPref(PREF.incognitoChat, next ? "1" : "0");
+    setIncognito(incognitoActive("chat"));
+    window.dispatchEvent(new Event("prevail:incognito-changed"));
+  };
   useEffect(() => {
     // Loads for General too (domain null → the __general__ bucket).
     setCouncil(getDomainToggle(domain, "council", false));
@@ -307,7 +318,8 @@ export function DomainStatusBar({
   // send path enforces the same coercion independently (see `web:` in prefs).
   const bunker = isBunkerOn();
   const webShown = bunker ? false : web;
-  const activeModes = [webShown, save, serendipity, auto].filter(Boolean).length;
+  const incogOn = incognito || globalIncognito;
+  const activeModes = [webShown, save, serendipity, auto, incogOn].filter(Boolean).length;
 
   const flip = (
     t: DomainToggle,
@@ -383,6 +395,10 @@ export function DomainStatusBar({
                 desc="Invite lateral, off-topic angles. Off stays strictly on-topic." />
               <ModeRow glyph="◐" label="Auto-council" on={auto} onClick={() => flip("auto", auto, setAuto)}
                 desc="Spin off the full council automatically. In Smart mode it convenes only for judgment calls (should-I / tradeoff / high-stakes questions); simple questions get one model. (Off in Bunker Mode: panelists are cloud models.)" />
+              <ModeRow glyph="◍" label={globalIncognito ? "Incognito · locked on" : "Incognito"} on={incogOn} onClick={toggleIncognito}
+                desc={globalIncognito
+                  ? "Forced on globally (Settings: Privacy). Replies use a plain model with none of your profile, ideal, memory, or context."
+                  : "Ask a plain model with NONE of your profile, ideal, memory, or context sent. The composer glows while it's on."} />
               {auto && (
                 <div className="flex items-center justify-between gap-2 px-3 py-2">
                   <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Trigger</span>

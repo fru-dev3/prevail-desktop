@@ -221,6 +221,12 @@ export function ChatPanel({
     window.addEventListener("prevail:compose-seed", onSeed as EventListener);
     return () => window.removeEventListener("prevail:compose-seed", onSeed as EventListener);
   }, []);
+  // Incognito now toggles from the Modes menu; keep this panel's state + glow in sync.
+  useEffect(() => {
+    const sync = () => setIncognito(incognitoActive("chat"));
+    window.addEventListener("prevail:incognito-changed", sync);
+    return () => window.removeEventListener("prevail:incognito-changed", sync);
+  }, []);
   // The user's Ideal State (vault/ideal-state.md) - their constitution, always
   // prepended as the highest-precedence preamble so every turn aligns with it.
   // Loaded per vault path; read_ideal_state returns the starter template when
@@ -273,13 +279,10 @@ export function ChatPanel({
   // Effective state = global master OR the chat-specific flag; the toggle flips
   // the chat flag. When the global master is on, chat stays incognito and the
   // per-surface toggle is locked on.
+  // Incognito is toggled from the Modes menu now; this panel reflects it (glow +
+  // ghost badge) and the send path reads incognitoActive("chat") fresh each turn.
   const [incognito, setIncognito] = useState(() => incognitoActive("chat"));
   const globalIncognito = getPref(PREF.incognito, "0") === "1";
-  const toggleIncognito = () => setIncognito(() => {
-    const next = !(getPref(PREF.incognitoChat, "0") === "1");
-    setPref(PREF.incognitoChat, next ? "1" : "0");
-    return incognitoActive("chat");
-  });
   function injectContext(body: string, label: string) {
     setAttachErr(null);
     setPrimedContext((cur) => {
@@ -1714,32 +1717,25 @@ export function ChatPanel({
           transcript above stays in a centered max-w-3xl column for
           readability; only the composer goes edge-to-edge. */}
       <div data-tour="composer" className="shrink-0 px-6 pb-6 pt-2">
-        <div className="relative rounded-2xl border border-border bg-surface p-3 shadow-sm">
+        <div className={`relative rounded-2xl border bg-surface p-3 transition-shadow ${
+          (incognito || globalIncognito)
+            ? "border-accent ring-2 ring-accent/40 shadow-[0_0_24px_-4px] shadow-accent/40"
+            : "border-border shadow-sm"
+        }`}>
+          {/* Incognito affordance: a ghost badge over the top-left edge + the glow
+              above, so it's unmistakable the turn sends none of your context. */}
+          {(incognito || globalIncognito) && (
+            <span className="absolute -top-2.5 left-3 z-10 inline-flex items-center gap-1 rounded-full border border-accent bg-surface px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-accent shadow-sm">
+              <Ghost className="h-3 w-3" /> Incognito
+            </span>
+          )}
           {/* One row: context pills on the left, the context-window meter on the
               right - so attached context + the gauge share a line instead of
               stacking and eating vertical space. */}
           <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-              {/* G3: incognito toggle - always visible. On = a plain model, none of
-                  your profile/ideal/memory/omega is sent. A labelled pill (icon +
-                  word + ON/OFF, filled when on) so the state reads at a glance and
-                  never relies on color alone. */}
-              {(() => {
-                const incogOn = incognito || globalIncognito;
-                return (
-                  <button
-                    onClick={toggleIncognito}
-                    disabled={globalIncognito}
-                    title={globalIncognito ? "Incognito ON globally (Settings : Privacy) - replies use a plain model with none of your context." : incognito ? "Incognito ON - replies use a plain model with none of your context. Click to turn off." : "Incognito OFF - click to ask a plain model with NONE of your profile or context."}
-                    aria-label="Toggle incognito"
-                    aria-pressed={incogOn}
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider transition-colors disabled:cursor-not-allowed ${incogOn ? "border-ok bg-ok/15 text-ok" : "border-border bg-background text-text-muted hover:border-accent-border hover:text-text-secondary"}`}
-                  >
-                    <Ghost className="h-3.5 w-3.5" />
-                    Incognito {incogOn ? "on" : "off"}
-                  </button>
-                );
-              })()}
+              {/* Incognito moved into Modes; when on, the composer shows a ghost
+                  badge + glow (below) instead of a pill here. */}
               {primedContext.map((c, i) => (
                 <span
                   key={c.label}
