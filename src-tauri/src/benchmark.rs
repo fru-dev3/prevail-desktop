@@ -842,20 +842,32 @@ async fn spawn_prevail_streaming(
     let stderr = child.stderr.take();
     let session_done = session.clone();
 
-    if let Some(s) = stdout {
+    // Stream RAW bytes (not line-buffered): the CLI prints `  <id>…` WITHOUT a
+    // trailing newline while a question is in flight, then appends ` <Cli·model>`
+    // once it finishes. A line reader would buffer the in-flight line and emit
+    // nothing until each (slow, ~40-60s for Opus) question completed — making the
+    // run look frozen at 0/N. Reading byte chunks pushes the in-flight line to the
+    // UI immediately, so "answering <question>" and the bar move from second one.
+    use tokio::io::AsyncReadExt;
+    if let Some(mut s) = stdout {
         let app2 = app.clone();
         let session2 = session.clone();
         tauri::async_runtime::spawn(async move {
-            let mut lines = BufReader::new(s).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                let _ = app2.emit(
-                    "benchmark:chunk",
-                    serde_json::json!({
-                        "session": session2,
-                        "stream": "stdout",
-                        "data": format!("{line}\n"),
-                    }),
-                );
+            let mut buf = [0u8; 4096];
+            loop {
+                match s.read(&mut buf).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        let _ = app2.emit(
+                            "benchmark:chunk",
+                            serde_json::json!({
+                                "session": session2,
+                                "stream": "stdout",
+                                "data": String::from_utf8_lossy(&buf[..n]).to_string(),
+                            }),
+                        );
+                    }
+                }
             }
         });
     }
