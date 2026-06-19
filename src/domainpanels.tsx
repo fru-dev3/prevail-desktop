@@ -182,8 +182,12 @@ export function DomainContextDrawer({
   });
   // Live decision ledger (_decisions.jsonl) + distilled long-term memory.
   // These update the moment a verdict is saved - no waiting on distillation.
-  type DecisionRecord = { id?: string; ts?: number; kind?: string; prompt?: string; verdict?: string; feedback?: { rating?: string } | string | null };
+  type DecisionRecord = { id?: string; ts?: number; kind?: string; prompt?: string; verdict?: string; decision?: string; feedback?: { rating?: string } | string | null };
   const [decisionLog, setDecisionLog] = useState<DecisionRecord[]>([]);
+  // A decision is worth showing only if it has text. Distiller-extracted entries
+  // carry it in `decision`; council verdicts in `prompt`/`verdict`. Empties (the
+  // "(untitled decision)" noise) are filtered out entirely.
+  const decisions = decisionLog.filter((d) => (d.prompt || d.verdict || d.decision || "").trim());
   const [memory, setMemory] = useState<string>("");
   const [drawerWidth, setDrawerWidth] = useState<number>(() => {
     const v = parseInt(lsGet("prevail.contextDrawer.width"), 10);
@@ -348,21 +352,20 @@ export function DomainContextDrawer({
             } />
             {/* Decisions = the live ledger (latest, raw) + the distiller's curated
                 summary, in ONE section (was split into "Recent decisions" + "Decisions"). */}
-            <Section keyName="decisions" title="Decisions" count={decisionLog.length || undefined} body={
+            <Section keyName="decisions" title="Decisions" count={decisions.length || undefined} body={
               <>
               <div className="mb-2 text-[11px] leading-snug text-text-muted">
-                Council verdicts and saved decisions - latest first. The distiller folds them into a curated summary over time.
+                Council verdicts and saved decisions, latest first.
               </div>
-              {decisionLog.length > 0 && (
-                <ul className="mb-2 flex flex-col gap-2">
-                  {decisionLog.slice(0, 6).map((d, i) => {
+              {decisions.length > 0 ? (
+                <ul className="flex flex-col gap-2">
+                  {decisions.slice(0, 8).map((d, i) => {
                     const fb = typeof d.feedback === "object" && d.feedback ? d.feedback.rating : (typeof d.feedback === "string" ? d.feedback : undefined);
                     const ago = d.ts ? formatFreshness(Math.max(0, Math.floor((Date.now() - d.ts) / 1000))) : "";
                     const key = d.id ?? String(i);
-                    const title = `Decision · ${(d.prompt ?? "decision").slice(0, 48)}`;
-                    const full = (d.verdict || d.prompt || "").trim();
-                    // Minimal row: title + tiny view/use icons. Clicking opens the full
-                    // verdict in the LEFT canvas (same as Ideal State / User), no inline blob.
+                    const text = (d.prompt || d.decision || "(untitled)").trim();
+                    const full = (d.verdict || d.decision || d.prompt || "").trim();
+                    const title = `Decision · ${text.slice(0, 48)}`;
                     return (
                       <li key={key} className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-background px-2.5 py-1.5">
                         <button onClick={() => openCanvas(title, full)} className="min-w-0 flex-1 text-left" title="Open in canvas">
@@ -371,21 +374,15 @@ export function DomainContextDrawer({
                             {fb === "up" && <ThumbsUp className="h-2.5 w-2.5 text-accent" />}
                             {fb === "down" && <ThumbsDown className="h-2.5 w-2.5 text-red-500" />}
                           </div>
-                          <div className="line-clamp-1 text-[11px] font-medium text-text-primary">{d.prompt || "(untitled decision)"}</div>
+                          <div className="line-clamp-1 text-[11px] font-medium text-text-primary">{text}</div>
                         </button>
                         <button onClick={() => openCanvas(title, full)} title="View" className="shrink-0 rounded p-1 text-text-muted hover:text-accent"><Eye className="h-3.5 w-3.5" /></button>
-                        {d.verdict && <button onClick={() => onInjectContext(d.verdict!, `decision · ${(d.prompt ?? "").slice(0, 30)}`)} title="Use in chat" className="shrink-0 rounded p-1 text-text-muted hover:text-accent"><ArrowRight className="h-3.5 w-3.5" /></button>}
+                        {full && <button onClick={() => onInjectContext(full, `decision · ${text.slice(0, 30)}`)} title="Use in chat" className="shrink-0 rounded p-1 text-text-muted hover:text-accent"><ArrowRight className="h-3.5 w-3.5" /></button>}
                       </li>
                     );
                   })}
                 </ul>
-              )}
-              {ctx.decisions ? (
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted/70">Curated summary</span>
-                  <CtxActions onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} decisions`, ctx.decisions!)} onUse={() => onInjectContext(ctx.decisions!, `${domain ? titleCase(domain) : "General"} · decisions`)} />
-                </div>
-              ) : (decisionLog.length === 0 && <div className="text-xs text-text-muted">No decisions yet. Run a council or save a decision; the distiller curates a summary over time.</div>)}
+              ) : <div className="text-xs text-text-muted">No decisions yet. Run a council or save a decision and it shows here.</div>}
               </>
             } />
             {/* Journal = the raw record: what you asked + session logs. The
