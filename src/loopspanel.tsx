@@ -25,6 +25,7 @@ import {
   type LoopsDoc,
   type LoopsRuntime,
   ensureBriefingLoop,
+  ensureModelScoutLoop,
   hasSeed,
   makeLoop,
   readLoops,
@@ -78,15 +79,17 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
     // missing (and persist once), so it's present in the panel and the runner.
     readLoops(domainPath).then((d) => {
       if (!alive) return;
-      const { doc: withBrief, added } = ensureBriefingLoop(d, domain);
-      setDoc(withBrief);
-      if (added) writeLoops(domainPath, withBrief).catch((e) => console.error("seed briefing loop", e));
+      const { doc: withBrief, added: addedB } = ensureBriefingLoop(d, domain);
+      // General also gets the built-in Model Scout (web-searches models for the Arena).
+      const { doc: withScout, added: addedS } = ensureModelScoutLoop(withBrief, domain);
+      setDoc(withScout);
+      if (addedB || addedS) writeLoops(domainPath, withScout).catch((e) => console.error("seed built-in loops", e));
     });
     readLoopsRuntime(domainPath).then((rt) => { if (alive) setRuntime(rt); });
     // The background loop runner advances loops + queues approvals; refresh when
     // it reports a pass so new actions/proposals appear without a manual reload.
     const onAdvanced = () => {
-      readLoops(domainPath).then((d) => { if (alive) setDoc(ensureBriefingLoop(d, domain).doc); });
+      readLoops(domainPath).then((d) => { if (alive) setDoc(ensureModelScoutLoop(ensureBriefingLoop(d, domain).doc, domain).doc); });
       readLoopsRuntime(domainPath).then((rt) => { if (alive) setRuntime(rt); });
     };
     window.addEventListener("prevail:loops-advanced", onAdvanced);
