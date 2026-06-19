@@ -1033,27 +1033,26 @@ export function CouncilPanel({
           {/* G3: incognito for the council - a labelled pill (icon + word + ON/OFF,
               filled when on) so the state is obvious, never color-alone. Disabled
               (locked on) when the global master is on. */}
-          <div className="mb-2 flex items-center gap-2 px-2">
-            {(() => {
-              const incogOn = incognito || globalIncognito;
-              return (
-                <button
-                  onClick={toggleIncognito}
-                  disabled={globalIncognito}
-                  title={globalIncognito ? "Incognito ON globally (Settings : Privacy) - the council gets none of your context." : incognito ? "Incognito ON for the council - none of your context is sent. Click to turn off." : "Incognito OFF - click to convene a plain panel with NONE of your profile/ideal/memory."}
-                  aria-label="Toggle council incognito"
-                  aria-pressed={incogOn}
-                  className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider transition-colors disabled:cursor-not-allowed ${incogOn ? "border-ok bg-ok/15 text-ok" : "border-border bg-background text-text-muted hover:border-accent-border hover:text-text-secondary"}`}
-                >
-                  <Ghost className="h-3.5 w-3.5" />
-                  Incognito {incogOn ? "on" : "off"}
-                </button>
-              );
-            })()}
-          </div>
-          {/* Context pills - auto-primed + dragged-in domains */}
-          {primedContext.length > 0 && (
-            <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2">
+          {/* One row (parity with chat): incognito + context pills on the left, the
+              context-window meter on the right - so they share a line. */}
+          <div className="mb-2 flex items-center justify-between gap-2 px-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+              {(() => {
+                const incogOn = incognito || globalIncognito;
+                return (
+                  <button
+                    onClick={toggleIncognito}
+                    disabled={globalIncognito}
+                    title={globalIncognito ? "Incognito ON globally (Settings : Privacy) - the council gets none of your context." : incognito ? "Incognito ON for the council - none of your context is sent. Click to turn off." : "Incognito OFF - click to convene a plain panel with NONE of your profile/ideal/memory."}
+                    aria-label="Toggle council incognito"
+                    aria-pressed={incogOn}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider transition-colors disabled:cursor-not-allowed ${incogOn ? "border-ok bg-ok/15 text-ok" : "border-border bg-background text-text-muted hover:border-accent-border hover:text-text-secondary"}`}
+                  >
+                    <Ghost className="h-3.5 w-3.5" />
+                    Incognito {incogOn ? "on" : "off"}
+                  </button>
+                );
+              })()}
               {primedContext.map((c, i) => (
                 <span
                   key={c.label}
@@ -1070,7 +1069,16 @@ export function CouncilPanel({
                 </span>
               ))}
             </div>
-          )}
+            <div className="flex shrink-0 items-center gap-2">
+              <ContextMeter
+                conversationTokens={councilCtx.conversationTokens}
+                attachedTokens={councilCtx.attachedTokens}
+                draftTokens={estimateTokens(prompt)}
+                windowTokens={councilCtx.windowTokens}
+                onReset={resetCouncil}
+              />
+            </div>
+          </div>
           {/* Attached skills */}
           {attachedSkills.length > 0 && (
             <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2">
@@ -1245,15 +1253,6 @@ export function CouncilPanel({
           <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border-subtle pt-2">
             <DomainStatusBar domain={domain} fwLens={fwLens} />
             <div className="flex-1" />
-
-            {/* Context-window meter (parity with chat); tracks the most-constrained panelist. */}
-            <ContextMeter
-              conversationTokens={councilCtx.conversationTokens}
-              attachedTokens={councilCtx.attachedTokens}
-              draftTokens={estimateTokens(prompt)}
-              windowTokens={councilCtx.windowTokens}
-              onReset={resetCouncil}
-            />
 
             {/* Chair pill */}
             <div className="relative" ref={chairMenuRef}>
