@@ -9,6 +9,7 @@ import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
 import { PREF, getPref } from "./storage";
 import { DecisionInbox } from "./decisioninbox";
+import { TaskDetailPanel } from "./taskdetail";
 import type { BoardTask } from "./types";
 
 type BoardView = "board" | "list" | "horizon" | "needs" | "trash";
@@ -81,6 +82,8 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
   const [dragCol, setDragCol] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [editVal, setEditVal] = useState("");
+  // The task opened in the detail panel (full "task object" view).
+  const [openId, setOpenId] = useState<string | null>(null);
   const [addText, setAddText] = useState("");
   const [addDomain, setAddDomain] = useState("");
   const [addDue, setAddDue] = useState("");
@@ -298,8 +301,8 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
               onKeyDown={(e) => { if (e.key === "Enter") saveEdit(t); if (e.key === "Escape") setEditId(null); }}
               className="min-w-0 flex-1 rounded border border-accent-border bg-background px-1 py-0.5 text-[13px] text-text-primary focus:outline-none" />
           ) : (
-            <span onDoubleClick={() => { setEditId(t.id ?? null); setEditVal(t.text); }} title="Double-click to edit"
-              className="min-w-0 flex-1 text-[13px] leading-snug text-text-primary">{t.text}</span>
+            <span onClick={() => t.id && setOpenId(t.id)} title="Open task"
+              className="min-w-0 flex-1 cursor-pointer text-[13px] leading-snug text-text-primary hover:text-accent">{t.text}</span>
           )}
           <button onClick={() => cyclePriority(t)} title={`Priority: ${t.priority || "normal"} - click to change`} disabled={busy === `pr:${t.id}`}
             className={`shrink-0 transition-colors ${t.priority === "critical" ? "text-danger" : t.priority === "high" ? "text-warn" : "text-text-muted/30 hover:text-text-muted"}`}>
@@ -348,8 +351,8 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
             onKeyDown={(e) => { if (e.key === "Enter") saveEdit(t); if (e.key === "Escape") setEditId(null); }}
             className="min-w-0 flex-1 rounded border border-accent-border bg-background px-1.5 py-0.5 text-[13px] text-text-primary focus:outline-none" />
         ) : (
-          <span onDoubleClick={() => { setEditId(t.id ?? null); setEditVal(t.text); }} title="Double-click to edit"
-            className={`min-w-0 flex-1 truncate text-[13px] ${t.status === "done" ? "text-text-muted line-through" : "text-text-primary"}`}>{t.text}</span>
+          <span onClick={() => t.id && setOpenId(t.id)} title="Open task"
+            className={`min-w-0 flex-1 cursor-pointer truncate text-[13px] hover:text-accent ${t.status === "done" ? "text-text-muted line-through" : "text-text-primary"}`}>{t.text}</span>
         )}
         <span className="hidden shrink-0 rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-muted sm:inline">{titleCase(t.domain)}</span>
         {blocked && <span className="shrink-0 font-mono text-[10px] text-warn">⏸ decision</span>}
@@ -580,6 +583,17 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
         </div>
       )}
       </div>
+      {openId && (() => {
+        const t = tasks.find((x) => x.id === openId);
+        return t ? (
+          <TaskDetailPanel
+            task={t}
+            vaultPath={vaultPath}
+            onClose={() => setOpenId(null)}
+            onChanged={reload}
+          />
+        ) : null;
+      })()}
     </>
   );
 }
