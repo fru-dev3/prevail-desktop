@@ -23,6 +23,7 @@ mod intent_daemon;
 mod domain;
 mod intents;
 mod normalize;
+mod consolidate;
 mod idealstate;
 mod omega;
 mod paths;
@@ -298,6 +299,8 @@ pub fn run() {
             vault::vault_migrate_layout,
             normalize::vault_normalize_plan,
             normalize::vault_normalize_apply,
+            consolidate::vault_consolidate_plan,
+            consolidate::vault_consolidate_apply,
             clis::detect_clis,
             appcmds::log_fatal,
             appcmds::import_sample_vault,

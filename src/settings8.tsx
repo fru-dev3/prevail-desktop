@@ -769,6 +769,41 @@ function NormalizeVaultRow({ vaultPath }: { vaultPath: string }) {
   );
 }
 
+// Copy-safe consolidation: move the duplicate root-level domains/ and apps/ into
+// the canonical <vault>/data/ container. Dry-run + confirm; originals kept.
+function ConsolidateVaultRow({ vaultPath }: { vaultPath: string }) {
+  type Op = { label: string };
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  async function run() {
+    setBusy(true); setNote(null);
+    try {
+      const plan = await invoke<Op[]>("vault_consolidate_plan", { vault: vaultPath });
+      if (!plan.length) { setNote("Already consolidated - domains + apps live under data/."); return; }
+      const preview = plan.slice(0, 8).map((o) => `• ${o.label}`).join("\n");
+      const ok = await tauriConfirm(
+        `Move ${plan.length} file(s) for domains + apps into data/? Each is COPIED into data/; originals are kept and nothing is deleted.\n\n${preview}${plan.length > 8 ? `\n…and ${plan.length - 8} more` : ""}`,
+        { title: "Consolidate into data/", kind: "info", okLabel: "Consolidate", cancelLabel: "Cancel" },
+      );
+      if (!ok) return;
+      const done = await invoke<Op[]>("vault_consolidate_apply", { vault: vaultPath });
+      setNote(`Consolidated ${done.length} file(s) into data/. The old root copies are kept; delete them once you've confirmed everything looks right.`);
+    } catch (e) { setNote(`Failed: ${e}`); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 text-xs text-text-secondary">Consolidate into <code className="font-mono text-text-muted">data/</code>: move stray root-level <code className="font-mono text-text-muted">domains/</code> and <code className="font-mono text-text-muted">apps/</code> into the canonical container. Copy-safe, never deletes.</span>
+        <button onClick={run} disabled={busy} className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs hover:border-accent-border hover:text-accent disabled:opacity-50">
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderTree className="h-3.5 w-3.5" />} Consolidate
+        </button>
+      </div>
+      {note && <div className="mt-1.5 text-[11px] text-text-muted">{note}</div>}
+    </div>
+  );
+}
+
 export function WorkspaceSection({ vaultPath, onSetupDomains, onVaultMoved }: { vaultPath: string; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void }) {
   return (
     <>
@@ -778,6 +813,7 @@ export function WorkspaceSection({ vaultPath, onSetupDomains, onVaultMoved }: { 
       <div className="mb-7">
         <WorkspaceSubLabel icon={FolderOpen} label="Vault" desc="your vault · demo vault · backups" />
         <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} headerless view="cards" />
+        <ConsolidateVaultRow vaultPath={vaultPath} />
         <NormalizeVaultRow vaultPath={vaultPath} />
       </div>
       {/* Starter packs as its own section. */}
