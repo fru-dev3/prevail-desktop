@@ -36,6 +36,7 @@ pub(crate) use settings::close_to_tray_enabled;
 pub(crate) use appcmds::secs_to_ymdhms;
 mod engine;
 mod loops;
+mod activity;
 mod ingestion;
 mod reminders;
 mod surface;
@@ -464,6 +465,7 @@ pub fn run() {
             loops::loop_run_now,
             loops::loop_run_now_stream,
             loops::loop_pending_drop,
+            activity::activity_read,
             engine::engine_score_history,
             engine::engine_onboard_recommend,
             engine::engine_onboard_apply,
