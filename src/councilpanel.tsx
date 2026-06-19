@@ -2,7 +2,7 @@
 // (CLI, model) slots over a question, stream each panelist, then synthesize a
 // chair verdict. Renders the shared DomainStatusBar + DomainContextDrawer.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, BookOpen, Check, ChevronRight, Crown, Folder, Ghost, MessageSquare, PanelRightOpen, Plus, Scale, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
+import { ArrowRight, BookOpen, Check, ChevronRight, Crown, Folder, Ghost, Layers, MessageSquare, PanelRightOpen, Plus, Scale, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 import { invoke, listen } from "./bridge";
 import { MODELS } from "./constants";
 import { titleCase } from "./format";
@@ -1233,11 +1233,11 @@ export function CouncilPanel({
                   <Crown className="h-3 w-3" /> council
                 </button>
                 {councilMenuOpen && (
-                  <div className="absolute bottom-full left-0 z-40 mb-1 w-64 overflow-hidden rounded-lg border border-border bg-surface shadow-xl">
-                    <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-                      Convene a council
+                  <div className="absolute bottom-full left-0 z-40 mb-1 w-72 overflow-hidden rounded-xl border border-border bg-surface shadow-xl">
+                    <div className="flex items-center gap-1.5 border-b border-border-subtle bg-surface-warm/50 px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+                      <Scale className="h-3 w-3 text-accent" /> Convene a council
                     </div>
-                    <div className="max-h-80 overflow-y-auto py-1">
+                    <div className="max-h-80 overflow-y-auto p-1.5">
                       {savedCouncils.map((c) => (
                         <button
                           key={c.id}
@@ -1245,11 +1245,14 @@ export function CouncilPanel({
                             setSelectedSlots(new Set(c.models));
                             setCouncilMenuOpen(false);
                           }}
-                          className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-surface-warm"
+                          className="group flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent-soft"
                         >
-                          <span className="truncate text-xs font-medium text-text-primary">{c.name}</span>
-                          <span className="shrink-0 font-mono text-[10px] text-text-muted">
-                            {c.models.length} model{c.models.length === 1 ? "" : "s"}
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent group-hover:bg-accent group-hover:text-background">
+                            <Crown className="h-3.5 w-3.5" />
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">{c.name}</span>
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-muted">
+                            <Layers className="h-3 w-3" /> {c.models.length}
                           </span>
                         </button>
                       ))}
