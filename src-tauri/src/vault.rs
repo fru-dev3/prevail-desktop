@@ -127,9 +127,12 @@ pub(crate) fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
     // the v3 container (<vault>/domains/<domain>); v3 wins on a name clash.
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut candidates: Vec<(String, PathBuf)> = Vec::new();
-    let domains_root = root.join("domains");
-    if domains_root.is_dir() {
-        if let Ok(es) = read_dir_retry(&domains_root) {
+    // Scan a domains container into candidates (first occurrence of a name wins).
+    let mut scan_container = |dir: &PathBuf, candidates: &mut Vec<(String, PathBuf)>, seen: &mut std::collections::HashSet<String>| {
+        if !dir.is_dir() {
+            return;
+        }
+        if let Ok(es) = read_dir_retry(dir) {
             for entry in es.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
                 if name.starts_with('.') {
@@ -141,6 +144,15 @@ pub(crate) fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
                 }
             }
         }
+    };
+    // v4 canonical: <vault>/data/domains/<d> (highest priority), then v3
+    // <vault>/domains/<d>. data_root() collapses to the root when no data/ dir
+    // exists, so guard against scanning <vault>/domains twice.
+    let v4_domains = crate::paths::data_root(&path).join("domains");
+    scan_container(&v4_domains, &mut candidates, &mut seen);
+    let domains_root = root.join("domains");
+    if domains_root != v4_domains {
+        scan_container(&domains_root, &mut candidates, &mut seen);
     }
     for entry in read_dir_retry(&root).map_err(|e| e.to_string())?.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
@@ -215,19 +227,21 @@ pub(crate) fn list_domain_names(vault: &str) -> Vec<String> {
             names.push(name);
         }
     };
-    let domains_root = root.join("domains");
-    if domains_root.is_dir() {
-        if let Ok(es) = read_dir_retry(&domains_root) {
+    let mut scan = |dir: &PathBuf| {
+        if let Ok(es) = read_dir_retry(dir) {
             for entry in es.flatten() {
                 consider(entry.file_name().to_string_lossy().to_string(), entry.path());
             }
         }
+    };
+    // v4 canonical (data/domains), then v3 (domains/), then legacy root.
+    let v4_domains = crate::paths::data_root(vault).join("domains");
+    scan(&v4_domains);
+    let domains_root = root.join("domains");
+    if domains_root != v4_domains {
+        scan(&domains_root);
     }
-    if let Ok(es) = read_dir_retry(&root) {
-        for entry in es.flatten() {
-            consider(entry.file_name().to_string_lossy().to_string(), entry.path());
-        }
-    }
+    scan(&root);
     names.sort();
     names
 }
@@ -258,6 +272,33 @@ mod tests {
         assert!(names.contains(&"health".to_string()), "legacy domain must be found: {names:?}");
         assert!(!names.contains(&"random".to_string()), "non-domain must be skipped");
         assert!(!names.contains(&"domains".to_string()), "the v3 container itself is not a domain");
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn scan_and_list_find_v4_data_domains() {
+        // Regression: a canonical v4 vault keeps domains under data/domains/<d>.
+        // Both scan_vault and list_domain_names must surface them (the bug where
+        // a fully-migrated vault showed no domains in the sidebar).
+        let vault = std::env::temp_dir().join(format!("prevail-v4scan-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&vault);
+        let wealth = vault.join("data").join("domains").join("wealth");
+        fs::create_dir_all(&wealth).unwrap();
+        fs::write(wealth.join("_state.md"), "# state").unwrap();
+        let health = vault.join("data").join("domains").join("health");
+        fs::create_dir_all(&health).unwrap();
+        fs::write(health.join("soul.md"), "# soul").unwrap();
+        // a fresh vault also has build/ + PREVAIL.md at root — must not become domains.
+        fs::create_dir_all(vault.join("build")).unwrap();
+        fs::write(vault.join("PREVAIL.md"), "# Prevail").unwrap();
+
+        let names = list_domain_names(&vault.to_string_lossy());
+        assert!(names.contains(&"wealth".to_string()), "v4 domain must be found: {names:?}");
+        assert!(names.contains(&"health".to_string()), "v4 domain must be found: {names:?}");
+        let scanned = scan_vault(vault.to_string_lossy().to_string()).unwrap();
+        let scanned_names: Vec<String> = scanned.iter().map(|d| d.name.clone()).collect();
+        assert!(scanned_names.contains(&"wealth".to_string()), "scan_vault must find v4 domain: {scanned_names:?}");
+        assert_eq!(scanned.len(), 2, "exactly the two v4 domains, not build/data: {scanned_names:?}");
         let _ = fs::remove_dir_all(&vault);
     }
 

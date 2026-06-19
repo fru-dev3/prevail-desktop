@@ -10,6 +10,18 @@ import { ScoreBar } from "./panels";
 import { Sparkline } from "./ui";
 import type { CliProvider, ContextScore, EngineApp, IngestionMcpServer, IngestionTierStatus, MissingItem, OnboardingRecommendation } from "./types";
 
+// Turn a raw engine error (e.g. "prevail exited 1: <stderr>") into something a
+// human can act on. The bare "exited 1" is meaningless to the user.
+function friendlyOnboardError(e: unknown, action: string): string {
+  const raw = String(e ?? "").trim();
+  const detail = raw.replace(/^prevail exited \d+:?\s*/i, "").trim();
+  if (/no output/i.test(raw)) return `Couldn't ${action}: the engine returned nothing. Try again in a moment.`;
+  if (/spawn|not found|ENOENT/i.test(raw)) return `Couldn't ${action}: the Prevail engine isn't reachable. Restart the app and try again.`;
+  return detail
+    ? `Couldn't ${action}: ${detail}`
+    : `Couldn't ${action} right now. Try again in a moment.`;
+}
+
 export function OnboardingModal({
   vaultPath,
   onClose,
@@ -53,7 +65,7 @@ export function OnboardingModal({
       // Picks are derived from `offered` (recommended minus existing) by an effect.
       setStep("review");
     } catch (e) {
-      setError(String(e));
+      setError(friendlyOnboardError(e, "propose starter domains"));
     } finally {
       setBusy(false);
     }
@@ -75,7 +87,7 @@ export function OnboardingModal({
       onApplied();
       onClose();
     } catch (e) {
-      setError(String(e));
+      setError(friendlyOnboardError(e, "create the domains"));
       setStep("review");
     } finally {
       setBusy(false);
