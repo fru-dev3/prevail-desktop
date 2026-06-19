@@ -30,6 +30,8 @@ pub struct Task {
     pub status: Option<String>, // "todo"|"doing"|"review"|"blocked"|"done"; "~status:" token
     #[serde(default)]
     pub id: Option<String>, // stable handle for moves + workflow linkage; "~id:" token
+    #[serde(default)]
+    pub trashed: Option<String>, // YYYY-MM-DD soft-delete date; "~trashed:" token. Some = in Trash, not permanently removed.
 }
 
 fn is_ymd(s: &str) -> bool {
@@ -72,6 +74,7 @@ struct Meta {
     owner: Option<String>,
     status: Option<String>,
     id: Option<String>,
+    trashed: Option<String>,
 }
 
 // Strip trailing metadata tokens off a task body, in any order, only at the END
@@ -100,6 +103,7 @@ fn split_meta(raw: &str) -> (String, Meta) {
                         "status" => { m.status = Some(v.to_string()); true }
                         "id" => { m.id = Some(v.to_string()); true }
                         "src" => { m.source = Some(v.to_string()); true }
+                        "trashed" => { m.trashed = Some(v.to_string()); true }
                         _ => false,
                     };
                     if matched { text = t[..idx].to_string(); continue; }
@@ -141,6 +145,7 @@ fn parse_tasks(md: &str) -> Vec<Task> {
                 owner: m.owner,
                 status: m.status,
                 id: m.id,
+                trashed: m.trashed,
             })
         })
         .filter(|t| !t.text.is_empty())
@@ -186,6 +191,9 @@ fn render_tasks(tasks: &[Task]) -> String {
             if matches!(st, "doing" | "review" | "blocked") { line.push_str(&format!(" ~status:{st}")); }
         }
         if let Some(id) = t.id.as_deref().filter(|d| !d.is_empty()) { line.push_str(&format!(" ~id:{id}")); }
+        // Soft-delete marker: a trashed task stays in the file (recoverable) but is
+        // filtered out of the normal board views; the Trash view reads it back.
+        if let Some(d) = t.trashed.as_deref().filter(|d| !d.is_empty()) { line.push_str(&format!(" ~trashed:{d}")); }
         s.push_str(&line);
         s.push('\n');
     }
@@ -233,6 +241,7 @@ pub fn tasks_add(vault: String, domain: String, text: String, source: Option<Str
             owner: Some(m.owner.unwrap_or_else(|| "me".into())),
             status: Some(m.status.unwrap_or_else(|| "todo".into())),
             id: None,
+            trashed: None,
         });
         tasks_set(vault.clone(), domain.clone(), tasks)?;
         return tasks_read(vault, domain); // re-read so the minted id is returned
@@ -446,6 +455,21 @@ mod tests {
         assert!(r.contains("~owner:ai"));
         assert!(r.contains("~status:doing"));
         assert!(r.contains("~id:k7f3a"));
+    }
+
+    #[test]
+    fn trashed_token_round_trips() {
+        // Soft-delete marker must survive parse -> render so a loop rewrite can't
+        // resurrect a trashed task (the whole point of soft-delete).
+        let tasks = parse_tasks("- [ ] old idea +2026-06-01 ~id:abc1234 ~trashed:2026-06-19\n");
+        assert_eq!(tasks[0].text, "old idea");
+        assert_eq!(tasks[0].trashed.as_deref(), Some("2026-06-19"));
+        let r = render_tasks(&tasks);
+        assert!(r.contains("~trashed:2026-06-19"), "trashed token must serialize: {r}");
+        // A task without the marker stays clean.
+        let clean = parse_tasks("- [ ] active task ~id:def5678\n");
+        assert_eq!(clean[0].trashed, None);
+        assert!(!render_tasks(&clean).contains("~trashed"));
     }
 
     #[test]
