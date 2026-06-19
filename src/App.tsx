@@ -23,7 +23,7 @@ import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, ta
 import { autoVerifyClis } from "./verify";
 import { startBenchScheduler } from "./bench";
 import { bumpBackupChangeCount, startBackupScheduler } from "./backup";
-import { startLoopsScheduler, readLoops } from "./loops";
+import { startLoopsScheduler, readLoops, ensureBriefingLoop } from "./loops";
 import { startAppsScheduler } from "./appspanel";
 import { startOmegaScheduler } from "./omega";
 import { OnboardingTour } from "./onboarding";
@@ -780,7 +780,7 @@ export default function App() {
   // overdue, due today, or flagged critical (open, not trashed). Visible app-wide so
   // time-sensitive work (tax this quarter, a critical item) surfaces without opening
   // the board. Cheap-ish read, slow poll + event refresh, same as the decisions pill.
-  const [dueAlert, setDueAlert] = useState<{ overdue: number; today: number; critical: number }>({ overdue: 0, today: 0, critical: 0 });
+  const [dueAlert, setDueAlert] = useState<{ overdue: number; today: number; critical: number; open: number }>({ overdue: 0, today: 0, critical: 0, open: 0 });
   useEffect(() => {
     if (!vaultPath) return;
     let alive = true;
@@ -788,14 +788,15 @@ export default function App() {
       .then((rows) => {
         if (!alive) return;
         const today = new Date().toISOString().slice(0, 10);
-        let overdue = 0, dueToday = 0, critical = 0;
+        let overdue = 0, dueToday = 0, critical = 0, open = 0;
         for (const t of Array.isArray(rows) ? rows : []) {
           if (t.trashed || t.done || t.status === "done") continue;
+          open++;
           if (t.due && t.due < today) overdue++;
           else if (t.due && t.due === today) dueToday++;
           if (t.priority === "critical") critical++;
         }
-        setDueAlert({ overdue, today: dueToday, critical });
+        setDueAlert({ overdue, today: dueToday, critical, open });
       })
       .catch(() => {});
     void poll();
@@ -805,8 +806,6 @@ export default function App() {
     window.addEventListener("prevail:loops-advanced", onEvt);
     return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:tasks-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
   }, [vaultPath]);
-  const dueAlertCount = dueAlert.overdue + dueAlert.today + dueAlert.critical;
-
   // Insights (recommendations) + Loops counts — surfaced as always-visible badges on
   // the top-nav tabs so the user sees how much is waiting without opening either view.
   // Both are computed in the background on a slow poll + event refresh, same cadence as
@@ -833,7 +832,7 @@ export default function App() {
     let alive = true;
     const poll = async () => {
       try {
-        const docs = await Promise.all(domains.map((d) => readLoops(d.path).catch(() => null)));
+        const docs = await Promise.all(domains.map((d) => readLoops(d.path).then((doc) => ensureBriefingLoop(doc, d.name).doc).catch(() => null)));
         if (!alive) return;
         let n = 0;
         for (const doc of docs) n += Array.isArray(doc?.loops) ? doc!.loops.length : 0;
@@ -1403,7 +1402,8 @@ export default function App() {
                       anything overdue / due-today / critical. One Work entry, not two. */}
                   <button
                     onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "work" ? "chat" : "work"); }}
-                    title={dueAlertCount > 0 ? [
+                    title={dueAlert.open > 0 ? [
+                      `${dueAlert.open} open`,
                       dueAlert.overdue ? `${dueAlert.overdue} overdue` : "",
                       dueAlert.today ? `${dueAlert.today} due today` : "",
                       dueAlert.critical ? `${dueAlert.critical} critical` : "",
@@ -1415,8 +1415,12 @@ export default function App() {
                     }`}
                   >
                     <Briefcase className="h-3.5 w-3.5" /> Work
-                    {dueAlertCount > 0 && (
-                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${tab === "chat" && domainTab === "work" ? (dueAlert.overdue ? "bg-background text-danger" : "bg-background text-warn") : dueAlert.overdue ? "bg-danger text-background" : "bg-warn text-background"}`}>{dueAlertCount}</span>
+                    {dueAlert.open > 0 && (
+                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[10px] font-bold leading-none ${
+                        tab === "chat" && domainTab === "work"
+                          ? (dueAlert.overdue ? "bg-background text-danger" : dueAlert.today ? "bg-background text-warn" : "bg-background text-accent")
+                          : dueAlert.overdue ? "bg-danger text-background" : dueAlert.today ? "bg-warn text-background" : "bg-accent text-background"
+                      }`}>{dueAlert.open}</span>
                     )}
                   </button>
                   {/* Order (founder): Insights · Usage · Benchmark · Preferences,
