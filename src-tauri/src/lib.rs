@@ -14,6 +14,7 @@
 mod benchmark;
 mod appcmds;
 mod bunker;
+mod vault_lock;
 mod chat;
 mod children;
 mod clis;
@@ -337,6 +338,8 @@ pub fn run() {
             intents::decision_feedback,
             bunker::bunker_status,
             bunker::bunker_set,
+            vault_lock::vault_lock_status,
+            vault_lock::vault_lock_set,
             idealstate::read_memory_md,
             appcmds::write_text_file,
             appcmds::read_text_file,
