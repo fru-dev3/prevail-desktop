@@ -106,7 +106,7 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
   const [showDismissed, setShowDismissed] = useState(false);
   // B2-22: filter to only the saved recommendations so saved items have a home.
   const [showSavedOnly, setShowSavedOnly] = useState(false);
-  const persistDismissed = (s: Set<string>) => { setDismissed(new Set(s)); lsSet(REC_DISMISSED, JSON.stringify([...s])); };
+  const persistDismissed = (s: Set<string>) => { setDismissed(new Set(s)); lsSet(REC_DISMISSED, JSON.stringify([...s])); window.dispatchEvent(new Event("prevail:recs-changed")); };
   const persistSaved = (s: Set<string>) => { setSaved(new Set(s)); lsSet(REC_SAVED, JSON.stringify([...s])); };
   const dismissRec = (id: string) => { const s = new Set(dismissed); s.add(id); persistDismissed(s); };
   const restoreRec = (id: string) => { const s = new Set(dismissed); s.delete(id); persistDismissed(s); };
