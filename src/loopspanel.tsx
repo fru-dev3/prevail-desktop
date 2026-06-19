@@ -8,6 +8,7 @@ import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, ListPlus, Play,
 import { invoke } from "./bridge";
 import { titleCase } from "./format";
 import { PREF, getPref } from "./storage";
+import { startProcess, endProcess } from "./processes";
 import { Toggle } from "./ui";
 import { CollapsibleSection } from "./collapsible";
 import {
@@ -420,6 +421,11 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
   const [result, setResult] = useState<RunResult | null>(null);
   const runNow = async () => {
     setRunning(true); setResult(null);
+    // Register a global process so the run is visible on the sidebar AND survives
+    // navigating away (the engine run continues regardless; this keeps the UI in
+    // sync). endProcess fires in finally even if this card unmounts mid-run.
+    const procId = `loop-${loop.id}-${Date.now()}`;
+    startProcess(procId, "loop", `${titleCase(domain || "general")} · ${loop.name}`, domain);
     try {
       const provider = getPref(PREF.memoryProvider, "claude");
       const model = getPref(PREF.distillModel, "claude-haiku-4-5");
@@ -428,7 +434,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
       window.dispatchEvent(new Event("prevail:loops-advanced"));
       window.dispatchEvent(new Event("prevail:tasks-changed"));
     } catch (e) { setResult({ ok: false, note: "", done: false, actions: [], tasksCreated: [], pending: [], error: String(e) }); }
-    finally { setRunning(false); }
+    finally { setRunning(false); endProcess(procId); }
   };
 
   // Next scheduled run = last run + cadence interval (continuous ≈ hourly).
