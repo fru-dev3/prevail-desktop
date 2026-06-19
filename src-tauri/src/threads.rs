@@ -581,4 +581,36 @@ mod tests {
         // Leading/trailing separators trimmed; interior word chars kept.
         assert_eq!(sanitize_existing_slug("--foo_bar--"), "foo_bar");
     }
+
+    #[test]
+    fn turn_header_matches_speakers_not_content() {
+        // Real turn headers the serializer writes.
+        assert!(is_turn_header("You"));
+        assert!(is_turn_header("claude"));
+        assert!(is_turn_header("claude · Opus 4.8 (latest)"));
+        assert!(is_turn_header("codex · GPT-5.5"));
+        assert!(is_turn_header("antigravity · Gemini 3.1 Pro (High)"));
+        // Markdown section headers inside a message are NOT turn delimiters.
+        assert!(!is_turn_header("Council Verdict: Real Estate vs. Index Funds"));
+        assert!(!is_turn_header("The math"));
+        assert!(!is_turn_header("Why \"it depends\""));
+        assert!(!is_turn_header("1. Index Funds"));
+    }
+
+    #[test]
+    fn verdict_with_inner_headers_stays_one_turn() {
+        // Regression: a council verdict whose content has its own "## " headers
+        // must parse as a SINGLE assistant turn, not fragment into a blank
+        // "Council verdict" bubble plus a bogus "Council Verdict: ..." turn.
+        let body = "## You\n\nReal estate vs index funds?\n\n## claude · Opus 4.8\n\n### Council verdict\n\n## Council Verdict: Real Estate vs. Index Funds\n\n**Consensus.** Index funds win.\n\n## The math\n\nNumbers here.\n";
+        let turns = parse_thread_body(body);
+        assert_eq!(turns.len(), 2, "user + one assistant verdict turn");
+        assert_eq!(turns[0].role, "user");
+        assert_eq!(turns[1].role, "assistant");
+        assert_eq!(turns[1].cli.as_deref(), Some("claude"));
+        // The inner "## " headers are preserved as content, not split off.
+        assert!(turns[1].content.contains("## Council Verdict: Real Estate"));
+        assert!(turns[1].content.contains("## The math"));
+        assert!(turns[1].content.contains("**Consensus.**"));
+    }
 }
