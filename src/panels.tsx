@@ -1606,7 +1606,33 @@ export function HeadlessLearnCard({ vaultPath }: { vaultPath: string }) {
         {/* B2-21: pill toggle, not On/Off text. */}
         <Toggle on={!!installed} disabled={busy || installed === null} onChange={() => void toggle()} label="Keep working with the app closed" />
       </div>
-      {note && <div className="mt-2 break-words font-mono text-[11px] text-text-secondary">{note}</div>}
+      {note && (() => {
+        // The status string lists each installed launchd agent run-on:
+        // "installed: sh.prevail.learn runs 'prevail daemon --learn' at login …".
+        // Parse it into one clean row per agent; fall back to plain text otherwise.
+        const agents: { id: string; cmd: string }[] = [];
+        const re = /installed:\s*(\S+)\s+runs\s+'([^']+)'\s+at login/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(note)) !== null) agents.push({ id: m[1], cmd: m[2] });
+        if (agents.length === 0) {
+          return <div className="mt-2 break-words font-mono text-[11px] text-text-secondary">{note}</div>;
+        }
+        return (
+          <div className="mt-3 border-t border-border-subtle pt-2.5">
+            <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">Login agents · {agents.length}</div>
+            <div className="flex flex-col gap-1">
+              {agents.map((a) => (
+                <div key={a.id} className="flex items-center gap-2 text-[11px]">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
+                  <span className="shrink-0 font-mono text-text-secondary">{a.id}</span>
+                  <code className="min-w-0 flex-1 truncate font-mono text-text-muted">{a.cmd}</code>
+                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted/70">at login</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

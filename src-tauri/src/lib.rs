@@ -474,6 +474,7 @@ pub fn run() {
             engine::engine_onboard_apply,
             engine::engine_vault_backup,
             engine::vault_backup_to,
+            engine::vault_backup_dir,
             engine::vault_backups_list,
             engine::vault_restore_archive,
             engine::engine_vault_archive,
