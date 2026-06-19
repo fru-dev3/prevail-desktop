@@ -409,6 +409,7 @@ pub fn run() {
             appcmds::write_paste_attachment,
             appcmds::save_session,
             chat::verify_cli_model,
+            chat::model_oneshot,
             appcmds::read_skill,
             benchmark::benchmark_start,
             benchmark::benchmark_score,
