@@ -12,6 +12,7 @@
 // through the existing encryption-aware read_file / write_text_file commands.
 import { invoke } from "./bridge";
 import { PREF, getPref, lsGet, lsSet } from "./storage";
+import { titleCase } from "./format";
 
 export type LoopType = "open" | "closed";
 export type LoopCadence = "continuous" | "daily" | "weekly" | "monthly";
@@ -53,6 +54,8 @@ export interface Loop {
   lastRunTs: number | null;
   createdTs: number;
   model?: string;           // per-loop model override ("" = use the global loops model)
+  kind?: "steward" | "briefing"; // briefing = synthesize + deliver a domain digest; default steward
+  channel?: "gmail" | "telegram" | "log"; // briefing delivery target (default gmail)
 }
 
 export interface LoopsDoc {
@@ -119,7 +122,41 @@ function normalizeLoop(l: Partial<Loop>): Loop {
     lastRunTs: typeof l.lastRunTs === "number" ? l.lastRunTs : null,
     createdTs: typeof l.createdTs === "number" ? l.createdTs : Date.now(),
     ...(typeof l.model === "string" && l.model.trim() ? { model: l.model.trim() } : {}),
+    ...(l.kind === "briefing" ? { kind: "briefing" as const } : {}),
+    ...(l.channel === "gmail" || l.channel === "telegram" || l.channel === "log" ? { channel: l.channel } : {}),
   };
+}
+
+// Every domain always has a built-in Briefing loop: a standing agent that, on its
+// cadence, synthesizes a digest of the domain (state + open tasks + what needs
+// attention) and delivers it to a channel (default Gmail). Stable id so we never
+// create duplicates. autonomy "auto" - it only produces + sends a digest.
+export function makeBriefingLoop(domain: string): Loop {
+  return normalizeLoop({
+    id: `loop-briefing-${domain.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    name: `${titleCase(domain)} Briefing`,
+    purpose: `Synthesize a regular digest of your ${titleCase(domain)} domain - where things stand, what needs attention, and the next steps - and deliver it to you.`,
+    type: "open",
+    signals: [],
+    condition: "always on",
+    cadence: "weekly",
+    autonomy: "auto",
+    evaluation: "You get a clear, timely briefing on this domain.",
+    actions: [],
+    status: "active",
+    enabled: true,
+    kind: "briefing",
+    channel: "gmail",
+    createdTs: Date.now(),
+  });
+}
+
+// Ensure the doc contains the domain's built-in Briefing loop. Returns the doc
+// (possibly with the briefing loop appended) and whether it was added, so the
+// caller can persist only when something changed.
+export function ensureBriefingLoop(doc: LoopsDoc, domain: string): { doc: LoopsDoc; added: boolean } {
+  if (doc.loops.some((l) => l.kind === "briefing")) return { doc, added: false };
+  return { doc: { ...doc, loops: [makeBriefingLoop(domain), ...doc.loops] }, added: true };
 }
 
 let loopSeq = 0;
