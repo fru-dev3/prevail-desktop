@@ -104,9 +104,16 @@ export function ProviderMark({ vendor, size = 28 }: { vendor: string; size?: num
       );
       break;
     default:
-      // Every other known family (codebuddy/copilot/opencode/openclaw/hermes/pi/
-      // cursor/kimi/kiro): a clean first-letter monogram on the brand tile. The
-      // row always shows the full name beside it, so a letter reads fine.
+      // Pi (Inflection): its mark is the Greek letter, so render "π" rather than
+      // a generic "P" monogram.
+      if (vendor === "pi") {
+        inner = (
+          <span className="font-display font-bold text-white" style={{ fontSize: Math.round(size * 0.52) }}>π</span>
+        );
+        break;
+      }
+      // Every other known family (opencode/openclaw/hermes): a clean first-letter
+      // monogram on the brand tile. The row always shows the full name beside it.
       inner = (
         <span className="font-mono font-semibold uppercase text-white" style={{ fontSize: Math.round(size * 0.4) }}>
           {(v.name && v.name !== "-" ? v.name[0] : vendor[0] || "·")}

@@ -81,19 +81,11 @@ export const RUNTIME_META: Record<string, { blurb: string; install: string; prot
   claude:      { blurb: "Anthropic's agentic CLI.", install: "https://claude.com/claude-code", protocol: "claude", category: "cli" },
   codex:       { blurb: "OpenAI's coding agent CLI.", install: "https://developers.openai.com/codex/cli", protocol: "codex", category: "cli" },
   antigravity: { blurb: "Google's agentic CLI (agy).", install: "https://antigravity.google", protocol: "gemini", category: "cli" },
-  gemini:      { blurb: "Google Gemini CLI.", install: "https://github.com/google-gemini/gemini-cli", protocol: "gemini", category: "cli" },
-  codebuddy:   { blurb: "Tencent's coding agent CLI.", install: "https://codebuddy.ai", protocol: "claude", category: "cli" },
-  copilot:     { blurb: "GitHub Copilot CLI.", install: "https://github.com/github/copilot-cli", protocol: "openai", category: "cli" },
-  cursor:      { blurb: "Cursor's agent CLI (cursor-agent).", install: "https://cursor.com/cli", protocol: "openai", category: "cli" },
-  kimi:        { blurb: "Moonshot Kimi CLI.", install: "https://platform.moonshot.ai", protocol: "openai", category: "cli" },
-  kiro:        { blurb: "AWS Kiro agent CLI.", install: "https://kiro.dev", protocol: "openai", category: "cli" },
   // ── Harnesses (catalog only, NOT homepage) ──
   opencode:    { blurb: "Open-source terminal coding harness.", install: "https://opencode.ai", protocol: "openai", category: "harness" },
   openclaw:    { blurb: "Claude-protocol gateway harness.", install: "https://github.com/openclaw/openclaw", protocol: "claude", category: "harness" },
   hermes:      { blurb: "Hermes agent harness.", install: "https://github.com/hermes-cli/hermes", protocol: "openai", category: "harness" },
   pi:          { blurb: "Pi agent harness.", install: "https://pi.ai", protocol: "openai", category: "harness" },
-  paperclip:   { blurb: "Paperclip multi-agent harness.", install: "https://github.com/fru-dev3/paperclip", protocol: "claude", category: "harness" },
-  motorcar:    { blurb: "Multica AI agent harness.", install: "https://multica.ai", protocol: "claude", category: "harness" },
 };
 
 // Convenience: is this runtime id a harness (vs a primary CLI)? Unknown ids are
