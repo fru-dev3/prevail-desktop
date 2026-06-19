@@ -11,6 +11,7 @@ import { isLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
 import { buildCouncilQuickActions, buildIdealStatePreamble, buildSynthesisPrompt, loadPreferredSkills, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { ThinkingDisclosure } from "./ui";
+import { ContextMeter, estimateTokens, contextWindowFor } from "./contextmeter";
 import { Markdown } from "./Markdown";
 import { domainIcon } from "./icons";
 import { ThinkingDots, useFrameworkLens } from "./hooks";
@@ -627,6 +628,26 @@ export function CouncilPanel({
       .catch((e) => console.error("save_thread (council)", e));
   }, [phase, submittedPrompt, replies, verdict, panelistSlots, chairSlotObj, _vaultPath, domain, councilTurns, onActiveThreadChange, onThreadsChanged]);
 
+  // Context-window meter for the composer (parity with chat). With multiple
+  // panelists the binding constraint is the SMALLEST window on the panel, so the
+  // gauge tracks the most-constrained model. Conversation = the running transcript;
+  // attached = primed context chips; draft = the current question.
+  const councilCtx = useMemo(() => {
+    const conversationTokens = councilTurns.reduce((n, t) => n + estimateTokens(t.content), 0);
+    const attachedTokens = primedContext.reduce((n, c) => n + estimateTokens(c.body), 0);
+    const windows = panelistSlots.map((s) => contextWindowFor(s.cli, s.model));
+    const windowTokens = windows.length ? Math.min(...windows) : 200_000;
+    return { conversationTokens, attachedTokens, windowTokens };
+  }, [councilTurns, primedContext, panelistSlots]);
+  // Start a fresh council conversation (clears the carried transcript + thread).
+  const resetCouncil = useCallback(() => {
+    setReplies({});
+    setVerdict("");
+    setPhase("idle");
+    setCouncilTurns([]);
+    onActiveThreadChange(null);
+  }, [onActiveThreadChange]);
+
   async function convene() {
     return conveneWith(prompt);
   }
@@ -675,7 +696,9 @@ export function CouncilPanel({
               : `Council verdict: ${t.content.replace(/^### Council verdict\n\n/, "")}`,
           )
           .join("\n\n")
-          .slice(0, 6000) +
+          // Keep the MOST RECENT history (slice the tail, not the head) so a long
+          // conversation still carries the latest context to each panelist.
+          .slice(-12000) +
         "\n\n--- New question (continue the conversation) ---\n"
       : "";
     const enrichedPrompt = fwLens.buildPrompt(`${userPreamble}${memoryPreamble}${primedPreamble}${historyPreamble}${skillsPreamble}${trimmed}`);
@@ -1222,6 +1245,15 @@ export function CouncilPanel({
           <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border-subtle pt-2">
             <DomainStatusBar domain={domain} fwLens={fwLens} />
             <div className="flex-1" />
+
+            {/* Context-window meter (parity with chat); tracks the most-constrained panelist. */}
+            <ContextMeter
+              conversationTokens={councilCtx.conversationTokens}
+              attachedTokens={councilCtx.attachedTokens}
+              draftTokens={estimateTokens(prompt)}
+              windowTokens={councilCtx.windowTokens}
+              onReset={resetCouncil}
+            />
 
             {/* Chair pill */}
             <div className="relative" ref={chairMenuRef}>
