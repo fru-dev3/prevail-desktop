@@ -1,7 +1,7 @@
 // Domain-scoped panels extracted from App.tsx: the context drawer (right rail),
 // the agent picker rail, the pref-picker column, and the domain prefs panel.
 import { useCallback, useEffect, useState } from "react";
-import { Box, Check, ChevronRight, Code, Compass, Cpu, Eye, Folder, Loader2, Lock, MessageSquare, PanelRightClose, Pin, Share2, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { ArrowRight, Box, Check, ChevronRight, Code, Compass, Cpu, Eye, Folder, Globe, Loader2, Lock, MessageSquare, PanelRightClose, Pin, Share2, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES, MODELS, isHarnessRuntime } from "./constants";
 import { formatFreshness, titleCase } from "./format";
@@ -188,8 +188,6 @@ export function DomainContextDrawer({
   useEffect(() => {
     invoke<string>("read_user_md", { vault: vaultPath }).then((s) => setProfile(s || "")).catch(() => setProfile(""));
   }, [vaultPath]);
-  // C3: which decision card is expanded to its full prompt + verdict.
-  const [openDecision, setOpenDecision] = useState<string | null>(null);
 
   const Section = ({
     keyName, title, count, body,
@@ -197,7 +195,7 @@ export function DomainContextDrawer({
     <div className="border-b border-border-subtle">
       <button
         onClick={() => setOpen((o) => ({ ...o, [keyName]: !o[keyName] }))}
-        className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left hover:bg-surface-warm"
+        className="flex w-full items-center justify-between gap-2 py-2.5 pl-7 pr-4 text-left hover:bg-surface-warm"
       >
         <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary">
           <span className="text-accent">{open[keyName] ? "▾" : "▸"}</span>
@@ -205,7 +203,7 @@ export function DomainContextDrawer({
           {count !== undefined && <span className="text-text-muted">· {count}</span>}
         </span>
       </button>
-      {open[keyName] && <div className="px-4 pb-4 text-sm">{body}</div>}
+      {open[keyName] && <div className="pb-4 pl-7 pr-4 text-sm">{body}</div>}
     </div>
   );
 
@@ -258,7 +256,9 @@ export function DomainContextDrawer({
         )}
         {/* C2: clarify GLOBAL vs LOCAL. Global = the constitution that applies to
             every domain. Below, "This domain" = everything scoped to {domain}. */}
-        <div title="Applies everywhere" className="cursor-help border-b border-border-subtle bg-surface-warm/40 px-4 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text-muted">Globals</div>
+        <div title="Applies everywhere - shared across every domain" className="flex cursor-help items-center gap-1.5 border-b border-border-subtle bg-surface-warm/60 px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
+          <Globe className="h-3.5 w-3.5 text-accent" /> Globals
+        </div>
         <Section keyName="ideal" title="Ideal state" body={
           idealState.trim() ? (
             <>
@@ -279,7 +279,7 @@ export function DomainContextDrawer({
           ) : <div className="text-xs text-text-muted">No Ideal State written yet. Settings → Ideal State.</div>
         } />
         {/* G2: what Prevail knows about you - the profile that grounds every answer. */}
-        <Section keyName="profile" title="Profile" body={
+        <Section keyName="profile" title="User" body={
           profile.trim() ? (
             <>
               <p className="mb-2 text-[11px] leading-relaxed text-text-muted">
@@ -298,8 +298,11 @@ export function DomainContextDrawer({
             </>
           ) : <div className="text-xs text-text-muted">No profile yet. Add a profile.md (or user.md) at your vault root; Prevail injects it so answers know who you are.</div>
         } />
-        <div title="This domain only" className="cursor-help border-b border-border-subtle bg-surface-warm/40 px-4 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text-muted">{domain ? titleCase(domain) : "Generals"}</div>
-        <Section keyName="memory" title="Long-term memory" body={
+        <div title={domain ? `Specific to ${titleCase(domain)}` : "Specific to General (the no-domain workspace)"} className="flex cursor-help items-center gap-1.5 border-b border-border-subtle bg-surface-warm/60 px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
+          {(() => { const I = domain ? domainIcon(domain) : MessageSquare; return I ? <I className="h-3.5 w-3.5 text-accent" /> : <span className="text-accent">◆</span>; })()}
+          {domain ? titleCase(domain) : "General"}
+        </div>
+        <Section keyName="memory" title="Memory" body={
           memory.trim() ? (
             <>
               <div className="flex flex-wrap gap-1.5">
@@ -351,36 +354,23 @@ export function DomainContextDrawer({
                   {decisionLog.slice(0, 6).map((d, i) => {
                     const fb = typeof d.feedback === "object" && d.feedback ? d.feedback.rating : (typeof d.feedback === "string" ? d.feedback : undefined);
                     const ago = d.ts ? formatFreshness(Math.max(0, Math.floor((Date.now() - d.ts) / 1000))) : "";
-                    // C3: clicking the card expands it to the full prompt + verdict
-                    // (was truncated with no way to read the whole decision).
                     const key = d.id ?? String(i);
-                    const expanded = openDecision === key;
+                    const title = `Decision · ${(d.prompt ?? "decision").slice(0, 48)}`;
+                    const full = (d.verdict || d.prompt || "").trim();
+                    // Minimal row: title + tiny view/use icons. Clicking opens the full
+                    // verdict in the LEFT canvas (same as Ideal State / User), no inline blob.
                     return (
-                      <li key={key} className="rounded-lg border border-border-subtle bg-background p-2.5">
-                        <button onClick={() => setOpenDecision(expanded ? null : key)} className="w-full text-left">
-                          <div className="mb-1 flex items-center justify-between gap-2 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                      <li key={key} className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-background px-2.5 py-1.5">
+                        <button onClick={() => openCanvas(title, full)} className="min-w-0 flex-1 text-left" title="Open in canvas">
+                          <div className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">
                             <span>{d.kind ?? "decision"}{ago ? ` · ${ago}` : ""}</span>
-                            <span className="flex items-center gap-1">
-                              {fb === "up" && <ThumbsUp className="h-3 w-3 text-accent" />}
-                              {fb === "down" && <ThumbsDown className="h-3 w-3 text-red-500" />}
-                              <ChevronRight className={`h-3 w-3 transition-transform ${expanded ? "rotate-90" : ""}`} />
-                            </span>
+                            {fb === "up" && <ThumbsUp className="h-2.5 w-2.5 text-accent" />}
+                            {fb === "down" && <ThumbsDown className="h-2.5 w-2.5 text-red-500" />}
                           </div>
-                          {d.prompt && <div className={`text-[11px] font-semibold text-text-primary ${expanded ? "" : "line-clamp-1"}`}>{d.prompt || "(untitled decision)"}</div>}
-                          {/* Collapsed: collapse whitespace + slice so the card stays
-                              compact (line-clamp + pre-wrap mis-sizes in WKWebView when
-                              the verdict has newlines). Expanded: full pre-wrapped text. */}
-                          {d.verdict && (expanded
-                            ? <div className="mt-1 whitespace-pre-wrap text-[11px] leading-snug text-text-secondary">{d.verdict}</div>
-                            : <div className="mt-1 line-clamp-3 text-[11px] leading-snug text-text-secondary">{d.verdict.replace(/\s+/g, " ").trim().slice(0, 240)}{d.verdict.length > 240 ? "…" : ""}</div>
-                          )}
+                          <div className="line-clamp-1 text-[11px] font-medium text-text-primary">{d.prompt || "(untitled decision)"}</div>
                         </button>
-                        {expanded && d.verdict && (
-                          <button onClick={() => onInjectContext(d.verdict!, `decision · ${(d.prompt ?? "").slice(0, 30)}`)}
-                            className="mt-1.5 rounded-md border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
-                            → use in chat
-                          </button>
-                        )}
+                        <button onClick={() => openCanvas(title, full)} title="View" className="shrink-0 rounded p-1 text-text-muted hover:text-accent"><Eye className="h-3.5 w-3.5" /></button>
+                        {d.verdict && <button onClick={() => onInjectContext(d.verdict!, `decision · ${(d.prompt ?? "").slice(0, 30)}`)} title="Use in chat" className="shrink-0 rounded p-1 text-text-muted hover:text-accent"><ArrowRight className="h-3.5 w-3.5" /></button>}
                       </li>
                     );
                   })}
