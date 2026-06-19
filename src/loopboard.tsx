@@ -24,7 +24,13 @@ export function LoopBoard({ vaultPath }: { vaultPath: string }) {
   const [loading, setLoading] = useState(true);
   const [domainFilter, setDomainFilter] = useState("all");
   const [sort, setSort] = useState<"schedule" | "name" | "domain">("schedule");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [grouped, setGrouped] = useState(true);
+  // Click the active sort again to flip direction; a new sort starts ascending.
+  const pickSort = (k: "schedule" | "name" | "domain") => {
+    if (k === sort) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSort(k); setSortDir("asc"); }
+  };
   const [running, setRunning] = useState<string | null>(null);
   // Domain filter popover (scales to any number of domains: searchable + scrollable).
   const [filterOpen, setFilterOpen] = useState(false);
@@ -76,10 +82,13 @@ export function LoopBoard({ vaultPath }: { vaultPath: string }) {
     return r.loop.lastRunTs + (CADENCE_MS[r.loop.cadence] ?? 6048e5);
   }, []);
   const sortRows = useCallback((a: Row, b: Row): number => {
-    if (sort === "name") return a.loop.name.localeCompare(b.loop.name);
-    if (sort === "domain") return a.domain.localeCompare(b.domain) || a.loop.name.localeCompare(b.loop.name);
-    return nextRunMs(a) - nextRunMs(b) || a.loop.name.localeCompare(b.loop.name); // schedule
-  }, [sort, nextRunMs]);
+    const base = sort === "name"
+      ? a.loop.name.localeCompare(b.loop.name)
+      : sort === "domain"
+        ? (a.domain.localeCompare(b.domain) || a.loop.name.localeCompare(b.loop.name))
+        : (nextRunMs(a) - nextRunMs(b) || a.loop.name.localeCompare(b.loop.name)); // schedule
+    return sortDir === "asc" ? base : -base;
+  }, [sort, sortDir, nextRunMs]);
   const shown = useMemo(
     () => rows.filter((r) => domainFilter === "all" || r.domain === domainFilter).slice().sort(sortRows),
     [rows, domainFilter, sortRows],
@@ -185,9 +194,11 @@ export function LoopBoard({ vaultPath }: { vaultPath: string }) {
         <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Sort</span>
         <div className="flex items-center overflow-hidden rounded-lg border border-border">
           {([["schedule", "Next run", CalendarClock], ["name", "Name", ArrowDownAZ], ["domain", "Domain", Layers]] as const).map(([k, lbl, Icon], i) => (
-            <button key={k} onClick={() => setSort(k)} aria-pressed={sort === k}
+            <button key={k} onClick={() => pickSort(k)} aria-pressed={sort === k}
+              title={sort === k ? `Sorted ${sortDir === "asc" ? "ascending" : "descending"} - click to reverse` : `Sort by ${lbl.toLowerCase()}`}
               className={`inline-flex items-center gap-1 px-2.5 py-1.5 font-medium transition-colors ${i > 0 ? "border-l border-border" : ""} ${sort === k ? "bg-accent text-background" : "bg-background text-text-secondary hover:bg-surface-warm"}`}>
               <Icon className="h-3.5 w-3.5" /> {lbl}
+              {sort === k && <ChevronDown className={`h-3 w-3 transition-transform ${sortDir === "desc" ? "rotate-180" : ""}`} />}
             </button>
           ))}
         </div>
