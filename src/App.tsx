@@ -125,6 +125,8 @@ import {
   Inbox,
   Briefcase,
   Plug,
+  ChevronsRight,
+  ChevronsLeft,
   
   
   ShieldCheck,
@@ -853,6 +855,10 @@ export default function App() {
   // Lifted from ChatPanel so the top bar owns the domain Insights / Preferences
   // toggles. ChatPanel receives these as props and renders the matching view.
   const [domainTab, setDomainTab] = useState<DomainTab>("chat");
+  // Collapse the top-right tab cluster (Work/Insights/.../Archive) into a single
+  // chevron at the right edge for a cleaner top bar; expands back leftward.
+  const [navCollapsed, setNavCollapsed] = useState<boolean>(() => localStorage.getItem("prevail.nav.collapsed") === "1");
+  const toggleNavCollapsed = () => setNavCollapsed((v) => { const n = !v; localStorage.setItem("prevail.nav.collapsed", n ? "1" : "0"); return n; });
   // Bunker Mode: backend is the source of truth; mirror it into localStorage on
   // mount so synchronous reads (isBunkerOn) everywhere stay correct, and into
   // React state so the persistent ribbon re-renders on toggle.
@@ -1275,6 +1281,16 @@ export default function App() {
                 "archive" for General (you can't archive your whole workspace),
                 keeping just back up / export. */}
             <div className="flex items-center gap-1">
+              {/* Collapse the cluster into this chevron for a cleaner top bar;
+                  click again to expand the tabs back leftward. */}
+              <button
+                onClick={toggleNavCollapsed}
+                title={navCollapsed ? "Show tabs" : "Hide tabs for a cleaner top bar"}
+                className="flex h-6 w-6 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+              >
+                {navCollapsed ? <ChevronsLeft className="h-4 w-4" /> : <ChevronsRight className="h-4 w-4" />}
+              </button>
+              {!navCollapsed && (<>
               {onApp ? (
                 // An open app shows ITS OWN facets, independent of the domain it
                 // grounds in (the isolation shipped in 0.7.24). Chat is the app's
@@ -1438,6 +1454,7 @@ export default function App() {
                   void refreshDomains();
                 }}
               />
+              </>)}
             </div>
           </div>
 
