@@ -810,26 +810,24 @@ export function Sidebar({
         </div>
       )}
       {!collapsed && (
-        <div className="shrink-0 border-t border-border-subtle p-2.5">
-          <div className="rounded-lg border border-border-subtle/70 bg-surface-warm/40 p-2.5">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-accent ring-1 ring-accent-border/40">
-                <span className="text-[7px] leading-none">◆</span>Alpha
-              </span>
-              <span className="font-mono text-[10px] text-text-muted">experimental build</span>
-            </div>
-            <p className="mt-1.5 text-[10px] leading-snug text-text-muted">
-              Provided as-is, no warranty: use at your own risk.
-            </p>
-            <a
-              href="https://github.com/fru-dev3/prevail-desktop/issues/new"
-              target="_blank"
-              rel="noreferrer"
-              className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border-subtle bg-surface px-2 py-1.5 font-mono text-[10px] font-medium text-text-secondary transition-colors hover:border-accent-border hover:bg-accent-soft hover:text-accent"
-            >
-              <MessageSquare className="h-3 w-3" /> Share feedback
-            </a>
-          </div>
+        // Slim one-line footer: alpha badge + feedback link. The warranty detail
+        // lives in the badge tooltip so the corner stays clean, not a busy card.
+        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border-subtle px-3 py-2">
+          <span
+            title="Experimental alpha build. Provided as-is, no warranty: use at your own risk."
+            className="inline-flex cursor-help items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-accent"
+          >
+            <span className="text-[7px] leading-none">◆</span> Alpha
+          </span>
+          <a
+            href="https://github.com/fru-dev3/prevail-desktop/issues/new"
+            target="_blank"
+            rel="noreferrer"
+            title="Report a bug or share feedback"
+            className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
+          >
+            <MessageSquare className="h-3 w-3" /> Feedback
+          </a>
         </div>
       )}
     </aside>
