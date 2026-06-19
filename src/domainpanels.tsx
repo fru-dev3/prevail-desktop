@@ -116,9 +116,21 @@ export function ContextCanvas() {
 // Context area uses this so nothing renders content inline anymore.
 function CtxActions({ onView, onUse }: { onView: () => void; onUse?: () => void }) {
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex shrink-0 items-center gap-0.5">
       <button onClick={onView} title="View (opens the canvas on the left)" className="rounded p-1 text-text-muted transition-colors hover:text-accent"><Eye className="h-3.5 w-3.5" /></button>
       {onUse && <button onClick={onUse} title="Use in chat (add to the composer context)" className="rounded p-1 text-text-muted transition-colors hover:text-accent"><ArrowRight className="h-3.5 w-3.5" /></button>}
+    </div>
+  );
+}
+
+// One compact row for a context item: a single-line description on the left, the
+// View / Use icons aligned on the right. Used by every section so the layout is
+// uniform (no verbose paragraphs, icons always in the same place).
+function CtxRow({ desc, onView, onUse }: { desc: string; onView: () => void; onUse?: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="min-w-0 flex-1 text-[11px] leading-snug text-text-muted">{desc}</span>
+      <CtxActions onView={onView} onUse={onUse} />
     </div>
   );
 }
@@ -302,8 +314,8 @@ export function DomainContextDrawer({
           </div>
         )}
         {!domain && (
-          <div className="border-b border-border-subtle px-4 py-2.5 text-[11px] leading-relaxed text-text-muted">
-            General is your no-domain workspace. It has its own state, journal, session logs, decisions, and skills - the same context items a domain has, kept at the vault root. Open a domain to see that domain's own context instead.
+          <div className="border-b border-border-subtle px-4 py-2 text-[11px] leading-snug text-text-muted">
+            Your no-domain workspace. Open a domain for its own context.
           </div>
         )}
         {/* C2: clarify GLOBAL vs LOCAL. Global = the constitution that applies to
@@ -312,43 +324,31 @@ export function DomainContextDrawer({
           <Globe className="h-3.5 w-3.5 text-accent" /> Globals
         </div>
         <Section keyName="ideal" title="Ideal" body={
-          idealState.trim() ? (
-            <>
-              <p className="mb-2 text-[11px] leading-relaxed text-text-muted">
-                Your constitution. It is already injected at highest precedence into every chat and council turn; pull it in explicitly when you want the model to reason against it at length.
-              </p>
-              <CtxActions onView={() => openCanvas("Ideal", idealState)} onUse={() => onInjectContext(idealState, "Ideal · constitution")} />
-            </>
-          ) : <div className="text-xs text-text-muted">No Ideal State written yet. Settings → Ideal State.</div>
+          idealState.trim()
+            ? <CtxRow desc="Your constitution, injected into every turn." onView={() => openCanvas("Ideal", idealState)} onUse={() => onInjectContext(idealState, "Ideal · constitution")} />
+            : <div className="text-[11px] text-text-muted">Not set. Add it in Settings → Ideals.</div>
         } />
         {/* G2: what Prevail knows about you - the profile that grounds every answer. */}
         <Section keyName="profile" title="User" body={
-          profile.trim() ? (
-            <>
-              <p className="mb-2 text-[11px] leading-relaxed text-text-muted">
-                What Prevail knows about you. Auto-injected into every chat and council so answers are specific to you.
-              </p>
-              <CtxActions onView={() => openCanvas("User", profile)} onUse={() => onInjectContext(profile, "User · who you are")} />
-            </>
-          ) : <div className="text-xs text-text-muted">No profile yet. Add a profile.md (or user.md) at your vault root; Prevail injects it so answers know who you are.</div>
+          profile.trim()
+            ? <CtxRow desc="What Prevail knows about you." onView={() => openCanvas("User", profile)} onUse={() => onInjectContext(profile, "User · who you are")} />
+            : <div className="text-[11px] text-text-muted">Not set. Add a user.md at the vault root.</div>
         } />
         <div title={domain ? `Specific to ${titleCase(domain)}` : "Specific to General (the no-domain workspace)"} className="flex cursor-help items-center gap-1.5 border-b border-border-subtle bg-surface-warm/60 px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
           {(() => { const I = domain ? domainIcon(domain) : MessageSquare; return I ? <I className="h-3.5 w-3.5 text-accent" /> : <span className="text-accent">◆</span>; })()}
           {domain ? titleCase(domain) : "General"}
         </div>
         <Section keyName="memory" title="Memory" action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="memory" />} body={
-          memory.trim() ? (
-            <>
-              <CtxActions onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} memory`, memory)} onUse={() => onInjectContext(memory, `${domain ? titleCase(domain) : "General"} · memory`)} />
-            </>
-          ) : <div className="text-xs text-text-muted">No distilled memory yet. The background distiller (Settings → Routines) compacts your activity into long-term memory once enough new material accumulates, usually within a few sessions.</div>
+          memory.trim()
+            ? <CtxRow desc="Distilled long-term memory." onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} memory`, memory)} onUse={() => onInjectContext(memory, `${domain ? titleCase(domain) : "General"} · memory`)} />
+            : <div className="text-[11px] text-text-muted">Empty until distilled. Rebuild with ↻ above.</div>
         } />
         {ctx && (
           <>
             <Section keyName="state" title="State" action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="state" />} body={
-              ctx.state ? (
-                <CtxActions onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} state`, ctx.state!)} onUse={() => onInjectContext(ctx.state!, `${domain ? titleCase(domain) : "General"} · state`)} />
-              ) : <div className="text-xs text-text-muted">No state yet. The distiller derives a state snapshot from your activity once <span className="text-text-secondary">Routines → persistent memory</span> is on (Settings → Routines), or use the refresh icon above to build it now.</div>
+              ctx.state
+                ? <CtxRow desc="Snapshot of where things stand now." onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} state`, ctx.state!)} onUse={() => onInjectContext(ctx.state!, `${domain ? titleCase(domain) : "General"} · state`)} />
+                : <div className="text-[11px] text-text-muted">Empty until distilled. Rebuild with ↻ above.</div>
             } />
             {/* Decisions = the live ledger (latest, raw) + the distiller's curated
                 summary, in ONE section (was split into "Recent decisions" + "Decisions"). */}
@@ -382,7 +382,7 @@ export function DomainContextDrawer({
                     );
                   })}
                 </ul>
-              ) : <div className="text-xs text-text-muted">No decisions yet. Run a council or save a decision and it shows here.</div>}
+              ) : <div className="text-[11px] text-text-muted">Empty. Run a council or save a decision.</div>}
               </>
             } />
             {/* Journal = the raw record: what you asked + session logs. The
@@ -390,13 +390,9 @@ export function DomainContextDrawer({
                 consistently per founder; was "Activity".) */}
             <Section keyName="activity" title="Journal" count={ctx.recent_logs.length || undefined} body={
               <>
-              <div className="mb-2 text-[11px] leading-snug text-text-muted">
-                The raw record - what you asked, and session logs. State, Memory, and Decisions above are distilled from this.
-              </div>
               {ctx.journal && (
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted/70">What you asked</span>
-                  <CtxActions onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} journal`, ctx.journal!)} onUse={() => onInjectContext(ctx.journal!, `${domain ? titleCase(domain) : "General"} · journal`)} />
+                <div className="mb-2">
+                  <CtxRow desc="Your raw activity; the rest is distilled from this." onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} journal`, ctx.journal!)} onUse={() => onInjectContext(ctx.journal!, `${domain ? titleCase(domain) : "General"} · journal`)} />
                 </div>
               )}
               {ctx.recent_logs.length > 0 ? (
@@ -415,7 +411,7 @@ export function DomainContextDrawer({
                     ))}
                   </ul>
                 </>
-              ) : (!ctx.journal && <div className="text-xs text-text-muted">No journal entries yet. Your chats here build this raw record, which the distiller folds into State, Memory, and Decisions.</div>)}
+              ) : (!ctx.journal && <div className="text-[11px] text-text-muted">Empty. Your chats here build this record.</div>)}
               </>
             } />
             <Section keyName="skills" title="Skills" count={ctx.skills.length} body={
