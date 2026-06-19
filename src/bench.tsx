@@ -322,9 +322,10 @@ export async function executeBenchBatch(
   scopeStr: string,
 ): Promise<void> {
   const now = new Date();
-  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const dateLabel = `${MONTHS[now.getMonth()]} ${now.getDate()}`;
-  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  // Numeric, sortable stamp: YYYY-MM-DD HH:MM (no spelled-out month).
+  const dateLabel = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}`;
+  const hhmm = `${p2(now.getHours())}:${p2(now.getMinutes())}`;
   const batchId = `b${now.getTime()}`;
   // T18 (inert until keys exist; default-OFF, allowlist-scrubbed to counts only -
   // no model ids, no domain names, no question text).
@@ -338,12 +339,11 @@ export async function executeBenchBatch(
   const shortModel = (j: BenchJob) =>
     `${titleCase(j.cli)} ${(MODELS[j.cli]?.find((m) => m.id === j.model)?.label ?? j.model).replace(/\s*\(.*?\)/, "")}`.trim();
   const modelPart = plannedJobs.length === 1 ? shortModel(plannedJobs[0]) : `${plannedJobs.length} models`;
-  // Structured, readable batch label that leads with WHAT was tested (domain),
-  // then the model set, then when - so you can scan history and know each batch
-  // at a glance. The time disambiguates multiple runs on the same day.
-  //   "Wealth · 4 models · Jun 19 14:52"
-  //   "3 domains · Claude Opus 4.8 · Jun 19 14:52"
-  const batchLabel = `${scopeLabel} · ${modelPart} · ${dateLabel} ${hhmm}`;
+  // Numeric, sortable, compact label leading with the timestamp, then what was
+  // tested. No spelled-out month, minimal punctuation.
+  //   "2026-06-19 14:52 · Wealth · 4 models"
+  //   "2026-06-19 14:52 · 3 domains · Claude Opus 4.8"
+  const batchLabel = `${dateLabel} ${hhmm} · ${scopeLabel} · ${modelPart}`;
   // Drop stale finished batches so the registry never accumulates.
   for (const [k, v] of benchBatches) if (!v.running && v.consumed) benchBatches.delete(k);
   const batch: BenchBatch = {
