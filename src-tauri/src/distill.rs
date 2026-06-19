@@ -569,14 +569,16 @@ fn ledger_dirs(vault: &Path) -> Vec<DistillTarget> {
             }
         }
     }
-    // v3 layout: domains under <vault>/domains/. Without this the distiller
-    // silently skips every domain in the new (apps/ + domains/ siblings) layout.
-    if let Ok(rd) = std::fs::read_dir(vault.join("domains")) {
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.is_dir() && p.join("_intents.jsonl").exists() && !seen.contains(&p) {
-                seen.push(p.clone());
-                targets.push(DistillTarget { ledger_dir: p.clone(), content_dir: p });
+    // v3 + v4 layouts: domains under <vault>/domains/ and <vault>/data/domains/.
+    // Without these the distiller silently skips every domain in the newer layouts.
+    for container in [vault.join("domains"), vault.join("data").join("domains")] {
+        if let Ok(rd) = std::fs::read_dir(&container) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() && p.join("_intents.jsonl").exists() && !seen.contains(&p) {
+                    seen.push(p.clone());
+                    targets.push(DistillTarget { ledger_dir: p.clone(), content_dir: p });
+                }
             }
         }
     }
