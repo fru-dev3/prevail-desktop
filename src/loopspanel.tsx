@@ -4,7 +4,7 @@
 // and current actions. The runner daemon (separate) evaluates enabled loops and
 // keeps their actions current; here you define and steer them.
 import { useCallback, useEffect, useState } from "react";
-import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, ListPlus, Play, Plus, RefreshCw, ShieldQuestion, Target, Trash2, X, Zap } from "lucide-react";
+import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, ListPlus, Mail, Play, Plus, RefreshCw, ShieldQuestion, Target, Trash2, X, Zap } from "lucide-react";
 import { invoke, listen } from "./bridge";
 import type { UnlistenFn } from "./bridge";
 import { titleCase, relTime } from "./format";
@@ -24,6 +24,7 @@ import {
   type LoopType,
   type LoopsDoc,
   type LoopsRuntime,
+  ensureBriefingLoop,
   hasSeed,
   makeLoop,
   readLoops,
@@ -73,17 +74,24 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
 
   useEffect(() => {
     let alive = true;
-    readLoops(domainPath).then((d) => { if (alive) setDoc(d); });
+    // Every domain always has a built-in Briefing loop. Provision it on load if
+    // missing (and persist once), so it's present in the panel and the runner.
+    readLoops(domainPath).then((d) => {
+      if (!alive) return;
+      const { doc: withBrief, added } = ensureBriefingLoop(d, domain);
+      setDoc(withBrief);
+      if (added) writeLoops(domainPath, withBrief).catch((e) => console.error("seed briefing loop", e));
+    });
     readLoopsRuntime(domainPath).then((rt) => { if (alive) setRuntime(rt); });
     // The background loop runner advances loops + queues approvals; refresh when
     // it reports a pass so new actions/proposals appear without a manual reload.
     const onAdvanced = () => {
-      readLoops(domainPath).then((d) => { if (alive) setDoc(d); });
+      readLoops(domainPath).then((d) => { if (alive) setDoc(ensureBriefingLoop(d, domain).doc); });
       readLoopsRuntime(domainPath).then((rt) => { if (alive) setRuntime(rt); });
     };
     window.addEventListener("prevail:loops-advanced", onAdvanced);
     return () => { alive = false; window.removeEventListener("prevail:loops-advanced", onAdvanced); };
-  }, [domainPath]);
+  }, [domainPath, domain]);
 
   // Pending approvals across all of this domain's loops (the steps a loop is
   // ASKING the user to OK before it acts).
@@ -178,16 +186,19 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
     setRunning(true);
     try {
       await invoke("loops_run_once", { vault: vaultPath });
-      setDoc(await readLoops(domainPath));
+      setDoc(ensureBriefingLoop(await readLoops(domainPath), domain).doc);
       setRuntime(await readLoopsRuntime(domainPath));
     } catch (e) { console.error("run loops", e); }
     finally { setRunning(false); }
-  }, [vaultPath, domainPath]);
+  }, [vaultPath, domainPath, domain]);
 
   if (!doc) return <div className="text-sm text-text-muted">loading loops…</div>;
 
   const active = doc.loops.filter((l) => l.status !== "done");
   const done = doc.loops.filter((l) => l.status === "done");
+  // The built-in Briefing loop is always present, so "no loops yet" means no
+  // steward loops beyond it.
+  const hasStewardLoops = doc.loops.some((l) => l.kind !== "briefing");
 
   return (
     <div className="w-full space-y-4">
@@ -317,12 +328,13 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
         </div>
       </section>
 
-      {/* Empty state → seed */}
-      {doc.loops.length === 0 && (
+      {/* Empty state → seed (the built-in Briefing loop is always present, so this
+          shows when there are no steward loops beyond it). */}
+      {!hasStewardLoops && (
         <div className="rounded-xl border border-dashed border-border bg-surface p-6 text-center">
-          <p className="text-sm text-text-secondary">No loops yet for {titleCase(domain)}.</p>
+          <p className="text-sm text-text-secondary">No steward loops yet for {titleCase(domain)} - just the built-in briefing.</p>
           <button
-            onClick={() => persist(seedLoopsFor(domain))}
+            onClick={() => persist(ensureBriefingLoop(seedLoopsFor(domain), domain).doc)}
             className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
           >
             <Plus className="h-3.5 w-3.5" /> Generate starter loops
@@ -435,7 +447,8 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
 
   // Per-loop "Run now": run this one loop immediately, apply per its autonomy, and
   // show exactly what it did (actions + dispositions, tasks created, approvals).
-  type RunResult = { ok: boolean; note: string; done: boolean; actions: { text: string; disposition: "task" | "approval" | "suggested" }[]; tasksCreated: string[]; pending: string[]; error?: string };
+  type RunResult = { ok: boolean; note: string; done: boolean; actions: { text: string; disposition: "task" | "approval" | "suggested" }[]; tasksCreated: string[]; pending: string[]; briefing?: string; error?: string };
+  const isBriefing = loop.kind === "briefing";
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
   // Live progress so the run isn't a black box: the engine streams a phase per
@@ -506,11 +519,15 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
           <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
           <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dot }} />
           <span className={`truncate text-sm font-semibold ${done ? "text-text-muted line-through" : "text-text-primary"}`}>{loop.name}</span>
-          {loop.type === "open"
+          {isBriefing ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent" title="Built-in briefing loop: synthesizes + delivers a digest of this domain"><Mail className="h-2.5 w-2.5" /> briefing</span>
+          ) : loop.type === "open"
             ? <span className="inline-flex items-center gap-1 rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Open loop: never ends"><InfinityIcon className="h-2.5 w-2.5" /> open</span>
             : <span className="rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Closed loop: finishes when its condition is met">closed</span>}
           <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">{CADENCE_LABEL[loop.cadence]}</span>
-          <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent" title={AUTONOMY_BLURB[autonomy]}>{AUTONOMY_LABEL[autonomy]}</span>
+          {isBriefing
+            ? <span className="shrink-0 rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-secondary" title="Delivery channel">{loop.channel ?? "gmail"}</span>
+            : <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent" title={AUTONOMY_BLURB[autonomy]}>{AUTONOMY_LABEL[autonomy]}</span>}
         </button>
         {!done && (
           <Toggle on={loop.enabled} onChange={(v) => onChange({ enabled: v })} label={`${loop.name} enabled`} />
@@ -608,9 +625,11 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
             <div className={`rounded-lg border px-3 py-2.5 ${result.ok ? "border-accent-border bg-accent-soft/30" : "border-danger/40 bg-danger/10"}`}>
               {result.ok ? (
                 <>
-                  <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-accent"><Play className="h-3 w-3" /> Ran just now</div>
+                  <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-accent">{result.briefing ? <Mail className="h-3 w-3" /> : <Play className="h-3 w-3" />} {result.briefing ? "Briefing ready" : "Ran just now"}</div>
                   {result.note && <div className="mb-2 text-[12px] leading-relaxed text-text-secondary">{result.note}</div>}
-                  {result.actions.length > 0 ? (
+                  {result.briefing ? (
+                    <div className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-md border border-border-subtle bg-background px-3 py-2 text-[12px] leading-relaxed text-text-secondary">{result.briefing}</div>
+                  ) : result.actions.length > 0 ? (
                     <ul className="space-y-1">
                       {result.actions.map((a, i) => (
                         <li key={i} className="flex items-start gap-2 text-[12px] text-text-secondary">
@@ -622,7 +641,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
                       ))}
                     </ul>
                   ) : <div className="text-[12px] text-text-muted">No new actions this pass — the gap looks handled.</div>}
-                  <div className="mt-2 font-mono text-[10px] text-text-muted">{result.tasksCreated.length} task{result.tasksCreated.length === 1 ? "" : "s"} filed · {result.pending.length} awaiting approval</div>
+                  {!result.briefing && <div className="mt-2 font-mono text-[10px] text-text-muted">{result.tasksCreated.length} task{result.tasksCreated.length === 1 ? "" : "s"} filed · {result.pending.length} awaiting approval</div>}
                 </>
               ) : <div className="text-[12px] text-danger">Run failed: {result.error}</div>}
             </div>
@@ -637,9 +656,17 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
             <select value={loop.cadence} onChange={(e) => onChange({ cadence: e.target.value as LoopCadence })} className="rounded-md border border-border bg-background px-2 py-1 text-xs" title="How often the runner evaluates this loop">
               {CADENCES.map((c) => <option key={c} value={c}>{CADENCE_LABEL[c]}</option>)}
             </select>
-            <select value={autonomy} onChange={(e) => onChange({ autonomy: e.target.value as LoopAutonomy })} className="rounded-md border border-border bg-background px-2 py-1 text-xs" title={AUTONOMY_BLURB[autonomy]}>
-              {(["suggest", "tasks", "ask", "auto"] as LoopAutonomy[]).map((a) => <option key={a} value={a}>{AUTONOMY_LABEL[a]}</option>)}
-            </select>
+            {isBriefing ? (
+              <select value={loop.channel ?? "gmail"} onChange={(e) => onChange({ channel: e.target.value as Loop["channel"] })} className="rounded-md border border-border bg-background px-2 py-1 text-xs" title="Where to deliver this briefing">
+                <option value="gmail">Send to Gmail</option>
+                <option value="telegram">Send to Telegram</option>
+                <option value="log">Journal only</option>
+              </select>
+            ) : (
+              <select value={autonomy} onChange={(e) => onChange({ autonomy: e.target.value as LoopAutonomy })} className="rounded-md border border-border bg-background px-2 py-1 text-xs" title={AUTONOMY_BLURB[autonomy]}>
+                {(["suggest", "tasks", "ask", "auto"] as LoopAutonomy[]).map((a) => <option key={a} value={a}>{AUTONOMY_LABEL[a]}</option>)}
+              </select>
+            )}
             <select value={loop.status} onChange={(e) => onChange({ status: e.target.value as Loop["status"] })} className="rounded-md border border-border bg-background px-2 py-1 text-xs" title="Loop status">
               <option value="active">Active</option>
               <option value="paused">Paused</option>
@@ -649,9 +676,12 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
               <option value="">Model: default</option>
               {(MODELS.claude ?? []).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
-            <button onClick={onRemove} title="Delete this loop" className="ml-auto flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-warn">
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            {/* The built-in briefing loop can't be deleted (it would just re-provision); steward loops can. */}
+            {!isBriefing && (
+              <button onClick={onRemove} title="Delete this loop" className="ml-auto flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-warn">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         </div>
       )}
