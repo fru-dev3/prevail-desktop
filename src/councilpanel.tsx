@@ -604,6 +604,30 @@ export function CouncilPanel({
         .then(() => window.dispatchEvent(new CustomEvent("prevail:context-changed")))
         .catch((e) => console.error("decision_append (council)", e));
     }
+    // Usage: a council turn is several model calls (each responding panelist plus
+    // the chair). Record ONE usage entry per call so the Usage dashboard counts
+    // council activity and breaks it down by agent/model accurately - previously
+    // council turns recorded nothing, so a day spent in council looked empty.
+    {
+      const now = Date.now();
+      const day = (() => { const d = new Date(now); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+      const thread = councilThreadRef.current;
+      const calls: Array<{ cli: string; model: string | null }> = [];
+      for (const s of panelistSlots) {
+        const r = replies[s.key];
+        if (r && r.content.trim()) calls.push({ cli: s.cli, model: s.model || null });
+      }
+      if (verdict.trim() && chairSlotObj) calls.push({ cli: chairSlotObj.cli, model: chairSlotObj.model || null });
+      let appended = false;
+      for (const c of calls) {
+        appended = true;
+        invoke("usage_append", {
+          vault: _vaultPath,
+          record: { ts: now, day, domain: domain ?? null, thread, cli: c.cli || "unknown", model: c.model, input_tokens: null, output_tokens: null, cost_usd: null, ok: true },
+        }).catch((e) => console.error("usage_append (council)", e));
+      }
+      if (appended) window.dispatchEvent(new CustomEvent("prevail:usage-updated"));
+    }
     // Reuse the existing thread's slug when continuing; else create new.
     const cur = councilThreadRef.current;
     const slug = cur ? cur.split("/").pop()?.replace(/\.md$/, "") ?? null : null;
