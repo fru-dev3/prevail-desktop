@@ -12,6 +12,7 @@ import { MODELS } from "./constants";
 import { modelLabel } from "./helpers2";
 import { ProviderMark } from "./marks";
 import { Markdown } from "./Markdown";
+import { SettingsHeader } from "./sectionutil";
 import type { CliInfo } from "./types";
 
 // Providers with no spawnable binary (engine-only) can't serve a one-shot, so
@@ -154,18 +155,12 @@ export function SparkPanel({ vaultPath, clis }: { vaultPath: string; clis: CliIn
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-6">
-      <div className="mb-5 flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
-          <Dices className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <h2 className="font-display text-xl font-bold tracking-tight text-text-primary">Spark</h2>
-          <p className="text-[13px] leading-relaxed text-text-secondary">
-            A nudge out of the bubble. One click, one genuinely random thing - a quote, a concept, a book, a recipe, a fact - generated live by a randomly chosen model. Like it? Make it a task or a routine.
-          </p>
-        </div>
-      </div>
+    <div className="w-full">
+      <SettingsHeader
+        icon={Dices}
+        title="Spark"
+        subtitle="A nudge out of the bubble. One click, one genuinely random thing - a quote, a concept, a book, a recipe, a fact - generated live by a randomly chosen model. Like it? Make it a task or a routine."
+      />
 
       <button
         onClick={generate}
