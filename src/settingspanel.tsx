@@ -152,12 +152,24 @@ export function SettingsPanel({
   const [recCount, setRecCount] = useState(0);
   useEffect(() => {
     let alive = true;
-    const poll = () => invoke<{ recommendations?: unknown[] }>("engine_recommendations", { vault: vaultPath })
-      .then((r) => { if (alive) setRecCount(Array.isArray(r?.recommendations) ? r.recommendations.length : 0); })
+    // The badge counts only ACTIVE recommendations: total minus the ones the user
+    // dismissed (dismissal is client-side in localStorage, so the engine still
+    // returns them). Recompute on the recs-changed event so "Dismiss all" updates
+    // the badge immediately, not just on the next poll.
+    const poll = () => invoke<{ recommendations?: { id?: string }[] }>("engine_recommendations", { vault: vaultPath })
+      .then((r) => {
+        if (!alive) return;
+        const recs = Array.isArray(r?.recommendations) ? r.recommendations : [];
+        let dismissed = new Set<string>();
+        try { dismissed = new Set(JSON.parse(localStorage.getItem("prevail.recs.dismissed") || "[]")); } catch { /* ignore */ }
+        setRecCount(recs.filter((x) => !x.id || !dismissed.has(x.id)).length);
+      })
       .catch(() => {});
     void poll();
     const id = window.setInterval(poll, 60000);
-    return () => { alive = false; window.clearInterval(id); };
+    const onChanged = () => poll();
+    window.addEventListener("prevail:recs-changed", onChanged);
+    return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:recs-changed", onChanged); };
   }, [vaultPath]);
 
   // MCP live indicator - read from localStorage; McpCard writes the same key.

@@ -21,7 +21,8 @@
         "decorations": true,
         "titleBarStyle": "Transparent",
         "hiddenTitle": true,
-        "backgroundColor": "#faf8f1"
+        "backgroundColor": "#faf8f1",
+        "dragDropEnabled": false
       }
     ],
     "security": {
