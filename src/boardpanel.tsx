@@ -3,7 +3,7 @@
 // as workflows via the Loop steward; anything consequential surfaces in the
 // Decision Inbox. Reads tasks_read_all; moves via tasks_set_status/tasks_set_owner.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Check, Columns3, Filter, Inbox, LayoutGrid, List, Loader2, Play, Plus, Trash2, User } from "lucide-react";
+import { Bot, Check, Columns3, Filter, Inbox, LayoutGrid, List, Loader2, Play, Plus, RotateCcw, Trash2, User } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
@@ -11,7 +11,7 @@ import { PREF, getPref } from "./storage";
 import { DecisionInbox } from "./decisioninbox";
 import type { BoardTask } from "./types";
 
-type BoardView = "board" | "list" | "needs";
+type BoardView = "board" | "list" | "needs" | "trash";
 
 const COLUMNS: { key: string; label: string }[] = [
   { key: "todo", label: "To-do" },
@@ -102,8 +102,18 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
 
   const shown = useMemo(
     () => tasks.filter((t) =>
+      !t.trashed && // trashed tasks live in the Trash view, not the normal board
       (ownerFilter === "all" || t.owner === ownerFilter) &&
       (domainFilter === "all" || t.domain === domainFilter)),
+    [tasks, ownerFilter, domainFilter],
+  );
+  // Soft-deleted tasks, newest first, honoring the same owner/domain filters.
+  const trashed = useMemo(
+    () => tasks.filter((t) =>
+      t.trashed &&
+      (ownerFilter === "all" || t.owner === ownerFilter) &&
+      (domainFilter === "all" || t.domain === domainFilter))
+      .sort((a, b) => (b.trashed || "").localeCompare(a.trashed || "")),
     [tasks, ownerFilter, domainFilter],
   );
   const byColumn = useMemo(() => {
@@ -168,10 +178,30 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
     setDragId(null);
     if (t) setStatus(t, status);
   };
+  // Delete = soft-delete: tag the task ~trashed:<today> so it moves to Trash
+  // (recoverable), never silently lost. Honors the "never delete user data" rule.
   const del = async (t: BoardTask) => {
     if (!t.id) return;
+    const today = new Date().toISOString().slice(0, 10);
     await act(`d:${t.id}`, async () => {
-      const cur = await invoke<{ id?: string | null }[]>("tasks_read", { vault: vaultPath, domain: t.domain });
+      const cur = await invoke<BoardTask[]>("tasks_read", { vault: vaultPath, domain: t.domain });
+      await invoke("tasks_set", { vault: vaultPath, domain: t.domain, tasks: cur.map((x) => (x.id === t.id ? { ...x, trashed: today } : x)) });
+    });
+  };
+  // Restore a trashed task back to the board (clear the marker).
+  const restore = async (t: BoardTask) => {
+    if (!t.id) return;
+    await act(`r:${t.id}`, async () => {
+      const cur = await invoke<BoardTask[]>("tasks_read", { vault: vaultPath, domain: t.domain });
+      await invoke("tasks_set", { vault: vaultPath, domain: t.domain, tasks: cur.map((x) => (x.id === t.id ? { ...x, trashed: null } : x)) });
+    });
+  };
+  // Delete forever: actually remove the line. Only from the Trash view, with confirm.
+  const purge = async (t: BoardTask) => {
+    if (!t.id) return;
+    if (!window.confirm(`Permanently delete "${t.text.slice(0, 60)}"? This cannot be undone.`)) return;
+    await act(`p:${t.id}`, async () => {
+      const cur = await invoke<BoardTask[]>("tasks_read", { vault: vaultPath, domain: t.domain });
       await invoke("tasks_set", { vault: vaultPath, domain: t.domain, tasks: cur.filter((x) => x.id !== t.id) });
     });
   };
@@ -355,6 +385,14 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
             <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[9px] font-bold text-background">{decisionsCount}</span>
           )}
         </button>
+        {/* Trash: soft-deleted tasks, recoverable. */}
+        <button onClick={() => setView("trash")} title="Deleted tasks (recoverable)"
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-colors ${view === "trash" ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:bg-surface-warm"}`}>
+          <Trash2 className="h-3.5 w-3.5" /> Trash
+          {trashed.length > 0 && (
+            <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-surface-warm px-1 font-mono text-[9px] font-bold text-text-secondary">{trashed.length}</span>
+          )}
+        </button>
         {/* Add task */}
         <div className="ml-auto flex items-center gap-1.5">
           <input value={addText} onChange={(e) => { setAddText(e.target.value); if (addErr) setAddErr(null); }} onKeyDown={(e) => { if (e.key === "Enter") addTask(); }}
@@ -379,6 +417,34 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
       <div className="pt-4">
       {view === "needs" ? (
         <DecisionInbox vaultPath={vaultPath} />
+      ) : view === "trash" ? (
+        <div className="flex flex-col gap-1.5">
+          <div className="mb-1 flex items-center gap-2">
+            <Trash2 className="h-4 w-4 text-text-muted" />
+            <span className="font-semibold text-text-primary">Trash</span>
+            <span className="text-xs text-text-muted">{trashed.length === 0 ? "empty" : `${trashed.length} deleted - restore or delete forever`}</span>
+          </div>
+          {trashed.map((t) => (
+            <div key={`${t.domain}:${t.id ?? t.text}`} className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface px-3 py-2">
+              <span className="min-w-0 flex-1 truncate text-[13px] text-text-secondary line-through">{t.text}</span>
+              <span className="shrink-0 rounded-full bg-surface-warm px-1.5 py-px font-mono text-[10px] text-text-muted">{titleCase(t.domain)}</span>
+              {t.trashed && <span className="shrink-0 font-mono text-[10px] text-text-muted/60">deleted {t.trashed}</span>}
+              <button onClick={() => restore(t)} disabled={busy === `r:${t.id}`} title="Restore to board"
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+                <RotateCcw className="h-3 w-3" /> Restore
+              </button>
+              <button onClick={() => purge(t)} disabled={busy === `p:${t.id}`} title="Delete permanently (cannot be undone)"
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-danger hover:text-danger disabled:opacity-50">
+                <Trash2 className="h-3 w-3" /> Delete
+              </button>
+            </div>
+          ))}
+          {trashed.length === 0 && (
+            <div className="rounded-xl border border-dashed border-border-subtle px-4 py-10 text-center text-sm text-text-muted">
+              Trash is empty. Deleted tasks land here and can be restored.
+            </div>
+          )}
+        </div>
       ) : view === "board" ? (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
           {COLUMNS.map((col) => {
