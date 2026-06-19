@@ -73,18 +73,28 @@ export async function cancelBenchBatch(id: string) {
 // Wait for one benchmark:done (matched by session+phase), folding raw chunks
 // into the batch's engine log along the way.
 
-export function benchWaitDone(b: BenchBatch, session: string, phase: string) {
+// Resolved code when a phase exceeds its watchdog without a `benchmark:done`
+// event. Distinct from a real exit code so callers can mark the job timed-out
+// instead of silently treating it as success. Without this, a dropped done
+// event (engine crash, killed process, lost IPC) hangs the whole batch forever.
+export const BENCH_TIMEOUT = -1000;
+
+export function benchWaitDone(b: BenchBatch, session: string, phase: string, timeoutMs?: number) {
   return new Promise<number | null>((resolve) => {
     let unlisten: UnlistenFn | null = null;
     let chunkUn: UnlistenFn | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const cleanup = () => { unlisten?.(); chunkUn?.(); if (timer) clearTimeout(timer); };
     listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
       if (e.payload.session === session && e.payload.phase === phase) {
-        unlisten?.();
-        chunkUn?.();
+        cleanup();
         resolve(e.payload.code);
       }
     }).then((u) => {
       unlisten = u;
+      // If the batch was already cancelled/torn down before the listener
+      // attached, don't leak it.
+      if (b.cancelled) { cleanup(); resolve(BENCH_TIMEOUT); }
     });
     listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
       if (e.payload.session === session) {
@@ -94,6 +104,10 @@ export function benchWaitDone(b: BenchBatch, session: string, phase: string) {
     }).then((u) => {
       chunkUn = u;
     });
+    // Watchdog: never wait forever on a phase that may never emit `done`.
+    if (timeoutMs && timeoutMs > 0) {
+      timer = setTimeout(() => { cleanup(); resolve(BENCH_TIMEOUT); }, timeoutMs);
+    }
   });
 }
 
@@ -387,8 +401,14 @@ export async function executeBenchBatch(
           batch_label: batchLabel,
         },
       });
-      const code = await benchWaitDone(batch, session, "run");
+      // Watchdog: a single model's run shouldn't be able to hang the batch. 20
+      // minutes is generous even for a slow local model on a few questions.
+      const code = await benchWaitDone(batch, session, "run", 20 * 60_000);
       if (batch.cancelled) return; // statuses already set by cancelBenchBatch
+      if (code === BENCH_TIMEOUT) {
+        benchPatchJob(batch, job.key, { status: "error", note: "timed out - no response" });
+        return;
+      }
       if (code !== 0 && code !== null) {
         benchPatchJob(batch, job.key, { status: "error", note: `exit ${code}` });
         return;
@@ -412,11 +432,20 @@ export async function executeBenchBatch(
       // would re-score dozens of old runs and stall the fresh scores from landing.
       const scoreSession = `bench-score-${Date.now()}`;
       batch.sessions.push(scoreSession);
-      await invoke("benchmark_score", { args: { session_id: scoreSession, vault, batch: batchId } });
-      await benchWaitDone(batch, scoreSession, "score");
+      // Scoring itself shouldn't be able to wedge the batch. If the score pass
+      // never reports done (crash, lost event), give up after 10 minutes and
+      // finalize anyway - the runs are on disk and can be re-scored from History.
+      try {
+        await invoke("benchmark_score", { args: { session_id: scoreSession, vault, batch: batchId } });
+        await benchWaitDone(batch, scoreSession, "score", 10 * 60_000);
+      } catch { /* finalize regardless - never leave the batch hung */ }
       if (!batch.cancelled) {
+        // Runs that completed move to done; a run still "running" at this point
+        // never reported done (timed out) - mark it errored, not stuck-scoring.
         batch.jobs = batch.jobs.map((j) =>
-          j.status === "scoring" || j.status === "running" ? { ...j, status: "done" } : j,
+          j.status === "scoring" ? { ...j, status: "done" }
+          : j.status === "running" ? { ...j, status: "error", note: j.note ?? "timed out" }
+          : j,
         );
       }
     }
