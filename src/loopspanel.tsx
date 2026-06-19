@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, ListPlus, Play, Plus, RefreshCw, ShieldQuestion, Target, Trash2, X, Zap } from "lucide-react";
 import { invoke, listen } from "./bridge";
 import type { UnlistenFn } from "./bridge";
-import { titleCase } from "./format";
+import { titleCase, relTime } from "./format";
 import { PREF, getPref } from "./storage";
 import { startProcess, endProcess, updateProcess } from "./processes";
 import { Toggle } from "./ui";
@@ -266,7 +266,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
               <li key={`${p.loopId}-${i}`} className="flex items-start gap-2 rounded-lg border border-border-subtle bg-background px-3 py-2">
                 <div className="min-w-0 flex-1">
                   <div className="text-sm text-text-primary">{p.text}</div>
-                  <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">{p.loopName}</div>
+                  <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">{p.loopName}{p.ts ? ` · queued ${relTime(p.ts)}` : ""}</div>
                 </div>
                 {(() => {
                   const thisRunning = execBusy === p.text;
