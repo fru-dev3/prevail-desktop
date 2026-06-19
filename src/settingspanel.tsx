@@ -28,7 +28,6 @@ import type { CliInfo } from "./types";
 export function SettingsPanel({
   appearance,
   vaultPath,
-  onChangeVault,
   clis,
   onRefreshClis,
   onBack,
@@ -41,7 +40,6 @@ export function SettingsPanel({
 }: {
   appearance: ReturnType<typeof useAppearance>;
   vaultPath: string;
-  onChangeVault: () => void;
   clis: CliInfo[];
   onRefreshClis: () => Promise<CliInfo[]>;
   onBack?: () => void;
@@ -349,7 +347,7 @@ export function SettingsPanel({
           {/* IA-1: "workspace" is the umbrella; "vault"/"demo" remain as
               deep-link aliases (e.g. the demo ribbon's jump) → same section. */}
           {(section === "workspace" || section === "vault" || section === "demo") && (
-            <WorkspaceSection vaultPath={vaultPath} onChange={onChangeVault} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} />
+            <WorkspaceSection vaultPath={vaultPath} onSetupDomains={onSetupDomains} onVaultMoved={onVaultMoved} />
           )}
           {section === "appearance" && <AppearanceSection appearance={appearance} />}
           {section === "frameworks" && <FrameworksSection />}
