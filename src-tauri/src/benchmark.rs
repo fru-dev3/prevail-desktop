@@ -414,18 +414,41 @@ fn parse_bench_question(path: &Path) -> Option<BenchQuestion> {
     })
 }
 
-#[tauri::command]
-pub(crate) fn benchmark_questions(vault: String) -> Result<Vec<BenchQuestion>, String> {
-    let dir = crate::paths::build_root(&vault).join("benchmark").join("questions");
-    if !dir.exists() {
-        return Ok(vec![]);
-    }
+/// Every benchmark question `.md`, merged from `build/benchmark/questions` and
+/// the legacy `<vault>/benchmark/questions` (deduped by file name, build/
+/// winning). AI-drafted questions written by an older sidecar landed in the
+/// legacy dir; without this merge they'd be invisible even though "Drafted N"
+/// reported success.
+fn question_files(vault: &str) -> Vec<PathBuf> {
+    let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
-    for entry in fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
-        let p = entry.path();
-        if p.extension().and_then(|s| s.to_str()) != Some("md") {
+    let build = crate::paths::build_root(vault).join("benchmark").join("questions");
+    let legacy = PathBuf::from(vault).join("benchmark").join("questions");
+    for base in [build, legacy] {
+        if !base.is_dir() {
             continue;
         }
+        if let Ok(rd) = std::fs::read_dir(&base) {
+            for entry in rd.flatten() {
+                let p = entry.path();
+                if p.extension().and_then(|s| s.to_str()) != Some("md") {
+                    continue;
+                }
+                let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
+                if name.is_empty() || !seen.insert(name) {
+                    continue;
+                }
+                out.push(p);
+            }
+        }
+    }
+    out
+}
+
+#[tauri::command]
+pub(crate) fn benchmark_questions(vault: String) -> Result<Vec<BenchQuestion>, String> {
+    let mut out = Vec::new();
+    for p in question_files(&vault) {
         if let Some(q) = parse_bench_question(&p) {
             out.push(q);
         }
