@@ -3,7 +3,7 @@
 // run registry + executor live in ./bench; this is the presentation layer.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm, open, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
-import { Activity, AlertTriangle, Archive, Bookmark, BrainCircuit, CalendarClock, Check, ChevronRight, Circle, Crown, DollarSign, Download, FileText, Layers, Loader2, MessagesSquare, Play, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X, Zap } from "lucide-react";
+import { Activity, AlertTriangle, Archive, Bookmark, BrainCircuit, CalendarClock, Check, ChevronRight, Circle, Crown, DollarSign, Download, FileText, Layers, Loader2, MessagesSquare, Pencil, Play, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X, Zap } from "lucide-react";
 import { invoke, listen } from "./bridge";
 import { MODELS, MODEL_SEP } from "./constants";
 import { scoreColor, titleCase } from "./format";
@@ -948,7 +948,7 @@ export function BenchRunConfig({
               <div key={s.id} className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-3 py-2">
                 <button onClick={() => loadSuite(s)} title="Load into the editor to tweak (does not run)" className="min-w-0 flex-1 text-left">
                   <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium text-text-primary hover:text-accent">{s.name}</span>
+                    <span className="truncate text-[13px] font-normal text-text-secondary hover:text-accent">{s.name}</span>
                     {isScheduled && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] text-accent"><CalendarClock className="h-2.5 w-2.5" /> {schedFreq}</span>}
                   </div>
                   <div className="mt-0.5 font-mono text-[10px] text-text-muted">
@@ -961,6 +961,7 @@ export function BenchRunConfig({
                 <button onClick={() => scheduleSuite(s)} title="Run this suite on the background schedule" className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] ${isScheduled ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}>
                   <CalendarClock className="h-3 w-3" /> {isScheduled ? "Scheduled" : "Schedule"}
                 </button>
+                <button onClick={() => { loadSuite(s); setSuiteName(s.name); setSavingSuite(true); }} title="Edit: load this council's models into the editor above, adjust the selection, then Save to update it" className="text-text-muted/60 hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>
                 <button onClick={() => { if (isScheduled) setScheduledSuiteId(null); deleteSuite(s.id); }} title="Delete suite" className="text-text-muted/50 hover:text-danger"><Trash2 className="h-3.5 w-3.5" /></button>
               </div>
             );
@@ -973,7 +974,7 @@ export function BenchRunConfig({
                 placeholder="suite name (e.g. Frontier x Finance)" className="flex-1 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] outline-none focus:border-accent-border"
               />
               <span className="font-mono text-[10px] text-text-muted">{selModels.size} model{selModels.size === 1 ? "" : "s"}</span>
-              <button onClick={commitSuite} disabled={!suiteName.trim() || selModels.size === 0} className="rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background disabled:opacity-40">Save</button>
+              <button onClick={commitSuite} disabled={!suiteName.trim() || selModels.size === 0} className="rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background disabled:opacity-40">{suites.some((x) => x.name.toLowerCase() === suiteName.trim().toLowerCase()) ? "Update" : "Save"}</button>
               <button onClick={() => { setSavingSuite(false); setSuiteName(""); }} className="text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
             </div>
           ) : (
@@ -1613,7 +1614,19 @@ export function BenchmarkPanel({
     fin.consumed = true;
     refresh();
     if (!fin.cancelled) {
-      setFinishedBatch(fin.label);
+      const ran = fin.jobs.filter((j) => j.status === "done").length;
+      const errored = fin.jobs.filter((j) => j.status === "error").length;
+      if (ran === 0 && errored > 0) {
+        // Nothing produced a run. Don't flash a misleading "finished and is on
+        // the board" banner - keep the user on the Run view with the per-job
+        // errors visible. (Leave the batch in the registry so those errors stay
+        // on screen; the next run's startup sweep clears consumed batches.)
+        setErr(`Batch "${fin.label}" produced no runs: all ${errored} model${errored === 1 ? "" : "s"} errored. Open the Run tab for the per-model reason.`);
+        setView("run");
+        benchNotify();
+        return;
+      }
+      setFinishedBatch(errored > 0 ? `${fin.label} - ${ran} ran, ${errored} failed` : fin.label);
       setView("board");
     }
     benchBatches.delete(fin.id);
@@ -1736,7 +1749,11 @@ export function BenchmarkPanel({
     });
     const council = jobs.some(({ built }) => built.council);
     setView("run");
-    void executeBenchBatch(vaultPath, jobs.map(({ built }) => built.job), council, batchRuns[0]?.domains.join(",") ?? "");
+    // Scope = the UNION of every run's domains, not just the first run's. The
+    // first run can be an errored/empty run with no recorded domains, which
+    // would otherwise scope the whole rerun to "" (all domains) or drop it.
+    const scope = Array.from(new Set(batchRuns.flatMap((r) => r.domains))).join(",");
+    void executeBenchBatch(vaultPath, jobs.map(({ built }) => built.job), council, scope);
   }
 
   return (
