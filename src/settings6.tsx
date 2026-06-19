@@ -2,7 +2,7 @@
 // Council defaults, Configuration (groups the memory/tasks/ideal sub-sections),
 // and the Agents catalog (AgentCard + AgentsSection).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, Globe, ListChecks, Search, Server, ShieldCheck, ShieldOff, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, Globe, ListChecks, Lock, LockOpen, Search, Server, ShieldCheck, ShieldOff, Wifi, WifiOff } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
@@ -36,6 +36,45 @@ function GlobalIncognitoToggle() {
             <div className="mt-0.5 text-xs text-text-secondary">Run every surface (chat and council) as a plain model with none of your context: no profile, ideal state, omega, or memory. Turn it on per-surface from each composer instead.</div>
           </div>
           <Toggle on={on} onChange={(v) => { setOn(v); setPref(PREF.incognito, v ? "1" : "0"); }} label="Incognito everywhere" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Vault Lock - the filesystem-scope switch. A SEPARATE dimension from Bunker
+// Mode (which is about local vs cloud models). On = the assistant may only
+// touch files inside the vault; off = full local-machine access. Default ON.
+function VaultLockToggle() {
+  const [on, setOn] = useState(true);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    invoke<{ enabled: boolean }>("vault_lock_status").then((s) => setOn(!!s.enabled)).catch(() => {});
+  }, []);
+  async function toggle(next: boolean) {
+    setBusy(true);
+    try {
+      const s = await invoke<{ enabled: boolean }>("vault_lock_set", { enabled: next });
+      setOn(!!s.enabled);
+    } catch (e) { console.error("vault_lock_set", e); } finally { setBusy(false); }
+  }
+  return (
+    <div className="mt-6 border-t border-border-subtle pt-5">
+      <div className={`rounded-xl border p-4 ${on ? "border-accent-border bg-accent-soft/30" : "border-border bg-surface"}`}>
+        <div className="flex items-center gap-3">
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${on ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
+            {on ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold text-text-primary">Vault Lock</div>
+            <div className="mt-0.5 text-xs text-text-secondary">
+              {on
+                ? "On: the assistant may only read and write files inside your vault. The rest of your machine is off-limits - no scanning other folders, no outside files, no tools that reach beyond the vault."
+                : "Off: full local-machine access. The assistant can scan any directory and use local tools across your computer."}
+              {" "}This is separate from Bunker Mode (which controls local vs cloud models); the two work in any combination.
+            </div>
+          </div>
+          <Toggle on={on} disabled={busy} onChange={toggle} label="Vault Lock" />
         </div>
       </div>
     </div>
@@ -225,6 +264,9 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
           </div>
         </div>
       )}
+
+      {/* Vault Lock - filesystem scope. Orthogonal to Bunker (models). */}
+      <VaultLockToggle />
 
       {/* G3: global incognito - one switch to run EVERY surface (chat + council)
           with none of your context. Per-surface toggles live in each composer. */}

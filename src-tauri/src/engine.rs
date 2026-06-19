@@ -405,6 +405,11 @@ pub async fn run_engine_stream_stdin(
     // alongside the --local-only flag), and CRUCIALLY do not hand it any cloud
     // provider keys — with no key the engine physically cannot reach a cloud
     // gateway even if some path tried to.
+    // Vault Lock: orthogonal to Bunker. Tell the engine to keep all file access
+    // inside the vault directory.
+    if crate::vault_lock::vault_lock_enabled() {
+        cmd.env("PREVAIL_VAULT_LOCK", "1");
+    }
     if crate::bunker::bunker_enabled() {
         cmd.env("PREVAIL_BUNKER", "1");
     } else {
@@ -975,10 +980,14 @@ struct SealedBlob {
 /// injected the OpenRouter key, so streaming chat and benchmark spawns hit
 /// 401 "missing authentication header" despite a configured key.
 pub(crate) fn provider_env_pairs() -> Vec<(String, String)> {
-    if crate::bunker::bunker_enabled() {
-        return vec![("PREVAIL_BUNKER".to_string(), "1".to_string())];
-    }
     let mut out = Vec::new();
+    if crate::vault_lock::vault_lock_enabled() {
+        out.push(("PREVAIL_VAULT_LOCK".to_string(), "1".to_string()));
+    }
+    if crate::bunker::bunker_enabled() {
+        out.push(("PREVAIL_BUNKER".to_string(), "1".to_string()));
+        return out;
+    }
     if let Ok(key) = crate::ingestion::keychain::get("prevail.providers", "openrouter") {
         if !key.is_empty() {
             out.push(("PREVAIL_OPENROUTER_KEY".to_string(), key));
