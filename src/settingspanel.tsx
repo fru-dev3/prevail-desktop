@@ -102,7 +102,7 @@ export function SettingsPanel({
     { heading: "Context & Memory", items: [
       { id: "ideal-state", label: "Ideals", icon: Compass },
       { id: "intents", label: "Intents", icon: Lightbulb },
-      { id: "daemons", label: "Routines", icon: Zap },
+      { id: "daemons", label: "Daemons", icon: Zap },
       { id: "activity", label: "Activity", icon: Activity },
     ]},
     { heading: "Intelligence", items: [
