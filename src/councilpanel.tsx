@@ -1076,6 +1076,8 @@ export function CouncilPanel({
                 draftTokens={estimateTokens(prompt)}
                 windowTokens={councilCtx.windowTokens}
                 onReset={resetCouncil}
+                autoCompact={getPref(PREF.autoCompact, "1") === "1"}
+                onToggleAutoCompact={(v) => setPref(PREF.autoCompact, v ? "1" : "0")}
               />
             </div>
           </div>
