@@ -119,6 +119,33 @@ pub(crate) async fn loop_run_now(
     serde_json::from_str(json).map_err(|e| format!("parse loop result: {e}"))
 }
 
+/// Streaming variant of `loop_run_now`: runs ONE loop and streams its progress
+/// to the UI. The engine emits one NDJSON line per phase (resolve → read →
+/// think → apply) and a final `{type:"result"}` line; `run_engine_stream`
+/// forwards each on `loop_run:line` (keyed by `session`) and fires
+/// `loop_run:done` when the child exits. The desktop renders a live stepper from
+/// these so a running loop is no longer a black box.
+#[tauri::command]
+pub(crate) async fn loop_run_now_stream(
+    app: tauri::AppHandle,
+    session: String,
+    vault: String,
+    domain: String,
+    loop_id: String,
+    provider: Option<String>,
+    model: Option<String>,
+) -> Result<(), String> {
+    let mut args: Vec<String> = vec![
+        "--vault".into(), vault,
+        "daemon".into(), "--loops".into(), "--run-loop".into(),
+        "--domain".into(), domain,
+        "--loop".into(), loop_id,
+    ];
+    if let Some(p) = provider { if !p.trim().is_empty() { args.push("--cli".into()); args.push(p); } }
+    if let Some(m) = model { if !m.trim().is_empty() { args.push("--model".into()); args.push(m); } }
+    crate::engine::run_engine_stream(app, session, args, "loop_run").await
+}
+
 /// Drop one queued pending approval from a domain's `_loops_runtime.json`
 /// (matched by loop id + exact text). Used by the cross-domain Decision Inbox to
 /// dismiss/clear an item after it's been approved or declined — the per-domain

@@ -5,11 +5,13 @@
 // keeps their actions current; here you define and steer them.
 import { useCallback, useEffect, useState } from "react";
 import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, ListPlus, Play, Plus, RefreshCw, ShieldQuestion, Target, Trash2, X, Zap } from "lucide-react";
-import { invoke } from "./bridge";
+import { invoke, listen } from "./bridge";
+import type { UnlistenFn } from "./bridge";
 import { titleCase } from "./format";
 import { PREF, getPref } from "./storage";
-import { startProcess, endProcess } from "./processes";
+import { startProcess, endProcess, updateProcess } from "./processes";
 import { Toggle } from "./ui";
+import { MODELS } from "./constants";
 import { CollapsibleSection } from "./collapsible";
 import {
   AUTONOMY_BLURB,
@@ -32,6 +34,16 @@ import {
 } from "./loops";
 
 const CADENCES: LoopCadence[] = ["continuous", "daily", "weekly", "monthly"];
+
+// The real stages a single loop run moves through, in order. The engine streams
+// one phase event per stage so the card can show a live stepper (which step it's
+// on + elapsed) instead of a blank spinner.
+const RUN_PHASES: { key: string; label: string }[] = [
+  { key: "resolve", label: "Locate" },
+  { key: "read", label: "Read state" },
+  { key: "think", label: "Measure gap" },
+  { key: "apply", label: "Apply" },
+];
 
 export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; vaultPath: string; domainPath: string }) {
   const [doc, setDoc] = useState<LoopsDoc | null>(null);
@@ -419,22 +431,59 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
   type RunResult = { ok: boolean; note: string; done: boolean; actions: { text: string; disposition: "task" | "approval" | "suggested" }[]; tasksCreated: string[]; pending: string[]; error?: string };
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
+  // Live progress so the run isn't a black box: the engine streams a phase per
+  // real step (resolve → read → think → apply), which we render as a stepper
+  // with an elapsed timer; the current phase also rides the sidebar label.
+  const [phase, setPhase] = useState<string>("");
+  const [phaseLabel, setPhaseLabel] = useState<string>("");
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!running) return;
+    const t0 = Date.now();
+    setElapsed(0);
+    const iv = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 500);
+    return () => clearInterval(iv);
+  }, [running]);
+
   const runNow = async () => {
-    setRunning(true); setResult(null);
-    // Register a global process so the run is visible on the sidebar AND survives
-    // navigating away (the engine run continues regardless; this keeps the UI in
-    // sync). endProcess fires in finally even if this card unmounts mid-run.
-    const procId = `loop-${loop.id}-${Date.now()}`;
-    startProcess(procId, "loop", `${titleCase(domain || "general")} · ${loop.name}`, domain);
+    setRunning(true); setResult(null); setPhase("resolve"); setPhaseLabel("Starting");
+    // session keys the stream; procId registers a global process so the run shows
+    // on the sidebar AND survives navigating away (the engine keeps going).
+    const session = `loop-${loop.id}-${Date.now()}`;
+    const baseLabel = `${titleCase(domain || "general")} · ${loop.name}`;
+    startProcess(session, "loop", baseLabel, domain);
+    let captured: RunResult | null = null;
+    let unline: UnlistenFn | undefined;
+    let undone: UnlistenFn | undefined;
+    const cleanup = () => { try { unline?.(); } catch { /* */ } try { undone?.(); } catch { /* */ } };
     try {
       const provider = getPref(PREF.memoryProvider, "claude");
-      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
-      const r = await invoke<RunResult>("loop_run_now", { vault: vaultPath, domain, loopId: loop.id, provider, model });
-      setResult(r);
-      window.dispatchEvent(new Event("prevail:loops-advanced"));
-      window.dispatchEvent(new Event("prevail:tasks-changed"));
-    } catch (e) { setResult({ ok: false, note: "", done: false, actions: [], tasksCreated: [], pending: [], error: String(e) }); }
-    finally { setRunning(false); endProcess(procId); }
+      const model = (loop.model && loop.model.trim()) || getPref(PREF.distillModel, "claude-haiku-4-5");
+      unline = await listen<{ session: string; data: unknown }>("loop_run:line", (e) => {
+        if (e.payload.session !== session) return;
+        const d = e.payload.data as { type?: string; phase?: string; label?: string; result?: RunResult };
+        if (d && typeof d === "object" && d.type === "phase") {
+          setPhase(d.phase || ""); setPhaseLabel(d.label || "");
+          updateProcess(session, d.label ? `${baseLabel} — ${d.label}` : baseLabel);
+        } else if (d && typeof d === "object" && d.type === "result" && d.result) {
+          captured = d.result;
+        }
+      });
+      undone = await listen<{ session: string; code: number | null }>("loop_run:done", (e) => {
+        if (e.payload.session !== session) return;
+        setResult(captured ?? { ok: false, note: "", done: false, actions: [], tasksCreated: [], pending: [], error: `loop exited (code ${e.payload.code ?? "?"})` });
+        setRunning(false); setPhase(""); setPhaseLabel("");
+        cleanup(); endProcess(session);
+        window.dispatchEvent(new Event("prevail:loops-advanced"));
+        window.dispatchEvent(new Event("prevail:tasks-changed"));
+      });
+      // Returns immediately; the run proceeds via the streamed events above.
+      await invoke("loop_run_now_stream", { session, vault: vaultPath, domain, loopId: loop.id, provider, model });
+    } catch (e) {
+      setResult({ ok: false, note: "", done: false, actions: [], tasksCreated: [], pending: [], error: String(e) });
+      setRunning(false); setPhase(""); setPhaseLabel("");
+      cleanup(); endProcess(session);
+    }
   };
 
   // Next scheduled run = last run + cadence interval (continuous ≈ hourly).
@@ -522,8 +571,33 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
               </ul>
             </Field>
           )}
+          {/* Live run progress: which real stage the loop is on + elapsed, so a
+              run is observable instead of a black box. */}
+          {running && (
+            <div className="rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2.5">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-accent">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Running
+                </div>
+                <span className="font-mono text-[10px] tabular-nums text-text-muted">{elapsed}s</span>
+              </div>
+              <div className="flex items-stretch gap-1">
+                {RUN_PHASES.map((p, i) => {
+                  const ci = RUN_PHASES.findIndex((x) => x.key === phase);
+                  const st = ci < 0 ? (i === 0 ? "current" : "todo") : i < ci ? "done" : i === ci ? "current" : "todo";
+                  return (
+                    <div key={p.key} className="flex flex-1 flex-col items-center gap-1">
+                      <div className={`h-1 w-full rounded-full ${st === "done" ? "bg-accent" : st === "current" ? "bg-accent/60 animate-pulse" : "bg-border-subtle"}`} />
+                      <span className={`font-mono text-[9px] ${st === "todo" ? "text-text-muted/50" : st === "current" ? "text-accent" : "text-text-muted"}`}>{p.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {phaseLabel && <div className="mt-2 text-[12px] text-text-secondary">{phaseLabel}…</div>}
+            </div>
+          )}
           {/* Run-now result: exactly what this pass did. */}
-          {result && (
+          {!running && result && (
             <div className={`rounded-lg border px-3 py-2.5 ${result.ok ? "border-accent-border bg-accent-soft/30" : "border-danger/40 bg-danger/10"}`}>
               {result.ok ? (
                 <>
@@ -563,6 +637,10 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
               <option value="active">Active</option>
               <option value="paused">Paused</option>
               <option value="done">Done</option>
+            </select>
+            <select value={loop.model ?? ""} onChange={(e) => onChange({ model: e.target.value })} className="rounded-md border border-border bg-background px-2 py-1 text-xs" title="Model this loop runs on (default = the global loops model in Settings)">
+              <option value="">Model: default</option>
+              {(MODELS.claude ?? []).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
             <button onClick={onRemove} title="Delete this loop" className="ml-auto flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-warn">
               <Trash2 className="h-3.5 w-3.5" />
