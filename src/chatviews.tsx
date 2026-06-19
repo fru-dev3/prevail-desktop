@@ -8,7 +8,7 @@ import { titleCase } from "./format";
 import { splitThinking, vendorAccent } from "./helpers";
 import { buildQuickActions, modelLabel } from "./helpers2";
 import { PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, setDomainToggle, setPref } from "./storage";
-import { ThinkingDisclosure } from "./ui";
+import { ThinkingDisclosure, Toggle } from "./ui";
 import { Markdown, StreamingPlain } from "./Markdown";
 import { DomainAppsStrip, PreamblePicker, SkillsList, SurfacePanel, TasksPanel } from "./panels";
 import { domainIcon } from "./icons";
@@ -330,24 +330,18 @@ export function DomainStatusBar({
     set(next);
     setDomainToggle(domain, t, next);
   };
-  // One row of the Modes popover: a glyph, the name + on/off badge, and a
-  // one-line description, so the control explains itself.
+  // One row of the Modes popover: name + one-line description on the left, a pill
+  // toggle on the right that slides on/off.
   const ModeRow = ({
-    glyph, label, on, desc, onClick,
-  }: { glyph: string; label: string; on: boolean; desc: string; onClick: () => void }) => (
-    <button
-      onClick={onClick}
-      className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-surface-warm"
-    >
-      <span className={`mt-0.5 font-mono text-sm ${on ? "text-accent" : "text-text-muted"}`}>{glyph}</span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-text-primary">{label}</span>
-          <span className={`ml-auto shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider ${on ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>{on ? "On" : "Off"}</span>
-        </span>
-        <span className="mt-0.5 block text-[11px] leading-snug text-text-secondary">{desc}</span>
-      </span>
-    </button>
+    label, on, desc, onClick, disabled,
+  }: { label: string; on: boolean; desc: string; onClick: () => void; disabled?: boolean }) => (
+    <div className="flex items-center gap-3 rounded-lg px-2.5 py-1.5">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-text-primary">{label}</div>
+        <div className="mt-0.5 text-[11px] leading-snug text-text-muted">{desc}</div>
+      </div>
+      <Toggle on={on} onChange={onClick} label={label} disabled={disabled} />
+    </div>
   );
   // The composer's "Council" pill is the action button - this strip is
   // for persistent per-domain settings only. Silence unused-var warnings.
@@ -384,21 +378,17 @@ export function DomainStatusBar({
           {modesOpen && (
             <div className="absolute bottom-full left-0 z-50 mb-2 w-80 rounded-xl border border-border bg-surface p-1.5 shadow-xl">
               <div className="px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Modes</div>
-              <ModeRow glyph="○" label={bunker ? "Web access · locked" : "Web access"} on={webShown}
+              <ModeRow label="Web access" on={webShown} disabled={bunker}
                 onClick={() => { if (bunker) return; flip("web", web, setWeb); }}
-                desc={bunker
-                  ? "Locked off by Bunker Mode: no request may leave this device. Turn off Bunker Mode to allow web access."
-                  : "Let the model fetch URLs and web-search while replying. Off keeps the reply offline."} />
-              <ModeRow glyph="▣" label="Save history" on={save} onClick={() => flip("save", save, setSave)}
-                desc="Log every reply to history so you can re-read it later. Off makes the turn ephemeral." />
-              <ModeRow glyph="◉" label="Serendipity" on={serendipity} onClick={() => flip("serendipity", serendipity, setSeren)}
-                desc="Invite lateral, off-topic angles. Off stays strictly on-topic." />
-              <ModeRow glyph="◐" label="Auto-council" on={auto} onClick={() => flip("auto", auto, setAuto)}
-                desc="Spin off the full council automatically. In Smart mode it convenes only for judgment calls (should-I / tradeoff / high-stakes questions); simple questions get one model. (Off in Bunker Mode: panelists are cloud models.)" />
-              <ModeRow glyph="◍" label={globalIncognito ? "Incognito · locked on" : "Incognito"} on={incogOn} onClick={toggleIncognito}
-                desc={globalIncognito
-                  ? "Forced on globally (Settings: Privacy). Replies use a plain model with none of your profile, ideal, memory, or context."
-                  : "Ask a plain model with NONE of your profile, ideal, memory, or context sent. The composer glows while it's on."} />
+                desc={bunker ? "Off in Bunker Mode - nothing leaves this device." : "Fetch URLs + web search while replying."} />
+              <ModeRow label="Auto-council" on={auto} onClick={() => flip("auto", auto, setAuto)}
+                desc="Convene the full council automatically for judgment calls." />
+              <ModeRow label="Serendipity" on={serendipity} onClick={() => flip("serendipity", serendipity, setSeren)}
+                desc="Invite lateral, off-topic angles." />
+              <ModeRow label="Save history" on={save} onClick={() => flip("save", save, setSave)}
+                desc="Log replies so you can re-read them later." />
+              <ModeRow label="Incognito" on={incogOn} disabled={globalIncognito} onClick={toggleIncognito}
+                desc={globalIncognito ? "Forced on in Privacy settings." : "Plain model: none of your context is sent."} />
               {auto && (
                 <div className="flex items-center justify-between gap-2 px-3 py-2">
                   <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Trigger</span>

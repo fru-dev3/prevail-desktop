@@ -123,8 +123,7 @@ import {
 
   Lightbulb,
   Inbox,
-  CalendarRange,
-  Check,
+  Briefcase,
   Plug,
   
   
@@ -1336,37 +1335,25 @@ export default function App() {
                       <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[9px] font-bold text-background">{decisionsCount}</span>
                     </button>
                   )}
-                  {/* Due/critical pill: time-sensitive work needing attention now
-                      (overdue, due today, or critical). Opens the Horizon view. */}
-                  {dueAlertCount > 0 && (
-                    <button
-                      onClick={() => {
-                        window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "tasks" }));
-                        window.dispatchEvent(new CustomEvent("prevail:board-view", { detail: "horizon" }));
-                      }}
-                      title={[
-                        dueAlert.overdue ? `${dueAlert.overdue} overdue` : "",
-                        dueAlert.today ? `${dueAlert.today} due today` : "",
-                        dueAlert.critical ? `${dueAlert.critical} critical` : "",
-                      ].filter(Boolean).join(" · ")}
-                      className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors hover:bg-surface-warm ${dueAlert.overdue ? "text-danger" : "text-warn"}`}
-                    >
-                      <CalendarRange className="h-3.5 w-3.5" /> Work
-                      <span className={`inline-flex min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[9px] font-bold text-background ${dueAlert.overdue ? "bg-danger" : "bg-warn"}`}>{dueAlertCount}</span>
-                    </button>
-                  )}
-                  {/* Work: this domain's tasks in-panel (scoped board) without
-                      leaving for the full Work Board. */}
+                  {/* Work: this domain's tasks in-panel (scoped board); a badge counts
+                      anything overdue / due-today / critical. One Work entry, not two. */}
                   <button
                     onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "work" ? "chat" : "work"); }}
-                    title="Work: this domain's tasks, in-panel"
+                    title={dueAlertCount > 0 ? [
+                      dueAlert.overdue ? `${dueAlert.overdue} overdue` : "",
+                      dueAlert.today ? `${dueAlert.today} due today` : "",
+                      dueAlert.critical ? `${dueAlert.critical} critical` : "",
+                    ].filter(Boolean).join(" · ") : "Work: this domain's tasks, in-panel"}
                     className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "chat" && domainTab === "work"
                         ? "bg-accent-soft text-accent"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
                     }`}
                   >
-                    <Check className="h-3.5 w-3.5" /> Work
+                    <Briefcase className="h-3.5 w-3.5" /> Work
+                    {dueAlertCount > 0 && (
+                      <span className={`inline-flex min-w-[15px] items-center justify-center rounded-full px-1 font-mono text-[9px] font-bold text-background ${dueAlert.overdue ? "bg-danger" : "bg-warn"}`}>{dueAlertCount}</span>
+                    )}
                   </button>
                   {/* Order (founder): Insights · Usage · Benchmark · Preferences,
                       then Back up (actions menu). Compact px/text so the cluster stays small. */}
