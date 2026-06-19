@@ -3,22 +3,21 @@
 // shared chatviews + domainpanels.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { motion } from "framer-motion";
-import { ArrowUpRight, BookOpen, Boxes, Check, ChevronRight, FileText, Folder, Ghost, Layers, PanelRightOpen, Paperclip, Plus, Scale, Sparkles } from "lucide-react";
+import { ArrowUpRight, BookOpen, Boxes, Check, FileText, Folder, Ghost, Layers, PanelRightOpen, Paperclip, Plus, Scale, Sparkles } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
 import { MODELS, isHarnessRuntime } from "./constants";
 import { relTime, scoreColor, titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
 import { ContextMeter, contextWindowFor, estimateTokens } from "./contextmeter";
-import { domainBlurb, domainColor, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
+import { domainBlurb, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
 import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, loadPreferredSkills, maybeRedact, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
 import { ContextScoreBadge, NewSkillForm, SkillsList } from "./panels";
 import { InsightsPanel, UsageDashboard } from "./panels2";
 import { ContextScorePanel, DomainAppsTab } from "./panels3";
-import { DOMAIN_ICONS, domainIcon } from "./icons";
+import { domainIcon } from "./icons";
 import { useFrameworkLens } from "./hooks";
 import { ProviderMark } from "./marks";
 import { DomainHome, DomainStatusBar, MessageList } from "./chatviews";
@@ -51,10 +50,6 @@ export function ChatPanel({
   onStreamStart,
   onStreamEnd,
   domains,
-  domainStats,
-  runningDomains,
-  finishedDomains,
-  onPickDomain,
   domainTab,
   setDomainTab,
 }: {
@@ -1570,104 +1565,6 @@ export function ChatPanel({
                 recent intents) made first-class on the landing surface. */}
             <HomeBriefing vaultPath={vaultPath} />
 
-            {domains.length > 0 && (() => {
-              // Show pinned first, then ones with the most imports,
-              // capped at 4. The full domain list still lives in the
-              // sidebar - this landing surface is a quick-pick only.
-              const pinnedSet = (() => {
-                try { return new Set<string>(JSON.parse(lsGet("prevail.pinnedDomains") || "[]")); }
-                catch { return new Set<string>(); }
-              })();
-              const ranked = [...domains].sort((a, b) => {
-                const pa = pinnedSet.has(a.name) ? 1 : 0;
-                const pb = pinnedSet.has(b.name) ? 1 : 0;
-                if (pa !== pb) return pb - pa;
-                const sa = domainStats[a.name] ?? 0;
-                const sb = domainStats[b.name] ?? 0;
-                if (sa !== sb) return sb - sa;
-                return a.name.localeCompare(b.name);
-              });
-              const featured = ranked.slice(0, 4);
-              return (
-              <div className="mt-10 w-full max-w-5xl">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
-                    Jump to · {featured.length} of {domains.length}
-                  </div>
-                  <span className="font-mono text-[10px] text-text-muted">more in sidebar</span>
-                </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {featured.map((d, i) => {
-                    const Icon = DOMAIN_ICONS[d.name];
-                    const running = runningDomains.has(d.name);
-                    const color = domainColor(d.name);
-                    return (
-                      <motion.button
-                        key={d.name}
-                        onClick={() => onPickDomain(d.name)}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.04 * i, type: "spring", stiffness: 140, damping: 18 }}
-                        whileHover={{ y: -3 }}
-                        whileTap={{ scale: 0.99 }}
-                        className="group relative flex h-[60px] flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface p-3 text-left transition-all duration-200 hover:border-border hover:shadow-[0_10px_34px_-12px_rgba(0,0,0,0.18)]"
-                      >
-                        {/* oversized watermark glyph - editorial fill, no text clutter */}
-                        {Icon && (
-                          <Icon
-                            aria-hidden
-                            className="pointer-events-none absolute -bottom-6 -right-5 h-28 w-28 transition-transform duration-500 group-hover:scale-110 group-hover:-rotate-3"
-                            style={{ color, opacity: 0.06 }}
-                          />
-                        )}
-                        {/* faint accent wash, reveals on hover */}
-                        <span
-                          aria-hidden
-                          className="pointer-events-none absolute -right-16 -top-16 h-32 w-32 rounded-full opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-25"
-                          style={{ background: color }}
-                        />
-
-                        {/* top: accent glyph + reveal chevron */}
-                        <div className="flex items-center justify-between">
-                          <span style={{ color }}>
-                            {Icon ? <Icon className="h-[18px] w-[18px]" /> : <span className="font-mono text-sm">◆</span>}
-                          </span>
-                          <span className="flex items-center gap-2">
-                            {running ? (
-                              <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full bg-warn" title="A reply is streaming here" />
-                            ) : finishedDomains.has(d.name) ? (
-                              <span
-                                className="inline-block h-1.5 w-1.5 rounded-full"
-                                style={{
-                                  background: "var(--color-ok, #2e9e5b)",
-                                  boxShadow: "0 0 0 3px color-mix(in srgb, var(--color-ok, #2e9e5b) 28%, transparent)",
-                                }}
-                                title="Just finished: open to view"
-                              />
-                            ) : null}
-                            <ChevronRight
-                              className="h-4 w-4 -translate-x-1 text-text-muted opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100"
-                            />
-                          </span>
-                        </div>
-
-                        {/* name + blurb anchored at the bottom; status moved into
-                            the top row so the card stays short without clipping */}
-                        <div className="relative mt-auto">
-                          <div className="flex items-baseline gap-2">
-                            <div className="font-display text-base font-semibold leading-tight tracking-tight text-text-primary">
-                              {titleCase(d.name)}
-                            </div>
-                            <span className="ml-auto h-px w-6 shrink-0 self-center rounded-full transition-all duration-300 group-hover:w-10" style={{ background: color }} />
-                          </div>
-                        </div>
-                      </motion.button>
-                    );
-                  })}
-                </div>
-              </div>
-              );
-            })()}
 
             {domains.length === 0 && (
               <div className="mt-8 w-full max-w-2xl rounded-xl border border-dashed border-border bg-surface p-8 text-center">
