@@ -1279,73 +1279,74 @@ export default function App() {
                       <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[9px] font-bold text-background">{decisionsCount}</span>
                     </button>
                   )}
-                  {/* B2-25: Benchmark moved into the de-emphasized right cluster. */}
+                  {/* Order (founder): Insights · Usage · Benchmark · Preferences,
+                      then Back up (actions menu). Compact px/text so the cluster stays small. */}
+                  <button
+                    onClick={() => { setTab("chat"); setDomainTab("insights"); }}
+                    title="Insights: what to work on, your tasks, and recent intents (use the Chat tab to return to the conversation)"
+                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+                      tab === "chat" && domainTab === "insights"
+                        ? "bg-accent-soft text-accent"
+                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <Lightbulb className="h-3.5 w-3.5" /> Insights
+                  </button>
+                  <button
+                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "usage" ? "chat" : "usage"); }}
+                    title={selectedDomain ? "Usage: queries, tokens, and cost for this domain" : "Usage: queries, tokens, and cost across everything"}
+                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+                      tab === "chat" && domainTab === "usage"
+                        ? "bg-accent-soft text-accent"
+                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <Activity className="h-3.5 w-3.5" /> Usage
+                  </button>
                   <button
                     onClick={() => setTab("benchmark")}
                     title="Benchmark: score models on your questions"
-                    className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
+                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "benchmark" ? "bg-accent-soft text-accent" : "text-text-muted hover:bg-surface-warm hover:text-accent"
                     }`}
                   >
                     <Sparkles className="h-3.5 w-3.5" /> Benchmark
                   </button>
                   <button
-                    onClick={() => { setTab("chat"); setDomainTab("insights"); }}
-                    title="Insights: what to work on, your tasks, and recent intents (use the Chat tab to return to the conversation)"
-                    className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
-                      tab === "chat" && domainTab === "insights"
-                        ? "bg-accent-soft text-accent"
-                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                    }`}
-                  >
-                    <Lightbulb className="h-4 w-4" /> Insights
-                  </button>
-                  <button
-                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "usage" ? "chat" : "usage"); }}
-                    title={selectedDomain ? "Usage: queries, tokens, and cost for this domain" : "Usage: queries, tokens, and cost across everything"}
-                    className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
-                      tab === "chat" && domainTab === "usage"
-                        ? "bg-accent-soft text-accent"
-                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                    }`}
-                  >
-                    <Activity className="h-4 w-4" /> Usage
-                  </button>
-                  <button
                     onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "prefs" ? "chat" : "prefs"); }}
                     title={selectedDomain ? "Domain preferences" : "General preferences"}
-                    className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
+                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "chat" && domainTab === "prefs"
                         ? "bg-accent-soft text-accent"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
                     }`}
                   >
-                    <SettingsIcon className="h-4 w-4" /> Preferences
+                    <SettingsIcon className="h-3.5 w-3.5" /> Preferences
                   </button>
                   {selectedDomain && (
                     <button
                       onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "loops" ? "chat" : "loops"); }}
                       title="Loops: the standing forces working to reach this domain's desired state"
-                      className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
+                      className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
                         tab === "chat" && domainTab === "loops"
                           ? "bg-accent-soft text-accent"
                           : "text-text-muted hover:bg-surface-warm hover:text-accent"
                       }`}
                     >
-                      <Repeat className="h-4 w-4" /> Loops
+                      <Repeat className="h-3.5 w-3.5" /> Loops
                     </button>
                   )}
                   {selectedDomain && (
                     <button
                       onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "apps" ? "chat" : "apps"); }}
                       title="Apps that refresh this domain"
-                      className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
+                      className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
                         tab === "chat" && domainTab === "apps"
                           ? "bg-accent-soft text-accent"
                           : "text-text-muted hover:bg-surface-warm hover:text-accent"
                       }`}
                     >
-                      <Plug className="h-4 w-4" /> Apps
+                      <Plug className="h-3.5 w-3.5" /> Apps
                     </button>
                   )}
                 </>
