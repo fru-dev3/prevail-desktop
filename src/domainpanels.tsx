@@ -259,7 +259,7 @@ export function DomainContextDrawer({
         <div title="Applies everywhere - shared across every domain" className="flex cursor-help items-center gap-1.5 border-b border-border-subtle bg-surface-warm/60 px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
           <Globe className="h-3.5 w-3.5 text-accent" /> Globals
         </div>
-        <Section keyName="ideal" title="Ideal state" body={
+        <Section keyName="ideal" title="Ideal" body={
           idealState.trim() ? (
             <>
               <p className="mb-2 text-[11px] leading-relaxed text-text-muted">
