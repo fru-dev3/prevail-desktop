@@ -32,6 +32,8 @@ pub struct Task {
     pub id: Option<String>, // stable handle for moves + workflow linkage; "~id:" token
     #[serde(default)]
     pub trashed: Option<String>, // YYYY-MM-DD soft-delete date; "~trashed:" token. Some = in Trash, not permanently removed.
+    #[serde(default)]
+    pub priority: Option<String>, // "high" | "critical"; "~priority:" token. None = normal. Drives due/critical alerting.
 }
 
 fn is_ymd(s: &str) -> bool {
@@ -75,6 +77,7 @@ struct Meta {
     status: Option<String>,
     id: Option<String>,
     trashed: Option<String>,
+    priority: Option<String>,
 }
 
 // Strip trailing metadata tokens off a task body, in any order, only at the END
@@ -104,6 +107,7 @@ fn split_meta(raw: &str) -> (String, Meta) {
                         "id" => { m.id = Some(v.to_string()); true }
                         "src" => { m.source = Some(v.to_string()); true }
                         "trashed" => { m.trashed = Some(v.to_string()); true }
+                        "priority" => { m.priority = Some(v.to_string()); true }
                         _ => false,
                     };
                     if matched { text = t[..idx].to_string(); continue; }
@@ -146,6 +150,7 @@ fn parse_tasks(md: &str) -> Vec<Task> {
                 status: m.status,
                 id: m.id,
                 trashed: m.trashed,
+                priority: m.priority,
             })
         })
         .filter(|t| !t.text.is_empty())
@@ -194,6 +199,8 @@ fn render_tasks(tasks: &[Task]) -> String {
         // Soft-delete marker: a trashed task stays in the file (recoverable) but is
         // filtered out of the normal board views; the Trash view reads it back.
         if let Some(d) = t.trashed.as_deref().filter(|d| !d.is_empty()) { line.push_str(&format!(" ~trashed:{d}")); }
+        // priority: only persist non-default (high/critical); normal is implied.
+        if let Some(p) = t.priority.as_deref().filter(|p| matches!(*p, "high" | "critical")) { line.push_str(&format!(" ~priority:{p}")); }
         s.push_str(&line);
         s.push('\n');
     }
@@ -242,6 +249,7 @@ pub fn tasks_add(vault: String, domain: String, text: String, source: Option<Str
             status: Some(m.status.unwrap_or_else(|| "todo".into())),
             id: None,
             trashed: None,
+            priority: m.priority,
         });
         tasks_set(vault.clone(), domain.clone(), tasks)?;
         return tasks_read(vault, domain); // re-read so the minted id is returned
