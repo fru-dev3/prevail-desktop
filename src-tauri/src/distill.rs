@@ -643,6 +643,99 @@ pub async fn distill_run_once(cfg: DistillConfig) -> Result<u64, String> {
     Ok(lines)
 }
 
+#[derive(serde::Serialize)]
+pub struct BuildStateResult {
+    pub built: bool,
+    pub reason: String,
+}
+
+/// Build a domain's State + Memory ON DEMAND from its JOURNAL (the raw record they
+/// are meant to be distilled from), regardless of the intents-ledger cursor or the
+/// background threshold. Powers the "rebuild" icon: it works even when no
+/// `_intents.jsonl` exists, and reports clearly when there's nothing to build from.
+#[tauri::command]
+pub async fn build_domain_state(
+    vault: String,
+    domain: Option<String>,
+    provider: String,
+    model: String,
+) -> Result<BuildStateResult, String> {
+    let content_dir = crate::paths::domain_dir(&vault, &domain);
+    let read_ne = |p: PathBuf| std::fs::read_to_string(&p).ok().filter(|s| !s.trim().is_empty());
+    // Activity source: the journal (root + build/) plus a tail of the decisions ledger.
+    let mut activity = String::new();
+    let bases = [content_dir.clone(), crate::paths::build_root(&vault)];
+    for base in &bases {
+        if let Some(j) = read_ne(base.join("_journal.md")) {
+            activity.push_str(j.trim());
+            activity.push('\n');
+        }
+    }
+    for base in &bases {
+        if let Some(d) = read_ne(base.join("_decisions.jsonl")) {
+            for l in d.lines().take(40) {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(l) {
+                    let t = ["decision", "verdict", "prompt"].iter().find_map(|k| v.get(k).and_then(|x| x.as_str())).unwrap_or("");
+                    if !t.is_empty() {
+                        activity.push_str("- ");
+                        activity.push_str(t);
+                        activity.push('\n');
+                    }
+                }
+            }
+        }
+    }
+    let activity: String = activity.trim().chars().take(12000).collect();
+    if activity.is_empty() {
+        return Ok(BuildStateResult {
+            built: false,
+            reason: "No recorded activity yet. Chat in this space or run a council, then build.".into(),
+        });
+    }
+
+    let domain_label = domain.clone().unwrap_or_else(|| "General".into());
+    let existing_memory = std::fs::read_to_string(content_dir.join("_memory.md")).unwrap_or_default();
+    let existing_state = std::fs::read_to_string(content_dir.join("_state.md")).unwrap_or_default();
+    let ideal = content_dir.parent().map(crate::ideal_state_preamble).unwrap_or_default();
+    let prompt = format!(
+        "{}{}",
+        ideal,
+        build_distill_prompt(&domain_label, &existing_memory, &existing_state, &activity, 800, 4000),
+    );
+    let model_opt = if model.trim().is_empty() { None } else { Some(model.as_str()) };
+    let out = crate::telegram_bridge::run_cli(&provider, model_opt, &prompt).await?;
+    if out.trim().is_empty() {
+        return Err("the model produced no output".into());
+    }
+    let parsed = parse_distill_output(&out);
+
+    let mem_body = parsed.memory.clone().unwrap_or_else(|| out.trim().to_string());
+    let memory = format!("# Memory\n\n<!-- prevail:distilled -->\n\n{}\n", mem_body.trim());
+    write_atomic(&content_dir.join("_memory.md"), &memory).map_err(|e| format!("write _memory.md: {e}"))?;
+
+    let mut built_state = false;
+    if let Some(state_body) = parsed.state.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        let doc = format!(
+            "# {} — state\n\n<!-- prevail:distilled -->\n\n{}\n",
+            title_case_label(&domain_label),
+            state_body,
+        );
+        let _ = write_atomic(&content_dir.join("_state.md"), &doc);
+        built_state = true;
+    }
+    if !parsed.decisions.is_empty() {
+        let ledger_dir = crate::paths::runtime_file(&vault, &domain, "_decisions.jsonl")
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| content_dir.clone());
+        append_decisions(&ledger_dir, &parsed.decisions);
+    }
+    Ok(BuildStateResult {
+        built: true,
+        reason: if built_state { "Built state + memory.".into() } else { "Built memory.".into() },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
