@@ -70,11 +70,14 @@ export function RunDims({ run, judge }: { run: BenchmarkRun; judge?: number | nu
 }
 
 export function BenchMatrix({
-  matrix, allDomains, onPick,
+  matrix, allDomains, onPick, currentDomain,
 }: {
   matrix: MatrixRow[];
   allDomains: string[];
   onPick: (runDir: string) => void;
+  // When the Arena is opened inside a domain, that column leads and is
+  // highlighted so it stands out against the others.
+  currentDomain?: string | null;
 }) {
   const bestPerDomain = useMemo(() => {
     const best: Record<string, number> = {};
@@ -89,6 +92,17 @@ export function BenchMatrix({
     return best;
   }, [matrix, allDomains]);
 
+  const cur = currentDomain?.toLowerCase() ?? null;
+  // Column order: the current domain first (if any), then every domain that has
+  // benchmark data, then the empty ones pushed all the way to the right.
+  const orderedDomains = useMemo(() => {
+    const hasData = (d: string) => (bestPerDomain[d] ?? -1) >= 0;
+    const withData = allDomains.filter((d) => hasData(d) && d !== cur);
+    const without = allDomains.filter((d) => !hasData(d) && d !== cur);
+    const lead = cur && allDomains.includes(cur) ? [cur] : [];
+    return [...lead, ...withData, ...without];
+  }, [allDomains, bestPerDomain, cur]);
+
   const rows = useMemo(
     () => [...matrix].sort((a, b) => (b.judge_avg ?? -1) - (a.judge_avg ?? -1)),
     [matrix],
@@ -102,8 +116,8 @@ export function BenchMatrix({
         <thead>
           <tr className="border-b border-border bg-surface">
             <th className="sticky left-0 bg-surface px-3 py-2 text-left font-mono text-[10px] uppercase tracking-wider text-text-muted">Model</th>
-            {allDomains.map((d) => (
-              <th key={d} className="px-3 py-2 text-center font-mono text-[10px] uppercase tracking-wider text-text-muted">{titleCase(d)}</th>
+            {orderedDomains.map((d) => (
+              <th key={d} className={`px-3 py-2 text-center font-mono text-[10px] uppercase tracking-wider ${d === cur ? "border-x border-accent-border bg-accent-soft/60 text-accent" : "text-text-muted"}`}>{titleCase(d)}</th>
             ))}
             <th className="px-3 py-2 text-center font-mono text-[10px] uppercase tracking-wider text-accent">Overall</th>
           </tr>
@@ -119,12 +133,12 @@ export function BenchMatrix({
                     <span className="font-mono text-xs text-text-primary">{parsed.model || m.label}</span>
                   </button>
                 </td>
-                {allDomains.map((d) => {
+                {orderedDomains.map((d) => {
                   const cell = m.per_domain[d];
                   const v = cell?.judge_avg ?? null;
                   const isBest = v != null && v === bestPerDomain[d] && v >= 0;
                   return (
-                    <td key={d} className="px-3 py-2 text-center font-mono text-xs">
+                    <td key={d} className={`px-3 py-2 text-center font-mono text-xs ${d === cur ? "border-x border-accent-border bg-accent-soft/25" : ""}`}>
                       {v == null ? (
                         <span className="text-text-muted/40">-</span>
                       ) : (
@@ -1013,7 +1027,7 @@ export function BenchRunConfig({
 }
 
 export function BenchResults({
-  view, domainFilter, runs, matrix, allDomains, vaultPath, initialModel, onChanged, onRerun, onRerunBatch,
+  view, domainFilter, runs, matrix, allDomains, vaultPath, initialModel, currentDomain, onChanged, onRerun, onRerunBatch,
   finishedBatch, onViewBatch, onDismissBanner, onCrumbHome, onClearDomain,
 }: {
   view: "board" | "history" | "matrix";
@@ -1022,6 +1036,7 @@ export function BenchResults({
   matrix: MatrixRow[];
   allDomains: string[];
   vaultPath: string;
+  currentDomain?: string | null;
   initialModel?: string | null;
   onChanged: () => void;
   onRerun: (run: BenchmarkRun) => void;
@@ -1513,7 +1528,7 @@ export function BenchResults({
       )}
 
       {resultsView === "matrix" && visibleRuns.length > 0 && (
-        <BenchMatrix matrix={matrix} allDomains={allDomains} onPick={loadRun} />
+        <BenchMatrix matrix={matrix} allDomains={allDomains} onPick={loadRun} currentDomain={currentDomain} />
       )}
     </div>
   );
@@ -1879,7 +1894,7 @@ export function BenchmarkPanel({
             view={view}
             domainFilter={view === "matrix" ? "all" : domainFilter}
             runs={runs} matrix={matrix} allDomains={allDomains} vaultPath={vaultPath}
-            initialModel={initialModel} onChanged={refresh}
+            initialModel={initialModel} currentDomain={initialDomain} onChanged={refresh}
             onRerun={(r) => void rerunRun(r)}
             onRerunBatch={(rs) => void rerunBatch(rs)}
             finishedBatch={finishedBatch}
