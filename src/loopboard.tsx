@@ -110,37 +110,47 @@ export function LoopBoard({ vaultPath }: { vaultPath: string }) {
       ) : shown.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border-subtle px-4 py-10 text-center text-sm text-text-muted">No loops yet. Open a domain's Loops tab to add some.</div>
       ) : (
-        <div className="flex flex-col gap-1.5">
-          {shown.map((r) => {
-            const run = isRunning(r);
-            const nextRun = r.loop.enabled && r.loop.status === "active" && r.loop.lastRunTs
-              ? new Date(r.loop.lastRunTs + (CADENCE_MS[r.loop.cadence] ?? 6048e5)) : null;
-            const busy = running === `${r.domain}:${r.loop.id}`;
-            const dot = r.loop.status === "done" ? "#9aa0a6" : r.loop.status === "paused" ? "#d9a441" : "#0d7a6e";
+        // Grouped by domain, each a tight divided list - reads as one clean table,
+        // not a stack of fat cards.
+        <div className="flex flex-col gap-5">
+          {domains.filter((d) => shown.some((r) => r.domain === d)).map((d) => {
+            const items = shown.filter((r) => r.domain === d);
             return (
-              <div key={`${r.domain}:${r.loop.id}`} className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5">
-                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dot }} />
-                <button onClick={() => openInDomain(r)} className="min-w-0 flex-1 text-left" title="Open in its domain to edit">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-semibold text-text-primary">{r.loop.name}</span>
-                    {r.loop.kind === "briefing"
-                      ? <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent"><Mail className="h-2.5 w-2.5" /> briefing</span>
-                      : r.loop.type === "open" && <InfinityIcon className="h-3 w-3 shrink-0 text-text-muted/60" />}
-                    {run && <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[9px] uppercase tracking-wider text-accent"><Loader2 className="h-2.5 w-2.5 animate-spin" /> running</span>}
-                  </div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 font-mono text-[10px] text-text-muted">
-                    <span className="rounded-full bg-surface-warm px-1.5 py-px text-text-secondary">{titleCase(r.domain)}</span>
-                    <span>{CADENCE_LABEL[r.loop.cadence]}</span>
-                    {r.loop.kind !== "briefing" && <span className="text-accent/80">{AUTONOMY_LABEL[r.loop.autonomy ?? "ask"]}</span>}
-                    {nextRun && <span title="Next scheduled run">next ~{nextRun.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>}
-                  </div>
-                </button>
-                <button onClick={() => runNow(r)} disabled={busy || run} title="Run this loop now"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} Run
-                </button>
-                <Toggle on={r.loop.enabled} onChange={(v) => toggleEnabled(r, v)} label={`${r.loop.name} enabled`} />
-              </div>
+              <section key={d}>
+                <div className="mb-1.5 flex items-baseline gap-2 px-1">
+                  <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-text-secondary">{titleCase(d)}</span>
+                  <span className="font-mono text-[10px] text-text-muted">{items.length}</span>
+                </div>
+                <div className="overflow-hidden rounded-xl border border-border-subtle divide-y divide-border-subtle">
+                  {items.map((r) => {
+                    const run = isRunning(r);
+                    const nextRun = r.loop.enabled && r.loop.status === "active" && r.loop.lastRunTs
+                      ? new Date(r.loop.lastRunTs + (CADENCE_MS[r.loop.cadence] ?? 6048e5)) : null;
+                    const busy = running === `${r.domain}:${r.loop.id}`;
+                    const dot = r.loop.status === "done" ? "#9aa0a6" : r.loop.status === "paused" ? "#d9a441" : "#0d7a6e";
+                    return (
+                      <div key={`${r.domain}:${r.loop.id}`} className={`group flex items-center gap-3 px-3 py-2 transition-colors hover:bg-surface-warm/60 ${r.loop.enabled ? "" : "opacity-55"}`}>
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: dot }} title={r.loop.status} />
+                        <button onClick={() => openInDomain(r)} className="flex min-w-0 flex-1 items-center gap-2 text-left" title="Open in its domain to edit">
+                          <span className="truncate text-[13px] font-medium text-text-primary">{r.loop.name}</span>
+                          {r.loop.kind === "briefing"
+                            ? <Mail className="h-3 w-3 shrink-0 text-accent" />
+                            : r.loop.type === "open" && <InfinityIcon className="h-3 w-3 shrink-0 text-text-muted/50" />}
+                          {run && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-accent" />}
+                        </button>
+                        <span className="hidden shrink-0 font-mono text-[10px] text-text-muted sm:inline">{CADENCE_LABEL[r.loop.cadence]}</span>
+                        {r.loop.kind !== "briefing" && <span className="hidden shrink-0 font-mono text-[10px] text-text-muted/70 md:inline">{AUTONOMY_LABEL[r.loop.autonomy ?? "ask"]}</span>}
+                        <span className="hidden w-20 shrink-0 text-right font-mono text-[10px] text-text-muted lg:inline">{nextRun ? `~${nextRun.toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : ""}</span>
+                        <button onClick={() => runNow(r)} disabled={busy || run} title="Run this loop now"
+                          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+                          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />} Run
+                        </button>
+                        <Toggle on={r.loop.enabled} onChange={(v) => toggleEnabled(r, v)} label={`${r.loop.name} enabled`} />
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
             );
           })}
         </div>
