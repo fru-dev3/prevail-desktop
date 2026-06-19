@@ -1,7 +1,8 @@
 // Domain-scoped panels extracted from App.tsx: the context drawer (right rail),
 // the agent picker rail, the pref-picker column, and the domain prefs panel.
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, Box, Check, ChevronRight, Code, Compass, Cpu, Eye, Folder, Globe, Loader2, Lock, MessageSquare, PanelRightClose, Pin, Share2, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { ArrowRight, Box, Check, ChevronRight, Code, Compass, Cpu, Eye, Folder, Globe, Loader2, Lock, MessageSquare, PanelRightClose, Pin, RefreshCw, Share2, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { distillCfgFromPrefs } from "./daemoncfg";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES, MODELS, isHarnessRuntime } from "./constants";
 import { formatFreshness, titleCase } from "./format";
@@ -110,6 +111,37 @@ export function ContextCanvas() {
   );
 }
 
+// A tiny "rebuild" icon for the State / Memory section headers: runs the distiller
+// on demand so you can build a domain's state/memory from its activity without
+// waiting for the background pass. Reports when there isn't enough material yet.
+function RebuildStateButton({ vaultPath, domain, field }: { vaultPath: string; domain: string; field: "state" | "memory" }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const run = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setBusy(true); setNote(null);
+    try {
+      await invoke("distill_run_once", { cfg: distillCfgFromPrefs(vaultPath) });
+      const has = field === "state"
+        ? !!(await invoke<DomainContextBundle>("domain_context", { vault: vaultPath, domain: domain || "" }).then((c) => c?.state?.trim()).catch(() => null))
+        : !!(await invoke<string>("read_memory_md", { vault: vaultPath, domain: domain || null }).then((m) => m?.trim()).catch(() => null));
+      window.dispatchEvent(new CustomEvent("prevail:context-changed"));
+      if (!has) setNote("not enough activity yet");
+      else window.setTimeout(() => setNote(null), 1500);
+    } catch (err) { setNote(`failed: ${String(err).slice(0, 32)}`); }
+    finally { setBusy(false); }
+  };
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      {note && <span className="font-mono text-[9px] lowercase text-text-muted">{note}</span>}
+      <button onClick={run} disabled={busy} title={`Rebuild ${field} from your activity here`}
+        className="rounded p-1 text-text-muted transition-colors hover:text-accent disabled:opacity-50">
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+      </button>
+    </span>
+  );
+}
+
 export function DomainContextDrawer({
   domain,
   vaultPath,
@@ -190,19 +222,22 @@ export function DomainContextDrawer({
   }, [vaultPath]);
 
   const Section = ({
-    keyName, title, count, body,
-  }: { keyName: string; title: string; count?: number; body: React.ReactNode }) => (
+    keyName, title, count, body, action,
+  }: { keyName: string; title: string; count?: number; body: React.ReactNode; action?: React.ReactNode }) => (
     <div className="border-b border-border-subtle">
-      <button
-        onClick={() => setOpen((o) => ({ ...o, [keyName]: !o[keyName] }))}
-        className="flex w-full items-center justify-between gap-2 py-2.5 pl-7 pr-4 text-left hover:bg-surface-warm"
-      >
-        <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary">
-          <span className="text-accent">{open[keyName] ? "▾" : "▸"}</span>
-          {title}
-          {count !== undefined && <span className="text-text-muted">· {count}</span>}
-        </span>
-      </button>
+      <div className="flex w-full items-center gap-2 pr-3 hover:bg-surface-warm">
+        <button
+          onClick={() => setOpen((o) => ({ ...o, [keyName]: !o[keyName] }))}
+          className="flex min-w-0 flex-1 items-center justify-between gap-2 py-2.5 pl-7 text-left"
+        >
+          <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary">
+            <span className="text-accent">{open[keyName] ? "▾" : "▸"}</span>
+            {title}
+            {count !== undefined && <span className="text-text-muted">· {count}</span>}
+          </span>
+        </button>
+        {action}
+      </div>
       {open[keyName] && <div className="pb-4 pl-7 pr-4 text-sm">{body}</div>}
     </div>
   );
@@ -302,7 +337,7 @@ export function DomainContextDrawer({
           {(() => { const I = domain ? domainIcon(domain) : MessageSquare; return I ? <I className="h-3.5 w-3.5 text-accent" /> : <span className="text-accent">◆</span>; })()}
           {domain ? titleCase(domain) : "General"}
         </div>
-        <Section keyName="memory" title="Memory" body={
+        <Section keyName="memory" title="Memory" action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="memory" />} body={
           memory.trim() ? (
             <>
               <div className="flex flex-wrap gap-1.5">
@@ -320,7 +355,7 @@ export function DomainContextDrawer({
         } />
         {ctx && (
           <>
-            <Section keyName="state" title="State" body={
+            <Section keyName="state" title="State" action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="state" />} body={
               ctx.state ? (
                 <>
                   <div className="mb-2 flex items-center gap-1.5">
