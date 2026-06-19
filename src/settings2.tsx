@@ -130,7 +130,6 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         title="Distill · memory"
         running={!!distillSt?.running}
         summary={distillSt?.lines_distilled ? `${distillSt.lines_distilled} lines distilled` : dAuto ? `auto · every ${dInterval}s` : "manual only"}
-        defaultOpen
       >
         <DaemonCard
           name="Distill"
@@ -331,13 +330,15 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         <p className="mt-2 px-1 text-[11px] text-text-muted">View the distilled intents in Configuration → Intents. Uses the same provider/model as Distill.</p>
       </DaemonGroup>
 
-      <HeadlessLearnCard vaultPath={vaultPath} />
-
       {/* image #29: Memory & Context is what these routines PRODUCE, so it lives
           here as a peer collapsible group — not a divider-separated orphan page. */}
       <DaemonGroup icon={Brain} title="Memory & Context" summary="what the routines produce">
         <MemoryContextSection vaultPath={vaultPath} headerless />
       </DaemonGroup>
+
+      {/* "Keep working with the app closed" is always-expanded (a single toggle, not
+          collapsible), so it sits LAST - below the collapsible routine rows. */}
+      <HeadlessLearnCard vaultPath={vaultPath} />
     </>
   );
 }
