@@ -306,13 +306,16 @@ export function CouncilPanel({
   // G3: incognito for council. Reflects effective state (global master OR the
   // council flag); the toggle flips the council-specific flag. When the global
   // master is on it stays on and the per-surface toggle can't turn it off here.
+  // Incognito now lives in the shared Modes menu (DomainStatusBar surface="council"),
+  // matching chat. This panel only REFLECTS the state - a glow + ghost badge on the
+  // composer - and re-syncs when Modes toggles it.
   const [incognito, setIncognito] = useState(() => incognitoActive("council"));
   const globalIncognito = getPref(PREF.incognito, "0") === "1";
-  const toggleIncognito = () => setIncognito(() => {
-    const next = !(getPref(PREF.incognitoCouncil, "0") === "1");
-    setPref(PREF.incognitoCouncil, next ? "1" : "0");
-    return incognitoActive("council");
-  });
+  useEffect(() => {
+    const sync = () => setIncognito(incognitoActive("council"));
+    window.addEventListener("prevail:incognito-changed", sync);
+    return () => window.removeEventListener("prevail:incognito-changed", sync);
+  }, []);
   // I4: a Decision/Risks card from the domain home routes here with a seeded
   // question - drop it into the composer so the user just picks panelists and
   // convenes. Consumed once so it doesn't re-fire on re-render.
@@ -1062,30 +1065,20 @@ export function CouncilPanel({
 
       {/* Codex-style composer - textarea + panelist pills + chair pill */}
       <div className="shrink-0 px-6 pb-6 pt-2">
-        <div className="rounded-2xl border border-border bg-surface p-3 shadow-sm">
-          {/* G3: incognito for the council - a labelled pill (icon + word + ON/OFF,
-              filled when on) so the state is obvious, never color-alone. Disabled
-              (locked on) when the global master is on. */}
-          {/* One row (parity with chat): incognito + context pills on the left, the
+        {/* Incognito affordance (parity with chat): a ghost badge over the top-left
+            edge + an accent glow on the composer when incognito is on. Toggled from
+            the Modes menu above. */}
+        <div className="relative">
+        {(incognito || globalIncognito) && (
+          <span className="absolute -top-2 left-3 z-10 inline-flex items-center gap-1 rounded-full border border-accent-border bg-surface px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-accent shadow-sm">
+            <Ghost className="h-3 w-3" /> Incognito
+          </span>
+        )}
+        <div className={`rounded-2xl border bg-surface p-3 shadow-sm transition-shadow ${(incognito || globalIncognito) ? "border-accent ring-2 ring-accent/40 shadow-[0_0_24px_-4px] shadow-accent/40" : "border-border"}`}>
+          {/* One row (parity with chat): context pills on the left, the
               context-window meter on the right - so they share a line. */}
           <div className="mb-2 flex items-center justify-between gap-2 px-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-              {(() => {
-                const incogOn = incognito || globalIncognito;
-                return (
-                  <button
-                    onClick={toggleIncognito}
-                    disabled={globalIncognito}
-                    title={globalIncognito ? "Incognito ON globally (Settings : Privacy) - the council gets none of your context." : incognito ? "Incognito ON for the council - none of your context is sent. Click to turn off." : "Incognito OFF - click to convene a plain panel with NONE of your profile/ideal/memory."}
-                    aria-label="Toggle council incognito"
-                    aria-pressed={incogOn}
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider transition-colors disabled:cursor-not-allowed ${incogOn ? "border-ok bg-ok/15 text-ok" : "border-border bg-background text-text-muted hover:border-accent-border hover:text-text-secondary"}`}
-                  >
-                    <Ghost className="h-3.5 w-3.5" />
-                    Incognito {incogOn ? "on" : "off"}
-                  </button>
-                );
-              })()}
               {primedContext.map((c, i) => (
                 <span
                   key={c.label}
@@ -1326,7 +1319,7 @@ export function CouncilPanel({
 
           {/* Single inline toolbar: toggles · spacer · chair · chat · send */}
           <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border-subtle pt-2">
-            <DomainStatusBar domain={domain} fwLens={fwLens} />
+            <DomainStatusBar domain={domain} fwLens={fwLens} surface="council" />
             <div className="flex-1" />
 
             {/* Chair pill */}
@@ -1455,6 +1448,7 @@ export function CouncilPanel({
               </button>
             )}
           </div>
+        </div>
         </div>
       </div>
       </div>
