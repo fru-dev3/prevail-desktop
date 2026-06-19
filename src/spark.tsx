@@ -119,7 +119,10 @@ export function SparkPanel({ vaultPath, clis }: { vaultPath: string; clis: CliIn
         });
         const parsed = parseSpark(raw);
         if (!parsed.body) throw new Error("empty reply");
-        setSpark({ ...parsed, cli: cand.cli, model: cand.model, modelLabel: modelLabel(cand.cli, cand.model) || cand.label });
+        // Match the model-label formatting used everywhere else (Arena, council):
+        // strip the "(latest)" / parenthetical qualifier so it reads the same.
+        const cleanLabel = (modelLabel(cand.cli, cand.model) || cand.label).replace(/\s*\(.*?\)\s*/g, "").trim();
+        setSpark({ ...parsed, cli: cand.cli, model: cand.model, modelLabel: cleanLabel });
         setTried(attempted);
         setBusy(false);
         return;
