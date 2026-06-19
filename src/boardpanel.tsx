@@ -3,7 +3,7 @@
 // as workflows via the Loop steward; anything consequential surfaces in the
 // Decision Inbox. Reads tasks_read_all; moves via tasks_set_status/tasks_set_owner.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Check, Columns3, Inbox, List, Loader2, Play, Plus, Trash2, User } from "lucide-react";
+import { Bot, Check, Columns3, Filter, Inbox, LayoutGrid, List, Loader2, Play, Plus, Trash2, User } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
@@ -184,7 +184,13 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
     return (
       <div key={`${t.domain}:${t.id ?? t.text}`}
         draggable={!editing && !!t.id}
-        onDragStart={() => t.id && setDragId(t.id)}
+        onDragStart={(e) => {
+          if (!t.id) return;
+          setDragId(t.id);
+          // WKWebView (Tauri) only starts a drag if dataTransfer carries something.
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", t.id);
+        }}
         onDragEnd={() => { setDragId(null); setDragCol(null); }}
         className={`rounded-lg border bg-surface px-2.5 py-2 transition-opacity ${blocked ? "border-warn/40" : "border-border"} ${dragId === t.id ? "opacity-40" : ""} ${editing ? "" : "cursor-grab active:cursor-grabbing"}`}>
         <div className="flex items-start gap-1.5">
@@ -271,14 +277,19 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
       (a.due || "9999").localeCompare(b.due || "9999")),
     [shown],
   );
+  const [addErr, setAddErr] = useState<string | null>(null);
   const addTask = () => {
-    const text = addText.trim(); const domain = addDomain.trim();
-    if (!text || !domain) return;
+    const text = addText.trim();
+    const domain = (addDomain || addDomains[0] || "").trim();
+    setAddErr(null);
+    if (!text) { setAddErr("Type a task first."); return; }
+    if (!domain) { setAddErr("Create a domain first (no domain to add to)."); return; }
     const withDue = addDue ? `${text} @${addDue}` : text;
-    void act("add", async () => {
-      await invoke("tasks_add", { vault: vaultPath, domain, text: withDue, source: "user" });
-      setAddText(""); setAddDue("");
-    });
+    setBusy("add");
+    invoke("tasks_add", { vault: vaultPath, domain, text: withDue, source: "user" })
+      .then(() => { setAddText(""); setAddDue(""); reload(); window.dispatchEvent(new Event("prevail:tasks-changed")); })
+      .catch((e) => setAddErr(String(e)))
+      .finally(() => setBusy(null));
   };
 
   return (
@@ -305,56 +316,64 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
         </div>
       )}
 
-      {/* Controls: owner filter · domain filter · add */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex overflow-hidden rounded-md border border-border">
-          {(["all", "me", "ai"] as const).map((o) => (
-            <button key={o} onClick={() => setOwnerFilter(o)}
-              className={`px-3 py-1 text-xs font-medium capitalize transition-colors ${ownerFilter === o ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
-              {o === "all" ? "All" : o === "me" ? "Me" : "AI"}
+      {/* Controls: owner filter · domain filter · view · needs you · add */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        {/* Owner filter (icon + label segmented) */}
+        <div className="flex items-center overflow-hidden rounded-lg border border-border">
+          {([["all", "All", LayoutGrid], ["me", "Me", User], ["ai", "AI", Bot]] as const).map(([k, label, Icon]) => (
+            <button key={k} onClick={() => setOwnerFilter(k)}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 font-medium transition-colors ${ownerFilter === k ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
+              <Icon className="h-3.5 w-3.5" /> {label}
             </button>
           ))}
         </div>
-        <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)}
-          className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none">
-          <option value="all">All domains</option>
-          {domains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
-        </select>
-        <div className="flex overflow-hidden rounded-md border border-border">
+        {/* Domain filter (icon + native select) */}
+        <div className="flex items-center gap-1.5 rounded-lg border border-border bg-background pl-2.5 text-text-muted focus-within:border-accent-border">
+          <Filter className="h-3.5 w-3.5" />
+          <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)}
+            className="cursor-pointer appearance-none bg-transparent py-1.5 pr-2 text-text-secondary focus:outline-none">
+            <option value="all">All domains</option>
+            {domains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+          </select>
+        </div>
+        {/* View toggle (icons) */}
+        <div className="flex items-center overflow-hidden rounded-lg border border-border">
           <button onClick={() => setViewMode("board")} title="Board view"
-            className={`px-2 py-1 transition-colors ${view === "board" ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
+            className={`px-2.5 py-1.5 transition-colors ${view === "board" ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
             <Columns3 className="h-3.5 w-3.5" />
           </button>
           <button onClick={() => setViewMode("list")} title="List view"
-            className={`px-2 py-1 transition-colors ${view === "list" ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
+            className={`px-2.5 py-1.5 transition-colors ${view === "list" ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
             <List className="h-3.5 w-3.5" />
           </button>
         </div>
         {/* Needs you: the work that's waiting on your call (folds in the old Decisions page). */}
         <button onClick={() => setView("needs")} title="Work waiting on your decision"
-          className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors ${view === "needs" ? "border-accent-border bg-accent-soft text-accent" : decisionsCount > 0 ? "border-warn/40 text-warn hover:bg-surface-warm" : "border-border text-text-muted hover:bg-surface-warm"}`}>
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-colors ${view === "needs" ? "border-accent-border bg-accent-soft text-accent" : decisionsCount > 0 ? "border-warn/40 text-warn hover:bg-surface-warm" : "border-border text-text-muted hover:bg-surface-warm"}`}>
           <Inbox className="h-3.5 w-3.5" /> Needs you
           {decisionsCount > 0 && (
             <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[9px] font-bold text-background">{decisionsCount}</span>
           )}
         </button>
+        {/* Add task */}
         <div className="ml-auto flex items-center gap-1.5">
-          <input value={addText} onChange={(e) => setAddText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addTask(); }}
-            placeholder="Add a task…" className="w-48 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
+          <input value={addText} onChange={(e) => { setAddText(e.target.value); if (addErr) setAddErr(null); }} onKeyDown={(e) => { if (e.key === "Enter") addTask(); }}
+            placeholder="Add a task…" className="w-48 rounded-lg border border-border bg-background px-2.5 py-1.5 focus:border-accent-border focus:outline-none" />
           {addDomains.length > 0 && (
             <select value={addDomain} onChange={(e) => setAddDomain(e.target.value)} title="Domain"
-              className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none">
+              className="cursor-pointer rounded-lg border border-border bg-background px-2 py-1.5 text-text-secondary focus:border-accent-border focus:outline-none">
               {addDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
             </select>
           )}
-          <input type="date" value={addDue} onChange={(e) => setAddDue(e.target.value)} title="Due date"
-            className="rounded-md border border-border bg-background px-2 py-1 text-xs text-text-muted focus:border-accent-border focus:outline-none" />
-          <button onClick={addTask} disabled={!addText.trim() || busy === "add"}
-            className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-            <Plus className="h-3 w-3" /> Add
+          <input type="date" value={addDue} onChange={(e) => setAddDue(e.target.value)} title="Due date (optional)"
+            className="cursor-pointer rounded-lg border border-border bg-background px-2 py-1.5 text-text-muted focus:border-accent-border focus:outline-none" />
+          <button onClick={addTask} disabled={busy === "add"} title="Add task"
+            className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+            <Plus className="h-3.5 w-3.5" /> Add
           </button>
         </div>
       </div>
+      {addErr && <div className="mt-1.5 text-right text-[11px] text-danger">{addErr}</div>}
       </div>
 
       <div className="pt-4">
@@ -367,9 +386,9 @@ export function BoardPanel({ vaultPath }: { vaultPath: string }) {
             const over = dragCol === col.key && dragId;
             return (
               <section key={col.key}
-                onDragOver={(e) => { if (dragId) { e.preventDefault(); setDragCol(col.key); } }}
+                onDragOver={(e) => { if (dragId) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragCol(col.key); } }}
                 onDragLeave={() => setDragCol((c) => (c === col.key ? null : c))}
-                onDrop={() => onDrop(col.key)}
+                onDrop={(e) => { e.preventDefault(); onDrop(col.key); }}
                 className={`rounded-xl border p-2 transition-colors ${over ? "border-accent-border bg-accent-soft/40" : "border-border-subtle bg-surface/40"}`}>
                 <div className="mb-2 flex items-center gap-2 px-1 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
                   {col.label}<span className="text-text-muted/50">· {items.length}</span>
