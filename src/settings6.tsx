@@ -2,7 +2,7 @@
 // Council defaults, Configuration (groups the memory/tasks/ideal sub-sections),
 // and the Agents catalog (AgentCard + AgentsSection).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, Globe, ListChecks, Lock, LockOpen, Search, Server, ShieldCheck, ShieldOff, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, Globe, ListChecks, Loader2, Lock, LockOpen, Search, Server, ShieldCheck, ShieldOff, Wifi, WifiOff, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
@@ -364,6 +364,123 @@ function CouncilCircle({ members, chair, clis }: { members: string[]; chair: str
   );
 }
 
+// Live aggregate stats over the same council member set the ring draws. Every
+// number recomputes (useMemo) as models are added or removed, so the panel reads
+// as a running portrait of the council you are assembling: how big it is, how it
+// splits open-source vs cloud, how many distinct vendors sit at the table, local
+// vs remote, and a rough "what would it cost to run all of these at once" gauge.
+//
+// Classification is intentionally string-based (lowercase cli + model + label):
+// each member is open-source if it matches an OSS token, cloud if it matches a
+// cloud token, otherwise unknown. Local == the open-source / on-device set.
+const COUNCIL_OSS_TOKENS = ["ollama", "llama", "mistral", "qwen", "deepseek", "gemma", "phi", "mixtral", "mlx", "lmstudio"];
+const COUNCIL_CLOUD_TOKENS = ["claude", "anthropic", "gpt", "openai", "codex", "gemini", "google", "grok", "xai", "kimi"];
+
+// Relative "burn" weight per member. Cloud flagships are the heaviest (~3),
+// mid-tier cloud ~2, anything local ~1. No real cost metadata is exposed in this
+// codebase, so this is a deliberately rough, clearly-labelled estimate.
+function councilMemberWeight(hay: string, isOss: boolean): number {
+  if (isOss) return 1;
+  const flagship = ["opus", "gpt-5", "gpt5", "gemini-2.5-pro", "gemini-pro", "grok-4", "o3", "o1"];
+  if (flagship.some((t) => hay.includes(t))) return 3;
+  return 2; // mid cloud (sonnet, haiku, gpt-4o-mini, flash, etc.)
+}
+
+function CouncilStats({ members, clis }: { members: string[]; clis: CliInfo[] }) {
+  const stats = useMemo(() => {
+    const total = members.length;
+    // Build the lowercase haystack (cli + model + resolved label) per member.
+    const classify = members.map((key) => {
+      const [cli, model] = key.split("::");
+      const c = clis.find((x) => x.id === cli);
+      const m = councilModelsFor(cli).find((x) => x.id === model);
+      const label = `${c?.label ?? cli} ${m?.label ?? model ?? ""}`;
+      const hay = `${cli} ${model ?? ""} ${label}`.toLowerCase();
+      const isOss = COUNCIL_OSS_TOKENS.some((t) => hay.includes(t));
+      const isCloud = !isOss && COUNCIL_CLOUD_TOKENS.some((t) => hay.includes(t));
+      return { cli, hay, isOss, isCloud };
+    });
+    const oss = classify.filter((x) => x.isOss).length;
+    // Anything not matched as open-source is treated as cloud for the split so the
+    // two segments always sum to the panel size (unknown providers are remote).
+    const cloudish = total - oss;
+    const ossPct = total ? Math.round((oss / total) * 100) : 0;
+    const cloudPct = total ? 100 - ossPct : 0;
+    const vendors = Array.from(new Set(classify.map((x) => x.cli)));
+    const local = oss; // local == the open-source / on-device set
+    const remote = total - local;
+    const burn = classify.reduce((sum, x) => sum + councilMemberWeight(x.hay, x.isOss), 0);
+    const maxBurn = total * 3 || 1; // all-flagship-cloud ceiling
+    const burnPct = Math.round((burn / maxBurn) * 100);
+    const burnTier = burnPct >= 67 ? "$$$" : burnPct >= 34 ? "$$" : "$";
+    return { total, oss, cloud: cloudish, ossPct, cloudPct, vendors, local, remote, burn, burnPct, burnTier };
+  }, [members, clis]);
+
+  if (stats.total === 0) {
+    return (
+      <div className="flex h-full min-h-[180px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface p-4 text-center">
+        <ListChecks className="h-6 w-6 text-text-muted" />
+        <div className="mt-2 text-sm text-text-secondary">No stats yet</div>
+        <div className="text-xs text-text-muted">Seat some models to see the panel breakdown.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col gap-3 rounded-xl border border-border bg-surface p-4">
+      <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Panel stats</div>
+
+      {/* Number cards: panel size + providers. */}
+      <div className="grid grid-cols-2 gap-2.5">
+        <div className="rounded-lg border border-border-subtle bg-background p-3">
+          <div className="font-display text-2xl font-bold leading-none text-text-primary">{stats.total}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">Panel size</div>
+        </div>
+        <div className="rounded-lg border border-border-subtle bg-background p-3">
+          <div className="font-display text-2xl font-bold leading-none text-text-primary">{stats.vendors.length}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">Provider{stats.vendors.length === 1 ? "" : "s"}</div>
+        </div>
+      </div>
+
+      {/* Open-source vs cloud split + two-segment bar. */}
+      <div className="rounded-lg border border-border-subtle bg-background p-3">
+        <div className="flex items-center justify-between text-xs">
+          <span className="inline-flex items-center gap-1.5 text-text-secondary"><Cpu className="h-3.5 w-3.5 text-ok" /> {stats.ossPct}% open <span className="text-text-muted">({stats.oss})</span></span>
+          <span className="inline-flex items-center gap-1.5 text-text-secondary"><Cloud className="h-3.5 w-3.5 text-accent" /> {stats.cloudPct}% cloud <span className="text-text-muted">({stats.cloud})</span></span>
+        </div>
+        <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-surface-warm">
+          <div className="h-full bg-ok" style={{ width: `${stats.ossPct}%` }} />
+          <div className="h-full bg-accent" style={{ width: `${stats.cloudPct}%` }} />
+        </div>
+      </div>
+
+      {/* Local vs remote split (local = the open-source / on-device set). */}
+      <div className="rounded-lg border border-border-subtle bg-background p-3">
+        <div className="flex items-center justify-between text-xs">
+          <span className="inline-flex items-center gap-1.5 text-text-secondary"><Server className="h-3.5 w-3.5 text-text-muted" /> {stats.local} local</span>
+          <span className="inline-flex items-center gap-1.5 text-text-secondary"><Globe className="h-3.5 w-3.5 text-text-muted" /> {stats.remote} remote</span>
+        </div>
+        <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-surface-warm">
+          <div className="h-full bg-ok" style={{ width: `${stats.total ? (stats.local / stats.total) * 100 : 0}%` }} />
+          <div className="h-full bg-text-muted/60" style={{ width: `${stats.total ? (stats.remote / stats.total) * 100 : 0}%` }} />
+        </div>
+      </div>
+
+      {/* Estimated relative burn / cost if every model ran at once. */}
+      <div className="mt-auto rounded-lg border border-border-subtle bg-background p-3">
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Est. burn if all run</span>
+          <span className="font-display text-sm font-bold text-accent">{stats.burnTier}</span>
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-warm">
+          <div className="h-full bg-accent" style={{ width: `${stats.burnPct}%` }} />
+        </div>
+        <div className="mt-1.5 text-[10px] text-text-muted">Estimated. Relative weight only, not a real price.</div>
+      </div>
+    </div>
+  );
+}
+
 export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   const available = useMemo(() => clis.filter((c) => c.available && (!isBunkerOn() || isLocalCli(c.id))), [clis]);
   const [members, setMembers] = useState<Set<string>>(() => new Set(readCouncilMembers()));
@@ -417,8 +534,14 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
       <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-surface-warm px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
         <Check className="h-3 w-3 text-ok" /> Changes save automatically
       </div>
-      {/* Visual round table - who's seated and who chairs, at a glance. */}
-      <CouncilCircle members={[...members]} chair={chair} clis={clis} />
+      {/* Visual round table on the left, live aggregate stats on the right.
+          Stacks on narrow widths; side-by-side from lg up. */}
+      <div className="mb-5 grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
+        <div className="flex justify-center lg:justify-start">
+          <CouncilCircle members={[...members]} chair={chair} clis={clis} />
+        </div>
+        <CouncilStats members={[...members]} clis={clis} />
+      </div>
       {/* Compact summary bar - what the panel is right now. */}
       <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-accent-border bg-accent-soft px-4 py-3 text-sm">
         <span className="font-semibold text-text-primary">{members.size} model{members.size === 1 ? "" : "s"} on the panel</span>
@@ -624,7 +747,7 @@ export function AgentCard({
       {/* Single-line runtime row, Multica-style columns: Runtime · Health · Cost
           · Version · action. Column widths mirror the header strip in AgentsSection. */}
       <div className="flex items-center gap-3 px-4 py-3">
-        <ProviderMark vendor={cli.id} size={30} />
+        <ProviderMark vendor={cli.id} size={40} />
         {/* Runtime identity (click to expand the model list). */}
         <button
           onClick={() => cli.available && setOpen((v) => !v)}
@@ -642,21 +765,24 @@ export function AgentCard({
           )}
           <span className="truncate font-mono text-[10px] text-text-muted/60">{brand.name}</span>
         </button>
-        {/* Health column. */}
+        {/* Health column. Color-coded so valid/not-installed read at a glance:
+            green for valid, amber for checking/not-valid, neutral muted for
+            not-installed. */}
         <div className="flex w-[124px] shrink-0 flex-col items-start gap-0.5">
           {(() => {
             const v = cli.available ? cliVerifyLive.get(cli.id) : undefined;
             const chip = !cli.available
-              ? { cls: "border-border bg-background text-text-muted", label: "Not installed" }
+              ? { cls: "border-border bg-surface-warm text-text-muted", label: "Not installed", Icon: null, spin: false }
               : v?.status === "ok"
-                ? { cls: "border-accent-border bg-accent-soft text-accent", label: "✓ Valid" }
+                ? { cls: "border-ok/40 bg-ok/10 text-ok", label: "Valid", Icon: Check, spin: false }
                 : v?.status === "failed"
-                  ? { cls: "border-warn/40 bg-warn/10 text-warn", label: "✗ Not valid" }
+                  ? { cls: "border-danger/40 bg-danger/10 text-danger", label: "Not valid", Icon: X, spin: false }
                   : v?.status === "verifying"
-                    ? { cls: "border-border bg-background text-text-muted animate-pulse", label: "◐ Checking" }
-                    : { cls: "border-border bg-background text-text-muted", label: "Detected" };
+                    ? { cls: "border-warn/40 bg-warn/10 text-warn", label: "Checking", Icon: Loader2, spin: true }
+                    : { cls: "border-border bg-background text-text-muted", label: "Detected", Icon: null, spin: false };
             return (
-              <span className={`rounded-full border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ${chip.cls}`}>
+              <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ${chip.cls}`}>
+                {chip.Icon && <chip.Icon className={`h-2.5 w-2.5 ${chip.spin ? "animate-spin" : ""}`} strokeWidth={3} />}
                 {chip.label}
               </span>
             );
@@ -857,15 +983,25 @@ export function AgentsSection({
   onMakeDefault?: (cliId: string) => void;
   vaultPath?: string;
 }) {
-  // Two distinct kinds of runtime, shown as SEPARATE groups: primary vendor CLIs
-  // (Claude Code, Codex, Gemini, Antigravity, …) and harnesses that wrap a base
-  // protocol (Pi, OpenCode, Hermes, OpenClaw, Paperclip, Motorcar). Within each,
-  // installed runtimes sort first; not-installed show a "Set up" link. Both groups
-  // open by default so every supported runtime is visible to set up.
+  // Runtimes shown as SEPARATE collapsible groups: hosted vendor CLIs (Cloud
+  // models: Claude Code, Codex, Gemini, Antigravity, ...), on-device runtimes
+  // (Local models: Ollama, LM Studio, MLX, LocalAI, llama.cpp), and harnesses
+  // that wrap a base protocol (Pi, OpenCode, Hermes, OpenClaw, Paperclip,
+  // Motorcar). Within each, installed runtimes sort first; not-installed show a
+  // "Set up" link. All groups open by default so every supported runtime is
+  // visible to set up.
   const sortReady = (a: CliInfo, b: CliInfo) => Number(b.available) - Number(a.available) || a.label.localeCompare(b.label);
   const cliRuntimes = clis.filter((c) => !isHarnessRuntime(c.id)).sort(sortReady);
   const harnesses = clis.filter((c) => isHarnessRuntime(c.id)).sort(sortReady);
-  const [showClis, setShowClis] = useState(true);
+  // Split the vendor CLIs into on-device (local) vs hosted (cloud) so the user
+  // can configure local-only models in one place. Match local runtimes by id,
+  // case-insensitively, covering the common naming variants.
+  const LOCAL_RUNTIME_IDS = new Set(["ollama", "omlx", "mlx", "lmstudio", "lm-studio", "localai", "llamacpp"]);
+  const isLocalRuntime = (id: string) => LOCAL_RUNTIME_IDS.has(id.toLowerCase());
+  const localClis = cliRuntimes.filter((c) => isLocalRuntime(c.id));
+  const cloudClis = cliRuntimes.filter((c) => !isLocalRuntime(c.id));
+  const [showCloud, setShowCloud] = useState(true);
+  const [showLocal, setShowLocal] = useState(true);
   const [showHarnesses, setShowHarnesses] = useState(true);
   // Per-runtime spend (cumulative), from the local usage ledger. Multica-style
   // Cost column; "—" when nothing has been spent / no vault.
@@ -892,8 +1028,9 @@ export function AgentsSection({
         />
       )}
       {[
-        { key: "cli", label: "CLIs", hint: "Primary vendor coding-agent CLIs — offered on the chat composer.", list: cliRuntimes, open: showClis, toggle: () => setShowClis((v) => !v) },
-        { key: "harness", label: "Harnesses", hint: "Agent harnesses that wrap a base protocol. Set up here; not shown on the homepage composer.", list: harnesses, open: showHarnesses, toggle: () => setShowHarnesses((v) => !v) },
+        { key: "cloud", label: "Cloud models", hint: "Hosted vendor coding-agent CLIs (Claude, Codex, Gemini, Antigravity, ...) offered on the chat composer.", list: cloudClis, open: showCloud, toggle: () => setShowCloud((v) => !v), chattable: true },
+        { key: "local", label: "Local models", hint: "On-device runtimes (Ollama, LM Studio, MLX, LocalAI, llama.cpp) that run models on your machine.", list: localClis, open: showLocal, toggle: () => setShowLocal((v) => !v), chattable: true },
+        { key: "harness", label: "Harnesses", hint: "Agent harnesses that wrap a base protocol. Set up here; not shown on the homepage composer.", list: harnesses, open: showHarnesses, toggle: () => setShowHarnesses((v) => !v), chattable: false },
       ].filter((g) => g.list.length > 0).map((g) => {
         const ready = g.list.filter((c) => c.available).length;
         return (
@@ -922,7 +1059,7 @@ export function AgentsSection({
                     isDefault={defaultChatCli === c.id}
                     onMakeDefault={onMakeDefault ? () => onMakeDefault(c.id) : undefined}
                     cost={costByCli[c.id]}
-                    chattable={g.key === "cli"}
+                    chattable={g.chattable}
                   />
                 ))}
               </div>

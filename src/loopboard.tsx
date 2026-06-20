@@ -3,7 +3,7 @@
 // running / scheduled next, run one now, toggle it, or jump into its domain to
 // edit. Loops are also editable per-domain (the Loops tab); this is the bird's-eye.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownAZ, CalendarClock, Check, ChevronDown, Infinity as InfinityIcon, Layers, Loader2, Mail, Play, RefreshCw, Repeat, Search } from "lucide-react";
+import { Archive, ArrowDownAZ, CalendarClock, Check, ChevronDown, Infinity as InfinityIcon, Layers, Loader2, Mail, Pencil, Play, RefreshCw, Repeat, Search, Trash2 } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
@@ -32,6 +32,11 @@ export function LoopBoard({ vaultPath }: { vaultPath: string }) {
     else { setSort(k); setSortDir("asc"); }
   };
   const [running, setRunning] = useState<string | null>(null);
+  // Click a row to expand its detail (full meta + edit/archive/delete), so the
+  // collapsed rows can stay minimal. `confirmId` gates the destructive delete.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [acting, setActing] = useState<string | null>(null);
   // Domain filter popover (scales to any number of domains: searchable + scrollable).
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterQuery, setFilterQuery] = useState("");
@@ -93,6 +98,20 @@ export function LoopBoard({ vaultPath }: { vaultPath: string }) {
     () => rows.filter((r) => domainFilter === "all" || r.domain === domainFilter).slice().sort(sortRows),
     [rows, domainFilter, sortRows],
   );
+  // When grouped, the chosen sort must apply WITHIN each domain group AND order
+  // the groups themselves, so toggling asc/desc reorders coherently instead of
+  // looking like one flat list got re-sorted. Group order follows the active
+  // sort: by soonest next-run for "schedule", else by domain name — both honoring
+  // the direction. (Items within a group already come from the sorted `shown`.)
+  const orderedDomains = useMemo(() => {
+    const ds = domains.filter((d) => shown.some((r) => r.domain === d));
+    const soonest = (d: string) => Math.min(...shown.filter((r) => r.domain === d).map(nextRunMs));
+    ds.sort((a, b) => {
+      const base = sort === "schedule" ? (soonest(a) - soonest(b) || a.localeCompare(b)) : a.localeCompare(b);
+      return sortDir === "asc" ? base : -base;
+    });
+    return ds;
+  }, [domains, shown, sort, sortDir, nextRunMs]);
 
   // A loop reads as "running" if a live loop process names it (domain + loop name).
   const isRunning = (r: Row) => procs.some((p) => p.kind === "loop" && (p.domain ?? "") === r.domain && p.label.includes(r.loop.name));
@@ -101,6 +120,29 @@ export function LoopBoard({ vaultPath }: { vaultPath: string }) {
     const doc = ensureBriefingLoop(await readLoops(r.domainPath), r.domain).doc;
     await writeLoops(r.domainPath, { ...doc, loops: doc.loops.map((l) => (l.id === r.loop.id ? { ...l, enabled: on } : l)) });
     load();
+  };
+
+  // Archive = set the loop's status to "done" (drops out of the active set but is
+  // preserved). Delete = remove it from its domain's loops doc entirely.
+  const archiveLoop = async (r: Row) => {
+    setActing(`${r.domain}:${r.loop.id}`);
+    try {
+      const doc = ensureBriefingLoop(await readLoops(r.domainPath), r.domain).doc;
+      await writeLoops(r.domainPath, { ...doc, loops: doc.loops.map((l) => (l.id === r.loop.id ? { ...l, status: "done" as const, enabled: false } : l)) });
+      setExpandedId(null);
+      load();
+    } catch (e) { console.error("archive loop", e); }
+    finally { setActing(null); }
+  };
+  const deleteLoop = async (r: Row) => {
+    setActing(`${r.domain}:${r.loop.id}`);
+    try {
+      const doc = ensureBriefingLoop(await readLoops(r.domainPath), r.domain).doc;
+      await writeLoops(r.domainPath, { ...doc, loops: doc.loops.filter((l) => l.id !== r.loop.id) });
+      setConfirmId(null); setExpandedId(null);
+      load();
+    } catch (e) { console.error("delete loop", e); }
+    finally { setActing(null); }
   };
 
   const runNow = async (r: Row) => {
@@ -125,33 +167,80 @@ export function LoopBoard({ vaultPath }: { vaultPath: string }) {
 
   const activeCount = rows.filter((r) => r.loop.enabled && r.loop.status === "active").length;
 
-  // One loop row, shared by the grouped + flat layouts. showDomain adds the domain
-  // chip (flat mode, where rows aren't already grouped under a domain header).
+  // One loop row, shared by the grouped + flat layouts. Collapsed rows stay
+  // deliberately sparse (name + a quiet next-run + run + toggle); the cadence,
+  // autonomy, status, last-run, and the Edit/Archive/Delete actions live in the
+  // click-to-expand detail so the board reads cleanly instead of as a text wall.
   const renderRow = (r: Row, showDomain: boolean) => {
+    const id = `${r.domain}:${r.loop.id}`;
     const run = isRunning(r);
     const nr = nextRunMs(r);
-    const nextLabel = nr === 0 ? "due now" : nr === Infinity ? "" : `~${new Date(nr).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
-    const busy = running === `${r.domain}:${r.loop.id}`;
+    const nextLabel = nr === 0 ? "due now" : nr === Infinity ? "" : new Date(nr).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const busy = running === id;
+    const isExpanded = expandedId === id;
+    const isActing = acting === id;
     const dot = r.loop.status === "done" ? "#9aa0a6" : r.loop.status === "paused" ? "#d9a441" : "#0d7a6e";
+    const lastRun = r.rt?.history?.[r.rt.history.length - 1];
     return (
-      <div key={`${r.domain}:${r.loop.id}`} className={`group flex items-center gap-3 px-3 py-2 transition-colors hover:bg-surface-warm/60 ${r.loop.enabled ? "" : "opacity-55"}`}>
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: dot }} title={r.loop.status} />
-        <button onClick={() => openInDomain(r)} className="flex min-w-0 flex-1 items-center gap-2 text-left" title="Open in its domain to edit">
-          <span className="truncate text-[13px] font-medium text-text-primary">{r.loop.name}</span>
-          {r.loop.kind === "briefing"
-            ? <Mail className="h-3 w-3 shrink-0 text-accent" />
-            : r.loop.type === "open" && <InfinityIcon className="h-3 w-3 shrink-0 text-text-muted/50" />}
-          {run && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-accent" />}
-        </button>
-        {showDomain && <span className="hidden shrink-0 rounded-full bg-surface-warm px-1.5 py-px font-mono text-[10px] text-text-secondary sm:inline">{titleCase(r.domain)}</span>}
-        <span className="hidden shrink-0 font-mono text-[10px] text-text-muted sm:inline">{CADENCE_LABEL[r.loop.cadence]}</span>
-        {r.loop.kind !== "briefing" && <span className="hidden shrink-0 font-mono text-[10px] text-text-muted/70 md:inline">{AUTONOMY_LABEL[r.loop.autonomy ?? "ask"]}</span>}
-        <span className={`hidden w-20 shrink-0 text-right font-mono text-[10px] lg:inline ${nextLabel === "due now" ? "text-accent" : "text-text-muted"}`}>{nextLabel}</span>
-        <button onClick={() => runNow(r)} disabled={busy || run} title="Run this loop now"
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
-          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />} Run
-        </button>
-        <Toggle on={r.loop.enabled} onChange={(v) => toggleEnabled(r, v)} label={`${r.loop.name} enabled`} />
+      <div key={id} className={r.loop.enabled ? "" : "opacity-55"}>
+        <div className={`group flex items-center gap-3 px-3 py-2 transition-colors hover:bg-surface-warm/60 ${isExpanded ? "bg-surface-warm/60" : ""}`}>
+          <button onClick={() => setExpandedId(isExpanded ? null : id)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left" title="Show details">
+            <ChevronDown className={`h-3 w-3 shrink-0 text-text-muted/50 transition-transform ${isExpanded ? "" : "-rotate-90"}`} />
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: dot }} title={r.loop.status} />
+            <span className="truncate text-[13px] font-medium text-text-primary">{r.loop.name}</span>
+            {r.loop.kind === "briefing"
+              ? <Mail className="h-3 w-3 shrink-0 text-accent" />
+              : r.loop.type === "open" && <InfinityIcon className="h-3 w-3 shrink-0 text-text-muted/40" />}
+            {run && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-accent" />}
+          </button>
+          {showDomain && <span className="hidden shrink-0 text-[11px] text-text-muted sm:inline">{titleCase(r.domain)}</span>}
+          {nextLabel && <span className={`hidden w-14 shrink-0 text-right text-[11px] lg:inline ${nextLabel === "due now" ? "text-accent" : "text-text-muted/70"}`}>{nextLabel}</span>}
+          <button onClick={() => runNow(r)} disabled={busy || run} title="Run now"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent disabled:opacity-50">
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+          </button>
+          <Toggle on={r.loop.enabled} onChange={(v) => toggleEnabled(r, v)} label={`${r.loop.name} enabled`} />
+        </div>
+        {isExpanded && (
+          <div className="border-t border-border-subtle bg-surface-warm/20 px-3 py-3 pl-8">
+            <div className="mb-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-muted">
+              <span className="text-text-secondary">{titleCase(r.domain)}</span>
+              <span>· {CADENCE_LABEL[r.loop.cadence]}</span>
+              {r.loop.kind !== "briefing" && <span>· {AUTONOMY_LABEL[r.loop.autonomy ?? "ask"]}</span>}
+              <span>· {r.loop.status}</span>
+              {nextLabel && <span>· next {nextLabel}</span>}
+              {lastRun && <span>· last run {new Date(lastRun.ts).toLocaleDateString()}</span>}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => runNow(r)} disabled={busy || run}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+                {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />} Run now
+              </button>
+              <button onClick={() => openInDomain(r)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
+                <Pencil className="h-3 w-3" /> Edit in domain
+              </button>
+              <button onClick={() => archiveLoop(r)} disabled={isActing || r.loop.status === "done"}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+                <Archive className="h-3 w-3" /> {r.loop.status === "done" ? "Archived" : "Archive"}
+              </button>
+              {confirmId === id ? (
+                <span className="inline-flex items-center gap-2">
+                  <button onClick={() => deleteLoop(r)} disabled={isActing}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-danger/50 bg-danger/10 px-2.5 py-1 text-[11px] text-danger hover:bg-danger/20 disabled:opacity-50">
+                    {isActing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Confirm delete
+                  </button>
+                  <button onClick={() => setConfirmId(null)} className="text-[11px] text-text-muted hover:text-text-secondary">cancel</button>
+                </span>
+              ) : (
+                <button onClick={() => setConfirmId(id)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-muted hover:border-danger hover:text-danger">
+                  <Trash2 className="h-3 w-3" /> Delete
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -202,9 +291,9 @@ export function LoopBoard({ vaultPath }: { vaultPath: string }) {
             </button>
           ))}
         </div>
-        <button onClick={() => setGrouped((g) => !g)} title="Group loops by domain"
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 font-medium transition-colors ${grouped ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-secondary hover:bg-surface-warm"}`}>
-          <Layers className="h-3.5 w-3.5" /> Group by domain
+        <button onClick={() => setGrouped((g) => !g)} aria-pressed={grouped} title={grouped ? "Grouped by domain - click to ungroup" : "Group loops by domain"}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 font-medium transition-colors ${grouped ? "border-accent bg-accent text-background shadow-sm" : "border-border bg-background text-text-secondary hover:bg-surface-warm"}`}>
+          {grouped ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <Layers className="h-3.5 w-3.5" />} Group by domain
         </button>
         <span className="font-mono text-[11px] text-text-muted">{shown.length} loop{shown.length === 1 ? "" : "s"} · {activeCount} active</span>
         <button onClick={load} disabled={loading} title="Refresh"
@@ -220,7 +309,7 @@ export function LoopBoard({ vaultPath }: { vaultPath: string }) {
       ) : grouped ? (
         // Grouped by domain: a domain header + count, then a tight divided list.
         <div className="flex flex-col gap-5">
-          {domains.filter((d) => shown.some((r) => r.domain === d)).map((d) => {
+          {orderedDomains.map((d) => {
             const items = shown.filter((r) => r.domain === d);
             return (
               <section key={d}>

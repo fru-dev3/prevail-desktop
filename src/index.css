@@ -303,6 +303,15 @@
 }
 .thinking-dot { animation: thinking-bounce 1.1s ease-in-out infinite both; }
 
+/* Indeterminate "working" sweep — a short bar that slides across a track to
+   signal active work whose duration is unknown (e.g. an app sync). Used on the
+   sync row so a click reads as "something is happening", not a frozen button. */
+@keyframes sync-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(450%); }
+}
+.sync-sweep { animation: sync-sweep 1.05s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+
 /* ═════════════════════════════════════════════════════════════════════
    MARKDOWN PROSE — chat replies, council verdict, domain docs.
    `prose-prevail` was referenced in markup but never defined, so Tailwind's

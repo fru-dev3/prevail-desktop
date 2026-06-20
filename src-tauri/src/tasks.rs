@@ -66,7 +66,10 @@ fn mint_id(salt: usize) -> String {
     s[take..].to_string()
 }
 
-const VALID_STATUS: &[&str] = &["todo", "doing", "review", "blocked", "done"];
+// "icebox" = a set-aside state: a task the user won't do but doesn't want marked
+// done. It is preserved + recoverable but kept OUT of the active board columns
+// and out of the open work count (see work_count + the board UI).
+const VALID_STATUS: &[&str] = &["todo", "doing", "review", "blocked", "done", "icebox"];
 
 #[derive(Default)]
 struct Meta {
@@ -367,22 +370,27 @@ pub fn work_count(vault: String, today: String) -> Result<serde_json::Value, Str
     let mut open: u32 = 0;
     let mut overdue: u32 = 0;
     let mut due_today: u32 = 0;
-    for (_name, dir) in crate::paths::enumerate_domain_dirs(std::path::Path::new(&vault)) {
-        let md = match crate::read_to_string_retry(dir.join("_tasks.md")) {
-            Ok(s) => s,
+    // Count EXACTLY what the Work Board shows: top-level tasks (parse_tasks, which
+    // ignores indented subtasks) over the SAME domain set the board enumerates
+    // (list_domain_names). The old version counted every indented checkbox across a
+    // different enumeration, so the badge (e.g. 107) never matched the board.
+    // "open" = not done (todo/doing/review/blocked); done + icebox are excluded.
+    for name in crate::vault::list_domain_names(&vault) {
+        let tasks = match tasks_read(vault.clone(), name) {
+            Ok(t) => t,
             Err(_) => continue,
         };
-        for line in md.lines() {
-            if !line.trim_start().starts_with("- [ ]") {
-                continue; // open (unchecked) tasks only
+        for t in &tasks {
+            if t.done || effective_status(t) == "done" || effective_status(t) == "icebox" {
+                continue;
             }
             open += 1;
-            if let Some(at) = line.find('@') {
-                let date: String = line[at + 1..].chars().take(10).collect();
-                if date.len() == 10 && date.as_bytes()[4] == b'-' {
-                    if date.as_str() < today.as_str() {
+            if let Some(due) = t.due.as_deref() {
+                if due.len() >= 10 && due.as_bytes().get(4) == Some(&b'-') {
+                    let d = &due[..10];
+                    if d < today.as_str() {
                         overdue += 1;
-                    } else if date == today {
+                    } else if d == today {
                         due_today += 1;
                     }
                 }

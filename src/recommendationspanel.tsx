@@ -3,7 +3,7 @@
 // per domain, apps to connect. Each is one-click. Computed fresh from your vault
 // signals (intents, benchmark, apps), so it stays current as you use the app.
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, BarChart3, Bookmark, Check, ChevronRight, Compass, Gauge, Lightbulb, Loader2, Plug, RotateCw, Sparkles, X } from "lucide-react";
+import { ArrowRight, BarChart3, Bookmark, Check, ChevronRight, Clock, Compass, Gauge, Lightbulb, Loader2, Plug, RotateCw, Sparkles, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { relTime, titleCase } from "./format";
 import { modelLabel } from "./helpers2";
@@ -11,7 +11,34 @@ import { distillCfgFromPrefs } from "./daemoncfg";
 import { lsGet, lsSet } from "./storage";
 import { SettingsHeader } from "./sectionutil";
 
-type DistillStatus = { running: boolean; last_run_ts?: number | null };
+type DistillStatus = { running: boolean; last_run_ts?: number | null; interval_sec?: number | null };
+
+// Compact cadence label, e.g. 900 -> "15m", 3600 -> "1h", 90 -> "90s". Used for
+// the "runs every Nm" line when the daemon has not learned anything yet.
+function cadenceLabel(sec: number): string {
+  if (sec < 60) return `${Math.round(sec)}s`;
+  if (sec < 3600) return `${Math.round(sec / 60)}m`;
+  const h = sec / 3600;
+  return Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`;
+}
+
+// Humanize the gap to the next learning pass. Overdue -> "any moment now";
+// within ~30s -> "soon"; far out (> ~6h) -> an absolute clock time so a big
+// number doesn't read awkwardly; otherwise a relative "~Ns/Nm/Nh".
+function nextRunLabel(nextMs: number, nowMs: number): string {
+  const diff = nextMs - nowMs;
+  if (diff <= 0) return "next learn any moment now";
+  const secs = diff / 1000;
+  if (secs <= 30) return "next learn soon";
+  if (secs > 6 * 3600) {
+    const t = new Date(nextMs).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    return `next learn ~${t}`;
+  }
+  if (secs < 90) return `next learn in ~${Math.round(secs)}s`;
+  if (secs < 3600) return `next learn in ~${Math.round(secs / 60)}m`;
+  const h = secs / 3600;
+  return `next learn in ~${h < 2 ? h.toFixed(1) : Math.round(h)}h`;
+}
 
 type Rec = {
   id: string;
@@ -162,21 +189,45 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
         subtitle="What Prevail suggests next, learned from how you actually use it: domains worth creating, the model that scores best per domain, and apps that would keep a domain fresh. Updated continuously."
       />
       {/* Daemon status + force-run. Minimal: a status line and one icon button. */}
-      <div className="mb-4 flex items-center gap-2 text-[11px] text-text-muted">
-        <span className={`h-1.5 w-1.5 rounded-full ${daemon?.running || running ? "bg-accent" : "bg-text-muted/40"}`} />
-        <span>
-          {running || daemon?.running ? "learning now" : daemon?.last_run_ts ? `last learned ${relTime(daemon.last_run_ts * 1000)}` : "not run yet"}
-        </span>
-        <button
-          onClick={runNow}
-          disabled={running || daemon?.running}
-          title="Run now: force the learning pass and refresh recommendations"
-          aria-label="Run recommendations now"
-          className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent disabled:opacity-40"
-        >
-          {running || daemon?.running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
-        </button>
-      </div>
+      {(() => {
+        const isLearning = running || !!daemon?.running;
+        const interval = daemon?.interval_sec || 0;
+        // While learning we don't predict a next run; otherwise show when the
+        // next pass is due (from last_run_ts + interval), or the bare cadence if
+        // nothing has been learned yet so the user still knows the rhythm.
+        let nextLabel: string | null = null;
+        if (!isLearning && interval > 0) {
+          if (daemon?.last_run_ts) {
+            nextLabel = nextRunLabel((daemon.last_run_ts + interval) * 1000, Date.now());
+          } else {
+            nextLabel = `runs every ${cadenceLabel(interval)}`;
+          }
+        }
+        return (
+          <div className="mb-4 flex items-center gap-2 text-[11px] text-text-muted">
+            <span className={`h-1.5 w-1.5 rounded-full ${isLearning ? "bg-accent" : "bg-text-muted/40"}`} />
+            <span>
+              {isLearning ? "learning now" : daemon?.last_run_ts ? `last learned ${relTime(daemon.last_run_ts * 1000)}` : "not run yet"}
+            </span>
+            {nextLabel && (
+              <span className="inline-flex items-center gap-1 text-text-muted/70" title="When the learning daemon runs next">
+                <span className="text-text-muted/40">·</span>
+                <Clock className="h-3 w-3" />
+                {nextLabel}
+              </span>
+            )}
+            <button
+              onClick={runNow}
+              disabled={running || daemon?.running}
+              title="Run now: force the learning pass and refresh recommendations"
+              aria-label="Run recommendations now"
+              className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent disabled:opacity-40"
+            >
+              {running || daemon?.running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+        );
+      })()}
       {recs === null ? (
         <div className="text-sm text-text-muted">loading recommendations…</div>
       ) : recs.length === 0 ? (

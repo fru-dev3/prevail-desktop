@@ -246,6 +246,55 @@ pub(crate) fn read_skill(path: String) -> Result<String, String> {
     Err(format!("no SKILL.md/README.md/skill.md in {}", dir.display()))
 }
 
+// Append one generated spark to the on-disk archive at <vault>/_sparks.jsonl.
+// JSONL + append-only, so the full history is preserved permanently WITHOUT ever
+// being loaded into the app's working context (the user browses it on demand).
+// Each record carries the spark text, its generated-at timestamp (ms + ISO), the
+// model that produced it, and the generation config (field, register, batch,
+// seed). Best-effort: any failure is returned and the caller ignores it, because
+// archiving must never block or break spark generation.
+#[tauri::command]
+pub(crate) fn spark_archive_append(vault: String, record: serde_json::Value) -> Result<(), String> {
+    use std::io::Write;
+    let root = PathBuf::from(&vault);
+    if !root.exists() {
+        return Err(format!("vault not found: {vault}"));
+    }
+    let path = root.join("_sparks.jsonl");
+    let mut line =
+        serde_json::to_string(&record).map_err(|e| format!("serialize spark failed: {e}"))?;
+    line.push('\n');
+    let mut f = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("open spark archive failed: {e}"))?;
+    f.write_all(line.as_bytes())
+        .map_err(|e| format!("append spark failed: {e}"))?;
+    Ok(())
+}
+
+// Read recent sparks back from the archive (newest first), capped so browsing the
+// history never floods memory. Returns the parsed JSONL records; malformed lines
+// are skipped rather than failing the whole read.
+#[tauri::command]
+pub(crate) fn spark_archive_read(vault: String, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
+    let path = PathBuf::from(&vault).join("_sparks.jsonl");
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let body = read_to_string_retry(&path).map_err(|e| e.to_string())?;
+    let cap = limit.unwrap_or(200);
+    let mut out: Vec<serde_json::Value> = body
+        .lines()
+        .rev()
+        .filter_map(|l| serde_json::from_str(l.trim()).ok())
+        .take(cap)
+        .collect();
+    out.shrink_to_fit();
+    Ok(out)
+}
+
 // CLI model verification (VerifyArgs, verify_cli_model) lives in chat.rs.
 
 
