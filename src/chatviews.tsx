@@ -67,7 +67,7 @@ export function ChatBubble({
           {stamp && <span>· {stamp}</span>}
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-soft text-accent"><User className="h-3 w-3" /></span>
         </div>
-        <div className="max-w-[78%] rounded-2xl rounded-br-md border border-accent-border bg-accent px-4 py-3 text-[15px] leading-relaxed text-white shadow-sm">
+        <div className="max-w-[78%] rounded-2xl rounded-br-md border border-accent-border bg-surface-strong px-4 py-3 text-[15px] leading-relaxed text-white shadow-sm">
           <div className="whitespace-pre-wrap">{renderSkillTokens(msg.content)}</div>
         </div>
         <div className="mt-1 flex h-5 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
