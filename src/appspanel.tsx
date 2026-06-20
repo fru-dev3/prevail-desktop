@@ -19,6 +19,10 @@ import type { BrandLogo, CatalogApp, ConnectorCatalog, EngineApp } from "./types
 
 type AppStatus = "connected" | "authorized" | "attention" | "connecting" | "disconnected";
 
+// The engine's sync verdict (connectors sync --json). ok=false carries the real
+// reason so the UI can show an honest failure instead of a fake "Synced".
+type SyncResult = { ok: boolean; error?: string; artifacts?: number };
+
 // Fold the engine's many status strings + flags into the states the user actually
 // needs to tell apart. CRITICAL (apps redesign): "connected" is NOT the optimistic
 // default - it requires a REAL successful sync (lastSuccessTs set). Credentials
@@ -237,10 +241,13 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     };
   }, [reload]);
 
-  const syncNow = useCallback(async (id: string) => {
+  const syncNow = useCallback(async (id: string): Promise<SyncResult> => {
     setBusy(id);
-    try { await invoke("engine_app_sync", { id, vault: vaultPath }); await reload(); }
-    catch (e) { console.error("sync app", e); }
+    try {
+      const r = await invoke<SyncResult>("engine_app_sync", { id, vault: vaultPath });
+      await reload();
+      return r ?? { ok: true };
+    } catch (e) { console.error("sync app", e); return { ok: false, error: String(e).slice(0, 200) }; }
     finally { setBusy(null); }
   }, [vaultPath, reload]);
 
@@ -674,11 +681,14 @@ function ConnectedGatewayDetail({ method, slug, title, vaultPath, logos, onBack 
     } catch { setApp(null); }
   }, [id, title, method, slug]);
   useEffect(() => { void load(); }, [load]);
-  const onSync = useCallback(async () => {
-    if (!app) return;
+  const onSync = useCallback(async (): Promise<SyncResult> => {
+    if (!app) return { ok: false, error: "still setting up" };
     setBusy(true);
-    try { await invoke("engine_app_sync", { id: app.id, vault: vaultPath }); await load(); }
-    catch (e) { console.error("sync gateway app", e); }
+    try {
+      const r = await invoke<SyncResult>("engine_app_sync", { id: app.id, vault: vaultPath });
+      await load();
+      return r ?? { ok: true };
+    } catch (e) { console.error("sync gateway app", e); return { ok: false, error: String(e).slice(0, 200) }; }
     finally { setBusy(false); }
   }, [app, vaultPath, load]);
   const onSetEnabled = useCallback(async (v: boolean) => {
@@ -698,7 +708,7 @@ function ConnectedGatewayDetail({ method, slug, title, vaultPath, logos, onBack 
           logos={logos}
           status={appStatus(app)}
           busy={busy}
-          onSync={() => void onSync()}
+          onSync={onSync}
           onSetEnabled={(v) => void onSetEnabled(v)}
           onReload={load}
           gatewayProvider={method}
@@ -1658,7 +1668,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   logos: Record<string, BrandLogo>;
   status: AppStatus;
   busy: boolean;
-  onSync: () => void;
+  onSync: () => Promise<SyncResult | void>;
   onSetEnabled: (v: boolean) => void;
   onReload: () => Promise<void> | void;
   // When set, this app is fronted by a managed gateway (Composio / Nango) rather
@@ -1951,10 +1961,20 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   const connectorLabel = gatewayProvider ? titleCase(gatewayProvider) : "the connector";
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const runSync = async () => {
-    setSyncMsg(`Pulling fresh data via ${connectorLabel}…`);
+    // Gateway syncs run a live agent turn that can take a minute or two, so say
+    // so plainly - the old bare spinner read as a freeze.
+    setSyncMsg(gatewayProvider
+      ? `Pulling fresh data via ${connectorLabel}… this runs a live fetch and can take up to a minute or two. You can keep working.`
+      : `Pulling fresh data via ${connectorLabel}…`);
     const before = dataFiles.length;
     try {
-      await onSync();
+      const r = await onSync();
+      // Honest result: the engine reports ok=false (with a reason) when auth
+      // failed or nothing was pulled. Surface that instead of a fake "Synced".
+      if (r && r.ok === false) {
+        setSyncMsg(`Sync failed: ${r.error ? r.error.slice(0, 200) : "no data was pulled (check the connection)."}`);
+        return;
+      }
       // onReload (via the parent) refreshes app.lastSuccessTs, which re-runs the
       // app_data_files effect; report the count we can see now as a best effort.
       const files = await invoke<{ path: string; name: string; bytes: number; mtime: number }[]>("app_data_files", { vault: vaultPath, appId: app.id }).catch(() => null);
