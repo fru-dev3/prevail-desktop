@@ -39,6 +39,7 @@ mod engine;
 mod loops;
 mod activity;
 mod ingestion;
+mod composio;
 mod reminders;
 mod surface;
 mod skillgen;
@@ -429,10 +430,10 @@ pub fn run() {
             engine::engine_domains,
             engine::engine_apps_list,
             engine::notify_user,
-            engine::engine_composio_connect,
-            engine::engine_composio_status,
-            engine::engine_composio_authorize,
-            engine::engine_composio_confirm,
+            composio::composio_status,
+            composio::composio_set_key,
+            composio::composio_verify,
+            composio::composio_connect_app,
             engine::engine_app_probe,
             engine::engine_app_add,
             engine::engine_app_set_domains,
