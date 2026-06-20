@@ -5,7 +5,8 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Check, FolderOpen, Globe, Loader2, Pencil, Plug, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Check, ExternalLink, FolderOpen, Globe, Link2, Loader2, MessageSquare, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Trash2, X } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "./bridge";
 import { appName, relTime, titleCase } from "./format";
 import { PREF, getPref, lsGet, lsSet } from "./storage";
@@ -260,17 +261,19 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         subtitle="Services that feed your vault. Connect each one once, then it's available to any domain's context. No duplicates."
       />
 
-      {/* Connect - one goal sentence, not forms. Shown as a full-width flow when
-          active; otherwise the "+" entry lives at the top of the list. */}
-      {connecting ? (
-        <ConnectAppFlow
-          vaultPath={vaultPath}
-          onDone={async () => { setConnecting(false); setCatalogPick(null); await reload(); }}
-          onCancel={() => setConnecting(false)}
-        />
-      ) : apps === null ? (
+      {/* Connect happens INSIDE the right detail pane (see below) so the app's
+          context and the sidebar stay put - the connect flow never replaces the
+          whole view. Only the rare zero-apps-and-zero-catalog case hosts it here. */}
+      {apps === null ? (
         <div className="text-sm text-text-muted">loading apps…</div>
       ) : apps.length === 0 && catalog.length === 0 ? (
+        connecting ? (
+          <ConnectAppFlow
+            vaultPath={vaultPath}
+            onDone={async () => { setConnecting(false); setCatalogPick(null); await reload(); }}
+            onCancel={() => setConnecting(false)}
+          />
+        ) : (
         <div className="space-y-4">
           <button
             onClick={() => setConnecting(true)}
@@ -288,6 +291,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
             <p className="mt-1 text-xs text-text-muted">Connect one above to start feeding your domains real data.</p>
           </div>
         </div>
+        )
       ) : (
         // Master-detail. Stacks vertically on narrow widths, side-by-side on lg+.
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
@@ -359,15 +363,31 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
             </div>
           </aside>
 
-          {/* RIGHT - the selected connector's full config, OR a catalog app's
+          {/* RIGHT - the connect flow (in place, keeping the app's context), OR
+              the selected connector's full config, OR a catalog app's detail +
               "Connect" pane when a not-yet-installed app is picked. */}
           <div className="min-w-0 flex-1">
-            {catalogPick ? (
+            {connecting ? (
+              <ConnectAppFlow
+                vaultPath={vaultPath}
+                presetName={catalogPick?.name}
+                onDone={async () => { setConnecting(false); setCatalogPick(null); await reload(); }}
+                onCancel={() => setConnecting(false)}
+              />
+            ) : catalogPick ? (
               <CatalogDetail
                 key={catalogPick.iconSlug || catalogPick.name}
                 app={catalogPick}
                 logos={logos}
                 onConnect={() => setConnecting(true)}
+                onTryInChat={() => {
+                  // Seed the main chat (leaving Settings) so the user can explore
+                  // the app before committing. Mirrors Spark's "Explore in chat":
+                  // the pending seed survives the nav and ChatPanel reads it on mount.
+                  const seed = `I want to use ${catalogPick.name}. Connect it for me, then show what it can do.`;
+                  try { localStorage.setItem("prevail.compose.pending", seed); } catch { /* ignore */ }
+                  window.dispatchEvent(new CustomEvent("prevail:compose-seed", { detail: seed }));
+                }}
               />
             ) : selectedApp ? (
               <AppDetail
@@ -455,19 +475,44 @@ function CatalogRow({ app, logos, active, onSelect }: {
 // catalog exposes, and a clear "Connect" CTA that opens the existing connect
 // flow. ConnectAppFlow doesn't accept a typed-name prop, so we name the app here
 // and the user confirms it in the flow's first field.
-function CatalogDetail({ app, logos, onConnect }: {
+function catalogMethodLabel(m?: string): string {
+  switch ((m || "").toLowerCase()) {
+    case "mcp": return "MCP server";
+    case "api": return "Official API";
+    case "oauth": return "Sign-in (OAuth)";
+    case "browser": return "Browser sign-in";
+    case "composio": return "Composio (managed)";
+    case "cli": return "Local CLI";
+    default: return "Auto (best available)";
+  }
+}
+
+function CatalogDetail({ app, logos, onConnect, onTryInChat }: {
   app: CatalogApp;
   logos: Record<string, BrandLogo>;
   onConnect: () => void;
+  onTryInChat: () => void;
 }) {
   const note = (app.note || "").trim();
+  const hint = app.connection_hint;
+  const method = hint?.method || app.via || "";
+  const sources = (app.sources ?? []).filter((s) => /^https?:\/\//.test(s));
+  const desc = note || `Connect ${app.name} to start feeding your domains real data. Prevail picks the best way to connect (MCP, an official API, a one-time sign-in, or a guided browser login), saves the connection, then keeps it in sync.`;
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-surface">
-      <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle px-5 py-4">
-        <AppRowLogo app={catalogLogoApp(app)} logos={logos} size={52} fallback="letter" />
+      {/* Rich header: brand mark, name + trust + method, and the primary actions
+          (Connect) alongside Try in chat and a share link - matching the depth of
+          a first-class connector page. */}
+      <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle px-5 py-5">
+        <AppRowLogo app={catalogLogoApp(app)} logos={logos} size={56} fallback="letter" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-base font-semibold text-text-primary">{app.name}</span>
+            <span className="truncate text-lg font-semibold text-text-primary">{app.name}</span>
+            {app.verified && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent" title="Verified connector">
+                <ShieldCheck className="h-2.5 w-2.5" /> Verified
+              </span>
+            )}
             <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">
               <Globe className="h-2.5 w-2.5" /> Available to add
             </span>
@@ -475,10 +520,27 @@ function CatalogDetail({ app, logos, onConnect }: {
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-text-muted">
             {app.domain && <span>{titleCase(app.domain)}</span>}
             {app.tags?.length ? <span>· {app.tags.slice(0, 4).map(titleCase).join(", ")}</span> : null}
+            <span>· connects via {catalogMethodLabel(method)}</span>
           </div>
-          {note && <p className="mt-1.5 max-w-prose text-[12px] text-text-secondary">{note}</p>}
+          <p className="mt-2 max-w-prose text-[13px] leading-relaxed text-text-secondary">{desc}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {sources[0] && (
+            <button
+              onClick={() => void openUrl(sources[0])}
+              title="Open the connector's website"
+              className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"
+            >
+              <Link2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            onClick={onTryInChat}
+            title={`Try ${app.name} in chat`}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-text-secondary hover:border-accent-border hover:text-accent"
+          >
+            <MessageSquare className="h-3.5 w-3.5" /> Try in chat
+          </button>
           <button
             onClick={onConnect}
             className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover"
@@ -487,14 +549,62 @@ function CatalogDetail({ app, logos, onConnect }: {
           </button>
         </div>
       </div>
-      <div className="px-5 py-4 text-[13px] text-text-secondary">
-        <p>
-          Connect {app.name} to start feeding your domains real data. Prevail picks the best way to
-          connect (MCP, API, sign-in, or browser) - just confirm the name and say what it should pull in.
-        </p>
+
+      {/* How Prevail connects - sets expectations before the click, and shows the
+          privacy posture (local vs vendor cloud) so the choice is informed. */}
+      <div className="border-b border-border-subtle px-5 py-4">
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">How Prevail connects</div>
+        <div className="flex items-start gap-2 rounded-lg border border-accent-border/40 bg-accent-soft/20 px-3 py-2.5 text-[12px] leading-relaxed text-text-secondary">
+          <Plug className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
+          <span>
+            When you Connect, Prevail confirms the best method ({catalogMethodLabel(method)}), drives the
+            sign-in for you if one is needed, verifies it pulled real data, then keeps it in sync.
+            {hint?.privacy === "local" && " Your data stays local to this Mac."}
+            {hint?.privacy === "vendor-cloud" && " This connects through the vendor's cloud."}
+            {hint?.readOnly && " Read-only access."}
+          </span>
+        </div>
+      </div>
+
+      {/* Details - label/value pairs like a connector spec sheet. */}
+      <div className="px-5 py-4">
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Details</div>
+        <dl className="grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
+          <CatalogField label="Category">{app.domain ? titleCase(app.domain) : "-"}</CatalogField>
+          <CatalogField label="Connection">{catalogMethodLabel(method)}</CatalogField>
+          {app.tags?.length ? <CatalogField label="Tags">{app.tags.map(titleCase).join(", ")}</CatalogField> : null}
+          {hint?.server && <CatalogField label="Server">{hint.server}</CatalogField>}
+          {hint?.privacy && <CatalogField label="Privacy">{hint.privacy === "local" ? "Local to this Mac" : "Vendor cloud"}</CatalogField>}
+          {typeof app.tier === "number" && <CatalogField label="Tier">{`Tier ${app.tier}`}</CatalogField>}
+        </dl>
+        {sources.length > 0 && (
+          <div className="mt-4">
+            <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">More info</div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {sources.slice(0, 4).map((s, i) => (
+                <button key={i} onClick={() => void openUrl(s)} className="inline-flex items-center gap-1 text-[12px] text-accent hover:underline">
+                  {prettyHost(s)} <ExternalLink className="h-3 w-3" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+function CatalogField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{label}</dt>
+      <dd className="mt-0.5 text-[13px] text-text-secondary">{children}</dd>
+    </div>
+  );
+}
+
+function prettyHost(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }
 
 // The selected connector's full configuration, shown in the right pane of the
