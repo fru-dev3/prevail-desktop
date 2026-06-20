@@ -434,6 +434,7 @@ pub fn run() {
             composio::composio_set_key,
             composio::composio_verify,
             composio::composio_connect_app,
+            composio::composio_connections,
             engine::engine_app_probe,
             engine::engine_app_add,
             engine::engine_app_set_domains,

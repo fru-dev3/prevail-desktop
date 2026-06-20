@@ -120,6 +120,31 @@ pub async fn composio_verify() -> Result<Value, String> {
     }
 }
 
+/// Which of the given toolkits are actively connected in Composio. One MCP call
+/// (MANAGE_CONNECTIONS list over the whole list) returns each toolkit's status;
+/// we return the slugs whose status is "active". Used to split connected from
+/// not-yet-connected apps in the UI.
+#[tauri::command]
+pub async fn composio_connections(toolkits: Vec<String>) -> Result<Value, String> {
+    if toolkits.is_empty() { return Ok(json!({ "active": [] })); }
+    let key = composio_key()?;
+    let client = reqwest::Client::new();
+    let sid = open_session(&client, &key).await?;
+    let arr: Vec<Value> = toolkits.iter().map(|t| json!({ "name": t, "action": "list" })).collect();
+    let v = call_tool(&client, &key, &sid, "COMPOSIO_MANAGE_CONNECTIONS", json!({ "toolkits": arr })).await?;
+    let text = v.pointer("/result/content/0/text").and_then(|t| t.as_str()).unwrap_or("{}");
+    let inner: Value = serde_json::from_str(text).unwrap_or_else(|_| json!({}));
+    let mut active: Vec<String> = Vec::new();
+    if let Some(obj) = inner.pointer("/data/results").and_then(|r| r.as_object()) {
+        for (slug, val) in obj {
+            if val.get("status").and_then(|s| s.as_str()) == Some("active") {
+                active.push(slug.clone());
+            }
+        }
+    }
+    Ok(json!({ "active": active }))
+}
+
 /// Connect an app via Composio: MANAGE_CONNECTIONS `add` returns an auth link the
 /// user opens to authorize that toolkit in Composio. Returns { ok, authUrl?, raw }.
 #[tauri::command]
