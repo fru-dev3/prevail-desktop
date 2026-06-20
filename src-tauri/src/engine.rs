@@ -787,6 +787,204 @@ pub fn engine_composio_confirm() -> Result<serde_json::Value, String> {
     run_engine_json(&["connectors", "composio", "--confirm", "--json"])
 }
 
+// ── Composio CLI (browser-OAuth setup, an alternative to the MCP key) ──────
+// These shell out to the official `composio` CLI rather than the prevail engine.
+// They are pure SETUP helpers: the agent still uses the Composio MCP under the
+// hood, so connecting an app stays on the existing composio_connect_app path.
+// PATH is built the same way build_cli_env() does (so a Finder-launched app can
+// find binaries) plus ~/.composio/bin where the official installer drops it.
+
+/// PATH enriched with ~/.composio/bin (where the official installer puts the
+/// `composio` binary) on top of the well-known CLI dirs from build_cli_env().
+fn composio_cli_path() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let (base, _user, _logname) = crate::build_cli_env();
+    if home.is_empty() {
+        base
+    } else {
+        format!("{home}/.composio/bin:{base}")
+    }
+}
+
+/// Resolve the `composio` binary: `which` first, then the well-known install
+/// locations. Returns the full path, or None when nothing is found.
+fn resolve_composio_bin() -> Option<String> {
+    use std::process::Command;
+    let path = composio_cli_path();
+    // `which composio` honoring our enriched PATH.
+    if let Ok(out) = Command::new("which")
+        .arg("composio")
+        .env("PATH", &path)
+        .stdin(std::process::Stdio::null())
+        .output()
+    {
+        if out.status.success() {
+            let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !p.is_empty() && Path::new(&p).exists() {
+                return Some(p);
+            }
+        }
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    let candidates = [
+        format!("{home}/.composio/bin/composio"),
+        "/opt/homebrew/bin/composio".to_string(),
+        "/usr/local/bin/composio".to_string(),
+        format!("{home}/.local/bin/composio"),
+    ];
+    for c in &candidates {
+        if Path::new(c).exists() {
+            return Some(c.clone());
+        }
+    }
+    None
+}
+
+/// Cap process output so a chatty installer/login can't blow up the JSON payload.
+fn cap_output(s: &str) -> String {
+    let s = s.trim();
+    if s.len() <= 4000 {
+        s.to_string()
+    } else {
+        let head: String = s.chars().take(4000).collect();
+        format!("{head}\n… (truncated)")
+    }
+}
+
+/// Composio CLI status: is the `composio` binary installed, and is it logged in?
+/// Defensive — any failure resolves to installed/loggedIn false, never an Err.
+/// Returns { installed, loggedIn, account, bin }.
+#[tauri::command]
+pub fn composio_cli_status() -> Result<serde_json::Value, String> {
+    use std::process::Command;
+    let bin = match resolve_composio_bin() {
+        Some(b) => b,
+        None => {
+            return Ok(serde_json::json!({
+                "installed": false, "loggedIn": false, "account": null, "bin": null
+            }));
+        }
+    };
+    let path = composio_cli_path();
+    // Prefer `whoami`; fall back to `--version` just to confirm the binary runs.
+    let mut logged_in = false;
+    let mut account: Option<String> = None;
+    let whoami = Command::new(&bin)
+        .arg("whoami")
+        .env("PATH", &path)
+        .stdin(std::process::Stdio::null())
+        .output();
+    if let Ok(out) = whoami {
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let lower = text.to_lowercase();
+        // Treat a clean exit that doesn't read like "not logged in" as logged in.
+        let looks_logged_out = lower.contains("not logged in")
+            || lower.contains("please login")
+            || lower.contains("please log in")
+            || lower.contains("no active")
+            || lower.contains("unauthenticated")
+            || lower.contains("login required");
+        if out.status.success() && !looks_logged_out {
+            logged_in = true;
+            // Best-effort account extraction: first email-looking token.
+            let acct = text
+                .split_whitespace()
+                .find(|t| t.contains('@') && t.contains('.'))
+                .map(|t| t.trim_matches(|c: char| !c.is_ascii_graphic()).to_string())
+                .filter(|s| !s.is_empty());
+            account = acct;
+        }
+    }
+    Ok(serde_json::json!({
+        "installed": true,
+        "loggedIn": logged_in,
+        "account": account,
+        "bin": bin,
+    }))
+}
+
+/// Install the Composio CLI via the official installer. Long-ish but finite;
+/// runs off the UI thread. Returns { ok, output } (output capped).
+#[tauri::command]
+pub async fn composio_cli_install(_app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        use std::process::Command;
+        let path = composio_cli_path();
+        let (_p, user, logname) = crate::build_cli_env();
+        let out = Command::new("bash")
+            .arg("-lc")
+            .arg("curl -fsSL https://composio.dev/install | bash")
+            .env_clear()
+            .envs(crate::scrubbed_env_pairs())
+            .env("PATH", path)
+            .env("USER", user)
+            .env("LOGNAME", logname)
+            .stdin(std::process::Stdio::null())
+            .output();
+        match out {
+            Ok(o) => {
+                let combined = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&o.stdout),
+                    String::from_utf8_lossy(&o.stderr)
+                );
+                serde_json::json!({ "ok": o.status.success(), "output": cap_output(&combined) })
+            }
+            Err(e) => serde_json::json!({ "ok": false, "output": format!("install failed: {e}") }),
+        }
+    })
+    .await
+    .map_err(|e| format!("composio install task failed: {e}"))
+}
+
+/// Run `composio login` (browser OAuth). Interactive + long-running: opens a
+/// browser and waits for the user, so it uses a generous timeout. Returns
+/// { ok, output } (output capped). If the binary is missing, returns ok:false.
+#[tauri::command]
+pub async fn composio_cli_login(_app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        use std::process::Command;
+        let bin = match resolve_composio_bin() {
+            Some(b) => b,
+            None => {
+                return serde_json::json!({ "ok": false, "output": "Composio CLI not installed" });
+            }
+        };
+        let path = composio_cli_path();
+        let (_p, user, logname) = crate::build_cli_env();
+        // Wrap in `timeout` so a never-completing browser auth can't hang the
+        // child forever. macOS lacks GNU coreutils `timeout` by default, so run
+        // the binary directly and rely on the child finishing once the user
+        // signs in (or closes the tab). The 300s budget is the user's window.
+        let out = Command::new(&bin)
+            .arg("login")
+            .env_clear()
+            .envs(crate::scrubbed_env_pairs())
+            .env("PATH", path)
+            .env("USER", user)
+            .env("LOGNAME", logname)
+            .stdin(std::process::Stdio::null())
+            .output();
+        match out {
+            Ok(o) => {
+                let combined = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&o.stdout),
+                    String::from_utf8_lossy(&o.stderr)
+                );
+                serde_json::json!({ "ok": o.status.success(), "output": cap_output(&combined) })
+            }
+            Err(e) => serde_json::json!({ "ok": false, "output": format!("login failed: {e}") }),
+        }
+    })
+    .await
+    .map_err(|e| format!("composio login task failed: {e}"))
+}
+
 /// Scaffold a new app from a catalog pick — writes ~/.prevail/apps/<id>/ so it
 /// becomes a real connectable App. Returns { ok, path?, error? }.
 #[tauri::command]
