@@ -28,6 +28,41 @@ pub struct ChatArgs {
     pub timeout_sec: Option<u64>,
 }
 
+/// Materialize ~/.prevail/agent-mcp.json (the Composio HTTP MCP server with the
+/// X-CONSUMER-API-KEY header) from the Keychain key, and return its path so the
+/// chat agent can use the Composio gateway live (search + execute the connected
+/// apps' tools). Returns None when no Composio key is set, so a chat without
+/// Composio configured is byte-for-byte unchanged. Mirrors the CLI engine's
+/// agent-mcp.ts contract exactly.
+fn composio_agent_mcp_config() -> Option<String> {
+    use std::os::unix::fs::PermissionsExt;
+    let key = crate::ingestion::keychain::get("prevail.ingestion", "composio").ok()?;
+    let key = key.trim();
+    if key.is_empty() {
+        return None;
+    }
+    let base = std::env::var("PREVAIL_HOME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("{}/.prevail", std::env::var("HOME").unwrap_or_default()));
+    let dir = std::path::Path::new(&base);
+    let _ = std::fs::create_dir_all(dir);
+    let path = dir.join("agent-mcp.json");
+    let cfg = serde_json::json!({
+        "mcpServers": {
+            "composio": {
+                "type": "http",
+                "url": "https://connect.composio.dev/mcp",
+                "headers": { "X-CONSUMER-API-KEY": key }
+            }
+        }
+    });
+    let body = serde_json::to_string_pretty(&cfg).ok()?;
+    std::fs::write(&path, &body).ok()?;
+    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    Some(path.to_string_lossy().to_string())
+}
+
 fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String>) {
     // Match the prevail CLI's dispatch table. -p / --prompt for one-shot
     // non-interactive mode. When `model` is supplied, inject the right
@@ -39,6 +74,13 @@ fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String
             if let Some(m) = model {
                 v.push("--model".to_string());
                 v.push(m.to_string());
+            }
+            // Give the chat agent the Composio gateway MCP when a key is set, so it
+            // can fetch live data for a connected app (Notion, PayPal, etc.) instead
+            // of guessing. No-op when Composio is not configured.
+            if let Some(cfg) = composio_agent_mcp_config() {
+                v.push("--mcp-config".to_string());
+                v.push(cfg);
             }
             v.push("-p".to_string());
             // `--` ends option parsing so a prompt that starts with "--"
