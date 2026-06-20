@@ -378,12 +378,29 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       ) : (
         <>
         {/* FULL-WIDTH description of the Direct track, above its master-detail. */}
-        <div className="mb-4 overflow-hidden rounded-xl border border-border bg-surface px-5 py-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-background"><Plug className="h-4 w-4" /></span>
-            <span className="text-base font-semibold text-text-primary">Direct</span>
+        <div className="mb-4 flex items-start gap-4 overflow-hidden rounded-xl border border-border bg-surface px-5 py-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-background"><Plug className="h-4 w-4" /></span>
+              <span className="text-base font-semibold text-text-primary">Direct</span>
+            </div>
+            <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-text-secondary">Prevail connects each app itself (MCP, an official API, a one-time sign-in, or a guided browser login) and keeps its data in your vault. The source of truth is the app's own folder.</p>
           </div>
-          <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-text-secondary">Prevail connects each app itself (MCP, an official API, a one-time sign-in, or a guided browser login) and keeps its data in your vault. The source of truth is the app's own folder.</p>
+          <HeaderLogoCluster
+            slugs={[
+              { title: "Gmail", id: "gmail" },
+              { title: "Google Calendar", id: "googlecalendar" },
+              { title: "Notion", id: "notion" },
+              { title: "Slack", id: "slack" },
+              { title: "GitHub", id: "github" },
+              { title: "LinkedIn", id: "linkedin" },
+              { title: "Spotify", id: "spotify" },
+              { title: "Stripe", id: "stripe" },
+              { title: "Dropbox", id: "dropbox" },
+              { title: "Airbnb", id: "airbnb" },
+            ]}
+            logos={logos}
+          />
         </div>
         {apps === null ? (
         <div className="text-sm text-text-muted">loading apps…</div>
@@ -854,7 +871,8 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
     <div className="space-y-4">
       {/* FULL-WIDTH header: what Composio is + the key / config controls, above
           the two-column master-detail row. */}
-      <div className="overflow-hidden rounded-xl border border-border bg-surface px-5 py-4">
+      <div className="flex items-start gap-4 overflow-hidden rounded-xl border border-border bg-surface px-5 py-4">
+        <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#6d5efc] to-[#3b2fb8] text-white"><Boxes className="h-4 w-4" /></span>
           <span className="text-base font-semibold text-text-primary">Composio</span>
@@ -924,6 +942,8 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
             <button onClick={() => void openUrl("https://dashboard.composio.dev")} className="inline-flex items-center gap-1 text-[10px] text-accent hover:underline">Dashboard <ExternalLink className="h-2.5 w-2.5" /></button>
           </div>
         )}
+        </div>
+        <HeaderLogoCluster slugs={COMPOSIO_APPS.slice(0, 10).map((a) => ({ title: a.name, id: a.slug }))} logos={logos} />
       </div>
 
       {/* Two-column master-detail below the full-width header. */}
@@ -1099,7 +1119,8 @@ function NangoMode({ vaultPath }: { vaultPath: string }) {
     <div className="space-y-4">
       {/* FULL-WIDTH header: what Nango is + the key / config controls, above the
           two-column master-detail row. */}
-      <div className="overflow-hidden rounded-xl border border-border bg-surface px-5 py-4">
+      <div className="flex items-start gap-4 overflow-hidden rounded-xl border border-border bg-surface px-5 py-4">
+        <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#1f9d8f] to-[#0d6e63] text-white"><Cable className="h-4 w-4" /></span>
           <span className="text-base font-semibold text-text-primary">Nango</span>
@@ -1131,6 +1152,14 @@ function NangoMode({ vaultPath }: { vaultPath: string }) {
             <button onClick={() => void openUrl("https://app.nango.dev")} className="inline-flex items-center gap-1 text-[10px] text-accent hover:underline">Dashboard <ExternalLink className="h-2.5 w-2.5" /></button>
           </div>
         )}
+        </div>
+        <HeaderLogoCluster
+          slugs={[
+            ...integrations.map((i) => ({ title: i.display_name, id: i.provider || i.unique_key })),
+            ...HEADER_POPULAR,
+          ].slice(0, 10)}
+          logos={logos}
+        />
       </div>
 
       {/* Two-column master-detail below the full-width header. */}
@@ -1209,6 +1238,42 @@ function NangoMode({ vaultPath }: { vaultPath: string }) {
     </div>
   );
 }
+
+// A purely decorative cluster of brand logos for the right side of a mode's
+// full-width header card, so the whitespace there doesn't read as blank. It's a
+// compact low-opacity grid of AppRowLogo tiles - non-interactive, unselectable,
+// and hidden on narrow widths so it never affects the header's flex layout.
+function HeaderLogoCluster({ slugs, logos }: { slugs: { title: string; id: string }[]; logos: Record<string, BrandLogo> }) {
+  const tiles = slugs.slice(0, 12);
+  if (tiles.length === 0) return null;
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none ml-auto hidden shrink-0 select-none grid-cols-4 gap-1.5 opacity-70 [mask-image:linear-gradient(to_right,transparent,black_40%)] lg:grid"
+    >
+      {tiles.map((s, i) => (
+        <span key={`${s.id}-${i}`} className="flex items-center justify-center rounded-md bg-surface-warm/60 p-0.5">
+          <AppRowLogo app={s} logos={logos} size={28} fallback="letter" />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// A curated popular set reused by the Nango and Direct header clusters (the
+// Composio header derives its own from COMPOSIO_APPS).
+const HEADER_POPULAR: { title: string; id: string }[] = [
+  { title: "Gmail", id: "gmail" },
+  { title: "Google Calendar", id: "googlecalendar" },
+  { title: "Google Drive", id: "googledrive" },
+  { title: "Notion", id: "notion" },
+  { title: "Slack", id: "slack" },
+  { title: "GitHub", id: "github" },
+  { title: "Linear", id: "linear" },
+  { title: "HubSpot", id: "hubspot" },
+  { title: "Airtable", id: "airtable" },
+  { title: "Stripe", id: "stripe" },
+];
 
 // One compact row in a gateway (Composio / Nango) left list: brand logo, name,
 // a small subtitle (category / provider), and a Connected check or a Connect
