@@ -422,6 +422,7 @@ pub fn run() {
             benchmark::benchmark_suggest,
             engine::engine_domains,
             engine::engine_apps_list,
+            engine::notify_user,
             engine::engine_app_probe,
             engine::engine_app_add,
             engine::engine_app_set_domains,

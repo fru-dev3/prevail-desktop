@@ -44,6 +44,19 @@ it. This is the whole point: connect once agentically, reuse the skill forever.
 - (none yet)
 
 ## Round 2 (v0.1.143 testing feedback)
+- [x] **Apps single source of truth**: apps now live in <vault>/data/apps (migrated
+  out of ~/.prevail/apps; scaffold + scan + list all vault-rooted). CLI committed.
+- [x] **Folder/reveal in Finder**: switched to the opener plugin's revealItemInDir
+  (entitlement-safe under the notarized build). Desktop committed.
+- [x] **Catalog merged into the connectors sidebar** (bottom "Browse the catalog" bar
+  removed; raw tiers under a collapsed Advanced section). Desktop committed.
+- [x] **Loops running indicators + stop controls** (Image #42): "Run loops now" now
+  runs each active loop in turn via the streamed per-loop runner, so (a) each loop
+  shows a running spinner (header + live progress), (b) the domain lights up in the
+  sidebar (startProcess already pins the domain), (c) a notification bookends the
+  batch and per-loop runs, (d) a "Stop run" button stops the whole run, (e) each
+  running loop has its own Stop. Engine: run_engine_stream now registers the child
+  so abort_sessions can SIGTERM it; new notify_user command. Desktop + Rust done.
 - [ ] **BUG: folder/reveal in Finder does nothing (apps AND domains)**: clicking the
   folder icon to reveal a file/folder in the local directory does not open Finder,
   for both app rows and domain rows. General open_in_finder failure (not path-
