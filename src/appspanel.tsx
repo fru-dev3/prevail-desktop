@@ -5,7 +5,7 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Boxes, Check, ExternalLink, FolderOpen, Globe, Link2, Loader2, MessageSquare, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Star, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Boxes, Check, ExternalLink, FolderOpen, Globe, Link2, Loader2, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Star, Trash2, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "./bridge";
 import { appName, relTime, titleCase } from "./format";
@@ -221,6 +221,36 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   const setEnabled = useCallback(async (id: string, enabled: boolean) => {
     try { await invoke("engine_app_set_enabled", { id, enabled }); await reload(); }
     catch (e) { console.error("set enabled", e); }
+  }, [reload]);
+
+  // Connect a catalog app: scaffold it NOW with its known method, then open its
+  // detail where the real per-method auth runs (browser sign-in, API key, MCP
+  // setup, OAuth). No slow model-research for a known app - the method comes
+  // straight from the catalog's connection_hint, so Connect is instant and the
+  // very next thing the user sees is the actual auth step for that method.
+  const [catalogConnecting, setCatalogConnecting] = useState(false);
+  const [catalogConnectErr, setCatalogConnectErr] = useState<string | null>(null);
+  const connectCatalogApp = useCallback(async (c: CatalogApp) => {
+    setCatalogConnecting(true);
+    setCatalogConnectErr(null);
+    try {
+      const id = (c.iconSlug || c.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+      const integration = hintToIntegration(c.connection_hint?.method || c.via);
+      const domains = c.domain ? [c.domain] : [];
+      try {
+        await invoke("engine_app_add", { id, title: c.name, integration, domains });
+      } catch (e) {
+        // Already installed: just open it. Anything else is a real failure.
+        if (!/already exists/i.test(String(e))) throw e;
+      }
+      await reload();
+      setCatalogPick(null); setConnecting(false); setShowComposio(false);
+      setSelected(id);
+    } catch (e) {
+      setCatalogConnectErr(`Couldn't add ${c.name}: ${String(e).slice(0, 160)}`);
+    } finally {
+      setCatalogConnecting(false);
+    }
   }, [reload]);
 
   // Filter by the search box (name or method), then group into Connected vs
@@ -475,20 +505,18 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
             ) : showComposio ? (
               <ComposioDetail onChanged={() => { void reload(); }} />
             ) : catalogPick ? (
-              <CatalogDetail
-                key={catalogPick.iconSlug || catalogPick.name}
-                app={catalogPick}
-                logos={logos}
-                onConnect={() => setConnecting(true)}
-                onTryInChat={() => {
-                  // Seed the main chat (leaving Settings) so the user can explore
-                  // the app before committing. Mirrors Spark's "Explore in chat":
-                  // the pending seed survives the nav and ChatPanel reads it on mount.
-                  const seed = `I want to use ${catalogPick.name}. Connect it for me, then show what it can do.`;
-                  try { localStorage.setItem("prevail.compose.pending", seed); } catch { /* ignore */ }
-                  window.dispatchEvent(new CustomEvent("prevail:compose-seed", { detail: seed }));
-                }}
-              />
+              <>
+                {catalogConnectErr && (
+                  <div className="mb-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{catalogConnectErr}</div>
+                )}
+                <CatalogDetail
+                  key={catalogPick.iconSlug || catalogPick.name}
+                  app={catalogPick}
+                  logos={logos}
+                  onConnect={() => connectCatalogApp(catalogPick)}
+                  connecting={catalogConnecting}
+                />
+              </>
             ) : selectedApp ? (
               <AppDetail
                 key={selectedApp.id}
@@ -590,6 +618,21 @@ function CatalogRow({ app, logos, active, onSelect, isFav, onToggleFav }: {
 // catalog exposes, and a clear "Connect" CTA that opens the existing connect
 // flow. ConnectAppFlow doesn't accept a typed-name prop, so we name the app here
 // and the user confirms it in the flow's first field.
+// Map a catalog connection hint to the manifest integration vocabulary so a new
+// app is scaffolded with the right method straight away (its AppDetail then drives
+// the real per-method auth). Unknown -> manual, which AppDetail can re-evaluate.
+function hintToIntegration(method?: string): string {
+  switch ((method || "").toLowerCase()) {
+    case "mcp": return "mcp";
+    case "api": return "api";
+    case "oauth": return "oauth";
+    case "browser": return "browser";
+    case "composio": return "mcp";
+    case "cli": return "manual";
+    default: return "manual";
+  }
+}
+
 function catalogMethodLabel(m?: string): string {
   switch ((m || "").toLowerCase()) {
     case "mcp": return "MCP server";
@@ -602,11 +645,11 @@ function catalogMethodLabel(m?: string): string {
   }
 }
 
-function CatalogDetail({ app, logos, onConnect, onTryInChat }: {
+function CatalogDetail({ app, logos, onConnect, connecting }: {
   app: CatalogApp;
   logos: Record<string, BrandLogo>;
   onConnect: () => void;
-  onTryInChat: () => void;
+  connecting: boolean;
 }) {
   const note = (app.note || "").trim();
   const hint = app.connection_hint;
@@ -650,17 +693,11 @@ function CatalogDetail({ app, logos, onConnect, onTryInChat }: {
             </button>
           )}
           <button
-            onClick={onTryInChat}
-            title={`Try ${app.name} in chat`}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-text-secondary hover:border-accent-border hover:text-accent"
-          >
-            <MessageSquare className="h-3.5 w-3.5" /> Try in chat
-          </button>
-          <button
             onClick={onConnect}
-            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover"
+            disabled={connecting}
+            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-60"
           >
-            <Plus className="h-3.5 w-3.5" /> Connect
+            {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} {connecting ? "Adding…" : "Connect"}
           </button>
         </div>
       </div>
