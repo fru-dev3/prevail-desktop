@@ -109,6 +109,9 @@ export const PREF = {
   // the UI forever. Read by send() and passed to the Rust spawner.
   llmPromptTimeoutSec: "prevail.pref.llmPromptTimeoutSec",   // integer seconds
   streamStallTimeoutSec: "prevail.pref.streamStallTimeoutSec", // integer seconds — no chunks for this long → kill
+  // Home screen — show the proactive Briefing/recommendations panel. Off by
+  // default so the landing stays minimal; the user opts in from General.
+  showHomeBriefing: "prevail.pref.showHomeBriefing",       // "1" | "0" — default "0" (hidden)
   // Budget — a soft monthly USD cap the user sets, plus the running spend
   // estimate. Display-only until the engine exposes a budget status command.
   budgetMonthlyCapUsd: "prevail.pref.budgetMonthlyCapUsd", // decimal USD, "" = no cap

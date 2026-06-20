@@ -3,7 +3,7 @@
 // as workflows via the Loop steward; anything consequential surfaces in the
 // Decision Inbox. Reads tasks_read_all; moves via tasks_set_status/tasks_set_owner.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Briefcase, CalendarRange, Check, Columns3, CornerUpLeft, Filter, Flag, Inbox, LayoutGrid, List, Loader2, Play, Plus, RotateCcw, Snowflake, Trash2, User, Zap } from "lucide-react";
+import { Bot, Briefcase, CalendarRange, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, CornerUpLeft, Filter, Flag, Inbox, LayoutGrid, List, Loader2, Play, Plus, RotateCcw, SlidersHorizontal, Snowflake, Trash2, User, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
@@ -108,6 +108,21 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
   const [addDomain, setAddDomain] = useState("");
   const [addDue, setAddDue] = useState("");
   const [running, setRunning] = useState(false);
+  // Collapsed board columns - free real estate for the columns you care about.
+  // Persisted; Icebox starts collapsed since it's a rarely-touched parking lot.
+  const [collapsedCols, setCollapsedCols] = useState<Set<string>>(() => {
+    try { const r = localStorage.getItem("prevail.board.collapsedCols"); return new Set(r !== null ? r.split(",").filter(Boolean) : ["icebox"]); } catch { return new Set(["icebox"]); }
+  });
+  const toggleCol = (key: string) => setCollapsedCols((cur) => {
+    const next = new Set(cur);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    localStorage.setItem("prevail.board.collapsedCols", [...next].join(","));
+    return next;
+  });
+  // Secondary toolbar controls live behind "More", collapsed by default, so the
+  // bar stays compact. Persisted.
+  const [moreOpen, setMoreOpen] = useState<boolean>(() => localStorage.getItem("prevail.board.moreOpen") === "1");
+  const toggleMore = () => setMoreOpen((v) => { const n = !v; localStorage.setItem("prevail.board.moreOpen", n ? "1" : "0"); return n; });
 
   const [allDomains, setAllDomains] = useState<string[]>([]);
 
@@ -509,14 +524,16 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
         </div>
       )}
 
-      {/* Controls: owner filter · domain filter · view · needs you · add */}
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        {/* Owner filter (icon + label segmented) */}
+      {/* Controls: compact. Key controls always visible (owner + view + Needs you
+          + Add); secondary ones (Assign all, domain filter, Trash, Icebox) tuck
+          behind "More", collapsed by default, to keep the bar uncluttered. */}
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        {/* Owner filter (icon segmented) */}
         <div className="flex items-center overflow-hidden rounded-lg border border-border">
           {([["all", "All tasks", LayoutGrid], ["me", "Mine", User], ["ai", "AI-owned", Bot]] as const).map(([k, label, Icon], i) => (
             <button key={k} onClick={() => setOwnerFilter(k)}
               aria-pressed={ownerFilter === k} title={label}
-              className={`inline-flex items-center justify-center px-3 py-1.5 transition-colors ${i > 0 ? "border-l border-border" : ""} ${
+              className={`inline-flex items-center justify-center px-2.5 py-1 transition-colors ${i > 0 ? "border-l border-border" : ""} ${
                 ownerFilter === k
                   ? "bg-accent text-background shadow-inner"
                   : "bg-background text-text-secondary hover:bg-surface-warm hover:text-text-primary"
@@ -525,76 +542,84 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
             </button>
           ))}
         </div>
-        {/* Bulk hand-off: assign every shown, me-owned, open task to the agent at once.
-            Skips anything awaiting your decision (blocked / in Review). */}
-        <button onClick={assignAllToAgent} disabled={busy === "bulk-assign"}
-          title="Hand every shown task you own to the agent at once (skips tasks awaiting your decision)"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-2.5 py-1.5 font-medium text-accent transition-colors hover:bg-accent hover:text-background disabled:opacity-50">
-          {busy === "bulk-assign" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-          Assign all to Agent
-        </button>
-        {/* Domain filter (icon + native select) */}
-        <div className="flex items-center gap-1.5 rounded-lg border border-border bg-background pl-2.5 text-text-muted focus-within:border-accent-border">
-          <Filter className="h-3.5 w-3.5" />
-          <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)}
-            className="cursor-pointer appearance-none bg-transparent py-1.5 pr-2 text-text-secondary focus:outline-none">
-            <option value="all">All domains</option>
-            {domains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
-          </select>
-        </div>
         {/* View toggle (icons) */}
         <div className="flex items-center overflow-hidden rounded-lg border border-border">
           <button onClick={() => setViewMode("board")} title="Board view"
-            className={`px-2.5 py-1.5 transition-colors ${view === "board" ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
+            className={`px-2.5 py-1 transition-colors ${view === "board" ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
             <Columns3 className="h-3.5 w-3.5" />
           </button>
           <button onClick={() => setViewMode("list")} title="List view"
-            className={`px-2.5 py-1.5 transition-colors ${view === "list" ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
+            className={`px-2.5 py-1 transition-colors ${view === "list" ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
             <List className="h-3.5 w-3.5" />
           </button>
           <button onClick={() => setViewMode("horizon")} title="Horizon view: tasks by due date (today / week / month / quarter / year)"
-            className={`px-2.5 py-1.5 transition-colors ${view === "horizon" ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
+            className={`px-2.5 py-1 transition-colors ${view === "horizon" ? "bg-accent-soft text-accent" : "bg-background text-text-muted hover:bg-surface-warm"}`}>
             <CalendarRange className="h-3.5 w-3.5" />
           </button>
         </div>
-        {/* Needs you: the work that's waiting on your call (folds in the old Decisions page). */}
+        {/* Needs you: the work that's waiting on your call (always visible). */}
         <button onClick={() => setView("needs")} title="Work waiting on your decision"
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-colors ${view === "needs" ? "border-accent-border bg-accent-soft text-accent" : decisionsCount > 0 ? "border-warn/40 text-warn hover:bg-surface-warm" : "border-border text-text-muted hover:bg-surface-warm"}`}>
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 transition-colors ${view === "needs" ? "border-accent-border bg-accent-soft text-accent" : decisionsCount > 0 ? "border-warn/40 text-warn hover:bg-surface-warm" : "border-border text-text-muted hover:bg-surface-warm"}`}>
           <Inbox className="h-3.5 w-3.5" /> Needs you
           {decisionsCount > 0 && (
             <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[9px] font-bold text-background">{decisionsCount}</span>
           )}
         </button>
-        {/* Trash: soft-deleted tasks, recoverable. */}
-        <button onClick={() => setView("trash")} title="Deleted tasks (recoverable)"
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-colors ${view === "trash" ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:bg-surface-warm"}`}>
-          <Trash2 className="h-3.5 w-3.5" /> Trash
-          {trashed.length > 0 && (
-            <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-surface-warm px-1 font-mono text-[9px] font-bold text-text-secondary">{trashed.length}</span>
-          )}
+        {/* More: reveal the secondary controls (collapsed by default). */}
+        <button onClick={toggleMore} aria-pressed={moreOpen} title={moreOpen ? "Hide extra controls" : "More controls"}
+          className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 transition-colors ${moreOpen ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:bg-surface-warm"}`}>
+          <SlidersHorizontal className="h-3.5 w-3.5" /> More <ChevronDown className={`h-3 w-3 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
         </button>
-        {/* Icebox: tasks set aside (won't do, not done) - recoverable. */}
-        <button onClick={() => setView("icebox")} title="Set-aside tasks (recoverable)"
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-colors ${view === "icebox" ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:bg-surface-warm"}`}>
-          <Snowflake className="h-3.5 w-3.5" /> Icebox
-          {iceboxed.length > 0 && (
-            <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-surface-warm px-1 font-mono text-[9px] font-bold text-text-secondary">{iceboxed.length}</span>
-          )}
-        </button>
-        {/* Add task */}
+        {moreOpen && (
+          <>
+            {/* Bulk hand-off: assign every shown, me-owned, open task to the agent. */}
+            <button onClick={assignAllToAgent} disabled={busy === "bulk-assign"}
+              title="Hand every shown task you own to the agent at once (skips tasks awaiting your decision)"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-2.5 py-1 font-medium text-accent transition-colors hover:bg-accent hover:text-background disabled:opacity-50">
+              {busy === "bulk-assign" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+              Assign all to Agent
+            </button>
+            {/* Domain filter (icon + native select) */}
+            <div className="flex items-center gap-1.5 rounded-lg border border-border bg-background pl-2.5 text-text-muted focus-within:border-accent-border">
+              <Filter className="h-3.5 w-3.5" />
+              <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)}
+                className="cursor-pointer appearance-none bg-transparent py-1 pr-2 text-text-secondary focus:outline-none">
+                <option value="all">All domains</option>
+                {domains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+              </select>
+            </div>
+            {/* Trash: soft-deleted tasks, recoverable. */}
+            <button onClick={() => setView("trash")} title="Deleted tasks (recoverable)"
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 transition-colors ${view === "trash" ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:bg-surface-warm"}`}>
+              <Trash2 className="h-3.5 w-3.5" /> Trash
+              {trashed.length > 0 && (
+                <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-surface-warm px-1 font-mono text-[9px] font-bold text-text-secondary">{trashed.length}</span>
+              )}
+            </button>
+            {/* Icebox: tasks set aside (won't do, not done) - recoverable. */}
+            <button onClick={() => setView("icebox")} title="Set-aside tasks (recoverable)"
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 transition-colors ${view === "icebox" ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:bg-surface-warm"}`}>
+              <Snowflake className="h-3.5 w-3.5" /> Icebox
+              {iceboxed.length > 0 && (
+                <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-surface-warm px-1 font-mono text-[9px] font-bold text-text-secondary">{iceboxed.length}</span>
+              )}
+            </button>
+          </>
+        )}
+        {/* Add task (always visible) */}
         <div className="ml-auto flex items-center gap-1.5">
           <input value={addText} onChange={(e) => { setAddText(e.target.value); if (addErr) setAddErr(null); }} onKeyDown={(e) => { if (e.key === "Enter") addTask(); }}
-            placeholder="Add a task…" className="w-48 rounded-lg border border-border bg-background px-2.5 py-1.5 focus:border-accent-border focus:outline-none" />
+            placeholder="Add a task…" className="w-44 rounded-lg border border-border bg-background px-2.5 py-1 focus:border-accent-border focus:outline-none" />
           {addDomains.length > 0 && (
             <select value={addDomain} onChange={(e) => setAddDomain(e.target.value)} title="Domain"
-              className="cursor-pointer rounded-lg border border-border bg-background px-2 py-1.5 text-text-secondary focus:border-accent-border focus:outline-none">
+              className="cursor-pointer rounded-lg border border-border bg-background px-2 py-1 text-text-secondary focus:border-accent-border focus:outline-none">
               {addDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
             </select>
           )}
           <input type="date" value={addDue} onChange={(e) => setAddDue(e.target.value)} title="Due date (optional)"
-            className="cursor-pointer rounded-lg border border-border bg-background px-2 py-1.5 text-text-muted focus:border-accent-border focus:outline-none" />
+            className="cursor-pointer rounded-lg border border-border bg-background px-2 py-1 text-text-muted focus:border-accent-border focus:outline-none" />
           <button onClick={addTask} disabled={busy === "add"} title="Add task"
-            className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+            className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1 font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
             <Plus className="h-3.5 w-3.5" /> Add
           </button>
         </div>
@@ -697,22 +722,49 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
           )}
         </div>
       ) : view === "board" ? (
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        // Flex (not a fixed 5-col grid) so a collapsed column shrinks to a slim
+        // strip and the expanded ones flex-grow to fill the freed space.
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-stretch xl:flex-nowrap">
           {COLUMNS.map((col) => {
             const items = byColumn[col.key] ?? [];
             const over = dragCol === col.key && dragId;
             // Icebox is a parking lot, not an active stage - set it apart with a
             // dashed border + snowflake so it reads as "set aside" at a glance.
             const isIcebox = col.key === "icebox";
+            const collapsed = collapsedCols.has(col.key);
+            const tone = over ? "border-accent-border bg-accent-soft/40" : isIcebox ? "border-dashed border-border-subtle bg-surface/20" : "border-border-subtle bg-surface/40";
+            if (collapsed) {
+              // A slim vertical strip: click anywhere (or the chevron) to expand;
+              // still a drop target so you can drag a card onto a collapsed column.
+              return (
+                <section key={col.key}
+                  onDragOver={(e) => { if (dragId) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragCol(col.key); } }}
+                  onDragLeave={() => setDragCol((c) => (c === col.key ? null : c))}
+                  onDrop={(e) => { e.preventDefault(); onDrop(col.key); }}
+                  onClick={() => toggleCol(col.key)}
+                  title={`${col.label} (${items.length}) - click to expand`}
+                  className={`flex shrink-0 cursor-pointer items-center gap-2 rounded-xl border p-2 transition-colors hover:bg-surface-warm sm:w-10 sm:flex-col ${tone}`}>
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                  <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted sm:mt-1 sm:[writing-mode:vertical-rl]">
+                    {isIcebox && <Snowflake className="h-3 w-3" />}
+                    {col.label}<span className="text-text-muted/50">· {items.length}</span>
+                  </div>
+                </section>
+              );
+            }
             return (
               <section key={col.key}
                 onDragOver={(e) => { if (dragId) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragCol(col.key); } }}
                 onDragLeave={() => setDragCol((c) => (c === col.key ? null : c))}
                 onDrop={(e) => { e.preventDefault(); onDrop(col.key); }}
-                className={`rounded-xl border p-2 transition-colors ${over ? "border-accent-border bg-accent-soft/40" : isIcebox ? "border-dashed border-border-subtle bg-surface/20" : "border-border-subtle bg-surface/40"}`}>
+                className={`rounded-xl border p-2 transition-colors sm:min-w-[200px] sm:flex-1 ${tone}`}>
                 <div className="mb-2 flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
                   {isIcebox && <Snowflake className="h-3 w-3" />}
                   {col.label}<span className="text-text-muted/50">· {items.length}</span>
+                  <button onClick={() => toggleCol(col.key)} title="Collapse column"
+                    className="ml-auto inline-flex h-5 w-5 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent">
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </button>
                 </div>
                 <div className="flex min-h-[2.5rem] flex-col gap-2">
                   {items.map(renderCard)}

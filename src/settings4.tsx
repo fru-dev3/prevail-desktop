@@ -400,6 +400,7 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
   const [autoConvert, setAutoConvert] = useState(() => getPref(PREF.autoConvertLongPaste, "1") === "1");
   const [stripSyc, setStripSyc] = useState(() => getPref(PREF.stripSycophancy, "0") === "1");
   const [showThinking, setShowThinking] = useState(() => getPref(PREF.showThinking, "1") === "1");
+  const [showBriefing, setShowBriefing] = useState(() => getPref(PREF.showHomeBriefing, "0") === "1");
   const [promptTimeout, setPromptTimeout] = useState<string>(() => getPref(PREF.llmPromptTimeoutSec, "300"));
   const [budgetCap, setBudgetCap] = useState<string>(() => getPref(PREF.budgetMonthlyCapUsd, ""));
   // Running spend estimate. Display-only: seeded from localStorage and, if the
@@ -467,6 +468,11 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
           title="Start on boot"
           desc="Launch Prevail automatically when you sign in to this Mac."
           control={<Switch on={startOnBoot} onChange={async (v) => { try { if (v) await autostartEnable(); else await autostartDisable(); setStartOnBoot(v); } catch (e) { console.error("autostart", e); } }} />}
+        />
+        <Row
+          title="Show Briefing on home"
+          desc="Show the proactive Briefing (top recommendations + what Prevail learned) on the home screen. Off keeps the landing minimal."
+          control={<Switch on={showBriefing} onChange={(v) => { setShowBriefing(v); setPref(PREF.showHomeBriefing, v ? "1" : "0"); }} />}
         />
         <Row
           title="Close to tray"
