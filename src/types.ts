@@ -423,6 +423,10 @@ export type BrandLogo = { hex: string; path: string };
 export type EngineApp = {
   id: string; title: string; integration: string; status: string; configured: boolean;
   domains: string[]; lastSuccessTs: number | null; lastError: string | null;
+  // When set, this app is fronted by a managed gateway (Composio / Nango) rather
+  // than connected directly. Keeps each connection mode's list separate (a Nango
+  // app must never appear under Direct) and labels the method in the sidebar.
+  gateway?: { provider: "composio" | "nango"; toolkit: string } | null;
   account: { label?: string; address?: string } | null;
   refresh: { every?: string; at?: string; on?: string } | null;
   autonomy?: string | null;
