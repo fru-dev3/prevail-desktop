@@ -120,6 +120,13 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
     localStorage.setItem("prevail.board.collapsedCols", [...next].join(","));
     return next;
   });
+  // Performance: render at most PAGE cards per column (and per list view) so a
+  // domain with hundreds of tasks stays fast and never floods the DOM. The rest
+  // lazy-load via "Show more". Per-column visible cap, reset when tasks reload.
+  const PAGE = 10;
+  const [colLimits, setColLimits] = useState<Record<string, number>>({});
+  const showMore = (key: string) => setColLimits((c) => ({ ...c, [key]: (c[key] ?? PAGE) + PAGE }));
+  const [listLimit, setListLimit] = useState(PAGE);
   // Secondary toolbar controls live behind "More", collapsed by default, so the
   // bar stays compact. Persisted.
   const [moreOpen, setMoreOpen] = useState<boolean>(() => localStorage.getItem("prevail.board.moreOpen") === "1");
@@ -778,25 +785,41 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
                 onDragLeave={() => setDragCol((c) => (c === col.key ? null : c))}
                 onDrop={(e) => { e.preventDefault(); onDrop(col.key); }}
                 className={`rounded-xl border p-2 transition-colors sm:min-w-[200px] sm:flex-1 ${tone}`}>
+                {(() => { const limit = colLimits[col.key] ?? PAGE; const more = items.length - limit; return (
+                <>
                 <div className="mb-2 flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
                   {isIcebox && <Snowflake className="h-3 w-3" />}
-                  {col.label}<span className="text-text-muted/50">· {items.length}</span>
+                  {col.label}<span className="text-text-muted/50">· {Math.min(items.length, limit)}{items.length > limit ? "+" : ""}</span>
                   <button onClick={() => toggleCol(col.key)} title="Collapse column"
                     className="ml-auto inline-flex h-5 w-5 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent">
                     <ChevronLeft className="h-3.5 w-3.5" />
                   </button>
                 </div>
                 <div className="flex min-h-[2.5rem] flex-col gap-2">
-                  {items.map(renderCard)}
+                  {items.slice(0, limit).map(renderCard)}
                   {items.length === 0 && <div className="px-1 py-3 text-center text-[11px] text-text-muted/50">{over ? "drop here" : "-"}</div>}
+                  {more > 0 && (
+                    <button onClick={() => showMore(col.key)}
+                      className="mt-0.5 rounded-md border border-dashed border-border-subtle px-2 py-1.5 text-center font-mono text-[10px] uppercase tracking-wider text-text-muted transition-colors hover:border-accent-border hover:text-accent">
+                      Show {Math.min(PAGE, more)} more
+                    </button>
+                  )}
                 </div>
+                </>
+                ); })()}
               </section>
             );
           })}
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
-          {listed.map(renderRow)}
+          {listed.slice(0, listLimit).map(renderRow)}
+          {listed.length > listLimit && (
+            <button onClick={() => setListLimit((n) => n + PAGE)}
+              className="mt-0.5 rounded-md border border-dashed border-border-subtle px-2 py-2 text-center font-mono text-[10px] uppercase tracking-wider text-text-muted transition-colors hover:border-accent-border hover:text-accent">
+              Show {Math.min(PAGE, listed.length - listLimit)} more ({listed.length - listLimit} not shown)
+            </button>
+          )}
           {listed.length === 0 && (
             <div className="rounded-xl border border-dashed border-border-subtle px-4 py-10 text-center text-sm text-text-muted">
               No tasks yet. Add one above, or hand work to AI.
