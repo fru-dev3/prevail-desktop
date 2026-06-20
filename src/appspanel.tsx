@@ -651,15 +651,21 @@ function ComposioMode() {
   // Load connection status once set up, and re-check when the window regains focus
   // (the user just authorized an app in the browser and came back).
   useEffect(() => {
-    if (!configured) return;
+    if (verified !== true) return; // only load connectors once the key is VALID
     void loadConnections();
     const onFocus = () => { void loadConnections(); };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [configured, loadConnections]);
+  }, [verified, loadConnections]);
   const save = async () => {
     setBusy("save"); setVerifyMsg(null);
     try { await invoke("composio_set_key", { key: keyInput.trim() }); setKeyInput(""); setEditingKey(false); await refresh(); void verify(); }
+    catch (e) { setVerifyMsg(String(e)); }
+    finally { setBusy(null); }
+  };
+  const removeKey = async () => {
+    setBusy("save");
+    try { await invoke("composio_set_key", { key: "" }); setKeyInput(""); setEditingKey(false); setVerified(null); setVerifyMsg(null); setConnected(new Set()); await refresh(); }
     catch (e) { setVerifyMsg(String(e)); }
     finally { setBusy(null); }
   };
@@ -672,7 +678,10 @@ function ComposioMode() {
     } catch (e) { setConnectMsg(String(e)); }
     finally { setConnectingSlug(null); }
   };
-  const showForm = configured === false || editingKey;
+  // Show the setup form unless we have a VALID key. Connectors only render when
+  // verified === true, so an invalid/missing key never shows the catalog.
+  const showForm = !configured || verified === false || editingKey;
+  const verifying = configured && verified === null && busy === "verify";
   const q = query.trim().toLowerCase();
   const shown = !q ? COMPOSIO_APPS : COMPOSIO_APPS.filter((a) => `${a.name} ${a.slug} ${a.cat}`.toLowerCase().includes(q));
   const connectedApps = shown.filter((a) => connected.has(a.slug));
@@ -687,7 +696,7 @@ function ComposioMode() {
               <span className="text-lg font-semibold text-text-primary">Composio</span>
               <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted"><Globe className="h-2.5 w-2.5" /> Managed gateway</span>
               {configured && verified === true && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
-              {verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-danger">Not connected</span>}
+              {verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-danger">Invalid key</span>}
             </div>
             <p className="mt-1 max-w-prose text-[12px] leading-relaxed text-text-secondary">One key fronts 1000+ apps. Browse below and connect any through Composio. Keep sensitive or financial accounts on a per-app Direct sign-in.</p>
             {showForm ? (
@@ -698,20 +707,24 @@ function ComposioMode() {
                   <li>Copy your <span className="font-mono text-text-primary">X-CONSUMER-API-KEY</span> (starts with <span className="font-mono">ck_</span>).</li>
                   <li>Paste it below. It is stored in your Mac's Keychain, never in the vault.</li>
                 </ol>
+                {verified === false && <p className="rounded-md border border-danger/40 bg-danger/10 px-3 py-1.5 text-[12px] text-danger">That key did not authenticate to Composio. Enter a valid X-CONSUMER-API-KEY.</p>}
                 <div className="flex flex-wrap items-center gap-2">
                   <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="ck_…" onKeyDown={(e) => { if (e.key === "Enter" && keyInput.trim()) void save(); }}
                     className="w-full max-w-sm rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-border" />
-                  <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save</button>
-                  {editingKey && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:border-accent-border">Cancel</button>}
-                  <button onClick={() => void openUrl("https://connect.composio.dev")} className="text-[12px] text-accent hover:underline">Get a key</button>
+                  <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save key</button>
+                  {(editingKey || (configured && verified === false)) && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:border-accent-border">Cancel</button>}
+                  {configured && <button onClick={removeKey} disabled={busy !== null} className="text-[12px] text-text-muted hover:text-danger hover:underline">Remove key</button>}
                 </div>
-                {verifyMsg && <p className="text-[12px] text-text-secondary">{verifyMsg}</p>}
+                {verifyMsg && verified !== false && <p className="text-[12px] text-text-secondary">{verifyMsg}</p>}
               </div>
+            ) : verifying ? (
+              <div className="mt-2 flex items-center gap-2 text-[12px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking your Composio key…</div>
             ) : (
               <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-text-muted">
-                <span className="font-semibold text-text-secondary">Key saved.</span>
-                <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Verify</button>
+                <span className="font-semibold text-accent">Key valid.</span>
+                <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Re-verify</button>
                 <button onClick={() => setEditingKey(true)} className="text-[11px] hover:text-accent hover:underline">Change key</button>
+                <button onClick={removeKey} disabled={busy !== null} className="text-[11px] hover:text-danger hover:underline">Remove key</button>
                 <button onClick={() => void openUrl("https://dashboard.composio.dev")} className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline">Composio dashboard <ExternalLink className="h-3 w-3" /></button>
               </div>
             )}
@@ -719,14 +732,21 @@ function ComposioMode() {
         </div>
       </div>
 
-      {configured && (
+      {verified === true && (
         <>
           <div className="flex items-center gap-2">
             <div className="relative max-w-md flex-1">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search Composio apps"
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search apps, or type any Composio app name + Connect"
                 className="w-full rounded-lg border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none" />
             </div>
+            {/* Any Composio app, even ones not in the curated grid below. */}
+            {q && availableApps.length === 0 && connectedApps.length === 0 && (
+              <button onClick={() => void connectApp(q.replace(/[^a-z0-9_]/g, ""))} disabled={connectingSlug !== null}
+                className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+                {connectingSlug ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Connect "{q}"
+              </button>
+            )}
             <button onClick={() => void loadConnections()} disabled={refreshingConn} title="Refresh connection status"
               className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
               {refreshingConn ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh
