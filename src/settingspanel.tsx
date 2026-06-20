@@ -188,13 +188,13 @@ export function SettingsPanel({
     // instead of taking the full screen height and pushing the ribbon off-screen.
     <div className="flex min-h-0 flex-1">
       {/* Sidebar nav - Codex-style with Back to app at top */}
-      <aside className="flex h-full min-h-0 w-56 shrink-0 flex-col overflow-y-auto border-r border-border-subtle bg-surface-warm px-2 py-3">
+      <aside className="flex h-full min-h-0 w-56 shrink-0 flex-col overflow-hidden border-r border-border-subtle bg-surface-warm">
         {/* Branded banner - mirrors the home sidebar header (dark, logo + serif
             wordmark), with the Back button underneath. pt-9 clears the macOS
             traffic-light controls so nothing is hidden under them. Draggable. */}
         {/* Inverted BACKGROUND vs the home header (dark): a prominent bluish
             banner so it's unmistakable you're in Settings, not on home. */}
-        <div data-tauri-drag-region className="-mx-2 -mt-3 mb-3 border-b border-black/20 bg-gradient-to-br from-[#5fa4bd] via-[#558fa6] to-[#467a8f] px-4 pb-3 pt-3">
+        <div data-tauri-drag-region className="shrink-0 border-b border-black/20 bg-gradient-to-br from-[#5fa4bd] via-[#558fa6] to-[#467a8f] px-4 pb-3 pt-3">
           <div className="flex items-center gap-2.5">
             <span className="shrink-0 overflow-hidden rounded-lg ring-1 ring-white/40"><PrevailLogo size={26} animated={false} /></span>
             {/* White letters on the bluish banner, with "AI" in black so it pops. */}
@@ -214,6 +214,8 @@ export function SettingsPanel({
             </button>
           )}
         </div>
+        {/* Only the nav list scrolls; the branded banner above stays pinned. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-3">
         <div className="mb-1 px-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
           Settings
         </div>
@@ -271,6 +273,7 @@ export function SettingsPanel({
             })}
           </div>
         ))}
+        </div>
       </aside>
 
       {/* Main pane */}
