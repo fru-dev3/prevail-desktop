@@ -25,7 +25,39 @@ per method, with visible progress. This is the north star, demanded concretely.
   showing instruction text. (Follow-up: surface the auth step even more prominently
   on a freshly-added app, and confirm each method end-to-end with the user.)
 
+## TRACK A-fix — VAULT ROOT regression (root cause of empty app list + Composio ENOENT)
+- [x] VAULT_ROOT was only set on encrypted-vault unlock; a plaintext vault left it
+  None so every no-arg engine call fell back to a dev vault. Now set in
+  engine_set_config_vault (boot + change) AND the app setup hook. The Direct app
+  list shows real connected apps again, and Composio no longer ENOENTs.
+
 ## TRACK B — Composio as a SEPARATE MODE (not an app in the Direct list)
+DESIGN LOCKED (user, firm): clicking Apps -> top-level choice "Direct | Composio".
+Direct = the per-app master-detail (list left, detail right, Connect spins in place).
+Composio = (1) a CONFIG page to set up the key, then (2) a page like Direct listing
+Composio's connectors, behaving the same. NEVER mix Composio into the Direct list.
+- [x] Removed the wrong "Composio gateway" entry from the Direct sidebar + the
+  mcp-remote ComposioDetail. Direct is clean.
+- [x] VERIFIED the Composio integration with the user's real key:
+    - The ck_ key is a CONSUMER key for the hosted MCP endpoint, NOT a REST key
+      (REST returns "Invalid API key"). Header is X-CONSUMER-API-KEY.
+    - MCP URL https://connect.composio.dev/mcp speaks Streamable HTTP. Handshake
+      works: POST initialize -> mcp-session-id -> notifications/initialized ->
+      tools/list. Meta-tools returned: COMPOSIO_SEARCH_TOOLS,
+      COMPOSIO_MANAGE_CONNECTIONS (toolkits[].action add/list/remove/rename),
+      COMPOSIO_MULTI_EXECUTE_TOOL, COMPOSIO_GET_TOOL_SCHEMAS, etc.
+    - So Composio's "connectors" come from MANAGE_CONNECTIONS (list) + SEARCH_TOOLS
+      (browse), driven via MCP tools/call with the session + consumer-key header.
+- [ ] B1: top-level Direct | Composio mode toggle in the Apps area.
+- [ ] B2: Composio CONFIG page: paste/store the X-CONSUMER-API-KEY (Keychain
+  service prevail.ingestion / account composio - already holds the user's key).
+- [ ] B3: Composio CONNECTORS page: list connected accounts (MANAGE_CONNECTIONS
+  list) + search/browse (SEARCH_TOOLS); connect via Composio (MANAGE_CONNECTIONS
+  add -> returns an auth link to open). Behaves like the Direct master-detail.
+- [ ] B4: agent wiring: register connect.composio.dev/mcp (HTTP, X-CONSUMER-API-KEY
+  header) for the agent so it can execute Composio tools.
+
+## TRACK B-OLD (superseded, remove leftovers)
 Complete separation: top-level "Direct | Composio". Composio = paste API key ->
 list the accounts/apps connected in Composio -> interact through Composio.
 - [x] B5: name for the native path decided: "Direct".
