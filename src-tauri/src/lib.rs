@@ -27,6 +27,7 @@ mod normalize;
 mod consolidate;
 mod idealstate;
 mod omega;
+mod google;
 mod paths;
 mod settings;
 mod threads;
@@ -454,6 +455,10 @@ pub fn run() {
             engine::engine_app_remove,
             engine::engine_app_oauth,
             engine::engine_app_browser_login,
+            google::google_cli_status,
+            google::google_profiles,
+            google::google_profile_login,
+            google::google_scaffold,
             engine::composio_cli_status,
             engine::composio_cli_install,
             engine::composio_cli_login,
