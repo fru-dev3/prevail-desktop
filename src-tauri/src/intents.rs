@@ -81,25 +81,28 @@ pub(crate) fn journal_append(vault: String, domain: Option<String>, entry: Strin
 #[tauri::command]
 pub(crate) fn intents_read_all(vault: String, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
     let root = PathBuf::from(&vault);
-    // B2-12: the General ledger moves to build/ (no-op until build/ exists).
-    let mut dirs: Vec<(String, PathBuf)> = vec![("general".into(), crate::paths::build_root(&vault))];
+    // General resolves to its real home (v4 <vault>/data/domains/general, else
+    // legacy vault root) - NOT build/, which never held the intent ledger.
+    let mut dirs: Vec<(String, PathBuf)> = vec![("general".into(), crate::paths::general_dir(&vault))];
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    // v3 layout first (<vault>/domains/<domain>); it wins on a name clash.
-    if let Ok(it) = read_dir_retry(&root.join("domains")) {
+    seen.insert("general".into());
+    // Scan every layout, newest first so a v4 domain wins a name clash: v4
+    // (<vault>/data/domains/<d>), then v3 (<vault>/domains/<d>), then legacy
+    // (<vault>/<d>). This is the bug fix for "intents/journal blank" - the old
+    // code only looked at v3 + legacy and missed the v4 data/domains home where
+    // every conversation actually lands.
+    for container in [root.join("data").join("domains"), root.join("domains"), root.clone()] {
+        let Ok(it) = read_dir_retry(&container) else { continue };
         for e in it.flatten() {
             let p = e.path();
             let name = e.file_name().to_string_lossy().to_string();
-            if p.is_dir() && !name.starts_with('.') && !name.starts_with('_') && seen.insert(name.clone()) {
-                dirs.push((name, p));
-            }
-        }
-    }
-    // Legacy layout: domains directly under the vault root.
-    if let Ok(it) = read_dir_retry(&root) {
-        for e in it.flatten() {
-            let p = e.path();
-            let name = e.file_name().to_string_lossy().to_string();
-            if p.is_dir() && !name.starts_with('.') && !name.starts_with('_') && name != "domains" && name != "apps" && seen.insert(name.clone()) {
+            // Skip infra dirs and internal / app-scope (_-prefixed) pseudo-domains.
+            if p.is_dir()
+                && !name.starts_with('.')
+                && !name.starts_with('_')
+                && name != "domains" && name != "apps" && name != "data" && name != "build"
+                && seen.insert(name.clone())
+            {
                 dirs.push((name, p));
             }
         }
