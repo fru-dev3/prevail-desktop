@@ -311,7 +311,7 @@ function CouncilCircle({ members, chair, clis }: { members: string[]; chair: str
   };
   if (n === 0) {
     return (
-      <div className="mb-5 flex h-[180px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface text-center">
+      <div className="flex h-full min-h-[180px] flex-col items-center justify-center gap-2 text-center">
         <Crown className="h-7 w-7 text-text-muted" />
         <div className="text-sm text-text-secondary">No one seated yet</div>
         <div className="text-xs text-text-muted">Pick models below to assemble your council.</div>
@@ -319,7 +319,7 @@ function CouncilCircle({ members, chair, clis }: { members: string[]; chair: str
     );
   }
   return (
-    <div className="mb-5 flex justify-center rounded-xl border border-border bg-surface py-4">
+    <div className="flex h-full w-full items-center justify-center py-2">
       <style>{`@keyframes councilSeatIn{from{opacity:0;transform:translate(-50%,-50%) scale(.4)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}`}</style>
       <div className="relative" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="absolute inset-0" aria-hidden>
@@ -388,6 +388,25 @@ function councilMemberWeight(hay: string, isOss: boolean): number {
   return 2; // mid cloud (sonnet, haiku, gpt-4o-mini, flash, etc.)
 }
 
+// Estimated dollar cost for ONE member to answer one council question. Local /
+// open-source models run on-device, so $0. Cloud models use a rough blended
+// $/1M-tokens by tier times a typical council-turn size. Deliberately an
+// estimate (real prices vary by provider + exact model), but a concrete figure
+// is far more useful than "$$$". Tuned to land in a believable per-run range.
+const COUNCIL_TURN_TOKENS = 6000; // ~prompt + context + answer for one seat
+function councilMemberCostUsd(hay: string, isOss: boolean): number {
+  if (isOss) return 0; // on-device, no API spend
+  const flagship = ["opus", "gpt-5", "gpt5", "gemini-2.5-pro", "gemini-pro", "grok-4", "o3", "o1"];
+  const perMillion = flagship.some((t) => hay.includes(t)) ? 18 : 4; // blended $/1M tokens
+  return (COUNCIL_TURN_TOKENS / 1_000_000) * perMillion;
+}
+// Format a small USD figure without losing precision on cheap panels.
+function fmtUsd(n: number): string {
+  if (n <= 0) return "$0";
+  if (n < 0.01) return "<$0.01";
+  return `$${n.toFixed(2)}`;
+}
+
 function CouncilStats({ members, clis }: { members: string[]; clis: CliInfo[] }) {
   const stats = useMemo(() => {
     const total = members.length;
@@ -415,12 +434,14 @@ function CouncilStats({ members, clis }: { members: string[]; clis: CliInfo[] })
     const maxBurn = total * 3 || 1; // all-flagship-cloud ceiling
     const burnPct = Math.round((burn / maxBurn) * 100);
     const burnTier = burnPct >= 67 ? "$$$" : burnPct >= 34 ? "$$" : "$";
-    return { total, oss, cloud: cloudish, ossPct, cloudPct, vendors, local, remote, burn, burnPct, burnTier };
+    // Concrete dollar estimate: sum each cloud member's per-run cost (local = $0).
+    const costUsd = classify.reduce((sum, x) => sum + councilMemberCostUsd(x.hay, x.isOss), 0);
+    return { total, oss, cloud: cloudish, ossPct, cloudPct, vendors, local, remote, burn, burnPct, burnTier, costUsd };
   }, [members, clis]);
 
   if (stats.total === 0) {
     return (
-      <div className="flex h-full min-h-[180px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface p-4 text-center">
+      <div className="flex h-full min-h-[180px] flex-col items-center justify-center p-4 text-center">
         <ListChecks className="h-6 w-6 text-text-muted" />
         <div className="mt-2 text-sm text-text-secondary">No stats yet</div>
         <div className="text-xs text-text-muted">Seat some models to see the panel breakdown.</div>
@@ -429,7 +450,7 @@ function CouncilStats({ members, clis }: { members: string[]; clis: CliInfo[] })
   }
 
   return (
-    <div className="flex h-full flex-col gap-3 rounded-xl border border-border bg-surface p-4">
+    <div className="flex h-full flex-col gap-3 p-4">
       <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Panel stats</div>
 
       {/* Number cards: panel size + providers. */}
@@ -468,16 +489,18 @@ function CouncilStats({ members, clis }: { members: string[]; clis: CliInfo[] })
         </div>
       </div>
 
-      {/* Estimated relative burn / cost if every model ran at once. */}
+      {/* Estimated dollar cost for one full panel run (every seat answers once). */}
       <div className="mt-auto rounded-lg border border-border-subtle bg-background p-3">
-        <div className="flex items-center justify-between">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Est. burn if all run</span>
-          <span className="font-display text-sm font-bold text-accent">{stats.burnTier}</span>
+        <div className="flex items-baseline justify-between">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Est. cost / panel run</span>
+          <span className="font-display text-lg font-bold text-accent">{fmtUsd(stats.costUsd)} <span className="font-mono text-[10px] font-normal text-text-muted">{stats.burnTier}</span></span>
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-warm">
           <div className="h-full bg-accent" style={{ width: `${stats.burnPct}%` }} />
         </div>
-        <div className="mt-1.5 text-[10px] text-text-muted">Estimated. Relative weight only, not a real price.</div>
+        <div className="mt-1.5 text-[10px] text-text-muted">
+          Rough estimate: ~{(COUNCIL_TURN_TOKENS / 1000).toFixed(0)}K tokens/seat at blended cloud rates; local models are free. Actual prices vary.
+        </div>
       </div>
     </div>
   );
@@ -536,13 +559,18 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
       <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-surface-warm px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
         <Check className="h-3 w-3 text-ok" /> Changes save automatically
       </div>
-      {/* Visual round table on the left, live aggregate stats on the right.
-          Stacks on narrow widths; side-by-side from lg up. */}
-      <div className="mb-5 grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
-        <div className="flex justify-center lg:justify-start">
-          <CouncilCircle members={[...members]} chair={chair} clis={clis} />
+      {/* One seamless panel: the round table on the left (prominent, centered),
+          a divider, then the live aggregate stats on the right. Stacks on narrow
+          widths (divider becomes a top border on the stats half). */}
+      <div className="mb-5 overflow-hidden rounded-xl border border-border bg-surface">
+        <div className="flex flex-col lg:flex-row lg:items-stretch">
+          <div className="flex items-center justify-center p-4 lg:w-[42%] lg:shrink-0">
+            <CouncilCircle members={[...members]} chair={chair} clis={clis} />
+          </div>
+          <div className="min-w-0 flex-1 border-t border-border-subtle lg:border-l lg:border-t-0">
+            <CouncilStats members={[...members]} clis={clis} />
+          </div>
         </div>
-        <CouncilStats members={[...members]} clis={clis} />
       </div>
       {/* Compact summary bar - what the panel is right now. */}
       <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-accent-border bg-accent-soft px-4 py-3 text-sm">

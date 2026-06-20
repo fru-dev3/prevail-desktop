@@ -965,29 +965,57 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
         </div>
         <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-text-secondary">One managed gateway: a single key fronts 1000+ apps. Authorize each app once in Composio, then Prevail's agent uses them through the Composio MCP endpoint - no per-app setup on this Mac.</p>
         {composioMethod === "cli" ? (
-          <div className="mt-3 max-w-xl space-y-2">
-            <p className="text-[11px] leading-relaxed text-text-secondary">Install the Composio CLI and sign in once in your browser - no key to copy. Prevail then uses your Composio connection. <button onClick={() => void openUrl("https://docs.composio.dev")} className="text-accent hover:underline">Get help</button>.</p>
-            {cliBusy === "status" && cliStatus === null ? (
-              <div className="flex items-center gap-2 text-[11px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking the Composio CLI…</div>
-            ) : !cliStatus?.installed ? (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button onClick={installCli} disabled={cliBusy !== null} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{cliBusy === "install" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Install Composio CLI</button>
-                <button onClick={checkCliStatus} disabled={cliBusy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border disabled:opacity-50">{cliBusy === "status" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh</button>
+          (() => {
+            const installed = !!cliStatus?.installed;
+            const loggedIn = !!cliStatus?.loggedIn;
+            const checking = cliBusy === "status" && cliStatus === null;
+            // A two-step guided flow so it's always clear what to do NEXT:
+            // 1) install the CLI, 2) sign in. Each step shows done / now-do-this /
+            // waiting, with the action button only on the active step.
+            const Step = ({ n, title, sub, state, children }: { n: number; title: string; sub: string; state: "done" | "active" | "wait"; children?: React.ReactNode }) => (
+              <div className={`flex gap-3 rounded-lg border p-3 ${state === "active" ? "border-accent-border bg-accent-soft/30" : "border-border-subtle bg-background"}`}>
+                <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${state === "done" ? "bg-ok text-background" : state === "active" ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>
+                  {state === "done" ? <Check className="h-3.5 w-3.5" /> : n}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className={`text-xs font-semibold ${state === "wait" ? "text-text-muted" : "text-text-primary"}`}>{title}</div>
+                  <div className="mt-0.5 text-[11px] text-text-muted">{sub}</div>
+                  {state === "active" && children && <div className="mt-2">{children}</div>}
+                </div>
               </div>
-            ) : !cliStatus.loggedIn ? (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button onClick={loginCli} disabled={cliBusy !== null} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{cliBusy === "login" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />} Log in to Composio</button>
-                <button onClick={checkCliStatus} disabled={cliBusy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border disabled:opacity-50">{cliBusy === "status" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh</button>
+            );
+            return (
+              <div className="mt-3 max-w-xl space-y-2">
+                <p className="text-[11px] leading-relaxed text-text-secondary">Two quick steps - no key to copy. Prevail then uses your Composio connection. <button onClick={() => void openUrl("https://docs.composio.dev")} className="text-accent hover:underline">Get help</button>.</p>
+                {checking ? (
+                  <div className="flex items-center gap-2 text-[11px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking the Composio CLI…</div>
+                ) : (
+                  <>
+                    <Step n={1} title="Install the Composio CLI" sub={installed ? "Installed on this Mac." : "A one-time download. Click below; it shows progress, then moves you to step 2."} state={installed ? "done" : "active"}>
+                      <button onClick={installCli} disabled={cliBusy !== null} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{cliBusy === "install" ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Installing…</> : <><Download className="h-3.5 w-3.5" /> Install Composio CLI</>}</button>
+                    </Step>
+                    <Step n={2} title="Sign in to Composio" sub={loggedIn ? `Signed in${cliStatus?.account ? ` as ${cliStatus.account}` : ""}.` : installed ? "Opens your browser to sign in once. After you finish, come back - the panel turns green and your apps become usable." : "Available once the CLI is installed."} state={loggedIn ? "done" : installed ? "active" : "wait"}>
+                      <button onClick={loginCli} disabled={cliBusy !== null} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{cliBusy === "login" ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Waiting for browser sign-in…</> : <><ExternalLink className="h-3.5 w-3.5" /> Sign in to Composio</>}</button>
+                    </Step>
+                    {loggedIn ? (
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-ok/40 bg-ok/10 px-3 py-2 text-[11px]">
+                        <span className="inline-flex items-center gap-1 font-semibold text-ok"><Check className="h-3.5 w-3.5" /> Connected. Pick an app below to start using it.</span>
+                      </div>
+                    ) : (
+                      <button onClick={checkCliStatus} disabled={cliBusy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{cliBusy === "status" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Refresh status</button>
+                    )}
+                  </>
+                )}
+                {cliBusy === "login" && <p className="flex items-center gap-2 text-[11px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Finish the sign-in in your browser, then return here.</p>}
+                {cliOutput && (
+                  <details className="rounded-md border border-border bg-background">
+                    <summary className="cursor-pointer px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">Install / sign-in log</summary>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap px-2 py-1.5 font-mono text-[10px] text-text-muted">{cliOutput}</pre>
+                  </details>
+                )}
               </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-                <span className="inline-flex items-center gap-1 font-semibold text-accent"><Check className="h-3.5 w-3.5" /> Composio CLI connected{cliStatus.account ? ` as ${cliStatus.account}` : ""}</span>
-                <button onClick={checkCliStatus} disabled={cliBusy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{cliBusy === "status" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Refresh</button>
-              </div>
-            )}
-            {cliBusy === "login" && <p className="flex items-center gap-2 text-[11px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Opening your browser to sign in to Composio…</p>}
-            {cliOutput && <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[10px] text-text-muted">{cliOutput}</pre>}
-          </div>
+            );
+          })()
         ) : showForm ? (
           <div className="mt-3 max-w-xl space-y-2">
             <p className="text-[11px] leading-relaxed text-text-secondary">Paste your <span className="font-mono text-text-primary">X-CONSUMER-API-KEY</span> from <button onClick={() => void openUrl("https://connect.composio.dev")} className="text-accent hover:underline">connect.composio.dev</button> (starts with <span className="font-mono">ck_</span>). Stored in your Mac's Keychain.</p>
