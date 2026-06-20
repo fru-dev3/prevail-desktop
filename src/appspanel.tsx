@@ -375,7 +375,17 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         <ComposioMode />
       ) : appsMode === "nango" ? (
         <NangoMode />
-      ) : apps === null ? (
+      ) : (
+        <>
+        {/* FULL-WIDTH description of the Direct track, above its master-detail. */}
+        <div className="mb-4 overflow-hidden rounded-xl border border-border bg-surface px-5 py-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-background"><Plug className="h-4 w-4" /></span>
+            <span className="text-base font-semibold text-text-primary">Direct</span>
+          </div>
+          <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-text-secondary">Prevail connects each app itself (MCP, an official API, a one-time sign-in, or a guided browser login) and keeps its data in your vault. The source of truth is the app's own folder.</p>
+        </div>
+        {apps === null ? (
         <div className="text-sm text-text-muted">loading apps…</div>
       ) : apps.length === 0 && catalog.length === 0 ? (
         connecting ? (
@@ -551,6 +561,8 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
             )}
           </div>
         </div>
+      )}
+        </>
       )}
     </>
   );
@@ -747,6 +759,30 @@ const COMPOSIO_APPS: { slug: string; name: string; cat: string }[] = [
   { slug: "spotify", name: "Spotify", cat: "Media" },
 ];
 
+// Gateway listing cache. The Composio/Nango listings come from slow MCP round-trips,
+// so we persist the last successful result with a timestamp and hydrate from it
+// instantly on mount; we only hit the network when the cache is older than this
+// staleness window (or when the user forces a Refresh).
+const GATEWAY_CACHE_STALE_MS = 60_000;
+const COMPOSIO_CACHE_KEY = "prevail.composio.connected.cache";
+const NANGO_CACHE_KEY = "prevail.nango.cache";
+
+function readGatewayCache<T>(key: string): { data: T; ts: number } | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    if (v && typeof v.ts === "number" && "data" in v) return v as { data: T; ts: number };
+    return null;
+  } catch { return null; }
+}
+function writeGatewayCache<T>(key: string, data: T) {
+  try { localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() })); } catch { /* ignore */ }
+}
+function clearGatewayCache(key: string) {
+  try { localStorage.removeItem(key); } catch { /* ignore */ }
+}
+
 // The Composio track: a managed gateway, completely separate from Direct. Set up
 // the key once, then browse Composio's app catalog and connect any app, which opens
 // a Composio auth link in the browser. Connections live in Composio; Prevail's
@@ -770,11 +806,19 @@ function ComposioMode() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   useEffect(() => { void invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {}); }, []);
   // Which Composio apps are actively connected (one MCP call over the catalog).
-  const loadConnections = useCallback(async () => {
+  // Cached: a successful result is persisted with a timestamp so the list renders
+  // instantly next time. `force` ignores the staleness window (the Refresh button).
+  const loadConnections = useCallback(async (force = false) => {
+    if (!force) {
+      const cached = readGatewayCache<{ active: string[] }>(COMPOSIO_CACHE_KEY);
+      if (cached && Date.now() - cached.ts < GATEWAY_CACHE_STALE_MS) return;
+    }
     setRefreshingConn(true);
     try {
       const r = await invoke<{ active: string[] }>("composio_connections", { toolkits: COMPOSIO_APPS.map((a) => a.slug) });
-      setConnected(new Set(r.active ?? []));
+      const active = r.active ?? [];
+      setConnected(new Set(active));
+      writeGatewayCache(COMPOSIO_CACHE_KEY, { active });
     } catch { /* keep current */ }
     finally { setRefreshingConn(false); }
   }, []);
@@ -790,9 +834,14 @@ function ComposioMode() {
   }, []);
   useEffect(() => { void refresh().then(() => { void verify(); }); }, [refresh, verify]);
   // Load connection status once set up, and re-check when the window regains focus
-  // (the user just authorized an app in the browser and came back).
+  // (the user just authorized an app in the browser and came back). Hydrate from
+  // the cache immediately so the list renders with no spinner, then only hit the
+  // network if the cache is stale (or absent). The focus refresh is throttled the
+  // same way via loadConnections's staleness check.
   useEffect(() => {
     if (verified !== true) return; // only load connectors once the key is VALID
+    const cached = readGatewayCache<{ active: string[] }>(COMPOSIO_CACHE_KEY);
+    if (cached) setConnected(new Set(cached.data.active ?? []));
     void loadConnections();
     const onFocus = () => { void loadConnections(); };
     window.addEventListener("focus", onFocus);
@@ -806,7 +855,7 @@ function ComposioMode() {
   };
   const removeKey = async () => {
     setBusy("save");
-    try { await invoke("composio_set_key", { key: "" }); setKeyInput(""); setEditingKey(false); setVerified(null); setVerifyMsg(null); setConnected(new Set()); await refresh(); }
+    try { await invoke("composio_set_key", { key: "" }); setKeyInput(""); setEditingKey(false); setVerified(null); setVerifyMsg(null); setConnected(new Set()); clearGatewayCache(COMPOSIO_CACHE_KEY); await refresh(); }
     catch (e) { setVerifyMsg(String(e)); }
     finally { setBusy(null); }
   };
@@ -830,44 +879,48 @@ function ComposioMode() {
   const selected = selectedSlug ? COMPOSIO_APPS.find((a) => a.slug === selectedSlug) ?? null : null;
   const selectedConnected = selected ? connected.has(selected.slug) : false;
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-      {/* LEFT - compact key controls on top, then search + the connected /
-          available app lists. Selecting an app shows its detail on the right. */}
-      <aside className="w-full shrink-0 lg:w-72 lg:max-w-xs">
-        {/* Compact config / key controls. */}
-        <div className="mb-3 overflow-hidden rounded-lg border border-border bg-surface px-3 py-2.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#6d5efc] to-[#3b2fb8] text-white"><Boxes className="h-3.5 w-3.5" /></span>
-            <span className="text-sm font-semibold text-text-primary">Composio</span>
-            {configured && verified === true && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
-            {verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-danger">Invalid key</span>}
-          </div>
-          {showForm ? (
-            <div className="mt-2 space-y-2">
-              <p className="text-[11px] leading-relaxed text-text-secondary">Paste your <span className="font-mono text-text-primary">X-CONSUMER-API-KEY</span> from <button onClick={() => void openUrl("https://connect.composio.dev")} className="text-accent hover:underline">connect.composio.dev</button> (starts with <span className="font-mono">ck_</span>). Stored in your Mac's Keychain.</p>
-              {verified === false && <p className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger">That key did not authenticate to Composio. Enter a valid X-CONSUMER-API-KEY.</p>}
-              <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="ck_…" onKeyDown={(e) => { if (e.key === "Enter" && keyInput.trim()) void save(); }}
-                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-text-primary outline-none focus:border-accent-border" />
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy === "save" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Save key</button>
-                {(editingKey || (configured && verified === false)) && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border">Cancel</button>}
-                {configured && <button onClick={removeKey} disabled={busy !== null} className="text-[11px] text-text-muted hover:text-danger hover:underline">Remove key</button>}
-              </div>
-              {verifyMsg && verified !== false && <p className="text-[11px] text-text-secondary">{verifyMsg}</p>}
-            </div>
-          ) : verifying ? (
-            <div className="mt-2 flex items-center gap-2 text-[11px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking your Composio key…</div>
-          ) : (
-            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-muted">
-              <span className="font-semibold text-accent">Key valid.</span>
-              <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Re-verify</button>
-              <button onClick={() => setEditingKey(true)} className="text-[10px] hover:text-accent hover:underline">Change key</button>
-              <button onClick={removeKey} disabled={busy !== null} className="text-[10px] hover:text-danger hover:underline">Remove key</button>
-              <button onClick={() => void openUrl("https://dashboard.composio.dev")} className="inline-flex items-center gap-1 text-[10px] text-accent hover:underline">Dashboard <ExternalLink className="h-2.5 w-2.5" /></button>
-            </div>
-          )}
+    <div className="space-y-4">
+      {/* FULL-WIDTH header: what Composio is + the key / config controls, above
+          the two-column master-detail row. */}
+      <div className="overflow-hidden rounded-xl border border-border bg-surface px-5 py-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#6d5efc] to-[#3b2fb8] text-white"><Boxes className="h-4 w-4" /></span>
+          <span className="text-base font-semibold text-text-primary">Composio</span>
+          {configured && verified === true && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
+          {verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-danger">Invalid key</span>}
         </div>
+        <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-text-secondary">One managed gateway: a single key fronts 1000+ apps. Authorize each app once in Composio, then Prevail's agent uses them through the Composio MCP endpoint - no per-app setup on this Mac.</p>
+        {showForm ? (
+          <div className="mt-3 max-w-xl space-y-2">
+            <p className="text-[11px] leading-relaxed text-text-secondary">Paste your <span className="font-mono text-text-primary">X-CONSUMER-API-KEY</span> from <button onClick={() => void openUrl("https://connect.composio.dev")} className="text-accent hover:underline">connect.composio.dev</button> (starts with <span className="font-mono">ck_</span>). Stored in your Mac's Keychain.</p>
+            {verified === false && <p className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger">That key did not authenticate to Composio. Enter a valid X-CONSUMER-API-KEY.</p>}
+            <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="ck_…" onKeyDown={(e) => { if (e.key === "Enter" && keyInput.trim()) void save(); }}
+              className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-text-primary outline-none focus:border-accent-border" />
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy === "save" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Save key</button>
+              {(editingKey || (configured && verified === false)) && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border">Cancel</button>}
+              {configured && <button onClick={removeKey} disabled={busy !== null} className="text-[11px] text-text-muted hover:text-danger hover:underline">Remove key</button>}
+            </div>
+            {verifyMsg && verified !== false && <p className="text-[11px] text-text-secondary">{verifyMsg}</p>}
+          </div>
+        ) : verifying ? (
+          <div className="mt-3 flex items-center gap-2 text-[11px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking your Composio key…</div>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-muted">
+            <span className="font-semibold text-accent">Key valid.</span>
+            <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Re-verify</button>
+            <button onClick={() => setEditingKey(true)} className="text-[10px] hover:text-accent hover:underline">Change key</button>
+            <button onClick={removeKey} disabled={busy !== null} className="text-[10px] hover:text-danger hover:underline">Remove key</button>
+            <button onClick={() => void openUrl("https://dashboard.composio.dev")} className="inline-flex items-center gap-1 text-[10px] text-accent hover:underline">Dashboard <ExternalLink className="h-2.5 w-2.5" /></button>
+          </div>
+        )}
+      </div>
 
+      {/* Two-column master-detail below the full-width header. */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+      {/* LEFT - search + the connected / available app lists. Selecting an app
+          shows its detail on the right. */}
+      <aside className="w-full shrink-0 lg:w-72 lg:max-w-xs">
         {verified === true && (
           <>
             <div className="relative mb-2">
@@ -882,7 +935,7 @@ function ComposioMode() {
                 {connectingSlug ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Connect "{q}"
               </button>
             )}
-            <button onClick={() => void loadConnections()} disabled={refreshingConn} title="Refresh connection status"
+            <button onClick={() => void loadConnections(true)} disabled={refreshingConn} title="Refresh connection status"
               className="mb-3 inline-flex w-full items-center justify-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
               {refreshingConn ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh
             </button>
@@ -936,6 +989,7 @@ function ComposioMode() {
           </div>
         )}
       </div>
+      </div>
     </div>
   );
 }
@@ -964,9 +1018,25 @@ function NangoMode() {
     try { const s = await invoke<{ configured: boolean }>("nango_status"); setConfigured(!!s.configured); }
     catch { setConfigured(false); }
   }, []);
-  const loadData = useCallback(async () => {
-    try { const r = await invoke<{ integrations: NangoIntegration[] }>("nango_integrations"); setIntegrations(r.integrations ?? []); } catch { /* */ }
-    try { const c = await invoke<{ active: string[] }>("nango_connections"); setConnected(new Set(c.active ?? [])); } catch { /* */ }
+  // Cached: integrations + active connections come from slow MCP calls, so a
+  // successful result is persisted with a timestamp. `force` ignores the staleness
+  // window (the Refresh button and a fresh verify).
+  const loadData = useCallback(async (force = false) => {
+    if (!force) {
+      const cached = readGatewayCache<{ integrations: NangoIntegration[]; active: string[] }>(NANGO_CACHE_KEY);
+      if (cached && Date.now() - cached.ts < GATEWAY_CACHE_STALE_MS) return;
+    }
+    let integrations: NangoIntegration[] | null = null;
+    let active: string[] | null = null;
+    try { const r = await invoke<{ integrations: NangoIntegration[] }>("nango_integrations"); integrations = r.integrations ?? []; setIntegrations(integrations); } catch { /* */ }
+    try { const c = await invoke<{ active: string[] }>("nango_connections"); active = c.active ?? []; setConnected(new Set(active)); } catch { /* */ }
+    if (integrations !== null || active !== null) {
+      const prev = readGatewayCache<{ integrations: NangoIntegration[]; active: string[] }>(NANGO_CACHE_KEY)?.data;
+      writeGatewayCache(NANGO_CACHE_KEY, {
+        integrations: integrations ?? prev?.integrations ?? [],
+        active: active ?? prev?.active ?? [],
+      });
+    }
   }, []);
   const verify = useCallback(async () => {
     setBusy("verify"); setVerified(null); setVerifyMsg("Checking your Nango key…");
@@ -975,8 +1045,13 @@ function NangoMode() {
     finally { setBusy(null); }
   }, [loadData]);
   useEffect(() => { void refresh().then(() => { void verify(); }); }, [refresh, verify]);
+  // Hydrate from the cache immediately so the lists render with no spinner, then
+  // only hit the network if the cache is stale (handled inside loadData). The focus
+  // refresh is throttled the same way.
   useEffect(() => {
     if (verified !== true) return;
+    const cached = readGatewayCache<{ integrations: NangoIntegration[]; active: string[] }>(NANGO_CACHE_KEY);
+    if (cached) { setIntegrations(cached.data.integrations ?? []); setConnected(new Set(cached.data.active ?? [])); }
     const onFocus = () => { void loadData(); };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
@@ -989,7 +1064,7 @@ function NangoMode() {
   };
   const removeKey = async () => {
     setBusy("save");
-    try { await invoke("nango_set_key", { key: "" }); setKeyInput(""); setEditingKey(false); setVerified(null); setVerifyMsg(null); setIntegrations([]); setConnected(new Set()); await refresh(); }
+    try { await invoke("nango_set_key", { key: "" }); setKeyInput(""); setEditingKey(false); setVerified(null); setVerifyMsg(null); setIntegrations([]); setConnected(new Set()); clearGatewayCache(NANGO_CACHE_KEY); await refresh(); }
     catch (e) { setVerifyMsg(String(e)); }
     finally { setBusy(null); }
   };
@@ -1011,44 +1086,48 @@ function NangoMode() {
   const selected = selectedKey ? integrations.find((i) => i.unique_key === selectedKey) ?? null : null;
   const selectedConnected = selected ? connected.has(selected.unique_key) : false;
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-      {/* LEFT - compact key controls on top, then search + the connected /
-          available integration lists. Selecting one shows its detail on the right. */}
-      <aside className="w-full shrink-0 lg:w-72 lg:max-w-xs">
-        {/* Compact config / key controls. */}
-        <div className="mb-3 overflow-hidden rounded-lg border border-border bg-surface px-3 py-2.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#1f9d8f] to-[#0d6e63] text-white"><Cable className="h-3.5 w-3.5" /></span>
-            <span className="text-sm font-semibold text-text-primary">Nango</span>
-            {configured && verified === true && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
-            {verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-danger">Invalid key</span>}
-          </div>
-          {showForm ? (
-            <div className="mt-2 space-y-2">
-              <p className="text-[11px] leading-relaxed text-text-secondary">Copy your <span className="font-mono text-text-primary">Secret Key</span> from <button onClick={() => void openUrl("https://app.nango.dev/dev/getting-started")} className="text-accent hover:underline">app.nango.dev</button> (Environment Settings). Stored in your Mac's Keychain.</p>
-              {verified === false && <p className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger">That key did not authenticate to Nango. Enter a valid secret key.</p>}
-              <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="nango secret key…" onKeyDown={(e) => { if (e.key === "Enter" && keyInput.trim()) void save(); }}
-                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-text-primary outline-none focus:border-accent-border" />
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy === "save" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Save key</button>
-                {(editingKey || (configured && verified === false)) && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border">Cancel</button>}
-                {configured && <button onClick={removeKey} disabled={busy !== null} className="text-[11px] text-text-muted hover:text-danger hover:underline">Remove key</button>}
-              </div>
-              {verifyMsg && verified !== false && <p className="text-[11px] text-text-secondary">{verifyMsg}</p>}
-            </div>
-          ) : verifying ? (
-            <div className="mt-2 flex items-center gap-2 text-[11px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking your Nango key…</div>
-          ) : (
-            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-muted">
-              <span className="font-semibold text-accent">Key valid.</span>
-              <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Re-verify</button>
-              <button onClick={() => setEditingKey(true)} className="text-[10px] hover:text-accent hover:underline">Change key</button>
-              <button onClick={removeKey} disabled={busy !== null} className="text-[10px] hover:text-danger hover:underline">Remove key</button>
-              <button onClick={() => void openUrl("https://app.nango.dev")} className="inline-flex items-center gap-1 text-[10px] text-accent hover:underline">Dashboard <ExternalLink className="h-2.5 w-2.5" /></button>
-            </div>
-          )}
+    <div className="space-y-4">
+      {/* FULL-WIDTH header: what Nango is + the key / config controls, above the
+          two-column master-detail row. */}
+      <div className="overflow-hidden rounded-xl border border-border bg-surface px-5 py-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#1f9d8f] to-[#0d6e63] text-white"><Cable className="h-4 w-4" /></span>
+          <span className="text-base font-semibold text-text-primary">Nango</span>
+          {configured && verified === true && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
+          {verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-danger">Invalid key</span>}
         </div>
+        <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-text-secondary">Your own Nango project, fronted by one secret key. Prevail lists the integrations you configured in Nango; connect one and Nango runs the sign-in and syncs its data for the agent to use.</p>
+        {showForm ? (
+          <div className="mt-3 max-w-xl space-y-2">
+            <p className="text-[11px] leading-relaxed text-text-secondary">Copy your <span className="font-mono text-text-primary">Secret Key</span> from <button onClick={() => void openUrl("https://app.nango.dev/dev/getting-started")} className="text-accent hover:underline">app.nango.dev</button> (Environment Settings). Stored in your Mac's Keychain.</p>
+            {verified === false && <p className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger">That key did not authenticate to Nango. Enter a valid secret key.</p>}
+            <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="nango secret key…" onKeyDown={(e) => { if (e.key === "Enter" && keyInput.trim()) void save(); }}
+              className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-text-primary outline-none focus:border-accent-border" />
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy === "save" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Save key</button>
+              {(editingKey || (configured && verified === false)) && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border">Cancel</button>}
+              {configured && <button onClick={removeKey} disabled={busy !== null} className="text-[11px] text-text-muted hover:text-danger hover:underline">Remove key</button>}
+            </div>
+            {verifyMsg && verified !== false && <p className="text-[11px] text-text-secondary">{verifyMsg}</p>}
+          </div>
+        ) : verifying ? (
+          <div className="mt-3 flex items-center gap-2 text-[11px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking your Nango key…</div>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-muted">
+            <span className="font-semibold text-accent">Key valid.</span>
+            <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Re-verify</button>
+            <button onClick={() => setEditingKey(true)} className="text-[10px] hover:text-accent hover:underline">Change key</button>
+            <button onClick={removeKey} disabled={busy !== null} className="text-[10px] hover:text-danger hover:underline">Remove key</button>
+            <button onClick={() => void openUrl("https://app.nango.dev")} className="inline-flex items-center gap-1 text-[10px] text-accent hover:underline">Dashboard <ExternalLink className="h-2.5 w-2.5" /></button>
+          </div>
+        )}
+      </div>
 
+      {/* Two-column master-detail below the full-width header. */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+      {/* LEFT - search + the connected / available integration lists. Selecting
+          one shows its detail on the right. */}
+      <aside className="w-full shrink-0 lg:w-72 lg:max-w-xs">
         {verified === true && (
           <>
             <div className="relative mb-2">
@@ -1056,7 +1135,7 @@ function NangoMode() {
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search your Nango integrations"
                 className="w-full rounded-lg border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none" />
             </div>
-            <button onClick={() => void loadData()} title="Refresh integrations + connections"
+            <button onClick={() => void loadData(true)} title="Refresh integrations + connections"
               className="mb-3 inline-flex w-full items-center justify-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent">
               <RefreshCw className="h-3.5 w-3.5" /> Refresh
             </button>
@@ -1115,6 +1194,7 @@ function NangoMode() {
             <p className="mt-3 text-sm text-text-secondary">Select an app to view details.</p>
           </div>
         )}
+      </div>
       </div>
     </div>
   );
