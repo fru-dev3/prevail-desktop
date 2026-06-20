@@ -356,15 +356,19 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       {/* Top-level split: Direct (Prevail connects each app itself) vs Composio
           (one managed gateway). Two parallel tracks, never mixed. */}
       <div className="mb-5 inline-flex rounded-lg border border-border bg-surface p-1">
-        {(["direct", "composio"] as const).map((m) => (
-          <button
-            key={m}
-            onClick={() => setAppsMode(m)}
-            className={`rounded-md px-5 py-1.5 text-sm font-semibold transition-colors ${appsMode === m ? "bg-accent text-background" : "text-text-secondary hover:text-text-primary"}`}
-          >
-            {m === "direct" ? "Direct" : "Composio"}
-          </button>
-        ))}
+        {(["direct", "composio"] as const).map((m) => {
+          const Icon = m === "direct" ? Plug : Boxes;
+          return (
+            <button
+              key={m}
+              onClick={() => setAppsMode(m)}
+              className={`inline-flex items-center gap-1.5 rounded-md px-5 py-1.5 text-sm font-semibold transition-colors ${appsMode === m ? "bg-accent text-background" : "text-text-secondary hover:text-text-primary"}`}
+            >
+              <Icon className="h-4 w-4" />
+              {m === "direct" ? "Direct" : "Composio"}
+            </button>
+          );
+        })}
       </div>
 
       {/* Connect happens INSIDE the right detail pane (see below) so the app's
