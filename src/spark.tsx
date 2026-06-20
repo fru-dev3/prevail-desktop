@@ -5,7 +5,7 @@
 // randomness comes from the models too. The page loads a fresh batch of 5; you
 // can ask for 1/2/3/5/10, save the ones you like, dismiss the rest, regenerate.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Dices, Loader2, ListPlus, Repeat, MessageSquare, AlertTriangle, Bookmark, Pencil, X } from "lucide-react";
+import { Dices, Loader2, ListPlus, Repeat, MessageSquare, AlertTriangle, Bookmark, Wand2, Sparkles, History, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { MODELS } from "./constants";
 import { modelLabel } from "./helpers2";
@@ -201,6 +201,27 @@ function loadSaved(): Spark[] {
   try { return JSON.parse(lsGet(SAVED_KEY) || "[]"); } catch { return []; }
 }
 
+// Archive rows carry the full Spark fields plus extras (field, register, batch,
+// seed, topical, iso). Map a raw row back to the Spark shape, tolerating any
+// missing/oddly-typed field so a stray record never breaks the History view.
+function rowToSpark(r: Record<string, unknown>): Spark | null {
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const body = str(r.body);
+  if (!body) return null;
+  const ts = typeof r.ts === "number" ? r.ts : Date.parse(str(r.iso)) || 0;
+  const cli = str(r.cli);
+  return {
+    id: str(r.id) || `${ts}-${Math.random().toString(36).slice(2)}`,
+    category: str(r.category) || "discovery",
+    title: str(r.title),
+    body,
+    cli,
+    model: str(r.model),
+    modelLabel: str(r.modelLabel) || (modelLabel(cli, str(r.model)) || cli),
+    ts,
+  };
+}
+
 // One spark card - shared by the live batch and the saved list.
 function SparkCard({ s, onSave, onDismiss, saved, vaultPath }: {
   s: Spark; onSave?: () => void; onDismiss?: () => void; saved?: boolean; vaultPath: string;
@@ -265,6 +286,11 @@ export function SparkPanel({ vaultPath, clis }: { vaultPath: string; clis: CliIn
   const [count, setCount] = useState<number>(() => { const n = parseInt(lsGet(COUNT_KEY) || "5", 10); return COUNTS.includes(n as typeof COUNTS[number]) ? n : 5; });
   const [savedSparks, setSavedSparks] = useState<Spark[]>(loadSaved);
   const [showSaved, setShowSaved] = useState(false);
+  // Older sparks loaded from the on-disk archive (no model call). Populated on
+  // mount so the page is never blank, and the "Current" / "History" segmented
+  // control below switches between this and the freshly-generated `sparks`.
+  const [history, setHistory] = useState<Spark[]>([]);
+  const [view, setView] = useState<"current" | "history">("current");
   // Optional topic (minimalist): hidden behind an expand icon. Empty = fully
   // random; set = sparks themed to it ("ancient Rome, politics, culture").
   const [topicOpen, setTopicOpen] = useState(false);
@@ -285,6 +311,13 @@ export function SparkPanel({ vaultPath, clis }: { vaultPath: string; clis: CliIn
           .map((r) => (typeof r.title === "string" && r.title) || (typeof r.body === "string" ? r.body.slice(0, 60) : ""))
           .filter(Boolean) as string[];
         recentTitlesRef.current = dedupe([...savedTitles, ...archived]).slice(0, 60);
+        // Populate the History view straight from the archive (newest first), so
+        // the page opens with prior sparks and never makes a model call on mount.
+        const past = (rows ?? []).map(rowToSpark).filter((s): s is Spark => s !== null)
+          .sort((a, b) => b.ts - a.ts).slice(0, 50);
+        setHistory(past);
+        // Nothing freshly generated yet: default to History so the page isn't blank.
+        if (past.length > 0) setView((v) => (sparks.length === 0 ? "history" : v));
       })
       .catch(() => { recentTitlesRef.current = dedupe(savedTitles).slice(0, 60); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -351,18 +384,18 @@ export function SparkPanel({ vaultPath, clis }: { vaultPath: string; clis: CliIn
     })));
     const ok = results.filter((s): s is Spark => s !== null);
     setSparks(ok);
+    // A fresh batch exists now: show it (Current) and fold it into History too,
+    // newest first, so switching back shows everything in order.
+    if (ok.length) {
+      setView("current");
+      setHistory((cur) => [...ok, ...cur].slice(0, 50));
+    }
     // Feed the fresh titles back so the NEXT batch also diverges from these,
     // not just from the archive snapshot taken at mount.
     if (ok.length) pushRecentTitles(ok.map(titleOf));
     if (ok.length === 0) setErr(`Couldn't conjure any sparks (tried ${n}). Try again.`);
     setBusy(false);
   }
-
-  // Default: populate the page with a fresh batch on first load.
-  useEffect(() => {
-    if (candidates.length > 0) void generate(count);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidates.length]);
 
   const setCountPersist = (n: number) => { setCount(n); lsSet(COUNT_KEY, String(n)); };
   const isSaved = (s: Spark) => savedSparks.some((x) => x.id === s.id || (x.title === s.title && x.body === s.body));
@@ -396,11 +429,13 @@ export function SparkPanel({ vaultPath, clis }: { vaultPath: string; clis: CliIn
             </button>
           ))}
         </div>
-        {/* Minimalist topic affordance: an icon that expands an optional prompt.
-            Collapsed + empty = fully random; a topic themes the batch. */}
+        {/* "Spark on a topic" affordance: a labelled pill that conjures a themed
+            batch. Fills with accent when a topic is set or the field is open, so
+            its active state reads clearly and it stays distinct from Generate. */}
         <button onClick={() => setTopicOpen((v) => !v)} title={topic.trim() ? `Topic: ${topic.trim()}` : "Spark on a specific topic"}
-          className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${topicOpen || topic.trim() ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}>
-          <Pencil className="h-4 w-4" />
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-[12px] font-medium transition-colors ${topicOpen || topic.trim() ? "border-accent bg-accent text-background" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}>
+          <Wand2 className="h-3.5 w-3.5" />
+          {topic.trim() ? `Topic: ${topic.trim().slice(0, 18)}${topic.trim().length > 18 ? "…" : ""}` : "Topic"}
         </button>
         {savedSparks.length > 0 && (
           <button onClick={() => setShowSaved((v) => !v)}
@@ -415,7 +450,7 @@ export function SparkPanel({ vaultPath, clis }: { vaultPath: string; clis: CliIn
           ONLY thing that themes a batch. */}
       {topicOpen && (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2">
-          <Pencil className="h-3.5 w-3.5 shrink-0 text-accent" />
+          <Wand2 className="h-3.5 w-3.5 shrink-0 text-accent" />
           <input
             autoFocus value={topic} onChange={(e) => setTopic(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !busy) void generate(count); if (e.key === "Escape") setTopicOpen(false); }}
@@ -432,6 +467,22 @@ export function SparkPanel({ vaultPath, clis }: { vaultPath: string; clis: CliIn
         </div>
       )}
 
+      {/* Current / History segmented control. "Current" is this session's fresh
+          batch; "History" is the prior sparks loaded from the on-disk archive on
+          mount (no model call). Hidden while browsing Saved. */}
+      {!showSaved && (
+        <div className="mb-4 inline-flex items-center overflow-hidden rounded-lg border border-border">
+          <button onClick={() => setView("current")}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] transition-colors ${view === "current" ? "bg-accent text-background" : "bg-background text-text-secondary hover:bg-surface-warm"}`}>
+            <Sparkles className="h-3.5 w-3.5" /> Current{sparks.length > 0 ? ` · ${sparks.length}` : ""}
+          </button>
+          <button onClick={() => setView("history")}
+            className={`inline-flex items-center gap-1.5 border-l border-border px-3 py-1.5 text-[12px] transition-colors ${view === "history" ? "bg-accent text-background" : "bg-background text-text-secondary hover:bg-surface-warm"}`}>
+            <History className="h-3.5 w-3.5" /> Previous{history.length > 0 ? ` · ${history.length}` : ""}
+          </button>
+        </div>
+      )}
+
       {showSaved ? (
         <div className="space-y-3">
           {savedSparks.length === 0 ? (
@@ -440,9 +491,22 @@ export function SparkPanel({ vaultPath, clis }: { vaultPath: string; clis: CliIn
             <SparkCard key={s.id} s={s} vaultPath={vaultPath} saved onSave={() => unsaveSpark(s)} />
           ))}
         </div>
+      ) : view === "history" ? (
+        <div className="space-y-3">
+          {history.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border bg-surface p-6 text-sm text-text-muted">No previous sparks yet. Generate some to build your history.</div>
+          ) : history.map((s) => (
+            <SparkCard key={s.id} s={s} vaultPath={vaultPath} saved={isSaved(s)}
+              onSave={() => (isSaved(s) ? unsaveSpark(s) : saveSpark(s))} />
+          ))}
+        </div>
       ) : busy && sparks.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center text-sm text-text-muted">
           <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-accent" /> {word}…
+        </div>
+      ) : sparks.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+          No current sparks. Press Generate to conjure a fresh batch{history.length > 0 ? ", or switch to Previous to browse your archive." : "."}
         </div>
       ) : (
         <div className="space-y-3">

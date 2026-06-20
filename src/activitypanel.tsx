@@ -8,6 +8,7 @@ import { Activity, ChevronRight, ListPlus, Loader2, Mail, RefreshCw, RotateCw, Z
 import { invoke } from "./bridge";
 import { titleCase, relTime } from "./format";
 import { useProcesses } from "./processes";
+import { SettingsHeader } from "./sectionutil";
 
 type ActivityType = "loop_run" | "loop_exec" | "task_filed" | "briefing" | "sync" | "nudge" | "other";
 interface ActivityEvent {
@@ -184,18 +185,11 @@ export function SystemActivity({ vaultPath }: { vaultPath: string }) {
 
   return (
     <div className="w-full space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="font-display text-2xl font-semibold tracking-tight">Activity</h2>
-          <p className="mt-1 max-w-2xl text-sm text-text-secondary">
-            Everything Prevail does on its own, across every domain: loop runs, executed approvals, tasks filed, briefings, and app syncs. Full transparency into the autonomous system.
-          </p>
-        </div>
-        <button onClick={load} disabled={loading} title="Refresh"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
-        </button>
-      </div>
+      <SettingsHeader
+        icon={Activity}
+        title="Activity"
+        subtitle="Everything Prevail does on its own, across every domain: loop runs, executed approvals, tasks filed, briefings, and app syncs. Full transparency into the autonomous system."
+      />
 
       {/* Running now - the live, in-flight processes (not yet in history). */}
       <section>
@@ -215,24 +209,31 @@ export function SystemActivity({ vaultPath }: { vaultPath: string }) {
         )}
       </section>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-1 rounded-lg border border-border bg-surface p-1">
+      {/* Filter toolbar: segmented type pills + domain select on the left, the
+          event count and a minimal refresh control aligned to the right. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
           {FILTERS.map((f) => (
             <button key={f.id} onClick={() => setTypeFilter(f.id)}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${typeFilter === f.id ? "bg-accent-soft text-accent" : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"}`}>
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${typeFilter === f.id ? "bg-accent-soft text-accent shadow-sm" : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"}`}>
               {f.label}
             </button>
           ))}
         </div>
         {domains.length > 0 && (
           <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)}
-            className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-text-secondary">
+            className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:border-accent-border focus:border-accent-border focus:outline-none">
             <option value="all">All domains</option>
             {domains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
           </select>
         )}
-        <span className="ml-auto font-mono text-[10px] text-text-muted">{shown.length} event{shown.length === 1 ? "" : "s"}</span>
+        <div className="ml-auto flex items-center gap-2.5">
+          <span className="font-mono text-[10px] tabular-nums text-text-muted">{shown.length} event{shown.length === 1 ? "" : "s"}</span>
+          <button onClick={load} disabled={loading} title="Refresh" aria-label="Refresh"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-text-muted transition-colors hover:border-accent-border hover:text-accent disabled:opacity-50">
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
       {/* History feed */}

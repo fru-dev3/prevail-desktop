@@ -3,11 +3,12 @@
 // (engine) researches the best method and returns a plan + the ONE auth step.
 // See docs/APPS-REDESIGN.md.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, Link2, Loader2, Sparkles, X } from "lucide-react";
+import { ArrowRight, Check, Loader2, Sparkles, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase } from "./format";
 import { PREF, getPref } from "./storage";
-import type { EngineApp } from "./types";
+import { AppRowLogo } from "./panels3";
+import type { BrandLogo, EngineApp } from "./types";
 
 type Plan = {
   app_id?: string;
@@ -53,6 +54,10 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
   // a single inline match that the user can open, or override to connect anew.)
   const [existing, setExisting] = useState<EngineApp[]>([]);
   useEffect(() => { void invoke<EngineApp[]>("engine_apps_list").then((l) => setExisting(Array.isArray(l) ? l : [])).catch(() => {}); }, []);
+  // Real brand marks so the result card + the "already connected" match row show
+  // the app's actual logo (resolved by AppRowLogo) rather than nothing.
+  const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
+  useEffect(() => { void invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {}); }, []);
   const match = useMemo(() => {
     const q = name.trim().toLowerCase();
     if (q.length < 2) return null;
@@ -108,7 +113,7 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
           {/* APP-2: already-connected match - reuse instead of duplicating. */}
           {match && (
             <div className="flex items-center gap-2 rounded-lg border border-accent-border bg-accent-soft/40 px-3 py-2">
-              <Link2 className="h-3.5 w-3.5 shrink-0 text-accent" />
+              <AppRowLogo app={match} logos={logos} size={28} fallback="letter" />
               <span className="min-w-0 flex-1 text-xs text-text-secondary">
                 <span className="font-semibold text-text-primary">{match.title || match.id}</span> is already connected. Open it instead of creating a duplicate.
               </span>
@@ -160,8 +165,11 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
         <div className="space-y-3">
           <div className="rounded-lg border border-border-subtle bg-background p-3">
             <div className="flex items-center gap-2">
-              <Check className="h-4 w-4 text-ok" />
+              {/* Resolved real brand mark for the app being connected; falls back
+                  to its letter only when no logo resolves. */}
+              <AppRowLogo app={{ title: plan.title || name, id: plan.app_id }} logos={logos} size={28} fallback="letter" />
               <span className="text-sm font-semibold text-text-primary">{plan.title || name}</span>
+              <Check className="h-4 w-4 text-ok" />
               <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted">{METHOD_LABEL[plan.integration ?? "manual"] ?? plan.integration}</span>
             </div>
             {plan.why && <p className="mt-1.5 text-xs text-text-secondary">{plan.why}</p>}

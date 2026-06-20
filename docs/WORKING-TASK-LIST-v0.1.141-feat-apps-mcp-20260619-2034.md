@@ -138,6 +138,29 @@ never dropped. Append new items under "Pending"; move to "Done" when shipped
   action on each app (engine `connectors remove <id>` exists in CLI — wire a
   Tauri command + a Delete button in the app detail, with confirm).
 
+## SHIPPED as v0.1.142 (2026-06-19)
+All items below implemented, tested (tsc 0 errors, cargo check clean, CLI tests
+22/22), built, merged to main (prevail-desktop + prevail-cli), and released:
+- GitHub release: https://github.com/fru-dev3/prevail-desktop/releases/tag/v0.1.142
+- Website live for download: https://prevail.sh (Prevail-mac-arm64.dmg -> v0.1.142)
+- NOTE: DMG is UNSIGNED in this run (1Password/op + Apple notary not available in
+  the build env). Users right-click -> Open on first launch (noted in RELEASE_NOTES).
+  For a signed+notarized build, run scripts/release.sh with 1Password unlocked.
+
+Items shipped: apps fetch-gate, MCP guided setup, generic creds, app DELETE,
+vault single-source-of-truth, work badge+count, spark (format/random/topic/
+anti-repeat/archive), loop board redesign + edit/archive/delete, runtimes
+color+icons+cloud/local split, daemon green, council live stats, usage refresh,
+recommendations next-run, activity drill-down, omega clarity, settings-header
+art, prefs independent collapse, icebox status, vault-lock footer, sync effect.
+
+## Still open (need design input / not in this release)
+- Skills: surface learned skills + propose a curated "system skills" set (user
+  unsure what good defaults are - needs a proposal + their pick).
+- Reminders daemon "won't stay on": likely resolved by the vault fix; re-verify
+  on the new build, dig deeper if still flipping off.
+- Nav "Needs you vs Work" wording: left as-is (Needs-you only shows when >0).
+
 ## Done
 - [x] **Work count reconciled** (tasks.rs work_count): now counts top-level open tasks
   over the SAME domain enumeration as the board (list_domain_names + tasks_read),
