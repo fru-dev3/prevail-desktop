@@ -107,7 +107,10 @@ export function Sidebar({
       !q ||
       d.name.toLowerCase().includes(q) ||
       titleCase(d.name).toLowerCase().includes(q);
-    const filtered = domains.filter(matches);
+    // Hide internal / app-scope pseudo-domains (e.g. "_app-composio-notion",
+    // "_meta"): the sidebar lists real DOMAINS only, never apps. Apps live in
+    // their own Apps section (and on the home screen when starred).
+    const filtered = domains.filter((d) => !d.name.startsWith("_")).filter(matches);
     const pin = filtered.filter(isPinned);
     const rest = filtered.filter((d) => !isPinned(d));
     return [...pin, ...rest];
