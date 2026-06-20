@@ -8,7 +8,7 @@ import { useAppearance } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
 import { PrevailLogo } from "./PrevailLogo";
 import { BenchScheduleCard } from "./cards";
-import { FrameworksSection, IngestionSection, RemoteSection, ShortcutsSection } from "./settings1";
+import { FrameworksSection, RemoteSection, ShortcutsSection } from "./settings1";
 import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection } from "./settings2";
 import { BoardPanel } from "./boardpanel";
 import { AppsPanel } from "./appspanel";
@@ -346,21 +346,7 @@ export function SettingsPanel({
           {section === "activity" && <SystemActivity vaultPath={vaultPath} />}
           {section === "loopboard" && <LoopBoard vaultPath={vaultPath} />}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
-          {section === "connectors" && (
-            <>
-              {/* The full connector catalog (browse + search + connect) now lives
-                  inside AppsPanel's sidebar, so the separate "Browse the catalog"
-                  bar is gone. Only the raw MCP / Composio / browser / CLI tier
-                  config remains, tucked into a collapsed Advanced section. */}
-              <AppsPanel vaultPath={vaultPath} />
-              <div className="mt-8">
-                <CollapsibleSection icon={Wrench} title="Advanced connection tiers" summary="Raw MCP / Composio / browser / CLI"
-                  subtitle="Configure the raw connection tiers by hand. Most apps connect from the catalog in the sidebar above.">
-                  <IngestionSection />
-                </CollapsibleSection>
-              </div>
-            </>
-          )}
+          {section === "connectors" && <AppsPanel vaultPath={vaultPath} />}
           {section === "safety" && <SafetySection vaultPath={vaultPath} />}
           {section === "gateway" && <><GatewaySection /><GatewayLogsCard vaultPath={vaultPath} /></>}
           {section === "mcp" && <McpSection vaultPath={vaultPath} />}
