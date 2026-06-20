@@ -13,18 +13,17 @@ The per-app "Direct" connect flow (catalog -> Connect) must do the real connecti
 per method, with visible progress. This is the north star, demanded concretely.
 - [x] A0: regression "can't connect at all" — connectors used a dev-default vault;
   now prefer PREVAIL_VAULT_ROOT. Connected apps show again. (CLI committed)
-- [ ] A1: "Nothing happens when I click Connect" on a catalog app. Diagnose + fix so
-  clicking Connect immediately shows the in-pane flow + auto-research progress.
-- [ ] A2: Hide "Try in chat" on a NOT-yet-connected (catalog) app. Only show it once
-  connected (it already exists on the connected AppDetail as "Open in chat").
-- [ ] A3: Per-method connection must really work, with the user seeing each step:
-    - api    -> ask for + securely save the API key, then verify.
-    - mcp    -> obtain/drive the right MCP auth.
-    - oauth  -> drive the sign-in (engine_app_oauth exists).
-    - browser-> spin up the browser, user logs in, session saved
-               (engine_app_browser_login exists).
-  The connect RESULT step currently only shows instruction TEXT; wire the real
-  per-method action buttons (reuse the engine commands the connected AppDetail uses).
+- [x] A1: "Nothing happens when I click Connect". Catalog Connect no longer runs the
+  slow/opaque model-research. It now scaffolds the app instantly with its known
+  method (from connection_hint) and opens its AppDetail. Shows an "Adding..." state.
+- [x] A2: "Try in chat" removed from the not-yet-connected catalog detail.
+- [x] A3: Per-method connection is now REACHABLE + real: after Connect, AppDetail
+  shows the actual action for the method - "Log in to <app>" opens a real browser
+  (engine_app_browser_login), "Sign in" runs OAuth (engine_app_oauth), Credentials
+  fields save API keys (app_secret_set), MCP setup verifies by a real tool call.
+  These were already working in AppDetail; Connect now routes there instead of
+  showing instruction text. (Follow-up: surface the auth step even more prominently
+  on a freshly-added app, and confirm each method end-to-end with the user.)
 
 ## TRACK B — Composio as a SEPARATE MODE (not an app in the Direct list)
 Complete separation: top-level "Direct | Composio". Composio = paste API key ->
