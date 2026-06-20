@@ -572,8 +572,10 @@ function ConnectedGatewayDetail({ method, slug, title, provider, logos, onBack }
   const [app, setApp] = useState<EngineApp | null>(null);
   const [busy, setBusy] = useState(false);
   // Flexible schedule: kind + every-N-hours + time-of-day + weekday.
-  const [kind, setKind] = useState<"off" | "hourly" | "nh" | "daily" | "weekly">("off");
+  const [kind, setKind] = useState<"off" | "hourly" | "nh" | "nd" | "nw" | "daily" | "weekly">("off");
   const [nh, setNh] = useState(6);
+  const [nDays, setNDays] = useState(2);
+  const [nWeeks, setNWeeks] = useState(2);
   const [atTime, setAtTime] = useState("09:00");
   const [onDay, setOnDay] = useState("mon");
   const load = useCallback(async () => {
@@ -597,12 +599,14 @@ function ConnectedGatewayDetail({ method, slug, title, provider, logos, onBack }
     const e = r.every.toLowerCase();
     if (e === "hourly") setKind("hourly");
     else if (/^\d+h$/.test(e)) { setKind("nh"); setNh(Math.min(23, Math.max(2, parseInt(e, 10)))); }
+    else if (/^\d+d$/.test(e)) { setKind("nd"); setNDays(Math.min(90, Math.max(1, parseInt(e, 10)))); }
+    else if (/^\d+w$/.test(e)) { setKind("nw"); setNWeeks(Math.min(12, Math.max(1, parseInt(e, 10)))); }
     else if (e === "daily") { setKind("daily"); if (r.at) setAtTime(r.at); }
     else if (e === "weekly") { setKind("weekly"); if (r.at) setAtTime(r.at); if (r.on) setOnDay(r.on); }
     else setKind("off");
   }, [app]);
   const applySchedule = async () => {
-    const every = kind === "off" ? "off" : kind === "hourly" ? "hourly" : kind === "nh" ? `${nh}h` : kind;
+    const every = kind === "off" ? "off" : kind === "hourly" ? "hourly" : kind === "nh" ? `${nh}h` : kind === "nd" ? `${nDays}d` : kind === "nw" ? `${nWeeks}w` : kind;
     setBusy(true);
     try {
       await invoke("engine_app_set_schedule", {
@@ -646,6 +650,8 @@ function ConnectedGatewayDetail({ method, slug, title, provider, logos, onBack }
               <option value="off">Off</option>
               <option value="hourly">Hourly</option>
               <option value="nh">Every N hours</option>
+              <option value="nd">Every N days</option>
+              <option value="nw">Every N weeks</option>
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
             </select>
@@ -653,6 +659,18 @@ function ConnectedGatewayDetail({ method, slug, title, provider, logos, onBack }
               <span className="inline-flex items-center gap-1 text-xs text-text-secondary">every
                 <input type="number" min={2} max={23} value={nh} onChange={(e) => setNh(Math.min(23, Math.max(2, parseInt(e.target.value || "2", 10))))} className="w-14 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
                 hours
+              </span>
+            )}
+            {kind === "nd" && (
+              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">every
+                <input type="number" min={1} max={90} value={nDays} onChange={(e) => setNDays(Math.min(90, Math.max(1, parseInt(e.target.value || "1", 10))))} className="w-14 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
+                days
+              </span>
+            )}
+            {kind === "nw" && (
+              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">every
+                <input type="number" min={1} max={12} value={nWeeks} onChange={(e) => setNWeeks(Math.min(12, Math.max(1, parseInt(e.target.value || "1", 10))))} className="w-14 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
+                weeks
               </span>
             )}
             {kind === "weekly" && (
@@ -746,7 +764,10 @@ function ComposioMode() {
   const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
   const [connected, setConnected] = useState<Set<string>>(new Set());
   const [refreshingConn, setRefreshingConn] = useState(false);
-  const [detailApp, setDetailApp] = useState<{ slug: string; name: string } | null>(null);
+  // Master-detail selection: the slug of the app whose detail shows in the right
+  // pane. A connected slug renders ConnectedGatewayDetail; an available one shows
+  // a small Connect pane.
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   useEffect(() => { void invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {}); }, []);
   // Which Composio apps are actively connected (one MCP call over the catalog).
   const loadConnections = useCallback(async () => {
@@ -806,119 +827,115 @@ function ComposioMode() {
   const shown = !q ? COMPOSIO_APPS : COMPOSIO_APPS.filter((a) => `${a.name} ${a.slug} ${a.cat}`.toLowerCase().includes(q));
   const connectedApps = shown.filter((a) => connected.has(a.slug));
   const availableApps = shown.filter((a) => !connected.has(a.slug));
+  const selected = selectedSlug ? COMPOSIO_APPS.find((a) => a.slug === selectedSlug) ?? null : null;
+  const selectedConnected = selected ? connected.has(selected.slug) : false;
   return (
-    <div className="space-y-4">
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="flex flex-wrap items-start gap-4 px-5 py-4">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#6d5efc] to-[#3b2fb8] text-white"><Boxes className="h-6 w-6" /></span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-lg font-semibold text-text-primary">Composio</span>
-              <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted"><Globe className="h-2.5 w-2.5" /> Managed gateway</span>
-              {configured && verified === true && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
-              {verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-danger">Invalid key</span>}
-            </div>
-            <p className="mt-1 max-w-prose text-[12px] leading-relaxed text-text-secondary">One key fronts 1000+ apps. Browse below and connect any through Composio. Keep sensitive or financial accounts on a per-app Direct sign-in.</p>
-            {showForm ? (
-              <div className="mt-3 space-y-2">
-                <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Set up Composio with your own key</div>
-                <ol className="ml-4 list-decimal space-y-0.5 text-[12px] leading-relaxed text-text-secondary">
-                  <li>Open <button onClick={() => void openUrl("https://connect.composio.dev")} className="text-accent hover:underline">connect.composio.dev</button> and sign in.</li>
-                  <li>Copy your <span className="font-mono text-text-primary">X-CONSUMER-API-KEY</span> (starts with <span className="font-mono">ck_</span>).</li>
-                  <li>Paste it below. It is stored in your Mac's Keychain, never in the vault.</li>
-                </ol>
-                {verified === false && <p className="rounded-md border border-danger/40 bg-danger/10 px-3 py-1.5 text-[12px] text-danger">That key did not authenticate to Composio. Enter a valid X-CONSUMER-API-KEY.</p>}
-                <div className="flex flex-wrap items-center gap-2">
-                  <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="ck_…" onKeyDown={(e) => { if (e.key === "Enter" && keyInput.trim()) void save(); }}
-                    className="w-full max-w-sm rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-border" />
-                  <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save key</button>
-                  {(editingKey || (configured && verified === false)) && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:border-accent-border">Cancel</button>}
-                  {configured && <button onClick={removeKey} disabled={busy !== null} className="text-[12px] text-text-muted hover:text-danger hover:underline">Remove key</button>}
-                </div>
-                {verifyMsg && verified !== false && <p className="text-[12px] text-text-secondary">{verifyMsg}</p>}
-              </div>
-            ) : verifying ? (
-              <div className="mt-2 flex items-center gap-2 text-[12px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking your Composio key…</div>
-            ) : (
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-text-muted">
-                <span className="font-semibold text-accent">Key valid.</span>
-                <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Re-verify</button>
-                <button onClick={() => setEditingKey(true)} className="text-[11px] hover:text-accent hover:underline">Change key</button>
-                <button onClick={removeKey} disabled={busy !== null} className="text-[11px] hover:text-danger hover:underline">Remove key</button>
-                <button onClick={() => void openUrl("https://dashboard.composio.dev")} className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline">Composio dashboard <ExternalLink className="h-3 w-3" /></button>
-              </div>
-            )}
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+      {/* LEFT - compact key controls on top, then search + the connected /
+          available app lists. Selecting an app shows its detail on the right. */}
+      <aside className="w-full shrink-0 lg:w-72 lg:max-w-xs">
+        {/* Compact config / key controls. */}
+        <div className="mb-3 overflow-hidden rounded-lg border border-border bg-surface px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#6d5efc] to-[#3b2fb8] text-white"><Boxes className="h-3.5 w-3.5" /></span>
+            <span className="text-sm font-semibold text-text-primary">Composio</span>
+            {configured && verified === true && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
+            {verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-danger">Invalid key</span>}
           </div>
+          {showForm ? (
+            <div className="mt-2 space-y-2">
+              <p className="text-[11px] leading-relaxed text-text-secondary">Paste your <span className="font-mono text-text-primary">X-CONSUMER-API-KEY</span> from <button onClick={() => void openUrl("https://connect.composio.dev")} className="text-accent hover:underline">connect.composio.dev</button> (starts with <span className="font-mono">ck_</span>). Stored in your Mac's Keychain.</p>
+              {verified === false && <p className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger">That key did not authenticate to Composio. Enter a valid X-CONSUMER-API-KEY.</p>}
+              <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="ck_…" onKeyDown={(e) => { if (e.key === "Enter" && keyInput.trim()) void save(); }}
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-text-primary outline-none focus:border-accent-border" />
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy === "save" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Save key</button>
+                {(editingKey || (configured && verified === false)) && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border">Cancel</button>}
+                {configured && <button onClick={removeKey} disabled={busy !== null} className="text-[11px] text-text-muted hover:text-danger hover:underline">Remove key</button>}
+              </div>
+              {verifyMsg && verified !== false && <p className="text-[11px] text-text-secondary">{verifyMsg}</p>}
+            </div>
+          ) : verifying ? (
+            <div className="mt-2 flex items-center gap-2 text-[11px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking your Composio key…</div>
+          ) : (
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-muted">
+              <span className="font-semibold text-accent">Key valid.</span>
+              <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Re-verify</button>
+              <button onClick={() => setEditingKey(true)} className="text-[10px] hover:text-accent hover:underline">Change key</button>
+              <button onClick={removeKey} disabled={busy !== null} className="text-[10px] hover:text-danger hover:underline">Remove key</button>
+              <button onClick={() => void openUrl("https://dashboard.composio.dev")} className="inline-flex items-center gap-1 text-[10px] text-accent hover:underline">Dashboard <ExternalLink className="h-2.5 w-2.5" /></button>
+            </div>
+          )}
         </div>
-      </div>
 
-      {verified === true && detailApp && (
-        <ConnectedGatewayDetail method="composio" slug={detailApp.slug} title={detailApp.name} logos={logos} onBack={() => { setDetailApp(null); void loadConnections(); }} />
-      )}
-      {verified === true && !detailApp && (
-        <>
-          <div className="flex items-center gap-2">
-            <div className="relative max-w-md flex-1">
+        {verified === true && (
+          <>
+            <div className="relative mb-2">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search apps, or type any Composio app name + Connect"
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search apps, or type any Composio app name"
                 className="w-full rounded-lg border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none" />
             </div>
-            {/* Any Composio app, even ones not in the curated grid below. */}
+            {/* Connect any Composio app by name, even ones not in the curated list. */}
             {q && availableApps.length === 0 && connectedApps.length === 0 && (
               <button onClick={() => void connectApp(q.replace(/[^a-z0-9_]/g, ""))} disabled={connectingSlug !== null}
-                className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+                className="mb-2 inline-flex w-full items-center justify-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
                 {connectingSlug ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Connect "{q}"
               </button>
             )}
             <button onClick={() => void loadConnections()} disabled={refreshingConn} title="Refresh connection status"
-              className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+              className="mb-3 inline-flex w-full items-center justify-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
               {refreshingConn ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh
             </button>
-          </div>
-          {connectMsg && <div className="rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2 text-[12px] text-text-secondary">{connectMsg}</div>}
-
-          {/* Connected apps - clearly separated from the not-yet-connected ones. */}
-          {connectedApps.length > 0 && (
-            <section className="space-y-1.5">
-              <div className="px-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {connectedApps.map((a) => (
-                  <button key={a.slug} onClick={() => setDetailApp({ slug: a.slug, name: a.name })} title={`Open ${a.name} details`}
-                    className="flex items-center gap-2.5 rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2.5 text-left transition-colors hover:bg-accent-soft/40">
-                    <AppRowLogo app={{ title: a.name, id: a.slug }} logos={logos} size={30} fallback="letter" />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-text-primary">{a.name}</div>
-                      <div className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{a.cat}</div>
-                    </div>
-                    <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent"><Check className="h-3 w-3" /> Details</span>
-                  </button>
+            {connectMsg && <div className="mb-3 rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2 text-[12px] text-text-secondary">{connectMsg}</div>}
+            <div className="space-y-4 lg:max-h-[60vh] lg:overflow-y-auto lg:pr-1">
+              {connectedApps.length > 0 && (
+                <section className="space-y-1">
+                  <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
+                  {connectedApps.map((a) => (
+                    <GatewayRow key={a.slug} title={a.name} sub={a.cat} logoId={a.slug} logos={logos} connected active={selectedSlug === a.slug} onSelect={() => setSelectedSlug(a.slug)} />
+                  ))}
+                </section>
+              )}
+              <section className="space-y-1">
+                <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Available to connect · {availableApps.length}</div>
+                {availableApps.map((a) => (
+                  <GatewayRow key={a.slug} title={a.name} sub={a.cat} logoId={a.slug} logos={logos} active={selectedSlug === a.slug} onSelect={() => setSelectedSlug(a.slug)} />
                 ))}
-              </div>
-            </section>
-          )}
-
-          {/* Not yet connected. */}
-          <section className="space-y-1.5">
-            <div className="px-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Available to connect · {availableApps.length}</div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {availableApps.map((a) => (
-                <div key={a.slug} className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5">
-                  <AppRowLogo app={{ title: a.name, id: a.slug }} logos={logos} size={30} fallback="letter" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-text-primary">{a.name}</div>
-                    <div className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{a.cat}</div>
-                  </div>
-                  <button onClick={() => void connectApp(a.slug)} disabled={connectingSlug !== null}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent hover:bg-accent hover:text-background disabled:opacity-50">
-                    {connectingSlug === a.slug ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} Connect
-                  </button>
-                </div>
-              ))}
+              </section>
+              {shown.length === 0 && <div className="px-1 text-xs text-text-muted">No Composio apps match "{query}".</div>}
             </div>
-          </section>
-          {shown.length === 0 && <div className="text-xs text-text-muted">No Composio apps match "{query}".</div>}
-        </>
-      )}
+          </>
+        )}
+      </aside>
+
+      {/* RIGHT - the selected app's detail: ConnectedGatewayDetail when connected,
+          a small Connect pane when available, else a placeholder. */}
+      <div className="min-w-0 flex-1">
+        {verified !== true ? (
+          <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
+            <Boxes className="mx-auto h-7 w-7 text-text-muted opacity-50" />
+            <p className="mt-3 text-sm text-text-secondary">Set up your Composio key to browse and connect apps.</p>
+          </div>
+        ) : selected && selectedConnected ? (
+          <ConnectedGatewayDetail key={selected.slug} method="composio" slug={selected.slug} title={selected.name} logos={logos} onBack={() => setSelectedSlug(null)} />
+        ) : selected ? (
+          <GatewayConnectDetail
+            key={selected.slug}
+            title={selected.name}
+            sub={selected.cat}
+            logoId={selected.slug}
+            logos={logos}
+            method="composio"
+            connecting={connectingSlug === selected.slug}
+            onConnect={() => void connectApp(selected.slug)}
+          />
+        ) : (
+          <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
+            <Plug className="mx-auto h-7 w-7 text-text-muted opacity-50" />
+            <p className="mt-3 text-sm text-text-secondary">Select an app to view details.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -936,7 +953,8 @@ function NangoMode() {
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
   const [integrations, setIntegrations] = useState<NangoIntegration[]>([]);
   const [connected, setConnected] = useState<Set<string>>(new Set());
-  const [detailApp, setDetailApp] = useState<{ slug: string; name: string; provider?: string } | null>(null);
+  // Master-detail selection: the unique_key of the integration shown on the right.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [connectingKey, setConnectingKey] = useState<string | null>(null);
   const [connectMsg, setConnectMsg] = useState<string | null>(null);
   const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
@@ -990,102 +1008,190 @@ function NangoMode() {
   const shown = !q ? integrations : integrations.filter((i) => `${i.display_name} ${i.unique_key} ${i.provider}`.toLowerCase().includes(q));
   const connectedApps = shown.filter((i) => connected.has(i.unique_key));
   const availableApps = shown.filter((i) => !connected.has(i.unique_key));
+  const selected = selectedKey ? integrations.find((i) => i.unique_key === selectedKey) ?? null : null;
+  const selectedConnected = selected ? connected.has(selected.unique_key) : false;
   return (
-    <div className="space-y-4">
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="flex flex-wrap items-start gap-4 px-5 py-4">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#1f9d8f] to-[#0d6e63] text-white"><Cable className="h-6 w-6" /></span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-lg font-semibold text-text-primary">Nango</span>
-              <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted"><Globe className="h-2.5 w-2.5" /> Managed gateway</span>
-              {configured && verified === true && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
-              {verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-danger">Invalid key</span>}
-            </div>
-            <p className="mt-1 max-w-prose text-[12px] leading-relaxed text-text-secondary">Connect via Nango (800+ APIs). It authorizes in the browser and keeps the data synced. Add your own Nango secret key to use it.</p>
-            {showForm ? (
-              <div className="mt-3 space-y-2">
-                <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Set up Nango with your own key</div>
-                <ol className="ml-4 list-decimal space-y-0.5 text-[12px] leading-relaxed text-text-secondary">
-                  <li>Open <button onClick={() => void openUrl("https://app.nango.dev/dev/getting-started")} className="text-accent hover:underline">app.nango.dev</button> and copy your <span className="font-mono text-text-primary">Secret Key</span> (Environment Settings).</li>
-                  <li>Paste it below. It is stored in your Mac's Keychain, never in the vault.</li>
-                </ol>
-                {verified === false && <p className="rounded-md border border-danger/40 bg-danger/10 px-3 py-1.5 text-[12px] text-danger">That key did not authenticate to Nango. Enter a valid secret key.</p>}
-                <div className="flex flex-wrap items-center gap-2">
-                  <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="nango secret key…" onKeyDown={(e) => { if (e.key === "Enter" && keyInput.trim()) void save(); }}
-                    className="w-full max-w-sm rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-border" />
-                  <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save key</button>
-                  {(editingKey || (configured && verified === false)) && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:border-accent-border">Cancel</button>}
-                  {configured && <button onClick={removeKey} disabled={busy !== null} className="text-[12px] text-text-muted hover:text-danger hover:underline">Remove key</button>}
-                </div>
-                {verifyMsg && verified !== false && <p className="text-[12px] text-text-secondary">{verifyMsg}</p>}
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+      {/* LEFT - compact key controls on top, then search + the connected /
+          available integration lists. Selecting one shows its detail on the right. */}
+      <aside className="w-full shrink-0 lg:w-72 lg:max-w-xs">
+        {/* Compact config / key controls. */}
+        <div className="mb-3 overflow-hidden rounded-lg border border-border bg-surface px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#1f9d8f] to-[#0d6e63] text-white"><Cable className="h-3.5 w-3.5" /></span>
+            <span className="text-sm font-semibold text-text-primary">Nango</span>
+            {configured && verified === true && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
+            {verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-danger">Invalid key</span>}
+          </div>
+          {showForm ? (
+            <div className="mt-2 space-y-2">
+              <p className="text-[11px] leading-relaxed text-text-secondary">Copy your <span className="font-mono text-text-primary">Secret Key</span> from <button onClick={() => void openUrl("https://app.nango.dev/dev/getting-started")} className="text-accent hover:underline">app.nango.dev</button> (Environment Settings). Stored in your Mac's Keychain.</p>
+              {verified === false && <p className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger">That key did not authenticate to Nango. Enter a valid secret key.</p>}
+              <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="nango secret key…" onKeyDown={(e) => { if (e.key === "Enter" && keyInput.trim()) void save(); }}
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-text-primary outline-none focus:border-accent-border" />
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy === "save" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Save key</button>
+                {(editingKey || (configured && verified === false)) && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border">Cancel</button>}
+                {configured && <button onClick={removeKey} disabled={busy !== null} className="text-[11px] text-text-muted hover:text-danger hover:underline">Remove key</button>}
               </div>
-            ) : verifying ? (
-              <div className="mt-2 flex items-center gap-2 text-[12px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking your Nango key…</div>
+              {verifyMsg && verified !== false && <p className="text-[11px] text-text-secondary">{verifyMsg}</p>}
+            </div>
+          ) : verifying ? (
+            <div className="mt-2 flex items-center gap-2 text-[11px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking your Nango key…</div>
+          ) : (
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-muted">
+              <span className="font-semibold text-accent">Key valid.</span>
+              <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Re-verify</button>
+              <button onClick={() => setEditingKey(true)} className="text-[10px] hover:text-accent hover:underline">Change key</button>
+              <button onClick={removeKey} disabled={busy !== null} className="text-[10px] hover:text-danger hover:underline">Remove key</button>
+              <button onClick={() => void openUrl("https://app.nango.dev")} className="inline-flex items-center gap-1 text-[10px] text-accent hover:underline">Dashboard <ExternalLink className="h-2.5 w-2.5" /></button>
+            </div>
+          )}
+        </div>
+
+        {verified === true && (
+          <>
+            <div className="relative mb-2">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search your Nango integrations"
+                className="w-full rounded-lg border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none" />
+            </div>
+            <button onClick={() => void loadData()} title="Refresh integrations + connections"
+              className="mb-3 inline-flex w-full items-center justify-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent">
+              <RefreshCw className="h-3.5 w-3.5" /> Refresh
+            </button>
+            {connectMsg && <div className="mb-3 rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2 text-[12px] text-text-secondary">{connectMsg}</div>}
+            {integrations.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-center text-[12px] text-text-secondary">
+                No integrations configured in your Nango project yet. Add one in the <button onClick={() => void openUrl("https://app.nango.dev")} className="text-accent hover:underline">Nango dashboard</button>, then Refresh.
+              </div>
             ) : (
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-text-muted">
-                <span className="font-semibold text-accent">Key valid.</span>
-                <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Re-verify</button>
-                <button onClick={() => setEditingKey(true)} className="text-[11px] hover:text-accent hover:underline">Change key</button>
-                <button onClick={removeKey} disabled={busy !== null} className="text-[11px] hover:text-danger hover:underline">Remove key</button>
-                <button onClick={() => void openUrl("https://app.nango.dev")} className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline">Nango dashboard <ExternalLink className="h-3 w-3" /></button>
+              <div className="space-y-4 lg:max-h-[60vh] lg:overflow-y-auto lg:pr-1">
+                {connectedApps.length > 0 && (
+                  <section className="space-y-1">
+                    <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
+                    {connectedApps.map((i) => (
+                      <GatewayRow key={i.unique_key} title={i.display_name} sub={i.provider || i.unique_key} logoId={i.provider || i.unique_key} logos={logos} connected active={selectedKey === i.unique_key} onSelect={() => setSelectedKey(i.unique_key)} />
+                    ))}
+                  </section>
+                )}
+                <section className="space-y-1">
+                  <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Available to connect · {availableApps.length}</div>
+                  {availableApps.map((i) => (
+                    <GatewayRow key={i.unique_key} title={i.display_name} sub={i.provider || i.unique_key} logoId={i.provider || i.unique_key} logos={logos} active={selectedKey === i.unique_key} onSelect={() => setSelectedKey(i.unique_key)} />
+                  ))}
+                </section>
+                {shown.length === 0 && <div className="px-1 text-xs text-text-muted">No integrations match "{query}".</div>}
               </div>
             )}
+          </>
+        )}
+      </aside>
+
+      {/* RIGHT - the selected integration's detail: ConnectedGatewayDetail when
+          connected, a small Connect pane when available, else a placeholder. */}
+      <div className="min-w-0 flex-1">
+        {verified !== true ? (
+          <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
+            <Cable className="mx-auto h-7 w-7 text-text-muted opacity-50" />
+            <p className="mt-3 text-sm text-text-secondary">Set up your Nango secret key to list and connect integrations.</p>
           </div>
+        ) : selected && selectedConnected ? (
+          <ConnectedGatewayDetail key={selected.unique_key} method="nango" slug={selected.unique_key} title={selected.display_name} provider={selected.provider} logos={logos} onBack={() => setSelectedKey(null)} />
+        ) : selected ? (
+          <GatewayConnectDetail
+            key={selected.unique_key}
+            title={selected.display_name}
+            sub={selected.provider || selected.unique_key}
+            logoId={selected.provider || selected.unique_key}
+            logos={logos}
+            method="nango"
+            connecting={connectingKey === selected.unique_key}
+            onConnect={() => void connect(selected.unique_key)}
+          />
+        ) : (
+          <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
+            <Plug className="mx-auto h-7 w-7 text-text-muted opacity-50" />
+            <p className="mt-3 text-sm text-text-secondary">Select an app to view details.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// One compact row in a gateway (Composio / Nango) left list: brand logo, name,
+// a small subtitle (category / provider), and a Connected check or a Connect
+// chevron. Selecting it shows the app's detail in the right pane.
+function GatewayRow({ title, sub, logoId, logos, connected, active, onSelect }: {
+  title: string;
+  sub: string;
+  logoId: string;
+  logos: Record<string, BrandLogo>;
+  connected?: boolean;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors ${active ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}
+    >
+      <AppRowLogo app={{ title, id: logoId }} logos={logos} size={28} fallback="letter" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-text-primary">{title}</span>
+        <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{sub}</span>
+      </span>
+      {connected ? (
+        <Check className="h-3.5 w-3.5 shrink-0 text-accent" />
+      ) : (
+        <ArrowUpRight className="h-3.5 w-3.5 shrink-0 rotate-45 text-text-muted" />
+      )}
+    </button>
+  );
+}
+
+// The right pane for an AVAILABLE (not-yet-connected) gateway app: brand mark,
+// name, and a clear Connect CTA that opens the gateway's auth link in the browser.
+function GatewayConnectDetail({ title, sub, logoId, logos, method, connecting, onConnect }: {
+  title: string;
+  sub: string;
+  logoId: string;
+  logos: Record<string, BrandLogo>;
+  method: "composio" | "nango";
+  connecting: boolean;
+  onConnect: () => void;
+}) {
+  const label = method === "composio" ? "Composio" : "Nango";
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle px-5 py-5">
+        <AppRowLogo app={{ title, id: logoId }} logos={logos} size={56} fallback="letter" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-lg font-semibold text-text-primary">{title}</span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted"><Globe className="h-2.5 w-2.5" /> Available to connect</span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-text-muted">
+            <span>{titleCase(sub)}</span>
+            <span>· connects via {label}</span>
+          </div>
+          <p className="mt-2 max-w-prose text-[13px] leading-relaxed text-text-secondary">Connect {title} through {label}. It opens a sign-in in your browser; authorize it there and it is connected in {label}. Prevail's agent can then use it.</p>
+        </div>
+        <button
+          onClick={onConnect}
+          disabled={connecting}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-60"
+        >
+          {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} {connecting ? "Connecting…" : "Connect"}
+        </button>
+      </div>
+      <div className="px-5 py-4">
+        <div className="flex items-start gap-2 rounded-lg border border-accent-border/40 bg-accent-soft/20 px-3 py-2.5 text-[12px] leading-relaxed text-text-secondary">
+          <Plug className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
+          <span>After you authorize in the browser, come back to this window - the list refreshes and {title} moves to Connected, where you can set its refresh schedule.</span>
         </div>
       </div>
-
-      {verified === true && detailApp && (
-        <ConnectedGatewayDetail method="nango" slug={detailApp.slug} title={detailApp.name} provider={detailApp.provider} logos={logos} onBack={() => { setDetailApp(null); void loadData(); }} />
-      )}
-      {verified === true && !detailApp && (
-        <>
-          <div className="relative max-w-md">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search your Nango integrations"
-              className="w-full rounded-lg border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none" />
-          </div>
-          {connectMsg && <div className="rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2 text-[12px] text-text-secondary">{connectMsg}</div>}
-          {integrations.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-center text-[13px] text-text-secondary">
-              No integrations configured in your Nango project yet. Add one in the <button onClick={() => void openUrl("https://app.nango.dev")} className="text-accent hover:underline">Nango dashboard</button>, then Refresh.
-            </div>
-          ) : (
-            <>
-              {connectedApps.length > 0 && (
-                <section className="space-y-1.5">
-                  <div className="px-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {connectedApps.map((i) => (
-                      <button key={i.unique_key} onClick={() => setDetailApp({ slug: i.unique_key, name: i.display_name, provider: i.provider })} title={`Open ${i.display_name} details`}
-                        className="flex items-center gap-2.5 rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2.5 text-left transition-colors hover:bg-accent-soft/40">
-                        <AppRowLogo app={{ title: i.display_name, id: i.provider || i.unique_key }} logos={logos} size={30} fallback="letter" />
-                        <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-text-primary">{i.display_name}</div><div className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{i.provider || i.unique_key}</div></div>
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent"><Check className="h-3 w-3" /> Details</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-              <section className="space-y-1.5">
-                <div className="px-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Available to connect · {availableApps.length}</div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {availableApps.map((i) => (
-                    <div key={i.unique_key} className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5">
-                      <AppRowLogo app={{ title: i.display_name, id: i.provider || i.unique_key }} logos={logos} size={30} fallback="letter" />
-                      <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-text-primary">{i.display_name}</div><div className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{i.provider || i.unique_key}</div></div>
-                      <button onClick={() => void connect(i.unique_key)} disabled={connectingKey !== null}
-                        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent hover:bg-accent hover:text-background disabled:opacity-50">
-                        {connectingKey === i.unique_key ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} Connect
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </>
-          )}
-        </>
-      )}
     </div>
   );
 }
