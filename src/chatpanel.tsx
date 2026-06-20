@@ -25,7 +25,6 @@ import { LoopsPanel } from "./loopspanel";
 import { BoardPanel } from "./boardpanel";
 import { AgentPickerRail, ContextCanvas, DomainContextDrawer, DomainPrefsPanel } from "./domainpanels";
 import { HomeBriefing } from "./recommendationspanel";
-import { HomeBenchScheduledBadge } from "./cards";
 import type { ChatEvent, ChatMessage, CliInfo, ContextScore, Domain, DomainContextBundle, DomainTab, EngineApp, LifeReadiness, SkillEntry, ThreadMeta, ThreadTurn } from "./types";
 import type { UnlistenFn } from "./bridge";
 
@@ -1574,9 +1573,6 @@ export function ChatPanel({
                 </span>
               </div>
             )}
-            {/* BENCH-1: scheduled-benchmark awareness on the landing. */}
-            <HomeBenchScheduledBadge />
-
             <AgentPickerRail
               clis={available}
               selected={selectedCli}
