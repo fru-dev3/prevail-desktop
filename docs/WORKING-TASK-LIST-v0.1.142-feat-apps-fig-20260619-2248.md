@@ -44,6 +44,24 @@ it. This is the whole point: connect once agentically, reuse the skill forever.
 - (none yet)
 
 ## Round 2 (v0.1.143 testing feedback)
+- [x] **Rich app detail + in-modal connect + Try in chat** (Images #43-46): CatalogDetail
+  rebuilt rich (logo 56, name, Verified badge, method chip, full description, "How
+  Prevail connects" panel with privacy posture, Details spec grid, More-info source
+  links, share link). Connect now renders INSIDE the right detail pane (ConnectAppFlow
+  with presetName auto-researching the picked app) so the sidebar + context stay put;
+  cancel returns to the detail. "Try in chat" seeds the main chat (compose-seed). Done.
+- [ ] **Rich app detail + in-modal connect + Try in chat** (superseded, kept for ref) (Images #43-46, refs:
+  ChatGPT Carta CRM, Claude O'Reilly/Cash App connector pages): the catalog/app
+  detail panel is too sparse (just logo + one line + Connect). Make it rich like the
+  refs: full description, developer/source, connection method Prevail will use,
+  tools/capabilities, links (docs/support/privacy) when known, a status badge, a
+  share/link icon, and a secondary "Try in chat" button. CRITICAL: clicking Connect
+  must work WITHIN the same modal/panel (an in-place connect flow that completes to
+  success there), not navigate away or drop the user into a separate full-screen flow.
+- [ ] **Composio wiring** (STAGED, deferred under this): register Composio as an MCP
+  server for the agent (npx mcp-remote https://connect.composio.dev/mcp in a vault
+  .mcp.json, additively passed to claude on the act path; OAuth driven once). Folds
+  in as a connect METHOD inside the rich connect flow above. Investigation done.
 - [x] **Apps single source of truth**: apps now live in <vault>/data/apps (migrated
   out of ~/.prevail/apps; scaffold + scan + list all vault-rooted). CLI committed.
 - [x] **Folder/reveal in Finder**: switched to the opener plugin's revealItemInDir
