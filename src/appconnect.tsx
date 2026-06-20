@@ -8,7 +8,7 @@ import { invoke } from "./bridge";
 import { titleCase } from "./format";
 import { PREF, getPref } from "./storage";
 import { AppRowLogo } from "./panels3";
-import type { BrandLogo, EngineApp } from "./types";
+import type { BrandLogo, CatalogApp, ConnectorCatalog, EngineApp } from "./types";
 
 type Plan = {
   app_id?: string;
@@ -25,6 +25,24 @@ type ConnectResult = { ok: boolean; plan?: Plan; error?: string; raw?: string; v
 const METHOD_LABEL: Record<string, string> = {
   mcp: "MCP server", api: "API", oauth: "API (OAuth)", cli: "CLI", composio: "Composio", browser: "Browser automation", manual: "Manual",
 };
+
+// Small edit-distance (Levenshtein) for the "did you mean" catalog suggestion.
+// Kept tiny + dependency-free; only ever runs over short app names.
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
 
 export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: string; onDone: () => void; onCancel: () => void }) {
   const [name, setName] = useState("");
@@ -54,6 +72,15 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
   // a single inline match that the user can open, or override to connect anew.)
   const [existing, setExisting] = useState<EngineApp[]>([]);
   useEffect(() => { void invoke<EngineApp[]>("engine_apps_list").then((l) => setExisting(Array.isArray(l) ? l : [])).catch(() => {}); }, []);
+  // APP-2b: NAME CORRECTION - load the connector catalog once so we can offer a
+  // light "did you mean <Correct Name>?" when the typed name is a near-miss of a
+  // known app. Optional: if the command isn't available, skip silently.
+  const [catalog, setCatalog] = useState<CatalogApp[]>([]);
+  useEffect(() => {
+    void invoke<ConnectorCatalog>("ingestion_connector_catalog")
+      .then((c) => setCatalog(Array.isArray(c?.apps) ? c.apps : []))
+      .catch(() => {});
+  }, []);
   // Real brand marks so the result card + the "already connected" match row show
   // the app's actual logo (resolved by AppRowLogo) rather than nothing.
   const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
@@ -68,6 +95,61 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
       return t === nq || id === nq || (nq.length >= 3 && (t.includes(nq) || id.includes(nq) || nq.includes(t)));
     }) ?? null;
   }, [name, existing]);
+  // APP-2b: fuzzy "did you mean" against the catalog. Only surfaces when the typed
+  // name is NOT already an exact/substring catalog hit but is CLOSE to one (small
+  // edit distance on the normalized name). It's a suggestion - never blocks submit.
+  const didYouMean = useMemo(() => {
+    const q = name.trim();
+    if (q.length < 2 || catalog.length === 0) return null;
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const nq = norm(q);
+    if (!nq) return null;
+    let best: { name: string; dist: number } | null = null;
+    for (const a of catalog) {
+      const label = a.name || "";
+      const nl = norm(label);
+      if (!nl) continue;
+      // Already a good match (exact or clear substring) - no correction needed.
+      if (nl === nq || (nq.length >= 3 && (nl.includes(nq) || nq.includes(nl)))) return null;
+      const dist = editDistance(nq, nl);
+      // Allow up to ~1 typo per 4 chars (min 1), capped at 2.
+      const tol = Math.min(2, Math.max(1, Math.floor(Math.min(nq.length, nl.length) / 4)));
+      if (dist <= tol && (!best || dist < best.dist)) best = { name: label, dist };
+    }
+    return best?.name ?? null;
+  }, [name, catalog]);
+
+  // APP-3: SUGGEST DOMAINS - when a plan comes back, surface the domains the agent
+  // suggests this app should feed as selectable chips (pre-selected from plan), let
+  // the user toggle / add one, then persist the confirmed set before finishing.
+  const [domSel, setDomSel] = useState<Set<string>>(new Set());
+  const [allDomains, setAllDomains] = useState<string[]>([]);
+  const [newDomain, setNewDomain] = useState("");
+  const [savingDomains, setSavingDomains] = useState(false);
+  // Pre-select from the returned plan whenever a successful result arrives.
+  useEffect(() => {
+    const ds = result?.ok ? result.plan?.domains : undefined;
+    setDomSel(new Set((ds ?? []).map((d) => d.toLowerCase())));
+    setNewDomain("");
+  }, [result]);
+  // Pull the vault's existing domains so the chips can show options beyond what the
+  // plan suggested (optional - the user can also type a brand-new one).
+  useEffect(() => {
+    void invoke<{ name: string }[]>("scan_vault", { path: vaultPath })
+      .then((ds) => setAllDomains((ds ?? []).map((d) => d.name.toLowerCase()).sort()))
+      .catch(() => {});
+  }, [vaultPath]);
+  const toggleDomain = (d: string) => setDomSel((prev) => {
+    const next = new Set(prev); const k = d.toLowerCase();
+    if (next.has(k)) next.delete(k); else next.add(k);
+    return next;
+  });
+  const addNewDomain = () => {
+    const d = newDomain.trim().toLowerCase();
+    if (!d) return;
+    setDomSel((prev) => new Set(prev).add(d));
+    setNewDomain("");
+  };
 
   const find = async () => {
     if (!name.trim()) return;
@@ -86,6 +168,21 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
   };
 
   const plan = result?.plan;
+  // APP-3: persist the confirmed domains (if we have an app id + the set changed
+  // from the plan) before handing off to onDone. Best-effort - never blocks finish.
+  const finishWithDomains = async () => {
+    const id = plan?.app_id;
+    const chosen = [...domSel].sort();
+    const original = (plan?.domains ?? []).map((d) => d.toLowerCase()).sort();
+    const changed = chosen.length !== original.length || chosen.some((d, i) => d !== original[i]);
+    if (id && changed) {
+      setSavingDomains(true);
+      try { await invoke("engine_app_set_domains", { id, domains: chosen }); }
+      catch (e) { console.error("set domains", e); }
+      finally { setSavingDomains(false); }
+    }
+    onDone();
+  };
   const authNeeded = plan?.auth_step && plan.auth_step.kind && plan.auth_step.kind !== "none" && (plan.auth_step.instruction ?? "").trim() !== "";
 
   return (
@@ -123,6 +220,19 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
               </button>
             </div>
           )}
+          {/* APP-2b: light "did you mean" correction - a suggestion, not a gate. */}
+          {!match && didYouMean && (
+            <div className="flex items-center gap-1.5 text-xs text-text-muted">
+              <span>Did you mean</span>
+              <button
+                onClick={() => setName(didYouMean)}
+                className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft/40 px-2 py-0.5 text-xs font-medium text-accent hover:bg-accent-soft/70"
+              >
+                {didYouMean}
+              </button>
+              <span>?</span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <button
               onClick={find} disabled={busy || !name.trim()}
@@ -134,19 +244,31 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
             <span className="text-[11px] text-text-muted">Prevail researches MCP, API, CLI, Composio, or browser - and picks the best.</span>
           </div>
           {busy && (
-            <div className="mt-3 rounded-lg border border-accent-border/40 bg-accent-soft/20 p-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-accent">
-                <Loader2 className="h-4 w-4 animate-spin" /> Working on it…
+            <div className="relative mt-3 overflow-hidden rounded-lg border border-accent-border bg-accent-soft/30 p-3">
+              {/* Subtle pulsing glow so the panel always reads as alive (uses the
+                  built-in animate-pulse; no custom keyframe needed). */}
+              <div className="pointer-events-none absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-accent/10 to-transparent" />
+              <div className="relative flex items-center gap-2 text-sm font-semibold text-accent">
+                <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent/40" />
+                  <Loader2 className="relative h-4 w-4 animate-spin" />
+                </span>
+                <span>Researching the best way to connect {name.trim() || "this app"}<span className="animate-pulse">…</span></span>
               </div>
-              <div className="mt-2 space-y-1">
-                {RESEARCH_PHASES.map((p, i) => (
-                  <div key={i} className={`flex items-center gap-2 text-xs ${i < phaseIdx ? "text-text-muted" : i === phaseIdx ? "text-text-primary" : "text-text-muted/40"}`}>
-                    <span className="w-3 shrink-0 text-center">{i < phaseIdx ? "✓" : i === phaseIdx ? "▸" : "·"}</span>
-                    {p}
-                  </div>
-                ))}
+              <div className="relative mt-2.5 space-y-1.5">
+                {RESEARCH_PHASES.map((p, i) => {
+                  const done = i < phaseIdx, active = i === phaseIdx;
+                  return (
+                    <div key={i} className={`flex items-center gap-2 text-xs transition-colors ${done ? "text-text-muted" : active ? "font-medium text-text-primary" : "text-text-muted/40"}`}>
+                      <span className="flex w-4 shrink-0 items-center justify-center">
+                        {done ? <Check className="h-3 w-3 text-ok" /> : active ? <Loader2 className="h-3 w-3 animate-spin text-accent" /> : <span className="h-1 w-1 rounded-full bg-text-muted/40" />}
+                      </span>
+                      <span className={active ? "animate-pulse" : ""}>{p}</span>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="mt-2 text-[11px] text-text-muted">This runs a model to research + test the best path - usually 10-30s.</div>
+              <div className="relative mt-2.5 text-[11px] text-text-muted">This runs a model to research + test the best path - usually 10-30s.</div>
             </div>
           )}
         </div>
@@ -180,6 +302,41 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
             </div>
           </div>
 
+          {/* APP-3: SUGGEST DOMAINS - confirm/adjust which domains this app feeds.
+              Pre-selected from the plan; user can toggle, add one, or change before
+              finishing. The chosen set is persisted on finish. */}
+          <div className="rounded-lg border border-accent-border bg-accent-soft/30 p-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-accent">
+              <Sparkles className="h-3.5 w-3.5" /> Prevail suggests feeding
+            </div>
+            <p className="mt-1 text-[11px] text-text-muted">Tap to adjust which domains this app feeds before finishing.</p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {Array.from(new Set([
+                ...(plan.domains ?? []).map((d) => d.toLowerCase()),
+                ...[...domSel],
+                ...allDomains,
+              ])).sort().map((d) => {
+                const on = domSel.has(d);
+                return (
+                  <button key={d} onClick={() => toggleDomain(d)}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${on ? "border-accent-border bg-accent text-background" : "border-border bg-background text-text-secondary hover:border-accent-border hover:text-accent"}`}>
+                    {on && <Check className="h-3 w-3" />}{titleCase(d)}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-2 flex items-center gap-1.5">
+              <input
+                value={newDomain} onChange={(e) => setNewDomain(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addNewDomain(); } }}
+                placeholder="Add another domain…"
+                className="w-40 rounded-md border border-border bg-background px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-border"
+              />
+              <button onClick={addNewDomain} disabled={!newDomain.trim()}
+                className="rounded-md border border-border px-2 py-1 text-xs text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-40">Add</button>
+            </div>
+          </div>
+
           {/* Autonomous verification: the engine tested the connection itself. */}
           {result.verified === true && (
             <div className="flex items-start gap-2 rounded-lg border border-ok/30 bg-ok/5 px-3 py-2 text-xs text-ok">
@@ -204,7 +361,8 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
           ) : null}
 
           <div className="flex items-center gap-2">
-            <button onClick={onDone} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover">
+            <button onClick={() => void finishWithDomains()} disabled={savingDomains} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
+              {savingDomains ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               {authNeeded ? "I've done it - finish" : "Done"} <ArrowRight className="h-3.5 w-3.5" />
             </button>
             <button onClick={() => { setResult(null); setName(""); setGoal(""); }} className="rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent">Connect another</button>
