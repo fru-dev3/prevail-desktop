@@ -194,6 +194,12 @@ pub fn run() {
         // a JS-set flag is awkward in Rust, so we always hide-on-close and let
         // Quit (tray menu / ⌘Q) actually exit).
         .setup(|app| {
+            // Set VAULT_ROOT from the configured vault at startup so the first
+            // no-arg engine calls (connectors list, etc.) inject the correct
+            // PREVAIL_VAULT_ROOT before the UI calls engine_set_config_vault.
+            if let Some(v) = engine::engine_config_vault() {
+                engine::set_vault_root(Some(v));
+            }
             use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
             use tauri::tray::TrayIconBuilder;
             use tauri::Manager;

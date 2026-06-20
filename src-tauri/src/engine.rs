@@ -1177,6 +1177,11 @@ pub fn engine_config_vault() -> Option<String> {
 /// the UI instead of stranding on a stale vault.
 #[tauri::command]
 pub fn engine_set_config_vault(path: String) -> Result<(), String> {
+    // Mirror the configured vault into the in-memory VAULT_ROOT so EVERY engine
+    // call (including no-arg ones like `connectors list` / `connectors composio`)
+    // injects PREVAIL_VAULT_ROOT and resolves the real vault, not a dev fallback.
+    // Encrypted vaults also set this on unlock; plaintext vaults rely on this hook.
+    set_vault_root(Some(path.clone()));
     let p = engine_config_path().ok_or("no HOME")?;
     if let Some(dir) = p.parent() {
         let _ = std::fs::create_dir_all(dir);
