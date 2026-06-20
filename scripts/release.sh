@@ -167,10 +167,18 @@ step "Publish GitHub release $TAG"
 # (releases/latest/download/Prevail-mac-arm64.dmg) across every version.
 STABLE_DMG="$WORK/Prevail-mac-arm64.dmg"
 cp "$DMG" "$STABLE_DMG"
+# Prefer hand-written notes (RELEASE_NOTES.md at the repo root) over the
+# commit-generated ones when present, so the release reads like a changelog.
+if [ -f "$HERE/RELEASE_NOTES.md" ]; then
+  NOTES_ARGS=(--notes-file "$HERE/RELEASE_NOTES.md")
+else
+  NOTES_ARGS=(--generate-notes)
+fi
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
   gh release upload "$TAG" "$DMG" "$STABLE_DMG" ${UPDATE_ASSETS[@]+"${UPDATE_ASSETS[@]}"} --repo "$REPO" --clobber
+  gh release edit "$TAG" --repo "$REPO" "${NOTES_ARGS[@]}" >/dev/null
 else
-  gh release create "$TAG" --repo "$REPO" --target main --title "$TAG" --generate-notes "$DMG" "$STABLE_DMG" ${UPDATE_ASSETS[@]+"${UPDATE_ASSETS[@]}"}
+  gh release create "$TAG" --repo "$REPO" --target main --title "$TAG" "${NOTES_ARGS[@]}" "$DMG" "$STABLE_DMG" ${UPDATE_ASSETS[@]+"${UPDATE_ASSETS[@]}"}
 fi
 
 step "Done — Prevail $VERSION released"
