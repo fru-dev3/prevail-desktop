@@ -40,6 +40,7 @@ mod loops;
 mod activity;
 mod ingestion;
 mod composio;
+mod nango;
 mod reminders;
 mod surface;
 mod skillgen;
@@ -435,6 +436,12 @@ pub fn run() {
             composio::composio_verify,
             composio::composio_connect_app,
             composio::composio_connections,
+            nango::nango_status,
+            nango::nango_set_key,
+            nango::nango_verify,
+            nango::nango_integrations,
+            nango::nango_connections,
+            nango::nango_connect,
             engine::engine_app_probe,
             engine::engine_app_add,
             engine::engine_app_set_domains,
