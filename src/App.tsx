@@ -804,7 +804,9 @@ export default function App() {
   useEffect(() => {
     if (!vaultPath) return;
     let alive = true;
-    const poll = () => invoke<{ open?: number; overdue?: number; today?: number }>("work_count", { vault: vaultPath, today: new Date().toISOString().slice(0, 10) })
+    // Scope the Work count to the domain the user is on (global only on General /
+    // no domain), so switching wealth -> tax -> health shows that domain's count.
+    const poll = () => invoke<{ open?: number; overdue?: number; today?: number }>("work_count", { vault: vaultPath, today: new Date().toISOString().slice(0, 10), domain: selectedDomain ?? null })
       .then((r) => { if (alive) setDueAlert({ open: r?.open ?? 0, overdue: r?.overdue ?? 0, today: r?.today ?? 0 }); })
       .catch(() => {});
     void poll();
@@ -813,7 +815,7 @@ export default function App() {
     window.addEventListener("prevail:tasks-changed", onEvt);
     window.addEventListener("prevail:loops-advanced", onEvt);
     return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:tasks-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
-  }, [vaultPath]);
+  }, [vaultPath, selectedDomain]);
   // Insights (recommendations) + Loops counts — surfaced as always-visible badges on
   // the top-nav tabs so the user sees how much is waiting without opening either view.
   // Both are computed in the background on a slow poll + event refresh, same cadence as
@@ -823,8 +825,17 @@ export default function App() {
   useEffect(() => {
     if (!vaultPath) return;
     let alive = true;
-    const poll = () => invoke<{ ok?: boolean; recommendations?: unknown[] }>("engine_recommendations", { vault: vaultPath })
-      .then((r) => { if (alive) setRecCount(Array.isArray(r?.recommendations) ? r.recommendations.length : 0); })
+    // Scope Insights to the selected domain so the badge matches what that domain
+    // actually has (global only on General / no domain).
+    const poll = () => invoke<{ ok?: boolean; recommendations?: { domain?: string }[] }>("engine_recommendations", { vault: vaultPath })
+      .then((r) => {
+        if (!alive) return;
+        const recs = Array.isArray(r?.recommendations) ? r!.recommendations : [];
+        const scoped = selectedDomain
+          ? recs.filter((x) => (x?.domain ?? "").toLowerCase() === selectedDomain.toLowerCase())
+          : recs;
+        setRecCount(scoped.length);
+      })
       .catch(() => {});
     void poll();
     const id = window.setInterval(poll, 120000);
@@ -832,7 +843,7 @@ export default function App() {
     window.addEventListener("prevail:recommendations-changed", onEvt);
     window.addEventListener("prevail:loops-advanced", onEvt);
     return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:recommendations-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
-  }, [vaultPath]);
+  }, [vaultPath, selectedDomain]);
 
   const [loopCount, setLoopCount] = useState(0);
   useEffect(() => {
@@ -840,7 +851,10 @@ export default function App() {
     let alive = true;
     const poll = async () => {
       try {
-        const docs = await Promise.all(domains.map((d) => readLoops(d.path).then((doc) => ensureModelScoutLoop(ensureBriefingLoop(doc, d.name).doc, d.name).doc).catch(() => null)));
+        // Scope the Loops count to the selected domain (global only on General /
+        // no domain), so the badge matches the domain the user is on.
+        const targetDomains = selectedDomain ? domains.filter((d) => d.name === selectedDomain) : domains;
+        const docs = await Promise.all(targetDomains.map((d) => readLoops(d.path).then((doc) => ensureModelScoutLoop(ensureBriefingLoop(doc, d.name).doc, d.name).doc).catch(() => null)));
         if (!alive) return;
         let n = 0;
         for (const doc of docs) n += Array.isArray(doc?.loops) ? doc!.loops.length : 0;
@@ -853,7 +867,7 @@ export default function App() {
     window.addEventListener("prevail:loops-advanced", onEvt);
     window.addEventListener("prevail:loops-changed", onEvt);
     return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:loops-advanced", onEvt); window.removeEventListener("prevail:loops-changed", onEvt); };
-  }, [vaultPath, domains]);
+  }, [vaultPath, domains, selectedDomain]);
 
   // Lets in-app links (e.g. the Demo ribbon) open a specific Settings section.
   const [settingsJump, setSettingsJump] = useState<{ section: string; n: number } | null>(null);

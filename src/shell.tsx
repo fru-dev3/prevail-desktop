@@ -358,15 +358,17 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
           ? "Local models only • Network disabled"
           : "Cloud models and web access enabled"}
       </span>
-      {/* Vault Lock indicator - always-visible trust signal: locked = reads/writes
-          confined to the vault. Sits left of the version, right-aligned. */}
+      {/* Vault Lock indicator - centered inline with the trust line (not floated
+          far right). Minimalist: a lock glyph + one short word. Lit when locked,
+          dimmed/unlocked otherwise. Reflects the live state and updates the instant
+          the toggle fires `prevail:vault-lock-changed`. */}
       <span
-        className="pointer-events-none absolute right-16 inline-flex select-none items-center gap-1 font-mono text-[10px] uppercase tracking-wider opacity-80"
+        className={`ml-1 inline-flex select-none items-center gap-1 font-mono text-[10px] uppercase tracking-wider ${vaultLocked ? "opacity-90" : "opacity-50"}`}
         title={vaultLocked
           ? "Vault Lock ON: the assistant only reads and writes inside your vault."
           : "Vault Lock OFF: the assistant may reach files outside your vault."}
       >
-        {vaultLocked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3 opacity-70" />}
+        · {vaultLocked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
         {vaultLocked ? "Vault Lock" : "Unlocked"}
       </span>
       {/* Version - inside the ribbon so it inherits the high-contrast ribbon

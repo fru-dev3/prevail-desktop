@@ -12,7 +12,8 @@ import { PREF, getPref, lsGet, lsSet } from "./storage";
 import { Toggle } from "./ui";
 import { SettingsHeader } from "./sectionutil";
 import { ConnectAppFlow } from "./appconnect";
-import type { EngineApp } from "./types";
+import { AppRowLogo } from "./panels3";
+import type { BrandLogo, EngineApp } from "./types";
 
 type AppStatus = "connected" | "authorized" | "attention" | "connecting" | "disconnected";
 
@@ -133,6 +134,11 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  // Real brand marks for every connector (AllTrails, Booking.com, Garmin, …),
+  // loaded once and shared by all the app cards via AppRowLogo so logos render
+  // identically here, in the per-domain list, and in the connect flow.
+  const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
+  useEffect(() => { invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {}); }, []);
 
   const reload = useCallback(async () => {
     try {
@@ -229,6 +235,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                   key={a.id}
                   app={a}
                   vaultPath={vaultPath}
+                  logos={logos}
                   status={appStatus(a)}
                   open={expanded === a.id}
                   busy={busy === a.id}
@@ -246,9 +253,10 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   );
 }
 
-function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEnabled, onReload }: {
+function AppCard({ app, vaultPath, logos, status, open, busy, onToggle, onSync, onSetEnabled, onReload }: {
   app: EngineApp;
   vaultPath: string;
+  logos: Record<string, BrandLogo>;
   status: AppStatus;
   open: boolean;
   busy: boolean;
@@ -259,7 +267,6 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
 }) {
   const meta = STATUS_META[status];
   const enabled = app.enabled !== false;
-  const initial = (app.title || app.id || "·").charAt(0).toUpperCase();
   const runs = app.runs ?? [];
   // Apps redesign: the actual data files this connector has loaded (so the user
   // can SEE what was pulled, and reveal it). Lazy-loaded when the card opens, and
@@ -333,8 +340,14 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
   // in the Keychain (app_secret_set) and immediately run a real sync - the card
   // only turns green if that fetch actually succeeds. OAuth apps use the "Sign in"
   // button; MCP apps use the guided-setup card (which renders these same fields).
-  const isOAuth = (app.integration || "").toLowerCase().includes("oauth");
-  const isMcp = (app.integration || "").toLowerCase().includes("mcp");
+  // The OAuth sign-in path is only valid when the app's connection method is
+  // EXACTLY "oauth". A looser .includes() check wrongly lit the Sign-in button
+  // for apps that merely mention oauth (the Airbnb bug) but have no oauth block
+  // in their manifest, so clicking failed with "connector has no oauth block".
+  // "api"/"browser"/"manual"/"mcp" apps must never see this button.
+  const integ = (app.integration || "").toLowerCase();
+  const isOAuth = integ === "oauth";
+  const isMcp = integ === "mcp";
   const credSpec = credFieldsFor(app);
   // Fully delete a connector (mirror of "Connect") so the user can remove a
   // duplicate / mistaken app and recreate it. Two-step confirm; the engine
@@ -382,8 +395,19 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
     try {
       await invoke("engine_app_oauth", { id: app.id, vault: vaultPath });
       await verifySync();
-      setCredMsg("Signed in — verified by a real fetch.");
-    } catch (e) { setCredMsg(`Sign-in failed: ${String(e).slice(0, 200)}`); }
+      setCredMsg("Signed in - verified by a real fetch.");
+    } catch (e) {
+      const msg = String(e);
+      // Some apps are tagged "oauth" but ship no oauth block in their manifest,
+      // so the sign-in invoke fails. Don't leave a dead button: tell the user
+      // this app doesn't actually do OAuth and point them at changing the
+      // method (the Method picker above) to one it supports.
+      if (/no oauth block/i.test(msg)) {
+        setCredMsg("This app isn't set up for OAuth sign-in (no OAuth configured). Use the Method picker above to switch it to API, Browser, or another method it supports.");
+      } else {
+        setCredMsg(`Sign-in failed: ${msg.slice(0, 200)}`);
+      }
+    }
     finally { setCredBusy(false); }
   };
   // MCP guided setup (integration === "mcp"): show the server's install/run
@@ -450,7 +474,9 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
       <div className="flex items-center gap-3 px-4 py-3">
         <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-3 text-left">
           <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-warm font-display text-base font-bold text-text-secondary">{initial}</span>
+          {/* Real brand mark (AllTrails, Booking.com, Garmin, PayPal, …); the
+              letter monogram is only a last-resort fallback when none resolves. */}
+          <AppRowLogo app={app} logos={logos} size={36} fallback="letter" />
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2">
               <span className="truncate text-sm font-semibold text-text-primary">{app.title || app.id}</span>

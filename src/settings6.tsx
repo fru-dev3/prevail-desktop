@@ -56,6 +56,8 @@ function VaultLockToggle() {
     try {
       const s = await invoke<{ enabled: boolean }>("vault_lock_set", { enabled: next });
       setOn(!!s.enabled);
+      // Tell the footer trust-bar to update immediately (it listens for this).
+      window.dispatchEvent(new CustomEvent("prevail:vault-lock-changed"));
     } catch (e) { console.error("vault_lock_set", e); } finally { setBusy(false); }
   }
   return (

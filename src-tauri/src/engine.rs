@@ -836,6 +836,15 @@ pub fn engine_app_oauth(id: String, vault: String) -> Result<serde_json::Value, 
     Ok(serde_json::json!({ "ok": true, "output": out }))
 }
 
+/// Agentic browser login: opens a real browser to the connector's login page so
+/// the user does only their own login, then persists the session for headless
+/// reuse. Long-running + interactive (like oauth), so it uses the raw spawn.
+#[tauri::command]
+pub fn engine_app_browser_login(id: String) -> Result<serde_json::Value, String> {
+    let out = run_engine_raw(&["connectors", "browser-login", &id])?;
+    Ok(serde_json::json!({ "ok": true, "output": out }))
+}
+
 /// The proactive Recommendations feed: domains to create (from recurring
 /// intents), best model per benchmarked domain, and domains with no app feeding
 /// them. Computed from existing vault signals. Returns { ok, recommendations }.
