@@ -14,8 +14,7 @@ import type { BrandLogo, CliProvider, ContextScore, EngineApp, IngestionMcpServe
 // carry a name): slug the name, look it up in the simple-icons map, else a
 // monogram fallback.
 function BrandTile({ name, logos }: { name: string; logos: Record<string, BrandLogo> }) {
-  const slug = name.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const logo = logos[slug] ?? logos[slug.replace(/connect$|app$|inc$/, "")];
+  const logo = resolveAppLogo({ title: name }, logos);
   if (logo) {
     return (
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-white">
@@ -29,26 +28,55 @@ function BrandTile({ name, logos }: { name: string; logos: Record<string, BrandL
   );
 }
 
-// Resolve an app's brand logo from the simple-icons map by slugging its title
-// or id; falls back to a colored monogram tile so every app shows something.
-function AppRowLogo({ app, logos }: { app: EngineApp; logos: Record<string, BrandLogo> }) {
-  const slugs = [
-    app.title.toLowerCase().replace(/[^a-z0-9]/g, ""),
-    app.id.toLowerCase().replace(/[^a-z0-9]/g, ""),
-    app.id.split(/[-_:]/)[0]?.toLowerCase() ?? "",
-  ];
-  const logo = slugs.map((s) => logos[s]).find(Boolean);
+// Resolve a connector's real brand logo from the simple-icons map by slugging
+// its title or id (trying a few normalizations so e.g. "Booking.com" ->
+// "bookingcom" -> "booking" still resolves). Returns the matched BrandLogo or
+// null - shared by every app surface so logos render identically everywhere.
+export function resolveAppLogo(app: { title?: string; id?: string }, logos: Record<string, BrandLogo>): BrandLogo | null {
+  const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const strip = (s: string) => s.replace(/(connect|connector|app|inc|com|io|labs?)$/, "");
+  const title = app.title ?? "";
+  const id = app.id ?? "";
+  const cands = [
+    norm(title),
+    norm(id),
+    norm(id.split(/[-_:]/)[0] ?? ""),
+    strip(norm(title)),
+    strip(norm(id)),
+  ].filter((s) => s.length >= 2);
+  for (const s of cands) {
+    if (logos[s]) return logos[s];
+  }
+  return null;
+}
+
+// A connector's logo tile, sized for app rows/cards. Renders the resolved real
+// brand mark; only when nothing resolves does it fall back to the app's
+// letter/initials monogram. This is the single way logos render across all app
+// surfaces (rows, cards, connect flow) so they stay consistent.
+export function AppRowLogo({ app, logos, size = 32, fallback = "initials" }: {
+  app: { title?: string; id?: string };
+  logos: Record<string, BrandLogo>;
+  size?: number;
+  fallback?: "initials" | "letter";
+}) {
+  const logo = resolveAppLogo(app, logos);
+  const glyph = Math.round(size * 0.56);
+  const box = { height: size, width: size };
   if (logo) {
     return (
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-white">
-        <svg width={18} height={18} viewBox="0 0 24 24" fill={`#${logo.hex}`} aria-hidden><path d={logo.path} /></svg>
+      <span className="flex shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-white" style={box}>
+        <svg width={glyph} height={glyph} viewBox="0 0 24 24" fill={`#${logo.hex}`} aria-hidden><path d={logo.path} /></svg>
       </span>
     );
   }
-  const initials = app.title.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const name = app.title || app.id || "·";
+  const mono = fallback === "letter"
+    ? name.charAt(0).toUpperCase()
+    : name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-warm font-display text-[11px] font-bold text-text-secondary" aria-hidden>
-      {initials}
+    <span className="flex shrink-0 items-center justify-center rounded-lg bg-surface-warm font-display font-bold text-text-secondary" style={box} aria-hidden>
+      <span style={{ fontSize: Math.round(size * 0.34) }}>{mono}</span>
     </span>
   );
 }

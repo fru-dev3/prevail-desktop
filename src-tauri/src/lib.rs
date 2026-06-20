@@ -432,6 +432,7 @@ pub fn run() {
             engine::engine_app_sync,
             engine::engine_app_remove,
             engine::engine_app_oauth,
+            engine::engine_app_browser_login,
             engine::app_data_files,
             engine::engine_apps_sync_due,
             engine::engine_app_connect,

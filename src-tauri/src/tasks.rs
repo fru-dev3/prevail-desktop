@@ -366,7 +366,7 @@ pub fn task_detail_add_comment(vault: String, domain: String, id: String, text: 
 /// the badge trusts: it never goes through tasks_read's per-domain resolution,
 /// which returned empty for some layouts and left the badge blank.
 #[tauri::command]
-pub fn work_count(vault: String, today: String) -> Result<serde_json::Value, String> {
+pub fn work_count(vault: String, today: String, domain: Option<String>) -> Result<serde_json::Value, String> {
     let mut open: u32 = 0;
     let mut overdue: u32 = 0;
     let mut due_today: u32 = 0;
@@ -375,7 +375,13 @@ pub fn work_count(vault: String, today: String) -> Result<serde_json::Value, Str
     // (list_domain_names). The old version counted every indented checkbox across a
     // different enumeration, so the badge (e.g. 107) never matched the board.
     // "open" = not done (todo/doing/review/blocked); done + icebox are excluded.
-    for name in crate::vault::list_domain_names(&vault) {
+    // When `domain` is set, scope the count to that single domain so the nav badge
+    // reflects the domain the user is actually on (not the global total).
+    let names: Vec<String> = match domain.as_deref() {
+        Some(d) if !d.is_empty() => vec![d.to_string()],
+        _ => crate::vault::list_domain_names(&vault),
+    };
+    for name in names {
         let tasks = match tasks_read(vault.clone(), name) {
             Ok(t) => t,
             Err(_) => continue,

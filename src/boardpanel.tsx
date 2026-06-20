@@ -28,6 +28,7 @@ const COLUMNS: { key: string; label: string }[] = [
   { key: "doing", label: "Doing" },
   { key: "review", label: "Review" },
   { key: "done", label: "Done" },
+  { key: "icebox", label: "Icebox" },
 ];
 
 // Time-horizon buckets by due date, for planning. A task with no due date sits in
@@ -178,11 +179,15 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
       .sort((a, b) => (b.trashed || "").localeCompare(a.trashed || "")),
     [tasks, ownerFilter, domainFilter],
   );
+  // Board columns. "shown" excludes icebox (it is parked, hidden from list/horizon),
+  // so the Icebox column draws from the separate "iceboxed" list. "blocked" tasks
+  // fold into Doing with a flag via columnFor, so they never vanish.
   const byColumn = useMemo(() => {
-    const m: Record<string, BoardTask[]> = { todo: [], doing: [], review: [], done: [] };
+    const m: Record<string, BoardTask[]> = { todo: [], doing: [], review: [], done: [], icebox: [] };
     for (const t of shown) (m[columnFor(t.status)] ??= []).push(t);
+    for (const t of iceboxed) (m.icebox ??= []).push(t);
     return m;
-  }, [shown]);
+  }, [shown, iceboxed]);
   // Horizon view groups OPEN tasks by due-date bucket (done tasks drop out - the
   // horizon is about what's ahead). Critical/high first, then by due date.
   const byHorizon = useMemo(() => {
@@ -607,17 +612,21 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
           )}
         </div>
       ) : view === "board" ? (
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {COLUMNS.map((col) => {
             const items = byColumn[col.key] ?? [];
             const over = dragCol === col.key && dragId;
+            // Icebox is a parking lot, not an active stage - set it apart with a
+            // dashed border + snowflake so it reads as "set aside" at a glance.
+            const isIcebox = col.key === "icebox";
             return (
               <section key={col.key}
                 onDragOver={(e) => { if (dragId) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragCol(col.key); } }}
                 onDragLeave={() => setDragCol((c) => (c === col.key ? null : c))}
                 onDrop={(e) => { e.preventDefault(); onDrop(col.key); }}
-                className={`rounded-xl border p-2 transition-colors ${over ? "border-accent-border bg-accent-soft/40" : "border-border-subtle bg-surface/40"}`}>
-                <div className="mb-2 flex items-center gap-2 px-1 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
+                className={`rounded-xl border p-2 transition-colors ${over ? "border-accent-border bg-accent-soft/40" : isIcebox ? "border-dashed border-border-subtle bg-surface/20" : "border-border-subtle bg-surface/40"}`}>
+                <div className="mb-2 flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
+                  {isIcebox && <Snowflake className="h-3 w-3" />}
                   {col.label}<span className="text-text-muted/50">· {items.length}</span>
                 </div>
                 <div className="flex min-h-[2.5rem] flex-col gap-2">
