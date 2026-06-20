@@ -556,6 +556,81 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   );
 }
 
+// The UNIVERSAL primitive for a connected gateway app (Composio or Nango): a
+// detail panel with Open-in-chat + a refresh schedule, exactly like a Direct app.
+// Clicking a connected Composio/Nango app scaffolds it as a first-class vault app
+// (so the schedule persists and the daemon can sync it) and opens this.
+function ConnectedGatewayDetail({ method, slug, title, provider, logos, onBack }: {
+  method: "composio" | "nango";
+  slug: string;
+  title: string;
+  provider?: string;
+  logos: Record<string, BrandLogo>;
+  onBack: () => void;
+}) {
+  const id = `${method}-${slug}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  const [app, setApp] = useState<EngineApp | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    try {
+      let list = await invoke<EngineApp[]>("engine_apps_list");
+      let a = (list ?? []).find((x) => x.id === id);
+      if (!a) {
+        // Scaffold it as a vault app so the schedule persists + it's chattable.
+        await invoke("engine_app_add", { id, title, integration: "manual", domains: [] }).catch(() => {});
+        list = await invoke<EngineApp[]>("engine_apps_list");
+        a = (list ?? []).find((x) => x.id === id);
+      }
+      setApp(a ?? null);
+    } catch { setApp(null); }
+  }, [id, title]);
+  useEffect(() => { void load(); }, [load]);
+  const setSchedule = async (every: string) => {
+    setBusy(true);
+    try { await invoke("engine_app_set_schedule", { id, every, at: null, on: null }); await load(); window.dispatchEvent(new CustomEvent("prevail:apps-changed")); }
+    catch (e) { console.error("set schedule", e); }
+    finally { setBusy(false); }
+  };
+  const openInChat = () => { if (app) window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app })); };
+  const current = (app?.refresh?.every ?? "off").toLowerCase();
+  const SCHEDULES: { v: string; label: string }[] = [
+    { v: "off", label: "Off" }, { v: "hourly", label: "Hourly" }, { v: "daily", label: "Daily" }, { v: "weekly", label: "Weekly" },
+  ];
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle px-5 py-4">
+        <button onClick={onBack} className="mt-1 inline-flex items-center gap-1 text-xs text-text-muted hover:text-accent"><ArrowUpRight className="h-3.5 w-3.5 rotate-[225deg]" /> Back</button>
+        <AppRowLogo app={{ title, id: provider || slug }} logos={logos} size={44} fallback="letter" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-lg font-semibold text-text-primary">{title}</span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected via {method === "composio" ? "Composio" : "Nango"}</span>
+          </div>
+          <p className="mt-1 text-[12px] text-text-secondary">Use it in chat, and set how often Prevail refreshes its data into your vault.</p>
+        </div>
+        <button onClick={openInChat} disabled={!app} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+          <ArrowUpRight className="h-3.5 w-3.5" /> Open in chat
+        </button>
+      </div>
+      <div className="space-y-4 px-5 py-4">
+        <div>
+          <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Refresh schedule</div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {SCHEDULES.map((s) => (
+              <button key={s.v} onClick={() => void setSchedule(s.v)} disabled={busy}
+                className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${current === s.v ? "border-accent-border bg-accent text-background" : "border-border bg-background text-text-secondary hover:border-accent-border hover:text-accent"}`}>
+                {s.label}
+              </button>
+            ))}
+            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-text-muted" />}
+          </div>
+          <p className="mt-1.5 text-[11px] text-text-muted">How often Prevail pulls fresh {title} data via {method === "composio" ? "Composio" : "Nango"} into your vault. (The scheduled pull executes through the {method} connection; data lands in this app's folder.)</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Composio's app catalog (toolkit slug -> display name + category). The consumer
 // key is MCP-only (the REST catalog API rejects it), so this is bundled. Slugs are
 // Composio's toolkit slugs, used verbatim by COMPOSIO_MANAGE_CONNECTIONS add.
@@ -626,6 +701,7 @@ function ComposioMode() {
   const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
   const [connected, setConnected] = useState<Set<string>>(new Set());
   const [refreshingConn, setRefreshingConn] = useState(false);
+  const [detailApp, setDetailApp] = useState<{ slug: string; name: string } | null>(null);
   useEffect(() => { void invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {}); }, []);
   // Which Composio apps are actively connected (one MCP call over the catalog).
   const loadConnections = useCallback(async () => {
@@ -731,7 +807,10 @@ function ComposioMode() {
         </div>
       </div>
 
-      {verified === true && (
+      {verified === true && detailApp && (
+        <ConnectedGatewayDetail method="composio" slug={detailApp.slug} title={detailApp.name} logos={logos} onBack={() => { setDetailApp(null); void loadConnections(); }} />
+      )}
+      {verified === true && !detailApp && (
         <>
           <div className="flex items-center gap-2">
             <div className="relative max-w-md flex-1">
@@ -759,14 +838,15 @@ function ComposioMode() {
               <div className="px-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {connectedApps.map((a) => (
-                  <div key={a.slug} className="flex items-center gap-2.5 rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2.5">
+                  <button key={a.slug} onClick={() => setDetailApp({ slug: a.slug, name: a.name })} title={`Open ${a.name} details`}
+                    className="flex items-center gap-2.5 rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2.5 text-left transition-colors hover:bg-accent-soft/40">
                     <AppRowLogo app={{ title: a.name, id: a.slug }} logos={logos} size={30} fallback="letter" />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium text-text-primary">{a.name}</div>
                       <div className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{a.cat}</div>
                     </div>
-                    <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent"><Check className="h-3 w-3" /> Connected</span>
-                  </div>
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent"><Check className="h-3 w-3" /> Details</span>
+                  </button>
                 ))}
               </div>
             </section>
@@ -811,6 +891,7 @@ function NangoMode() {
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
   const [integrations, setIntegrations] = useState<NangoIntegration[]>([]);
   const [connected, setConnected] = useState<Set<string>>(new Set());
+  const [detailApp, setDetailApp] = useState<{ slug: string; name: string; provider?: string } | null>(null);
   const [connectingKey, setConnectingKey] = useState<string | null>(null);
   const [connectMsg, setConnectMsg] = useState<string | null>(null);
   const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
@@ -909,7 +990,10 @@ function NangoMode() {
         </div>
       </div>
 
-      {verified === true && (
+      {verified === true && detailApp && (
+        <ConnectedGatewayDetail method="nango" slug={detailApp.slug} title={detailApp.name} provider={detailApp.provider} logos={logos} onBack={() => { setDetailApp(null); void loadData(); }} />
+      )}
+      {verified === true && !detailApp && (
         <>
           <div className="relative max-w-md">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
@@ -928,11 +1012,12 @@ function NangoMode() {
                   <div className="px-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     {connectedApps.map((i) => (
-                      <div key={i.unique_key} className="flex items-center gap-2.5 rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2.5">
+                      <button key={i.unique_key} onClick={() => setDetailApp({ slug: i.unique_key, name: i.display_name, provider: i.provider })} title={`Open ${i.display_name} details`}
+                        className="flex items-center gap-2.5 rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2.5 text-left transition-colors hover:bg-accent-soft/40">
                         <AppRowLogo app={{ title: i.display_name, id: i.provider || i.unique_key }} logos={logos} size={30} fallback="letter" />
                         <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-text-primary">{i.display_name}</div><div className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{i.provider || i.unique_key}</div></div>
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent"><Check className="h-3 w-3" /> Connected</span>
-                      </div>
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent"><Check className="h-3 w-3" /> Details</span>
+                      </button>
                     ))}
                   </div>
                 </section>
