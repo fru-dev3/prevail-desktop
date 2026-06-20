@@ -13,7 +13,7 @@ import { Toggle } from "./ui";
 import { SettingsHeader } from "./sectionutil";
 import { ConnectAppFlow } from "./appconnect";
 import { AppRowLogo } from "./panels3";
-import type { BrandLogo, EngineApp } from "./types";
+import type { BrandLogo, CatalogApp, ConnectorCatalog, EngineApp } from "./types";
 
 type AppStatus = "connected" | "authorized" | "attention" | "connecting" | "disconnected";
 
@@ -142,6 +142,21 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // logos render identically here, in the per-domain list, and in the connect flow.
   const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
   useEffect(() => { invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {}); }, []);
+  // The full 1000+ connector catalog, loaded once and folded INTO the left
+  // sidebar (no separate "Browse the catalog" bar). Each catalog app becomes a
+  // selectable row; picking one that isn't installed yet routes to the connect
+  // flow. Optional - if the command is unavailable, the catalog section is just
+  // empty and the installed-apps list still works.
+  const [catalog, setCatalog] = useState<CatalogApp[]>([]);
+  useEffect(() => {
+    void invoke<ConnectorCatalog>("ingestion_connector_catalog")
+      .then((c) => setCatalog(Array.isArray(c?.apps) ? c.apps : []))
+      .catch(() => {});
+  }, []);
+  // When a CATALOG (not-yet-installed) app is selected, we open the connect flow
+  // for it. ConnectAppFlow doesn't take a typed-name prop, so we surface the
+  // chosen app in a small detail pane with a "Connect" CTA that opens the flow.
+  const [catalogPick, setCatalogPick] = useState<CatalogApp | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -203,6 +218,37 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     return order.map((g) => ({ ...g, apps: by[g.key] })).filter((g) => g.apps.length > 0);
   }, [apps, query]);
 
+  // The catalog folded into the sidebar: every connector NOT already installed,
+  // deduped against the installed apps (by normalized name / id / iconSlug) so a
+  // catalog entry that matches an installed app shows only once - as the
+  // installed one, above. Because the catalog is 1000+ entries we don't render
+  // all of them: when searching we show every match; otherwise we cap to a
+  // curated/tier-1 first slice (CATALOG_CAP) with a "search to find more" note.
+  const CATALOG_CAP = 40;
+  const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const catalogView = useMemo(() => {
+    const installedKeys = new Set<string>();
+    for (const a of apps ?? []) { installedKeys.add(norm(a.id)); installedKeys.add(norm(a.title || "")); }
+    const q = query.trim().toLowerCase();
+    const available = catalog.filter((c) => {
+      const keyName = norm(c.name);
+      const keySlug = norm(c.iconSlug || "");
+      if (!keyName) return false;
+      if (installedKeys.has(keyName) || (keySlug && installedKeys.has(keySlug))) return false;
+      return true;
+    });
+    const matched = !q ? available : available.filter((c) => (c.name || "").toLowerCase().includes(q));
+    // Curated / tier-1 first so the un-searched cap shows the apps people want.
+    const ranked = [...matched].sort((a, b) => {
+      const score = (c: CatalogApp) => (c.curated ? 0 : 2) + (c.tier === 1 ? 0 : 1) - (c.verified ? 1 : 0);
+      const d = score(a) - score(b);
+      return d !== 0 ? d : (a.name || "").localeCompare(b.name || "");
+    });
+    const searching = q.length > 0;
+    const shown = searching ? ranked : ranked.slice(0, CATALOG_CAP);
+    return { shown, total: matched.length, searching };
+  }, [apps, catalog, query]);
+
   const liveCount = (apps ?? []).filter((a) => appStatus(a) === "connected").length;
   const selectedApp = (apps ?? []).find((a) => a.id === selected) ?? null;
 
@@ -219,12 +265,12 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       {connecting ? (
         <ConnectAppFlow
           vaultPath={vaultPath}
-          onDone={async () => { setConnecting(false); await reload(); }}
+          onDone={async () => { setConnecting(false); setCatalogPick(null); await reload(); }}
           onCancel={() => setConnecting(false)}
         />
       ) : apps === null ? (
         <div className="text-sm text-text-muted">loading apps…</div>
-      ) : apps.length === 0 ? (
+      ) : apps.length === 0 && catalog.length === 0 ? (
         <div className="space-y-4">
           <button
             onClick={() => setConnecting(true)}
@@ -267,29 +313,63 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
               <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{liveCount} of {apps.length} live</div>
             )}
             <div className="space-y-4 lg:max-h-[60vh] lg:overflow-y-auto lg:pr-1">
-              {groups.length === 0 ? (
+              {groups.length === 0 && catalogView.shown.length === 0 ? (
                 <div className="px-1 text-xs text-text-muted">No apps match "{query}".</div>
-              ) : groups.map((g) => (
-                <section key={g.key} className="space-y-1">
-                  <div className={`px-1 font-mono text-[10px] uppercase tracking-[0.2em] ${g.tint}`}>{g.label} · {g.apps.length}</div>
-                  {g.apps.map((a) => (
-                    <ConnectorRow
-                      key={a.id}
-                      app={a}
-                      logos={logos}
-                      status={appStatus(a)}
-                      active={selected === a.id}
-                      onSelect={() => setSelected(a.id)}
-                    />
+              ) : (
+                <>
+                  {groups.map((g) => (
+                    <section key={g.key} className="space-y-1">
+                      <div className={`px-1 font-mono text-[10px] uppercase tracking-[0.2em] ${g.tint}`}>{g.label} · {g.apps.length}</div>
+                      {g.apps.map((a) => (
+                        <ConnectorRow
+                          key={a.id}
+                          app={a}
+                          logos={logos}
+                          status={appStatus(a)}
+                          active={selected === a.id && !catalogPick}
+                          onSelect={() => { setSelected(a.id); setCatalogPick(null); }}
+                        />
+                      ))}
+                    </section>
                   ))}
-                </section>
-              ))}
+                  {/* The catalog, folded in: every connector not yet installed,
+                      below the user's own apps so installed-and-working stays
+                      visually distinct from catalog-available. */}
+                  {catalogView.shown.length > 0 && (
+                    <section className="space-y-1">
+                      <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Available to add · {catalogView.total}</div>
+                      {catalogView.shown.map((c) => (
+                        <CatalogRow
+                          key={c.iconSlug || c.name}
+                          app={c}
+                          logos={logos}
+                          active={catalogPick?.name === c.name}
+                          onSelect={() => { setCatalogPick(c); }}
+                        />
+                      ))}
+                      {!catalogView.searching && catalogView.total > catalogView.shown.length && (
+                        <div className="px-1 pt-0.5 text-[10px] text-text-muted/70">
+                          showing {catalogView.shown.length} of {catalogView.total} - search to find more
+                        </div>
+                      )}
+                    </section>
+                  )}
+                </>
+              )}
             </div>
           </aside>
 
-          {/* RIGHT - the selected connector's full config. */}
+          {/* RIGHT - the selected connector's full config, OR a catalog app's
+              "Connect" pane when a not-yet-installed app is picked. */}
           <div className="min-w-0 flex-1">
-            {selectedApp ? (
+            {catalogPick ? (
+              <CatalogDetail
+                key={catalogPick.iconSlug || catalogPick.name}
+                app={catalogPick}
+                logos={logos}
+                onConnect={() => setConnecting(true)}
+              />
+            ) : selectedApp ? (
               <AppDetail
                 key={selectedApp.id}
                 app={selectedApp}
@@ -336,6 +416,84 @@ function ConnectorRow({ app, logos, status, active, onSelect }: {
       </span>
       <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot} ${status === "connecting" ? "animate-pulse" : ""}`} title={meta.label} />
     </button>
+  );
+}
+
+// Map a catalog app to the minimal shape AppRowLogo needs (it keys off title/id
+// against the logos map). Catalog apps may not be in the logos map - then it
+// falls back to a letter mark, which is the requested behavior.
+function catalogLogoApp(c: CatalogApp): { title?: string; id?: string } {
+  return { title: c.name, id: c.iconSlug || c.name };
+}
+
+// One row in the "Available to add" catalog section: brand logo (or letter
+// fallback), name, and the connector's domain/note as a subtitle. Selecting it
+// opens the catalog detail pane on the right with a Connect CTA.
+function CatalogRow({ app, logos, active, onSelect }: {
+  app: CatalogApp;
+  logos: Record<string, BrandLogo>;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const sub = app.domain || (app.tags && app.tags[0]) || "catalog";
+  return (
+    <button
+      onClick={onSelect}
+      className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors ${active ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}
+    >
+      <AppRowLogo app={catalogLogoApp(app)} logos={logos} size={28} fallback="letter" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-text-primary">{app.name}</span>
+        <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{titleCase(sub)}</span>
+      </span>
+      <Plus className="h-3 w-3 shrink-0 text-text-muted/60" />
+    </button>
+  );
+}
+
+// The right pane for a CATALOG (not-yet-installed) app: logo, name, any note the
+// catalog exposes, and a clear "Connect" CTA that opens the existing connect
+// flow. ConnectAppFlow doesn't accept a typed-name prop, so we name the app here
+// and the user confirms it in the flow's first field.
+function CatalogDetail({ app, logos, onConnect }: {
+  app: CatalogApp;
+  logos: Record<string, BrandLogo>;
+  onConnect: () => void;
+}) {
+  const note = (app.note || "").trim();
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle px-5 py-4">
+        <AppRowLogo app={catalogLogoApp(app)} logos={logos} size={52} fallback="letter" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-base font-semibold text-text-primary">{app.name}</span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+              <Globe className="h-2.5 w-2.5" /> Available to add
+            </span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-text-muted">
+            {app.domain && <span>{titleCase(app.domain)}</span>}
+            {app.tags?.length ? <span>· {app.tags.slice(0, 4).map(titleCase).join(", ")}</span> : null}
+          </div>
+          {note && <p className="mt-1.5 max-w-prose text-[12px] text-text-secondary">{note}</p>}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={onConnect}
+            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover"
+          >
+            <Plus className="h-3.5 w-3.5" /> Connect
+          </button>
+        </div>
+      </div>
+      <div className="px-5 py-4 text-[13px] text-text-secondary">
+        <p>
+          Connect {app.name} to start feeding your domains real data. Prevail picks the best way to
+          connect (MCP, API, sign-in, or browser) - just confirm the name and say what it should pull in.
+        </p>
+      </div>
+    </div>
   );
 }
 

@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, listen, isBrowser, type UnlistenFn } from "./bridge";
 import { open } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { titleCase } from "./format";
 import type { CliInfo, Domain, DomainTab, EngineApp, TabId, ThreadMeta } from "./types";
 import { BUNKER_LS, LS, PREF, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet } from "./storage";
@@ -1062,7 +1063,15 @@ export default function App() {
 
   async function openInFinder(path: string | null) {
     if (!path) return;
-    try { await invoke("open_in_finder", { path }); } catch (e) { console.error("open_in_finder", e); }
+    // Use the opener plugin's reveal-in-Finder (entitlement-safe under the
+    // notarized build, and it selects the item in Finder). Fall back to the
+    // shell-based command if the plugin reveal ever fails.
+    try {
+      await revealItemInDir(path);
+    } catch (e) {
+      console.error("revealItemInDir", e);
+      try { await invoke("open_in_finder", { path }); } catch (e2) { console.error("open_in_finder", e2); }
+    }
   }
 
   // Re-detectable so saving a provider key (OpenRouter) or starting a local

@@ -43,6 +43,30 @@ it. This is the whole point: connect once agentically, reuse the skill forever.
 ## In progress
 - (none yet)
 
+## Round 2 (v0.1.143 testing feedback)
+- [ ] **BUG: folder/reveal in Finder does nothing (apps AND domains)**: clicking the
+  folder icon to reveal a file/folder in the local directory does not open Finder,
+  for both app rows and domain rows. General open_in_finder failure (not path-
+  specific). Investigate: open_in_finder Rust command (shell `open` permission /
+  tauri capability), whether Vault Lock blocks it (app folders live in ~/.prevail,
+  outside the vault), and the sidebar folder button handler (sidebar.tsx). Make
+  reveal-in-Finder work reliably for apps + domains (app dir + domain dir).
+- [ ] **Merge the catalog INTO the connectors sidebar (remove the bottom "Browse the
+  catalog" bar)**: the left sidebar should hold the FULL connector catalog (1000+),
+  scrollable + searchable, so the user sees every app in one place. Sections: the
+  not-connected / available ones in a section (top), the connected/configured ones
+  in another. Selecting a catalog (not-yet-added) app opens its connect flow in the
+  detail pane. Drop the separate "Browse the catalog · 1000+ apps" footer bar.
+  File: appspanel.tsx (left list = engine_apps_list + ingestion_connector_catalog,
+  deduped; clicking an uninstalled catalog app -> ConnectAppFlow prefilled).
+- [ ] **BUG: browser-login "no login URL"**: clicking "Log in to AllTrails" failed
+  with `no login URL for "alltrails" (set login_url/homepage in its manifest, or
+  pass --url)`. The scaffolded manifest lacks a login_url/homepage. Fix: the
+  browser-login command should resolve the login URL from the CATALOG (the catalog
+  entry has the app homepage/url), falling back through manifest -> catalog ->
+  a sensible default, so Log-in works without manual URL entry. File: prevail-cli
+  connectors browser-login (look up catalog homepage by app id/title).
+
 ## Pending
 - [ ] **Connections must actually authenticate + work (Booking.com case)**: an app
   resolved to method=API (Booking.com, feeds Travel) shows NO way to authenticate -
