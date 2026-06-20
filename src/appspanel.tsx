@@ -14,6 +14,7 @@ import { Toggle } from "./ui";
 import { SettingsHeader } from "./sectionutil";
 import { ConnectAppFlow } from "./appconnect";
 import { AppRowLogo } from "./panels3";
+import { GoogleWorkspacePanel } from "./googlepanel";
 import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
 import type { BrandLogo, CatalogApp, ConnectorCatalog, EngineApp } from "./types";
 
@@ -436,6 +437,9 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
             logos={logos}
           />
         </div>
+        {/* Google Workspace: one connector for the whole Google ecosystem across
+            every profile, via the gws CLI. Sits at the top of Direct. */}
+        <GoogleWorkspacePanel vaultPath={vaultPath} />
         {apps === null ? (
         <div className="text-sm text-text-muted">loading apps…</div>
       ) : directApps.length === 0 && catalog.length === 0 ? (
