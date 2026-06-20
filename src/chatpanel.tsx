@@ -490,6 +490,28 @@ export function ChatPanel({
     if (!appId) return;
     setAppAutoSkill((cur) => { const next = !cur; lsSet(`prevail.app.${appId}.autoSkill`, next ? "1" : "0"); return next; });
   }, [appId]);
+  // The app's SECONDARY skills (files under data/apps/<id>/skills/) - the
+  // primary SKILL.md is auto-attached above; these are the per-action how-tos
+  // the user can attach as extra context. Fetched once per app, then offered as
+  // suggestion chips in the composer's attach row.
+  const [appSkillFiles, setAppSkillFiles] = useState<{ id: string; name: string; path: string; summary: string; body: string; primary: boolean }[]>([]);
+  useEffect(() => {
+    if (!isApp || !appId) { setAppSkillFiles([]); return; }
+    let mounted = true;
+    invoke<{ id: string; name: string; path: string; summary: string; body: string; primary: boolean }[]>("engine_app_skill_files", { id: appId })
+      .then((r) => { if (mounted) setAppSkillFiles(Array.isArray(r) ? r : []); })
+      .catch(() => { if (mounted) setAppSkillFiles([]); });
+    return () => { mounted = false; };
+  }, [isApp, appId]);
+  // Attach / detach one secondary skill as removable context. Labelled
+  // "app-skill: <name>" (distinct from the auto-attached "auto-app:" primary and
+  // from the "auto:" domain-state prime), so each layer is independent.
+  const toggleSkillAttach = useCallback((s: { name: string; body: string }) => {
+    const label = `app-skill: ${s.name}`;
+    setPrimedContext((cur) => cur.some((c) => c.label === label)
+      ? cur.filter((c) => c.label !== label)
+      : [...cur, { label, body: s.body }]);
+  }, []);
   const [attachments, setAttachments] = useState<string[]>([]);
   // Ingested artifacts for this domain. Auto-fetched on entry so the
   // user can flip a chip to attach them to the next turn without
@@ -1813,6 +1835,21 @@ export function ChatPanel({
                   <Sparkles className="h-3 w-3" /> {appAutoSkill ? "App skill on" : "App skill off"}
                 </button>
               )}
+              {/* Suggested app skills: each secondary skill the app ships, offered
+                  as a one-click attach. Once attached it shows as a removable
+                  context pill above, so we only suggest the not-yet-attached ones. */}
+              {isApp && appId && appSkillFiles
+                .filter((s) => !s.primary && !primedContext.some((c) => c.label === `app-skill: ${s.name}`))
+                .map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => toggleSkillAttach(s)}
+                    title={s.summary ? `${s.summary}\n\nClick to attach as context.` : `Attach ${s.name} as context`}
+                    className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted transition-colors hover:border-accent-border hover:text-accent"
+                  >
+                    <BookOpen className="h-3 w-3" /> + {s.name}
+                  </button>
+                ))}
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {(autoCompacted || compacting) && (

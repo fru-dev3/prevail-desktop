@@ -1258,6 +1258,15 @@ pub fn engine_app_skills(id: String) -> Result<serde_json::Value, String> {
     run_engine_json(&["connectors", "skills", &id, "--json"])
 }
 
+/// One app's skill FILES as attachable context: the primary SKILL.md plus every
+/// file under skills/, each with { id, name, path, summary, body, primary }.
+/// Powers the chat "attach this app's skill" suggestions when chatting in an
+/// app's context. Returns [] when the app has no skills.
+#[tauri::command]
+pub fn engine_app_skill_files(id: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "skill-files", &id, "--json"])
+}
+
 /// One app's run history (last ~20 runs) for the per-app Runs facet. Returns
 /// { lastRunTs, lastOkTs, lastRunOk, lastError, nextDueTs, consecutiveFailures,
 /// runs: [{ ts, ok, skill, summary?, error?, duration_ms, artifacts }] }.
