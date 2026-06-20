@@ -400,12 +400,12 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
         <div className="mt-1.5 flex items-center gap-1.5 pl-5">
           <select value={t.status} onChange={(e) => setStatus(t, e.target.value)} disabled={busy === `s:${t.id}`}
             className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none">
-            {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{s}</option>)}
+            {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
           </select>
           <button onClick={() => toggleOwner(t)} disabled={busy === `o:${t.id}`}
             title={ai ? "Take it back from the agent (hand to me)" : "Hand to the agent to run as a workflow"}
             className={`inline-flex items-center gap-1 rounded border px-1.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide transition-colors disabled:opacity-50 ${ai ? "border-border text-text-muted hover:border-accent-border hover:text-text-primary" : "border-accent-border text-accent hover:bg-accent hover:text-background"}`}>
-            {ai ? <><CornerUpLeft className="h-3 w-3" /> Take back</> : <><Bot className="h-3 w-3" /> Hand to agent</>}
+            {ai ? <><CornerUpLeft className="h-3 w-3" /> Take back</> : <><Bot className="h-3 w-3" /> To agent</>}
           </button>
         </div>
       </div>
@@ -443,12 +443,12 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
         </button>
         <select value={t.status} onChange={(e) => setStatus(t, e.target.value)} disabled={busy === `s:${t.id}`}
           className="shrink-0 rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none">
-          {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{s}</option>)}
+          {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
         </select>
         <button onClick={() => toggleOwner(t)} disabled={busy === `o:${t.id}`}
           title={ai ? "Take it back from the agent (hand to me)" : "Hand to the agent to run as a workflow"}
           className={`inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide transition-colors disabled:opacity-50 ${ai ? "border-border text-text-muted hover:border-accent-border hover:text-text-primary" : "border-accent-border text-accent hover:bg-accent hover:text-background"}`}>
-          {ai ? <><CornerUpLeft className="h-3 w-3" /> Take back</> : <><Bot className="h-3 w-3" /> Hand to agent</>}
+          {ai ? <><CornerUpLeft className="h-3 w-3" /> Take back</> : <><Bot className="h-3 w-3" /> To agent</>}
         </button>
         <button onClick={() => del(t)} title="Delete task" disabled={busy === `d:${t.id}`} className="shrink-0 text-text-muted/40 transition-colors hover:text-danger">
           <Trash2 className="h-3.5 w-3.5" />
@@ -686,7 +686,7 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
               <span className="shrink-0 rounded-full bg-surface-warm px-1.5 py-px font-mono text-[10px] text-text-muted">{titleCase(t.domain)}</span>
               <select value={t.status} onChange={(e) => setStatus(t, e.target.value)} disabled={busy === `s:${t.id}`}
                 className="shrink-0 rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none">
-                {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{s}</option>)}
+                {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
               </select>
             </div>
           ))}

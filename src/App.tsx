@@ -1330,21 +1330,32 @@ export default function App() {
             {import.meta.env.DEV && (
               <span className="mr-1 shrink-0 rounded bg-danger px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-background">DEV</span>
             )}
-            {/* An open app is isolated: it shows only its own facet chips
-                (Chat / Runs / Settings / Domains) on the right, so the global
-                domain tabs (Chat | Council) are hidden to avoid a duplicate
-                "Chat" and an out-of-context Council. */}
-            {(onApp ? [] : TABS).map((t) => {
+            {/* Quick visual cue: are we in an APP or a DOMAIN? An icon (no text)
+                at the far left, so the two contexts are instantly distinguishable.
+                App = plug, domain/general = layers. */}
+            <span
+              title={onApp ? `App: ${selectedApp?.title ?? ""}` : `Domain: ${titleCase(selectedDomain || "general")}`}
+              className={`mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${onApp ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-secondary"}`}
+            >
+              {onApp ? <Plug className="h-4 w-4" /> : <Layers className="h-4 w-4" />}
+            </span>
+            {/* Chat + Council sit on the LEFT for BOTH apps and domains, so the
+                conversation is always in the same place. The app's / domain's
+                OTHER views (Runs / Settings / Domains, or Insights / Preferences)
+                live in the right cluster below. */}
+            {TABS.map((t) => {
               const Icon = t.icon;
-              const active = tab === t.id;
+              const active = t.id === "chat"
+                ? tab === "chat" && (onApp ? appTab === "chat" : domainTab === "chat")
+                : tab === t.id;
               return (
                 <button
                   key={t.id}
                   onClick={() => {
                     setTab(t.id);
-                    // The Chat tab is also the way back from a domain sub-view
-                    // (Insights / Preferences / Context) to the conversation.
-                    if (t.id === "chat") setDomainTab("chat");
+                    // Chat is also the way back from a sub-view (app Runs/Settings,
+                    // or domain Insights/Preferences) to the conversation.
+                    if (t.id === "chat") { if (onApp) setAppTab("chat"); else setDomainTab("chat"); }
                   }}
                   className={`my-1.5 flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors ${
                     active
@@ -1382,7 +1393,6 @@ export default function App() {
                 // longer leak in here.
                 <>
                   {([
-                    { key: "chat", label: "Chat", Icon: MessageSquare, title: `Conversations with ${selectedApp.title}` },
                     { key: "runs", label: "Runs", Icon: RefreshCw, title: "Last sync, schedule, and run history" },
                     { key: "settings", label: "Settings", Icon: SettingsIcon, title: "Connection, autonomy, schedule, and skills" },
                     { key: "domains", label: "Domains", Icon: Layers, title: "Domains this app refreshes" },

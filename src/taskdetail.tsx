@@ -102,7 +102,7 @@ export function TaskDetailPanel({ task, vaultPath, onClose, onChanged }: {
             <label className="block">
               <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Status</div>
               <select value={task.status} onChange={(e) => patchTask({ status: e.target.value })} disabled={busy} className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs">
-                {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{s}</option>)}
+                {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
               </select>
             </label>
             <label className="block">
