@@ -5,7 +5,7 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Check, ExternalLink, FolderOpen, Globe, Link2, Loader2, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Star, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Boxes, Check, ExternalLink, FolderOpen, Globe, Link2, Loader2, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Star, Trash2, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "./bridge";
 import { appName, relTime, titleCase } from "./format";
@@ -163,6 +163,15 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // are still loading or none exist; otherwise the selected app id.
   const [selected, setSelected] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  // Top-level track: "direct" (Prevail connects each app itself) vs "composio"
+  // (one managed gateway). Two parallel, never-mixed tracks; persisted.
+  const [appsMode, setAppsModeState] = useState<"direct" | "composio">(() => {
+    try { return localStorage.getItem("prevail.apps.mode") === "composio" ? "composio" : "direct"; } catch { return "direct"; }
+  });
+  const setAppsMode = useCallback((m: "direct" | "composio") => {
+    setAppsModeState(m);
+    try { localStorage.setItem("prevail.apps.mode", m); } catch { /* ignore */ }
+  }, []);
   // The Composio managed-gateway pane (one OAuth fronts 1000+ apps for the agent).
   const [query, setQuery] = useState("");
   // Real brand marks for every connector (AllTrails, Booking.com, Garmin, …),
@@ -344,10 +353,26 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         subtitle="Services that feed your vault. Connect each one once, then it's available to any domain's context. No duplicates."
       />
 
+      {/* Top-level split: Direct (Prevail connects each app itself) vs Composio
+          (one managed gateway). Two parallel tracks, never mixed. */}
+      <div className="mb-5 inline-flex rounded-lg border border-border bg-surface p-1">
+        {(["direct", "composio"] as const).map((m) => (
+          <button
+            key={m}
+            onClick={() => setAppsMode(m)}
+            className={`rounded-md px-5 py-1.5 text-sm font-semibold transition-colors ${appsMode === m ? "bg-accent text-background" : "text-text-secondary hover:text-text-primary"}`}
+          >
+            {m === "direct" ? "Direct" : "Composio"}
+          </button>
+        ))}
+      </div>
+
       {/* Connect happens INSIDE the right detail pane (see below) so the app's
           context and the sidebar stay put - the connect flow never replaces the
           whole view. Only the rare zero-apps-and-zero-catalog case hosts it here. */}
-      {apps === null ? (
+      {appsMode === "composio" ? (
+        <ComposioMode />
+      ) : apps === null ? (
         <div className="text-sm text-text-muted">loading apps…</div>
       ) : apps.length === 0 && catalog.length === 0 ? (
         connecting ? (
@@ -525,6 +550,120 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         </div>
       )}
     </>
+  );
+}
+
+// The Composio track: a managed gateway, completely separate from Direct. First a
+// config step (paste + verify the Composio consumer key), then connect any of
+// Composio's apps - which opens a Composio auth link in the browser. Connections
+// live in Composio; Prevail's agent uses them through the Composio MCP endpoint.
+function ComposioMode() {
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [keyInput, setKeyInput] = useState("");
+  const [editingKey, setEditingKey] = useState(false);
+  const [busy, setBusy] = useState<null | "save" | "verify" | "connect">(null);
+  const [verified, setVerified] = useState<boolean | null>(null);
+  const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
+  const [appName, setAppName] = useState("");
+  const [connectMsg, setConnectMsg] = useState<string | null>(null);
+  const refresh = useCallback(async () => {
+    try { const s = await invoke<{ configured: boolean }>("composio_status"); setConfigured(!!s.configured); }
+    catch { setConfigured(false); }
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+  const save = async () => {
+    setBusy("save"); setVerifyMsg(null);
+    try { await invoke("composio_set_key", { key: keyInput.trim() }); setKeyInput(""); setEditingKey(false); await refresh(); void verify(); }
+    catch (e) { setVerifyMsg(String(e)); }
+    finally { setBusy(null); }
+  };
+  const verify = async () => {
+    setBusy("verify"); setVerified(null); setVerifyMsg("Checking the connection to Composio…");
+    try { const r = await invoke<{ ok: boolean; error?: string }>("composio_verify"); setVerified(!!r.ok); setVerifyMsg(r.ok ? "Connected to Composio." : `Not connected: ${r.error ?? "unknown"}`); }
+    catch (e) { setVerified(false); setVerifyMsg(String(e)); }
+    finally { setBusy(null); }
+  };
+  const connectApp = async (slug: string) => {
+    const name = slug.trim();
+    if (!name) return;
+    setBusy("connect"); setConnectMsg(`Starting ${name}…`);
+    try {
+      const r = await invoke<{ ok: boolean; authUrl?: string }>("composio_connect_app", { toolkit: name });
+      if (r.authUrl) { await openUrl(r.authUrl); setConnectMsg(`Opening ${name} sign-in in your browser. Authorize it there - then it is connected in Composio.`); }
+      else setConnectMsg(r.ok ? `Requested ${name}. Open the Composio dashboard to finish.` : `Couldn't start ${name}.`);
+    } catch (e) { setConnectMsg(String(e)); }
+    finally { setBusy(null); }
+  };
+  const POPULAR = ["gmail", "googlecalendar", "googledrive", "notion", "slack", "github", "linear", "hubspot", "airtable", "calendly"];
+  const showForm = configured === false || editingKey;
+  return (
+    <div className="space-y-4">
+      <div className="overflow-hidden rounded-xl border border-border bg-surface">
+        <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle px-5 py-5">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#6d5efc] to-[#3b2fb8] text-white"><Boxes className="h-7 w-7" /></span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="truncate text-lg font-semibold text-text-primary">Composio</span>
+              <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted"><Globe className="h-2.5 w-2.5" /> Managed gateway</span>
+              {configured && verified === true && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
+            </div>
+            <p className="mt-2 max-w-prose text-[13px] leading-relaxed text-text-secondary">
+              One connection fronts 1000+ apps (Gmail, Notion, Slack, GitHub and more). Set up your Composio key once, then connect any app through Composio. Best for mainstream SaaS; keep sensitive or financial accounts on a per-app Direct sign-in.
+            </p>
+          </div>
+        </div>
+
+        {configured === null ? (
+          <div className="px-5 py-5 text-sm text-text-muted">loading…</div>
+        ) : showForm ? (
+          <div className="space-y-3 px-5 py-5">
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Set up Composio</div>
+            <p className="text-[12px] text-text-secondary">Paste your Composio consumer key (the X-CONSUMER-API-KEY from <button onClick={() => void openUrl("https://connect.composio.dev")} className="text-accent hover:underline">connect.composio.dev</button>). It is stored in your Mac's Keychain, never in the vault.</p>
+            <div className="flex items-center gap-2">
+              <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="ck_…"
+                className="w-full max-w-md rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-border" />
+              <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+                {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save
+              </button>
+              {editingKey && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:border-accent-border">Cancel</button>}
+            </div>
+            {verifyMsg && <p className="text-[12px] text-text-secondary">{verifyMsg}</p>}
+          </div>
+        ) : (
+          <div className="space-y-4 px-5 py-5">
+            <div className="flex flex-wrap items-center gap-2 text-[12px] text-text-secondary">
+              <span className="font-semibold text-text-primary">Key saved.</span>
+              <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Verify</button>
+              <button onClick={() => { setEditingKey(true); }} className="text-xs text-text-muted hover:text-accent hover:underline">Change key</button>
+              {verifyMsg && <span className={verified === false ? "text-danger" : "text-text-muted"}>{verifyMsg}</span>}
+            </div>
+
+            <div>
+              <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Connect an app through Composio</div>
+              <div className="flex items-center gap-2">
+                <input value={appName} onChange={(e) => setAppName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void connectApp(appName); }} placeholder="App name (e.g. gmail, notion, slack)"
+                  className="w-full max-w-md rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-border" />
+                <button onClick={() => void connectApp(appName)} disabled={busy !== null || !appName.trim()} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+                  {busy === "connect" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Connect
+                </button>
+              </div>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {POPULAR.map((p) => (
+                  <button key={p} onClick={() => { setAppName(p); void connectApp(p); }} disabled={busy !== null}
+                    className="rounded-full border border-border bg-background px-2.5 py-0.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{p}</button>
+                ))}
+              </div>
+              {connectMsg && <p className="mt-2 text-[12px] text-text-secondary">{connectMsg}</p>}
+            </div>
+
+            <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border-subtle pt-3">
+              <button onClick={() => void openUrl("https://dashboard.composio.dev")} className="inline-flex items-center gap-1 text-[12px] text-accent hover:underline">Manage in Composio dashboard <ExternalLink className="h-3 w-3" /></button>
+              <button onClick={() => void openUrl("https://docs.composio.dev")} className="inline-flex items-center gap-1 text-[12px] text-accent hover:underline">docs.composio.dev <ExternalLink className="h-3 w-3" /></button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
