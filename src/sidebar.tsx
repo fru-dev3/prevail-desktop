@@ -13,7 +13,8 @@ import { domainIcon } from "./icons";
 import { useAppearance } from "./hooks";
 import { SidebarBackupActive, SidebarBenchmarkRuns, SidebarBenchScheduled, SidebarProcesses } from "./cards";
 import { BrandMark } from "./brandmark";
-import type { Domain, EngineApp, LifeReadiness, Mode, TabId } from "./types";
+import { AppRowLogo } from "./panels3";
+import type { BrandLogo, Domain, EngineApp, LifeReadiness, Mode, TabId } from "./types";
 
 export function Sidebar({
   collapsed,
@@ -150,6 +151,10 @@ export function Sidebar({
   // Apps section - peer to Domains in the sidebar.
   const APP_PIN_KEY = "prevail.sidebar.pinnedApps";
   const [sidebarApps, setSidebarApps] = useState<EngineApp[]>([]);
+  // Brand logos for the app rows, loaded once and keyed by toolkit/id so the
+  // row can show the real mark instead of a bare status dot.
+  const [appLogos, setAppLogos] = useState<Record<string, BrandLogo>>({});
+  useEffect(() => { invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setAppLogos).catch(() => {}); }, []);
   const [appsOpen, setAppsOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsOpen") !== "0");
   // Favorites expand by default; the full list stays collapsed so a long
   // catalog never floods the rail - mirrors Domains' Pinned/All split.
@@ -178,20 +183,42 @@ export function Sidebar({
       return next;
     });
   }
+  // Only surface apps that are genuinely connected / in use - a connector that
+  // has merely been scaffolded (disconnected, never configured, never fetched)
+  // is noise here and makes the "Connected" count misleading.
+  const connectedSidebarApps = useMemo(
+    () => sidebarApps.filter((a) => a.status === "connected" || a.firstFetchOk === true || a.configured === true),
+    [sidebarApps],
+  );
   const pinnedSidebarApps = useMemo(
-    () => sidebarApps.filter((a) => pinnedApps.has(a.id)).sort((a, b) => a.title.localeCompare(b.title)),
-    [sidebarApps, pinnedApps],
+    () => connectedSidebarApps.filter((a) => pinnedApps.has(a.id)).sort((a, b) => a.title.localeCompare(b.title)),
+    [connectedSidebarApps, pinnedApps],
   );
   const restSidebarApps = useMemo(
-    () => sidebarApps.filter((a) => !pinnedApps.has(a.id)).sort((a, b) => a.title.localeCompare(b.title)),
-    [sidebarApps, pinnedApps],
+    () => connectedSidebarApps.filter((a) => !pinnedApps.has(a.id)).sort((a, b) => a.title.localeCompare(b.title)),
+    [connectedSidebarApps, pinnedApps],
   );
+  // The same app can be connected via Direct creds, Composio, or Nango (e.g.
+  // two "Notion" rows). Surface which one each row is so identical titles are
+  // distinguishable. The gateway provider is derived from the id prefix
+  // (composio-* / nango-*) since that's how gateway apps are namespaced.
+  const appMethod = (app: EngineApp): { label: string; toolkit: string } => {
+    const g = (app as EngineApp & { gateway?: { provider?: string; toolkit?: string } }).gateway;
+    if (g?.provider === "composio" || app.id.startsWith("composio-")) {
+      return { label: "Composio", toolkit: g?.toolkit ?? app.id.replace(/^composio-/, "") };
+    }
+    if (g?.provider === "nango" || app.id.startsWith("nango-")) {
+      return { label: "Nango", toolkit: g?.toolkit ?? app.id.replace(/^nango-/, "") };
+    }
+    return { label: "Direct", toolkit: app.id };
+  };
   // One app row, reused by the Favorites and All groups. Highlights when it's
   // the app currently open in the canvas so "which app am I in" is obvious.
   const renderAppRow = (app: EngineApp) => {
     const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
     const isPinned = pinnedApps.has(app.id);
     const active = activeAppId === app.id;
+    const method = appMethod(app);
     return (
       <li key={app.id} className="group flex items-center gap-1 pl-6">
         <button
@@ -242,13 +269,22 @@ export function Sidebar({
               ? "bg-accent-soft font-semibold text-accent ring-1 ring-inset ring-accent-border/60"
               : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
           }`}
-          title={`Click to open ${app.title} · drag into chat to attach as context${app.domains.length ? " · refreshes " + app.domains.map(titleCase).join(", ") : ""}`}
+          title={`Click to open ${app.title} (${method.label}) · drag into chat to attach as context${app.domains.length ? " · refreshes " + app.domains.map(titleCase).join(", ") : ""}`}
         >
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={active ? { backgroundColor: tint, boxShadow: `0 0 0 3px color-mix(in srgb, ${tint} 28%, transparent)` } : { backgroundColor: tint }}
-          />
-          <span className="flex-1 truncate text-sm">{app.title}</span>
+          {/* Brand mark + a tiny status dot anchored to it so connection state
+              stays visible. Gateway apps key the logo off the toolkit so e.g.
+              "composio-notion" still resolves the Notion mark. */}
+          <span className="relative shrink-0">
+            <AppRowLogo app={{ title: app.title, id: method.toolkit }} logos={appLogos} size={18} fallback="letter" />
+            <span
+              className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-surface-strong"
+              style={{ backgroundColor: tint }}
+            />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="truncate text-sm">{app.title}</span>
+            <span className="truncate text-[10px] text-text-muted">{method.label}</span>
+          </span>
         </button>
         <button
           onClick={() => toggleAppPin(app.id)}
@@ -628,9 +664,9 @@ export function Sidebar({
               <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${appsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
               <Plug className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
               <span>Apps</span>
-              <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{sidebarApps.length}</span>
+              <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{connectedSidebarApps.length}</span>
             </button>
-            {appsOpen && (sidebarApps.length > 0 ? (
+            {appsOpen && (connectedSidebarApps.length > 0 ? (
               <ul className="mt-0.5 space-y-0.5 px-2">
                 {/* Favorites - pinned apps, expanded by default. */}
                 {pinnedSidebarApps.length > 0 && (
