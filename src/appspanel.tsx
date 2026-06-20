@@ -571,6 +571,11 @@ function ConnectedGatewayDetail({ method, slug, title, provider, logos, onBack }
   const id = `${method}-${slug}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
   const [app, setApp] = useState<EngineApp | null>(null);
   const [busy, setBusy] = useState(false);
+  // Flexible schedule: kind + every-N-hours + time-of-day + weekday.
+  const [kind, setKind] = useState<"off" | "hourly" | "nh" | "daily" | "weekly">("off");
+  const [nh, setNh] = useState(6);
+  const [atTime, setAtTime] = useState("09:00");
+  const [onDay, setOnDay] = useState("mon");
   const load = useCallback(async () => {
     try {
       let list = await invoke<EngineApp[]>("engine_apps_list");
@@ -585,17 +590,38 @@ function ConnectedGatewayDetail({ method, slug, title, provider, logos, onBack }
     } catch { setApp(null); }
   }, [id, title]);
   useEffect(() => { void load(); }, [load]);
-  const setSchedule = async (every: string) => {
+  // Reflect the saved schedule into the editor when the app loads.
+  useEffect(() => {
+    const r = app?.refresh;
+    if (!r?.every) { setKind("off"); return; }
+    const e = r.every.toLowerCase();
+    if (e === "hourly") setKind("hourly");
+    else if (/^\d+h$/.test(e)) { setKind("nh"); setNh(Math.min(23, Math.max(2, parseInt(e, 10)))); }
+    else if (e === "daily") { setKind("daily"); if (r.at) setAtTime(r.at); }
+    else if (e === "weekly") { setKind("weekly"); if (r.at) setAtTime(r.at); if (r.on) setOnDay(r.on); }
+    else setKind("off");
+  }, [app]);
+  const applySchedule = async () => {
+    const every = kind === "off" ? "off" : kind === "hourly" ? "hourly" : kind === "nh" ? `${nh}h` : kind;
     setBusy(true);
-    try { await invoke("engine_app_set_schedule", { id, every, at: null, on: null }); await load(); window.dispatchEvent(new CustomEvent("prevail:apps-changed")); }
-    catch (e) { console.error("set schedule", e); }
+    try {
+      await invoke("engine_app_set_schedule", {
+        id, every,
+        at: (kind === "daily" || kind === "weekly") ? atTime : null,
+        on: kind === "weekly" ? onDay : null,
+      });
+      await load();
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+    } catch (e) { console.error("set schedule", e); }
     finally { setBusy(false); }
   };
   const openInChat = () => { if (app) window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app })); };
-  const current = (app?.refresh?.every ?? "off").toLowerCase();
-  const SCHEDULES: { v: string; label: string }[] = [
-    { v: "off", label: "Off" }, { v: "hourly", label: "Hourly" }, { v: "daily", label: "Daily" }, { v: "weekly", label: "Weekly" },
-  ];
+  const savedLabel = (() => {
+    const r = app?.refresh; if (!r?.every) return "Off";
+    const e = r.every; const t = r.at ? ` at ${r.at}` : ""; const d = r.on ? ` on ${r.on}` : "";
+    return `Every ${e}${d}${t}`;
+  })();
+  const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-surface">
       <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle px-5 py-4">
@@ -614,15 +640,34 @@ function ConnectedGatewayDetail({ method, slug, title, provider, logos, onBack }
       </div>
       <div className="space-y-4 px-5 py-4">
         <div>
-          <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Refresh schedule</div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {SCHEDULES.map((s) => (
-              <button key={s.v} onClick={() => void setSchedule(s.v)} disabled={busy}
-                className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${current === s.v ? "border-accent-border bg-accent text-background" : "border-border bg-background text-text-secondary hover:border-accent-border hover:text-accent"}`}>
-                {s.label}
-              </button>
-            ))}
-            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-text-muted" />}
+          <div className="mb-1.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Refresh schedule <span className="rounded bg-surface-warm px-1.5 py-0.5 normal-case tracking-normal text-text-secondary">now: {savedLabel}</span></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} className="rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:border-accent-border focus:outline-none">
+              <option value="off">Off</option>
+              <option value="hourly">Hourly</option>
+              <option value="nh">Every N hours</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+            {kind === "nh" && (
+              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">every
+                <input type="number" min={2} max={23} value={nh} onChange={(e) => setNh(Math.min(23, Math.max(2, parseInt(e.target.value || "2", 10))))} className="w-14 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
+                hours
+              </span>
+            )}
+            {kind === "weekly" && (
+              <select value={onDay} onChange={(e) => setOnDay(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1.5 text-xs capitalize focus:border-accent-border focus:outline-none">
+                {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            )}
+            {(kind === "daily" || kind === "weekly") && (
+              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">at
+                <input type="time" value={atTime} onChange={(e) => setAtTime(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
+              </span>
+            )}
+            <button onClick={() => void applySchedule()} disabled={busy} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Apply
+            </button>
           </div>
           <p className="mt-1.5 text-[11px] text-text-muted">How often Prevail pulls fresh {title} data via {method === "composio" ? "Composio" : "Nango"} into your vault. (The scheduled pull executes through the {method} connection; data lands in this app's folder.)</p>
         </div>
