@@ -264,7 +264,31 @@ it. This is the whole point: connect once agentically, reuse the skill forever.
   method) -> Continue -> Prevail OPENS the login page (browser-login engine) ->
   user logs in -> returns -> auth saved -> data pulled. Sophisticated, not a form.
 
-## Done
+## SHIPPED as v0.1.143 (2026-06-20, signed + notarized, live)
+Release: github.com/fru-dev3/prevail-desktop/releases/tag/v0.1.143 · website latest
+download resolves to it · Gatekeeper: Notarized Developer ID. Tested: desktop tsc
+0 errors, cargo check clean, CLI 30/30 tests, local build OK, CI build success.
+In it: connectors master-detail redesign (list+detail, browser Log-in, info
+section, Open-in-chat) · agentic browser-login (real browser, persisted session)
+· honest verify gate (no fabricated "verified") · loops bootstrap a baseline ·
+connect-flow polish (bolder thinking, fuzzy "did you mean", suggested domains) ·
+Work Board (overdue alert, add-confirm, bulk Assign-to-Agent, Icebox column,
+AGENT/ME clarity) · per-domain nav counts · OAuth-guard · Vault Lock footer ·
+real logos everywhere · Spark (no auto-run, Current/Previous, Wand topic).
+
+## DEFERRED (need your design input / too big for unattended build - next session)
+- ORCHESTRATOR (P2/North Star): "Approve & run" on an AI task actually executing
+  plan->do->file->confirm->learn, with the beautiful approve-with-context box, and
+  agent-owned tasks auto-running. This is the big engine feature; needs your review
+  of the design (see VISION doc) before building. The visual delegation (AGENT/ME,
+  bulk-assign) shipped; the autonomous execution did not.
+- SKILL GENERATION on connect/run (P1): persist a per-app skill recipe from each
+  successful run so the next sync replays it. Browser session persistence shipped;
+  full skill-recording did not.
+- MCP/Telegram orchestrator entry points (P3).
+- Connectors detail: real hero/banner images per app (no image source wired yet).
+
+## Done (pre-release detail)
 - [x] **App workspace navigation** (appspanel "Open" button -> prevail:open-app ->
   AppFacetPanel workspace; matches sidebar + per-domain facet). Stepping stone to
   the master-detail redesign above.
