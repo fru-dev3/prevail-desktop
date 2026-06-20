@@ -3,7 +3,7 @@
 // setup).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion";
-import { Activity, Archive, ArrowRight, Briefcase, Clock, Cloud, Folder, Heart, Home, KeyRound, Layers, Lock, Plus, Receipt, RefreshCw, Shield, ShieldCheck, Sparkles, TrendingUp, Unlock, Users, Wallet, X, Zap } from "lucide-react";
+import { Activity, Archive, ArrowRight, Briefcase, Clock, Cloud, Folder, FolderLock, FolderOpen, Heart, Home, KeyRound, Layers, Plus, Receipt, RefreshCw, Shield, ShieldCheck, Sparkles, TrendingUp, Users, Wallet, X, Zap } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { APP_VERSION, AUTONOMY_LABEL, AUTONOMY_TINT, INTEGRATION_LABEL, STATUS_TINT } from "./constants";
@@ -365,11 +365,11 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
       <span
         className={`ml-1 inline-flex select-none items-center gap-1 font-mono text-[10px] uppercase tracking-wider ${vaultLocked ? "opacity-90" : "opacity-50"}`}
         title={vaultLocked
-          ? "Vault Lock ON: the assistant only reads and writes inside your vault."
-          : "Vault Lock OFF: the assistant may reach files outside your vault."}
+          ? "Your vault folder is locked: the assistant only reads and writes inside it."
+          : "Your vault folder is unlocked: the assistant may reach files outside it."}
       >
-        · {vaultLocked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
-        {vaultLocked ? "Vault Lock" : "Unlocked"}
+        · {vaultLocked ? <FolderLock className="h-3 w-3" /> : <FolderOpen className="h-3 w-3" />}
+        {vaultLocked ? "Vault locked" : "Vault unlocked"}
       </span>
       {/* Version - inside the ribbon so it inherits the high-contrast ribbon
           text color (the old standalone pill was invisible over the dark bar). */}
