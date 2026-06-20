@@ -108,6 +108,43 @@ function scheduleLabel(r: EngineApp["refresh"]): string {
   return "scheduled";
 }
 
+// Known real homepages for common connectors, keyed by a normalized name/id/
+// connection-kind. Used by the "Visit <App>" link so it opens the actual product
+// site instead of a guessed-and-often-wrong domain. Anything not listed falls
+// back to https://www.<alnum of title or id>.com.
+const APP_DOMAINS: Record<string, string> = {
+  notion: "notion.so",
+  slack: "slack.com",
+  github: "github.com",
+  gmail: "mail.google.com",
+  googlecalendar: "calendar.google.com",
+  googledrive: "drive.google.com",
+  linear: "linear.app",
+  hubspot: "hubspot.com",
+  airtable: "airtable.com",
+  stripe: "stripe.com",
+  clickup: "clickup.com",
+  paypal: "paypal.com",
+  airbnb: "airbnb.com",
+  dropbox: "dropbox.com",
+  figma: "figma.com",
+  asana: "asana.com",
+  trello: "trello.com",
+  calendly: "calendly.com",
+};
+
+// The app's real website URL. Tries the known-domains map keyed by a normalized
+// name/id/connection-kind; otherwise builds a best-effort www.<name>.com.
+function appWebsite(app: EngineApp): string {
+  const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const keys = [app.id, app.title, ...((app.connections ?? []).map((c) => c.kind))].map(norm).filter(Boolean);
+  for (const k of keys) {
+    if (APP_DOMAINS[k]) return `https://${APP_DOMAINS[k]}`;
+  }
+  const slug = norm(app.title) || norm(app.id) || "app";
+  return `https://www.${slug}.com`;
+}
+
 // In-app autonomous sync: trigger a "due pass" on a cadence so connected apps
 // refresh on their own schedule while the app is open (the headless
 // `daemon --sync` does the same when the app is closed). The tick re-reads the
@@ -1630,14 +1667,57 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
     finally { setDomBusy(false); }
   };
   // APP-4 - edit this app's autonomous-sync schedule (engine_app_set_schedule).
-  // Cadences are the ones the engine validates: hourly, every Nh, daily, weekly.
+  // The engine validates: hourly, <N>h (2..23), <N>d (1..90), <N>w (1..12),
+  // daily, weekly - with optional `at` (HH:MM) and `on` (mon..sun). The editor
+  // models this as a "mode" + a count so flexible/multi-day cadences are back.
+  type SchedMode = "off" | "hourly" | "hours" | "days" | "weeks" | "daily" | "weekly";
+  // Turn the saved `every` (e.g. "daily", "3d", "12h", "2w") into the editor's
+  // mode + numeric count so the editor pre-populates from the current schedule.
+  const parseSchedule = (r: EngineApp["refresh"]): { mode: SchedMode; n: number } => {
+    const every = (r?.every ?? "").toLowerCase().trim();
+    if (!r || !every || every === "off") return { mode: "off", n: 1 };
+    if (every === "hourly") return { mode: "hourly", n: 1 };
+    if (every === "daily") return { mode: "daily", n: 1 };
+    if (every === "weekly") return { mode: "weekly", n: 1 };
+    const m = /^(\d+)([hdw])$/.exec(every);
+    if (m) {
+      const n = Number(m[1]);
+      if (m[2] === "h") return { mode: "hours", n };
+      if (m[2] === "d") return { mode: "days", n };
+      return { mode: "weeks", n };
+    }
+    return { mode: "daily", n: 1 };
+  };
   const [editSched, setEditSched] = useState(false);
-  const [schedEvery, setSchedEvery] = useState(app.refresh?.every ?? "daily");
+  const initialSched = parseSchedule(app.refresh);
+  const [schedMode, setSchedMode] = useState<SchedMode>(initialSched.mode);
+  const [schedN, setSchedN] = useState(initialSched.n);
   const [schedAt, setSchedAt] = useState(app.refresh?.at ?? "");
   const [schedOn, setSchedOn] = useState(app.refresh?.on ?? "");
   const [schedBusy, setSchedBusy] = useState(false);
+  // Clamp the count to the engine's accepted range for the active mode, then
+  // build the `every` string it expects.
+  const clampN = (mode: SchedMode, n: number): number => {
+    if (mode === "hours") return Math.min(23, Math.max(2, n || 2));
+    if (mode === "days") return Math.min(90, Math.max(1, n || 1));
+    if (mode === "weeks") return Math.min(12, Math.max(1, n || 1));
+    return n;
+  };
+  const everyString = (mode: SchedMode, n: number): string => {
+    switch (mode) {
+      case "hourly": return "hourly";
+      case "hours": return `${clampN("hours", n)}h`;
+      case "days": return `${clampN("days", n)}d`;
+      case "weeks": return `${clampN("weeks", n)}w`;
+      case "daily": return "daily";
+      case "weekly": return "weekly";
+      default: return "off";
+    }
+  };
   const openSchedEditor = () => {
-    setSchedEvery(app.refresh?.every ?? "daily");
+    const p = parseSchedule(app.refresh);
+    setSchedMode(p.mode === "off" ? "daily" : p.mode);
+    setSchedN(p.n);
     setSchedAt(app.refresh?.at ?? "");
     setSchedOn(app.refresh?.on ?? "");
     setEditSched(true);
@@ -1645,11 +1725,14 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   const saveSchedule = async (clear?: boolean) => {
     setSchedBusy(true);
     try {
+      const every = clear ? "off" : everyString(schedMode, schedN);
+      const wantsAt = !clear && (schedMode === "daily" || schedMode === "weekly");
+      const wantsOn = !clear && schedMode === "weekly";
       await invoke("engine_app_set_schedule", {
         id: app.id,
-        every: clear ? "off" : schedEvery,
-        at: clear ? null : ((schedEvery === "daily" || schedEvery === "weekly") && schedAt ? schedAt : null),
-        on: clear ? null : (schedEvery === "weekly" && schedOn ? schedOn : null),
+        every,
+        at: wantsAt && schedAt ? schedAt : null,
+        on: wantsOn && schedOn ? schedOn : null,
       });
       setEditSched(false);
       window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
@@ -1813,6 +1896,25 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   // A short description if the manifest exposes one (the first connection's
   // description). We never invent copy - if there's nothing, the line is omitted.
   const description = (app.connections ?? []).map((c) => c.description).find((d) => !!d && d.trim()) ?? null;
+  // SYNC feedback: the bare onSync spinner never told the user what was happening.
+  // We wrap it with an inline status line ("Pulling fresh data…", then a short
+  // result) while still delegating the real work to the parent's onSync.
+  const connectorLabel = gatewayProvider ? titleCase(gatewayProvider) : "the connector";
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const runSync = async () => {
+    setSyncMsg(`Pulling fresh data via ${connectorLabel}…`);
+    const before = dataFiles.length;
+    try {
+      await onSync();
+      // onReload (via the parent) refreshes app.lastSuccessTs, which re-runs the
+      // app_data_files effect; report the count we can see now as a best effort.
+      const files = await invoke<{ path: string; name: string; bytes: number; mtime: number }[]>("app_data_files", { vault: vaultPath, appId: app.id }).catch(() => null);
+      const n = Array.isArray(files) ? files.length : before;
+      setSyncMsg(`Synced - ${n} file${n === 1 ? "" : "s"}.`);
+    } catch (e) {
+      setSyncMsg(`Sync failed: ${String(e).slice(0, 200)}`);
+    }
+  };
   return (
     <div className={`overflow-hidden rounded-xl border bg-surface ${meta.ring}`}>
       {/* Enriched detail header: big brand mark, name, status pill, method,
@@ -1840,20 +1942,23 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
             {status === "connected" && <span>· {scheduleLabel(app.refresh)}</span>}
             {status === "connected" && app.nextDueTs ? <span>· next {relTime(app.nextDueTs)}</span> : null}
             {(app.domains ?? []).length > 0 && <span>· feeds {app.domains.map(titleCase).join(", ")}</span>}
+            <button onClick={() => void openUrl(appWebsite(app))}
+              title={`Open ${app.title || app.id}'s website in your browser`}
+              className="inline-flex items-center gap-1 text-text-muted hover:text-accent">
+              · Visit {app.title || app.id} <ExternalLink className="h-3 w-3" />
+            </button>
           </div>
+          {/* SYNC feedback - a clear inline status while/after a manual sync. */}
+          {syncMsg && (
+            <div className={`mt-1.5 inline-flex items-center gap-1.5 text-[12px] ${syncMsg.startsWith("Sync failed") ? "text-danger" : "text-text-secondary"}`}>
+              {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3 text-ok" />} {syncMsg}
+            </div>
+          )}
           {description && <p className="mt-1.5 max-w-prose text-[12px] text-text-secondary">{description}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {status !== "disconnected" && (
-            <button
-              onClick={onSync}
-              disabled={busy}
-              title="Sync this app now"
-              className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
-            >
-              {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} {busy ? "syncing" : "sync"}
-            </button>
-          )}
+          {/* Sync now lives in the bottom action bar; the top keeps only the
+              primary "Open in chat" CTA so the header is less crowded. */}
           {/* Open the app's own workspace (chat with its data) - the same view the
               sidebar + per-domain facet open (prevail:open-app dispatch). */}
           <button
@@ -2008,19 +2113,34 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
             ) : (
               <div>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <select value={schedEvery} onChange={(e) => setSchedEvery(e.target.value)}
+                  <select value={schedMode} onChange={(e) => setSchedMode(e.target.value as SchedMode)}
                     className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none">
-                    <option value="hourly">hourly</option>
-                    <option value="6h">every 6 hours</option>
-                    <option value="12h">every 12 hours</option>
-                    <option value="daily">daily</option>
-                    <option value="weekly">weekly</option>
+                    <option value="off">Off</option>
+                    <option value="hourly">Hourly</option>
+                    <option value="hours">Every N hours</option>
+                    <option value="days">Every N days</option>
+                    <option value="weeks">Every N weeks</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
                   </select>
-                  {(schedEvery === "daily" || schedEvery === "weekly") && (
+                  {(schedMode === "hours" || schedMode === "days" || schedMode === "weeks") && (
+                    <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
+                      every
+                      <input type="number"
+                        min={schedMode === "hours" ? 2 : 1}
+                        max={schedMode === "hours" ? 23 : schedMode === "days" ? 90 : 12}
+                        value={schedN}
+                        onChange={(e) => setSchedN(Number(e.target.value))}
+                        onBlur={() => setSchedN((n) => clampN(schedMode, n))}
+                        className="w-16 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
+                      {schedMode === "hours" ? "hours" : schedMode === "days" ? "days" : "weeks"}
+                    </span>
+                  )}
+                  {(schedMode === "daily" || schedMode === "weekly") && (
                     <input type="time" value={schedAt} onChange={(e) => setSchedAt(e.target.value)}
                       className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
                   )}
-                  {schedEvery === "weekly" && (
+                  {schedMode === "weekly" && (
                     <select value={schedOn} onChange={(e) => setSchedOn(e.target.value)}
                       className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none">
                       <option value="">any day</option>
@@ -2029,7 +2149,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                   )}
                 </div>
                 <div className="mt-2 flex items-center gap-2">
-                  <button onClick={() => saveSchedule(false)} disabled={schedBusy}
+                  <button onClick={() => saveSchedule(schedMode === "off")} disabled={schedBusy}
                     className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
                     {schedBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save
                   </button>
@@ -2159,31 +2279,58 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
               )}
             </div>
           </div>
-          <div className="flex items-center justify-between border-t border-border-subtle pt-2.5">
+          {/* Bottom action bar: scheduled-sync toggle on the left; an evenly
+              spaced icon-button group (Sync, Visit, Reveal, Delete) on the right.
+              Sync moved here from the top-right so the header stays uncluttered.
+              All existing handlers stay wired (onSync, open_in_finder, removeApp,
+              onSetEnabled). Delete keeps its inline two-step confirm. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-3">
             <span className="flex items-center gap-2 text-xs text-text-secondary">
               <Toggle on={enabled} onChange={onSetEnabled} label={`${app.title} scheduled sync`} />
               {enabled ? "Scheduled sync on" : "Scheduled sync off"}
+              {status === "connected" && <span className="ml-1 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-ok"><Check className="h-3 w-3" /> working</span>}
             </span>
-            {status === "connected" && <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-ok"><Check className="h-3 w-3" /> working</span>}
-          </div>
-          {/* Delete - remove this connector entirely (so a duplicate can be
-              recreated). Confirm inline; the engine refuses bundled connectors. */}
-          <div className="flex items-center gap-2 pt-1">
             {confirmDelete ? (
-              <>
+              <span className="flex items-center gap-2">
                 <button onClick={removeApp} disabled={deleting}
                   className="inline-flex items-center gap-1.5 rounded-md border border-danger/50 bg-danger/10 px-2.5 py-1 text-[11px] text-danger hover:bg-danger/20 disabled:opacity-50">
                   {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete {app.title} for good
                 </button>
                 <button onClick={() => { setConfirmDelete(false); setDeleteErr(null); }} className="text-[11px] text-text-muted hover:text-text-secondary">cancel</button>
-              </>
+                {deleteErr && <span className="text-[11px] text-danger">{deleteErr}</span>}
+              </span>
             ) : (
-              <button onClick={() => setConfirmDelete(true)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-danger hover:text-danger">
-                <Trash2 className="h-3 w-3" /> Delete app
-              </button>
+              <div className="flex items-center gap-1">
+                {status !== "disconnected" && (
+                  <button onClick={() => void runSync()} disabled={busy}
+                    title="Pull fresh data into this app's folder now"
+                    className="inline-flex flex-col items-center gap-0.5 rounded-md px-2.5 py-1 text-text-muted hover:bg-surface-warm/60 hover:text-accent disabled:opacity-50">
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    <span className="font-mono text-[9px] uppercase tracking-wider">{busy ? "syncing" : "sync"}</span>
+                  </button>
+                )}
+                <button onClick={() => void openUrl(appWebsite(app))}
+                  title={`Open ${app.title || app.id}'s website in your browser`}
+                  className="inline-flex flex-col items-center gap-0.5 rounded-md px-2.5 py-1 text-text-muted hover:bg-surface-warm/60 hover:text-accent">
+                  <ExternalLink className="h-4 w-4" />
+                  <span className="font-mono text-[9px] uppercase tracking-wider">visit</span>
+                </button>
+                {app.path && (
+                  <button onClick={() => void invoke("open_in_finder", { path: app.path! }).catch(() => {})}
+                    title="Reveal this app's folder in Finder"
+                    className="inline-flex flex-col items-center gap-0.5 rounded-md px-2.5 py-1 text-text-muted hover:bg-surface-warm/60 hover:text-accent">
+                    <FolderOpen className="h-4 w-4" />
+                    <span className="font-mono text-[9px] uppercase tracking-wider">folder</span>
+                  </button>
+                )}
+                <button onClick={() => setConfirmDelete(true)}
+                  title="Remove this app entirely"
+                  className="inline-flex flex-col items-center gap-0.5 rounded-md px-2.5 py-1 text-text-muted hover:bg-danger/10 hover:text-danger">
+                  <Trash2 className="h-4 w-4" />
+                  <span className="font-mono text-[9px] uppercase tracking-wider">delete</span>
+                </button>
+              </div>
             )}
-            {deleteErr && <span className="text-[11px] text-danger">{deleteErr}</span>}
           </div>
       </div>
     </div>
