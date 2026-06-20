@@ -194,9 +194,11 @@ fn render_tasks(tasks: &[Task]) -> String {
         if let Some(d) = t.source.as_deref().filter(|d| !d.is_empty()) { line.push_str(&format!(" ~{d}")); }
         // owner: only persist "ai" (me is the default, keeps human lines clean).
         if t.owner.as_deref() == Some("ai") { line.push_str(" ~owner:ai"); }
-        // status: only persist the working states; todo/done are implied by the box.
+        // status: persist the explicit states; todo/done are implied by the box.
+        // icebox MUST be written too - it's a real set-aside state, not derivable
+        // from the checkbox, so omitting it silently reverted iceboxed tasks to todo.
         if let Some(st) = t.status.as_deref() {
-            if matches!(st, "doing" | "review" | "blocked") { line.push_str(&format!(" ~status:{st}")); }
+            if matches!(st, "doing" | "review" | "blocked" | "icebox") { line.push_str(&format!(" ~status:{st}")); }
         }
         if let Some(id) = t.id.as_deref().filter(|d| !d.is_empty()) { line.push_str(&format!(" ~id:{id}")); }
         // Soft-delete marker: a trashed task stays in the file (recoverable) but is
