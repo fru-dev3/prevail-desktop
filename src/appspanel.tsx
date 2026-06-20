@@ -5,7 +5,7 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Boxes, Check, ExternalLink, FolderOpen, Globe, Link2, Loader2, MessageSquare, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Boxes, Check, ExternalLink, FolderOpen, Globe, Link2, Loader2, MessageSquare, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Star, Trash2, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "./bridge";
 import { appName, relTime, titleCase } from "./format";
@@ -128,6 +128,32 @@ export function startAppsScheduler(vault: string) {
   };
   appsSyncTimer = window.setInterval(tick, 60_000);
   window.setTimeout(tick, 12_000);
+}
+
+// Favorites ("my list"): a client-side set of pinned apps - connected OR catalog -
+// keyed by normalized name so a pinned catalog app and its later-installed self
+// are the same entry. Persisted in localStorage and shared across rows via a
+// listener set, so toggling a star anywhere updates the pinned section live.
+const FAV_KEY = "prevail.apps.favorites";
+const favListeners = new Set<() => void>();
+const favKeyOf = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+function readFavorites(): Set<string> {
+  try { const v = JSON.parse(localStorage.getItem(FAV_KEY) || "[]"); return new Set(Array.isArray(v) ? v : []); } catch { return new Set(); }
+}
+function toggleFavorite(key: string) {
+  const s = readFavorites();
+  if (s.has(key)) s.delete(key); else s.add(key);
+  try { localStorage.setItem(FAV_KEY, JSON.stringify([...s])); } catch { /* ignore */ }
+  favListeners.forEach((l) => l());
+}
+function useFavorites(): Set<string> {
+  const [favs, setFavs] = useState<Set<string>>(readFavorites);
+  useEffect(() => {
+    const l = () => setFavs(readFavorites());
+    favListeners.add(l);
+    return () => { favListeners.delete(l); };
+  }, []);
+  return favs;
 }
 
 export function AppsPanel({ vaultPath }: { vaultPath: string }) {
@@ -262,6 +288,23 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   }, [apps, catalog, query]);
 
   const liveCount = (apps ?? []).filter((a) => appStatus(a) === "connected").length;
+
+  // "My list" - the user's pinned apps, connected or catalog, surfaced at the top
+  // of the sidebar for quick access. A pinned catalog app and its installed self
+  // share a normalized key, so once connected it shows from the connected side.
+  const favs = useFavorites();
+  const pinned = useMemo(() => {
+    const connected = (apps ?? []).filter((a) => favs.has(favKeyOf(a.title || a.id)) || favs.has(favKeyOf(a.id)));
+    const connectedKeys = new Set(connected.map((a) => favKeyOf(a.title || a.id)));
+    const seen = new Set<string>();
+    const catalogPinned = catalog.filter((c) => {
+      const k = favKeyOf(c.name);
+      if (!favs.has(k) || connectedKeys.has(k) || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return { connected, catalog: catalogPinned, count: connected.length + catalogPinned.length };
+  }, [apps, catalog, favs]);
   const selectedApp = (apps ?? []).find((a) => a.id === selected) ?? null;
 
   return (
@@ -343,6 +386,35 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                 <div className="px-1 text-xs text-text-muted">No apps match "{query}".</div>
               ) : (
                 <>
+                  {/* My list - the user's pinned apps, connected or catalog, up top. */}
+                  {pinned.count > 0 && (
+                    <section className="space-y-1">
+                      <div className="flex items-center gap-1 px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-accent"><Star className="h-2.5 w-2.5 fill-accent" /> My list · {pinned.count}</div>
+                      {pinned.connected.map((a) => (
+                        <ConnectorRow
+                          key={`pin-${a.id}`}
+                          app={a}
+                          logos={logos}
+                          status={appStatus(a)}
+                          active={selected === a.id && !catalogPick && !showComposio}
+                          onSelect={() => { setSelected(a.id); setCatalogPick(null); setShowComposio(false); }}
+                          isFav
+                          onToggleFav={() => toggleFavorite(favKeyOf(a.title || a.id))}
+                        />
+                      ))}
+                      {pinned.catalog.map((c) => (
+                        <CatalogRow
+                          key={`pin-${c.iconSlug || c.name}`}
+                          app={c}
+                          logos={logos}
+                          active={catalogPick?.name === c.name && !showComposio}
+                          onSelect={() => { setCatalogPick(c); setShowComposio(false); setConnecting(false); }}
+                          isFav
+                          onToggleFav={() => toggleFavorite(favKeyOf(c.name))}
+                        />
+                      ))}
+                    </section>
+                  )}
                   {groups.map((g) => (
                     <section key={g.key} className="space-y-1">
                       <div className={`px-1 font-mono text-[10px] uppercase tracking-[0.2em] ${g.tint}`}>{g.label} · {g.apps.length}</div>
@@ -354,6 +426,8 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                           status={appStatus(a)}
                           active={selected === a.id && !catalogPick}
                           onSelect={() => { setSelected(a.id); setCatalogPick(null); setShowComposio(false); }}
+                          isFav={favs.has(favKeyOf(a.title || a.id)) || favs.has(favKeyOf(a.id))}
+                          onToggleFav={() => toggleFavorite(favKeyOf(a.title || a.id))}
                         />
                       ))}
                     </section>
@@ -371,6 +445,8 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                           logos={logos}
                           active={catalogPick?.name === c.name}
                           onSelect={() => { setCatalogPick(c); setShowComposio(false); setConnecting(false); }}
+                          isFav={favs.has(favKeyOf(c.name))}
+                          onToggleFav={() => toggleFavorite(favKeyOf(c.name))}
                         />
                       ))}
                       {!catalogView.searching && catalogView.total > catalogView.shown.length && (
@@ -440,26 +516,40 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
 
 // One row in the left connectors list: brand logo, name, method, and a small
 // status dot. Selecting it opens the detail pane on the right.
-function ConnectorRow({ app, logos, status, active, onSelect }: {
+function PinButton({ isFav, onToggle }: { isFav: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      title={isFav ? "Unpin from your list" : "Pin to your list"}
+      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors hover:text-accent ${isFav ? "text-accent" : "text-text-muted opacity-0 group-hover:opacity-100"}`}
+    >
+      <Star className={`h-3.5 w-3.5 ${isFav ? "fill-accent" : ""}`} />
+    </button>
+  );
+}
+
+function ConnectorRow({ app, logos, status, active, onSelect, isFav, onToggleFav }: {
   app: EngineApp;
   logos: Record<string, BrandLogo>;
   status: AppStatus;
   active: boolean;
   onSelect: () => void;
+  isFav: boolean;
+  onToggleFav: () => void;
 }) {
   const meta = STATUS_META[status];
   return (
-    <button
-      onClick={onSelect}
-      className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors ${active ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}
-    >
-      <AppRowLogo app={app} logos={logos} size={28} fallback="letter" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-text-primary">{app.title || app.id}</span>
-        <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>
-      </span>
-      <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot} ${status === "connecting" ? "animate-pulse" : ""}`} title={meta.label} />
-    </button>
+    <div className={`group flex items-center gap-1 rounded-lg border pr-1 transition-colors ${active ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}>
+      <button onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left">
+        <AppRowLogo app={app} logos={logos} size={28} fallback="letter" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-text-primary">{app.title || app.id}</span>
+          <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>
+        </span>
+        <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot} ${status === "connecting" ? "animate-pulse" : ""}`} title={meta.label} />
+      </button>
+      <PinButton isFav={isFav} onToggle={onToggleFav} />
+    </div>
   );
 }
 
@@ -473,25 +563,26 @@ function catalogLogoApp(c: CatalogApp): { title?: string; id?: string } {
 // One row in the "Available to add" catalog section: brand logo (or letter
 // fallback), name, and the connector's domain/note as a subtitle. Selecting it
 // opens the catalog detail pane on the right with a Connect CTA.
-function CatalogRow({ app, logos, active, onSelect }: {
+function CatalogRow({ app, logos, active, onSelect, isFav, onToggleFav }: {
   app: CatalogApp;
   logos: Record<string, BrandLogo>;
   active: boolean;
   onSelect: () => void;
+  isFav: boolean;
+  onToggleFav: () => void;
 }) {
   const sub = app.domain || (app.tags && app.tags[0]) || "catalog";
   return (
-    <button
-      onClick={onSelect}
-      className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors ${active ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}
-    >
-      <AppRowLogo app={catalogLogoApp(app)} logos={logos} size={28} fallback="letter" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-text-primary">{app.name}</span>
-        <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{titleCase(sub)}</span>
-      </span>
-      <Plus className="h-3 w-3 shrink-0 text-text-muted/60" />
-    </button>
+    <div className={`group flex items-center gap-1 rounded-lg border pr-1 transition-colors ${active ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}>
+      <button onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left">
+        <AppRowLogo app={catalogLogoApp(app)} logos={logos} size={28} fallback="letter" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-text-primary">{app.name}</span>
+          <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{titleCase(sub)}</span>
+        </span>
+      </button>
+      <PinButton isFav={isFav} onToggle={onToggleFav} />
+    </div>
   );
 }
 
