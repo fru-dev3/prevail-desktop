@@ -1438,7 +1438,7 @@ export default function App() {
                         window.dispatchEvent(new CustomEvent("prevail:board-view", { detail: "needs" }));
                       }}
                       title={`${decisionsCount} decision${decisionsCount === 1 ? "" : "s"} need you`}
-                      className="flex items-center gap-1 rounded px-2 py-1 text-xs text-warn transition-colors hover:bg-surface-warm"
+                      className="flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] text-warn transition-colors hover:bg-surface-warm"
                     >
                       <Inbox className="h-3.5 w-3.5" /> Needs you
                       <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[9px] font-bold text-background">{decisionsCount}</span>
@@ -1453,7 +1453,7 @@ export default function App() {
                       dueAlert.overdue ? `${dueAlert.overdue} overdue` : "",
                       dueAlert.today ? `${dueAlert.today} due today` : "",
                     ].filter(Boolean).join(" · ") : "Work: this domain's tasks, in-panel"}
-                    className={`relative flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+                    className={`relative flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "chat" && domainTab === "work"
                         ? "bg-accent text-background shadow-sm"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
@@ -1473,7 +1473,7 @@ export default function App() {
                   <button
                     onClick={() => { setTab("chat"); setDomainTab("insights"); }}
                     title="Insights: what to work on, your tasks, and recent intents (use the Chat tab to return to the conversation)"
-                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+                    className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "chat" && domainTab === "insights"
                         ? "bg-accent text-background shadow-sm"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
@@ -1489,7 +1489,7 @@ export default function App() {
                   <button
                     onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "loops" ? "chat" : "loops"); }}
                     title="Loops: the standing forces working to reach this domain's desired state"
-                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+                    className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "chat" && domainTab === "loops"
                         ? "bg-accent text-background shadow-sm"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
@@ -1503,7 +1503,7 @@ export default function App() {
                   <button
                     onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "usage" ? "chat" : "usage"); }}
                     title={selectedDomain ? "Usage: queries, tokens, and cost for this domain" : "Usage: queries, tokens, and cost across everything"}
-                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+                    className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "chat" && domainTab === "usage"
                         ? "bg-accent text-background shadow-sm"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
@@ -1514,7 +1514,7 @@ export default function App() {
                   <button
                     onClick={() => setTab("benchmark")}
                     title="Arena: score models head-to-head on your questions"
-                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+                    className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "benchmark" ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-accent"
                     }`}
                   >
@@ -1523,7 +1523,7 @@ export default function App() {
                   <button
                     onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "prefs" ? "chat" : "prefs"); }}
                     title={selectedDomain ? "Domain preferences" : "General preferences"}
-                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+                    className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "chat" && domainTab === "prefs"
                         ? "bg-accent text-background shadow-sm"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
@@ -1535,7 +1535,7 @@ export default function App() {
                     <button
                       onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "apps" ? "chat" : "apps"); }}
                       title="Apps that refresh this domain"
-                      className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+                      className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
                         tab === "chat" && domainTab === "apps"
                           ? "bg-accent text-background shadow-sm"
                           : "text-text-muted hover:bg-surface-warm hover:text-accent"
