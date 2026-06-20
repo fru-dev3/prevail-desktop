@@ -582,13 +582,13 @@ function ConnectedGatewayDetail({ method, slug, title, provider, logos, onBack }
       let a = (list ?? []).find((x) => x.id === id);
       if (!a) {
         // Scaffold it as a vault app so the schedule persists + it's chattable.
-        await invoke("engine_app_add", { id, title, integration: "manual", domains: [] }).catch(() => {});
+        await invoke("engine_gateway_app_add", { provider: method, toolkit: slug, id, title }).catch(() => {});
         list = await invoke<EngineApp[]>("engine_apps_list");
         a = (list ?? []).find((x) => x.id === id);
       }
       setApp(a ?? null);
     } catch { setApp(null); }
-  }, [id, title]);
+  }, [id, title, method, slug]);
   useEffect(() => { void load(); }, [load]);
   // Reflect the saved schedule into the editor when the app loads.
   useEffect(() => {

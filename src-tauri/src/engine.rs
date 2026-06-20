@@ -127,6 +127,9 @@ pub fn run_engine_raw(args: &[&str]) -> Result<String, String> {
     for (k, v) in provider_env_pairs() {
         cmd.env(k, v);
     }
+    for (k, v) in gateway_env_pairs() {
+        cmd.env(k, v);
+    }
     if let Some(r) = vault_root() {
         cmd.env("PREVAIL_VAULT_ROOT", r);
     }
@@ -166,6 +169,9 @@ pub fn run_engine_json(args: &[&str]) -> Result<serde_json::Value, String> {
         cmd.env("PREVAIL_VAULT_KEY", k);
     }
     for (k, v) in provider_env_pairs() {
+        cmd.env(k, v);
+    }
+    for (k, v) in gateway_env_pairs() {
         cmd.env(k, v);
     }
     if let Some(r) = vault_root() {
@@ -220,6 +226,9 @@ pub fn run_engine_json_stdin(
         cmd.env("PREVAIL_VAULT_KEY", k);
     }
     for (k, v) in provider_env_pairs() {
+        cmd.env(k, v);
+    }
+    for (k, v) in gateway_env_pairs() {
         cmd.env(k, v);
     }
     if let Some(r) = vault_root() {
@@ -299,6 +308,9 @@ pub async fn run_engine_stream(
         scmd.env("PREVAIL_VAULT_KEY", k);
     }
     for (k, v) in provider_env_pairs() {
+        scmd.env(k, v);
+    }
+    for (k, v) in gateway_env_pairs() {
         scmd.env(k, v);
     }
     if let Some(r) = vault_root() {
@@ -457,6 +469,11 @@ pub async fn run_engine_stream_stdin(
         // authenticate + fetch. Index of names lives at ~/.prevail/appsecrets.index
         // (names only, never values). Cloud creds → gated by Bunker, like above.
         for (k, v) in app_secret_env_pairs() {
+            cmd.env(k, v);
+        }
+        // Gateway connector keys (Composio / Nango) so the engine can authenticate
+        // its gateway calls. Cloud creds, so gated by Bunker like the keys above.
+        for (k, v) in gateway_env_pairs() {
             cmd.env(k, v);
         }
     }
@@ -783,6 +800,27 @@ pub fn engine_app_add(
     run_engine_json(&[
         "connectors", "add", "--id", &id, "--title", &title,
         "--integration", &integration, "--domains", &doms, "--json",
+    ])
+}
+
+/// Scaffold a GATEWAY app (Composio / Nango) for a toolkit pick. Unlike
+/// engine_app_add (a generic catalog scaffold), this tags the app as a gateway
+/// app wired to the given provider so syncs run through the gateway connection.
+/// Returns { ok, path?, error? }.
+#[tauri::command]
+pub fn engine_gateway_app_add(
+    provider: String,
+    toolkit: String,
+    id: String,
+    title: String,
+) -> Result<serde_json::Value, String> {
+    run_engine_json(&[
+        "connectors", "gateway-add",
+        "--provider", &provider,
+        "--toolkit", &toolkit,
+        "--id", &id,
+        "--title", &title,
+        "--json",
     ])
 }
 
@@ -1130,6 +1168,26 @@ pub(crate) fn provider_env_pairs() -> Vec<(String, String)> {
             if !key.is_empty() {
                 out.push((env_key.to_string(), key));
             }
+        }
+    }
+    out
+}
+
+/// Gateway connector keys (Composio / Nango) read from the Keychain, returned as
+/// engine env-var pairs. Only present, non-empty entries are returned. The engine
+/// reads COMPOSIO_API_KEY / NANGO_SECRET_KEY to authenticate its gateway calls.
+/// Applied to every engine spawn (including the long-running daemon spawns that
+/// run scheduled syncs) the same way provider_env_pairs() is.
+pub(crate) fn gateway_env_pairs() -> Vec<(&'static str, String)> {
+    let mut out = Vec::new();
+    if let Ok(key) = crate::ingestion::keychain::get("prevail.ingestion", "composio") {
+        if !key.is_empty() {
+            out.push(("COMPOSIO_API_KEY", key));
+        }
+    }
+    if let Ok(key) = crate::ingestion::keychain::get("prevail.ingestion", "nango") {
+        if !key.is_empty() {
+            out.push(("NANGO_SECRET_KEY", key));
         }
     }
     out
