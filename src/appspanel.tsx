@@ -372,9 +372,9 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
           context and the sidebar stay put - the connect flow never replaces the
           whole view. Only the rare zero-apps-and-zero-catalog case hosts it here. */}
       {appsMode === "composio" ? (
-        <ComposioMode />
+        <ComposioMode vaultPath={vaultPath} />
       ) : appsMode === "nango" ? (
-        <NangoMode />
+        <NangoMode vaultPath={vaultPath} />
       ) : (
         <>
         {/* FULL-WIDTH description of the Direct track, above its master-detail. */}
@@ -568,28 +568,23 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   );
 }
 
-// The UNIVERSAL primitive for a connected gateway app (Composio or Nango): a
-// detail panel with Open-in-chat + a refresh schedule, exactly like a Direct app.
-// Clicking a connected Composio/Nango app scaffolds it as a first-class vault app
-// (so the schedule persists and the daemon can sync it) and opens this.
-function ConnectedGatewayDetail({ method, slug, title, provider, logos, onBack }: {
+// The UNIVERSAL primitive for a connected gateway app (Composio or Nango). It
+// scaffolds the gateway app as a first-class vault app (so the schedule persists
+// and the daemon can sync it), loads it, then renders the SAME rich AppDetail as
+// Direct apps - with gatewayProvider set so the per-method auth UI is hidden and
+// a "Connected via X" pill + gateway SOURCE line are shown. A small Back control
+// above lets the user return to the list.
+function ConnectedGatewayDetail({ method, slug, title, vaultPath, logos, onBack }: {
   method: "composio" | "nango";
   slug: string;
   title: string;
-  provider?: string;
+  vaultPath: string;
   logos: Record<string, BrandLogo>;
   onBack: () => void;
 }) {
   const id = `${method}-${slug}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
   const [app, setApp] = useState<EngineApp | null>(null);
   const [busy, setBusy] = useState(false);
-  // Flexible schedule: kind + every-N-hours + time-of-day + weekday.
-  const [kind, setKind] = useState<"off" | "hourly" | "nh" | "nd" | "nw" | "daily" | "weekly">("off");
-  const [nh, setNh] = useState(6);
-  const [nDays, setNDays] = useState(2);
-  const [nWeeks, setNWeeks] = useState(2);
-  const [atTime, setAtTime] = useState("09:00");
-  const [onDay, setOnDay] = useState("mon");
   const load = useCallback(async () => {
     try {
       let list = await invoke<EngineApp[]>("engine_apps_list");
@@ -600,108 +595,45 @@ function ConnectedGatewayDetail({ method, slug, title, provider, logos, onBack }
         list = await invoke<EngineApp[]>("engine_apps_list");
         a = (list ?? []).find((x) => x.id === id);
       }
-      setApp(a ?? null);
+      setApp(a ? { ...a, title: appName(a.title) } : null);
     } catch { setApp(null); }
   }, [id, title, method, slug]);
   useEffect(() => { void load(); }, [load]);
-  // Reflect the saved schedule into the editor when the app loads.
-  useEffect(() => {
-    const r = app?.refresh;
-    if (!r?.every) { setKind("off"); return; }
-    const e = r.every.toLowerCase();
-    if (e === "hourly") setKind("hourly");
-    else if (/^\d+h$/.test(e)) { setKind("nh"); setNh(Math.min(23, Math.max(2, parseInt(e, 10)))); }
-    else if (/^\d+d$/.test(e)) { setKind("nd"); setNDays(Math.min(90, Math.max(1, parseInt(e, 10)))); }
-    else if (/^\d+w$/.test(e)) { setKind("nw"); setNWeeks(Math.min(12, Math.max(1, parseInt(e, 10)))); }
-    else if (e === "daily") { setKind("daily"); if (r.at) setAtTime(r.at); }
-    else if (e === "weekly") { setKind("weekly"); if (r.at) setAtTime(r.at); if (r.on) setOnDay(r.on); }
-    else setKind("off");
-  }, [app]);
-  const applySchedule = async () => {
-    const every = kind === "off" ? "off" : kind === "hourly" ? "hourly" : kind === "nh" ? `${nh}h` : kind === "nd" ? `${nDays}d` : kind === "nw" ? `${nWeeks}w` : kind;
+  const onSync = useCallback(async () => {
+    if (!app) return;
     setBusy(true);
-    try {
-      await invoke("engine_app_set_schedule", {
-        id, every,
-        at: (kind === "daily" || kind === "weekly") ? atTime : null,
-        on: kind === "weekly" ? onDay : null,
-      });
-      await load();
-      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
-    } catch (e) { console.error("set schedule", e); }
+    try { await invoke("engine_app_sync", { id: app.id, vault: vaultPath }); await load(); }
+    catch (e) { console.error("sync gateway app", e); }
     finally { setBusy(false); }
-  };
-  const openInChat = () => { if (app) window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app })); };
-  const savedLabel = (() => {
-    const r = app?.refresh; if (!r?.every) return "Off";
-    const e = r.every; const t = r.at ? ` at ${r.at}` : ""; const d = r.on ? ` on ${r.on}` : "";
-    return `Every ${e}${d}${t}`;
-  })();
-  const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+  }, [app, vaultPath, load]);
+  const onSetEnabled = useCallback(async (v: boolean) => {
+    if (!app) return;
+    try { await invoke("engine_app_set_enabled", { id: app.id, enabled: v }); await load(); }
+    catch (e) { console.error("set enabled", e); }
+  }, [app, load]);
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface">
-      <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle px-5 py-4">
-        <button onClick={onBack} className="mt-1 inline-flex items-center gap-1 text-xs text-text-muted hover:text-accent"><ArrowUpRight className="h-3.5 w-3.5 rotate-[225deg]" /> Back</button>
-        <AppRowLogo app={{ title, id: provider || slug }} logos={logos} size={44} fallback="letter" />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-lg font-semibold text-text-primary">{title}</span>
-            <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected via {method === "composio" ? "Composio" : "Nango"}</span>
-          </div>
-          <p className="mt-1 text-[12px] text-text-secondary">Use it in chat, and set how often Prevail refreshes its data into your vault.</p>
+    <div className="space-y-2">
+      <button onClick={onBack} className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-accent">
+        <ArrowUpRight className="h-3.5 w-3.5 rotate-[225deg]" /> Back
+      </button>
+      {app ? (
+        <AppDetail
+          app={app}
+          vaultPath={vaultPath}
+          logos={logos}
+          status={appStatus(app)}
+          busy={busy}
+          onSync={() => void onSync()}
+          onSetEnabled={(v) => void onSetEnabled(v)}
+          onReload={load}
+          gatewayProvider={method}
+        />
+      ) : (
+        <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
+          <Loader2 className="mx-auto h-5 w-5 animate-spin text-text-muted" />
+          <p className="mt-3 text-sm text-text-secondary">Setting up {title}…</p>
         </div>
-        <button onClick={openInChat} disabled={!app} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-          <ArrowUpRight className="h-3.5 w-3.5" /> Open in chat
-        </button>
-      </div>
-      <div className="space-y-4 px-5 py-4">
-        <div>
-          <div className="mb-1.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Refresh schedule <span className="rounded bg-surface-warm px-1.5 py-0.5 normal-case tracking-normal text-text-secondary">now: {savedLabel}</span></div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} className="rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:border-accent-border focus:outline-none">
-              <option value="off">Off</option>
-              <option value="hourly">Hourly</option>
-              <option value="nh">Every N hours</option>
-              <option value="nd">Every N days</option>
-              <option value="nw">Every N weeks</option>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-            </select>
-            {kind === "nh" && (
-              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">every
-                <input type="number" min={2} max={23} value={nh} onChange={(e) => setNh(Math.min(23, Math.max(2, parseInt(e.target.value || "2", 10))))} className="w-14 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
-                hours
-              </span>
-            )}
-            {kind === "nd" && (
-              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">every
-                <input type="number" min={1} max={90} value={nDays} onChange={(e) => setNDays(Math.min(90, Math.max(1, parseInt(e.target.value || "1", 10))))} className="w-14 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
-                days
-              </span>
-            )}
-            {kind === "nw" && (
-              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">every
-                <input type="number" min={1} max={12} value={nWeeks} onChange={(e) => setNWeeks(Math.min(12, Math.max(1, parseInt(e.target.value || "1", 10))))} className="w-14 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
-                weeks
-              </span>
-            )}
-            {kind === "weekly" && (
-              <select value={onDay} onChange={(e) => setOnDay(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1.5 text-xs capitalize focus:border-accent-border focus:outline-none">
-                {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-            )}
-            {(kind === "daily" || kind === "weekly") && (
-              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">at
-                <input type="time" value={atTime} onChange={(e) => setAtTime(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
-              </span>
-            )}
-            <button onClick={() => void applySchedule()} disabled={busy} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Apply
-            </button>
-          </div>
-          <p className="mt-1.5 text-[11px] text-text-muted">How often Prevail pulls fresh {title} data via {method === "composio" ? "Composio" : "Nango"} into your vault. (The scheduled pull executes through the {method} connection; data lands in this app's folder.)</p>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -787,7 +719,7 @@ function clearGatewayCache(key: string) {
 // the key once, then browse Composio's app catalog and connect any app, which opens
 // a Composio auth link in the browser. Connections live in Composio; Prevail's
 // agent uses them through the Composio MCP endpoint.
-function ComposioMode() {
+function ComposioMode({ vaultPath }: { vaultPath: string }) {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [keyInput, setKeyInput] = useState("");
   const [editingKey, setEditingKey] = useState(false);
@@ -970,7 +902,7 @@ function ComposioMode() {
             <p className="mt-3 text-sm text-text-secondary">Set up your Composio key to browse and connect apps.</p>
           </div>
         ) : selected && selectedConnected ? (
-          <ConnectedGatewayDetail key={selected.slug} method="composio" slug={selected.slug} title={selected.name} logos={logos} onBack={() => setSelectedSlug(null)} />
+          <ConnectedGatewayDetail key={selected.slug} method="composio" slug={selected.slug} title={selected.name} vaultPath={vaultPath} logos={logos} onBack={() => setSelectedSlug(null)} />
         ) : selected ? (
           <GatewayConnectDetail
             key={selected.slug}
@@ -998,7 +930,7 @@ function ComposioMode() {
 // Prevail lists the integrations configured in their Nango project, and connecting
 // one opens a Nango Connect session in the browser. Nango then syncs the data.
 type NangoIntegration = { unique_key: string; provider: string; display_name: string };
-function NangoMode() {
+function NangoMode({ vaultPath }: { vaultPath: string }) {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [keyInput, setKeyInput] = useState("");
   const [editingKey, setEditingKey] = useState(false);
@@ -1176,7 +1108,7 @@ function NangoMode() {
             <p className="mt-3 text-sm text-text-secondary">Set up your Nango secret key to list and connect integrations.</p>
           </div>
         ) : selected && selectedConnected ? (
-          <ConnectedGatewayDetail key={selected.unique_key} method="nango" slug={selected.unique_key} title={selected.display_name} provider={selected.provider} logos={logos} onBack={() => setSelectedKey(null)} />
+          <ConnectedGatewayDetail key={selected.unique_key} method="nango" slug={selected.unique_key} title={selected.display_name} vaultPath={vaultPath} logos={logos} onBack={() => setSelectedKey(null)} />
         ) : selected ? (
           <GatewayConnectDetail
             key={selected.unique_key}
@@ -1499,7 +1431,7 @@ function prettyHost(url: string): string {
 // collapsible AppCard - every flow (creds, MCP setup, OAuth/browser sign-in,
 // schedule, domains, config path, runs, enabled toggle, delete) is preserved,
 // just always-shown for the selected app instead of behind a chevron.
-function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, onReload }: {
+function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, onReload, gatewayProvider }: {
   app: EngineApp;
   vaultPath: string;
   logos: Record<string, BrandLogo>;
@@ -1508,6 +1440,11 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   onSync: () => void;
   onSetEnabled: (v: boolean) => void;
   onReload: () => Promise<void> | void;
+  // When set, this app is fronted by a managed gateway (Composio / Nango) rather
+  // than connected directly. The per-method auth UI (Method picker + login /
+  // credentials / MCP-setup) is meaningless for a gateway app, so it is hidden;
+  // a "Connected via X" pill is shown and the SOURCE line reflects the gateway.
+  gatewayProvider?: "composio" | "nango";
 }) {
   const meta = STATUS_META[status];
   const enabled = app.enabled !== false;
@@ -1746,7 +1683,12 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
               <span className={`h-1.5 w-1.5 rounded-full ${meta.dot} ${status === "connecting" ? "animate-pulse" : ""}`} />
               {meta.label}
             </span>
-            <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>
+            {!gatewayProvider && <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>}
+            {gatewayProvider && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent">
+                <Check className="h-2.5 w-2.5" /> Connected via {titleCase(gatewayProvider)}
+              </span>
+            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-text-muted">
             {status === "connected" && <span>synced {app.lastSuccessTs ? relTime(app.lastSuccessTs) : "-"}</span>}
@@ -1782,6 +1724,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
       </div>
       <div className="space-y-3 px-5 py-4 text-[13px]">
           {app.account?.label && <Detail label="Account">{app.account.label}{app.account.address ? ` · ${app.account.address}` : ""}</Detail>}
+          {!gatewayProvider && (<>
           <Detail label="Method">
             <span className="inline-flex flex-wrap items-center gap-2">
               {/* A2 (Monday feedback): change the method by hand. */}
@@ -1908,6 +1851,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
               </div>
             </Detail>
           )}
+          </>)}
           {/* APP-4 - schedule, now editable with engine-honored cadences. */}
           <Detail label="Schedule">
             {!editSched ? (
@@ -2064,10 +2008,10 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                 <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Schedule</span>
                 <span>{scheduleLabel(app.refresh)}{app.nextDueTs ? ` · next ${relTime(app.nextDueTs)}` : ""}</span>
               </div>
-              {app.community && (
+              {(gatewayProvider || app.community) && (
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Source</span>
-                  <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> Community connector</span>
+                  <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> {gatewayProvider ? `${titleCase(gatewayProvider)} gateway` : "Community connector"}</span>
                 </div>
               )}
             </div>
