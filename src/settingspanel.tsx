@@ -52,7 +52,9 @@ export function SettingsPanel({
   jumpTo?: { section: string; n: number } | null;
 }) {
   type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "loopboard" | "spark";
-  const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
+  // Default landing is the Work board ("tasks") - the most important area - not
+  // General. A specific jumpTo (e.g. "connectors") still wins.
+  const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "tasks");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
   useEffect(() => {

@@ -1645,8 +1645,9 @@ export function ChatPanel({
             />
 
             {/* HOME-1: the Briefing - proactive digest (top recommendations +
-                recent intents) made first-class on the landing surface. */}
-            <HomeBriefing vaultPath={vaultPath} />
+                recent intents). Off by default for a minimal landing; opt in
+                from Settings -> General. */}
+            {getPref(PREF.showHomeBriefing, "0") === "1" && <HomeBriefing vaultPath={vaultPath} />}
 
 
             {domains.length === 0 && (
