@@ -11,7 +11,10 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"            # desktop repo root
 if [ -n "${PREVAIL_CLI_DIR:-}" ]; then
   CLI="$(cd "$PREVAIL_CLI_DIR" 2>/dev/null && pwd || true)"
 else
+  # Sibling checkout used in local dev. Accept either naming convention so a
+  # release builds without anyone having to set PREVAIL_CLI_DIR by hand.
   CLI="$(cd "$HERE/../fd-apps-prevail-cli" 2>/dev/null && pwd || true)"
+  [ -n "${CLI:-}" ] || CLI="$(cd "$HERE/../prevail-cli" 2>/dev/null && pwd || true)"
 fi
 
 if [ -z "${CLI:-}" ] || [ ! -f "$CLI/package.json" ]; then
