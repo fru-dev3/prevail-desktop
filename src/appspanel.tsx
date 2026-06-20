@@ -612,6 +612,37 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   );
 }
 
+// The vault app id for a gateway-fronted app. Must match everywhere the app is
+// scaffolded or favorited (ConnectedGatewayDetail + the row star) so the home
+// sidebar, which filters by app id, finds the same entry.
+function gatewayAppId(method: "composio" | "nango", slug: string): string {
+  return `${method}-${slug}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+}
+
+// The home-screen star for a connected gateway app. Returns a builder that, per
+// row, reports whether it's pinned and toggles it. Toggling ON first scaffolds
+// the gateway app as a real vault app (engine_gateway_app_add) so the sidebar -
+// which lists vault apps and filters by favorite - can actually show it, then
+// favorites it by the same id. This is what lets Composio / Nango apps be
+// favorited straight from the list, exactly like Direct apps.
+function useGatewayFav(method: "composio" | "nango") {
+  const favs = useFavorites();
+  return (slug: string, title: string) => {
+    const id = gatewayAppId(method, slug);
+    const key = favKeyOf(id);
+    return {
+      on: favs.has(key),
+      toggle: async () => {
+        if (!favs.has(key)) {
+          await invoke("engine_gateway_app_add", { provider: method, toolkit: slug, id, title }).catch(() => {});
+          window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+        }
+        toggleFavorite(key);
+      },
+    };
+  };
+}
+
 // The UNIVERSAL primitive for a connected gateway app (Composio or Nango). It
 // scaffolds the gateway app as a first-class vault app (so the schedule persists
 // and the daemon can sync it), loads it, then renders the SAME rich AppDetail as
@@ -626,7 +657,7 @@ function ConnectedGatewayDetail({ method, slug, title, vaultPath, logos, onBack 
   logos: Record<string, BrandLogo>;
   onBack: () => void;
 }) {
-  const id = `${method}-${slug}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  const id = gatewayAppId(method, slug);
   const [app, setApp] = useState<EngineApp | null>(null);
   const [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
@@ -765,6 +796,8 @@ function clearGatewayCache(key: string) {
 // agent uses them through the Composio MCP endpoint.
 type ComposioCliStatus = { installed: boolean; loggedIn: boolean; account: string | null; bin: string | null };
 function ComposioMode({ vaultPath }: { vaultPath: string }) {
+  // The home-screen star for connected Composio apps (scaffold-then-favorite).
+  const gatewayFav = useGatewayFav("composio");
   // Connect-via sub-mode: CLI (browser OAuth, the default) or MCP (the existing
   // key-based flow). Both set up the same Composio account; the agent uses the
   // Composio MCP either way. Persisted so the choice survives a reload.
@@ -1002,7 +1035,7 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
                 <section className="space-y-1">
                   <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
                   {connectedApps.map((a) => (
-                    <GatewayRow key={a.slug} title={a.name} sub={a.cat} logoId={a.slug} logos={logos} connected active={selectedSlug === a.slug} onSelect={() => setSelectedSlug(a.slug)} />
+                    <GatewayRow key={a.slug} title={a.name} sub={a.cat} logoId={a.slug} logos={logos} connected active={selectedSlug === a.slug} onSelect={() => setSelectedSlug(a.slug)} fav={gatewayFav(a.slug, a.name)} />
                   ))}
                 </section>
               )}
@@ -1056,6 +1089,8 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
 // one opens a Nango Connect session in the browser. Nango then syncs the data.
 type NangoIntegration = { unique_key: string; provider: string; display_name: string };
 function NangoMode({ vaultPath }: { vaultPath: string }) {
+  // The home-screen star for connected Nango apps (scaffold-then-favorite).
+  const gatewayFav = useGatewayFav("nango");
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [keyInput, setKeyInput] = useState("");
   const [editingKey, setEditingKey] = useState(false);
@@ -1216,7 +1251,7 @@ function NangoMode({ vaultPath }: { vaultPath: string }) {
                   <section className="space-y-1">
                     <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
                     {connectedApps.map((i) => (
-                      <GatewayRow key={i.unique_key} title={i.display_name} sub={i.provider || i.unique_key} logoId={i.provider || i.unique_key} logos={logos} connected active={selectedKey === i.unique_key} onSelect={() => setSelectedKey(i.unique_key)} />
+                      <GatewayRow key={i.unique_key} title={i.display_name} sub={i.provider || i.unique_key} logoId={i.provider || i.unique_key} logos={logos} connected active={selectedKey === i.unique_key} onSelect={() => setSelectedKey(i.unique_key)} fav={gatewayFav(i.unique_key, i.display_name)} />
                     ))}
                   </section>
                 )}
@@ -1305,7 +1340,7 @@ const HEADER_POPULAR: { title: string; id: string }[] = [
 // One compact row in a gateway (Composio / Nango) left list: brand logo, name,
 // a small subtitle (category / provider), and a Connected check or a Connect
 // chevron. Selecting it shows the app's detail in the right pane.
-function GatewayRow({ title, sub, logoId, logos, connected, active, onSelect }: {
+function GatewayRow({ title, sub, logoId, logos, connected, active, onSelect, fav }: {
   title: string;
   sub: string;
   logoId: string;
@@ -1313,23 +1348,39 @@ function GatewayRow({ title, sub, logoId, logos, connected, active, onSelect }: 
   connected?: boolean;
   active: boolean;
   onSelect: () => void;
+  // Present only for CONNECTED rows: the home-screen star, same primitive as the
+  // Direct list. Toggling it scaffolds the gateway app (so the sidebar can find
+  // it) and pins / unpins it from the home screen.
+  fav?: { on: boolean; toggle: () => void };
 }) {
   return (
-    <button
-      onClick={onSelect}
-      className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors ${active ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}
-    >
-      <AppRowLogo app={{ title, id: logoId }} logos={logos} size={28} fallback="letter" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-text-primary">{title}</span>
-        <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{sub}</span>
-      </span>
+    <div className={`group flex w-full items-center gap-1 rounded-lg border pr-2 transition-colors ${active ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}>
+      <button
+        onClick={onSelect}
+        className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pl-2.5 text-left"
+      >
+        <AppRowLogo app={{ title, id: logoId }} logos={logos} size={28} fallback="letter" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-text-primary">{title}</span>
+          <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{sub}</span>
+        </span>
+      </button>
+      {connected && fav && (
+        <button
+          onClick={fav.toggle}
+          title={fav.on ? "On your home screen - click to remove" : "Add to your home screen"}
+          aria-pressed={fav.on}
+          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors hover:text-accent ${fav.on ? "text-accent" : "text-text-muted opacity-0 group-hover:opacity-100"}`}
+        >
+          <Star className={`h-3.5 w-3.5 ${fav.on ? "fill-accent" : ""}`} />
+        </button>
+      )}
       {connected ? (
         <Check className="h-3.5 w-3.5 shrink-0 text-accent" />
       ) : (
         <ArrowUpRight className="h-3.5 w-3.5 shrink-0 rotate-45 text-text-muted" />
       )}
-    </button>
+    </div>
   );
 }
 
