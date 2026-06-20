@@ -256,6 +256,13 @@ it. This is the whole point: connect once agentically, reuse the skill forever.
   of the apps area; it unifies appspanel.tsx + the AppFacetPanel workspace into one
   master-detail surface. User: "this is a big one." Plan it as its own surface,
   reuse the existing data (engine_apps_list, runs, schedule, domains, mcp tools).
+  ENRICHED (ChatGPT Carta-CRM ref): rich detail pane - big logo + name + short
+  description + "Try in chat" CTA; optional hero/banner visual; longer description;
+  an "Information" section (Developer, Category, Website, Privacy Policy, Terms with
+  external-link icons); app images where available. CONNECT FLOW polished + agentic:
+  Connect -> a clean disclosure step (you're in control / what data is shared /
+  method) -> Continue -> Prevail OPENS the login page (browser-login engine) ->
+  user logs in -> returns -> auth saved -> data pulled. Sophisticated, not a form.
 
 ## Done
 - [x] **App workspace navigation** (appspanel "Open" button -> prevail:open-app ->
