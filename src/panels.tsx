@@ -19,6 +19,7 @@ import { bytesHuman, compactNum, fmtCost, formatAuditedAt } from "./helpers";
 import { LS, PREF, getPref, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
 import { InsightsDisclosure } from "./widgets";
+import { AppRowLogo } from "./panels3";
 import type { AlignmentReport, BackupResult, BrandLogo, CatalogApp, Connector, ContextScore, DaemonStatus, DirectProvider, Domain, DomainTask, EngineApp, IngestionAction, IngestionAuditEntry, PreambleOption, SkillEntry, SurfaceResult, TabId, ThreadMeta, UsageBucket } from "./types";
 
 export function QuickSwitcher({
@@ -747,10 +748,16 @@ export function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; do
 
 export function AppHeaderBar({ app, enabled, onOpenDomain, onClose }: { app: EngineApp; enabled: boolean; onOpenDomain: (d: string) => void; onClose: () => void }) {
   const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
+  // Show the app's brand logo (same mark the sidebar and Apps panel render) so
+  // it's instantly clear which app this conversation is in. Loaded once; the
+  // command is cheap and cached engine-side.
+  const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
+  useEffect(() => { invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {}); }, []);
   return (
     <div className="shrink-0 border-b border-border-subtle bg-surface px-4 py-2.5">
       <div className="flex items-center gap-2.5">
         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: enabled ? tint : "#9aa0a6" }} title={enabled ? app.status : "disabled"} />
+        <AppRowLogo app={app} logos={logos} size={22} fallback="letter" />
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-center gap-2">
             <span className="truncate text-base font-semibold text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>

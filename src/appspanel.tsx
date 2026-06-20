@@ -14,6 +14,7 @@ import { Toggle } from "./ui";
 import { SettingsHeader } from "./sectionutil";
 import { ConnectAppFlow } from "./appconnect";
 import { AppRowLogo } from "./panels3";
+import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
 import type { BrandLogo, CatalogApp, ConnectorCatalog, EngineApp } from "./types";
 
 type AppStatus = "connected" | "authorized" | "attention" | "connecting" | "disconnected";
@@ -167,31 +168,9 @@ export function startAppsScheduler(vault: string) {
   window.setTimeout(tick, 12_000);
 }
 
-// Favorites ("my list"): a client-side set of pinned apps - connected OR catalog -
-// keyed by normalized name so a pinned catalog app and its later-installed self
-// are the same entry. Persisted in localStorage and shared across rows via a
-// listener set, so toggling a star anywhere updates the pinned section live.
-const FAV_KEY = "prevail.apps.favorites";
-const favListeners = new Set<() => void>();
-const favKeyOf = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-function readFavorites(): Set<string> {
-  try { const v = JSON.parse(localStorage.getItem(FAV_KEY) || "[]"); return new Set(Array.isArray(v) ? v : []); } catch { return new Set(); }
-}
-function toggleFavorite(key: string) {
-  const s = readFavorites();
-  if (s.has(key)) s.delete(key); else s.add(key);
-  try { localStorage.setItem(FAV_KEY, JSON.stringify([...s])); } catch { /* ignore */ }
-  favListeners.forEach((l) => l());
-}
-function useFavorites(): Set<string> {
-  const [favs, setFavs] = useState<Set<string>>(readFavorites);
-  useEffect(() => {
-    const l = () => setFavs(readFavorites());
-    favListeners.add(l);
-    return () => { favListeners.delete(l); };
-  }, []);
-  return favs;
-}
+// Favorites ("my list") are shared with the home sidebar via ./appfavorites -
+// starring an app (Direct, Composio, or Nango) is what pins it to the home
+// screen. The store + hooks live in that module so both surfaces read one set.
 
 export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   const [apps, setApps] = useState<EngineApp[] | null>(null);
@@ -237,8 +216,10 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       const list = await invoke<EngineApp[]>("engine_apps_list");
       const next = Array.isArray(list) ? list.map((x) => ({ ...x, title: appName(x.title) })) : [];
       setApps(next);
-      // Default selection: keep the current one if it still exists, else first app.
-      setSelected((cur) => (cur && next.some((a) => a.id === cur) ? cur : (next[0]?.id ?? null)));
+      // Default selection: keep the current one if it still exists, else the
+      // first DIRECT app (the shared `selected` drives the Direct pane; gateway
+      // apps have their own mode + selection, so they must not become the default).
+      setSelected((cur) => (cur && next.some((a) => a.id === cur) ? cur : (next.find((a) => !a.gateway)?.id ?? next[0]?.id ?? null)));
     } catch { setApps([]); }
   }, []);
   useEffect(() => {
@@ -298,6 +279,11 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     }
   }, [reload]);
 
+  // Direct mode shows ONLY directly-connected apps. Gateway apps (Composio /
+  // Nango) live in their own modes and must never leak into the Direct list -
+  // so everything the Direct branch renders (list, "my list", counts, detail)
+  // is derived from this gateway-free slice, not the raw `apps`.
+  const directApps = useMemo(() => (apps ?? []).filter((a) => !a.gateway), [apps]);
   // Filter by the search box (name or method), then group into Connected vs
   // Setup (authorizing / connecting / needs attention) vs Not connected so the
   // left list reads top-to-bottom like Claude Desktop / ChatGPT connectors.
@@ -305,7 +291,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     const q = query.trim().toLowerCase();
     const match = (a: EngineApp) =>
       !q || (a.title || a.id).toLowerCase().includes(q) || methodLabel(a.integration).toLowerCase().includes(q);
-    const filtered = (apps ?? []).filter(match);
+    const filtered = directApps.filter(match);
     const bucketOf = (a: EngineApp): "connected" | "setup" | "off" => {
       const st = appStatus(a);
       if (st === "connected") return "connected";
@@ -320,7 +306,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     const by: Record<"connected" | "setup" | "off", EngineApp[]> = { connected: [], setup: [], off: [] };
     for (const a of filtered) by[bucketOf(a)].push(a);
     return order.map((g) => ({ ...g, apps: by[g.key] })).filter((g) => g.apps.length > 0);
-  }, [apps, query]);
+  }, [directApps, query]);
 
   // The catalog folded into the sidebar: every connector NOT already installed,
   // deduped against the installed apps (by normalized name / id / iconSlug) so a
@@ -362,14 +348,14 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     return { shown, total: matched.length, searching };
   }, [apps, catalog, query]);
 
-  const liveCount = (apps ?? []).filter((a) => appStatus(a) === "connected").length;
+  const liveCount = directApps.filter((a) => appStatus(a) === "connected").length;
 
   // "My list" - the user's pinned apps, connected or catalog, surfaced at the top
   // of the sidebar for quick access. A pinned catalog app and its installed self
   // share a normalized key, so once connected it shows from the connected side.
   const favs = useFavorites();
   const pinned = useMemo(() => {
-    const connected = (apps ?? []).filter((a) => favs.has(favKeyOf(a.title || a.id)) || favs.has(favKeyOf(a.id)));
+    const connected = directApps.filter((a) => favs.has(favKeyOf(a.title || a.id)) || favs.has(favKeyOf(a.id)));
     const connectedKeys = new Set(connected.map((a) => favKeyOf(a.title || a.id)));
     const seen = new Set<string>();
     const catalogPinned = catalog.filter((c) => {
@@ -379,8 +365,12 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       return true;
     });
     return { connected, catalog: catalogPinned, count: connected.length + catalogPinned.length };
-  }, [apps, catalog, favs]);
+  }, [directApps, catalog, favs]);
   const selectedApp = (apps ?? []).find((a) => a.id === selected) ?? null;
+  // The Direct detail pane only ever shows a Direct app. A gateway app that
+  // happens to be the shared `selected` (e.g. just-scaffolded) must not render
+  // here without its gateway chrome - it belongs to its own mode.
+  const directSelectedApp = selectedApp && !selectedApp.gateway ? selectedApp : null;
 
   return (
     <>
@@ -441,7 +431,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         </div>
         {apps === null ? (
         <div className="text-sm text-text-muted">loading apps…</div>
-      ) : apps.length === 0 && catalog.length === 0 ? (
+      ) : directApps.length === 0 && catalog.length === 0 ? (
         connecting ? (
           <ConnectAppFlow
             vaultPath={vaultPath}
@@ -489,7 +479,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
               <span className="text-xs font-semibold text-text-primary">Connect an app</span>
             </button>
             {liveCount > 0 && (
-              <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{liveCount} of {apps.length} live</div>
+              <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{liveCount} of {directApps.length} live</div>
             )}
             <div className="space-y-4 lg:max-h-[60vh] lg:overflow-y-auto lg:pr-1">
               {groups.length === 0 && catalogView.shown.length === 0 ? (
@@ -595,16 +585,16 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                   connecting={catalogConnecting}
                 />
               </>
-            ) : selectedApp ? (
+            ) : directSelectedApp ? (
               <AppDetail
-                key={selectedApp.id}
-                app={selectedApp}
+                key={directSelectedApp.id}
+                app={directSelectedApp}
                 vaultPath={vaultPath}
                 logos={logos}
-                status={appStatus(selectedApp)}
-                busy={busy === selectedApp.id}
-                onSync={() => syncNow(selectedApp.id)}
-                onSetEnabled={(v) => setEnabled(selectedApp.id, v)}
+                status={appStatus(directSelectedApp)}
+                busy={busy === directSelectedApp.id}
+                onSync={() => syncNow(directSelectedApp.id)}
+                onSetEnabled={(v) => setEnabled(directSelectedApp.id, v)}
                 onReload={reload}
               />
             ) : (
@@ -1629,6 +1619,14 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   const meta = STATUS_META[status];
   const enabled = app.enabled !== false;
   const runs = app.runs ?? [];
+  // Star = pin to the home sidebar. The one control, shared by every mode, that
+  // decides what shows on the home screen (Direct, Composio, and Nango apps all
+  // reach this same detail header). Keyed by the app's unique id (not its name)
+  // so the same-named app connected three ways - Direct "notion", Composio
+  // "composio-notion", Nango "nango-notion" - is starred / removed independently.
+  const favs = useFavorites();
+  const favKey = favKeyOf(app.id);
+  const isFav = favs.has(favKey);
   // Apps redesign: the actual data files this connector has loaded (so the user
   // can SEE what was pulled, and reveal it). Loaded for the selected app, and
   // reloaded after a successful sync (lastSuccessTs change).
@@ -1957,8 +1955,16 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
           {description && <p className="mt-1.5 max-w-prose text-[12px] text-text-secondary">{description}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {/* Sync now lives in the bottom action bar; the top keeps only the
-              primary "Open in chat" CTA so the header is less crowded. */}
+          {/* Star = show on the home screen. Same store the sidebar reads, so a
+              starred app (any mode) appears on home immediately. */}
+          <button
+            onClick={() => toggleFavorite(favKey)}
+            title={isFav ? "On your home screen - click to remove" : "Add to your home screen"}
+            aria-pressed={isFav}
+            className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${isFav ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}
+          >
+            <Star className={`h-3.5 w-3.5 ${isFav ? "fill-accent" : ""}`} /> {isFav ? "On home" : "Add to home"}
+          </button>
           {/* Open the app's own workspace (chat with its data) - the same view the
               sidebar + per-domain facet open (prevail:open-app dispatch). */}
           <button

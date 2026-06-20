@@ -39,6 +39,7 @@ export function ChatPanel({
   domainPath,
   threadDomain,
   isApp,
+  appId,
   vaultPath,
   clis,
   fwLens,
@@ -64,6 +65,10 @@ export function ChatPanel({
   // the domain hero header and DomainHome's "apps refreshing this domain"
   // strip. The app is isolated; it feeds domains, it isn't one.
   isApp?: boolean;
+  // The connected app's id when an app is open (isApp). Lets the chat pull the
+  // app's own SKILL.md and auto-attach it as context so the model knows how to
+  // use that app. Null for a plain domain conversation.
+  appId?: string | null;
   vaultPath: string;
   clis: CliInfo[];
   fwLens: ReturnType<typeof useFrameworkLens>;
@@ -447,6 +452,44 @@ export function ChatPanel({
     // effect re-runs without needing the user to re-enter the domain.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [domain, vaultPath, prefsTick]);
+  // App SKILL auto-attach: when an APP is open, pull its own SKILL.md
+  // (<vault>/data/apps/<id>/SKILL.md) and prime it as context so the model knows
+  // how to use that app - its tools, the gateway it's fronted by, what data it
+  // holds. Per-app preference (prevail.app.<id>.autoSkill, default on); the pill
+  // is removable for a single turn and the toggle below controls the default.
+  // Labelled "auto-app:" so the domain-state auto-prime above leaves it intact
+  // ("auto-app:" does not start with "auto:").
+  const [appAutoSkill, setAppAutoSkill] = useState<boolean>(() => (appId ? lsGet(`prevail.app.${appId}.autoSkill`) !== "0" : true));
+  const [appHasSkill, setAppHasSkill] = useState(false);
+  useEffect(() => { setAppAutoSkill(appId ? lsGet(`prevail.app.${appId}.autoSkill`) !== "0" : true); }, [appId]);
+  useEffect(() => {
+    if (!isApp || !appId || !vaultPath) {
+      setAppHasSkill(false);
+      setPrimedContext((cur) => cur.filter((x) => !x.label.startsWith("auto-app:")));
+      return;
+    }
+    let mounted = true;
+    invoke<string>("read_skill", { path: `${vaultPath}/data/apps/${appId}` })
+      .then((body) => {
+        if (!mounted) return;
+        const has = !!body.trim();
+        setAppHasSkill(has);
+        setPrimedContext((cur) => {
+          const cleared = cur.filter((x) => !x.label.startsWith("auto-app:"));
+          return has && appAutoSkill ? [...cleared, { label: `auto-app: ${titleCase(appId)} skill`, body }] : cleared;
+        });
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setAppHasSkill(false);
+        setPrimedContext((cur) => cur.filter((x) => !x.label.startsWith("auto-app:")));
+      });
+    return () => { mounted = false; };
+  }, [isApp, appId, vaultPath, appAutoSkill]);
+  const toggleAppAutoSkill = useCallback(() => {
+    if (!appId) return;
+    setAppAutoSkill((cur) => { const next = !cur; lsSet(`prevail.app.${appId}.autoSkill`, next ? "1" : "0"); return next; });
+  }, [appId]);
   const [attachments, setAttachments] = useState<string[]>([]);
   // Ingested artifacts for this domain. Auto-fetched on entry so the
   // user can flip a chip to attach them to the next turn without
@@ -1757,6 +1800,19 @@ export function ChatPanel({
                   >×</button>
                 </span>
               ))}
+              {/* App-skill auto-attach toggle: only when an app with its own
+                  SKILL.md is open. Controls whether its skill is auto-added as
+                  context on every turn (per-app default), independent of the
+                  removable pill above. */}
+              {isApp && appId && appHasSkill && (
+                <button
+                  onClick={toggleAppAutoSkill}
+                  title={appAutoSkill ? "This app's skill is auto-attached as context. Click to stop auto-attaching it." : "Auto-attach this app's skill as context so the model knows how to use it."}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider transition-colors ${appAutoSkill ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:text-accent"}`}
+                >
+                  <Sparkles className="h-3 w-3" /> {appAutoSkill ? "App skill on" : "App skill off"}
+                </button>
+              )}
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {(autoCompacted || compacting) && (

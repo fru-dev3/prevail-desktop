@@ -1585,6 +1585,7 @@ export default function App() {
                 domainPath={selectedDomainPath}
                 threadDomain={threadScope}
                 isApp={onApp}
+                appId={onApp && selectedApp ? selectedApp.id : null}
                 vaultPath={vaultPath}
                 clis={clis}
                 fwLens={fwLens}

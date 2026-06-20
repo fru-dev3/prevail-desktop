@@ -2,12 +2,13 @@
 // state, domains, active selection, and a set of callbacks); renders the live
 // gateway/MCP/benchmark status strips from shared modules.
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { Archive, ChevronDown, ChevronLeft, ChevronRight, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, Pin, Plug, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Sun } from "lucide-react";
+import { Archive, ChevronDown, ChevronLeft, ChevronRight, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, Pin, Plug, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Star, Sun } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { STATUS_TINT } from "./constants";
 import { appName, scoreColor, titleCase } from "./format";
 import { lsGet, lsSet } from "./storage";
+import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
 import { SidebarGatewayLive, SidebarMcpLive } from "./panels";
 import { domainIcon } from "./icons";
 import { useAppearance } from "./hooks";
@@ -148,24 +149,17 @@ export function Sidebar({
   // Refresh when the active domain set changes (e.g. after archive/restore).
   useEffect(() => { void refreshArchived(); }, [refreshArchived, domains.length]);
 
-  // Apps section - peer to Domains in the sidebar.
-  const APP_PIN_KEY = "prevail.sidebar.pinnedApps";
+  // Apps section - peer to Domains in the sidebar. The home screen shows ONLY
+  // the apps the user has STARRED (favorited) - in the Apps panel, in any mode
+  // (Direct, Composio, Nango). The favorites set is the shared ./appfavorites
+  // store, so starring anywhere updates this list live.
   const [sidebarApps, setSidebarApps] = useState<EngineApp[]>([]);
   // Brand logos for the app rows, loaded once and keyed by toolkit/id so the
   // row can show the real mark instead of a bare status dot.
   const [appLogos, setAppLogos] = useState<Record<string, BrandLogo>>({});
   useEffect(() => { invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setAppLogos).catch(() => {}); }, []);
   const [appsOpen, setAppsOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsOpen") !== "0");
-  // Favorites expand by default; the full list stays collapsed so a long
-  // catalog never floods the rail - mirrors Domains' Pinned/All split.
-  const [appsFavOpen, setAppsFavOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsFavOpen") !== "0");
-  const [appsAllOpen, setAppsAllOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsAllOpen") === "1");
-  const [pinnedApps, setPinnedApps] = useState<Set<string>>(() => {
-    try { const r = lsGet(APP_PIN_KEY); return new Set(r ? r.split(",").filter(Boolean) : []); } catch { return new Set(); }
-  });
   useEffect(() => { lsSet("prevail.sidebar.appsOpen", appsOpen ? "1" : "0"); }, [appsOpen]);
-  useEffect(() => { lsSet("prevail.sidebar.appsFavOpen", appsFavOpen ? "1" : "0"); }, [appsFavOpen]);
-  useEffect(() => { lsSet("prevail.sidebar.appsAllOpen", appsAllOpen ? "1" : "0"); }, [appsAllOpen]);
   useEffect(() => {
     let alive = true;
     const pull = () => { invoke<EngineApp[]>("engine_apps_list").then((a) => { if (alive) setSidebarApps((a ?? []).map((x) => ({ ...x, title: appName(x.title) }))); }).catch(() => {}); };
@@ -175,28 +169,14 @@ export function Sidebar({
     window.addEventListener("prevail:apps-changed", onChanged);
     return () => { alive = false; window.removeEventListener("prevail:apps-changed", onChanged); };
   }, [vaultPath]);
-  function toggleAppPin(id: string) {
-    setPinnedApps((cur) => {
-      const next = new Set(cur);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      lsSet(APP_PIN_KEY, Array.from(next).join(","));
-      return next;
-    });
-  }
-  // Only surface apps that are genuinely connected / in use - a connector that
-  // has merely been scaffolded (disconnected, never configured, never fetched)
-  // is noise here and makes the "Connected" count misleading.
-  const connectedSidebarApps = useMemo(
-    () => sidebarApps.filter((a) => a.status === "connected" || a.firstFetchOk === true || a.configured === true),
-    [sidebarApps],
-  );
-  const pinnedSidebarApps = useMemo(
-    () => connectedSidebarApps.filter((a) => pinnedApps.has(a.id)).sort((a, b) => a.title.localeCompare(b.title)),
-    [connectedSidebarApps, pinnedApps],
-  );
-  const restSidebarApps = useMemo(
-    () => connectedSidebarApps.filter((a) => !pinnedApps.has(a.id)).sort((a, b) => a.title.localeCompare(b.title)),
-    [connectedSidebarApps, pinnedApps],
+  // The home screen list = starred apps, across every connection mode, sorted
+  // by name. Matched by the same normalized key the star writes (title or id).
+  const favs = useFavorites();
+  const favoritedSidebarApps = useMemo(
+    () => sidebarApps
+      .filter((a) => favs.has(favKeyOf(a.title || a.id)) || favs.has(favKeyOf(a.id)))
+      .sort((a, b) => a.title.localeCompare(b.title)),
+    [sidebarApps, favs],
   );
   // The same app can be connected via Direct creds, Composio, or Nango (e.g.
   // two "Notion" rows). Surface which one each row is so identical titles are
@@ -216,7 +196,6 @@ export function Sidebar({
   // the app currently open in the canvas so "which app am I in" is obvious.
   const renderAppRow = (app: EngineApp) => {
     const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
-    const isPinned = pinnedApps.has(app.id);
     const active = activeAppId === app.id;
     const method = appMethod(app);
     return (
@@ -287,11 +266,18 @@ export function Sidebar({
           </span>
         </button>
         <button
-          onClick={() => toggleAppPin(app.id)}
-          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${isPinned || active ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-          title={isPinned ? "Unpin" : "Pin to favorites"}
+          onClick={() => {
+            // Remove whichever key(s) pinned this app - id-keyed (AppDetail star)
+            // or name-keyed (Direct list star). Only delete present keys so this
+            // never accidentally re-adds.
+            const idK = favKeyOf(app.id), titleK = favKeyOf(app.title);
+            if (favs.has(idK)) toggleFavorite(idK);
+            if (titleK !== idK && favs.has(titleK)) toggleFavorite(titleK);
+          }}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-accent opacity-0 hover:bg-surface-warm group-hover:opacity-100"
+          title="Remove from home screen"
         >
-          <Pin className={`h-3 w-3 ${isPinned ? "fill-accent text-accent" : ""}`} />
+          <Star className="h-3 w-3 fill-accent" />
         </button>
         {app.path && (
           <button
@@ -664,44 +650,13 @@ export function Sidebar({
               <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${appsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
               <Plug className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
               <span>Apps</span>
-              <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{connectedSidebarApps.length}</span>
+              <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{favoritedSidebarApps.length}</span>
             </button>
-            {appsOpen && (connectedSidebarApps.length > 0 ? (
+            {appsOpen && (favoritedSidebarApps.length > 0 ? (
               <ul className="mt-0.5 space-y-0.5 px-2">
-                {/* Favorites - pinned apps, expanded by default. */}
-                {pinnedSidebarApps.length > 0 && (
-                  <>
-                    <li className="mt-1 first:mt-0">
-                      <button
-                        onClick={() => setAppsFavOpen((v) => !v)}
-                        title={`${appsFavOpen ? "Collapse" : "Expand"} Favorites`}
-                        className="group/h flex w-full items-center gap-1.5 rounded-md py-1.5 pl-4 pr-2 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
-                      >
-                        <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${appsFavOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
-                        <span>Favorites</span>
-                        <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{pinnedSidebarApps.length}</span>
-                      </button>
-                    </li>
-                    {appsFavOpen && pinnedSidebarApps.map(renderAppRow)}
-                  </>
-                )}
-                {/* All - every connected app, collapsed by default. */}
-                {restSidebarApps.length > 0 && (
-                  <>
-                    <li className="mt-1 first:mt-0">
-                      <button
-                        onClick={() => setAppsAllOpen((v) => !v)}
-                        title={`${appsAllOpen ? "Collapse" : "Expand"} All`}
-                        className="group/h flex w-full items-center gap-1.5 rounded-md py-1.5 pl-4 pr-2 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
-                      >
-                        <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${appsAllOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
-                        <span>{pinnedSidebarApps.length > 0 ? "All" : "Connected"}</span>
-                        <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{restSidebarApps.length}</span>
-                      </button>
-                    </li>
-                    {appsAllOpen && restSidebarApps.map(renderAppRow)}
-                  </>
-                )}
+                {/* The home screen = starred apps only (any mode). The star on a
+                    row removes it from home; the Apps panel adds new ones. */}
+                {favoritedSidebarApps.map(renderAppRow)}
                 {/* Add another app. */}
                 <li className="mt-0.5">
                   <button
@@ -716,6 +671,7 @@ export function Sidebar({
               </ul>
             ) : (
               <div className="px-2">
+                <p className="mt-0.5 px-4 py-1.5 text-[11px] leading-relaxed text-text-muted">Star an app in Apps to pin it here.</p>
                 <button
                   onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
                   className="mt-0.5 flex w-full items-center gap-2 rounded-md py-1.5 pl-4 pr-2 text-left text-xs text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
