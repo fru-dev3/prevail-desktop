@@ -5,7 +5,7 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, ChevronRight, FolderOpen, Loader2, Pencil, Plug, Plus, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, FolderOpen, Loader2, Pencil, Plug, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { appName, relTime, titleCase } from "./format";
 import { PREF, getPref, lsGet, lsSet } from "./storage";
@@ -26,7 +26,12 @@ export function appStatus(a: EngineApp): AppStatus {
   if (s.includes("sync") || s.includes("connecting") || s.includes("probing")) return "connecting";
   if (!a.configured) return "disconnected";
   if (a.lastError || s.includes("error") || s.includes("expired") || s.includes("fail") || s.includes("auth")) return "attention";
-  if (!a.lastSuccessTs) return "authorized"; // creds present, but we haven't pulled real data yet
+  // The fetch gate (engine: daemon-sync.ts). "connected" requires that the
+  // connector has actually pulled real data at least once - firstFetchOk is the
+  // authoritative signal; lastSuccessTs is the legacy fallback for apps last
+  // synced before the gate existed. Creds present but no real fetch yet =
+  // "authorized · verifying" (amber), never green.
+  if (!a.firstFetchOk && !a.lastSuccessTs) return "authorized";
   return "connected";
 }
 
@@ -38,18 +43,49 @@ const STATUS_META: Record<AppStatus, { glyph: string; label: string; tint: strin
   disconnected: { glyph: "○", label: "Not connected",   tint: "text-text-muted", ring: "border-border",    dot: "bg-text-muted/40" },
 };
 
-// Per-app credential fields for key-based connectors (apps redesign P1). Each
-// app's auth_env_vars are rendered as inline fields and stored in the Keychain
-// via app_secret_set. OAuth apps are NOT listed here — they use the "Sign in"
-// button. Grow this as connectors are brought to the fetch-gated model (P2 reads
-// it from each manifest's auth_env_vars instead of this static map).
-const CREDS_FIELDS: Record<string, { env: string; label: string; kind: "secret" | "toggle"; on?: string; off?: string }[]> = {
+type CredField = { env: string; label: string; kind: "secret" | "toggle"; on?: string; off?: string };
+
+// Hand-tuned credential layouts for connectors that benefit from extras a bare
+// env-var list can't express (e.g. PayPal's Sandbox/Live toggle + nicer labels).
+// Everything NOT listed here is now driven generically by the manifest's
+// auth_env_vars (see genericCredFields) - no per-app code needed to add a
+// key-based connector. OAuth apps use the "Sign in" button, not these fields.
+const CREDS_FIELDS: Record<string, CredField[]> = {
   paypal: [
     { env: "PAYPAL_CLIENT_ID", label: "Client ID", kind: "secret" },
     { env: "PAYPAL_CLIENT_SECRET", label: "Secret", kind: "secret" },
     { env: "PAYPAL_ENV", label: "Sandbox (test credentials)", kind: "toggle", on: "sandbox", off: "live" },
   ],
 };
+
+// Turn an env-var name into a human label: drop the provider prefix and the
+// trailing token kind, title-case the rest. PAYPAL_CLIENT_ID -> "Client ID",
+// OURA_PERSONAL_ACCESS_TOKEN -> "Personal Access Token", GITHUB_TOKEN -> "Token".
+function humanizeEnv(env: string): string {
+  const noPrefix = env.replace(/^[A-Z0-9]+_/, "") || env;
+  return noPrefix
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\bId\b/g, "ID")
+    .replace(/\bApi\b/g, "API")
+    .replace(/\bUrl\b/g, "URL");
+}
+
+// Generic credential fields straight from the manifest's auth_env_vars - the
+// fetch-gated replacement for the static map. Each var becomes a secret field;
+// the entered value is stored in the OS keychain and injected as env.
+function genericCredFields(app: EngineApp): CredField[] {
+  return (app.authEnvVars ?? []).map((env) => ({ env, label: humanizeEnv(env), kind: "secret" as const }));
+}
+
+// The credential spec for an app: the hand-tuned layout if one exists, else the
+// generic auth_env_vars-driven fields.
+function credFieldsFor(app: EngineApp): CredField[] | undefined {
+  if (CREDS_FIELDS[app.id]) return CREDS_FIELDS[app.id];
+  const generic = genericCredFields(app);
+  return generic.length ? generic : undefined;
+}
 
 // "MCP" / "API" / "Browser" / "CLI" / "Composio" from the engine's integration id.
 function methodLabel(integration: string): string {
@@ -291,14 +327,31 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
     } catch (e) { console.error("set schedule", e); }
     finally { setSchedBusy(false); }
   };
-  // Apps redesign P1: generic credential entry, driven by a per-app field spec
-  // (CREDS_FIELDS) instead of a PayPal hardcode. The user's only step is pasting
-  // what a key-based connector needs; on save we store each value in the Keychain
-  // (app_secret_set) and immediately run a real sync — the card only turns green
-  // if that fetch actually succeeds. OAuth apps use the "Sign in" button instead.
-  const credSpec = CREDS_FIELDS[app.id];
+  // Apps redesign P1: generic credential entry, driven by the manifest's
+  // auth_env_vars (credFieldsFor) instead of a PayPal hardcode. The user's only
+  // step is pasting what a key-based connector needs; on save we store each value
+  // in the Keychain (app_secret_set) and immediately run a real sync - the card
+  // only turns green if that fetch actually succeeds. OAuth apps use the "Sign in"
+  // button; MCP apps use the guided-setup card (which renders these same fields).
   const isOAuth = (app.integration || "").toLowerCase().includes("oauth");
-  const needsCreds = !!credSpec || isOAuth;
+  const isMcp = (app.integration || "").toLowerCase().includes("mcp");
+  const credSpec = credFieldsFor(app);
+  // Fully delete a connector (mirror of "Connect") so the user can remove a
+  // duplicate / mistaken app and recreate it. Two-step confirm; the engine
+  // refuses to delete bundled connectors.
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
+  const removeApp = async () => {
+    setDeleting(true); setDeleteErr(null);
+    try {
+      const r = await invoke<{ ok: boolean; error?: string }>("engine_app_remove", { id: app.id });
+      if (r.ok) { window.dispatchEvent(new CustomEvent("prevail:apps-changed")); await onReload(); }
+      else setDeleteErr(r.error || "could not delete this app");
+    } catch (e) { setDeleteErr(String(e).slice(0, 200)); }
+    finally { setDeleting(false); }
+  };
+  const needsCreds = (!!credSpec || isOAuth) && !isMcp;
   const [credVals, setCredVals] = useState<Record<string, string>>({});
   const [credBusy, setCredBusy] = useState(false);
   const [credMsg, setCredMsg] = useState<string | null>(null);
@@ -331,6 +384,33 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
       await verifySync();
       setCredMsg("Signed in — verified by a real fetch.");
     } catch (e) { setCredMsg(`Sign-in failed: ${String(e).slice(0, 200)}`); }
+    finally { setCredBusy(false); }
+  };
+  // MCP guided setup (integration === "mcp"): show the server's install/run
+  // command, collect whatever env the server needs into the Keychain, then
+  // verify by a REAL tool call - engine_app_sync spawns the local MCP server and
+  // calls one tool; the fetch gate only turns the card green if it returns data.
+  const [mcpCopied, setMcpCopied] = useState(false);
+  const mcpCmd = (app.mcpSetup?.install || app.mcpSetup?.command || "").trim();
+  const copyMcp = async () => {
+    if (!mcpCmd) return;
+    try { await navigator.clipboard.writeText(mcpCmd); setMcpCopied(true); window.setTimeout(() => setMcpCopied(false), 1500); }
+    catch { /* clipboard blocked - the command is still visible to copy by hand */ }
+  };
+  const setupMcp = async () => {
+    setCredBusy(true); setCredMsg("Saving keys + verifying the MCP server by a real tool call…");
+    try {
+      for (const f of credSpec ?? []) {
+        if (f.kind === "toggle") {
+          await invoke("app_secret_set", { name: f.env, value: credVals[f.env] === "on" ? (f.on ?? "on") : (f.off ?? "off") });
+        } else if ((credVals[f.env] ?? "").trim()) {
+          await invoke("app_secret_set", { name: f.env, value: credVals[f.env].trim() });
+        }
+      }
+      await verifySync();
+      setCredVals((v) => { const n = { ...v }; for (const f of credSpec ?? []) if (f.kind === "secret") delete n[f.env]; return n; });
+      setCredMsg("Verified. The MCP server returned data. (Green once the sync succeeds.)");
+    } catch (e) { setCredMsg(`Couldn't verify: ${String(e).slice(0, 200)}`); }
     finally { setCredBusy(false); }
   };
   // P4 - re-evaluate the connection method: maybe a better one exists now.
@@ -461,6 +541,55 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
                 )}
                 {credMsg && <span className="text-[11px] text-text-muted">{credMsg}</span>}
                 {app.id === "paypal" && !isOAuth && <span className="text-[10px] text-text-muted/70">Create a REST app at developer.paypal.com with Transaction Search enabled. Stored in your Keychain; used read-only.</span>}
+              </div>
+            </Detail>
+          )}
+          {/* MCP guided setup: 1) stand up the local server, 2) paste any keys it
+              needs (Keychain), 3) verify by a real tool call. The card only goes
+              green when the server returns data (the engine's fetch gate). */}
+          {isMcp && (
+            <Detail label="MCP setup">
+              <div className="flex flex-col gap-2.5">
+                <div>
+                  <div className="font-mono text-[9px] uppercase tracking-wider text-accent">1 · Run the MCP server</div>
+                  {mcpCmd ? (
+                    <div className="mt-1 flex items-stretch gap-1.5">
+                      <code className="min-w-0 flex-1 overflow-x-auto whitespace-pre rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">{mcpCmd}</code>
+                      <button onClick={copyMcp} title="Copy command"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+                        {mcpCopied ? <Check className="h-3 w-3 text-ok" /> : <Plug className="h-3 w-3" />} {mcpCopied ? "copied" : "copy"}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-[11px] text-text-muted">Prevail spawns this connector's MCP server locally on demand. No install command needed.</p>
+                  )}
+                  <p className="mt-1 text-[10px] text-text-muted/70">Runs locally over stdio. Many servers (npx-based) install themselves on first run.</p>
+                </div>
+                {credSpec && credSpec.length > 0 && (
+                  <div>
+                    <div className="font-mono text-[9px] uppercase tracking-wider text-accent">2 · Keys the server needs</div>
+                    <div className="mt-1 flex flex-col gap-1.5">
+                      {credSpec.map((f) => f.kind === "toggle" ? (
+                        <label key={f.env} className="flex items-center gap-2 text-[11px] text-text-secondary">
+                          <input type="checkbox" checked={credVals[f.env] === "on"} onChange={(e) => setCredVals((v) => ({ ...v, [f.env]: e.target.checked ? "on" : "off" }))} className="h-3 w-3 accent-[var(--color-accent)]" />
+                          {f.label}
+                        </label>
+                      ) : (
+                        <input key={f.env} type="password" value={credVals[f.env] ?? ""} onChange={(e) => setCredVals((v) => ({ ...v, [f.env]: e.target.value }))} placeholder={f.label} autoComplete="off"
+                          className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <div className="font-mono text-[9px] uppercase tracking-wider text-accent">{credSpec && credSpec.length > 0 ? "3" : "2"} · Verify</div>
+                  <button onClick={setupMcp} disabled={credBusy}
+                    className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+                    {credBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}{credBusy ? "Verifying…" : "Verify connection"}
+                  </button>
+                  <p className="mt-1 text-[10px] text-text-muted/70">Spawns the server and calls one tool. The card turns green only if it returns real data.</p>
+                </div>
+                {credMsg && <span className="text-[11px] text-text-muted">{credMsg}</span>}
               </div>
             </Detail>
           )}
@@ -614,6 +743,25 @@ function AppCard({ app, vaultPath, status, open, busy, onToggle, onSync, onSetEn
               {enabled ? "Scheduled sync on" : "Scheduled sync off"}
             </span>
             {status === "connected" && <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-ok"><Check className="h-3 w-3" /> working</span>}
+          </div>
+          {/* Delete - remove this connector entirely (so a duplicate can be
+              recreated). Confirm inline; the engine refuses bundled connectors. */}
+          <div className="flex items-center gap-2 pt-1">
+            {confirmDelete ? (
+              <>
+                <button onClick={removeApp} disabled={deleting}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-danger/50 bg-danger/10 px-2.5 py-1 text-[11px] text-danger hover:bg-danger/20 disabled:opacity-50">
+                  {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete {app.title} for good
+                </button>
+                <button onClick={() => { setConfirmDelete(false); setDeleteErr(null); }} className="text-[11px] text-text-muted hover:text-text-secondary">cancel</button>
+              </>
+            ) : (
+              <button onClick={() => setConfirmDelete(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-danger hover:text-danger">
+                <Trash2 className="h-3 w-3" /> Delete app
+              </button>
+            )}
+            {deleteErr && <span className="text-[11px] text-danger">{deleteErr}</span>}
           </div>
         </div>
       )}

@@ -789,6 +789,13 @@ pub fn engine_app_sync(id: String, vault: String) -> Result<serde_json::Value, S
     run_engine_json(&["connectors", "sync", &id, "--vault", &vault, "--json"])
 }
 
+/// Fully delete a user-installed connector (removes its whole folder). Bundled
+/// connectors are refused by the engine. Returns { ok, removed?, error? }.
+#[tauri::command]
+pub fn engine_app_remove(id: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "remove", &id, "--json"])
+}
+
 /// List the data files a connector has actually loaded (apps redesign: "showcase
 /// what data has been loaded in the app's folder"). Reads <vault>/data/apps/<id>/
 /// data/** recursively → [{ path, name, bytes, mtime }], newest first. Empty when
@@ -1085,6 +1092,43 @@ pub(crate) const DIRECT_PROVIDER_ENVS: &[(&str, &str)] = &[
 pub(crate) fn app_secret_index_path() -> Option<std::path::PathBuf> {
     let home = std::env::var("HOME").ok()?;
     Some(std::path::Path::new(&home).join(".prevail").join("appsecrets.index"))
+}
+
+/// The engine's config file (~/.prevail/config.json). This is the SINGLE source
+/// of truth for the active vault: the headless daemons and every engine spawn
+/// that doesn't get an explicit --vault read it. The desktop keeps the UI in
+/// lockstep with this file (read on boot, written on vault switch) so the UI,
+/// the engine, and the daemons never diverge onto different vault folders.
+fn engine_config_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    Some(std::path::Path::new(&home).join(".prevail").join("config.json"))
+}
+
+/// Read the engine's configured vault path (the authoritative active vault).
+#[tauri::command]
+pub fn engine_config_vault() -> Option<String> {
+    let p = engine_config_path()?;
+    let raw = std::fs::read_to_string(p).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    v.get("vaultPath").and_then(|x| x.as_str()).map(|s| s.to_string())
+}
+
+/// Point the engine's config at `path`, preserving every other field. Called by
+/// the desktop whenever the active vault changes so the daemons + engine follow
+/// the UI instead of stranding on a stale vault.
+#[tauri::command]
+pub fn engine_set_config_vault(path: String) -> Result<(), String> {
+    let p = engine_config_path().ok_or("no HOME")?;
+    if let Some(dir) = p.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let mut v: serde_json::Value = std::fs::read_to_string(&p)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    v["vaultPath"] = serde_json::Value::String(path);
+    let body = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
+    std::fs::write(&p, body).map_err(|e| format!("write config.json failed: {e}"))
 }
 
 /// Every stored app-connector secret as (env-var name, value) pairs, read from

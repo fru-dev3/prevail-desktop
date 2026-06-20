@@ -33,6 +33,11 @@ pub struct DistillConfig {
     pub interval_sec: u64,
 }
 
+// Default distill cadence in seconds (15 min), mirroring the frontend's
+// distillCfgFromPrefs default. Used to fill DistillStatus.interval_sec for the UI
+// when the daemon hasn't started yet, so "next run" can still be estimated.
+const DEFAULT_INTERVAL_SEC: u64 = 900;
+
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct DistillStatus {
     pub running: bool,
@@ -40,6 +45,11 @@ pub struct DistillStatus {
     pub last_error: Option<String>,
     pub domains_distilled: u64,
     pub lines_distilled: u64,
+    // The effective cadence (seconds) the daemon waits between passes, so the UI
+    // can show when the next run is due. Mirrors the loop's interval_sec.max(30);
+    // when the daemon isn't running this stays at its default (filled in by the
+    // status getter from the configured/default interval).
+    pub interval_sec: u64,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -80,7 +90,14 @@ impl DistillState {
     pub async fn status(&self) -> DistillStatus {
         let arc = { self.inner.lock().unwrap_or_else(|e| e.into_inner()).status.clone() };
         let s = arc.lock().await;
-        s.clone()
+        let mut out = s.clone();
+        // When the daemon has never started (or was stopped) interval_sec is still
+        // 0; hand the UI the default cadence so it can show "runs every Nm" rather
+        // than a meaningless 0. Matches the loop's interval_sec.max(30) floor.
+        if out.interval_sec == 0 {
+            out.interval_sec = DEFAULT_INTERVAL_SEC;
+        }
+        out
     }
 
     pub async fn stop(&self) {
@@ -101,13 +118,15 @@ impl DistillState {
         self.stop().await;
         let (stop_tx, mut stop_rx) = watch::channel(false);
         let arc = { self.inner.lock().unwrap_or_else(|e| e.into_inner()).status.clone() };
+        let effective_interval_sec = cfg.interval_sec.max(30);
         {
             let mut s = arc.lock().await;
             *s = DistillStatus::default();
             s.running = true;
+            s.interval_sec = effective_interval_sec;
         }
         let status_for_task = arc.clone();
-        let interval = Duration::from_secs(cfg.interval_sec.max(30));
+        let interval = Duration::from_secs(effective_interval_sec);
 
         let handle = tauri::async_runtime::spawn(async move {
             loop {
@@ -116,6 +135,7 @@ impl DistillState {
                 {
                     let mut s = status_for_task.lock().await;
                     s.last_run_ts = Some(now_secs());
+                    s.interval_sec = effective_interval_sec;
                     match res {
                         Ok((domains, lines)) => {
                             s.domains_distilled += domains;

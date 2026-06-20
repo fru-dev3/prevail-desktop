@@ -435,6 +435,17 @@ export type EngineApp = {
   // and the last few run-log entries (manual + autonomous).
   nextDueTs?: number | null;
   runs?: { ts: number; ok: boolean; skill?: string; summary?: string; error?: string; artifacts?: number }[];
+  // The fetch gate: has this connector EVER pulled real data? Combined with
+  // lastSuccessTs by appStatus() to separate a fetch-verified "connected" from
+  // "authorized · verifying" (creds present, nothing pulled yet).
+  firstFetchOk?: boolean;
+  // Generic per-method auth: env-var names this connector needs (drives the
+  // inline credential fields instead of the old PayPal-only hardcode). Empty
+  // for OAuth (sign-in flow) and no-secret connectors.
+  authEnvVars?: string[] | null;
+  // For integration === "mcp": how the guided-setup card stands up the local
+  // MCP server. `install` is shown/run with consent; `command` is the spawn target.
+  mcpSetup?: { install?: string; command?: string } | null;
 };
 
 export type ConnectorCatalog = { version: number; domains?: string[]; apps: CatalogApp[]; patterns?: Record<string, { tier: string; label: string }> };

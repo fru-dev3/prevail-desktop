@@ -18,16 +18,41 @@ import type { DaemonStatus, SkillEntry } from "./types";
 // One collapsible card per routine. Routes through the canonical CollapsibleSection
 // (icon + title left, summary + running dot right, collapsed by default) so the
 // Daemons page looks identical to every other collapsible in the app.
-function DaemonGroup({ icon, title, summary, running, defaultOpen = false, children }: {
+// Color-coded "alive" dot so one glance tells running daemons apart from idle/off
+// ones. Running = bright green (pulses so it reads as alive); enabled-but-not-
+// running = amber (idle but armed); disabled = muted grey.
+function DaemonDot({ running, enabled = true }: { running: boolean; enabled?: boolean }) {
+  const cls = running
+    ? "bg-ok pulse-soft"
+    : enabled
+      ? "bg-warn"
+      : "bg-text-muted/40";
+  const title = running ? "running" : enabled ? "idle" : "off";
+  return <span className={`h-2 w-2 shrink-0 rounded-full ${cls}`} title={title} />;
+}
+
+function DaemonGroup({ icon, title, summary, running, enabled = true, defaultOpen = false, children }: {
   icon: LucideIcon;
   title: string;
-  summary?: string;
+  summary?: React.ReactNode;
+  // A daemon row passes a running boolean: when present we render a color-coded
+  // state dot. Producer views (no daemon) leave it undefined and get no dot.
   running?: boolean;
+  enabled?: boolean;
   defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
+  // The canonical CollapsibleSection dot is gold/muted; for daemons we want a
+  // vivid green/amber/grey state dot, so render our own at the head of the
+  // summary and suppress the section's own status dot.
+  const summaryNode = running === undefined ? summary : (
+    <span className="inline-flex items-center gap-1.5">
+      <DaemonDot running={running} enabled={enabled} />
+      {summary != null && summary !== "" && <span>{summary}</span>}
+    </span>
+  );
   return (
-    <CollapsibleSection icon={icon} title={title} summary={summary} status={running} defaultOpen={defaultOpen}>
+    <CollapsibleSection icon={icon} title={title} summary={summaryNode} defaultOpen={defaultOpen}>
       {children}
     </CollapsibleSection>
   );
@@ -129,6 +154,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         icon={Brain}
         title="Distill · memory"
         running={!!distillSt?.running}
+        enabled={dAuto}
         summary={distillSt?.lines_distilled ? `${distillSt.lines_distilled} lines distilled` : dAuto ? `auto · every ${dInterval}s` : "manual only"}
       >
         <DaemonCard
@@ -210,6 +236,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         icon={ListChecks}
         title="Task generation"
         running={!!taskgenSt?.running}
+        enabled={taskgenEnabled}
         summary={taskgenSt?.tasks_generated ? `${taskgenSt.tasks_generated} generated` : taskgenEnabled ? "on" : "off"}
       >
         <DaemonCard
@@ -251,6 +278,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         icon={GraduationCap}
         title="Skill learning"
         running={!!skillgenSt?.running}
+        enabled={skillgenEnabled}
         summary={skillgenSt?.skills_created ? `${skillgenSt.skills_created} learned` : skillgenEnabled ? "on" : "off"}
       >
         <DaemonCard
@@ -292,6 +320,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         icon={Lightbulb}
         title="Intent distillation"
         running={!!intentSt?.running}
+        enabled={intentEnabled}
         summary={intentSt?.last_intent_count ? `${intentSt.last_intent_count} intents` : intentEnabled ? "auto" : "off"}
       >
         {/* Like the other routines: when it last ran + when it runs next. */}
@@ -301,7 +330,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
           const nextSec = last && intentEnabled ? last + (Number(intentInterval) || 0) : 0;
           return (
             <div className="mb-2 flex items-center gap-2 px-1 font-mono text-[10px] text-text-muted">
-              <Lightbulb className="h-3 w-3 shrink-0 text-accent" />
+              <DaemonDot running={!!intentSt?.running} enabled={intentEnabled} />
               <span>
                 {intentSt?.running ? "running" : "idle"}
                 {last ? ` · last pass ${formatFreshness(Math.max(0, Date.now() / 1000 - last))}` : ""}

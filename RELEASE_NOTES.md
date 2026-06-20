@@ -1,33 +1,36 @@
-# Prevail v0.1.141
+# Prevail v0.1.142
 
-A big release focused on the Arena (benchmarking), a smarter daily-loop layer, clearer navigation, and a pile of correctness fixes.
+Apps that connect for real (with MCP), one consistent vault, and a broad sweep of UI and clarity fixes from a hands-on review.
 
 ## New
 
-- **Model Scout.** A built-in daily loop in your General domain that searches the web for AI models worth benchmarking, covering both open-weight models (Llama, Qwen, DeepSeek, Kimi, Mistral, Gemma) and frontier models (Claude, GPT, Gemini, Grok). It writes a ranked, classified shortlist you can fold into the Arena. Surfaced as a "Model Scout" panel in Arena, with a "Scan now" button.
-- **Spark.** A serendipity panel that surfaces AI-generated discoveries from rotating models, each attributed to the model that made it. Generate 1 to 10 at a time, save the good ones, dismiss the rest, open one straight into chat, or turn it into a task or routine. Captures full metadata (date, time, model) for every spark.
-- **3D Arena.** Benchmark runtimes on three axes at once: intelligence, speed, and cost-per-token, so the "best" model is the one that fits the job and the budget.
-- **Vault Lock.** A simple toggle that restricts the assistant's filesystem access to your vault only, as a distinct dimension from Bunker Mode.
-- **App suggestions.** A learning layer that proposes real apps and services to connect per domain (for example Capital One for Wealth, Garmin Connect for Health), grounded in what you actually do, refreshed daily.
-- **Live count badges.** Work, Insights, and Loops in the top navigation now show live counts, computed in the background so they are always current.
-
-## Improved
-
-- **Councils, unified.** Benchmark Suites and Councils are now one "Council" concept: a saved group of models you can reuse across the Arena and chat. Councils are editable in place.
-- **Live benchmark progress.** A running benchmark now shows the question being answered and advances as each one completes, instead of appearing frozen at 0 of N.
-- **Arena polish.** Honest rerun banner, clearer AI-drafted questions (floated to the top with a review badge), archived questions excluded from runs, and the current domain highlighted and led in the Model-by-domain matrix.
-- **Council incognito** moved into the Modes menu with a ribbon indicator, consistent with chat.
-- **Colorful Work board.** Domains are color-coded and owner icons are filled, so Me vs AI reads at a glance.
-- **Recommendations panel** shows the learning daemon's last and next run, with a "Run now" button to force a pass.
-- **Trimmed runtime catalog** down to the runtimes that matter, with correct logos.
-- **Top navigation** reordered to Work, Insights, Loops as one group, with a cleaner, collapsible cluster.
-- **Settings header** redesign, consistent model labels everywhere, and icons for Me vs AI.
+- **Fetch-gated connections.** An app now reads "Connected" only after it has actually pulled real data at least once. Until then it shows "Authorized, verifying" (amber), so a connector can no longer look green without ever fetching anything.
+- **MCP guided setup.** Connecting an app over MCP now walks you through it: run the server, paste any keys it needs (stored in your Keychain), then Verify, which spawns the server and calls one tool. The card turns green only if it returns real data.
+- **Generic credentials for any connector.** Per-app credential fields are now driven by each connector's manifest, so any key-based app gets the right inputs, not just the few that were hardcoded.
+- **Delete an app.** You can remove a connector entirely (so a duplicate or mistaken one can be recreated), with an inline confirm. Bundled connectors stay protected.
+- **Spark, upgraded.** An optional topic prompt (hidden behind a small icon) lets you spark on a subject like "ancient Rome" or "deep-sea biology"; otherwise it stays fully random across dozens of fields and levels (grade-school to PhD to trade-school). Output is cleaned of stray terminal characters, every spark is archived to a file with its model and settings, and an anti-repetition pass keeps the stream from circling the same ideas.
+- **Icebox for tasks.** A new task status to set something aside that you will not do but do not want marked done. Iceboxed tasks drop out of the active board and can be restored from an Icebox view.
+- **Vault Lock indicator.** The footer now shows whether Vault Lock is on, so you always know reads and writes are confined to your vault.
 
 ## Fixed
 
-- **Work count now appears.** The Work badge was blank even with dozens of open tasks; it now counts open work across every domain directly, independent of the navigation's domain list, so the number is always right.
-- **Legible badges.** The count badges were illegible (white on white in one state, near-black in another). They are now AI-teal pills, sized to fit the number, and readable on both selected and unselected tabs in every theme.
-- **Benchmark reliability.** Fixed runs that errored or hung at 0 of N: a stale bundled engine, archived questions being counted as runnable, a split between the build and legacy question and run locations, and Cancel not releasing a stuck run.
-- **Vault stays clean.** New domains are no longer ever created at the vault root; they always live under data/domains, keeping the vault to just data/ and build/.
-- **Usage tab** now populates as you chat.
-- Many smaller layout and consistency fixes throughout.
+- **One consistent vault.** The app, the engine, and the background daemons now all read the same vault from a single source of truth. This fixes empty history, blank activity, missing usage, and domain lists that did not match between screens.
+- **Work badge and count.** The Work count badge now renders as a proper colored pill like the others, and the number matches what the board actually shows instead of inflating.
+- **Sync feedback.** Running a sync now shows a clear working state (spinner, status, and a progress sweep) instead of looking frozen.
+
+## Improved
+
+- **Loop Board.** Quieter rows with the detail tucked into a click-to-expand panel, where you can Run, Edit, Archive, or Delete a loop. Grouping and sort now behave consistently, and the "Group by domain" selection is obvious.
+- **Runtimes.** Health reads at a glance now: valid is green with a check, not-installed is clearly distinct. Provider icons are larger and legible, and runtimes are split into Cloud and Local sections.
+- **Daemons.** A running daemon shows a bright green status so you can tell at a glance what is actually working, without expanding anything.
+- **Council.** The panel diagram moves left and a live stats column shows the make-up of your council (open-source vs cloud, providers, local vs remote, and a relative cost estimate) that updates as you add or remove models.
+- **Recommendations.** The learn loop now shows when the next pass runs, not just the last one.
+- **Activity.** Every entry is clickable to drill into the detail behind it.
+- **Usage.** A Refresh button to pull the latest numbers on demand.
+- **Omega.** Cleaner rendering (no raw markup) and a short note explaining what Omega is versus your declared ideal state.
+- **Preferences.** The runtime picker collapses independently with the chevron on the left, so you can close one without opening another.
+- **Settings headers.** A tasteful right-side visual fills the previously blank space on every settings page.
+
+---
+
+Built on Apple Silicon. First launch is unsigned for this channel: right-click the app and choose Open, then confirm.

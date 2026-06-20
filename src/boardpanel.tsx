@@ -3,7 +3,7 @@
 // as workflows via the Loop steward; anything consequential surfaces in the
 // Decision Inbox. Reads tasks_read_all; moves via tasks_set_status/tasks_set_owner.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Bot, Briefcase, CalendarRange, Columns3, Filter, Flag, Inbox, LayoutGrid, List, Loader2, Play, Plus, RotateCcw, Trash2, User } from "lucide-react";
+import { ArrowRight, Bot, Briefcase, CalendarRange, Columns3, Filter, Flag, Inbox, LayoutGrid, List, Loader2, Play, Plus, RotateCcw, Snowflake, Trash2, User } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
@@ -21,7 +21,7 @@ function domainColor(domain: string): string {
   return DOMAIN_PALETTE[h % DOMAIN_PALETTE.length];
 }
 
-type BoardView = "board" | "list" | "horizon" | "needs" | "trash";
+type BoardView = "board" | "list" | "horizon" | "needs" | "trash" | "icebox";
 
 const COLUMNS: { key: string; label: string }[] = [
   { key: "todo", label: "To-do" },
@@ -156,6 +156,15 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
   const shown = useMemo(
     () => tasks.filter((t) =>
       !t.trashed && // trashed tasks live in the Trash view, not the normal board
+      t.status !== "icebox" && // iceboxed tasks are set aside; they live in the Icebox view
+      (ownerFilter === "all" || t.owner === ownerFilter) &&
+      (domainFilter === "all" || t.domain === domainFilter)),
+    [tasks, ownerFilter, domainFilter],
+  );
+  // Set-aside tasks: not done, not trashed, just parked. Recoverable from the Icebox view.
+  const iceboxed = useMemo(
+    () => tasks.filter((t) =>
+      t.status === "icebox" && !t.trashed &&
       (ownerFilter === "all" || t.owner === ownerFilter) &&
       (domainFilter === "all" || t.domain === domainFilter)),
     [tasks, ownerFilter, domainFilter],
@@ -332,7 +341,7 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
         <div className="mt-1.5 flex items-center gap-1.5 pl-5">
           <select value={t.status} onChange={(e) => setStatus(t, e.target.value)} disabled={busy === `s:${t.id}`}
             className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none">
-            {["todo", "doing", "review", "blocked", "done"].map((s) => <option key={s} value={s}>{s}</option>)}
+            {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
           <button onClick={() => toggleOwner(t)} disabled={busy === `o:${t.id}`}
             title={ai ? "Take it back (hand to me)" : "Hand to AI to run as a workflow"}
@@ -373,7 +382,7 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
         </button>
         <select value={t.status} onChange={(e) => setStatus(t, e.target.value)} disabled={busy === `s:${t.id}`}
           className="shrink-0 rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none">
-          {["todo", "doing", "review", "blocked", "done"].map((s) => <option key={s} value={s}>{s}</option>)}
+          {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <button onClick={() => toggleOwner(t)} disabled={busy === `o:${t.id}`}
           title={ai ? "Take it back (hand to me)" : "Hand to AI to run as a workflow"}
@@ -388,7 +397,7 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
   };
 
   // List view ordering: open work first (by column order), done last; then by due.
-  const ORDER: Record<string, number> = { todo: 0, doing: 1, blocked: 1, review: 2, done: 3 };
+  const ORDER: Record<string, number> = { todo: 0, doing: 1, blocked: 1, review: 2, done: 3, icebox: 4 };
   const listed = useMemo(
     () => [...shown].sort((a, b) =>
       (ORDER[a.status] ?? 0) - (ORDER[b.status] ?? 0) ||
@@ -490,6 +499,14 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
             <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-surface-warm px-1 font-mono text-[9px] font-bold text-text-secondary">{trashed.length}</span>
           )}
         </button>
+        {/* Icebox: tasks set aside (won't do, not done) - recoverable. */}
+        <button onClick={() => setView("icebox")} title="Set-aside tasks (recoverable)"
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-colors ${view === "icebox" ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:bg-surface-warm"}`}>
+          <Snowflake className="h-3.5 w-3.5" /> Icebox
+          {iceboxed.length > 0 && (
+            <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-surface-warm px-1 font-mono text-[9px] font-bold text-text-secondary">{iceboxed.length}</span>
+          )}
+        </button>
         {/* Add task */}
         <div className="ml-auto flex items-center gap-1.5">
           <input value={addText} onChange={(e) => { setAddText(e.target.value); if (addErr) setAddErr(null); }} onKeyDown={(e) => { if (e.key === "Enter") addTask(); }}
@@ -539,6 +556,30 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
           {trashed.length === 0 && (
             <div className="rounded-xl border border-dashed border-border-subtle px-4 py-10 text-center text-sm text-text-muted">
               Trash is empty. Deleted tasks land here and can be restored.
+            </div>
+          )}
+        </div>
+      ) : view === "icebox" ? (
+        <div className="flex flex-col gap-1.5">
+          <div className="mb-1 flex items-center gap-2">
+            <Snowflake className="h-4 w-4 text-text-muted" />
+            <span className="font-semibold text-text-primary">Icebox</span>
+            <span className="text-xs text-text-muted">{iceboxed.length === 0 ? "empty" : `${iceboxed.length} set aside - change status to bring back`}</span>
+          </div>
+          {iceboxed.map((t) => (
+            <div key={`ice:${t.domain}:${t.id ?? t.text}`} className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface px-3 py-2">
+              <span onClick={() => t.id && setOpenId(t.id)} title="Open task"
+                className="min-w-0 flex-1 cursor-pointer truncate text-[13px] text-text-secondary hover:text-accent">{t.text}</span>
+              <span className="shrink-0 rounded-full bg-surface-warm px-1.5 py-px font-mono text-[10px] text-text-muted">{titleCase(t.domain)}</span>
+              <select value={t.status} onChange={(e) => setStatus(t, e.target.value)} disabled={busy === `s:${t.id}`}
+                className="shrink-0 rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none">
+                {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          ))}
+          {iceboxed.length === 0 && (
+            <div className="rounded-xl border border-dashed border-border-subtle px-4 py-10 text-center text-sm text-text-muted">
+              Icebox is empty. Set a task's status to icebox to park it here without marking it done.
             </div>
           )}
         </div>

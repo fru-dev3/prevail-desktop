@@ -1,6 +1,6 @@
 // Components extracted from App.tsx.
 import { useEffect, useState } from "react";
-import { Activity, Coins, Cpu, Layers, LucideIcon, MessageSquare, MessagesSquare, TrendingUp, Users } from "lucide-react";
+import { Activity, Coins, Cpu, Layers, Loader2, LucideIcon, MessageSquare, MessagesSquare, RefreshCw, TrendingUp, Users } from "lucide-react";
 import { invoke, listen } from "./bridge";
 import { formatFreshness, titleCase } from "./format";
 import { compactNum, fmtCost } from "./helpers";
@@ -70,7 +70,10 @@ export function UsageDashboard({
   const [loaded, setLoaded] = useState(false);
   // S2: refresh when a chat turn appends usage (event from chatpanel), so the
   // panel populates ~realtime instead of only on a thread/domain/nonce change.
+  // A manual Refresh button bumps the same nonce so the user can force a re-read
+  // (usage is appended async; a button gives an immediate "show me now").
   const [usageNonce, setUsageNonce] = useState(0);
+  const reload = () => setUsageNonce((n) => n + 1);
   useEffect(() => {
     const h = () => setUsageNonce((n) => n + 1);
     window.addEventListener("prevail:usage-updated", h);
@@ -97,9 +100,15 @@ export function UsageDashboard({
   if (!summary || summary.total_turns === 0) {
     if (hideWhenEmpty || !loaded) return null;
     return (
-      <div className="rounded-xl border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
-        No usage recorded {domain ? `for ${titleCase(domain)} ` : ""}yet. Token and cost
-        stats appear here once you start chatting.
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
+        <span>
+          No usage recorded {domain ? `for ${titleCase(domain)} ` : ""}yet. Token and cost
+          stats appear here once you start chatting.
+        </span>
+        <button onClick={reload} title="Check for usage now"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">
+          {loaded ? <RefreshCw className="h-3 w-3" /> : <Loader2 className="h-3 w-3 animate-spin" />} Refresh
+        </button>
       </div>
     );
   }
@@ -138,6 +147,10 @@ export function UsageDashboard({
       <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
         <Activity className="h-3.5 w-3.5" />
         Usage
+        <button onClick={reload} title="Refresh usage now"
+          className="ml-auto inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal text-text-muted hover:border-accent-border hover:text-accent">
+          {loaded ? <RefreshCw className="h-3 w-3" /> : <Loader2 className="h-3 w-3 animate-spin" />} Refresh
+        </button>
       </div>
 
       {/* hero totals - icon chip + big value + context sub, filling each card */}
