@@ -306,6 +306,13 @@ pub async fn run_engine_stream(
     }
     let mut child = scmd.spawn().map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
+    // Track the child by session so the UI can stop it (abort_sessions). This is
+    // what makes a streamed loop run killable: "Stop" / "Stop run" SIGTERMs the
+    // pid registered here, the child exits, and `<prefix>:done` fires as usual.
+    if let Some(pid) = child.id() {
+        crate::children::register_child(&session, pid);
+    }
+
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let session_done = session.clone();
@@ -352,6 +359,7 @@ pub async fn run_engine_stream(
     }
     tauri::async_runtime::spawn(async move {
         let code = child.wait().await.ok().and_then(|s| s.code());
+        crate::children::unregister_child(&session_done);
         let _ = app.emit(
             &done_event,
             serde_json::json!({
@@ -360,6 +368,16 @@ pub async fn run_engine_stream(
             }),
         );
     });
+    Ok(())
+}
+
+/// Fire a native OS notification (e.g. "Loops finished on Calendar"). Thin
+/// wrapper over the notification plugin so the frontend can notify without a
+/// separate JS plugin dependency. Best-effort: a failure to notify never errors.
+#[tauri::command]
+pub fn notify_user(app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    let _ = app.notification().builder().title(title).body(body).show();
     Ok(())
 }
 
