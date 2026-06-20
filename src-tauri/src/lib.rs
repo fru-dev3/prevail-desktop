@@ -444,6 +444,7 @@ pub fn run() {
             nango::nango_connect,
             engine::engine_app_probe,
             engine::engine_app_add,
+            engine::engine_gateway_app_add,
             engine::engine_app_set_domains,
             engine::engine_app_set_integration,
             engine::engine_app_set_schedule,
