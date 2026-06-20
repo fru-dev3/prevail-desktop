@@ -3,7 +3,7 @@
 // as workflows via the Loop steward; anything consequential surfaces in the
 // Decision Inbox. Reads tasks_read_all; moves via tasks_set_status/tasks_set_owner.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Briefcase, CalendarRange, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, CornerUpLeft, Filter, Flag, Inbox, LayoutGrid, List, Loader2, Play, Plus, RotateCcw, SlidersHorizontal, Snowflake, Trash2, User, Zap } from "lucide-react";
+import { Bot, Briefcase, CalendarRange, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, CornerUpLeft, Filter, Flag, Inbox, LayoutGrid, List, Loader2, Play, Plus, RotateCcw, SlidersHorizontal, Snowflake, Trash2, User, X, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
@@ -107,6 +107,7 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
   const [addText, setAddText] = useState("");
   const [addDomain, setAddDomain] = useState("");
   const [addDue, setAddDue] = useState("");
+  const [addModalOpen, setAddModalOpen] = useState(false);
   const [running, setRunning] = useState(false);
   // Collapsed board columns - free real estate for the columns you care about.
   // Persisted; Icebox starts collapsed since it's a rarely-touched parking lot.
@@ -405,7 +406,7 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
           <button onClick={() => toggleOwner(t)} disabled={busy === `o:${t.id}`}
             title={ai ? "Take it back from the agent (hand to me)" : "Hand to the agent to run as a workflow"}
             className={`inline-flex items-center gap-1 rounded border px-1.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide transition-colors disabled:opacity-50 ${ai ? "border-border text-text-muted hover:border-accent-border hover:text-text-primary" : "border-accent-border text-accent hover:bg-accent hover:text-background"}`}>
-            {ai ? <><CornerUpLeft className="h-3 w-3" /> Take back</> : <><Bot className="h-3 w-3" /> To agent</>}
+            {ai ? <CornerUpLeft className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
           </button>
         </div>
       </div>
@@ -448,7 +449,7 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
         <button onClick={() => toggleOwner(t)} disabled={busy === `o:${t.id}`}
           title={ai ? "Take it back from the agent (hand to me)" : "Hand to the agent to run as a workflow"}
           className={`inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide transition-colors disabled:opacity-50 ${ai ? "border-border text-text-muted hover:border-accent-border hover:text-text-primary" : "border-accent-border text-accent hover:bg-accent hover:text-background"}`}>
-          {ai ? <><CornerUpLeft className="h-3 w-3" /> Take back</> : <><Bot className="h-3 w-3" /> To agent</>}
+          {ai ? <CornerUpLeft className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
         </button>
         <button onClick={() => del(t)} title="Delete task" disabled={busy === `d:${t.id}`} className="shrink-0 text-text-muted/40 transition-colors hover:text-danger">
           <Trash2 className="h-3.5 w-3.5" />
@@ -492,6 +493,7 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
         } else {
           setAddMsg(`Added to ${titleCase(domain)}`);
         }
+        setAddModalOpen(false);
         // Also make sure we are on a view that lists tasks (not Trash/Icebox/Needs).
         if (view === "trash" || view === "icebox" || view === "needs") setViewMode("list");
         window.setTimeout(() => setAddMsg(null), 4000);
@@ -606,24 +608,42 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
             </button>
           </>
         )}
-        {/* Add task (always visible) */}
-        <div className="ml-auto flex items-center gap-1.5">
-          <input value={addText} onChange={(e) => { setAddText(e.target.value); if (addErr) setAddErr(null); }} onKeyDown={(e) => { if (e.key === "Enter") addTask(); }}
-            placeholder="Add a task…" className="w-44 rounded-lg border border-border bg-background px-2.5 py-1 focus:border-accent-border focus:outline-none" />
-          {addDomains.length > 0 && (
-            <select value={addDomain} onChange={(e) => setAddDomain(e.target.value)} title="Domain"
-              className="cursor-pointer rounded-lg border border-border bg-background px-2 py-1 text-text-secondary focus:border-accent-border focus:outline-none">
-              {addDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
-            </select>
-          )}
-          <input type="date" value={addDue} onChange={(e) => setAddDue(e.target.value)} title="Due date (optional)"
-            className="cursor-pointer rounded-lg border border-border bg-background px-2 py-1 text-text-muted focus:border-accent-border focus:outline-none" />
-          <button onClick={addTask} disabled={busy === "add"} title="Add task"
-            className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1 font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-            <Plus className="h-3.5 w-3.5" /> Add
-          </button>
-        </div>
+        {/* Add task (always visible) - opens a popup so the toolbar stays clean. */}
+        <button onClick={() => { setAddErr(null); setAddModalOpen(true); }} title="Add a task"
+          className="ml-auto inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1 font-semibold text-background hover:bg-accent-hover">
+          <Plus className="h-3.5 w-3.5" /> Add task
+        </button>
       </div>
+      {/* Add-task popup modal: task text, domain, optional due date. */}
+      {addModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[12vh]" onClick={() => setAddModalOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">Add a task</span>
+              <button onClick={() => setAddModalOpen(false)} className="rounded p-1 text-text-muted hover:bg-surface-warm hover:text-text-primary"><X className="h-4 w-4" /></button>
+            </div>
+            <input autoFocus value={addText} onChange={(e) => { setAddText(e.target.value); if (addErr) setAddErr(null); }} onKeyDown={(e) => { if (e.key === "Enter") addTask(); }}
+              placeholder="What needs doing?" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-accent-border focus:outline-none" />
+            <div className="mt-2 flex items-center gap-2">
+              {addDomains.length > 0 && (
+                <select value={addDomain} onChange={(e) => setAddDomain(e.target.value)} title="Domain"
+                  className="min-w-0 flex-1 cursor-pointer rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-text-secondary focus:border-accent-border focus:outline-none">
+                  {addDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+                </select>
+              )}
+              <input type="date" value={addDue} onChange={(e) => setAddDue(e.target.value)} title="Due date (optional)"
+                className="cursor-pointer rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-text-muted focus:border-accent-border focus:outline-none" />
+            </div>
+            {addErr && <div className="mt-2 text-[12px] text-danger">{addErr}</div>}
+            <div className="mt-3 flex justify-end gap-2">
+              <button onClick={() => setAddModalOpen(false)} className="rounded-lg border border-border px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary">Cancel</button>
+              <button onClick={addTask} disabled={busy === "add"} className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+                {busy === "add" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add task
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {bulkMsg && (
         <div className="mt-1.5 flex justify-start">
           <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${bulkMsg.startsWith("Failed") ? "bg-danger/15 text-danger" : "bg-accent-soft text-accent"}`}>
