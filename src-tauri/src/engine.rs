@@ -841,7 +841,7 @@ fn resolve_composio_bin() -> Option<String> {
 }
 
 /// Cap process output so a chatty installer/login can't blow up the JSON payload.
-fn cap_output(s: &str) -> String {
+pub(crate) fn cap_output(s: &str) -> String {
     let s = s.trim();
     if s.len() <= 4000 {
         s.to_string()
