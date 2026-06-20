@@ -1058,6 +1058,20 @@ pub fn engine_app_set_schedule(
     run_engine_json(&refs)
 }
 
+/// Set (or clear) an app's "what to pull" instruction, which the gateway sync
+/// injects so the user controls exactly what each sync fetches. Empty clears it.
+#[tauri::command]
+pub fn engine_app_set_pull_instructions(id: String, instructions: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "set", &id, "instructions", &instructions, "--json"])
+}
+
+/// Discover what data a gateway app CAN provide (one agent turn over the
+/// gateway). Long-running like a sync; returns { ok, markdown?, error? }.
+#[tauri::command]
+pub fn engine_app_gateway_capabilities(id: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "gateway-capabilities", &id, "--json"])
+}
+
 /// Enable / disable an app's autonomous sync. A disabled app stays configured
 /// and chattable; only the sync daemon's scheduled tick skips it (an explicit
 /// "Sync now" still runs). Returns { ok, path?, enabled?, error? }.

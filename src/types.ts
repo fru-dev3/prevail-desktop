@@ -427,6 +427,8 @@ export type EngineApp = {
   // than connected directly. Keeps each connection mode's list separate (a Nango
   // app must never appear under Direct) and labels the method in the sidebar.
   gateway?: { provider: "composio" | "nango"; toolkit: string } | null;
+  // The user's free-text "what to pull" instruction (drives the gateway sync).
+  pullInstructions?: string | null;
   account: { label?: string; address?: string } | null;
   refresh: { every?: string; at?: string; on?: string } | null;
   autonomy?: string | null;

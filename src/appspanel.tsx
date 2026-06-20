@@ -1960,6 +1960,35 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   // result) while still delegating the real work to the parent's onSync.
   const connectorLabel = gatewayProvider ? titleCase(gatewayProvider) : "the connector";
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  // "What to pull": the user's instruction that steers each sync. Editable; saved
+  // to the manifest and injected into the gateway sync prompt.
+  const [editPull, setEditPull] = useState(false);
+  const [pullText, setPullText] = useState(app.pullInstructions ?? "");
+  const [pullBusy, setPullBusy] = useState(false);
+  useEffect(() => { setPullText(app.pullInstructions ?? ""); }, [app.id, app.pullInstructions]);
+  const savePull = async () => {
+    setPullBusy(true);
+    try {
+      await invoke("engine_app_set_pull_instructions", { id: app.id, instructions: pullText.trim() });
+      setEditPull(false);
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+      await onReload();
+    } catch (e) { console.error("set pull instructions", e); }
+    finally { setPullBusy(false); }
+  };
+  // "What this can pull": on-demand discovery of the gateway toolkit's data types.
+  const [caps, setCaps] = useState<string | null>(null);
+  const [capsBusy, setCapsBusy] = useState(false);
+  const [capsErr, setCapsErr] = useState<string | null>(null);
+  const discoverCaps = async () => {
+    setCapsBusy(true); setCapsErr(null);
+    try {
+      const r = await invoke<{ ok: boolean; markdown?: string; error?: string }>("engine_app_gateway_capabilities", { id: app.id });
+      if (r.ok && r.markdown) setCaps(r.markdown);
+      else setCapsErr(r.error || "could not discover what this app can pull");
+    } catch (e) { setCapsErr(String(e).slice(0, 200)); }
+    finally { setCapsBusy(false); }
+  };
   const runSync = async () => {
     // Gateway syncs run a live agent turn that can take a minute or two, so say
     // so plainly - the old bare spinner read as a freeze.
@@ -2286,6 +2315,59 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
               </div>
             )}
           </Detail>
+          {/* WHAT TO PULL - the user's instruction that steers each sync. */}
+          <Detail label="What to pull">
+            {editPull ? (
+              <div className="flex flex-col gap-1.5">
+                <textarea
+                  value={pullText}
+                  onChange={(e) => setPullText(e.target.value)}
+                  rows={3}
+                  placeholder={gatewayProvider
+                    ? `e.g. ${app.title}: pull my last-30-day stats and 10 most recent items with their key fields`
+                    : `e.g. what ${app.title} should fetch and focus on each sync`}
+                  className="w-full resize-y rounded-lg border border-border bg-background px-2.5 py-1.5 text-[12px] text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+                />
+                <div className="flex items-center gap-1.5">
+                  <button onClick={savePull} disabled={pullBusy}
+                    className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-[11px] font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+                    {pullBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save
+                  </button>
+                  <button onClick={() => { setEditPull(false); setPullText(app.pullInstructions ?? ""); }} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:text-text-primary">
+                    <X className="h-3 w-3" /> Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2">
+                <span className={`min-w-0 flex-1 text-[12px] ${app.pullInstructions ? "text-text-secondary" : "text-text-muted"}`}>
+                  {app.pullInstructions || "Default: recent activity. Set a specific instruction so each sync pulls exactly what you want."}
+                </span>
+                <button onClick={() => setEditPull(true)} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
+                  <Pencil className="h-3 w-3" /> Edit
+                </button>
+              </div>
+            )}
+          </Detail>
+          {/* WHAT THIS CAN PULL - on-demand discovery of the gateway's data types. */}
+          {gatewayProvider && (
+            <Detail label="What this can pull">
+              <div className="flex flex-col gap-1.5">
+                {caps ? (
+                  <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-background px-2.5 py-2 text-[11px] leading-relaxed text-text-secondary">{caps}</pre>
+                ) : (
+                  <span className="text-[12px] text-text-muted">Ask {connectorLabel} what data {app.title} can provide, so you know what to put in "What to pull".</span>
+                )}
+                <div className="flex items-center gap-2">
+                  <button onClick={discoverCaps} disabled={capsBusy}
+                    className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+                    {capsBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Globe className="h-3 w-3" />} {capsBusy ? "Discovering… this runs a live query" : caps ? "Refresh" : "Discover what this can pull"}
+                  </button>
+                  {capsErr && <span className="text-[11px] text-danger">{capsErr}</span>}
+                </div>
+              </div>
+            </Detail>
+          )}
           {dataFiles.length > 0 && (
             <Detail label="Data loaded">
               <div className="flex flex-col gap-1">
