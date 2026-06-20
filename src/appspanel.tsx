@@ -5,7 +5,7 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Check, ExternalLink, FolderOpen, Globe, Link2, Loader2, MessageSquare, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Boxes, Check, ExternalLink, FolderOpen, Globe, Link2, Loader2, MessageSquare, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Trash2, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "./bridge";
 import { appName, relTime, titleCase } from "./format";
@@ -137,6 +137,8 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // are still loading or none exist; otherwise the selected app id.
   const [selected, setSelected] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  // The Composio managed-gateway pane (one OAuth fronts 1000+ apps for the agent).
+  const [showComposio, setShowComposio] = useState(false);
   const [query, setQuery] = useState("");
   // Real brand marks for every connector (AllTrails, Booking.com, Garmin, …),
   // loaded once and shared by the list rows + the detail header via AppRowLogo so
@@ -238,7 +240,16 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       if (installedKeys.has(keyName) || (keySlug && installedKeys.has(keySlug))) return false;
       return true;
     });
-    const matched = !q ? available : available.filter((c) => (c.name || "").toLowerCase().includes(q));
+    // Dedupe duplicate catalog entries (the catalog can list the same app twice,
+    // e.g. "Google Contacts") so the list and count don't double up.
+    const seen = new Set<string>();
+    const deduped = available.filter((c) => { const k = norm(c.name); if (seen.has(k)) return false; seen.add(k); return true; });
+    // Match the name, category, OR tags so "linkedin", "calendar", "trail" all
+    // hit. Both shown and total derive from this same filtered set so they agree.
+    const matched = !q ? deduped : deduped.filter((c) => {
+      const hay = `${c.name} ${c.domain} ${(c.tags ?? []).join(" ")}`.toLowerCase();
+      return hay.includes(q);
+    });
     // Curated / tier-1 first so the un-searched cap shows the apps people want.
     const ranked = [...matched].sort((a, b) => {
       const score = (c: CatalogApp) => (c.curated ? 0 : 2) + (c.tier === 1 ? 0 : 1) - (c.verified ? 1 : 0);
@@ -307,11 +318,22 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
               />
             </div>
             <button
-              onClick={() => setConnecting(true)}
-              className="mb-3 flex w-full items-center gap-2.5 rounded-lg border border-dashed border-accent-border bg-accent-soft/20 px-3 py-2 text-left transition-colors hover:bg-accent-soft/40"
+              onClick={() => { setConnecting(true); setShowComposio(false); setCatalogPick(null); }}
+              className="mb-2 flex w-full items-center gap-2.5 rounded-lg border border-dashed border-accent-border bg-accent-soft/20 px-3 py-2 text-left transition-colors hover:bg-accent-soft/40"
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-background"><Plus className="h-3.5 w-3.5" /></span>
               <span className="text-xs font-semibold text-text-primary">Connect an app</span>
+            </button>
+            {/* The Composio managed gateway - one sign-in, 1000+ apps for the agent. */}
+            <button
+              onClick={() => { setShowComposio(true); setConnecting(false); setSelected(null); setCatalogPick(null); }}
+              className={`mb-3 flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors ${showComposio ? "border-accent-border bg-accent-soft/40" : "border-border bg-surface hover:bg-surface-warm"}`}
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#6d5efc] to-[#3b2fb8] text-white"><Boxes className="h-3.5 w-3.5" /></span>
+              <span className="min-w-0">
+                <span className="block text-xs font-semibold text-text-primary">Composio gateway</span>
+                <span className="block text-[10px] text-text-muted">1000+ apps, one sign-in</span>
+              </span>
             </button>
             {liveCount > 0 && (
               <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{liveCount} of {apps.length} live</div>
@@ -331,7 +353,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                           logos={logos}
                           status={appStatus(a)}
                           active={selected === a.id && !catalogPick}
-                          onSelect={() => { setSelected(a.id); setCatalogPick(null); }}
+                          onSelect={() => { setSelected(a.id); setCatalogPick(null); setShowComposio(false); }}
                         />
                       ))}
                     </section>
@@ -348,7 +370,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                           app={c}
                           logos={logos}
                           active={catalogPick?.name === c.name}
-                          onSelect={() => { setCatalogPick(c); }}
+                          onSelect={() => { setCatalogPick(c); setShowComposio(false); setConnecting(false); }}
                         />
                       ))}
                       {!catalogView.searching && catalogView.total > catalogView.shown.length && (
@@ -374,6 +396,8 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                 onDone={async () => { setConnecting(false); setCatalogPick(null); await reload(); }}
                 onCancel={() => setConnecting(false)}
               />
+            ) : showComposio ? (
+              <ComposioDetail onChanged={() => { void reload(); }} />
             ) : catalogPick ? (
               <CatalogDetail
                 key={catalogPick.iconSlug || catalogPick.name}
@@ -605,6 +629,101 @@ function CatalogField({ label, children }: { label: string; children: React.Reac
 
 function prettyHost(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+}
+
+// The Composio managed gateway: one OAuth connection fronts 1000+ apps as tools
+// for the agent. Prevail registers it, drives the one-time browser sign-in, then
+// the agent can act through any app you've connected in Composio. This is the
+// "both options seamlessly" path - a managed alternative to per-app browser login.
+function ComposioDetail({ onChanged }: { onChanged: () => void }) {
+  const [status, setStatus] = useState<{ configured: boolean; authorized: boolean } | null>(null);
+  const [busy, setBusy] = useState<null | "connect" | "auth">(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const refresh = useCallback(async () => {
+    try {
+      const s = await invoke<{ ok: boolean; configured: boolean; authorized: boolean }>("engine_composio_status");
+      setStatus({ configured: !!s.configured, authorized: !!s.authorized });
+    } catch { /* status unavailable */ }
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+  const connect = async () => {
+    setBusy("connect"); setMsg(null);
+    try { await invoke("engine_composio_connect"); await refresh(); setMsg("Composio registered. Authorize it next so Prevail can use its apps."); onChanged(); }
+    catch (e) { setMsg(String(e)); }
+    finally { setBusy(null); }
+  };
+  const authorize = async () => {
+    setBusy("auth"); setMsg("Opening your browser to sign in to Composio. Complete the sign-in there.");
+    try {
+      const r = await invoke<{ ok: boolean; authorized: boolean }>("engine_composio_authorize");
+      await refresh();
+      setMsg(r.authorized ? "Authorized. Prevail can now use Composio's apps on agentic runs." : "Sign-in did not complete. Try again, or use 'I have signed in' if you finished in the browser.");
+      onChanged();
+    } catch (e) { setMsg(String(e)); }
+    finally { setBusy(null); }
+  };
+  const confirmDone = async () => {
+    setBusy("auth");
+    try { await invoke("engine_composio_confirm"); await refresh(); setMsg("Marked authorized."); onChanged(); }
+    catch (e) { setMsg(String(e)); }
+    finally { setBusy(null); }
+  };
+  const authorized = status?.authorized ?? false;
+  const configured = status?.configured ?? false;
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle px-5 py-5">
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#6d5efc] to-[#3b2fb8] text-white"><Boxes className="h-7 w-7" /></span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-lg font-semibold text-text-primary">Composio</span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+              <Globe className="h-2.5 w-2.5" /> Managed gateway
+            </span>
+            {authorized
+              ? <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Authorized</span>
+              : configured
+                ? <span className="inline-flex items-center gap-1 rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-warn">Needs sign-in</span>
+                : null}
+          </div>
+          <p className="mt-2 max-w-prose text-[13px] leading-relaxed text-text-secondary">
+            One OAuth connection fronts 1000+ apps (Gmail, Notion, HubSpot, GitHub, Slack and more) as tools your agent can use. Best for mainstream SaaS; keep sensitive or financial accounts on a per-app browser sign-in.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {!configured ? (
+            <button onClick={connect} disabled={busy !== null} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+              {busy === "connect" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Connect
+            </button>
+          ) : !authorized ? (
+            <button onClick={authorize} disabled={busy !== null} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+              {busy === "auth" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpRight className="h-3.5 w-3.5" />} {busy === "auth" ? "Signing in…" : "Authorize"}
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent"><Check className="h-3.5 w-3.5" /> Connected</span>
+          )}
+        </div>
+      </div>
+      <div className="space-y-3 px-5 py-4 text-[13px]">
+        <div className="flex items-start gap-2 rounded-lg border border-accent-border/40 bg-accent-soft/20 px-3 py-2.5 text-[12px] leading-relaxed text-text-secondary">
+          <Plug className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
+          <span>
+            Prevail registers Composio as an MCP server for the agent and drives the sign-in for you. The only step that is yours is logging into Composio once in the browser. After that the agent can act through any app you connect in Composio, and the token is reused, so it never asks again. This connects through Composio's cloud.
+          </span>
+        </div>
+        {configured && !authorized && (
+          <button onClick={confirmDone} disabled={busy !== null} className="text-[12px] text-text-muted underline-offset-2 hover:text-accent hover:underline disabled:opacity-50">
+            I have already signed in - mark authorized
+          </button>
+        )}
+        {msg && <p className="text-[12px] text-text-secondary">{msg}</p>}
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <button onClick={() => void openUrl("https://dashboard.composio.dev")} className="inline-flex items-center gap-1 text-[12px] text-accent hover:underline">dashboard.composio.dev <ExternalLink className="h-3 w-3" /></button>
+          <button onClick={() => void openUrl("https://docs.composio.dev")} className="inline-flex items-center gap-1 text-[12px] text-accent hover:underline">docs.composio.dev <ExternalLink className="h-3 w-3" /></button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // The selected connector's full configuration, shown in the right pane of the
