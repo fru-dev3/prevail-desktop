@@ -174,10 +174,69 @@ export function BenchMatrix({
     [matrix],
   );
 
+  // Declutter: always show the top N models by overall score; the rest are
+  // opt-in via a multi-select filter (persisted). Keeps the matrix readable
+  // without losing access to every benchmarked model.
+  const TOP_N = 6;
+  const [extra, setExtra] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("prevail.bench.extraModels") || "[]")); } catch { return new Set(); }
+  });
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const setExtraPersist = (next: Set<string>) => {
+    setExtra(next);
+    try { localStorage.setItem("prevail.bench.extraModels", JSON.stringify([...next])); } catch { /* ignore */ }
+  };
+  const toggleExtra = (rd: string) => { const n = new Set(extra); if (n.has(rd)) n.delete(rd); else n.add(rd); setExtraPersist(n); };
+  const topDirs = useMemo(() => new Set(rows.slice(0, TOP_N).map((m) => m.run_dir)), [rows]);
+  const extraModels = useMemo(() => rows.slice(TOP_N), [rows]);
+  const visibleRows = useMemo(() => rows.filter((m) => topDirs.has(m.run_dir) || extra.has(m.run_dir)), [rows, topDirs, extra]);
+
   if (allDomains.length === 0) return <div className="text-sm text-text-muted">No domain data yet.</div>;
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-border">
+    <div>
+      {/* Filter bar: top 6 always shown; multi-select to add more. */}
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
+          Showing {visibleRows.length} of {rows.length} models · top {Math.min(TOP_N, rows.length)} always shown
+        </span>
+        {extraModels.length > 0 && (
+          <div className="relative">
+            <button
+              onClick={() => setPickerOpen((o) => !o)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-text-secondary hover:border-accent-border hover:text-accent"
+            >
+              <Layers className="h-3.5 w-3.5" /> Filter models{extra.size > 0 ? ` · ${extra.size} added` : ""}
+              <ChevronRight className={`h-3 w-3 transition-transform ${pickerOpen ? "rotate-90" : ""}`} />
+            </button>
+            {pickerOpen && (
+              <div className="absolute right-0 z-20 mt-1 max-h-72 w-72 overflow-auto rounded-xl border border-border bg-surface p-1.5 shadow-xl">
+                <div className="flex items-center justify-between px-1.5 py-1">
+                  <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Add more models</span>
+                  {extra.size > 0 && <button onClick={() => setExtraPersist(new Set())} className="text-[10px] text-text-muted hover:text-accent">Clear</button>}
+                </div>
+                {extraModels.map((m) => {
+                  const p = parseRunLabel(m.label);
+                  const on = extra.has(m.run_dir);
+                  return (
+                    <button
+                      key={m.run_dir}
+                      onClick={() => toggleExtra(m.run_dir)}
+                      className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left text-xs hover:bg-surface-warm"
+                    >
+                      <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${on ? "border-accent bg-accent text-background" : "border-border"}`}>{on && <Check className="h-2.5 w-2.5" />}</span>
+                      <ProviderMark vendor={p.vendor} size={14} />
+                      <span className="min-w-0 flex-1 truncate font-mono text-text-primary" title={p.model || m.label}>{p.model || m.label}</span>
+                      <span className="shrink-0 font-mono text-[10px] text-text-muted">{m.judge_avg?.toFixed(1) ?? "-"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="overflow-x-auto rounded-2xl border border-border">
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-border bg-surface">
@@ -189,7 +248,7 @@ export function BenchMatrix({
           </tr>
         </thead>
         <tbody>
-          {rows.map((m) => {
+          {visibleRows.map((m) => {
             const parsed = parseRunLabel(m.label);
             return (
               <tr key={m.run_dir} className="border-b border-border-subtle last:border-0 hover:bg-surface-warm">
@@ -224,6 +283,7 @@ export function BenchMatrix({
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
