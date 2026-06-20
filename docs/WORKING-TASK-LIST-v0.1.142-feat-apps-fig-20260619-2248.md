@@ -232,7 +232,35 @@ it. This is the whole point: connect once agentically, reuse the skill forever.
     agent task in To-do should already be getting worked, not waiting on a manual
     click. Ties to P2 orchestrator + the bulk-assign item.
 
+- [ ] **Task creation UX is broken/unclear**: user typed a title ("book flight to
+  book cruise trip"), hit Create/Add, and it just vanished - no confirmation, the
+  new task was not shown, no detail surfaced. Either it created silently to a
+  domain not in the current view, or it failed quietly. Fix: after Add, CONFIRM it
+  was created (toast/inline), SHOW the new task (scroll to / highlight it, or open
+  its detail), and if the current filter would hide it (e.g. assigned to Travel
+  while viewing another domain) make that obvious or switch to show it. Rework the
+  add design to be clear and trustworthy (not a one-shot input that empties with
+  no feedback). File: boardpanel.tsx (the "Add a task" input + Add handler).
+
+- [ ] **BIG: Connectors master-detail redesign (Claude-Desktop-style)**: adopt the
+  list + detail layout the user loves. LEFT: a connectors list, grouped (e.g.
+  Connected / Web / Not connected), each with its real brand logo, searchable, with
+  a + to add. RIGHT: the selected connector's full detail/config pane:
+  - description, method, status, Disconnect/Delete, overflow menu.
+  - for MCP: per-tool permissions (allow / needs-approval / deny) like the ref.
+  - schedule + refresh detail: next refresh, current/last refresh, past runs.
+  - folder path (the app dir, source of truth) + reveal, domains fed (edit),
+    sync now, the full auth/setup flow, test everything.
+  Clicking a connector shows its config on the right (and a way to open its CHAT /
+  workspace - chat with the connector on the chat page). This is the centerpiece
+  of the apps area; it unifies appspanel.tsx + the AppFacetPanel workspace into one
+  master-detail surface. User: "this is a big one." Plan it as its own surface,
+  reuse the existing data (engine_apps_list, runs, schedule, domains, mcp tools).
+
 ## Done
+- [x] **App workspace navigation** (appspanel "Open" button -> prevail:open-app ->
+  AppFacetPanel workspace; matches sidebar + per-domain facet). Stepping stone to
+  the master-detail redesign above.
 - [x] **Browser-automation agentic auth (engine slice)**: runner reuses saved
   session (auth/state.json); runBrowserLogin opens a real browser for the one
   human login + persists session 0600; CLI `connectors browser-login <id>` +

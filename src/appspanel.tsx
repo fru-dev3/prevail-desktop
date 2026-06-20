@@ -5,7 +5,7 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, ChevronRight, FolderOpen, Loader2, Pencil, Plug, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Check, ChevronRight, FolderOpen, Loader2, Pencil, Plug, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { appName, relTime, titleCase } from "./format";
 import { PREF, getPref, lsGet, lsSet } from "./storage";
@@ -495,6 +495,15 @@ function AppCard({ app, vaultPath, logos, status, open, busy, onToggle, onSync, 
               {(app.domains ?? []).length > 0 && <span>· feeds {app.domains.map(titleCase).join(", ")}</span>}
             </span>
           </span>
+        </button>
+        {/* Open the app's own workspace (interact / chat with its data), the same
+            view the sidebar + per-domain facet open. */}
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }))}
+          title={`Open ${app.title || app.id} (chat + manage)`}
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent"
+        >
+          <ArrowUpRight className="h-3 w-3" /> open
         </button>
         {status !== "disconnected" && (
           <button

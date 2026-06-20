@@ -3,7 +3,7 @@
 // as workflows via the Loop steward; anything consequential surfaces in the
 // Decision Inbox. Reads tasks_read_all; moves via tasks_set_status/tasks_set_owner.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Bot, Briefcase, CalendarRange, Columns3, Filter, Flag, Inbox, LayoutGrid, List, Loader2, Play, Plus, RotateCcw, Snowflake, Trash2, User } from "lucide-react";
+import { Bot, Briefcase, CalendarRange, Check, Columns3, CornerUpLeft, Filter, Flag, Inbox, LayoutGrid, List, Loader2, Play, Plus, RotateCcw, Snowflake, Trash2, User, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
@@ -76,6 +76,15 @@ const dueTone = (due?: string | null): string => {
   if (due < today) return "text-danger";
   if (due === today) return "text-warn";
   return "text-text-muted";
+};
+
+// A task is OVERDUE when it has a due date strictly before today and is not done.
+// Overdue work gets a loud red alert treatment everywhere it renders so it cannot
+// be missed.
+const isOverdue = (t: BoardTask): boolean => {
+  if (!t.due || t.status === "done" || t.done) return false;
+  const today = new Date().toISOString().slice(0, 10);
+  return t.due < today;
 };
 
 export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; initialDomain?: string }) {
@@ -245,6 +254,34 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
       if (toAi && t.status === "todo") await invoke("tasks_set_status", { vault: vaultPath, domain: t.domain, id: t.id, status: "doing" });
     });
   };
+  // Bulk hand-off: assign every currently-shown, me-owned, open task to the agent
+  // at once - so you do not have to click "hand to AI" on each one. Skips anything
+  // that needs the human (blocked = awaiting a decision, or in Review), and skips
+  // done tasks. Respects the active owner/domain filters via "shown".
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+  const needsHuman = (t: BoardTask) => t.status === "blocked" || t.status === "review";
+  const assignAllToAgent = async () => {
+    const targets = shown.filter((t) => t.id && t.owner === "me" && t.status !== "done" && !needsHuman(t));
+    setBulkMsg(null);
+    if (targets.length === 0) { setBulkMsg("Nothing to assign - no eligible tasks owned by you."); window.setTimeout(() => setBulkMsg(null), 4000); return; }
+    setBusy("bulk-assign");
+    try {
+      await Promise.all(targets.map((t) =>
+        invoke("tasks_set_owner", { vault: vaultPath, domain: t.domain, id: t.id, owner: "ai" })
+          // Move queued todo work into Doing so the steward picks it up, mirroring toggleOwner.
+          .then(() => (t.status === "todo" ? invoke("tasks_set_status", { vault: vaultPath, domain: t.domain, id: t.id, status: "doing" }) : null))));
+      reload();
+      window.dispatchEvent(new Event("prevail:tasks-changed"));
+      setBulkMsg(`Handed ${targets.length} task${targets.length === 1 ? "" : "s"} to the agent.`);
+    } catch (e) {
+      console.error("assign all to agent", e);
+      setBulkMsg(`Failed to assign: ${String(e)}`);
+    } finally {
+      setBusy(null);
+      window.setTimeout(() => setBulkMsg(null), 4000);
+    }
+  };
+
   const saveEdit = (t: BoardTask) => {
     const next = editVal.trim();
     setEditId(null);
@@ -302,6 +339,7 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
   const renderCard = (t: BoardTask) => {
     const ai = t.owner === "ai";
     const blocked = t.status === "blocked";
+    const overdue = isOverdue(t);
     const editing = editId != null && editId === t.id;
     return (
       <div key={`${t.domain}:${t.id ?? t.text}`}
@@ -314,10 +352,10 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
           e.dataTransfer.setData("text/plain", t.id);
         }}
         onDragEnd={() => { setDragId(null); setDragCol(null); }}
-        className={`rounded-lg border bg-surface px-2.5 py-2 transition-opacity ${blocked ? "border-warn/40" : "border-border"} ${dragId === t.id ? "opacity-40" : ""} ${editing ? "" : "cursor-grab active:cursor-grabbing"}`}>
+        className={`rounded-lg border px-2.5 py-2 transition-opacity ${overdue ? "border-l-2 border-l-danger border-danger/40 bg-danger/5" : blocked ? "border-warn/40 bg-surface" : "border-border bg-surface"} ${dragId === t.id ? "opacity-40" : ""} ${editing ? "" : "cursor-grab active:cursor-grabbing"}`}>
         <div className="flex items-start gap-1.5">
-          <span title={ai ? "AI-owned" : "Yours"} className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${ai ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>
-            {ai ? <Bot className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
+          <span title={ai ? "Owned by the agent" : "Owned by you"} className={`mt-0.5 inline-flex h-5 shrink-0 items-center gap-1 rounded-md px-1.5 font-mono text-[9px] font-bold uppercase tracking-wide ${ai ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>
+            {ai ? <Bot className="h-3 w-3" /> : <User className="h-3 w-3" />}{ai ? "Agent" : "Me"}
           </span>
           {editing ? (
             <input autoFocus value={editVal} onChange={(e) => setEditVal(e.target.value)}
@@ -338,7 +376,8 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-5 font-mono text-[10px]">
           <span className="rounded-full px-1.5 py-px font-semibold" style={{ color: domainColor(t.domain), backgroundColor: `${domainColor(t.domain)}1f` }}>{titleCase(t.domain)}</span>
-          {t.due && <span className={dueTone(t.due)}>{t.due}</span>}
+          {t.due && <span className={`${dueTone(t.due)} ${overdue ? "font-bold" : ""}`}>{t.due}</span>}
+          {overdue && <span className="rounded-full bg-danger/15 px-1.5 py-px font-bold uppercase tracking-wide text-danger">overdue</span>}
           {t.priority === "critical" && <span className="text-danger">critical</span>}
           {t.priority === "high" && <span className="text-warn">important</span>}
           {blocked && <span className="text-warn">⏸ needs decision</span>}
@@ -349,9 +388,9 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
             {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
           <button onClick={() => toggleOwner(t)} disabled={busy === `o:${t.id}`}
-            title={ai ? "Take it back (hand to me)" : "Hand to AI to run as a workflow"}
-            className="inline-flex items-center gap-0.5 rounded border border-border px-1.5 py-1 text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
-            <ArrowRight className="h-3 w-3" />{ai ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
+            title={ai ? "Take it back from the agent (hand to me)" : "Hand to the agent to run as a workflow"}
+            className={`inline-flex items-center gap-1 rounded border px-1.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide transition-colors disabled:opacity-50 ${ai ? "border-border text-text-muted hover:border-accent-border hover:text-text-primary" : "border-accent-border text-accent hover:bg-accent hover:text-background"}`}>
+            {ai ? <><CornerUpLeft className="h-3 w-3" /> Take back</> : <><Bot className="h-3 w-3" /> Hand to agent</>}
           </button>
         </div>
       </div>
@@ -362,12 +401,13 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
   const renderRow = (t: BoardTask) => {
     const ai = t.owner === "ai";
     const blocked = t.status === "blocked";
+    const overdue = isOverdue(t);
     const editing = editId != null && editId === t.id;
     return (
       <div key={`row:${t.domain}:${t.id ?? t.text}`}
-        className={`flex items-center gap-3 rounded-lg border bg-surface px-3 py-2 ${blocked ? "border-warn/40" : "border-border"}`}>
-        <span title={ai ? "AI-owned" : "Yours"} className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${ai ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>
-          {ai ? <Bot className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
+        className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${overdue ? "border-l-2 border-l-danger border-danger/40 bg-danger/5" : blocked ? "border-warn/40 bg-surface" : "border-border bg-surface"}`}>
+        <span title={ai ? "Owned by the agent" : "Owned by you"} className={`inline-flex h-5 shrink-0 items-center gap-1 rounded-md px-1.5 font-mono text-[9px] font-bold uppercase tracking-wide ${ai ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>
+          {ai ? <Bot className="h-3 w-3" /> : <User className="h-3 w-3" />}{ai ? "Agent" : "Me"}
         </span>
         {editing ? (
           <input autoFocus value={editVal} onChange={(e) => setEditVal(e.target.value)}
@@ -380,7 +420,8 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
         )}
         <span className="hidden shrink-0 rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-muted sm:inline">{titleCase(t.domain)}</span>
         {blocked && <span className="shrink-0 font-mono text-[10px] text-warn">⏸ decision</span>}
-        <span className={`hidden w-20 shrink-0 text-right font-mono text-[10px] md:inline ${dueTone(t.due)}`}>{t.due || ""}</span>
+        {overdue && <span className="shrink-0 rounded-full bg-danger/15 px-1.5 py-px font-mono text-[10px] font-bold uppercase tracking-wide text-danger">overdue</span>}
+        <span className={`hidden w-20 shrink-0 text-right font-mono text-[10px] md:inline ${dueTone(t.due)} ${overdue ? "font-bold" : ""}`}>{t.due || ""}</span>
         <button onClick={() => cyclePriority(t)} title={`Priority: ${t.priority || "normal"} - click to change`} disabled={busy === `pr:${t.id}`}
           className={`shrink-0 transition-colors ${t.priority === "critical" ? "text-danger" : t.priority === "high" ? "text-warn" : "text-text-muted/30 hover:text-text-muted"}`}>
           <Flag className="h-3.5 w-3.5" fill={t.priority === "critical" || t.priority === "high" ? "currentColor" : "none"} />
@@ -390,9 +431,9 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
           {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <button onClick={() => toggleOwner(t)} disabled={busy === `o:${t.id}`}
-          title={ai ? "Take it back (hand to me)" : "Hand to AI to run as a workflow"}
-          className="inline-flex shrink-0 items-center gap-0.5 rounded border border-border px-1.5 py-1 text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
-          <ArrowRight className="h-3 w-3" />{ai ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
+          title={ai ? "Take it back from the agent (hand to me)" : "Hand to the agent to run as a workflow"}
+          className={`inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide transition-colors disabled:opacity-50 ${ai ? "border-border text-text-muted hover:border-accent-border hover:text-text-primary" : "border-accent-border text-accent hover:bg-accent hover:text-background"}`}>
+          {ai ? <><CornerUpLeft className="h-3 w-3" /> Take back</> : <><Bot className="h-3 w-3" /> Hand to agent</>}
         </button>
         <button onClick={() => del(t)} title="Delete task" disabled={busy === `d:${t.id}`} className="shrink-0 text-text-muted/40 transition-colors hover:text-danger">
           <Trash2 className="h-3.5 w-3.5" />
@@ -410,16 +451,36 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
     [shown],
   );
   const [addErr, setAddErr] = useState<string | null>(null);
+  // Brief auto-dismissing "Added" confirmation shown near the add bar.
+  const [addMsg, setAddMsg] = useState<string | null>(null);
   const addTask = () => {
     const text = addText.trim();
     const domain = (addDomain || addDomains[0] || "").trim();
     setAddErr(null);
+    setAddMsg(null);
     if (!text) { setAddErr("Type a task first."); return; }
     if (!domain) { setAddErr("Create a domain first (no domain to add to)."); return; }
     const withDue = addDue ? `${text} @${addDue}` : text;
     setBusy("add");
     invoke("tasks_add", { vault: vaultPath, domain, text: withDue, source: "user" })
-      .then(() => { setAddText(""); setAddDue(""); reload(); window.dispatchEvent(new Event("prevail:tasks-changed")); })
+      .then(() => {
+        setAddText("");
+        setAddDue("");
+        reload();
+        window.dispatchEvent(new Event("prevail:tasks-changed"));
+        // Make the new task visible. If the active domain filter would hide it,
+        // switch the filter to its domain so the user immediately sees it land.
+        const hidden = domainFilter !== "all" && domainFilter !== domain;
+        if (hidden) {
+          setDomainFilter(domain);
+          setAddMsg(`Added to ${titleCase(domain)} - switched filter so you can see it`);
+        } else {
+          setAddMsg(`Added to ${titleCase(domain)}`);
+        }
+        // Also make sure we are on a view that lists tasks (not Trash/Icebox/Needs).
+        if (view === "trash" || view === "icebox" || view === "needs") setViewMode("list");
+        window.setTimeout(() => setAddMsg(null), 4000);
+      })
       .catch((e) => setAddErr(String(e)))
       .finally(() => setBusy(null));
   };
@@ -464,6 +525,14 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
             </button>
           ))}
         </div>
+        {/* Bulk hand-off: assign every shown, me-owned, open task to the agent at once.
+            Skips anything awaiting your decision (blocked / in Review). */}
+        <button onClick={assignAllToAgent} disabled={busy === "bulk-assign"}
+          title="Hand every shown task you own to the agent at once (skips tasks awaiting your decision)"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-2.5 py-1.5 font-medium text-accent transition-colors hover:bg-accent hover:text-background disabled:opacity-50">
+          {busy === "bulk-assign" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+          Assign all to Agent
+        </button>
         {/* Domain filter (icon + native select) */}
         <div className="flex items-center gap-1.5 rounded-lg border border-border bg-background pl-2.5 text-text-muted focus-within:border-accent-border">
           <Filter className="h-3.5 w-3.5" />
@@ -530,7 +599,21 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
           </button>
         </div>
       </div>
+      {bulkMsg && (
+        <div className="mt-1.5 flex justify-start">
+          <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${bulkMsg.startsWith("Failed") ? "bg-danger/15 text-danger" : "bg-accent-soft text-accent"}`}>
+            <Bot className="h-3 w-3" /> {bulkMsg}
+          </span>
+        </div>
+      )}
       {addErr && <div className="mt-1.5 text-right text-[11px] text-danger">{addErr}</div>}
+      {addMsg && !addErr && (
+        <div className="mt-1.5 flex justify-end">
+          <span className="inline-flex items-center gap-1 rounded-md bg-ok/15 px-2 py-0.5 text-[11px] font-medium text-ok">
+            <Check className="h-3 w-3" /> {addMsg}
+          </span>
+        </div>
+      )}
       </div>
 
       <div className="pt-4">
@@ -593,10 +676,12 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
           {HORIZONS.map((h) => {
             const items = byHorizon[h.key] ?? [];
             if (items.length === 0) return null; // only show buckets that have work
-            const tone = h.key === "overdue" ? "text-danger" : h.key === "today" ? "text-warn" : "text-text-muted";
+            const isOverdueBucket = h.key === "overdue";
+            const tone = isOverdueBucket ? "text-danger" : h.key === "today" ? "text-warn" : "text-text-muted";
             return (
               <section key={h.key}>
-                <div className={`mb-2 flex items-center gap-2 px-1 font-mono text-[10px] uppercase tracking-[0.16em] ${tone}`}>
+                <div className={`mb-2 flex items-center gap-2 px-1 font-mono text-[10px] uppercase tracking-[0.16em] ${tone} ${isOverdueBucket ? "font-bold" : ""}`}>
+                  {isOverdueBucket && <Flag className="h-3 w-3" fill="currentColor" />}
                   {h.label}<span className="opacity-50">· {items.length}</span>
                 </div>
                 <div className="flex flex-col gap-1.5">
