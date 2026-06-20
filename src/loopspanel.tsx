@@ -3,7 +3,7 @@
 // reads as a list of forces); expand one to see its signals, condition, cadence,
 // and current actions. The runner daemon (separate) evaluates enabled loops and
 // keeps their actions current; here you define and steer them.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, ListPlus, Mail, Play, Plus, RefreshCw, ShieldQuestion, Target, Trash2, X, Zap } from "lucide-react";
 import { invoke, listen } from "./bridge";
 import type { UnlistenFn } from "./bridge";
@@ -36,6 +36,16 @@ import {
 } from "./loops";
 
 const CADENCES: LoopCadence[] = ["continuous", "daily", "weekly", "monthly"];
+
+// The api a LoopCard exposes to the panel so "Run loops now" can drive each loop
+// in turn and stop it. `run` resolves when the loop's run finishes (or is
+// stopped); `stop` SIGTERMs the in-flight engine child for this loop.
+export type LoopRunnerApi = { run: (silent?: boolean) => Promise<void>; stop: () => void };
+
+// Best-effort native OS notification (loops started / finished). Never throws.
+async function notify(title: string, body: string) {
+  try { await invoke("notify_user", { title, body }); } catch { /* notifications are best effort */ }
+}
 
 // The real stages a single loop run moves through, in order. The engine streams
 // one phase event per stage so the card can show a live stepper (which step it's
@@ -182,18 +192,53 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
 
   const toggleOpen = (id: string) => setOpenIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  // Trigger one engine pass over this domain's due loops, then reload so the
-  // refreshed actions show up. The same runner also runs in the background.
+  // "Run loops now" runs every active, enabled loop in turn via the streamed
+  // per-loop runner. Each loop visibly runs (header spinner + live progress + a
+  // sidebar dot on the domain), is individually stoppable, and the whole batch
+  // can be stopped. A notification bookends the run. Each LoopCard registers its
+  // run/stop api here so the panel can drive it.
   const [running, setRunning] = useState(false);
+  const [runningLoopId, setRunningLoopId] = useState<string | null>(null);
+  const runnersRef = useRef<Map<string, LoopRunnerApi>>(new Map());
+  const stopAllRef = useRef(false);
+  const registerRunner = useCallback((id: string, api: LoopRunnerApi | null) => {
+    if (api) runnersRef.current.set(id, api);
+    else runnersRef.current.delete(id);
+  }, []);
+
   const runNow = useCallback(async () => {
+    const targets = (doc?.loops ?? []).filter((l) => l.status !== "done" && l.enabled);
+    if (targets.length === 0) return;
+    stopAllRef.current = false;
     setRunning(true);
+    notify(`Running ${targets.length} loop${targets.length === 1 ? "" : "s"} · ${titleCase(domain)}`, "Prevail is working through them now.");
+    let ran = 0;
+    for (const l of targets) {
+      if (stopAllRef.current) break;
+      setRunningLoopId(l.id);
+      const api = runnersRef.current.get(l.id);
+      if (api) { try { await api.run(true); } catch { /* one loop failing must not abort the batch */ } }
+      ran++;
+    }
+    const stopped = stopAllRef.current;
+    setRunningLoopId(null);
+    setRunning(false);
     try {
-      await invoke("loops_run_once", { vault: vaultPath });
       setDoc(ensureBriefingLoop(await readLoops(domainPath), domain).doc);
       setRuntime(await readLoopsRuntime(domainPath));
-    } catch (e) { console.error("run loops", e); }
-    finally { setRunning(false); }
-  }, [vaultPath, domainPath, domain]);
+    } catch (e) { console.error("reload loops", e); }
+    notify(
+      stopped ? `Loops stopped · ${titleCase(domain)}` : `Loops finished · ${titleCase(domain)}`,
+      stopped ? `Stopped after ${ran} of ${targets.length}.` : `Ran ${ran} loop${ran === 1 ? "" : "s"}.`,
+    );
+  }, [doc, domainPath, domain]);
+
+  // Stop the whole run: flag the queue to stop and SIGTERM the loop running now.
+  // Runs are sequential, so stopping the current loop is enough.
+  const stopAll = useCallback(() => {
+    stopAllRef.current = true;
+    if (runningLoopId) runnersRef.current.get(runningLoopId)?.stop();
+  }, [runningLoopId]);
 
   if (!doc) return <div className="text-sm text-text-muted">loading loops…</div>;
 
@@ -214,14 +259,23 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
           </p>
         </div>
         {doc.loops.length > 0 && (
-          <button
-            onClick={runNow}
-            disabled={running}
-            title="Run every due loop now: the engine measures the gap and refreshes each loop's actions. Also runs in the background on each loop's cadence."
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${running ? "animate-spin" : ""}`} /> {running ? "Running…" : "Run loops now"}
-          </button>
+          running ? (
+            <button
+              onClick={stopAll}
+              title="Stop the whole run: the loop running now is stopped and no further loops start."
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-danger/40 bg-danger/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-danger hover:bg-danger/20"
+            >
+              <X className="h-3.5 w-3.5" /> Stop run
+            </button>
+          ) : (
+            <button
+              onClick={runNow}
+              title="Run every active loop now, one at a time: each measures the gap and refreshes its actions. Also runs in the background on each loop's cadence."
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Run loops now
+            </button>
+          )
         )}
       </div>
 
@@ -362,6 +416,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
               onRemove={() => removeLoop(l.id)}
               vaultPath={vaultPath}
               domain={domain}
+              registerRunner={registerRunner}
             />
           ))}
         </section>
@@ -434,7 +489,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
   );
 }
 
-function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath, domain }: {
+function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath, domain, registerRunner }: {
   loop: Loop;
   rt?: LoopRtEntry;
   open: boolean;
@@ -443,6 +498,9 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
   onRemove: () => void;
   vaultPath: string;
   domain: string;
+  // Lets the panel's "Run loops now" drive this card's run + stop it. The card
+  // registers its live api under its loop id; the panel runs each in turn.
+  registerRunner?: (id: string, api: LoopRunnerApi | null) => void;
 }) {
   const done = loop.status === "done";
   const autonomy = loop.autonomy ?? "ask";
@@ -468,46 +526,78 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
     return () => clearInterval(iv);
   }, [running]);
 
-  const runNow = async () => {
+  // The live engine session for this card's in-flight run, held in a ref so Stop
+  // can target it without re-rendering. Stop SIGTERMs the child (abort_sessions);
+  // the engine's loop_run:done then fires and the normal cleanup runs.
+  const runSessionRef = useRef<string | null>(null);
+  const stopRun = useCallback(() => {
+    const s = runSessionRef.current;
+    if (s) { invoke("abort_sessions", { prefix: s }).catch(() => { /* already gone */ }); }
+  }, []);
+
+  // Run this one loop. Resolves when the run finishes (or is stopped), so the
+  // panel's "Run loops now" can await each loop in turn. `silent` suppresses the
+  // per-loop notification when the panel is running a batch (it notifies once).
+  const runNow = useCallback((opts?: { silent?: boolean }) => new Promise<void>((resolve) => {
     setRunning(true); setResult(null); setPhase("resolve"); setPhaseLabel("Starting");
     // session keys the stream; procId registers a global process so the run shows
     // on the sidebar AND survives navigating away (the engine keeps going).
     const session = `loop-${loop.id}-${Date.now()}`;
+    runSessionRef.current = session;
     const baseLabel = `${titleCase(domain || "general")} · ${loop.name}`;
     startProcess(session, "loop", baseLabel, domain);
     let captured: RunResult | null = null;
     let unline: UnlistenFn | undefined;
     let undone: UnlistenFn | undefined;
+    let settled = false;
     const cleanup = () => { try { unline?.(); } catch { /* */ } try { undone?.(); } catch { /* */ } };
-    try {
-      const provider = getPref(PREF.memoryProvider, "claude");
-      const model = (loop.model && loop.model.trim()) || getPref(PREF.distillModel, "claude-haiku-4-5");
-      unline = await listen<{ session: string; data: unknown }>("loop_run:line", (e) => {
-        if (e.payload.session !== session) return;
-        const d = e.payload.data as { type?: string; phase?: string; label?: string; result?: RunResult };
-        if (d && typeof d === "object" && d.type === "phase") {
-          setPhase(d.phase || ""); setPhaseLabel(d.label || "");
-          updateProcess(session, d.label ? `${baseLabel} — ${d.label}` : baseLabel);
-        } else if (d && typeof d === "object" && d.type === "result" && d.result) {
-          captured = d.result;
-        }
-      });
-      undone = await listen<{ session: string; code: number | null }>("loop_run:done", (e) => {
-        if (e.payload.session !== session) return;
-        setResult(captured ?? { ok: false, note: "", done: false, actions: [], tasksCreated: [], pending: [], error: `loop exited (code ${e.payload.code ?? "?"})` });
+    const finish = () => { if (settled) return; settled = true; runSessionRef.current = null; resolve(); };
+    (async () => {
+      try {
+        const provider = getPref(PREF.memoryProvider, "claude");
+        const model = (loop.model && loop.model.trim()) || getPref(PREF.distillModel, "claude-haiku-4-5");
+        unline = await listen<{ session: string; data: unknown }>("loop_run:line", (e) => {
+          if (e.payload.session !== session) return;
+          const d = e.payload.data as { type?: string; phase?: string; label?: string; result?: RunResult };
+          if (d && typeof d === "object" && d.type === "phase") {
+            setPhase(d.phase || ""); setPhaseLabel(d.label || "");
+            updateProcess(session, d.label ? `${baseLabel} — ${d.label}` : baseLabel);
+          } else if (d && typeof d === "object" && d.type === "result" && d.result) {
+            captured = d.result;
+          }
+        });
+        undone = await listen<{ session: string; code: number | null }>("loop_run:done", (e) => {
+          if (e.payload.session !== session) return;
+          const res = captured ?? { ok: false, note: "", done: false, actions: [], tasksCreated: [], pending: [], error: `loop exited (code ${e.payload.code ?? "?"})` };
+          setResult(res);
+          setRunning(false); setPhase(""); setPhaseLabel("");
+          cleanup(); endProcess(session);
+          if (!opts?.silent) {
+            notify(`${loop.name} · ${titleCase(domain || "general")}`, res.ok ? (res.note || "Loop run finished.") : `Loop run stopped or failed.`);
+          }
+          window.dispatchEvent(new Event("prevail:loops-advanced"));
+          window.dispatchEvent(new Event("prevail:tasks-changed"));
+          finish();
+        });
+        // Returns immediately; the run proceeds via the streamed events above.
+        await invoke("loop_run_now_stream", { session, vault: vaultPath, domain, loopId: loop.id, provider, model });
+      } catch (e) {
+        setResult({ ok: false, note: "", done: false, actions: [], tasksCreated: [], pending: [], error: String(e) });
         setRunning(false); setPhase(""); setPhaseLabel("");
         cleanup(); endProcess(session);
-        window.dispatchEvent(new Event("prevail:loops-advanced"));
-        window.dispatchEvent(new Event("prevail:tasks-changed"));
-      });
-      // Returns immediately; the run proceeds via the streamed events above.
-      await invoke("loop_run_now_stream", { session, vault: vaultPath, domain, loopId: loop.id, provider, model });
-    } catch (e) {
-      setResult({ ok: false, note: "", done: false, actions: [], tasksCreated: [], pending: [], error: String(e) });
-      setRunning(false); setPhase(""); setPhaseLabel("");
-      cleanup(); endProcess(session);
-    }
-  };
+        finish();
+      }
+    })();
+  }), [loop.id, loop.name, loop.model, domain, vaultPath]);
+
+  // Expose this card's run/stop to the panel so "Run loops now" can drive it.
+  const apiRef = useRef<LoopRunnerApi>({ run: async () => {}, stop: () => {} });
+  apiRef.current = { run: (silent) => runNow({ silent }), stop: stopRun };
+  useEffect(() => {
+    if (!registerRunner) return;
+    registerRunner(loop.id, { run: (silent) => apiRef.current.run(silent), stop: () => apiRef.current.stop() });
+    return () => registerRunner(loop.id, null);
+  }, [loop.id, registerRunner]);
 
   // Next scheduled run = last run + cadence interval (continuous ≈ hourly).
   const CADENCE_MS: Record<LoopCadence, number> = { continuous: 3600e3, daily: 864e5, weekly: 6048e5, monthly: 2592e6 };
@@ -520,8 +610,11 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
       <div className="flex items-center gap-2 px-4 py-3">
         <button onClick={onToggleOpen} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
           <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
-          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dot }} />
+          {running
+            ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-accent" />
+            : <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dot }} />}
           <span className={`truncate text-sm font-semibold ${done ? "text-text-muted line-through" : "text-text-primary"}`}>{loop.name}</span>
+          {running && <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-accent">running…</span>}
           {isBriefing ? (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent" title="Built-in briefing loop: synthesizes + delivers a digest of this domain"><Mail className="h-2.5 w-2.5" /> briefing</span>
           ) : loop.type === "open"
@@ -651,9 +744,14 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
           )}
           {/* Controls */}
           <div className="flex flex-wrap items-center gap-2 border-t border-border-subtle pt-2.5">
-            <button onClick={runNow} disabled={running} title="Run this loop now: measure the gap, then apply per its autonomy" className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+            <button onClick={() => runNow()} disabled={running} title="Run this loop now: measure the gap, then apply per its autonomy" className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
               {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} {running ? "Running…" : "Run now"}
             </button>
+            {running && (
+              <button onClick={stopRun} title="Stop this loop's run" className="inline-flex items-center gap-1.5 rounded-md border border-danger/40 bg-danger/10 px-2.5 py-1 text-xs font-semibold text-danger hover:bg-danger/20">
+                <X className="h-3.5 w-3.5" /> Stop
+              </button>
+            )}
             {nextRun && <span className="font-mono text-[10px] text-text-muted" title="Next scheduled run">next ~{nextRun.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>}
             <span className="mx-0.5 text-text-muted/40">·</span>
             <select value={loop.cadence} onChange={(e) => onChange({ cadence: e.target.value as LoopCadence })} className="rounded-md border border-border bg-background px-2 py-1 text-xs" title="How often the runner evaluates this loop">
