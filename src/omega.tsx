@@ -12,6 +12,21 @@ import { PREF, getPref, lsGet, lsSet, setPref } from "./storage";
 import { Toggle } from "./ui";
 import { SettingsHeader } from "./sectionutil";
 
+// The distiller wraps its auto block in HTML-comment markers
+// (<!-- omega:auto:start --> / <!-- omega:auto:end -->) so it knows what to
+// rewrite on disk. Those markers must stay in the file, but they should never
+// be shown to the user. sanitizeForDisplay strips marker-only lines and any
+// inline <!-- ... --> comments before rendering. It does NOT touch what we save.
+function sanitizeForDisplay(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !/^\s*<!--\s*omega:.*?-->\s*$/.test(line))
+    .join("\n")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 // Omega daemon - auto-distill the app-wide learned layer on a slow cadence
 // (default daily) so it compounds without a manual click. Module-level timer,
 // same pattern as the apps/bench/loops schedulers; the tick re-reads the pref so
@@ -99,6 +114,12 @@ export function OmegaSection({ vaultPath, headerless }: { vaultPath: string; hea
           subtitle="What Prevail has learned across your domains: durable lessons and patterns, injected into every chat just below your Ideal State. Distilled automatically; editable by hand."
         />
       )}
+
+      {/* Clarity: spell out how Omega relates to the Ideal State (your declared
+          constitution) so the two surfaces don't read as duplicates. */}
+      <div className="mb-4 rounded-lg border border-border-subtle bg-surface px-3 py-2.5 text-[13px] leading-relaxed text-text-secondary">
+        Your Ideal State is what you declare: your values and how you want to operate. Omega is what Prevail has learned about you from how you actually work. The two should align, but Omega can surface non-obvious truths that aren't spelled out in your Ideal State.
+      </div>
 
       {/* M7 (Monday feedback): the cohesive view - show what FEEDS Omega + how it
           sits with the Ideal State, so the flow Journals/Intents/States → Omega is
@@ -201,7 +222,7 @@ export function OmegaSection({ vaultPath, headerless }: { vaultPath: string; hea
       ) : (
         <div>
           <div className="rounded-xl border border-border bg-surface p-4 text-sm leading-relaxed text-text-secondary">
-            <Markdown source={body} compact />
+            <Markdown source={sanitizeForDisplay(body)} compact />
           </div>
           {versions.length > 0 && (
             <CollapsibleSection

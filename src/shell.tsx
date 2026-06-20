@@ -3,7 +3,7 @@
 // setup).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion";
-import { Activity, Archive, ArrowRight, Briefcase, Clock, Cloud, Folder, Heart, Home, KeyRound, Layers, Plus, Receipt, RefreshCw, Shield, ShieldCheck, Sparkles, TrendingUp, Users, Wallet, X, Zap } from "lucide-react";
+import { Activity, Archive, ArrowRight, Briefcase, Clock, Cloud, Folder, Heart, Home, KeyRound, Layers, Lock, Plus, Receipt, RefreshCw, Shield, ShieldCheck, Sparkles, TrendingUp, Unlock, Users, Wallet, X, Zap } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { APP_VERSION, AUTONOMY_LABEL, AUTONOMY_TINT, INTEGRATION_LABEL, STATUS_TINT } from "./constants";
@@ -321,6 +321,17 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
 // at the top of the domain view so you can see at a glance which feeds are fresh.
 
 export function BunkerRibbon({ enabled }: { enabled: boolean }) {
+  // Vault Lock status, surfaced in the trust bar so the user always knows whether
+  // reads/writes are confined to the vault. Defaults to ON (locked) until the
+  // backend says otherwise, and refreshes when the toggle changes or on focus.
+  const [vaultLocked, setVaultLocked] = useState(true);
+  useEffect(() => {
+    const pull = () => { void invoke<{ enabled: boolean }>("vault_lock_status").then((s) => setVaultLocked(s?.enabled !== false)).catch(() => {}); };
+    pull();
+    window.addEventListener("prevail:vault-lock-changed", pull);
+    window.addEventListener("focus", pull);
+    return () => { window.removeEventListener("prevail:vault-lock-changed", pull); window.removeEventListener("focus", pull); };
+  }, []);
   // High-contrast in BOTH modes: a clear tinted bar (not a translucent wash that
   // disappears over warm/cream themes) with dark text in light mode and light
   // text in dark mode. Legibility is non-negotiable for an always-on trust bar.
@@ -346,6 +357,17 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
         {enabled
           ? "Local models only • Network disabled"
           : "Cloud models and web access enabled"}
+      </span>
+      {/* Vault Lock indicator - always-visible trust signal: locked = reads/writes
+          confined to the vault. Sits left of the version, right-aligned. */}
+      <span
+        className="pointer-events-none absolute right-16 inline-flex select-none items-center gap-1 font-mono text-[10px] uppercase tracking-wider opacity-80"
+        title={vaultLocked
+          ? "Vault Lock ON: the assistant only reads and writes inside your vault."
+          : "Vault Lock OFF: the assistant may reach files outside your vault."}
+      >
+        {vaultLocked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3 opacity-70" />}
+        {vaultLocked ? "Vault Lock" : "Unlocked"}
       </span>
       {/* Version - inside the ribbon so it inherits the high-contrast ribbon
           text color (the old standalone pill was invisible over the dark bar). */}

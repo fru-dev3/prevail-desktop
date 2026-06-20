@@ -475,7 +475,7 @@ export function ModelsSection({
                 className="relative"
                 title={`${c.label}: ${v === "ok" ? "valid" : v === "failed" ? "not valid" : v === "verifying" ? "checking…" : "not checked"}`}
               >
-                <ProviderMark vendor={c.id} size={22} />
+                <ProviderMark vendor={c.id} size={32} />
                 <span className={`absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] font-bold leading-none ${
                   v === "ok" ? "bg-ok text-background"
                   : v === "failed" ? "bg-warn text-background"

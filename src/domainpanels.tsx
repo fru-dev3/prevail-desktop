@@ -1,7 +1,7 @@
 // Domain-scoped panels extracted from App.tsx: the context drawer (right rail),
 // the agent picker rail, the pref-picker column, and the domain prefs panel.
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, Box, Check, ChevronRight, Code, Compass, Cpu, Eye, Folder, Globe, Loader2, Lock, MessageSquare, PanelRightClose, Pin, RefreshCw, Share2, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { ArrowRight, Box, Check, ChevronDown, ChevronRight, Code, Compass, Cpu, Eye, Folder, Globe, Loader2, Lock, MessageSquare, PanelRightClose, Pin, RefreshCw, Share2, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { distillCfgFromPrefs } from "./daemoncfg";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES, MODELS, isHarnessRuntime } from "./constants";
@@ -675,6 +675,11 @@ export function DomainPrefsPanel({
   void tick;
   // Skill list collapses by default so a long roster doesn't crowd the panel.
   const [skillsOpen, setSkillsOpen] = useState(false);
+  // Which CLI's model list is expanded. Independent of selection (pickedCli): the
+  // user can collapse the selected provider's models without deselecting it, and
+  // can collapse everything. Initialized to the currently picked cli so the panel
+  // opens as before on first render.
+  const [expandedCli, setExpandedCli] = useState<string | null>(() => lsGet(`prevail.domain.${domain}.cli`) || null);
 
   const cliKey = `prevail.domain.${domain}.cli`;
   const modelKey = `prevail.domain.${domain}.model`;
@@ -929,13 +934,14 @@ export function DomainPrefsPanel({
             const picked = pickedCli === c.id;
             const disabled = !c.available;
             const models = MODELS[c.id] ?? [];
+            const expanded = expandedCli === c.id;
             return (
               <div key={c.id}>
                 <button
                   disabled={disabled}
-                  onClick={() => setOverride(cliKey, c.id)}
+                  onClick={() => { setOverride(cliKey, c.id); setExpandedCli(c.id); }}
                   title={disabled ? `${c.label} not installed` : c.label}
-                  className={`group flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
+                  className={`group flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left transition-colors ${
                     picked
                       ? "border-accent bg-accent-soft ring-1 ring-accent/20"
                       : disabled
@@ -943,6 +949,23 @@ export function DomainPrefsPanel({
                       : "border-border bg-background hover:bg-surface-warm"
                   }`}
                 >
+                  {/* Expand chevron on the LEFT - toggles the model list without
+                      changing the selection. Hidden when there are no models. */}
+                  {!disabled && models.length > 0 ? (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      aria-label={expanded ? "Collapse models" : "Expand models"}
+                      title={expanded ? "Collapse models" : "Expand models"}
+                      onClick={(e) => { e.stopPropagation(); setExpandedCli((v) => (v === c.id ? null : c.id)); }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); setExpandedCli((v) => (v === c.id ? null : c.id)); } }}
+                      className="-ml-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-muted transition-colors hover:text-accent"
+                    >
+                      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "" : "-rotate-90"}`} strokeWidth={2.5} />
+                    </span>
+                  ) : (
+                    <span className="h-5 w-5 shrink-0" />
+                  )}
                   <ProviderMark vendor={c.id} size={22} />
                   <span className={`flex-1 font-display text-sm font-semibold tracking-tight ${picked ? "text-accent" : "text-text-primary"}`}>
                     {c.label}
@@ -950,19 +973,15 @@ export function DomainPrefsPanel({
                   {disabled && (
                     <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">not installed</span>
                   )}
-                  {!disabled && models.length > 0 && (
-                    <svg className={`h-3.5 w-3.5 text-text-muted transition-transform ${picked ? "rotate-180" : ""}`} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.5}>
-                      <path d="M3 4.5L6 7.5L9 4.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
                   {picked && (
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-background">
                       <Check className="h-3 w-3" strokeWidth={3} />
                     </span>
                   )}
                 </button>
-                {/* Models - indented under the selected CLI, collapsed otherwise. */}
-                {picked && models.length > 0 && (
+                {/* Models - indented under the expanded CLI, collapsed otherwise.
+                    Expansion is independent of selection (expandedCli, not picked). */}
+                {expanded && models.length > 0 && (
                   <div className="ml-4 mt-1.5 flex flex-col gap-1.5 border-l-2 border-accent-border/40 pl-4">
                     <div className="flex items-center justify-between pt-0.5">
                       <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">Model</span>
@@ -1244,6 +1263,11 @@ export function DomainPrefsPanel({
                 <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${r.on ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}><Icon className="h-4 w-4" /></span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
+                    {/* At-a-glance status dot: vivid green + soft pulse when running, muted grey when off. */}
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${r.on ? "bg-ok pulse-soft" : "bg-text-muted/40"}`}
+                      title={r.on ? "Running" : "Off"}
+                    />
                     <span className="text-sm font-semibold text-text-primary">{r.title}</span>
                     <span className={`font-mono text-[9px] uppercase tracking-wider ${r.on ? "text-ok" : "text-text-muted"}`}>{r.on ? "on" : "off"}</span>
                   </div>

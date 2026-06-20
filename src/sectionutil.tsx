@@ -107,8 +107,17 @@ export function pickSkillColor(name: string): { bg: string; fg: string } {
 export function SettingsHeader({ title, subtitle, icon }: { title: string; subtitle?: string; icon?: typeof Folder }) {
   const Icon = icon ?? settingsHeaderIcon(title);
   return (
-    <div className="mb-4 border-b border-border-subtle pb-4">
-      <div className="flex items-start gap-4">
+    <div className="relative mb-4 overflow-hidden border-b border-border-subtle pb-4">
+      {/* Purely decorative right-side flourish: a soft gradient wash plus a large
+          ghosted copy of the page icon. Adapts per page via the same icon prop.
+          Sits behind content, ignores pointer events, and is clipped by the
+          parent's overflow-hidden so it never pushes the title/subtitle layout
+          or covers any right-aligned controls. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 z-0 w-1/2 bg-gradient-to-l from-accent-soft/40 to-transparent" />
+      <div aria-hidden="true" className="pointer-events-none absolute -right-4 top-1/2 z-0 -translate-y-1/2 text-accent/[0.06]">
+        <Icon className="h-28 w-28" strokeWidth={1.25} />
+      </div>
+      <div className="relative z-10 flex items-start gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent ring-1 ring-accent-border/50">
           <Icon className="h-5 w-5" />
         </div>

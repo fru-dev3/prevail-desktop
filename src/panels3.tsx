@@ -1,6 +1,6 @@
 // Components extracted from App.tsx.
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Boxes, Check, ChevronRight, Circle, ExternalLink, Globe, Loader2, Plug, Plus, Settings as SettingsIcon, Sparkles, Terminal, X } from "lucide-react";
+import { AlertTriangle, Boxes, Check, ChevronRight, Circle, ExternalLink, Globe, Loader2, Plug, Plus, RefreshCw, Settings as SettingsIcon, Sparkles, Terminal, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { PALETTES, SCORE_DIMENSIONS, SETTINGS_ROW, SEVERITY_LABEL, SEVERITY_ORDER, STATUS_TINT } from "./constants";
@@ -402,14 +402,16 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
       {domainApps.map((app) => {
         const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
         const openConfig = () => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }));
+        const syncing = probing === app.id;
         return (
-          <div key={app.id} className={`${SETTINGS_ROW} hover:border-accent-border hover:bg-surface-warm`}>
+          <div key={app.id} className={`${SETTINGS_ROW} relative overflow-hidden hover:border-accent-border hover:bg-surface-warm ${syncing ? "border-accent-border bg-accent-soft/20" : ""}`}>
             {/* Logo + status dot. The whole identity block links to the app's
-                config page so you can authenticate / configure it. */}
+                config page so you can authenticate / configure it. While syncing,
+                the dot pulses so the row visibly reads as "working". */}
             <button onClick={openConfig} title={`Open ${app.title} configuration`} className="group flex min-w-0 flex-1 items-center gap-3 text-left">
               <span className="relative shrink-0">
                 <AppRowLogo app={app} logos={logos} />
-                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-surface" style={{ backgroundColor: tint }} title={app.status} />
+                <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-surface ${syncing ? "pulse-soft" : ""}`} style={{ backgroundColor: syncing ? "var(--color-accent)" : tint }} title={syncing ? "syncing…" : app.status} />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -427,10 +429,11 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
             {app.configured ? (
               <button
                 onClick={() => sync(app.id)}
-                disabled={probing === app.id}
-                className="shrink-0 rounded border border-border bg-background px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
+                disabled={syncing}
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider disabled:opacity-100 ${syncing ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-secondary hover:border-accent-border hover:text-accent"}`}
               >
-                {probing === app.id ? "syncing" : "sync"}
+                {syncing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                {syncing ? "syncing…" : "sync"}
               </button>
             ) : (
               <button
@@ -439,6 +442,13 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
               >
                 <SettingsIcon className="h-3 w-3" /> set up
               </button>
+            )}
+            {/* Indeterminate "working" sweep along the bottom edge of the row,
+                so a sync of unknown duration clearly reads as in-progress. */}
+            {syncing && (
+              <span className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden bg-accent-soft">
+                <span className="sync-sweep block h-full w-1/4 rounded-full bg-accent" />
+              </span>
             )}
           </div>
         );
