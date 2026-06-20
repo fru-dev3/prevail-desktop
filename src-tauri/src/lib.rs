@@ -468,6 +468,8 @@ pub fn run() {
             engine::engine_alignment,
             engine::engine_app_skills,
             engine::engine_app_skill_files,
+            engine::engine_app_set_pull_instructions,
+            engine::engine_app_gateway_capabilities,
             engine::engine_vault_embed,
             engine::engine_vault_migrate_data,
             engine::engine_vault_archive_data,
