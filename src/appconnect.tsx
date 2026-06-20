@@ -2,7 +2,7 @@
 // The user types the app name + what they want from it; the Connection Agent
 // (engine) researches the best method and returns a plan + the ONE auth step.
 // See docs/APPS-REDESIGN.md.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Check, Loader2, Sparkles, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase } from "./format";
@@ -44,9 +44,9 @@ function editDistance(a: string, b: string): number {
   return prev[b.length];
 }
 
-export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: string; onDone: () => void; onCancel: () => void }) {
-  const [name, setName] = useState("");
-  const [goal, setGoal] = useState("");
+export function ConnectAppFlow({ vaultPath, onDone, onCancel, presetName, presetGoal }: { vaultPath: string; onDone: () => void; onCancel: () => void; presetName?: string; presetGoal?: string }) {
+  const [name, setName] = useState(presetName ?? "");
+  const [goal, setGoal] = useState(presetGoal ?? "");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ConnectResult | null>(null);
   // While the engine researches (one long async call), cycle a visible status so
@@ -166,6 +166,17 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel }: { vaultPath: str
       setBusy(false);
     }
   };
+
+  // Opened pre-seeded from a catalog pick: kick off the research immediately so
+  // the user lands on the picked method/plan instead of an empty form. Once only.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (presetName && presetName.trim() && !autoStarted.current) {
+      autoStarted.current = true;
+      void find();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetName]);
 
   const plan = result?.plan;
   // APP-3: persist the confirmed domains (if we have an app id + the set changed
