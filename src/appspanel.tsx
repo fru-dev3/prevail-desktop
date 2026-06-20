@@ -5,7 +5,7 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Check, ChevronRight, FolderOpen, Loader2, Pencil, Plug, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Check, FolderOpen, Globe, Loader2, Pencil, Plug, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { appName, relTime, titleCase } from "./format";
 import { PREF, getPref, lsGet, lsSet } from "./storage";
@@ -19,7 +19,7 @@ type AppStatus = "connected" | "authorized" | "attention" | "connecting" | "disc
 
 // Fold the engine's many status strings + flags into the states the user actually
 // needs to tell apart. CRITICAL (apps redesign): "connected" is NOT the optimistic
-// default — it requires a REAL successful sync (lastSuccessTs set). Credentials
+// default - it requires a REAL successful sync (lastSuccessTs set). Credentials
 // present but no successful fetch yet = "authorized" (verifying), shown amber, not
 // green. This kills the old "configured ⇒ green" lie.
 export function appStatus(a: EngineApp): AppStatus {
@@ -132,25 +132,31 @@ export function startAppsScheduler(vault: string) {
 export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   const [apps, setApps] = useState<EngineApp[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // Master-detail: which connector is open in the right pane. `null` while apps
+  // are still loading or none exist; otherwise the selected app id.
+  const [selected, setSelected] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [query, setQuery] = useState("");
   // Real brand marks for every connector (AllTrails, Booking.com, Garmin, …),
-  // loaded once and shared by all the app cards via AppRowLogo so logos render
-  // identically here, in the per-domain list, and in the connect flow.
+  // loaded once and shared by the list rows + the detail header via AppRowLogo so
+  // logos render identically here, in the per-domain list, and in the connect flow.
   const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
   useEffect(() => { invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {}); }, []);
 
   const reload = useCallback(async () => {
     try {
       const list = await invoke<EngineApp[]>("engine_apps_list");
-      setApps(Array.isArray(list) ? list.map((x) => ({ ...x, title: appName(x.title) })) : []);
+      const next = Array.isArray(list) ? list.map((x) => ({ ...x, title: appName(x.title) })) : [];
+      setApps(next);
+      // Default selection: keep the current one if it still exists, else first app.
+      setSelected((cur) => (cur && next.some((a) => a.id === cur) ? cur : (next[0]?.id ?? null)));
     } catch { setApps([]); }
   }, []);
   useEffect(() => {
     void reload();
     const onSynced = () => { void reload(); };
-    // APP-2: the connect flow's "open existing" match jumps here to expand it.
-    const onOpen = (e: Event) => { const id = (e as CustomEvent<string>).detail; if (id) setExpanded(id); };
+    // APP-2: the connect flow's "open existing" match jumps here to select it.
+    const onOpen = (e: Event) => { const id = (e as CustomEvent<string>).detail; if (id) setSelected(id); };
     window.addEventListener("prevail:apps-synced", onSynced);
     window.addEventListener("prevail:apps-changed", onSynced);
     window.addEventListener("prevail:app-open", onOpen as EventListener);
@@ -173,16 +179,32 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     catch (e) { console.error("set enabled", e); }
   }, [reload]);
 
-  // Group by status so the eye lands on what needs attention first, then live,
-  // then unconnected.
+  // Filter by the search box (name or method), then group into Connected vs
+  // Setup (authorizing / connecting / needs attention) vs Not connected so the
+  // left list reads top-to-bottom like Claude Desktop / ChatGPT connectors.
   const groups = useMemo(() => {
-    const order: AppStatus[] = ["attention", "connecting", "authorized", "connected", "disconnected"];
-    const by: Record<AppStatus, EngineApp[]> = { attention: [], connecting: [], authorized: [], connected: [], disconnected: [] };
-    for (const a of apps ?? []) by[appStatus(a)].push(a);
-    return order.map((k) => ({ key: k, apps: by[k] })).filter((g) => g.apps.length > 0);
-  }, [apps]);
+    const q = query.trim().toLowerCase();
+    const match = (a: EngineApp) =>
+      !q || (a.title || a.id).toLowerCase().includes(q) || methodLabel(a.integration).toLowerCase().includes(q);
+    const filtered = (apps ?? []).filter(match);
+    const bucketOf = (a: EngineApp): "connected" | "setup" | "off" => {
+      const st = appStatus(a);
+      if (st === "connected") return "connected";
+      if (st === "disconnected") return "off";
+      return "setup"; // authorized / connecting / attention
+    };
+    const order = [
+      { key: "setup" as const, label: "Authorizing / setup", tint: "text-warn" },
+      { key: "connected" as const, label: "Connected", tint: "text-ok" },
+      { key: "off" as const, label: "Not connected", tint: "text-text-muted" },
+    ];
+    const by: Record<"connected" | "setup" | "off", EngineApp[]> = { connected: [], setup: [], off: [] };
+    for (const a of filtered) by[bucketOf(a)].push(a);
+    return order.map((g) => ({ ...g, apps: by[g.key] })).filter((g) => g.apps.length > 0);
+  }, [apps, query]);
 
   const liveCount = (apps ?? []).filter((a) => appStatus(a) === "connected").length;
+  const selectedApp = (apps ?? []).find((a) => a.id === selected) ?? null;
 
   return (
     <>
@@ -192,75 +214,142 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         subtitle="Services that feed your vault. Connect each one once, then it's available to any domain's context. No duplicates."
       />
 
-      {/* Connect - one goal sentence, not forms. */}
+      {/* Connect - one goal sentence, not forms. Shown as a full-width flow when
+          active; otherwise the "+" entry lives at the top of the list. */}
       {connecting ? (
         <ConnectAppFlow
           vaultPath={vaultPath}
           onDone={async () => { setConnecting(false); await reload(); }}
           onCancel={() => setConnecting(false)}
         />
-      ) : (
-        <button
-          onClick={() => setConnecting(true)}
-          className="mb-5 flex w-full items-center gap-3 rounded-xl border border-dashed border-accent-border bg-accent-soft/20 px-4 py-3 text-left transition-colors hover:bg-accent-soft/40"
-        >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-background"><Plus className="h-4 w-4" /></span>
-          <span className="min-w-0">
-            <span className="block text-sm font-semibold text-text-primary">Connect an app</span>
-            <span className="block text-xs text-text-muted">Name it and say what it should pull in. Prevail picks the best way to connect.</span>
-          </span>
-        </button>
-      )}
-
-      {apps === null ? (
+      ) : apps === null ? (
         <div className="text-sm text-text-muted">loading apps…</div>
       ) : apps.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
-          <Plug className="mx-auto h-7 w-7 text-text-muted opacity-50" />
-          <p className="mt-3 text-sm text-text-secondary">No apps connected yet.</p>
-          <p className="mt-1 text-xs text-text-muted">Connect one above to start feeding your domains real data.</p>
+        <div className="space-y-4">
+          <button
+            onClick={() => setConnecting(true)}
+            className="flex w-full items-center gap-3 rounded-xl border border-dashed border-accent-border bg-accent-soft/20 px-4 py-3 text-left transition-colors hover:bg-accent-soft/40"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-background"><Plus className="h-4 w-4" /></span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-text-primary">Connect an app</span>
+              <span className="block text-xs text-text-muted">Name it and say what it should pull in. Prevail picks the best way to connect.</span>
+            </span>
+          </button>
+          <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
+            <Plug className="mx-auto h-7 w-7 text-text-muted opacity-50" />
+            <p className="mt-3 text-sm text-text-secondary">No apps connected yet.</p>
+            <p className="mt-1 text-xs text-text-muted">Connect one above to start feeding your domains real data.</p>
+          </div>
         </div>
       ) : (
-        <div className="space-y-5">
-          {liveCount > 0 && (
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{liveCount} of {apps.length} apps live</div>
-          )}
-          {groups.map((g) => (
-            <section key={g.key} className="space-y-2">
-              <div className={`flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] ${STATUS_META[g.key].tint}`}>
-                <span>{STATUS_META[g.key].glyph}</span> {STATUS_META[g.key].label} · {g.apps.length}
-              </div>
-              {g.apps.map((a) => (
-                <AppCard
-                  key={a.id}
-                  app={a}
-                  vaultPath={vaultPath}
-                  logos={logos}
-                  status={appStatus(a)}
-                  open={expanded === a.id}
-                  busy={busy === a.id}
-                  onToggle={() => setExpanded((e) => (e === a.id ? null : a.id))}
-                  onSync={() => syncNow(a.id)}
-                  onSetEnabled={(v) => setEnabled(a.id, v)}
-                  onReload={reload}
-                />
+        // Master-detail. Stacks vertically on narrow widths, side-by-side on lg+.
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+          {/* LEFT - the connectors list: search, "+ connect", grouped rows. */}
+          <aside className="w-full shrink-0 lg:w-72 lg:max-w-xs">
+            <div className="relative mb-2">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search apps"
+                className="w-full rounded-lg border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+              />
+            </div>
+            <button
+              onClick={() => setConnecting(true)}
+              className="mb-3 flex w-full items-center gap-2.5 rounded-lg border border-dashed border-accent-border bg-accent-soft/20 px-3 py-2 text-left transition-colors hover:bg-accent-soft/40"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-background"><Plus className="h-3.5 w-3.5" /></span>
+              <span className="text-xs font-semibold text-text-primary">Connect an app</span>
+            </button>
+            {liveCount > 0 && (
+              <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{liveCount} of {apps.length} live</div>
+            )}
+            <div className="space-y-4 lg:max-h-[60vh] lg:overflow-y-auto lg:pr-1">
+              {groups.length === 0 ? (
+                <div className="px-1 text-xs text-text-muted">No apps match "{query}".</div>
+              ) : groups.map((g) => (
+                <section key={g.key} className="space-y-1">
+                  <div className={`px-1 font-mono text-[10px] uppercase tracking-[0.2em] ${g.tint}`}>{g.label} · {g.apps.length}</div>
+                  {g.apps.map((a) => (
+                    <ConnectorRow
+                      key={a.id}
+                      app={a}
+                      logos={logos}
+                      status={appStatus(a)}
+                      active={selected === a.id}
+                      onSelect={() => setSelected(a.id)}
+                    />
+                  ))}
+                </section>
               ))}
-            </section>
-          ))}
+            </div>
+          </aside>
+
+          {/* RIGHT - the selected connector's full config. */}
+          <div className="min-w-0 flex-1">
+            {selectedApp ? (
+              <AppDetail
+                key={selectedApp.id}
+                app={selectedApp}
+                vaultPath={vaultPath}
+                logos={logos}
+                status={appStatus(selectedApp)}
+                busy={busy === selectedApp.id}
+                onSync={() => syncNow(selectedApp.id)}
+                onSetEnabled={(v) => setEnabled(selectedApp.id, v)}
+                onReload={reload}
+              />
+            ) : (
+              <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
+                <Plug className="mx-auto h-7 w-7 text-text-muted opacity-50" />
+                <p className="mt-3 text-sm text-text-secondary">Select an app to view its connection.</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </>
   );
 }
 
-function AppCard({ app, vaultPath, logos, status, open, busy, onToggle, onSync, onSetEnabled, onReload }: {
+// One row in the left connectors list: brand logo, name, method, and a small
+// status dot. Selecting it opens the detail pane on the right.
+function ConnectorRow({ app, logos, status, active, onSelect }: {
+  app: EngineApp;
+  logos: Record<string, BrandLogo>;
+  status: AppStatus;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const meta = STATUS_META[status];
+  return (
+    <button
+      onClick={onSelect}
+      className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors ${active ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}
+    >
+      <AppRowLogo app={app} logos={logos} size={28} fallback="letter" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-text-primary">{app.title || app.id}</span>
+        <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>
+      </span>
+      <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot} ${status === "connecting" ? "animate-pulse" : ""}`} title={meta.label} />
+    </button>
+  );
+}
+
+// The selected connector's full configuration, shown in the right pane of the
+// master-detail layout. This is the EXACT body that used to live inside the
+// collapsible AppCard - every flow (creds, MCP setup, OAuth/browser sign-in,
+// schedule, domains, config path, runs, enabled toggle, delete) is preserved,
+// just always-shown for the selected app instead of behind a chevron.
+function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, onReload }: {
   app: EngineApp;
   vaultPath: string;
   logos: Record<string, BrandLogo>;
   status: AppStatus;
-  open: boolean;
   busy: boolean;
-  onToggle: () => void;
   onSync: () => void;
   onSetEnabled: (v: boolean) => void;
   onReload: () => Promise<void> | void;
@@ -269,17 +358,16 @@ function AppCard({ app, vaultPath, logos, status, open, busy, onToggle, onSync, 
   const enabled = app.enabled !== false;
   const runs = app.runs ?? [];
   // Apps redesign: the actual data files this connector has loaded (so the user
-  // can SEE what was pulled, and reveal it). Lazy-loaded when the card opens, and
+  // can SEE what was pulled, and reveal it). Loaded for the selected app, and
   // reloaded after a successful sync (lastSuccessTs change).
   const [dataFiles, setDataFiles] = useState<{ path: string; name: string; bytes: number; mtime: number }[]>([]);
   useEffect(() => {
-    if (!open) return;
     let alive = true;
     invoke<{ path: string; name: string; bytes: number; mtime: number }[]>("app_data_files", { vault: vaultPath, appId: app.id })
       .then((f) => { if (alive) setDataFiles(Array.isArray(f) ? f : []); })
       .catch(() => {});
     return () => { alive = false; };
-  }, [open, app.id, vaultPath, app.lastSuccessTs]);
+  }, [app.id, vaultPath, app.lastSuccessTs]);
   // APP-5 - edit which domains this app feeds (engine_app_set_domains). The
   // vault's domain list is fetched lazily when the editor opens.
   const [editDomains, setEditDomains] = useState(false);
@@ -348,6 +436,11 @@ function AppCard({ app, vaultPath, logos, status, open, busy, onToggle, onSync, 
   const integ = (app.integration || "").toLowerCase();
   const isOAuth = integ === "oauth";
   const isMcp = integ === "mcp";
+  // Browser-method connectors authorize by opening a REAL browser the user logs
+  // into (the browser equivalent of OAuth's "Sign in"). engine_app_browser_login
+  // is a long-running Tauri command that opens the browser; when it returns we run
+  // the same verify sync the other auth flows do.
+  const isBrowser = integ === "browser" || integ === "playwright";
   const credSpec = credFieldsFor(app);
   // Fully delete a connector (mirror of "Connect") so the user can remove a
   // duplicate / mistaken app and recreate it. Two-step confirm; the engine
@@ -364,7 +457,7 @@ function AppCard({ app, vaultPath, logos, status, open, busy, onToggle, onSync, 
     } catch (e) { setDeleteErr(String(e).slice(0, 200)); }
     finally { setDeleting(false); }
   };
-  const needsCreds = (!!credSpec || isOAuth) && !isMcp;
+  const needsCreds = (!!credSpec || isOAuth || isBrowser) && !isMcp;
   const [credVals, setCredVals] = useState<Record<string, string>>({});
   const [credBusy, setCredBusy] = useState(false);
   const [credMsg, setCredMsg] = useState<string | null>(null);
@@ -386,7 +479,7 @@ function AppCard({ app, vaultPath, logos, status, open, busy, onToggle, onSync, 
       }
       await verifySync();
       setCredVals((v) => { const n = { ...v }; for (const f of credSpec) if (f.kind === "secret") delete n[f.env]; return n; });
-      setCredMsg("Verified — pulled real data. (The card turns green once a sync succeeds.)");
+      setCredMsg("Verified - pulled real data. (The card turns green once a sync succeeds.)");
     } catch (e) { setCredMsg(`Failed: ${String(e).slice(0, 200)}`); }
     finally { setCredBusy(false); }
   };
@@ -408,6 +501,19 @@ function AppCard({ app, vaultPath, logos, status, open, busy, onToggle, onSync, 
         setCredMsg(`Sign-in failed: ${msg.slice(0, 200)}`);
       }
     }
+    finally { setCredBusy(false); }
+  };
+  // Browser-method log in: opens a real browser window the user signs into, then
+  // closes. This is a long-running call - while it runs we show a clear "opening
+  // browser, log in then close it" busy state. On return we verify by a real fetch
+  // just like the OAuth and credential flows.
+  const browserLogin = async () => {
+    setCredBusy(true); setCredMsg("Opening a browser… log in there, then close the window. Prevail verifies by a real fetch.");
+    try {
+      await invoke("engine_app_browser_login", { id: app.id });
+      await verifySync();
+      setCredMsg("Logged in - verified by a real fetch.");
+    } catch (e) { setCredMsg(`Browser login failed: ${String(e).slice(0, 200)}`); }
     finally { setCredBusy(false); }
   };
   // MCP guided setup (integration === "mcp"): show the server's install/run
@@ -469,64 +575,57 @@ function AppCard({ app, vaultPath, logos, status, open, busy, onToggle, onSync, 
     } catch (e) { setReEval(`Re-evaluate failed: ${e}`); }
     finally { setReEvalBusy(false); }
   };
+  // A short description if the manifest exposes one (the first connection's
+  // description). We never invent copy - if there's nothing, the line is omitted.
+  const description = (app.connections ?? []).map((c) => c.description).find((d) => !!d && d.trim()) ?? null;
   return (
     <div className={`overflow-hidden rounded-xl border bg-surface ${meta.ring}`}>
-      <div className="flex items-center gap-3 px-4 py-3">
-        <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-          <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
-          {/* Real brand mark (AllTrails, Booking.com, Garmin, PayPal, …); the
-              letter monogram is only a last-resort fallback when none resolves. */}
-          <AppRowLogo app={app} logos={logos} size={36} fallback="letter" />
-          <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-2">
-              <span className="truncate text-sm font-semibold text-text-primary">{app.title || app.id}</span>
-              <span className={`inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider ${meta.tint}`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${meta.dot} ${status === "connecting" ? "animate-pulse" : ""}`} />
-                {meta.label}
-              </span>
-              <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>
+      {/* Enriched detail header: big brand mark, name, status pill, method,
+          optional description, and the "Open in chat" + Sync CTAs. */}
+      <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle px-5 py-4">
+        <AppRowLogo app={app} logos={logos} size={52} fallback="letter" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-base font-semibold text-text-primary">{app.title || app.id}</span>
+            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider ${meta.ring} ${meta.tint}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${meta.dot} ${status === "connecting" ? "animate-pulse" : ""}`} />
+              {meta.label}
             </span>
-            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-text-muted">
-              {status === "connected" && <span>synced {app.lastSuccessTs ? relTime(app.lastSuccessTs) : "-"}</span>}
-              {status === "attention" && <span className="text-danger">{app.lastError ? app.lastError.slice(0, 60) : "needs re-auth"}</span>}
-              {status === "disconnected" && <span>not set up</span>}
-              {status === "connected" && <span>· {scheduleLabel(app.refresh)}</span>}
-              {status === "connected" && app.nextDueTs ? <span>· next {relTime(app.nextDueTs)}</span> : null}
-              {(app.domains ?? []).length > 0 && <span>· feeds {app.domains.map(titleCase).join(", ")}</span>}
-            </span>
-          </span>
-        </button>
-        {/* Open the app's own workspace (interact / chat with its data), the same
-            view the sidebar + per-domain facet open. */}
-        <button
-          onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }))}
-          title={`Open ${app.title || app.id} (chat + manage)`}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent"
-        >
-          <ArrowUpRight className="h-3 w-3" /> open
-        </button>
-        {status !== "disconnected" && (
+            <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-text-muted">
+            {status === "connected" && <span>synced {app.lastSuccessTs ? relTime(app.lastSuccessTs) : "-"}</span>}
+            {status === "attention" && <span className="text-danger">{app.lastError ? app.lastError.slice(0, 60) : "needs re-auth"}</span>}
+            {status === "disconnected" && <span>not set up</span>}
+            {status === "connected" && <span>· {scheduleLabel(app.refresh)}</span>}
+            {status === "connected" && app.nextDueTs ? <span>· next {relTime(app.nextDueTs)}</span> : null}
+            {(app.domains ?? []).length > 0 && <span>· feeds {app.domains.map(titleCase).join(", ")}</span>}
+          </div>
+          {description && <p className="mt-1.5 max-w-prose text-[12px] text-text-secondary">{description}</p>}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {status !== "disconnected" && (
+            <button
+              onClick={onSync}
+              disabled={busy}
+              title="Sync this app now"
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} {busy ? "syncing" : "sync"}
+            </button>
+          )}
+          {/* Open the app's own workspace (chat with its data) - the same view the
+              sidebar + per-domain facet open (prevail:open-app dispatch). */}
           <button
-            onClick={onSync}
-            disabled={busy}
-            title="Sync this app now"
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
+            onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }))}
+            title={`Open ${app.title || app.id} in chat`}
+            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover"
           >
-            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} {busy ? "syncing" : "sync"}
+            <ArrowUpRight className="h-3.5 w-3.5" /> Open in chat
           </button>
-        )}
+        </div>
       </div>
-      {open && (
-        <div className="relative space-y-3 border-t border-border-subtle px-4 py-4 pl-[60px] text-[13px]">
-          {/* P3 (Monday feedback): clicking the card header collapses this, but a
-              tiny explicit close affordance is clearer. */}
-          <button
-            onClick={onToggle}
-            title="Close details"
-            className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+      <div className="space-y-3 px-5 py-4 text-[13px]">
           {app.account?.label && <Detail label="Account">{app.account.label}{app.account.address ? ` · ${app.account.address}` : ""}</Detail>}
           <Detail label="Method">
             <span className="inline-flex flex-wrap items-center gap-2">
@@ -547,7 +646,7 @@ function AppCard({ app, vaultPath, logos, status, open, busy, onToggle, onSync, 
           </Detail>
           {reEval && <div className="rounded-md border border-border-subtle bg-background px-3 py-1.5 text-xs text-text-secondary">{reEval}</div>}
           {needsCreds && (
-            <Detail label={isOAuth ? "Sign in" : "Credentials"}>
+            <Detail label={isOAuth ? "Sign in" : isBrowser ? "Log in" : "Credentials"}>
               <div className="flex flex-col gap-1.5">
                 {isOAuth ? (
                   <>
@@ -556,6 +655,32 @@ function AppCard({ app, vaultPath, logos, status, open, busy, onToggle, onSync, 
                       {credBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}{credBusy ? "Signing in…" : `Sign in to ${app.title || app.id}`}
                     </button>
                     <span className="text-[10px] text-text-muted/70">Opens your browser to authorize, then verifies by a real fetch. Token stored locally; used read-only.</span>
+                  </>
+                ) : isBrowser ? (
+                  <>
+                    {/* Browser-method equivalent of OAuth sign-in: open a real
+                        browser, log in, close it, then verify by a real fetch. */}
+                    <button onClick={browserLogin} disabled={credBusy}
+                      className="inline-flex w-fit items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+                      {credBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}{credBusy ? "Opening browser…" : `Log in to ${app.title || app.id}`}
+                    </button>
+                    <span className="text-[10px] text-text-muted/70">{credBusy ? "Opening a browser - log in there, then close the window." : "Opens a real browser. Log in, then close it; Prevail verifies by a real fetch. Session stored locally; used read-only."}</span>
+                    {/* Some browser apps ALSO take saved credentials (cookies/keys). */}
+                    {credSpec?.map((f) => f.kind === "toggle" ? (
+                      <label key={f.env} className="flex items-center gap-2 text-[11px] text-text-secondary">
+                        <input type="checkbox" checked={credVals[f.env] === "on"} onChange={(e) => setCredVals((v) => ({ ...v, [f.env]: e.target.checked ? "on" : "off" }))} className="h-3 w-3 accent-[var(--color-accent)]" />
+                        {f.label}
+                      </label>
+                    ) : (
+                      <input key={f.env} type="password" value={credVals[f.env] ?? ""} onChange={(e) => setCredVals((v) => ({ ...v, [f.env]: e.target.value }))} placeholder={f.label} autoComplete="off"
+                        className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
+                    ))}
+                    {credSpec && credSpec.length > 0 && (
+                      <button onClick={saveCreds} disabled={credBusy || !credSpec.some((f) => f.kind === "secret" && (credVals[f.env] ?? "").trim())}
+                        className="inline-flex w-fit items-center gap-1.5 rounded-md border border-border px-3 py-1 text-xs font-semibold text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+                        {credBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}{credBusy ? "Verifying…" : "Save & verify"}
+                      </button>
+                    )}
                   </>
                 ) : (
                   <>
@@ -722,19 +847,6 @@ function AppCard({ app, vaultPath, logos, status, open, busy, onToggle, onSync, 
               </div>
             )}
           </Detail>
-          {/* APP-6 - surface where the per-app (MCP/connector) config lives + reveal it. */}
-          {app.path && (
-            <Detail label="Config">
-              <span className="inline-flex flex-wrap items-center gap-1.5">
-                <code className="break-all font-mono text-[11px] text-text-secondary">{app.path}</code>
-                <button onClick={() => void invoke("open_in_finder", { path: app.path! }).catch(() => {})}
-                  title="Open this app's config folder (manifest + MCP/connector config)"
-                  className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
-                  <FolderOpen className="h-2.5 w-2.5" /> reveal
-                </button>
-              </span>
-            </Detail>
-          )}
           {dataFiles.length > 0 && (
             <Detail label="Data loaded">
               <div className="flex flex-col gap-1">
@@ -772,6 +884,39 @@ function AppCard({ app, vaultPath, logos, status, open, busy, onToggle, onSync, 
               </ul>
             </div>
           )}
+          {/* Information - at-a-glance facts the app exposes: config folder (with
+              reveal), domains fed, and the schedule summary. We only show fields
+              the app actually has (no invented homepage/website data). */}
+          <div className="rounded-lg border border-border-subtle bg-surface-warm/40 px-3 py-2.5">
+            <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Information</div>
+            <div className="space-y-1.5 text-[12px] text-text-secondary">
+              {app.path && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Config</span>
+                  <code className="break-all font-mono text-[11px] text-text-secondary">{app.path}</code>
+                  <button onClick={() => void invoke("open_in_finder", { path: app.path! }).catch(() => {})}
+                    title="Open this app's config folder (manifest + MCP/connector config)"
+                    className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+                    <FolderOpen className="h-2.5 w-2.5" /> reveal
+                  </button>
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Domains</span>
+                <span>{(app.domains ?? []).length ? app.domains.map(titleCase).join(", ") : "none yet"}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Schedule</span>
+                <span>{scheduleLabel(app.refresh)}{app.nextDueTs ? ` · next ${relTime(app.nextDueTs)}` : ""}</span>
+              </div>
+              {app.community && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Source</span>
+                  <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> Community connector</span>
+                </div>
+              )}
+            </div>
+          </div>
           <div className="flex items-center justify-between border-t border-border-subtle pt-2.5">
             <span className="flex items-center gap-2 text-xs text-text-secondary">
               <Toggle on={enabled} onChange={onSetEnabled} label={`${app.title} scheduled sync`} />
@@ -798,8 +943,7 @@ function AppCard({ app, vaultPath, logos, status, open, busy, onToggle, onSync, 
             )}
             {deleteErr && <span className="text-[11px] text-danger">{deleteErr}</span>}
           </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
