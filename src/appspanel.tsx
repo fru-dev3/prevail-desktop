@@ -5,7 +5,7 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Boxes, Cable, Check, ExternalLink, FolderOpen, Globe, Link2, Loader2, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Star, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Boxes, Cable, Check, Download, ExternalLink, FolderOpen, Globe, Link2, Loader2, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Star, Terminal, Trash2, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "./bridge";
 import { appName, relTime, titleCase } from "./format";
@@ -719,7 +719,38 @@ function clearGatewayCache(key: string) {
 // the key once, then browse Composio's app catalog and connect any app, which opens
 // a Composio auth link in the browser. Connections live in Composio; Prevail's
 // agent uses them through the Composio MCP endpoint.
+type ComposioCliStatus = { installed: boolean; loggedIn: boolean; account: string | null; bin: string | null };
 function ComposioMode({ vaultPath }: { vaultPath: string }) {
+  // Connect-via sub-mode: CLI (browser OAuth, the default) or MCP (the existing
+  // key-based flow). Both set up the same Composio account; the agent uses the
+  // Composio MCP either way. Persisted so the choice survives a reload.
+  const [composioMethod, setComposioMethod] = useState<"cli" | "mcp">(() => {
+    try { return localStorage.getItem("prevail.composio.method") === "mcp" ? "mcp" : "cli"; } catch { return "cli"; }
+  });
+  useEffect(() => { try { localStorage.setItem("prevail.composio.method", composioMethod); } catch { /* ignore */ } }, [composioMethod]);
+  // CLI setup state.
+  const [cliStatus, setCliStatus] = useState<ComposioCliStatus | null>(null);
+  const [cliBusy, setCliBusy] = useState<null | "status" | "install" | "login">(null);
+  const [cliOutput, setCliOutput] = useState<string | null>(null);
+  const checkCliStatus = useCallback(async () => {
+    setCliBusy("status");
+    try { setCliStatus(await invoke<ComposioCliStatus>("composio_cli_status")); }
+    catch { setCliStatus({ installed: false, loggedIn: false, account: null, bin: null }); }
+    finally { setCliBusy((b) => (b === "status" ? null : b)); }
+  }, []);
+  useEffect(() => { if (composioMethod === "cli") void checkCliStatus(); }, [composioMethod, checkCliStatus]);
+  const installCli = useCallback(async () => {
+    setCliBusy("install"); setCliOutput(null);
+    try { const r = await invoke<{ ok: boolean; output: string }>("composio_cli_install"); setCliOutput(r.output); }
+    catch (e) { setCliOutput(String(e)); }
+    finally { setCliBusy(null); await checkCliStatus(); }
+  }, [checkCliStatus]);
+  const loginCli = useCallback(async () => {
+    setCliBusy("login"); setCliOutput(null);
+    try { const r = await invoke<{ ok: boolean; output: string }>("composio_cli_login"); setCliOutput(r.output); }
+    catch (e) { setCliOutput(String(e)); }
+    finally { setCliBusy(null); await checkCliStatus(); }
+  }, [checkCliStatus]);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [keyInput, setKeyInput] = useState("");
   const [editingKey, setEditingKey] = useState(false);
@@ -770,15 +801,19 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
   // the cache immediately so the list renders with no spinner, then only hit the
   // network if the cache is stale (or absent). The focus refresh is throttled the
   // same way via loadConnections's staleness check.
+  // Connectors load once Composio is usable: the MCP key verified, OR the CLI is
+  // logged in. Either path reaches the same Composio account, so connectors list
+  // through the existing MCP call in both modes.
+  const connectorsUsable = (composioMethod === "mcp" && verified === true) || (composioMethod === "cli" && !!cliStatus?.loggedIn);
   useEffect(() => {
-    if (verified !== true) return; // only load connectors once the key is VALID
+    if (!connectorsUsable) return;
     const cached = readGatewayCache<{ active: string[] }>(COMPOSIO_CACHE_KEY);
     if (cached) setConnected(new Set(cached.data.active ?? []));
     void loadConnections();
     const onFocus = () => { void loadConnections(); };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [verified, loadConnections]);
+  }, [connectorsUsable, loadConnections]);
   const save = async () => {
     setBusy("save"); setVerifyMsg(null);
     try { await invoke("composio_set_key", { key: keyInput.trim() }); setKeyInput(""); setEditingKey(false); await refresh(); void verify(); }
@@ -810,6 +845,11 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
   const availableApps = shown.filter((a) => !connected.has(a.slug));
   const selected = selectedSlug ? COMPOSIO_APPS.find((a) => a.slug === selectedSlug) ?? null : null;
   const selectedConnected = selected ? connected.has(selected.slug) : false;
+  const cliLoggedIn = !!cliStatus?.loggedIn;
+  // Composio is usable (so the catalog + connect flows render) when EITHER the
+  // MCP key verified OR the CLI is logged in. Connecting an app still uses the
+  // existing composio_connect_app MCP path in both modes.
+  const usable = (composioMethod === "mcp" && verified === true) || (composioMethod === "cli" && cliLoggedIn);
   return (
     <div className="space-y-4">
       {/* FULL-WIDTH header: what Composio is + the key / config controls, above
@@ -818,11 +858,49 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
         <div className="flex flex-wrap items-center gap-2">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#6d5efc] to-[#3b2fb8] text-white"><Boxes className="h-4 w-4" /></span>
           <span className="text-base font-semibold text-text-primary">Composio</span>
-          {configured && verified === true && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
-          {verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-danger">Invalid key</span>}
+          {composioMethod === "mcp" && configured && verified === true && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
+          {composioMethod === "mcp" && verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-danger">Invalid key</span>}
+          {composioMethod === "cli" && cliLoggedIn && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
+          {/* Connect via: CLI (default) or MCP. Small segmented control. */}
+          <div className="ml-auto inline-flex rounded-md border border-border bg-background p-0.5">
+            {([["cli", "CLI", Terminal], ["mcp", "MCP", Boxes]] as const).map(([m, label, Icon]) => (
+              <button
+                key={m}
+                onClick={() => setComposioMethod(m)}
+                className={`inline-flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-semibold transition-colors ${composioMethod === m ? "bg-accent text-background" : "text-text-secondary hover:text-text-primary"}`}
+              >
+                <Icon className="h-3 w-3" />
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-text-secondary">One managed gateway: a single key fronts 1000+ apps. Authorize each app once in Composio, then Prevail's agent uses them through the Composio MCP endpoint - no per-app setup on this Mac.</p>
-        {showForm ? (
+        {composioMethod === "cli" ? (
+          <div className="mt-3 max-w-xl space-y-2">
+            <p className="text-[11px] leading-relaxed text-text-secondary">Install the Composio CLI and sign in once in your browser - no key to copy. Prevail then uses your Composio connection. <button onClick={() => void openUrl("https://docs.composio.dev")} className="text-accent hover:underline">Get help</button>.</p>
+            {cliBusy === "status" && cliStatus === null ? (
+              <div className="flex items-center gap-2 text-[11px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking the Composio CLI…</div>
+            ) : !cliStatus?.installed ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button onClick={installCli} disabled={cliBusy !== null} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{cliBusy === "install" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Install Composio CLI</button>
+                <button onClick={checkCliStatus} disabled={cliBusy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border disabled:opacity-50">{cliBusy === "status" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh</button>
+              </div>
+            ) : !cliStatus.loggedIn ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button onClick={loginCli} disabled={cliBusy !== null} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{cliBusy === "login" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />} Log in to Composio</button>
+                <button onClick={checkCliStatus} disabled={cliBusy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border disabled:opacity-50">{cliBusy === "status" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh</button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                <span className="inline-flex items-center gap-1 font-semibold text-accent"><Check className="h-3.5 w-3.5" /> Composio CLI connected{cliStatus.account ? ` as ${cliStatus.account}` : ""}</span>
+                <button onClick={checkCliStatus} disabled={cliBusy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{cliBusy === "status" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Refresh</button>
+              </div>
+            )}
+            {cliBusy === "login" && <p className="flex items-center gap-2 text-[11px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Opening your browser to sign in to Composio…</p>}
+            {cliOutput && <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[10px] text-text-muted">{cliOutput}</pre>}
+          </div>
+        ) : showForm ? (
           <div className="mt-3 max-w-xl space-y-2">
             <p className="text-[11px] leading-relaxed text-text-secondary">Paste your <span className="font-mono text-text-primary">X-CONSUMER-API-KEY</span> from <button onClick={() => void openUrl("https://connect.composio.dev")} className="text-accent hover:underline">connect.composio.dev</button> (starts with <span className="font-mono">ck_</span>). Stored in your Mac's Keychain.</p>
             {verified === false && <p className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger">That key did not authenticate to Composio. Enter a valid X-CONSUMER-API-KEY.</p>}
@@ -853,7 +931,7 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
       {/* LEFT - search + the connected / available app lists. Selecting an app
           shows its detail on the right. */}
       <aside className="w-full shrink-0 lg:w-72 lg:max-w-xs">
-        {verified === true && (
+        {usable && (
           <>
             <div className="relative mb-2">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
@@ -896,10 +974,10 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
       {/* RIGHT - the selected app's detail: ConnectedGatewayDetail when connected,
           a small Connect pane when available, else a placeholder. */}
       <div className="min-w-0 flex-1">
-        {verified !== true ? (
+        {!usable ? (
           <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
             <Boxes className="mx-auto h-7 w-7 text-text-muted opacity-50" />
-            <p className="mt-3 text-sm text-text-secondary">Set up your Composio key to browse and connect apps.</p>
+            <p className="mt-3 text-sm text-text-secondary">{composioMethod === "cli" ? "Install the Composio CLI and sign in to browse and connect apps." : "Set up your Composio key to browse and connect apps."}</p>
           </div>
         ) : selected && selectedConnected ? (
           <ConnectedGatewayDetail key={selected.slug} method="composio" slug={selected.slug} title={selected.name} vaultPath={vaultPath} logos={logos} onBack={() => setSelectedSlug(null)} />
