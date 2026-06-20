@@ -11,7 +11,6 @@ import { BenchScheduleCard } from "./cards";
 import { FrameworksSection, IngestionSection, RemoteSection, ShortcutsSection } from "./settings1";
 import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection } from "./settings2";
 import { BoardPanel } from "./boardpanel";
-import { ConnectorsSection } from "./settings3";
 import { AppsPanel } from "./appspanel";
 import { RecommendationsPanel } from "./recommendationspanel";
 import { SystemActivity } from "./activitypanel";
@@ -59,7 +58,9 @@ export function SettingsPanel({
   useEffect(() => {
     if (jumpTo?.section) setSection(jumpTo.section as Section);
   }, [jumpTo?.n]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [settingsDeepLink, setSettingsDeepLink] = useState<string | null>(null);
+  // Value is consumed by sections via the deep-link event; only the setter is
+  // read here, so the state value itself is intentionally left unbound.
+  const [, setSettingsDeepLink] = useState<string | null>(null);
   // In-settings deep links (e.g. a model row's "runs" button jumping to the
   // Benchmark cockpit) dispatch this event rather than threading props.
   // Format: "section" or "section:detail" - detail is passed to the section.
@@ -344,17 +345,15 @@ export function SettingsPanel({
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {section === "connectors" && (
             <>
+              {/* The full connector catalog (browse + search + connect) now lives
+                  inside AppsPanel's sidebar, so the separate "Browse the catalog"
+                  bar is gone. Only the raw MCP / Composio / browser / CLI tier
+                  config remains, tucked into a collapsed Advanced section. */}
               <AppsPanel vaultPath={vaultPath} />
               <div className="mt-8">
-                {/* APP-1: Advanced is the CATALOG + tiers only - connected apps
-                    are shown once, above, in AppsPanel (catalogOnly suppresses the
-                    duplicate connected list inside ConnectorsSection). */}
-                <CollapsibleSection icon={Wrench} title="Browse the catalog" summary="1000+ apps & connection tiers"
-                  subtitle="Browse the full connector catalog to add an app, and configure the raw MCP / Composio / browser / CLI tiers by hand.">
-                  <ConnectorsSection vaultPath={vaultPath} focusAppId={settingsDeepLink ?? undefined} catalogOnly />
-                  <div className="mt-6 border-t border-border-subtle pt-6">
-                    <IngestionSection />
-                  </div>
+                <CollapsibleSection icon={Wrench} title="Advanced connection tiers" summary="Raw MCP / Composio / browser / CLI"
+                  subtitle="Configure the raw connection tiers by hand. Most apps connect from the catalog in the sidebar above.">
+                  <IngestionSection />
                 </CollapsibleSection>
               </div>
             </>
