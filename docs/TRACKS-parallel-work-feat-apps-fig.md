@@ -76,6 +76,29 @@ list the accounts/apps connected in Composio -> interact through Composio.
 - [ ] B6: remove the half-built "Composio gateway" entry from the Direct sidebar and
   the agent .mcp.json mcp-remote wiring (superseded by the key-based mode).
 
+## TRACK E — Composio MCP + CLI choice (user, new)
+- [ ] Within Composio, offer two connection means: MCP and CLI, with CLI the
+  DEFAULT. The user clicks and authenticates through the chosen one.
+  Composio CLI: curl -fsSL https://composio.dev/install | bash ; composio login
+  (browser OAuth) ; composio search / execute / add <toolkit>. Plan: detect/install
+  the composio binary, drive `composio login`, then manage connectors via the CLI.
+  Neither composio nor nango CLI is installed on the machine yet.
+
+## TRACK F — Nango as a THIRD mode (Direct | Composio | Nango) (user, new)
+Exploring multiple integration platforms to pick the best. Nango is a parallel
+track to Composio: its own auth, its own connectors, scheduled sync into a domain.
+Model (from nango.dev/docs):
+  - Secret key NANGO_SECRET_KEY (from app.nango.dev env settings). Bearer auth.
+  - Base API https://api.nango.dev. Verify/list: GET /integrations.
+  - Connect a user: POST /connect/sessions {end_user, allowed_integrations} ->
+    { data: { token } } -> open the Connect UI with the session token.
+  - Connections: GET /connection. Synced records: GET /records?model=... with
+    Connection-Id + Provider-Config-Key headers. 800+ APIs. There is a Nango CLI.
+- [ ] F1: 3-way toggle Direct | Composio | Nango.
+- [ ] F2: Nango config (enter + verify the secret key in Keychain) + integrations
+  list + connect via Connect session. NEED the user's Nango secret key to test.
+- [ ] F3: Nango scheduled sync of records into the domain/vault.
+
 ## TRACK C — Secrets to 1Password
 - [B] C1: store Composio key + MCP URL in 1Password. BLOCKED: `op` CLI is installed
   but not signed in (needs the user's interactive unlock / Touch ID). Done in
