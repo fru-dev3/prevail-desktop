@@ -557,116 +557,167 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   );
 }
 
-// The Composio track: a managed gateway, completely separate from Direct. First a
-// config step (paste + verify the Composio consumer key), then connect any of
-// Composio's apps - which opens a Composio auth link in the browser. Connections
-// live in Composio; Prevail's agent uses them through the Composio MCP endpoint.
+// Composio's app catalog (toolkit slug -> display name + category). The consumer
+// key is MCP-only (the REST catalog API rejects it), so this is bundled. Slugs are
+// Composio's toolkit slugs, used verbatim by COMPOSIO_MANAGE_CONNECTIONS add.
+const COMPOSIO_APPS: { slug: string; name: string; cat: string }[] = [
+  { slug: "gmail", name: "Gmail", cat: "Email" },
+  { slug: "outlook", name: "Outlook", cat: "Email" },
+  { slug: "googlecalendar", name: "Google Calendar", cat: "Calendar" },
+  { slug: "googledrive", name: "Google Drive", cat: "Files" },
+  { slug: "googledocs", name: "Google Docs", cat: "Docs" },
+  { slug: "googlesheets", name: "Google Sheets", cat: "Docs" },
+  { slug: "googlemeet", name: "Google Meet", cat: "Meetings" },
+  { slug: "notion", name: "Notion", cat: "Docs" },
+  { slug: "slack", name: "Slack", cat: "Communication" },
+  { slug: "discord", name: "Discord", cat: "Communication" },
+  { slug: "microsoft_teams", name: "Microsoft Teams", cat: "Communication" },
+  { slug: "telegram", name: "Telegram", cat: "Communication" },
+  { slug: "github", name: "GitHub", cat: "Developer" },
+  { slug: "gitlab", name: "GitLab", cat: "Developer" },
+  { slug: "bitbucket", name: "Bitbucket", cat: "Developer" },
+  { slug: "linear", name: "Linear", cat: "Developer" },
+  { slug: "jira", name: "Jira", cat: "Developer" },
+  { slug: "confluence", name: "Confluence", cat: "Docs" },
+  { slug: "sentry", name: "Sentry", cat: "Developer" },
+  { slug: "figma", name: "Figma", cat: "Design" },
+  { slug: "asana", name: "Asana", cat: "Productivity" },
+  { slug: "trello", name: "Trello", cat: "Productivity" },
+  { slug: "clickup", name: "ClickUp", cat: "Productivity" },
+  { slug: "todoist", name: "Todoist", cat: "Productivity" },
+  { slug: "airtable", name: "Airtable", cat: "Productivity" },
+  { slug: "calendly", name: "Calendly", cat: "Scheduling" },
+  { slug: "zoom", name: "Zoom", cat: "Meetings" },
+  { slug: "dropbox", name: "Dropbox", cat: "Files" },
+  { slug: "box", name: "Box", cat: "Files" },
+  { slug: "onedrive", name: "OneDrive", cat: "Files" },
+  { slug: "hubspot", name: "HubSpot", cat: "CRM" },
+  { slug: "salesforce", name: "Salesforce", cat: "CRM" },
+  { slug: "pipedrive", name: "Pipedrive", cat: "CRM" },
+  { slug: "intercom", name: "Intercom", cat: "Support" },
+  { slug: "zendesk", name: "Zendesk", cat: "Support" },
+  { slug: "mailchimp", name: "Mailchimp", cat: "Marketing" },
+  { slug: "sendgrid", name: "SendGrid", cat: "Marketing" },
+  { slug: "typeform", name: "Typeform", cat: "Forms" },
+  { slug: "twilio", name: "Twilio", cat: "Communication" },
+  { slug: "stripe", name: "Stripe", cat: "Finance" },
+  { slug: "quickbooks", name: "QuickBooks", cat: "Finance" },
+  { slug: "shopify", name: "Shopify", cat: "Commerce" },
+  { slug: "twitter", name: "X (Twitter)", cat: "Social" },
+  { slug: "linkedin", name: "LinkedIn", cat: "Social" },
+  { slug: "reddit", name: "Reddit", cat: "Social" },
+  { slug: "youtube", name: "YouTube", cat: "Social" },
+  { slug: "spotify", name: "Spotify", cat: "Media" },
+];
+
+// The Composio track: a managed gateway, completely separate from Direct. Set up
+// the key once, then browse Composio's app catalog and connect any app, which opens
+// a Composio auth link in the browser. Connections live in Composio; Prevail's
+// agent uses them through the Composio MCP endpoint.
 function ComposioMode() {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [keyInput, setKeyInput] = useState("");
   const [editingKey, setEditingKey] = useState(false);
-  const [busy, setBusy] = useState<null | "save" | "verify" | "connect">(null);
+  const [busy, setBusy] = useState<null | "save" | "verify">(null);
+  const [connectingSlug, setConnectingSlug] = useState<string | null>(null);
   const [verified, setVerified] = useState<boolean | null>(null);
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
-  const [appName, setAppName] = useState("");
+  const [query, setQuery] = useState("");
   const [connectMsg, setConnectMsg] = useState<string | null>(null);
+  const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
+  useEffect(() => { void invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {}); }, []);
   const refresh = useCallback(async () => {
     try { const s = await invoke<{ configured: boolean }>("composio_status"); setConfigured(!!s.configured); }
     catch { setConfigured(false); }
   }, []);
-  useEffect(() => { void refresh(); }, [refresh]);
+  const verify = useCallback(async () => {
+    setBusy("verify"); setVerified(null); setVerifyMsg("Checking the connection to Composio…");
+    try { const r = await invoke<{ ok: boolean; error?: string }>("composio_verify"); setVerified(!!r.ok); setVerifyMsg(r.ok ? "Connected to Composio." : `Not connected: ${r.error ?? "unknown"}`); }
+    catch (e) { setVerified(false); setVerifyMsg(String(e)); }
+    finally { setBusy(null); }
+  }, []);
+  useEffect(() => { void refresh().then(() => { void verify(); }); }, [refresh, verify]);
   const save = async () => {
     setBusy("save"); setVerifyMsg(null);
     try { await invoke("composio_set_key", { key: keyInput.trim() }); setKeyInput(""); setEditingKey(false); await refresh(); void verify(); }
     catch (e) { setVerifyMsg(String(e)); }
     finally { setBusy(null); }
   };
-  const verify = async () => {
-    setBusy("verify"); setVerified(null); setVerifyMsg("Checking the connection to Composio…");
-    try { const r = await invoke<{ ok: boolean; error?: string }>("composio_verify"); setVerified(!!r.ok); setVerifyMsg(r.ok ? "Connected to Composio." : `Not connected: ${r.error ?? "unknown"}`); }
-    catch (e) { setVerified(false); setVerifyMsg(String(e)); }
-    finally { setBusy(null); }
-  };
   const connectApp = async (slug: string) => {
-    const name = slug.trim();
-    if (!name) return;
-    setBusy("connect"); setConnectMsg(`Starting ${name}…`);
+    setConnectingSlug(slug); setConnectMsg(null);
     try {
-      const r = await invoke<{ ok: boolean; authUrl?: string }>("composio_connect_app", { toolkit: name });
-      if (r.authUrl) { await openUrl(r.authUrl); setConnectMsg(`Opening ${name} sign-in in your browser. Authorize it there - then it is connected in Composio.`); }
-      else setConnectMsg(r.ok ? `Requested ${name}. Open the Composio dashboard to finish.` : `Couldn't start ${name}.`);
+      const r = await invoke<{ ok: boolean; authUrl?: string }>("composio_connect_app", { toolkit: slug });
+      if (r.authUrl) { await openUrl(r.authUrl); setConnectMsg(`Opening the ${slug} sign-in in your browser. Authorize it there, then it is connected in Composio.`); }
+      else setConnectMsg(r.ok ? `Requested ${slug}. Open the Composio dashboard to finish authorizing.` : `Couldn't start ${slug}.`);
     } catch (e) { setConnectMsg(String(e)); }
-    finally { setBusy(null); }
+    finally { setConnectingSlug(null); }
   };
-  const POPULAR = ["gmail", "googlecalendar", "googledrive", "notion", "slack", "github", "linear", "hubspot", "airtable", "calendly"];
   const showForm = configured === false || editingKey;
+  const q = query.trim().toLowerCase();
+  const shown = !q ? COMPOSIO_APPS : COMPOSIO_APPS.filter((a) => `${a.name} ${a.slug} ${a.cat}`.toLowerCase().includes(q));
   return (
     <div className="space-y-4">
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle px-5 py-5">
-          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#6d5efc] to-[#3b2fb8] text-white"><Boxes className="h-7 w-7" /></span>
+        <div className="flex flex-wrap items-start gap-4 px-5 py-4">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#6d5efc] to-[#3b2fb8] text-white"><Boxes className="h-6 w-6" /></span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="truncate text-lg font-semibold text-text-primary">Composio</span>
+              <span className="text-lg font-semibold text-text-primary">Composio</span>
               <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted"><Globe className="h-2.5 w-2.5" /> Managed gateway</span>
               {configured && verified === true && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
+              {verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-danger">Not connected</span>}
             </div>
-            <p className="mt-2 max-w-prose text-[13px] leading-relaxed text-text-secondary">
-              One connection fronts 1000+ apps (Gmail, Notion, Slack, GitHub and more). Set up your Composio key once, then connect any app through Composio. Best for mainstream SaaS; keep sensitive or financial accounts on a per-app Direct sign-in.
-            </p>
+            <p className="mt-1 max-w-prose text-[12px] leading-relaxed text-text-secondary">One key fronts 1000+ apps. Browse below and connect any through Composio. Keep sensitive or financial accounts on a per-app Direct sign-in.</p>
+            {showForm ? (
+              <div className="mt-3 space-y-1.5">
+                <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">X-Consumer-API-Key</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="ck_…" onKeyDown={(e) => { if (e.key === "Enter" && keyInput.trim()) void save(); }}
+                    className="w-full max-w-sm rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-border" />
+                  <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save</button>
+                  {editingKey && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:border-accent-border">Cancel</button>}
+                  <button onClick={() => void openUrl("https://connect.composio.dev")} className="text-[12px] text-accent hover:underline">Get a key</button>
+                </div>
+                {verifyMsg && <p className="text-[12px] text-text-secondary">{verifyMsg}</p>}
+              </div>
+            ) : (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-text-muted">
+                <span className="font-semibold text-text-secondary">Key saved.</span>
+                <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Verify</button>
+                <button onClick={() => setEditingKey(true)} className="text-[11px] hover:text-accent hover:underline">Change key</button>
+                <button onClick={() => void openUrl("https://dashboard.composio.dev")} className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline">Composio dashboard <ExternalLink className="h-3 w-3" /></button>
+              </div>
+            )}
           </div>
         </div>
+      </div>
 
-        {configured === null ? (
-          <div className="px-5 py-5 text-sm text-text-muted">loading…</div>
-        ) : showForm ? (
-          <div className="space-y-3 px-5 py-5">
-            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Set up Composio</div>
-            <p className="text-[12px] text-text-secondary">Paste your Composio consumer key (the X-CONSUMER-API-KEY from <button onClick={() => void openUrl("https://connect.composio.dev")} className="text-accent hover:underline">connect.composio.dev</button>). It is stored in your Mac's Keychain, never in the vault.</p>
-            <div className="flex items-center gap-2">
-              <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="ck_…"
-                className="w-full max-w-md rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-border" />
-              <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-                {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save
-              </button>
-              {editingKey && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:border-accent-border">Cancel</button>}
-            </div>
-            {verifyMsg && <p className="text-[12px] text-text-secondary">{verifyMsg}</p>}
+      {configured && (
+        <>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search Composio apps"
+              className="w-full max-w-md rounded-lg border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none" />
           </div>
-        ) : (
-          <div className="space-y-4 px-5 py-5">
-            <div className="flex flex-wrap items-center gap-2 text-[12px] text-text-secondary">
-              <span className="font-semibold text-text-primary">Key saved.</span>
-              <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Verify</button>
-              <button onClick={() => { setEditingKey(true); }} className="text-xs text-text-muted hover:text-accent hover:underline">Change key</button>
-              {verifyMsg && <span className={verified === false ? "text-danger" : "text-text-muted"}>{verifyMsg}</span>}
-            </div>
-
-            <div>
-              <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Connect an app through Composio</div>
-              <div className="flex items-center gap-2">
-                <input value={appName} onChange={(e) => setAppName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void connectApp(appName); }} placeholder="App name (e.g. gmail, notion, slack)"
-                  className="w-full max-w-md rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-border" />
-                <button onClick={() => void connectApp(appName)} disabled={busy !== null || !appName.trim()} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-                  {busy === "connect" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Connect
+          {connectMsg && <div className="rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2 text-[12px] text-text-secondary">{connectMsg}</div>}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {shown.map((a) => (
+              <div key={a.slug} className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5">
+                <AppRowLogo app={{ title: a.name, id: a.slug }} logos={logos} size={30} fallback="letter" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-text-primary">{a.name}</div>
+                  <div className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{a.cat}</div>
+                </div>
+                <button onClick={() => void connectApp(a.slug)} disabled={connectingSlug !== null}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent hover:bg-accent hover:text-background disabled:opacity-50">
+                  {connectingSlug === a.slug ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} Connect
                 </button>
               </div>
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
-                {POPULAR.map((p) => (
-                  <button key={p} onClick={() => { setAppName(p); void connectApp(p); }} disabled={busy !== null}
-                    className="rounded-full border border-border bg-background px-2.5 py-0.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{p}</button>
-                ))}
-              </div>
-              {connectMsg && <p className="mt-2 text-[12px] text-text-secondary">{connectMsg}</p>}
-            </div>
-
-            <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border-subtle pt-3">
-              <button onClick={() => void openUrl("https://dashboard.composio.dev")} className="inline-flex items-center gap-1 text-[12px] text-accent hover:underline">Manage in Composio dashboard <ExternalLink className="h-3 w-3" /></button>
-              <button onClick={() => void openUrl("https://docs.composio.dev")} className="inline-flex items-center gap-1 text-[12px] text-accent hover:underline">docs.composio.dev <ExternalLink className="h-3 w-3" /></button>
-            </div>
+            ))}
           </div>
-        )}
-      </div>
+          {shown.length === 0 && <div className="text-xs text-text-muted">No Composio apps match "{query}".</div>}
+        </>
+      )}
     </div>
   );
 }
