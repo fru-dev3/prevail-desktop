@@ -625,7 +625,18 @@ function ComposioMode() {
   const [query, setQuery] = useState("");
   const [connectMsg, setConnectMsg] = useState<string | null>(null);
   const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
+  const [connected, setConnected] = useState<Set<string>>(new Set());
+  const [refreshingConn, setRefreshingConn] = useState(false);
   useEffect(() => { void invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {}); }, []);
+  // Which Composio apps are actively connected (one MCP call over the catalog).
+  const loadConnections = useCallback(async () => {
+    setRefreshingConn(true);
+    try {
+      const r = await invoke<{ active: string[] }>("composio_connections", { toolkits: COMPOSIO_APPS.map((a) => a.slug) });
+      setConnected(new Set(r.active ?? []));
+    } catch { /* keep current */ }
+    finally { setRefreshingConn(false); }
+  }, []);
   const refresh = useCallback(async () => {
     try { const s = await invoke<{ configured: boolean }>("composio_status"); setConfigured(!!s.configured); }
     catch { setConfigured(false); }
@@ -637,6 +648,15 @@ function ComposioMode() {
     finally { setBusy(null); }
   }, []);
   useEffect(() => { void refresh().then(() => { void verify(); }); }, [refresh, verify]);
+  // Load connection status once set up, and re-check when the window regains focus
+  // (the user just authorized an app in the browser and came back).
+  useEffect(() => {
+    if (!configured) return;
+    void loadConnections();
+    const onFocus = () => { void loadConnections(); };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [configured, loadConnections]);
   const save = async () => {
     setBusy("save"); setVerifyMsg(null);
     try { await invoke("composio_set_key", { key: keyInput.trim() }); setKeyInput(""); setEditingKey(false); await refresh(); void verify(); }
@@ -655,6 +675,8 @@ function ComposioMode() {
   const showForm = configured === false || editingKey;
   const q = query.trim().toLowerCase();
   const shown = !q ? COMPOSIO_APPS : COMPOSIO_APPS.filter((a) => `${a.name} ${a.slug} ${a.cat}`.toLowerCase().includes(q));
+  const connectedApps = shown.filter((a) => connected.has(a.slug));
+  const availableApps = shown.filter((a) => !connected.has(a.slug));
   return (
     <div className="space-y-4">
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
@@ -669,8 +691,13 @@ function ComposioMode() {
             </div>
             <p className="mt-1 max-w-prose text-[12px] leading-relaxed text-text-secondary">One key fronts 1000+ apps. Browse below and connect any through Composio. Keep sensitive or financial accounts on a per-app Direct sign-in.</p>
             {showForm ? (
-              <div className="mt-3 space-y-1.5">
-                <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">X-Consumer-API-Key</div>
+              <div className="mt-3 space-y-2">
+                <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Set up Composio with your own key</div>
+                <ol className="ml-4 list-decimal space-y-0.5 text-[12px] leading-relaxed text-text-secondary">
+                  <li>Open <button onClick={() => void openUrl("https://connect.composio.dev")} className="text-accent hover:underline">connect.composio.dev</button> and sign in.</li>
+                  <li>Copy your <span className="font-mono text-text-primary">X-CONSUMER-API-KEY</span> (starts with <span className="font-mono">ck_</span>).</li>
+                  <li>Paste it below. It is stored in your Mac's Keychain, never in the vault.</li>
+                </ol>
                 <div className="flex flex-wrap items-center gap-2">
                   <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="ck_…" onKeyDown={(e) => { if (e.key === "Enter" && keyInput.trim()) void save(); }}
                     className="w-full max-w-sm rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-border" />
@@ -694,27 +721,57 @@ function ComposioMode() {
 
       {configured && (
         <>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search Composio apps"
-              className="w-full max-w-md rounded-lg border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none" />
+          <div className="flex items-center gap-2">
+            <div className="relative max-w-md flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search Composio apps"
+                className="w-full rounded-lg border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none" />
+            </div>
+            <button onClick={() => void loadConnections()} disabled={refreshingConn} title="Refresh connection status"
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+              {refreshingConn ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh
+            </button>
           </div>
           {connectMsg && <div className="rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2 text-[12px] text-text-secondary">{connectMsg}</div>}
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {shown.map((a) => (
-              <div key={a.slug} className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5">
-                <AppRowLogo app={{ title: a.name, id: a.slug }} logos={logos} size={30} fallback="letter" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-text-primary">{a.name}</div>
-                  <div className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{a.cat}</div>
-                </div>
-                <button onClick={() => void connectApp(a.slug)} disabled={connectingSlug !== null}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent hover:bg-accent hover:text-background disabled:opacity-50">
-                  {connectingSlug === a.slug ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} Connect
-                </button>
+
+          {/* Connected apps - clearly separated from the not-yet-connected ones. */}
+          {connectedApps.length > 0 && (
+            <section className="space-y-1.5">
+              <div className="px-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {connectedApps.map((a) => (
+                  <div key={a.slug} className="flex items-center gap-2.5 rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2.5">
+                    <AppRowLogo app={{ title: a.name, id: a.slug }} logos={logos} size={30} fallback="letter" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-text-primary">{a.name}</div>
+                      <div className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{a.cat}</div>
+                    </div>
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent"><Check className="h-3 w-3" /> Connected</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </section>
+          )}
+
+          {/* Not yet connected. */}
+          <section className="space-y-1.5">
+            <div className="px-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Available to connect · {availableApps.length}</div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {availableApps.map((a) => (
+                <div key={a.slug} className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5">
+                  <AppRowLogo app={{ title: a.name, id: a.slug }} logos={logos} size={30} fallback="letter" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-text-primary">{a.name}</div>
+                    <div className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{a.cat}</div>
+                  </div>
+                  <button onClick={() => void connectApp(a.slug)} disabled={connectingSlug !== null}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent hover:bg-accent hover:text-background disabled:opacity-50">
+                    {connectingSlug === a.slug ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} Connect
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
           {shown.length === 0 && <div className="text-xs text-text-muted">No Composio apps match "{query}".</div>}
         </>
       )}
