@@ -1,8 +1,8 @@
-// Intent ledger — the self-learning core. A chat IS an intent, and intents
+// Intent ledger - the self-learning core. A chat IS an intent, and intents
 // must never be lost. Every turn appends one JSON line to
 // <vault>/<domain>/_intents.jsonl (<vault>/_intents.jsonl for the no-domain
 // General space) the instant it happens: on send (the exact prompt) and on
-// completion (the raw, unprocessed reply). Append-only, never overwritten —
+// completion (the raw, unprocessed reply). Append-only, never overwritten -
 // this is the rebuild-from-scratch source of truth. Each record carries the
 // domain, model, and every preference in effect, so a future (better) model
 // can be re-run against the original intent and the result rebuilt.
@@ -33,7 +33,7 @@ pub(crate) fn intent_append(
 
 /// I6: read back the intents ledger so the desktop can surface it (newest
 /// first). Each line is an "intent" record written by `intent_append` the
-/// instant a chat is sent — what the user asked + the prefs in effect.
+/// instant a chat is sent - what the user asked + the prefs in effect.
 #[tauri::command]
 pub(crate) fn intents_read(
     vault: String,
@@ -60,7 +60,7 @@ pub(crate) fn intents_read(
 }
 
 /// Append a human-readable line to the domain journal so the journal is
-/// built automatically from every conversation — not only when the user
+/// built automatically from every conversation - not only when the user
 /// manually clicks "New chat". Newest entries go directly under the header.
 #[tauri::command]
 pub(crate) fn journal_append(vault: String, domain: Option<String>, entry: String) -> Result<(), String> {
@@ -117,6 +117,10 @@ pub(crate) fn intents_read_all(vault: String, limit: Option<usize>) -> Result<Ve
             }
             if let Some(obj) = v.as_object_mut() {
                 obj.insert("domain".into(), serde_json::json!(dom));
+                // Native ledger prompts were typed in the Prevail desktop chat;
+                // tag the surface so distilled intents can show provenance, the
+                // same way captured cross-tool prompts carry their tool slug.
+                obj.entry("surface").or_insert(serde_json::json!("prevail"));
             }
             out.push(v);
         }
@@ -131,7 +135,7 @@ pub(crate) fn intents_read_all(vault: String, limit: Option<usize>) -> Result<Ve
 // ── Intent distillation (T10) ────────────────────────────────────────────────
 // The raw ledger is provenance; on its own it's just a list of prompts. This
 // lifts it into the thing the user actually cares about: a small set of
-// HIGH-LEVEL intents (the goal behind the prompts — "Is Toyota better than
+// HIGH-LEVEL intents (the goal behind the prompts - "Is Toyota better than
 // Honda?" → "evaluating a vehicle purchase; underlying need: transportation"),
 // each with the evidence prompts, the domains it spans, a status, and concrete
 // recommended next actions. Written to <vault>/_meta/intents_distilled.json so
@@ -156,16 +160,19 @@ fn now_secs() -> u64 {
 fn build_intents_prompt(activity: &str) -> String {
     format!(
         "You are Prevail's intent analyst. Below is a chronological log of the user's \
-prompts across their life domains, one per line as `[domain] prompt`.\n\n\
+prompts. Each line is `[domain via surface] prompt` (or just `[surface] prompt`). \
+The SURFACE is the app or tool the prompt was typed in - e.g. claude (Claude Code), \
+codex, gemini, antigravity, opencode, or prevail (the Prevail desktop chat).\n\n\
 Your job is NOT to summarize the prompts. Infer the HIGH-LEVEL INTENTS behind \
-them — the real goals the user is pursuing — by clustering related prompts \
-across sessions and domains. Lift each cluster up a level of abstraction: e.g. \
+them - the real goals the user is pursuing - by clustering related prompts \
+across sessions, domains, and surfaces. Lift each cluster up a level of abstraction: e.g. \
 prompts comparing car models map to the intent \"Evaluating a vehicle purchase\" \
 with underlying need \"transportation\", not \"asked about Toyota vs Honda\".\n\n\
 Return ONLY a JSON array (no prose, no markdown fences). Each element:\n\
-{{\n  \"title\": short intent name,\n  \"goal\": one sentence — what they are really trying to achieve,\n  \"underlying_need\": the deeper need behind it,\n  \"domains\": [domains it spans],\n  \"status\": \"active\" | \"dormant\" | \"resolved\",\n  \"confidence\": 0.0-1.0,\n  \"open_questions\": [the next things to figure out],\n  \"evidence\": [2-4 short quoted snippets from the prompts that support this],\n  \"recommendations\": [concrete next actions Prevail could take or suggest]\n}}\n\n\
+{{\n  \"title\": short intent name,\n  \"goal\": one sentence - what they are really trying to achieve,\n  \"underlying_need\": the deeper need behind it,\n  \"domains\": [domains it spans],\n  \"sources\": [the distinct surfaces these prompts came from, e.g. \"claude\", \"codex\", \"prevail\"],\n  \"status\": \"active\" | \"dormant\" | \"resolved\",\n  \"confidence\": 0.0-1.0,\n  \"open_questions\": [the next things to figure out],\n  \"evidence\": [2-4 short quoted snippets from the prompts that support this],\n  \"recommendations\": [concrete next actions Prevail could take or suggest]\n}}\n\n\
 Produce 3-8 intents, most important first. Be specific and genuinely useful; \
-never invent facts not supported by the prompts.\n\n\
+never invent facts not supported by the prompts. For \"sources\", list ONLY surfaces \
+that actually appear in this intent's prompts; never invent one.\n\n\
 PROMPT LOG:\n{activity}\n"
     )
 }
@@ -245,6 +252,9 @@ fn read_capture_prompts(vault: &str, limit: Option<usize>) -> Vec<serde_json::Va
                 "kind": "intent",
                 "message": prompt,
                 "domain": tool,
+                // The surface the prompt was typed in (claude | codex | gemini |
+                // …), preserved so distilled intents can show their provenance.
+                "surface": tool,
                 "ts": ts,
                 "source": v.get("source").and_then(|s| s.as_str()).unwrap_or("sync"),
             }));
@@ -257,7 +267,7 @@ fn read_capture_prompts(vault: &str, limit: Option<usize>) -> Vec<serde_json::Va
     out
 }
 
-/// The reusable distillation core — called by both the manual command and the
+/// The reusable distillation core - called by both the manual command and the
 /// background daemon. Reads the ledger, runs one model pass, writes
 /// <vault>/_meta/intents_distilled.json, and returns the document.
 pub(crate) async fn distill_intents_core(
@@ -280,12 +290,21 @@ pub(crate) async fn distill_intents_core(
     let mut activity = String::new();
     for v in intents.iter().rev() {
         let dom = v.get("domain").and_then(|d| d.as_str()).unwrap_or("general");
+        let surface = v.get("surface").and_then(|s| s.as_str()).unwrap_or("prevail");
         let msg = v.get("message").and_then(|m| m.as_str()).unwrap_or("");
         if msg.trim().is_empty() {
             continue;
         }
         let m: String = msg.chars().take(400).collect();
-        activity.push_str(&format!("[{dom}] {}\n", m.replace('\n', " ")));
+        // `[domain via surface]` when they differ (native ledger), else `[surface]`
+        // (captured cross-tool prompts, where domain == tool == surface). Gives
+        // the model both the life-domain hint and the provenance tag.
+        let tag = if dom == surface {
+            surface.to_string()
+        } else {
+            format!("{dom} via {surface}")
+        };
+        activity.push_str(&format!("[{tag}] {}\n", m.replace('\n', " ")));
     }
     if activity.trim().is_empty() {
         return Err("No prompt text to analyze.".into());
@@ -340,7 +359,7 @@ pub(crate) fn intents_distilled_read(vault: String) -> Result<serde_json::Value,
 /// Append a DECISION to the domain's append-only decision log
 /// (`<domain>/_decisions.jsonl`). A council verdict, an accepted recommendation,
 /// or a user-stated preference ("make Mayo my favorite hospital") is a decision
-/// — durable, provenance-tagged, and fed into state derivation + scoring so the
+/// - durable, provenance-tagged, and fed into state derivation + scoring so the
 /// domain actually learns. Mirrors `intent_append`. (feedback v0.4.1 I1/I5)
 #[tauri::command]
 pub(crate) fn decision_append(
