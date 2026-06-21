@@ -496,16 +496,34 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                   its detail holds the per-profile workspace management. Always
                   shown (matches the search box). */}
               {(!query || "google workspace gmail calendar drive".includes(query.trim().toLowerCase())) && (
-                <button
-                  onClick={() => { setConnecting(false); setCatalogPick(null); setSelected("google"); }}
-                  className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors ${selected === "google" ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}
-                >
-                  <AppRowLogo app={{ title: "Google", id: "google" }} logos={logos} size={28} fallback="letter" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-text-primary">Google</span>
-                    <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Workspace · all profiles</span>
-                  </span>
-                </button>
+                <div className={`group flex w-full items-center gap-1 rounded-lg border pr-2 transition-colors ${selected === "google" ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}>
+                  <button
+                    onClick={() => { setConnecting(false); setCatalogPick(null); setSelected("google"); }}
+                    className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pl-2.5 text-left"
+                  >
+                    <AppRowLogo app={{ title: "Google", id: "google" }} logos={logos} size={28} fallback="letter" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-text-primary">Google</span>
+                      <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Workspace · all profiles</span>
+                    </span>
+                  </button>
+                  {/* Favorite (star) - scaffolds the Google app so it lands on the
+                      home screen, like any other app. */}
+                  <button
+                    onClick={async () => {
+                      const key = favKeyOf("google");
+                      if (!favs.has(key)) {
+                        await invoke("google_scaffold", { vault: vaultPath }).catch(() => {});
+                        window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+                      }
+                      toggleFavorite(key);
+                    }}
+                    title={favs.has(favKeyOf("google")) ? "On your home screen - click to remove" : "Add to your home screen"}
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors hover:text-accent ${favs.has(favKeyOf("google")) ? "text-accent" : "text-text-muted opacity-0 group-hover:opacity-100"}`}
+                  >
+                    <Star className={`h-3.5 w-3.5 ${favs.has(favKeyOf("google")) ? "fill-accent" : ""}`} />
+                  </button>
+                </div>
               )}
               {groups.length === 0 && catalogView.shown.length === 0 ? (
                 <div className="px-1 text-xs text-text-muted">No apps match "{query}".</div>
@@ -985,7 +1003,7 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
             ))}
           </div>
         </div>
-        <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-text-secondary">One managed gateway: a single key fronts 1000+ apps. Authorize each app once in Composio, then Prevail's agent uses them through the Composio MCP endpoint - no per-app setup on this Mac.</p>
+        <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-text-secondary">One managed gateway: a single key fronts 1000+ apps. Authorize each app once in Composio, then Prevail's agent uses them through the Composio MCP endpoint - no per-app setup on this Mac. <button onClick={() => void openUrl("https://composio.dev")} className="text-accent hover:underline">What is Composio?</button></p>
         {composioMethod === "cli" ? (
           (() => {
             const installed = !!cliStatus?.installed;
@@ -1249,7 +1267,7 @@ function NangoMode({ vaultPath }: { vaultPath: string }) {
           {configured && verified === true && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>}
           {verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-danger">Invalid key</span>}
         </div>
-        <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-text-secondary">Your own Nango project, fronted by one secret key. Prevail lists the integrations you configured in Nango; connect one and Nango runs the sign-in and syncs its data for the agent to use.</p>
+        <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-text-secondary">Your own Nango project, fronted by one secret key. Prevail lists the integrations you configured in Nango; connect one and Nango runs the sign-in and syncs its data for the agent to use. <button onClick={() => void openUrl("https://nango.dev")} className="text-accent hover:underline">What is Nango?</button></p>
         {showForm ? (
           <div className="mt-3 max-w-xl space-y-2">
             <p className="text-[11px] leading-relaxed text-text-secondary">Copy your <span className="font-mono text-text-primary">Secret Key</span> from <button onClick={() => void openUrl("https://app.nango.dev/dev/getting-started")} className="text-accent hover:underline">app.nango.dev</button> (Environment Settings). Stored in your Mac's Keychain.</p>
