@@ -1,5 +1,4 @@
-// Integrations - wiring Prevail into every AI CLI. Rendered inside the MCP page
-// (MCP setup on top, capture below), so it has no page header of its own.
+// Integrations - wiring Prevail into every AI CLI. A top-level page:
 //
 //   1. MCP ACCESS  - register your vault as an MCP server in each CLI, one click.
 //   2. PROMPT CAPTURE - record the prompts you type in each CLI into the vault.
@@ -7,8 +6,9 @@
 // Heavy lifting lives in the prevail engine (`prevail capture …`, `prevail mcp
 // install …`), reached through async Tauri commands that never block the UI.
 import { useCallback, useEffect, useState } from "react";
-import { Check, Download, FolderOpen, History, Loader2, RefreshCw, Zap } from "lucide-react";
+import { Check, Download, FolderOpen, FolderSearch, History, Loader2, Plug, RefreshCw, Zap } from "lucide-react";
 import { invoke } from "./bridge";
+import { SettingsHeader } from "./sectionutil";
 import { Toggle } from "./ui";
 import { McpSection } from "./settings5";
 import type { CliInfo } from "./types";
@@ -20,6 +20,7 @@ type Harness = {
   wired: boolean;
   enabled?: boolean;
   target?: string;
+  source?: string;
   detail?: string;
 };
 type Stream = { tool: string; path: string; count: number };
@@ -179,7 +180,15 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
   const openFile = (tool: string) => reveal(status?.streams?.find((s) => s.tool === tool)?.path);
 
   return (
-    <div className="mt-8 border-t border-border-subtle pt-6">
+    <div className="w-full space-y-4">
+      {/* Page header - same SettingsHeader treatment as every other page:
+          left icon badge + ghosted far-right icon flourish. */}
+      <SettingsHeader
+        title="Integrations"
+        icon={Plug}
+        subtitle="Connect Prevail to the AI tools you already use, and capture every prompt you write across them into your vault."
+      />
+
       {/* USE PREVAIL FROM YOUR TOOLS (MCP) - one-click OR manual, tabbed ------ */}
       <div className="rounded-lg border border-border bg-surface p-5">
         <h2 className="mb-1 text-xl font-semibold text-text-primary">Use Prevail from your AI tools</h2>
@@ -258,45 +267,46 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
       </div>
 
       {/* PROMPT CAPTURE - record prompts from each CLI into the vault --------- */}
-      <div className="mt-5 rounded-lg border border-border bg-surface p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+      <div className="rounded-lg border border-border bg-surface p-5">
+        <div className="flex items-stretch gap-5">
+          <div className="min-w-0 flex-1">
             <h2 className="mb-1 text-xl font-semibold text-text-primary">Prompt capture</h2>
             <div className="text-sm text-text-secondary">
               Every prompt you submit, saved to <code className="text-accent">_meta/prompts/&lt;tool&gt;.jsonl</code> and distilled into your intents. <span className="inline-flex items-center gap-1"><Zap className="h-3 w-3 text-ai" /> = captured live as you type, <History className="h-3 w-3" /> = read from a tool's saved chats.</span>
             </div>
-          </div>
-          <div className="text-right">
-            <div className="font-mono text-lg font-semibold text-accent">{totalCaptured.toLocaleString()}</div>
-            <div className="text-[10px] uppercase tracking-wider text-text-muted">prompts captured</div>
-          </div>
-        </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button
-            onClick={runInstall}
-            disabled={busy !== ""}
-            className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
-          >
-            {busy === "install" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-            {busy === "install" ? "Installing…" : "Install capture"}
-          </button>
-          <button
-            onClick={runSync}
-            disabled={busy !== ""}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50"
-          >
-            {busy === "sync" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-            {busy === "sync" ? "Syncing…" : "Sync now"}
-          </button>
-          <button
-            onClick={openFolder}
-            disabled={!status?.meta}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50"
-          >
-            <FolderOpen className="h-3 w-3" /> Open folder
-          </button>
-          {note && <span className="text-[11px] text-text-secondary">{note}</span>}
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                onClick={runInstall}
+                disabled={busy !== ""}
+                className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
+              >
+                {busy === "install" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                {busy === "install" ? "Installing…" : "Install capture"}
+              </button>
+              <button
+                onClick={runSync}
+                disabled={busy !== ""}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50"
+              >
+                {busy === "sync" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                {busy === "sync" ? "Syncing…" : "Sync now"}
+              </button>
+              <button
+                onClick={openFolder}
+                disabled={!status?.meta}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50"
+              >
+                <FolderOpen className="h-3 w-3" /> Open folder
+              </button>
+              {note && <span className="text-[11px] text-text-secondary">{note}</span>}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col items-center justify-center border-l border-border-subtle pl-6 text-center">
+            <span className="font-mono text-5xl font-bold leading-none tabular-nums tracking-tight text-accent">{totalCaptured.toLocaleString()}</span>
+            <span className="mt-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">prompts captured</span>
+          </div>
         </div>
 
         <div className="mt-4 overflow-hidden rounded-md border border-border-subtle">
@@ -313,8 +323,19 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
               {harnesses.map((h) => (
                 <tr key={h.tool} className="border-t border-border-subtle">
                   <td className="px-3 py-2">
-                    <span className={`mr-2 inline-block h-1.5 w-1.5 rounded-full ${h.present ? "bg-ok" : "bg-border"}`} />
-                    {LABELS[h.tool] ?? h.tool}
+                    <span className="group inline-flex items-center gap-1.5">
+                      <span className={`inline-block h-1.5 w-1.5 rounded-full ${h.present ? "bg-ok" : "bg-border"}`} />
+                      {LABELS[h.tool] ?? h.tool}
+                      {h.source && (
+                        <button
+                          onClick={() => reveal(h.source)}
+                          title={`Show where this is captured from:\n${h.source}`}
+                          className="text-text-muted opacity-0 transition-opacity hover:text-accent group-hover:opacity-100"
+                        >
+                          <FolderSearch className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </span>
                   </td>
                   <td className="px-3 py-2 text-center">
                     <span
