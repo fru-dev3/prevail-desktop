@@ -133,12 +133,18 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
   const toggleMore = () => setMoreOpen((v) => { const n = !v; localStorage.setItem("prevail.board.moreOpen", n ? "1" : "0"); return n; });
 
   const [allDomains, setAllDomains] = useState<string[]>([]);
+  // Backend pagination: read a bounded first page (open/time-sensitive tasks
+  // first) so a huge vault doesn't ship every task at once. "Load more tasks"
+  // raises the cap. Default page is generous so normal vaults load everything.
+  const TASK_PAGE = 200;
+  const [taskLimit, setTaskLimit] = useState(TASK_PAGE);
+  const [maybeMore, setMaybeMore] = useState(false);
 
   const reload = useCallback(() => {
-    invoke<BoardTask[]>("tasks_read_all", { vault: vaultPath })
-      .then((t) => setTasks(Array.isArray(t) ? t : []))
+    invoke<BoardTask[]>("tasks_read_all", { vault: vaultPath, limit: taskLimit })
+      .then((t) => { const arr = Array.isArray(t) ? t : []; setTasks(arr); setMaybeMore(arr.length >= taskLimit); })
       .catch((e) => console.error("tasks_read_all", e));
-  }, [vaultPath]);
+  }, [vaultPath, taskLimit]);
   useEffect(() => { reload(); }, [reload]);
   useEffect(() => {
     const f = () => reload();
@@ -825,6 +831,16 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
               No tasks yet. Add one above, or hand work to AI.
             </div>
           )}
+        </div>
+      )}
+      {/* Backend pagination: only when the first page filled (likely more on
+          disk). Raises the server limit and refetches. */}
+      {maybeMore && (
+        <div className="mt-3 flex justify-center">
+          <button onClick={() => setTaskLimit((n) => n + TASK_PAGE)}
+            className="rounded-lg border border-dashed border-border-subtle px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted transition-colors hover:border-accent-border hover:text-accent">
+            Load more tasks
+          </button>
         </div>
       )}
       </div>
