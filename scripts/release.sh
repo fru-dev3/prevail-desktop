@@ -108,14 +108,15 @@ step "Stamp the website version (DMG is served from GitHub Releases, NOT here)"
 # Netlify burns the free-tier bandwidth quota and takes the whole site down
 # (503 usage_exceeded). The site links to the GitHub release asset instead
 # (unlimited bandwidth); here we only stamp the version string.
-cat > "$SITE/src/version.ts" <<TS
-// Current downloadable desktop version. Stamped automatically by the
-// desktop repo's scripts/release.sh from src-tauri/tauri.conf.json — do
-// not edit by hand. The DMG itself is served from GitHub Releases
-// (releases/latest/download/Prevail-mac-arm64.dmg); this only sets the
-// versioned filename the browser saves the file as.
-export const APP_VERSION = "$VERSION";
-TS
+# Surgically stamp ONLY the APP_VERSION constant — the site's version.ts also
+# exports useLiveVersion()/useLatestVersion() that the app imports, so we must
+# NOT clobber the whole file (that broke the site build). The DMG is served from
+# GitHub Releases; this constant is just the first-paint fallback.
+if [ -f "$SITE/src/version.ts" ]; then
+  perl -i -pe 's/(export const APP_VERSION = ")[0-9]+\.[0-9]+\.[0-9]+(")/${1}'"$VERSION"'${2}/' "$SITE/src/version.ts"
+else
+  printf 'export const APP_VERSION = "%s";\n' "$VERSION" > "$SITE/src/version.ts"
+fi
 # Also keep the version lines in llms.txt current (read by AI crawlers). Stamp
 # the desktop version from this repo, and the CLI version from the sibling
 # prevail-cli package.json (the CLI ships via its own GH Actions release, which
