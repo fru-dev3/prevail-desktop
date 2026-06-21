@@ -62,8 +62,8 @@ never dropped. Append new items under "Pending"; move to "Done" when shipped
 - [ ] **CRITICAL — vault location inconsistency**: Intents/history shows "no intents"
   despite real conversations, and Settings domain lists don't match the homepage
   sidebar. Strong signal the UI vault path and the engine/daemon default vault
-  diverge. Active vault shows `/Users/frunde/Downloads/2026 June/vault-1-demo`
-  (screenshot) while daemons ran on `/Users/frunde/Documents/vault-1-demo`. There
+  diverge. Active vault shows `/Users/you/Downloads/2026 June/vault-1-demo`
+  (screenshot) while daemons ran on `/Users/you/Documents/vault-1-demo`. There
   are ALSO two running app instances (old translocated download + my new build)
   on different vaults. MUST converge on ONE consistent vault path everywhere
   (UI prop == ~/.prevail config default == daemon --vault). User has stressed this
@@ -172,7 +172,7 @@ art, prefs independent collapse, icebox status, vault-lock footer, sync effect.
   domains/data back. config.json single source of truth + boot/switch checks.
 - [x] **Vault consistency (keystone, in progress)**: config.json is now the single
   source of truth. Aligned bootstrap-vault.txt + config.json to
-  /Users/frunde/Documents/vault-1-demo (the real 13-domain v4 vault, chosen by
+  /Users/you/Documents/vault-1-demo (the real 13-domain v4 vault, chosen by
   user). Code: engine_config_vault get/set + boot prefers config + switch writes
   config so UI == engine == daemons always. (Was: localStorage[Downloads] vs
   config[Documents] split → blank history/activity/usage, wrong domains.)

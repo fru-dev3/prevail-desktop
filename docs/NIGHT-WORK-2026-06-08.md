@@ -8,7 +8,7 @@ your request.
 
 1. **Security: scrubbed the bundled vault.** Removed
    `src-tauri/resources/sample-vault/benchmark/` — its run files leaked your
-   absolute paths (`/Users/frunde/...`) and personal-scenario prompts into the
+   absolute paths (`/Users/you/...`) and personal-scenario prompts into the
    shipped DMG. The Benchmark tab still works; new installs just start with no
    sample runs.
    - **On the Telegram "gateway" concern:** the bot token is NOT bundled — it

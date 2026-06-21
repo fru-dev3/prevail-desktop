@@ -47,8 +47,8 @@ accounts.
 # PART 1 — Codebase recon (current Apps implementation)
 
 Two repos:
-- **Desktop:** `/Users/frunde/Documents/fru/fd-apps/prevail-desktop` (Tauri + React/TS)
-- **Engine/CLI:** `/Users/frunde/Documents/fru/fd-apps/prevail-cli` (Bun/TS)
+- **Desktop:** `/Users/you/Documents/fru/fd-apps/prevail-desktop` (Tauri + React/TS)
+- **Engine/CLI:** `/Users/you/Documents/fru/fd-apps/prevail-cli` (Bun/TS)
 
 ## 1.1 The Apps UI (desktop)
 
