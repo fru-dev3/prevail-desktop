@@ -5,13 +5,12 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Boxes, Cable, Check, Download, ExternalLink, FolderOpen, Globe, Link2, Loader2, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Star, Terminal, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Boxes, Cable, Check, Download, ExternalLink, FolderOpen, Globe, Info, Link2, Loader2, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Star, Terminal, Trash2, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "./bridge";
 import { appName, relTime, titleCase } from "./format";
 import { PREF, getPref, lsGet, lsSet } from "./storage";
 import { Toggle } from "./ui";
-import { SettingsHeader } from "./sectionutil";
 import { ConnectAppFlow } from "./appconnect";
 import { AppRowLogo } from "./panels3";
 import { GoogleWorkspacePanel } from "./googlepanel";
@@ -177,6 +176,23 @@ export function startAppsScheduler(vault: string) {
 // starring an app (Direct, Composio, or Nango) is what pins it to the home
 // screen. The store + hooks live in that module so both surfaces read one set.
 
+// One-paragraph explainer per connection track, shown in the tab-bar info
+// popover (replaces the always-on description card that ate the top of the page).
+const MODE_INFO: Record<"direct" | "composio" | "nango", { label: string; blurb: string }> = {
+  direct: {
+    label: "Direct",
+    blurb: "Prevail connects each app itself - MCP, an official API, a one-time sign-in, or a guided browser login - and keeps its data in your vault. The source of truth is the app's own folder.",
+  },
+  composio: {
+    label: "Composio",
+    blurb: "One managed gateway. A single Composio sign-in fronts 1000+ apps for the agent: browse the catalog, connect any app via a Composio auth link, and Prevail uses it through the Composio MCP endpoint. Connections live in Composio, not your vault.",
+  },
+  nango: {
+    label: "Nango",
+    blurb: "Connect apps through a Nango gateway you control. One integration layer brokers OAuth for many providers, and Prevail's agent uses those connections through Nango.",
+  },
+};
+
 export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   const [apps, setApps] = useState<EngineApp[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -193,6 +209,9 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     setAppsModeState(m);
     try { localStorage.setItem("prevail.apps.mode", m); } catch { /* ignore */ }
   }, []);
+  // Each track's one-paragraph explainer now lives in a popover off the tabs
+  // (toggled here), not an always-on card - keeps the top compact.
+  const [infoOpen, setInfoOpen] = useState(false);
   // The Composio managed-gateway pane (one OAuth fronts 1000+ apps for the agent).
   const [query, setQuery] = useState("");
   // Real brand marks for every connector (AllTrails, Booking.com, Garmin, …),
@@ -405,25 +424,70 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
 
   return (
     <>
-      <SettingsHeader
-        title="Apps"
-        icon={Plug}
-        subtitle="Services that feed your vault. Connect each one once, then it's available to any domain's context. No duplicates."
-      />
+      {/* Compact top: title (left) + example app logos (far right). No tall
+          header/subtitle block - the content starts almost immediately. */}
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Plug className="h-4 w-4" /></span>
+          <h2 className="font-display text-2xl font-bold tracking-tight">Apps</h2>
+        </div>
+        <HeaderLogoCluster
+          slugs={[
+            { title: "Gmail", id: "gmail" },
+            { title: "Google Calendar", id: "googlecalendar" },
+            { title: "Notion", id: "notion" },
+            { title: "Slack", id: "slack" },
+            { title: "GitHub", id: "github" },
+            { title: "LinkedIn", id: "linkedin" },
+            { title: "Spotify", id: "spotify" },
+            { title: "Stripe", id: "stripe" },
+            { title: "Dropbox", id: "dropbox" },
+            { title: "Airbnb", id: "airbnb" },
+          ]}
+          logos={logos}
+        />
+      </div>
 
-      {/* Top-level split: Direct (Prevail connects each app itself) vs Composio
-          (one managed gateway). Two parallel tracks, never mixed. */}
-      <div className="mb-5 inline-flex rounded-lg border border-border bg-surface p-1">
-        {([["direct", "Direct", Plug], ["composio", "Composio", Boxes], ["nango", "Nango", Cable]] as const).map(([m, label, Icon]) => (
-          <button
-            key={m}
-            onClick={() => setAppsMode(m)}
-            className={`inline-flex items-center gap-1.5 rounded-md px-5 py-1.5 text-sm font-semibold transition-colors ${appsMode === m ? "bg-accent text-background" : "text-text-secondary hover:text-text-primary"}`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
+      {/* Track tabs + an info popover (the per-track explainer lives here now,
+          not in an always-on card). Direct vs Composio vs Nango: parallel tracks. */}
+      <div className="relative mb-4 flex items-center gap-2">
+        <div className="inline-flex rounded-lg border border-border bg-surface p-1">
+          {([["direct", "Direct", Plug], ["composio", "Composio", Boxes], ["nango", "Nango", Cable]] as const).map(([m, label, Icon]) => (
+            <button
+              key={m}
+              onClick={() => setAppsMode(m)}
+              className={`inline-flex items-center gap-1.5 rounded-md px-5 py-1.5 text-sm font-semibold transition-colors ${appsMode === m ? "bg-accent text-background" : "text-text-secondary hover:text-text-primary"}`}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setInfoOpen((v) => !v)}
+          title={`What is ${MODE_INFO[appsMode].label}?`}
+          className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${infoOpen ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}
+        >
+          <Info className="h-4 w-4" />
+        </button>
+        {infoOpen && (
+          <>
+            {/* click-away backdrop */}
+            <div className="fixed inset-0 z-40" onClick={() => setInfoOpen(false)} />
+            <div className="absolute left-0 top-full z-50 mt-2 w-[min(28rem,90vw)] rounded-xl border border-border bg-surface p-4 shadow-lg">
+              <div className="flex items-start gap-2">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-background">
+                  {appsMode === "direct" ? <Plug className="h-4 w-4" /> : appsMode === "composio" ? <Boxes className="h-4 w-4" /> : <Cable className="h-4 w-4" />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-text-primary">{MODE_INFO[appsMode].label}</div>
+                  <p className="mt-1 text-xs leading-relaxed text-text-secondary">{MODE_INFO[appsMode].blurb}</p>
+                </div>
+                <button onClick={() => setInfoOpen(false)} className="shrink-0 rounded p-0.5 text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Connect happens INSIDE the right detail pane (see below) so the app's
@@ -435,31 +499,6 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         <NangoMode vaultPath={vaultPath} />
       ) : (
         <>
-        {/* FULL-WIDTH description of the Direct track, above its master-detail. */}
-        <div className="mb-4 flex items-start gap-4 overflow-hidden rounded-xl border border-border bg-surface px-5 py-4">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-background"><Plug className="h-4 w-4" /></span>
-              <span className="text-base font-semibold text-text-primary">Direct</span>
-            </div>
-            <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-text-secondary">Prevail connects each app itself (MCP, an official API, a one-time sign-in, or a guided browser login) and keeps its data in your vault. The source of truth is the app's own folder.</p>
-          </div>
-          <HeaderLogoCluster
-            slugs={[
-              { title: "Gmail", id: "gmail" },
-              { title: "Google Calendar", id: "googlecalendar" },
-              { title: "Notion", id: "notion" },
-              { title: "Slack", id: "slack" },
-              { title: "GitHub", id: "github" },
-              { title: "LinkedIn", id: "linkedin" },
-              { title: "Spotify", id: "spotify" },
-              { title: "Stripe", id: "stripe" },
-              { title: "Dropbox", id: "dropbox" },
-              { title: "Airbnb", id: "airbnb" },
-            ]}
-            logos={logos}
-          />
-        </div>
         {apps === null ? (
         <div className="text-sm text-text-muted">loading apps…</div>
       ) : directApps.length === 0 && catalog.length === 0 ? (
