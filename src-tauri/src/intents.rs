@@ -193,6 +193,70 @@ pub(crate) fn count_intents(vault: &str) -> usize {
     intents_read_all(vault.to_string(), None).map(|v| v.len()).unwrap_or(0)
 }
 
+// ── Capture streams as a distiller source ─────────────────────────────────────
+// <vault>/_meta/prompts.<tool>.jsonl hold the prompts the user typed in OTHER
+// harnesses (Claude Code, Codex, …), captured by `prevail capture`. They feed
+// the SAME distiller as the native ledger, so intents span every tool the user
+// drives: the same question asked across three CLIs becomes one intent.
+
+fn capture_stream_dir(vault: &str) -> PathBuf {
+    crate::paths::build_root(vault).join("_meta")
+}
+
+/// Per-file line counts for every capture stream (filename -> non-empty lines).
+/// The cheap signal the daemon turns into per-stream offsets: it never parses,
+/// just counts, so a "nothing new" check stays inexpensive.
+pub(crate) fn capture_stream_line_counts(vault: &str) -> std::collections::BTreeMap<String, usize> {
+    let mut counts = std::collections::BTreeMap::new();
+    let Ok(rd) = read_dir_retry(&capture_stream_dir(vault)) else { return counts };
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if name.starts_with("prompts.") && name.ends_with(".jsonl") {
+            if let Ok(text) = read_to_string_retry(&e.path()) {
+                let n = text.lines().filter(|l| !l.trim().is_empty()).count();
+                counts.insert(name, n);
+            }
+        }
+    }
+    counts
+}
+
+/// Capture-stream prompts as intent-shaped records (message + ts + the tool as a
+/// `domain` provenance tag), newest first, capped at `limit`. Mirrors the shape
+/// `intents_read_all` returns so the two merge cleanly in the distiller.
+fn read_capture_prompts(vault: &str, limit: Option<usize>) -> Vec<serde_json::Value> {
+    let mut out: Vec<serde_json::Value> = Vec::new();
+    let Ok(rd) = read_dir_retry(&capture_stream_dir(vault)) else { return out };
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if !(name.starts_with("prompts.") && name.ends_with(".jsonl")) {
+            continue;
+        }
+        let Ok(text) = read_to_string_retry(&e.path()) else { continue };
+        for l in text.lines().filter(|l| !l.trim().is_empty()) {
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(l) else { continue };
+            let prompt = v.get("prompt").and_then(|p| p.as_str()).unwrap_or("");
+            if prompt.trim().is_empty() {
+                continue;
+            }
+            let tool = v.get("tool").and_then(|t| t.as_str()).unwrap_or("cli");
+            let ts = v.get("epoch_ms").and_then(|t| t.as_i64()).unwrap_or(0);
+            out.push(serde_json::json!({
+                "kind": "intent",
+                "message": prompt,
+                "domain": tool,
+                "ts": ts,
+                "source": v.get("source").and_then(|s| s.as_str()).unwrap_or("sync"),
+            }));
+        }
+    }
+    out.sort_by_key(|v| std::cmp::Reverse(v.get("ts").and_then(|t| t.as_i64()).unwrap_or(0)));
+    if let Some(n) = limit {
+        out.truncate(n);
+    }
+    out
+}
+
 /// The reusable distillation core — called by both the manual command and the
 /// background daemon. Reads the ledger, runs one model pass, writes
 /// <vault>/_meta/intents_distilled.json, and returns the document.
@@ -202,9 +266,15 @@ pub(crate) async fn distill_intents_core(
     model: &str,
     limit: usize,
 ) -> Result<serde_json::Value, String> {
-    let intents = intents_read_all(vault.to_string(), Some(limit))?;
+    // Merge the native ledger with the captured cross-tool prompt streams, then
+    // keep the newest `limit` across both so a unified chronological log feeds
+    // the model.
+    let mut intents = intents_read_all(vault.to_string(), Some(limit))?;
+    intents.extend(read_capture_prompts(vault, Some(limit)));
+    intents.sort_by_key(|v| std::cmp::Reverse(v.get("ts").and_then(|t| t.as_i64()).unwrap_or(0)));
+    intents.truncate(limit);
     if intents.is_empty() {
-        return Err("No intents captured yet — chat a bit first.".into());
+        return Err("No prompts captured yet. Chat a bit, or run capture sync.".into());
     }
     // Oldest-first so the model reads the narrative in order; cap each line.
     let mut activity = String::new();
@@ -381,4 +451,48 @@ pub(crate) fn decision_feedback(
         .join("\n");
     fs::write(&file, engine::maybe_encrypt(&file, &format!("{body}\n"))).map_err(|e| format!("write _decisions.jsonl: {e}"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod capture_source_tests {
+    use super::*;
+
+    #[test]
+    fn reads_and_counts_capture_streams() {
+        let vault = std::env::temp_dir().join(format!("prevail-capture-src-{}", std::process::id()));
+        let meta = vault.join("_meta");
+        fs::create_dir_all(&meta).unwrap();
+        // Two streams; one record is blank-prompt (must be ignored), one dup line.
+        fs::write(
+            meta.join("prompts.claude.jsonl"),
+            "{\"prompt\":\"buy a car\",\"tool\":\"claude\",\"epoch_ms\":100,\"source\":\"push\"}\n\
+             {\"prompt\":\"\",\"tool\":\"claude\",\"epoch_ms\":150}\n\
+             {\"prompt\":\"sell the old car\",\"tool\":\"claude\",\"epoch_ms\":200,\"source\":\"sync\"}\n",
+        )
+        .unwrap();
+        fs::write(
+            meta.join("prompts.codex.jsonl"),
+            "{\"prompt\":\"refactor module\",\"tool\":\"codex\",\"epoch_ms\":300}\n",
+        )
+        .unwrap();
+        // A non-stream file under _meta must be ignored.
+        fs::write(meta.join("activity.jsonl"), "{\"ts\":1}\n").unwrap();
+
+        let vs = vault.to_string_lossy().to_string();
+
+        let counts = capture_stream_line_counts(&vs);
+        assert_eq!(counts.get("prompts.claude.jsonl"), Some(&3)); // blank line counts as a line
+        assert_eq!(counts.get("prompts.codex.jsonl"), Some(&1));
+        assert_eq!(counts.get("activity.jsonl"), None);
+
+        let prompts = read_capture_prompts(&vs, None);
+        // 3 real prompts (blank-prompt record dropped), newest first by ts.
+        assert_eq!(prompts.len(), 3);
+        assert_eq!(prompts[0].get("message").and_then(|m| m.as_str()), Some("refactor module"));
+        assert_eq!(prompts[0].get("domain").and_then(|d| d.as_str()), Some("codex"));
+        let limited = read_capture_prompts(&vs, Some(2));
+        assert_eq!(limited.len(), 2);
+
+        let _ = fs::remove_dir_all(&vault);
+    }
 }
