@@ -21,22 +21,36 @@ import { MemoryContextSection, TasksCrossDomainSection } from "./settings2";
 import { TelemetrySettings } from "./settings4";
 import type { CliInfo, ModelVerifyStatus, UsageSummary } from "./types";
 
+// Consistent section header shared by the three privacy controls. Big, legible
+// title + a one-line plain-language explanation of what the section governs, so
+// each grouping reads on its own.
+function PrivacyGroupHead({ title, blurb }: { title: string; blurb: string }) {
+  return (
+    <div className="mb-3">
+      <h3 className="font-display text-lg font-semibold tracking-tight text-text-primary">{title}</h3>
+      <p className="mt-1 max-w-2xl text-sm text-text-secondary">{blurb}</p>
+    </div>
+  );
+}
+
 // G3: the global incognito master. On = chat AND council run as a plain model
 // with none of your context (profile, ideal state, omega, memory). Per-surface
 // toggles in each composer can still go incognito just there.
 function GlobalIncognitoToggle() {
   const [on, setOn] = useState(() => getPref(PREF.incognito, "0") === "1");
   return (
-    <div className="mt-6 border-t border-border-subtle pt-5">
-      <div className="rounded-xl border border-border bg-surface p-4">
-        <div className="flex items-center gap-3">
-          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${on ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}><Ghost className="h-4 w-4" /></span>
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-text-primary">Incognito everywhere</div>
-            <div className="mt-0.5 text-xs text-text-secondary">Run every surface (chat and council) as a plain model with none of your context: no profile, ideal state, omega, or memory. Turn it on per-surface from each composer instead.</div>
+    <div className={`rounded-xl border p-4 ${on ? "border-accent-border bg-accent-soft/30" : "border-border bg-surface"}`}>
+      <div className="flex items-center gap-3">
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${on ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}><Ghost className="h-4 w-4" /></span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-text-primary">{on ? "On - every surface runs blank" : "Off - your context is used"}</div>
+          <div className="mt-0.5 text-xs text-text-secondary">
+            {on
+              ? "Chat and council run as a plain model with no profile, ideal state, omega, or memory."
+              : "Chat and council see your profile, ideal state, omega, and memory. You can still go incognito per-surface from each composer."}
           </div>
-          <Toggle on={on} onChange={(v) => { setOn(v); setPref(PREF.incognito, v ? "1" : "0"); }} label="Incognito everywhere" />
         </div>
+        <Toggle on={on} onChange={(v) => { setOn(v); setPref(PREF.incognito, v ? "1" : "0"); }} label="Incognito everywhere" />
       </div>
     </div>
   );
@@ -61,23 +75,20 @@ function VaultLockToggle() {
     } catch (e) { console.error("vault_lock_set", e); } finally { setBusy(false); }
   }
   return (
-    <div className="mt-6 border-t border-border-subtle pt-5">
-      <div className={`rounded-xl border p-4 ${on ? "border-accent-border bg-accent-soft/30" : "border-border bg-surface"}`}>
-        <div className="flex items-center gap-3">
-          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${on ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
-            {on ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-text-primary">Vault Lock</div>
-            <div className="mt-0.5 text-xs text-text-secondary">
-              {on
-                ? "On: the assistant may only read and write files inside your vault. The rest of your machine is off-limits - no scanning other folders, no outside files, no tools that reach beyond the vault."
-                : "Off: full local-machine access. The assistant can scan any directory and use local tools across your computer."}
-              {" "}This is separate from Bunker Mode (which controls local vs cloud models); the two work in any combination.
-            </div>
+    <div className={`rounded-xl border p-4 ${on ? "border-accent-border bg-accent-soft/30" : "border-border bg-surface"}`}>
+      <div className="flex items-center gap-3">
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${on ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
+          {on ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-text-primary">{on ? "On - vault only" : "Off - whole machine"}</div>
+          <div className="mt-0.5 text-xs text-text-secondary">
+            {on
+              ? "The assistant may only read and write files inside your vault. The rest of your machine is off-limits - no scanning other folders, no outside files, no tools that reach beyond the vault."
+              : "Full local-machine access. The assistant can scan any directory and use local tools across your computer."}
           </div>
-          <Toggle on={on} disabled={busy} onChange={toggle} label="Vault Lock" />
         </div>
+        <Toggle on={on} disabled={busy} onChange={toggle} label="Vault Lock" />
       </div>
     </div>
   );
@@ -147,85 +158,56 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
     <>
       <SettingsHeader
         title="Privacy"
-        subtitle="Bunker Mode is a trust guarantee, not a preference. While it's on, everything stays on this device: local models only, no network, no cloud AI, no web search."
+        subtitle="Three independent controls, each answering a different question. They work in any combination."
       />
 
-      {/* Hero - the master control. Two colors only: the AI cyan (the "AI" in
-          the wordmark) as the on-accent, and brand-dark when off. Text stays
-          high-contrast (dark on the light card, white on the dark card). */}
-      <div className={`rounded-2xl border p-5 transition-colors ${
-        enabled
-          ? "border-ai/40 bg-ai/10"
-          : "border-black/30 bg-[#141416]"
-      }`}>
-        <div className="flex items-center gap-4">
-          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${enabled ? "bg-ai/15" : "bg-white/10"}`}>
-            {enabled ? <ShieldCheck className="h-6 w-6 text-ai" /> : <ShieldOff className="h-6 w-6 text-white" />}
+      {/* ── SECTION 1 - BUNKER MODE: where your data can go ─────────────────── */}
+      <section>
+        <PrivacyGroupHead
+          title="Bunker Mode"
+          blurb="Where your data can go. On = nothing leaves this device: local models only, no network, no cloud AI, no web search."
+        />
+
+        {/* Control card - SAME shape/weight as Vault Lock and Incognito so no one
+            section dominates. The per-channel live status lives inside the card
+            as compact chips, not a separate hero grid. */}
+        <div className={`rounded-xl border p-4 ${enabled ? "border-accent-border bg-accent-soft/30" : "border-border bg-surface"}`}>
+          <div className="flex items-center gap-3">
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${enabled ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
+              {enabled ? <ShieldCheck className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-text-primary">{enabled ? "On - fully local" : "Off - cloud connected"}</div>
+              <div className="mt-0.5 text-xs text-text-secondary">
+                {enabled
+                  ? "Everything stays on this device. Nothing leaves your machine."
+                  : "Cloud AI, web search, and network access are available and may transmit data."}
+              </div>
+            </div>
+            <Toggle on={enabled} disabled={busy} onChange={onToggle} label="Bunker Mode" />
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className={`font-display text-lg font-semibold ${enabled ? "text-text-primary" : "text-white"}`}>Bunker Mode</span>
-              <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${enabled ? "bg-ai text-white" : "bg-white/15 text-white"}`}>
-                {enabled ? "On" : "Off"}
+
+          {/* Compact live status - what's blocked vs open right now. */}
+          <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border-subtle pt-3">
+            {tiles.map((t) => (
+              <span
+                key={t.label}
+                className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${t.good ? "border-ai/30 bg-ai/5 text-text-primary" : "border-border bg-surface text-text-muted"}`}
+              >
+                <t.Icon className={`h-3.5 w-3.5 ${t.good ? "text-ai" : "text-text-muted"}`} />
+                {t.label}
+                <span className="font-mono uppercase tracking-wide opacity-70">{t.state}</span>
               </span>
-            </div>
-            <p className={`mt-1 text-sm ${enabled ? "text-text-secondary" : "text-white/70"}`}>
-              {enabled
-                ? "Everything stays on this device. Nothing leaves your machine."
-                : "Cloud AI, web search, and network access are available and may transmit data."}
-            </p>
+            ))}
           </div>
-          <Toggle on={enabled} disabled={busy} onChange={onToggle} label="Bunker Mode" />
+          {!status?.local_available && enabled && (
+            <a href="https://ollama.com/download" target="_blank" rel="noreferrer"
+              className="mt-2 inline-flex items-center gap-1.5 text-xs text-accent hover:underline">
+              <Cpu className="h-3.5 w-3.5" /> No local model detected. Install Ollama to run on-device.
+            </a>
+          )}
         </div>
-      </div>
-
-      {/* Live status - visual tiles for what's blocked vs open. */}
-      <div className="mt-5">
-        <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Live status</div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {tiles.map((t) => (
-            <div
-              key={t.label}
-              className={`rounded-xl border p-4 transition-colors ${
-                t.good
-                  ? "border-ai/40 bg-ai/5"
-                  : "border-border bg-surface"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <t.Icon className={`h-5 w-5 ${t.good ? "text-ai" : "text-text-muted"}`} />
-                {t.good
-                  ? <Check className="h-3.5 w-3.5 text-ai" />
-                  : <span className="h-1.5 w-1.5 rounded-full bg-text-muted/50" />}
-              </div>
-              <div className="mt-2.5 text-sm font-semibold text-text-primary">{t.label}</div>
-              <div className="mt-0.5 font-mono text-[11px] uppercase tracking-wider text-text-secondary">
-                {t.state}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Verdict strip */}
-        <div className={`mt-3 flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm ${
-          enabled
-            ? "border-ai/40 bg-ai/10 text-text-primary"
-            : "border-black/30 bg-[#141416] text-white"
-        }`}>
-          {enabled ? <ShieldCheck className="h-4 w-4 shrink-0 text-ai" /> : <ShieldOff className="h-4 w-4 shrink-0" />}
-          <span>
-            {enabled
-              ? "Verified. No requests leave your machine while Bunker Mode is active."
-              : "Cloud connected. Cloud models, web search, and external services can transmit data."}
-          </span>
-        </div>
-        {!status?.local_available && enabled && (
-          <a href="https://ollama.com/download" target="_blank" rel="noreferrer"
-            className="mt-2 inline-flex items-center gap-1.5 text-xs text-accent hover:underline">
-            <Cpu className="h-3.5 w-3.5" /> No local model detected. Install Ollama to run on-device.
-          </a>
-        )}
-      </div>
+      </section>
 
       {/* Leave-Bunker-Mode confirmation */}
       {confirmOff && (
@@ -267,15 +249,26 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
         </div>
       )}
 
-      {/* Vault Lock - filesystem scope. Orthogonal to Bunker (models). */}
-      <VaultLockToggle />
+      {/* ── SECTION 2 - VAULT LOCK: what files the assistant can touch ──────── */}
+      <section className="mt-6 border-t border-border-subtle pt-6">
+        <PrivacyGroupHead
+          title="Vault Lock"
+          blurb="What files the assistant can touch on your machine. On = your vault only; the rest of your computer is off-limits. Independent of Bunker Mode."
+        />
+        <VaultLockToggle />
+      </section>
 
-      {/* G3: global incognito - one switch to run EVERY surface (chat + council)
-          with none of your context. Per-surface toggles live in each composer. */}
-      <GlobalIncognitoToggle />
+      {/* ── SECTION 3 - INCOGNITO: how much of you the model sees ───────────── */}
+      <section className="mt-6 border-t border-border-subtle pt-6">
+        <PrivacyGroupHead
+          title="Incognito"
+          blurb="How much of you the model sees. On = a blank model with none of your context. You can also go incognito per-surface from each composer."
+        />
+        <GlobalIncognitoToggle />
+      </section>
 
       {/* Telemetry lives under Privacy (moved from Safety). Anonymous, opt-in,
-          default-OFF - see TelemetrySettings. */}
+          default-OFF. Brings its own border-t / heading. */}
       <TelemetrySettings />
     </>
   );
