@@ -504,6 +504,7 @@ pub fn run() {
             integrations::capture_status,
             integrations::capture_install,
             integrations::capture_sync,
+            integrations::capture_set_enabled,
             integrations::mcp_install,
             integrations::mcp_install_status,
             engine::headless_learn_status,

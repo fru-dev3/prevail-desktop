@@ -34,6 +34,14 @@ pub async fn capture_sync(vault: String) -> Result<serde_json::Value, String> {
     engine_json(vec!["--vault".into(), vault, "capture".into(), "sync".into()]).await
 }
 
+/// Turn capture on/off for one tool. The flag is honored by both the live hook
+/// and the automatic reader, so "off" means the tool stops being captured.
+#[tauri::command]
+pub async fn capture_set_enabled(vault: String, tool: String, on: bool) -> Result<serde_json::Value, String> {
+    let sub = if on { "enable" } else { "disable" };
+    engine_json(vec!["--vault".into(), vault, "capture".into(), sub.into(), "--tool".into(), tool]).await
+}
+
 /// Register Prevail as an MCP server in one client's own config. `client` is
 /// claude|codex|gemini|antigravity|cursor. The engine owns the per-client format
 /// and registers flag-less (move-proof, with --unsafe-detach so the parent-check
