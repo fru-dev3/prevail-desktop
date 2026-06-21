@@ -7,8 +7,9 @@
 // Heavy lifting lives in the prevail engine (`prevail capture …`, `prevail mcp
 // install …`), reached through async Tauri commands that never block the UI.
 import { useCallback, useEffect, useState } from "react";
-import { Check, Download, FolderOpen, Loader2, RefreshCw, Zap } from "lucide-react";
+import { Check, Download, FolderOpen, History, Loader2, RefreshCw, Zap } from "lucide-react";
 import { invoke } from "./bridge";
+import { Toggle } from "./ui";
 import { McpSection } from "./settings5";
 import type { CliInfo } from "./types";
 
@@ -17,6 +18,7 @@ type Harness = {
   method: "push" | "sync";
   present: boolean;
   wired: boolean;
+  enabled?: boolean;
   target?: string;
   detail?: string;
 };
@@ -48,6 +50,7 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
   const [mcpClients, setMcpClients] = useState<McpClient[]>([]);
   const [busy, setBusy] = useState<"" | "install" | "sync">("");
   const [note, setNote] = useState<string | null>(null);
+  const [togglingTool, setTogglingTool] = useState("");
   const [mcpBusy, setMcpBusy] = useState(false);
   const [mcpBusyClient, setMcpBusyClient] = useState("");
   const [mcpMsg, setMcpMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -101,6 +104,20 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
       setNote(`Sync failed: ${String(e).slice(0, 140)}`);
     } finally {
       setBusy("");
+    }
+  }
+
+  async function toggleCapture(tool: string, on: boolean) {
+    setTogglingTool(tool);
+    setNote(null);
+    try {
+      await invoke("capture_set_enabled", { vault: vaultPath, tool, on });
+      setNote(`${LABELS[tool] ?? tool} capture turned ${on ? "on" : "off"}.`);
+      await loadCapture();
+    } catch (e) {
+      setNote(`Could not change ${LABELS[tool] ?? tool}: ${String(e).slice(0, 120)}`);
+    } finally {
+      setTogglingTool("");
     }
   }
 
@@ -246,7 +263,7 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
           <div>
             <h2 className="mb-1 text-xl font-semibold text-text-primary">Prompt capture</h2>
             <div className="text-sm text-text-secondary">
-              Every prompt you submit, saved to <code className="text-accent">_meta/prompts/&lt;tool&gt;.jsonl</code> and distilled into your intents. <span className="text-text-muted">Live = logged as you type (Claude Code); Automatic = read from a tool's saved chat history.</span>
+              Every prompt you submit, saved to <code className="text-accent">_meta/prompts/&lt;tool&gt;.jsonl</code> and distilled into your intents. <span className="inline-flex items-center gap-1"><Zap className="h-3 w-3 text-ai" /> = captured live as you type, <History className="h-3 w-3" /> = read from a tool's saved chats.</span>
             </div>
           </div>
           <div className="text-right">
@@ -287,10 +304,9 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
             <thead className="bg-surface-warm/60 text-[10px] uppercase tracking-wider text-text-muted">
               <tr>
                 <th className="px-3 py-2 font-medium">Harness</th>
-                <th className="px-3 py-2 font-medium">Method</th>
-                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 text-center font-medium">How</th>
                 <th className="px-3 py-2 text-right font-medium">Captured</th>
-                <th className="px-3 py-2 text-right font-medium" />
+                <th className="px-3 py-2 text-right font-medium">Capture</th>
               </tr>
             </thead>
             <tbody>
@@ -300,20 +316,13 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
                     <span className={`mr-2 inline-block h-1.5 w-1.5 rounded-full ${h.present ? "bg-ok" : "bg-border"}`} />
                     {LABELS[h.tool] ?? h.tool}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 text-center">
                     <span
-                      className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${h.method === "push" ? "bg-ai/15 text-ai" : "bg-surface-warm text-text-muted"}`}
-                      title={h.method === "push" ? "Logged the moment you send a prompt" : "Read automatically from this tool's saved chat history"}
+                      className="inline-flex"
+                      title={h.method === "push" ? "Captured live, the moment you send a prompt" : "Read from this tool's saved chat files"}
                     >
-                      {h.method === "push" ? "Live" : "Automatic"}
+                      {h.method === "push" ? <Zap className="h-4 w-4 text-ai" /> : <History className="h-4 w-4 text-text-muted" />}
                     </span>
-                  </td>
-                  <td className="px-3 py-2">
-                    {h.method === "push"
-                      ? h.wired
-                        ? <span className="inline-flex items-center gap-1 text-ok"><Check className="h-3 w-3" /> On</span>
-                        : <span className="text-text-muted">{h.present ? "Off" : "Not installed"}</span>
-                      : <span className="text-ok inline-flex items-center gap-1" title={h.detail}><Check className="h-3 w-3" /> On</span>}
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-text-secondary">
                     {streamCount(h.tool) > 0 ? (
@@ -324,31 +333,20 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
                       <span className="text-text-muted">0</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {h.method === "push" ? (
-                      <button
-                        onClick={runInstall}
-                        disabled={busy !== ""}
-                        title="Turn on live capture for this CLI (adds a hook to it)"
-                        className="inline-flex items-center gap-1 rounded border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
-                      >
-                        {h.wired ? "Reconnect" : "Turn on"}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={runSync}
-                        disabled={busy !== ""}
-                        title="Read this CLI's latest prompts from its chat history now"
-                        className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50"
-                      >
-                        Update
-                      </button>
-                    )}
+                  <td className="px-3 py-2">
+                    <div className="flex justify-end">
+                      <Toggle
+                        on={h.enabled !== false}
+                        onChange={(v) => toggleCapture(h.tool, v)}
+                        disabled={togglingTool !== ""}
+                        label={`Capture ${LABELS[h.tool] ?? h.tool}`}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
               {harnesses.length === 0 && (
-                <tr><td colSpan={5} className="px-3 py-3 text-center text-text-muted">Run "Install capture" to wire up your CLIs.</td></tr>
+                <tr><td colSpan={4} className="px-3 py-3 text-center text-text-muted">Run "Install capture" to wire up your CLIs.</td></tr>
               )}
             </tbody>
           </table>
