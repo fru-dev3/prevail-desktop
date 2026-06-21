@@ -43,7 +43,7 @@ fn vault_key() -> Option<String> {
 pub fn set_vault_root(r: Option<String>) {
     *VAULT_ROOT.lock().unwrap_or_else(|e| e.into_inner()) = r;
 }
-fn vault_root() -> Option<String> {
+pub(crate) fn vault_root() -> Option<String> {
     VAULT_ROOT.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
