@@ -28,6 +28,10 @@ type CaptureStatus = {
   harnesses?: Harness[];
 };
 type SyncSource = { tool: string; found: number; written: number; skipped: number };
+type McpClient = { client: string; present: boolean; registered: boolean; error?: string };
+
+// MCP-capable clients, in display order. Subset of the capture harnesses.
+const MCP_CLIENT_ORDER = ["claude", "codex", "gemini", "antigravity", "cursor"];
 
 const LABELS: Record<string, string> = {
   claude: "Claude Code",
@@ -46,6 +50,8 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
   const [busy, setBusy] = useState<"" | "install" | "sync">("");
   const [note, setNote] = useState<string | null>(null);
   const [mcpBusy, setMcpBusy] = useState(false);
+  const [mcpBusyClient, setMcpBusyClient] = useState("");
+  const [mcpClients, setMcpClients] = useState<McpClient[]>([]);
   const [mcpMsg, setMcpMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -53,6 +59,12 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
       setStatus(await invoke<CaptureStatus>("capture_status", { vault: vaultPath }));
     } catch (e) {
       setNote(`Could not read capture status: ${String(e).slice(0, 140)}`);
+    }
+    try {
+      const m = await invoke<{ clients?: McpClient[] }>("mcp_install_status");
+      setMcpClients(m.clients ?? []);
+    } catch {
+      /* engine may be mid-launch; leave MCP list empty */
     }
   }, [vaultPath]);
 
@@ -89,16 +101,23 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
     }
   }
 
-  async function installClaudeMcp() {
-    setMcpBusy(true);
+  async function installClientMcp(client: string) {
+    setMcpBusyClient(client);
     setMcpMsg(null);
     try {
-      const r = await invoke<{ ok: boolean; stdout?: string; stderr?: string }>("mcp_install_claude", { vault: vaultPath });
-      setMcpMsg({ ok: !!r.ok, text: r.ok ? "Registered. Open Claude Code and run /mcp to confirm." : (r.stderr || "Install failed.").slice(0, 160) });
+      const r = await invoke<{ clients?: McpClient[] }>("mcp_install", { client });
+      const c = r.clients?.find((x) => x.client === client);
+      const label = LABELS[client] ?? client;
+      setMcpMsg(
+        c?.registered
+          ? { ok: true, text: `${label}: registered. Restart ${label} to pick it up.` }
+          : { ok: false, text: `${label}: ${(c?.error || "install failed").slice(0, 150)}` },
+      );
+      await load();
     } catch (e) {
       setMcpMsg({ ok: false, text: String(e).slice(0, 160) });
     } finally {
-      setMcpBusy(false);
+      setMcpBusyClient("");
     }
   }
 
@@ -216,33 +235,55 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
       <div className="mt-5 rounded-lg border border-border bg-surface p-5">
         <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">MCP access</div>
         <div className="mb-3 text-xs text-text-secondary">
-          Let a CLI drive Prevail: expose your vault as an MCP server. One-click for Claude Code; other clients via the MCP tab.
+          Let each CLI drive Prevail: register your vault as an MCP server in its config, one click, no copy-paste. Registered flag-less so it follows your vault if you move it.
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={installClaudeMcp}
-            disabled={mcpBusy}
-            className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
-          >
-            {mcpBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-            Install into Claude Code
-          </button>
+        <div className="overflow-hidden rounded-md border border-border-subtle">
+          {MCP_CLIENT_ORDER.map((id) => {
+            const c = mcpClients.find((x) => x.client === id);
+            const present = c?.present ?? false;
+            const registered = c?.registered ?? false;
+            const busyThis = mcpBusyClient === id;
+            return (
+              <div key={id} className="flex items-center justify-between gap-3 border-b border-border-subtle px-3 py-2 last:border-b-0">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className={`inline-block h-1.5 w-1.5 rounded-full ${present ? "bg-ok" : "bg-border"}`} />
+                  <span>{LABELS[id] ?? id}</span>
+                  {registered && (
+                    <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-ok">
+                      <Check className="h-3 w-3" /> registered
+                    </span>
+                  )}
+                  {!present && <span className="text-[10px] uppercase tracking-wider text-text-muted">not installed</span>}
+                </div>
+                <button
+                  onClick={() => installClientMcp(id)}
+                  disabled={busyThis || mcpBusyClient !== ""}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
+                >
+                  {busyThis ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                  {registered ? "Re-install" : "Install"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             onClick={testMcp}
             disabled={mcpBusy}
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50"
           >
-            <Zap className="h-3 w-3" /> Test handshake
+            {mcpBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />} Test handshake
           </button>
           <button
             onClick={gotoMcpSection}
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
           >
-            <Wrench className="h-3 w-3" /> Other clients
+            <Wrench className="h-3 w-3" /> Manual configs
           </button>
           {mcpMsg && (
             <span className={`font-mono text-[11px] ${mcpMsg.ok ? "text-ok" : "text-warn"}`}>
-              {mcpMsg.ok ? "✓ " : "✗ "}{mcpMsg.text}
+              {mcpMsg.ok ? "OK " : "x "}{mcpMsg.text}
             </span>
           )}
         </div>
