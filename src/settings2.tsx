@@ -467,7 +467,7 @@ const sourceLabel = (s: string) => SOURCE_LABELS[s.toLowerCase()] ?? titleCase(s
 type DistilledDoc = { generated_ts: number; source_count: number; intents: DistilledIntent[] };
 
 export function IntentsSection({ vaultPath }: { vaultPath: string }) {
-  type IntentRow = { message?: string; cli?: string; model?: string; ts?: number; domain?: string };
+  type IntentRow = { message?: string; cli?: string; model?: string; ts?: number; domain?: string; surface?: string; source?: string };
   const [intents, setIntents] = useState<IntentRow[]>([]);
   const [q, setQ] = useState("");
   const [domainFilter, setDomainFilter] = useState("all");
@@ -489,9 +489,17 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
     }
   }
   useEffect(() => {
-    invoke<IntentRow[]>("intents_read_all", { vault: vaultPath, limit: 500 })
-      .then((r) => setIntents(Array.isArray(r) ? r : []))
-      .catch(() => setIntents([]));
+    // The journal merges the native ledger (Prevail chats) with prompts captured
+    // from other tools (Claude Code, Codex, …), newest first, so "what you asked"
+    // spans every surface - the same union the distiller works from.
+    Promise.all([
+      invoke<IntentRow[]>("intents_read_all", { vault: vaultPath, limit: 500 }).catch(() => [] as IntentRow[]),
+      invoke<IntentRow[]>("capture_prompts_read", { vault: vaultPath, limit: 500 }).catch(() => [] as IntentRow[]),
+    ]).then(([native, captured]) => {
+      const merged = [...(Array.isArray(native) ? native : []), ...(Array.isArray(captured) ? captured : [])]
+        .sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
+      setIntents(merged);
+    });
     invoke<DistilledDoc>("intents_distilled_read", { vault: vaultPath })
       .then((d) => setDistilled(d ?? { generated_ts: 0, source_count: 0, intents: [] }))
       .catch(() => {});
@@ -523,8 +531,11 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
     const n = new Set(cur); n.add(key); lsSet(DISMISS_KEY, JSON.stringify([...n])); return n;
   });
   const statusTone = (s?: string) => s === "active" ? "text-accent" : s === "resolved" ? "text-ok" : "text-text-muted";
+  // Captured rows carry a tool slug as their `domain`; keep those out of the
+  // life-domain filter so the dropdown stays meaningful (you filter them by
+  // surface badge instead).
   const domains = useMemo(
-    () => [...new Set(intents.map((i) => i.domain ?? "general"))].sort(),
+    () => [...new Set(intents.map((i) => i.domain ?? "general").filter((d) => !(d.toLowerCase() in SOURCE_LABELS)))].sort(),
     [intents],
   );
   const shown = intents.filter(
@@ -662,7 +673,7 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
       {/* M3 (Monday feedback): this raw log IS the Journal - what you asked, the
           provenance intents are distilled from. Labelled so the relationship is clear. */}
       <div className="mb-1 text-sm font-semibold text-text-primary">Journal · what you asked</div>
-      <div className="mb-2 text-xs text-text-secondary">The raw record across every thread. Intents above are distilled from this.</div>
+      <div className="mb-2 text-xs text-text-secondary">The raw record across every thread and tool - Prevail chats plus prompts captured from Claude Code, Codex, and more. Intents above are distilled from this.</div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
           value={q}
@@ -690,15 +701,27 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border">
-          {shown.map((it, i) => (
+          {shown.map((it, i) => {
+            // Captured external prompts carry a surface other than "prevail";
+            // badge them by source (cyan) instead of the redundant tool-as-domain.
+            const external = !!it.surface && it.surface.toLowerCase() !== "prevail";
+            return (
             <div key={i} className="flex items-start gap-3 border-b border-border-subtle px-4 py-2.5 last:border-0 hover:bg-surface-warm">
-              <span className="mt-0.5 shrink-0 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">
-                {titleCase(it.domain ?? "general")}
-              </span>
+              {external ? (
+                <span className="mt-0.5 shrink-0 rounded border border-ai/30 bg-ai/5 px-1.5 py-0.5 font-mono text-[10px] text-ai" title="Captured from this tool">
+                  {sourceLabel(it.surface!)}
+                </span>
+              ) : (
+                <span className="mt-0.5 shrink-0 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">
+                  {titleCase(it.domain ?? "general")}
+                </span>
+              )}
               <div className="min-w-0 flex-1">
                 <div className="line-clamp-2 text-sm text-text-primary">{String(it.message ?? "(no text)")}</div>
                 <div className="mt-0.5 font-mono text-[10px] text-text-muted">
-                  {it.cli ?? ""}{it.model ? ` · ${it.model}` : ""}{it.ts ? ` · ${formatFreshness(Math.max(0, (Date.now() - it.ts) / 1000))}` : ""}
+                  {external
+                    ? `${it.source === "push" ? "live" : "synced"}${it.ts ? ` · ${formatFreshness(Math.max(0, (Date.now() - it.ts) / 1000))}` : ""}`
+                    : `${it.cli ?? ""}${it.model ? ` · ${it.model}` : ""}${it.ts ? ` · ${formatFreshness(Math.max(0, (Date.now() - it.ts) / 1000))}` : ""}`}
                 </div>
               </div>
               <button
@@ -713,7 +736,8 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
                 {copiedIdx === i ? "copied" : "copy"}
               </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </>

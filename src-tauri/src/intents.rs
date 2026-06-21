@@ -267,6 +267,18 @@ fn read_capture_prompts(vault: &str, limit: Option<usize>) -> Vec<serde_json::Va
     out
 }
 
+/// Captured cross-tool prompts (Claude Code, Codex, …) as journal rows, newest
+/// first. Exposes the same records the distiller reads so the desktop Intent
+/// journal can show prompts typed OUTSIDE Prevail alongside the native ledger.
+/// Each row carries `surface` (the tool slug) and `source` (push|sync).
+#[tauri::command]
+pub(crate) fn capture_prompts_read(
+    vault: String,
+    limit: Option<usize>,
+) -> Result<Vec<serde_json::Value>, String> {
+    Ok(read_capture_prompts(&vault, limit))
+}
+
 /// The reusable distillation core - called by both the manual command and the
 /// background daemon. Reads the ledger, runs one model pass, writes
 /// <vault>/_meta/intents_distilled.json, and returns the document.
