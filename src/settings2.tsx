@@ -477,6 +477,13 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
   const [distilling, setDistilling] = useState(false);
   const [distillMsg, setDistillMsg] = useState<string | null>(null);
   const [openIntent, setOpenIntent] = useState<number | null>(null);
+  // Render-pagination: cap how many rows hit the DOM so a vault with hundreds of
+  // intents / thousands of journal rows stays responsive. "Load more" reveals
+  // the next page; the search/filter still runs across the FULL set.
+  const INTENTS_PAGE = 12;
+  const JOURNAL_PAGE = 50;
+  const [intentsShown, setIntentsShown] = useState(INTENTS_PAGE);
+  const [journalShown, setJournalShown] = useState(JOURNAL_PAGE);
   // Recommendations that have been turned into tracked tasks (keyed intent:rec).
   const [addedRecs, setAddedRecs] = useState<Set<string>>(new Set());
   async function addRecAsTask(intent: DistilledIntent, rec: string, key: string) {
@@ -531,6 +538,12 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
     const n = new Set(cur); n.add(key); lsSet(DISMISS_KEY, JSON.stringify([...n])); return n;
   });
   const statusTone = (s?: string) => s === "active" ? "text-accent" : s === "resolved" ? "text-ok" : "text-text-muted";
+  // Non-dismissed intents (original index preserved for openIntent/dismiss keys),
+  // then sliced to the current page.
+  const visibleIntentPairs = distilled.intents
+    .map((it, i) => [it, i] as const)
+    .filter(([it, i]) => !dismissed.has(intentKey(it, i)));
+  const pagedIntents = visibleIntentPairs.slice(0, intentsShown);
   // Captured rows carry a tool slug as their `domain`; keep those out of the
   // life-domain filter so the dropdown stays meaningful (you filter them by
   // surface badge instead).
@@ -543,6 +556,8 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
       (domainFilter === "all" || (i.domain ?? "general") === domainFilter) &&
       (!q.trim() || String(i.message ?? "").toLowerCase().includes(q.trim().toLowerCase())),
   );
+  // Searching/filtering narrows the set, so reset the journal page to the top.
+  useEffect(() => { setJournalShown(JOURNAL_PAGE); }, [q, domainFilter]);
   return (
     <>
       <SettingsHeader
@@ -577,9 +592,8 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
         </div>
       ) : (
         <div className="mb-6 space-y-2">
-          {distilled.intents.map((it, i) => {
+          {pagedIntents.map(([it, i]) => {
             const open = openIntent === i;
-            if (dismissed.has(intentKey(it, i))) return null;
             return (
               <div key={i} className="overflow-hidden rounded-xl border border-border bg-surface">
                <div className="flex items-start">
@@ -667,6 +681,14 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
               </div>
             );
           })}
+          {visibleIntentPairs.length > intentsShown && (
+            <button
+              onClick={() => setIntentsShown((n) => n + INTENTS_PAGE)}
+              className="w-full rounded-xl border border-dashed border-border bg-surface px-4 py-2.5 text-sm text-text-secondary hover:border-accent-border hover:text-accent"
+            >
+              Show {Math.min(INTENTS_PAGE, visibleIntentPairs.length - intentsShown)} more · {intentsShown} of {visibleIntentPairs.length}
+            </button>
+          )}
         </div>
       )}
 
@@ -691,7 +713,7 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
             <option key={d} value={d}>{titleCase(d)}</option>
           ))}
         </select>
-        <span className="font-mono text-[10px] text-text-muted">{shown.length} of {intents.length}</span>
+        <span className="font-mono text-[10px] text-text-muted">{Math.min(journalShown, shown.length)} of {shown.length}{shown.length !== intents.length ? ` (${intents.length} total)` : ""}</span>
       </div>
       {shown.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
@@ -701,7 +723,7 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border">
-          {shown.map((it, i) => {
+          {shown.slice(0, journalShown).map((it, i) => {
             // Captured external prompts carry a surface other than "prevail";
             // badge them by source (cyan) instead of the redundant tool-as-domain.
             const external = !!it.surface && it.surface.toLowerCase() !== "prevail";
@@ -738,6 +760,14 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
             </div>
             );
           })}
+          {shown.length > journalShown && (
+            <button
+              onClick={() => setJournalShown((n) => n + JOURNAL_PAGE)}
+              className="w-full border-t border-border-subtle px-4 py-2.5 text-center text-sm text-text-secondary hover:bg-surface-warm hover:text-accent"
+            >
+              Load {Math.min(JOURNAL_PAGE, shown.length - journalShown)} more · {journalShown} of {shown.length}
+            </button>
+          )}
         </div>
       )}
     </>
