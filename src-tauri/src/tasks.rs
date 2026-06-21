@@ -409,9 +409,12 @@ pub fn work_count(vault: String, today: String, domain: Option<String>) -> Resul
 }
 
 /// Every task across every domain, tagged with its domain — powers the
-/// cross-domain board. Open tasks first, then done.
+/// cross-domain board. Open tasks first, then done. `limit` (optional) caps how
+/// many are returned AFTER the open-first/due sort, so a vault with thousands of
+/// tasks ships a bounded first page (the open, time-sensitive ones) instead of
+/// the whole set; the board raises the limit on "Load more". None = all.
 #[tauri::command]
-pub fn tasks_read_all(vault: String) -> Result<Vec<serde_json::Value>, String> {
+pub fn tasks_read_all(vault: String, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
     let mut out: Vec<serde_json::Value> = Vec::new();
     // Enumerate domains the v3-aware way (handles BOTH <vault>/<domain> and the v3
     // <vault>/domains/<domain> container) — lightweight (names only, no state reads).
@@ -451,6 +454,9 @@ pub fn tasks_read_all(vault: String) -> Result<Vec<serde_json::Value>, String> {
             au.cmp(bu)
         })
     });
+    if let Some(n) = limit {
+        out.truncate(n);
+    }
     Ok(out)
 }
 
