@@ -186,7 +186,7 @@ pub(crate) fn migrate_legacy_usage(vault: &str) {
         out.push_str(&entry.to_string());
         out.push('\n');
     }
-    let meta = Path::new(vault).join("_meta");
+    let meta = crate::paths::build_root(vault).join("_meta");
     if fs::create_dir_all(&meta).is_err() {
         return;
     }

@@ -1,7 +1,7 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { Activity, ArrowLeft, Briefcase, Cable, Compass, Dices, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Repeat, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Swords, Target, Wrench, Zap } from "lucide-react";
+import { Activity, ArrowLeft, Briefcase, Compass, Dices, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Repeat, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Swords, Target, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { LS, lsGet } from "./storage";
 import { useAppearance } from "./hooks";
@@ -19,7 +19,7 @@ import { SparkPanel } from "./spark";
 import { OmegaSection } from "./omega";
 import { CollapsibleSection } from "./collapsible";
 import { GeneralSection, IdealStateSection, SafetySection } from "./settings4";
-import { AboutSection, GatewayLogsCard, GatewaySection, McpSection } from "./settings5";
+import { AboutSection, GatewayLogsCard, GatewaySection } from "./settings5";
 import { IntegrationsPanel } from "./integrationspanel";
 import { CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6";
 import { ModelsSection } from "./settings7";
@@ -121,7 +121,6 @@ export function SettingsPanel({
     ]},
     { heading: "Connections", items: [
       { id: "connectors", label: "Apps", icon: Plug },
-      { id: "integrations", label: "Integrations", icon: Cable },
       { id: "gateway", label: "Gateway", icon: MessagesSquare },
       { id: "mcp", label: "MCP", icon: Wrench },
       // A5 (Monday feedback): the WebUI/localhost toggle was orphaned (no nav
@@ -356,8 +355,7 @@ export function SettingsPanel({
           {section === "connectors" && <AppsPanel vaultPath={vaultPath} />}
           {section === "safety" && <SafetySection vaultPath={vaultPath} />}
           {section === "gateway" && <><GatewaySection /><GatewayLogsCard vaultPath={vaultPath} /></>}
-          {section === "mcp" && <McpSection vaultPath={vaultPath} />}
-          {section === "integrations" && <IntegrationsPanel vaultPath={vaultPath} clis={clis} />}
+          {section === "mcp" && <IntegrationsPanel vaultPath={vaultPath} clis={clis} />}
           {section === "remote" && <RemoteSection />}
           {/* IA-1: "workspace" is the umbrella; "vault"/"demo" remain as
               deep-link aliases (e.g. the demo ribbon's jump) → same section. */}
