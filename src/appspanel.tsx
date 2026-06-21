@@ -291,7 +291,9 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // Nango) live in their own modes and must never leak into the Direct list -
   // so everything the Direct branch renders (list, "my list", counts, detail)
   // is derived from this gateway-free slice, not the raw `apps`.
-  const directApps = useMemo(() => (apps ?? []).filter((a) => !a.gateway), [apps]);
+  // Google is a first-class app object with its OWN row + detail (the profiles
+  // panel), so exclude it from the generic list to avoid a duplicate entry.
+  const directApps = useMemo(() => (apps ?? []).filter((a) => !a.gateway && a.id !== "google"), [apps]);
   // Filter by the search box (name or method), then group into Connected vs
   // Setup (authorizing / connecting / needs attention) vs Not connected so the
   // left list reads top-to-bottom like Claude Desktop / ChatGPT connectors.
@@ -437,9 +439,6 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
             logos={logos}
           />
         </div>
-        {/* Google Workspace: one connector for the whole Google ecosystem across
-            every profile, via the gws CLI. Sits at the top of Direct. */}
-        <GoogleWorkspacePanel vaultPath={vaultPath} />
         {apps === null ? (
         <div className="text-sm text-text-muted">loading apps…</div>
       ) : directApps.length === 0 && catalog.length === 0 ? (
@@ -493,6 +492,21 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
               <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{liveCount} of {directApps.length} live</div>
             )}
             <div className="space-y-4 lg:max-h-[60vh] lg:overflow-y-auto lg:pr-1">
+              {/* Google: a first-class app object. One row with the Google mark;
+                  its detail holds the per-profile workspace management. Always
+                  shown (matches the search box). */}
+              {(!query || "google workspace gmail calendar drive".includes(query.trim().toLowerCase())) && (
+                <button
+                  onClick={() => { setConnecting(false); setCatalogPick(null); setSelected("google"); }}
+                  className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors ${selected === "google" ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}
+                >
+                  <AppRowLogo app={{ title: "Google", id: "google" }} logos={logos} size={28} fallback="letter" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-text-primary">Google</span>
+                    <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Workspace · all profiles</span>
+                  </span>
+                </button>
+              )}
               {groups.length === 0 && catalogView.shown.length === 0 ? (
                 <div className="px-1 text-xs text-text-muted">No apps match "{query}".</div>
               ) : (
@@ -583,6 +597,10 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                 onDone={async () => { setConnecting(false); setCatalogPick(null); await reload(); }}
                 onCancel={() => setConnecting(false)}
               />
+            ) : selected === "google" ? (
+              // Google is an app object: its detail IS the multi-profile workspace
+              // panel (each Google account is a profile inside this one app).
+              <GoogleWorkspacePanel vaultPath={vaultPath} logos={logos} />
             ) : catalogPick ? (
               <>
                 {catalogConnectErr && (
