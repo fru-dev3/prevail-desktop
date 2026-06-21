@@ -200,7 +200,7 @@ pub(crate) fn count_intents(vault: &str) -> usize {
 // drives: the same question asked across three CLIs becomes one intent.
 
 fn capture_stream_dir(vault: &str) -> PathBuf {
-    crate::paths::build_root(vault).join("_meta")
+    crate::paths::build_root(vault).join("_meta").join("prompts")
 }
 
 /// Per-file line counts for every capture stream (filename -> non-empty lines).
@@ -211,7 +211,7 @@ pub(crate) fn capture_stream_line_counts(vault: &str) -> std::collections::BTree
     let Ok(rd) = read_dir_retry(&capture_stream_dir(vault)) else { return counts };
     for e in rd.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
-        if name.starts_with("prompts.") && name.ends_with(".jsonl") {
+        if name.ends_with(".jsonl") {
             if let Ok(text) = read_to_string_retry(&e.path()) {
                 let n = text.lines().filter(|l| !l.trim().is_empty()).count();
                 counts.insert(name, n);
@@ -229,7 +229,7 @@ fn read_capture_prompts(vault: &str, limit: Option<usize>) -> Vec<serde_json::Va
     let Ok(rd) = read_dir_retry(&capture_stream_dir(vault)) else { return out };
     for e in rd.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
-        if !(name.starts_with("prompts.") && name.ends_with(".jsonl")) {
+        if !name.ends_with(".jsonl") {
             continue;
         }
         let Ok(text) = read_to_string_retry(&e.path()) else { continue };
@@ -460,30 +460,27 @@ mod capture_source_tests {
     #[test]
     fn reads_and_counts_capture_streams() {
         let vault = std::env::temp_dir().join(format!("prevail-capture-src-{}", std::process::id()));
-        let meta = vault.join("_meta");
-        fs::create_dir_all(&meta).unwrap();
-        // Two streams; one record is blank-prompt (must be ignored), one dup line.
+        let prompts_dir = vault.join("_meta").join("prompts");
+        fs::create_dir_all(&prompts_dir).unwrap();
+        // One file per tool in _meta/prompts/; one blank-prompt record (ignored).
         fs::write(
-            meta.join("prompts.claude.jsonl"),
+            prompts_dir.join("claude.jsonl"),
             "{\"prompt\":\"buy a car\",\"tool\":\"claude\",\"epoch_ms\":100,\"source\":\"push\"}\n\
              {\"prompt\":\"\",\"tool\":\"claude\",\"epoch_ms\":150}\n\
              {\"prompt\":\"sell the old car\",\"tool\":\"claude\",\"epoch_ms\":200,\"source\":\"sync\"}\n",
         )
         .unwrap();
         fs::write(
-            meta.join("prompts.codex.jsonl"),
+            prompts_dir.join("codex.jsonl"),
             "{\"prompt\":\"refactor module\",\"tool\":\"codex\",\"epoch_ms\":300}\n",
         )
         .unwrap();
-        // A non-stream file under _meta must be ignored.
-        fs::write(meta.join("activity.jsonl"), "{\"ts\":1}\n").unwrap();
 
         let vs = vault.to_string_lossy().to_string();
 
         let counts = capture_stream_line_counts(&vs);
-        assert_eq!(counts.get("prompts.claude.jsonl"), Some(&3)); // blank line counts as a line
-        assert_eq!(counts.get("prompts.codex.jsonl"), Some(&1));
-        assert_eq!(counts.get("activity.jsonl"), None);
+        assert_eq!(counts.get("claude.jsonl"), Some(&3)); // blank line counts as a line
+        assert_eq!(counts.get("codex.jsonl"), Some(&1));
 
         let prompts = read_capture_prompts(&vs, None);
         // 3 real prompts (blank-prompt record dropped), newest first by ts.

@@ -383,8 +383,14 @@ export default function App() {
           // localStorage so the rest of the app agrees.
           const cfgVault = await invoke<string | null>("engine_config_vault").catch(() => null);
           if (cfgVault) {
-            const ok = await invoke<boolean>("vault_exists", { path: cfgVault }).catch(() => false);
-            if (ok) { setVaultPath(cfgVault); lsSet(LS.vault, cfgVault); return; }
+            // Config.json is THE source of truth in production. Trust it even if
+            // the existence probe flakes during boot - otherwise we strand on a
+            // stale localStorage vault (the demo-vault revert bug) and the sync
+            // effect writes that wrong path back into config. Mirror it to
+            // localStorage so the rest of the UI agrees.
+            setVaultPath(cfgVault);
+            lsSet(LS.vault, cfgVault);
+            return;
           }
           // Fallbacks if config has no usable vault: the last UI pick, then the
           // on-disk bootstrap mirror.
@@ -411,8 +417,17 @@ export default function App() {
   // whatever vault is actually active, so the WebUI - which inherits via
   // bootstrap_vault - always mirrors what's open on the desktop, not a stale
   // earlier pick. Desktop only; the browser is a consumer, never the source.
+  const vaultSyncReady = useRef(false);
   useEffect(() => {
     if (isBrowser() || !vaultPath) return;
+    // CRITICAL: skip the FIRST run. On mount, vaultPath is the UNCONFIRMED
+    // localStorage value; writing it to config here races ahead of the boot
+    // resolution and clobbers config.json (the demo-vault revert bug). Only
+    // boot-confirmed or user-chosen vault changes should propagate to config.
+    if (!vaultSyncReady.current) {
+      vaultSyncReady.current = true;
+      return;
+    }
     void invoke("remember_vault", { path: vaultPath }).catch(() => {});
     // Keep config.json (the engine/daemon source of truth) in lockstep with the
     // active vault, so switching vaults in the UI moves the engine + daemons too
@@ -1205,6 +1220,9 @@ export default function App() {
             lsSet(LS.vault, p);
             void invoke("remember_vault", { path: p }).catch(() => {});
             setSelectedDomain(null);
+            // Force every panel that listens for domain changes (sidebar, stats,
+            // threads, …) to re-scan the NEW vault instead of showing stale data.
+            window.dispatchEvent(new Event("prevail:domains-changed"));
           }}
           onBack={() => setTab("chat")}
           jumpTo={settingsJump}
