@@ -212,6 +212,9 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // Each track's one-paragraph explainer now lives in a popover off the tabs
   // (toggled here), not an always-on card - keeps the top compact.
   const [infoOpen, setInfoOpen] = useState(false);
+  // The header is one row by default (title + clamped description + logos); the
+  // chevron expands the full description in place and collapses back.
+  const [headerOpen, setHeaderOpen] = useState(false);
   // The Composio managed-gateway pane (one OAuth fronts 1000+ apps for the agent).
   const [query, setQuery] = useState("");
   // Real brand marks for every connector (AllTrails, Booking.com, Garmin, …),
@@ -424,30 +427,30 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
 
   return (
     <>
-      {/* Full-width header band: title + description on the left, a dense brand
-          field filling the right ~half (right-to-left under a fade) so the space
-          reads as "lots of apps" without being tall. */}
-      <div className="relative mb-4 overflow-hidden rounded-xl border border-border-subtle bg-surface/40">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-y-0 right-0 hidden w-[58%] select-none lg:block [mask-image:linear-gradient(to_right,transparent,black_45%)]"
-        >
-          <div className="flex h-full flex-wrap content-center justify-end gap-2 p-4">
-            {APP_LOGO_FIELD.map((s, i) => (
-              <span key={`${s.id}-${i}`} className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-warm/70 ring-1 ring-border-subtle">
-                <AppRowLogo app={s} logos={logos} size={24} fallback="letter" />
+      {/* One-row header: title + a clamped description that the chevron expands
+          in place, and a compact logo strip on the right (kept in-flow so it can
+          never sit under the text). */}
+      <div className="mb-4 overflow-hidden rounded-xl border border-border-subtle bg-surface/40 px-5 py-3">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Plug className="h-4 w-4" /></span>
+          <h2 className="shrink-0 font-display text-xl font-bold tracking-tight">Apps</h2>
+          <p className={`min-w-0 flex-1 text-sm text-text-secondary ${headerOpen ? "" : "truncate"}`}>
+            Services that feed your vault. Connect each one once and it's available to any domain's context, no duplicates.
+          </p>
+          <button
+            onClick={() => setHeaderOpen((v) => !v)}
+            title={headerOpen ? "Show less" : "What is this?"}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-accent"
+          >
+            <ChevronRight className={`h-4 w-4 transition-transform ${headerOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+          </button>
+          <div aria-hidden className="ml-1 hidden shrink-0 select-none items-center gap-1.5 [mask-image:linear-gradient(to_right,transparent,black_30%)] lg:flex">
+            {APP_LOGO_FIELD.slice(0, 8).map((s, i) => (
+              <span key={`${s.id}-${i}`} className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-warm/70 ring-1 ring-border-subtle">
+                <AppRowLogo app={s} logos={logos} size={22} fallback="letter" />
               </span>
             ))}
           </div>
-        </div>
-        <div className="relative z-10 max-w-xl px-5 py-5">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Plug className="h-4 w-4" /></span>
-            <h2 className="font-display text-2xl font-bold tracking-tight">Apps</h2>
-          </div>
-          <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-            Services that feed your vault. Connect each one once - mail, calendar, repos, docs, payments, and more - and it's available to any domain's context, no duplicates. Prevail keeps each app's data grounded in what's actually happening.
-          </p>
         </div>
       </div>
 
