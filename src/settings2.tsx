@@ -439,12 +439,31 @@ type DistilledIntent = {
   goal?: string;
   underlying_need?: string;
   domains?: string[];
+  /** Surfaces (tools/apps) whose prompts fed this intent: claude, codex,
+   *  gemini, prevail, … - the provenance shown as badges. */
+  sources?: string[];
   status?: string;
   confidence?: number;
   open_questions?: string[];
   evidence?: string[];
   recommendations?: string[];
 };
+
+// Pretty labels for the source surfaces a distilled intent can come from. Keeps
+// the engine slugs (claude/codex/…) human-readable in the provenance badges.
+const SOURCE_LABELS: Record<string, string> = {
+  claude: "Claude Code",
+  codex: "Codex",
+  gemini: "Gemini",
+  antigravity: "Antigravity",
+  opencode: "opencode",
+  openclaw: "Openclaw",
+  hermes: "Hermes",
+  pi: "Pi",
+  cursor: "Cursor",
+  prevail: "Prevail chat",
+};
+const sourceLabel = (s: string) => SOURCE_LABELS[s.toLowerCase()] ?? titleCase(s);
 type DistilledDoc = { generated_ts: number; source_count: number; intents: DistilledIntent[] };
 
 export function IntentsSection({ vaultPath }: { vaultPath: string }) {
@@ -563,6 +582,16 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
                       {typeof it.confidence === "number" && <span className="font-mono text-[9px] text-text-muted">{Math.round(it.confidence * 100)}%</span>}
                     </div>
                     {it.goal && <div className="mt-0.5 text-sm text-text-secondary">{it.goal}</div>}
+                    {(it.sources ?? []).length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                        <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">From</span>
+                        {(it.sources ?? []).map((s) => (
+                          <span key={s} className="inline-flex items-center gap-1 rounded border border-ai/30 bg-ai/5 px-1.5 py-0.5 font-mono text-[9px] text-ai" title="Surface this intent was drawn from">
+                            {sourceLabel(s)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <span className="hidden shrink-0 items-center gap-1 sm:flex">
                     {(it.domains ?? []).slice(0, 3).map((d) => (
