@@ -1,7 +1,7 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { Activity, ArrowLeft, Briefcase, Compass, Dices, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Repeat, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Swords, Target, Wrench, Zap } from "lucide-react";
+import { Activity, ArrowLeft, Briefcase, Cable, Compass, Dices, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Repeat, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Swords, Target, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { LS, lsGet } from "./storage";
 import { useAppearance } from "./hooks";
@@ -20,6 +20,7 @@ import { OmegaSection } from "./omega";
 import { CollapsibleSection } from "./collapsible";
 import { GeneralSection, IdealStateSection, SafetySection } from "./settings4";
 import { AboutSection, GatewayLogsCard, GatewaySection, McpSection } from "./settings5";
+import { IntegrationsPanel } from "./integrationspanel";
 import { CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6";
 import { ModelsSection } from "./settings7";
 import { AppearanceSection, WorkspaceSection } from "./settings8";
@@ -51,7 +52,7 @@ export function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "loopboard" | "spark";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "integrations" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "loopboard" | "spark";
   // Default landing is the Work board ("tasks") - the most important area - not
   // General. A specific jumpTo (e.g. "connectors") still wins.
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "tasks");
@@ -120,6 +121,7 @@ export function SettingsPanel({
     ]},
     { heading: "Connections", items: [
       { id: "connectors", label: "Apps", icon: Plug },
+      { id: "integrations", label: "Integrations", icon: Cable },
       { id: "gateway", label: "Gateway", icon: MessagesSquare },
       { id: "mcp", label: "MCP", icon: Wrench },
       // A5 (Monday feedback): the WebUI/localhost toggle was orphaned (no nav
@@ -355,6 +357,7 @@ export function SettingsPanel({
           {section === "safety" && <SafetySection vaultPath={vaultPath} />}
           {section === "gateway" && <><GatewaySection /><GatewayLogsCard vaultPath={vaultPath} /></>}
           {section === "mcp" && <McpSection vaultPath={vaultPath} />}
+          {section === "integrations" && <IntegrationsPanel vaultPath={vaultPath} clis={clis} />}
           {section === "remote" && <RemoteSection />}
           {/* IA-1: "workspace" is the umbrella; "vault"/"demo" remain as
               deep-link aliases (e.g. the demo ribbon's jump) → same section. */}

@@ -5,9 +5,13 @@
 // It re-distills when EITHER condition fires (whichever comes first):
 //   * enough NEW prompts have accumulated since the last pass (min_new_prompts), or
 //   * the last pass is older than max_age_sec (e.g. daily).
-// A cursor in <vault>/_meta/intents_distill_cursor.json (prompt count + last-run
-// timestamp) makes this idempotent and cheap: a check that finds nothing new costs
-// only a ledger count, never a model call.
+// A checkpoint in <vault>/_meta/intents_distill_checkpoint.json (the native
+// ledger count + a PER-STREAM line offset for each captured prompts.<tool>.jsonl
+// + last-run timestamp) makes this idempotent and cheap: a check that finds
+// nothing new costs only a ledger count + line counts, never a model call. New
+// prompts from any source (the native chat ledger OR any captured CLI stream)
+// count toward the trigger. (Named "checkpoint", not "cursor", to avoid reading
+// as the Cursor editor.)
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -38,24 +42,41 @@ pub struct IntentDaemonStatus {
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
-struct Cursor {
+struct DistillCheckpoint {
+    /// Native intent-ledger count at the last pass.
     #[serde(default)]
     last_count: usize,
     #[serde(default)]
     last_run_ts: u64,
+    /// Per capture-stream line offset already accounted for: filename -> lines.
+    #[serde(default)]
+    streams: std::collections::BTreeMap<String, usize>,
 }
 
-fn cursor_path(vault: &str) -> PathBuf {
+fn checkpoint_path(vault: &str) -> PathBuf {
+    crate::paths::build_root(vault).join("_meta").join("intents_distill_checkpoint.json")
+}
+/// Legacy file from before per-stream offsets existed; read once for migration.
+fn legacy_cursor_path(vault: &str) -> PathBuf {
     crate::paths::build_root(vault).join("_meta").join("intents_distill_cursor.json")
 }
-fn read_cursor(vault: &str) -> Cursor {
-    std::fs::read_to_string(cursor_path(vault))
+fn read_checkpoint(vault: &str) -> DistillCheckpoint {
+    if let Some(cp) = std::fs::read_to_string(checkpoint_path(vault))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+    {
+        return cp;
+    }
+    // Migrate the old {last_count,last_run_ts} cursor (streams default to empty,
+    // so already-captured prompts count as "new" once, a harmless one-time
+    // re-distill that folds the capture streams in).
+    std::fs::read_to_string(legacy_cursor_path(vault))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or_default()
 }
-fn write_cursor(vault: &str, c: &Cursor) {
-    let p = cursor_path(vault);
+fn write_checkpoint(vault: &str, c: &DistillCheckpoint) {
+    let p = checkpoint_path(vault);
     if let Some(dir) = p.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
@@ -73,14 +94,23 @@ fn now_secs() -> u64 {
 /// One check. Returns Some(intent_count) if it ran a distill, None if it skipped
 /// (nothing new / not yet due).
 async fn run_once(cfg: &IntentDaemonConfig) -> Result<Option<u64>, String> {
-    let count = crate::intents::count_intents(&cfg.vault);
-    if count == 0 {
+    let ledger_count = crate::intents::count_intents(&cfg.vault);
+    let stream_counts = crate::intents::capture_stream_line_counts(&cfg.vault);
+    let stream_total: usize = stream_counts.values().sum();
+    if ledger_count == 0 && stream_total == 0 {
         return Ok(None);
     }
-    let cursor = read_cursor(&cfg.vault);
+    let cp = read_checkpoint(&cfg.vault);
     let now = now_secs();
-    let new_prompts = count.saturating_sub(cursor.last_count);
-    let aged = cursor.last_run_ts == 0 || now.saturating_sub(cursor.last_run_ts) >= cfg.max_age_sec;
+    // New prompts = ledger growth + growth of EACH capture stream since its
+    // recorded offset (a brand-new stream counts all its lines as new).
+    let new_ledger = ledger_count.saturating_sub(cp.last_count);
+    let new_streams: usize = stream_counts
+        .iter()
+        .map(|(name, n)| n.saturating_sub(*cp.streams.get(name).unwrap_or(&0)))
+        .sum();
+    let new_prompts = new_ledger + new_streams;
+    let aged = cp.last_run_ts == 0 || now.saturating_sub(cp.last_run_ts) >= cfg.max_age_sec;
     let enough = new_prompts >= cfg.min_new_prompts.max(1);
     if !(aged || enough) {
         return Ok(None);
@@ -92,7 +122,10 @@ async fn run_once(cfg: &IntentDaemonConfig) -> Result<Option<u64>, String> {
         .and_then(|a| a.as_array())
         .map(|a| a.len())
         .unwrap_or(0) as u64;
-    write_cursor(&cfg.vault, &Cursor { last_count: count, last_run_ts: now });
+    write_checkpoint(
+        &cfg.vault,
+        &DistillCheckpoint { last_count: ledger_count, last_run_ts: now, streams: stream_counts },
+    );
     Ok(Some(n))
 }
 
