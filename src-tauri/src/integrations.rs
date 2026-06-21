@@ -1,41 +1,50 @@
 // Tauri commands backing the Integrations panel. Thin orchestration: capture
 // status/install/sync delegate to the bundled prevail engine (which owns the
 // schema, vault resolution, dedup, and OS wiring), and the one-click MCP
-// registration drives the target CLI's own `mcp add` so the user never copies
-// a config by hand.
+// registration drives the target CLI's own config.
+//
+// Every command is `async` and runs the (blocking) engine subprocess on a
+// blocking thread via spawn_blocking, so a slow or hanging engine call can NEVER
+// freeze the webview/UI thread.
 
-/// `prevail capture status --json` - stream counts + per-harness wiring.
-#[tauri::command]
-pub fn capture_status(vault: String) -> Result<serde_json::Value, String> {
-    crate::engine::run_engine_json(&["--vault", &vault, "capture", "status"])
+async fn engine_json(args: Vec<String>) -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(move || {
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        crate::engine::run_engine_json(&refs)
+    })
+    .await
+    .map_err(|e| format!("engine task failed: {e}"))?
 }
 
-/// `prevail capture install --json` - wire push hooks + stage the sync backstop.
+/// `prevail capture status` - stream counts + per-harness wiring.
 #[tauri::command]
-pub fn capture_install(vault: String) -> Result<serde_json::Value, String> {
-    crate::engine::run_engine_json(&["--vault", &vault, "capture", "install"])
+pub async fn capture_status(vault: String) -> Result<serde_json::Value, String> {
+    engine_json(vec!["--vault".into(), vault, "capture".into(), "status".into()]).await
 }
 
-/// `prevail capture sync --json` - pull prompts from every CLI's transcripts.
-/// Can take a moment on the first run (it scans whole transcript trees); Tauri
-/// runs sync commands off the UI thread so the cockpit stays responsive.
+/// `prevail capture install` - wire push hooks + stage the sync backstop.
 #[tauri::command]
-pub fn capture_sync(vault: String) -> Result<serde_json::Value, String> {
-    crate::engine::run_engine_json(&["--vault", &vault, "capture", "sync"])
+pub async fn capture_install(vault: String) -> Result<serde_json::Value, String> {
+    engine_json(vec!["--vault".into(), vault, "capture".into(), "install".into()]).await
 }
 
-/// One-click: register Prevail as an MCP server in one client's own config.
-/// `client` is claude|codex|gemini|antigravity|cursor. The engine owns the
-/// per-client format (TOML/JSON/`claude mcp add`) and registers flag-less so the
-/// server follows the saved vault (move-proof). Returns the engine's per-client
-/// JSON report.
+/// `prevail capture sync` - pull prompts from every CLI's transcripts.
 #[tauri::command]
-pub fn mcp_install(client: String) -> Result<serde_json::Value, String> {
-    crate::engine::run_engine_json(&["mcp", "install", "--client", &client])
+pub async fn capture_sync(vault: String) -> Result<serde_json::Value, String> {
+    engine_json(vec!["--vault".into(), vault, "capture".into(), "sync".into()]).await
+}
+
+/// Register Prevail as an MCP server in one client's own config. `client` is
+/// claude|codex|gemini|antigravity|cursor. The engine owns the per-client format
+/// and registers flag-less (move-proof, with --unsafe-detach so the parent-check
+/// never falsely rejects the launch).
+#[tauri::command]
+pub async fn mcp_install(client: String) -> Result<serde_json::Value, String> {
+    engine_json(vec!["mcp".into(), "install".into(), "--client".into(), client]).await
 }
 
 /// Where Prevail's MCP server is currently registered, across every known client.
 #[tauri::command]
-pub fn mcp_install_status() -> Result<serde_json::Value, String> {
-    crate::engine::run_engine_json(&["mcp", "status"])
+pub async fn mcp_install_status() -> Result<serde_json::Value, String> {
+    engine_json(vec!["mcp".into(), "status".into()]).await
 }

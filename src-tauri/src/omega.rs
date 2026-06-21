@@ -39,7 +39,7 @@ pub(crate) fn write_omega(vault: String, body: String) -> Result<(), String> {
     if let Ok(existing) = read_to_string_retry(&p) {
         let existing = engine::maybe_decrypt(&p, existing);
         if existing.trim() != body.trim() && !existing.trim().is_empty() {
-            let vdir = PathBuf::from(&vault).join("_meta").join("omega-versions");
+            let vdir = crate::paths::build_root(&vault).join("_meta").join("omega-versions");
             let _ = fs::create_dir_all(&vdir);
             let secs = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -56,7 +56,7 @@ pub(crate) fn write_omega(vault: String, body: String) -> Result<(), String> {
 /// Dated snapshots of omega.md, newest first.
 #[tauri::command]
 pub(crate) fn omega_versions(vault: String) -> Result<Vec<serde_json::Value>, String> {
-    let vdir = PathBuf::from(&vault).join("_meta").join("omega-versions");
+    let vdir = crate::paths::build_root(&vault).join("_meta").join("omega-versions");
     let mut out = Vec::new();
     if let Ok(it) = read_dir_retry(&vdir) {
         for e in it.flatten() {
@@ -160,8 +160,8 @@ pub(crate) async fn distill_omega_core(
         }
     }
     // Cross-domain intents (titles + goals) add signal even before memory builds.
-    if let Ok(raw) = read_to_string_retry(&root.join("_meta").join("intents_distilled.json")) {
-        let raw = engine::maybe_decrypt(&root.join("_meta").join("intents_distilled.json"), raw);
+    if let Ok(raw) = read_to_string_retry(&crate::paths::build_root(vault).join("_meta").join("intents_distilled.json")) {
+        let raw = engine::maybe_decrypt(&crate::paths::build_root(vault).join("_meta").join("intents_distilled.json"), raw);
         if let Ok(doc) = serde_json::from_str::<serde_json::Value>(&raw) {
             if let Some(arr) = doc.get("intents").and_then(|v| v.as_array()) {
                 let mut lines = String::new();
