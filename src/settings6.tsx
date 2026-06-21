@@ -2,7 +2,7 @@
 // Council defaults, Configuration (groups the memory/tasks/ideal sub-sections),
 // and the Agents catalog (AgentCard + AgentsSection).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, Globe, ListChecks, Loader2, Lock, LockOpen, Search, Server, ShieldCheck, ShieldOff, Wifi, WifiOff, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, FileX, FolderCheck, FolderX, Globe, ListChecks, Loader2, Lock, LockOpen, Search, Server, ShieldCheck, ShieldOff, Sigma, Target, Terminal, User, Wifi, WifiOff, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
@@ -33,11 +33,40 @@ function PrivacyGroupHead({ title, blurb }: { title: string; blurb: string }) {
   );
 }
 
+// The compact per-channel status row shared by all three privacy controls, so
+// each card has the same granularity. `good` = the protective/active state
+// (highlighted cyan); otherwise muted. Sits inside the card under a divider.
+type StatusChip = { Icon: LucideIcon; label: string; state: string; good: boolean };
+function StatusChips({ items }: { items: StatusChip[] }) {
+  return (
+    <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border-subtle pt-3">
+      {items.map((t) => (
+        <span
+          key={t.label}
+          className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${t.good ? "border-ai/30 bg-ai/5 text-text-primary" : "border-border bg-surface text-text-muted"}`}
+        >
+          <t.Icon className={`h-3.5 w-3.5 ${t.good ? "text-ai" : "text-text-muted"}`} />
+          {t.label}
+          <span className="font-mono uppercase tracking-wide opacity-70">{t.state}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // G3: the global incognito master. On = chat AND council run as a plain model
 // with none of your context (profile, ideal state, omega, memory). Per-surface
 // toggles in each composer can still go incognito just there.
 function GlobalIncognitoToggle() {
   const [on, setOn] = useState(() => getPref(PREF.incognito, "0") === "1");
+  // What the model sees right now, per context channel. `good` = hidden (the
+  // private state), matching the cyan-when-protective convention.
+  const chips: StatusChip[] = [
+    { Icon: User, label: "Profile", state: on ? "Hidden" : "Used", good: on },
+    { Icon: Target, label: "Ideal state", state: on ? "Hidden" : "Used", good: on },
+    { Icon: Sigma, label: "Omega", state: on ? "Hidden" : "Used", good: on },
+    { Icon: Brain, label: "Memory", state: on ? "Hidden" : "Used", good: on },
+  ];
   return (
     <div className={`rounded-xl border p-4 ${on ? "border-accent-border bg-accent-soft/30" : "border-border bg-surface"}`}>
       <div className="flex items-center gap-3">
@@ -52,6 +81,7 @@ function GlobalIncognitoToggle() {
         </div>
         <Toggle on={on} onChange={(v) => { setOn(v); setPref(PREF.incognito, v ? "1" : "0"); }} label="Incognito everywhere" />
       </div>
+      <StatusChips items={chips} />
     </div>
   );
 }
@@ -74,6 +104,14 @@ function VaultLockToggle() {
       window.dispatchEvent(new CustomEvent("prevail:vault-lock-changed"));
     } catch (e) { console.error("vault_lock_set", e); } finally { setBusy(false); }
   }
+  // What the assistant can reach on disk right now. `good` = restricted to the
+  // vault (the protective state), matching the cyan-when-protective convention.
+  const chips: StatusChip[] = [
+    { Icon: FolderCheck, label: "Vault", state: "Read/write", good: true },
+    { Icon: FolderX, label: "Other folders", state: on ? "Blocked" : "Allowed", good: on },
+    { Icon: FileX, label: "Outside files", state: on ? "Blocked" : "Allowed", good: on },
+    { Icon: Terminal, label: "Local tools", state: on ? "Vault only" : "Whole machine", good: on },
+  ];
   return (
     <div className={`rounded-xl border p-4 ${on ? "border-accent-border bg-accent-soft/30" : "border-border bg-surface"}`}>
       <div className="flex items-center gap-3">
@@ -90,6 +128,7 @@ function VaultLockToggle() {
         </div>
         <Toggle on={on} disabled={busy} onChange={toggle} label="Vault Lock" />
       </div>
+      <StatusChips items={chips} />
     </div>
   );
 }
@@ -188,18 +227,7 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
           </div>
 
           {/* Compact live status - what's blocked vs open right now. */}
-          <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border-subtle pt-3">
-            {tiles.map((t) => (
-              <span
-                key={t.label}
-                className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${t.good ? "border-ai/30 bg-ai/5 text-text-primary" : "border-border bg-surface text-text-muted"}`}
-              >
-                <t.Icon className={`h-3.5 w-3.5 ${t.good ? "text-ai" : "text-text-muted"}`} />
-                {t.label}
-                <span className="font-mono uppercase tracking-wide opacity-70">{t.state}</span>
-              </span>
-            ))}
-          </div>
+          <StatusChips items={tiles} />
           {!status?.local_available && enabled && (
             <a href="https://ollama.com/download" target="_blank" rel="noreferrer"
               className="mt-2 inline-flex items-center gap-1.5 text-xs text-accent hover:underline">
