@@ -56,6 +56,7 @@ mod telegram_bridge;
 mod watchdog;
 mod webhook_bridge;
 mod webui;
+mod integrations;
 
 use std::fs;
 use std::path::Path;
@@ -500,6 +501,10 @@ pub fn run() {
             idealstate::write_domain_ideal,
             engine::engine_vault_status,
             engine::mcp_test_handshake,
+            integrations::capture_status,
+            integrations::capture_install,
+            integrations::capture_sync,
+            integrations::mcp_install_claude,
             engine::headless_learn_status,
             engine::headless_learn_set,
             engine::engine_vault_unlock,
