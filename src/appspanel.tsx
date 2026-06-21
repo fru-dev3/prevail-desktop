@@ -291,9 +291,20 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // Nango) live in their own modes and must never leak into the Direct list -
   // so everything the Direct branch renders (list, "my list", counts, detail)
   // is derived from this gateway-free slice, not the raw `apps`.
-  // Google is a first-class app object with its OWN row + detail (the profiles
-  // panel), so exclude it from the generic list to avoid a duplicate entry.
-  const directApps = useMemo(() => (apps ?? []).filter((a) => !a.gateway && a.id !== "google"), [apps]);
+  // Google lists like any other app (alphabetically / grouped, favoritable),
+  // NOT a pinned-top special. Until it's scaffolded to disk (on favorite or
+  // "Connect for the agent"), inject a synthetic entry so it still appears in
+  // the list; its detail is the multi-profile panel (selected === "google").
+  const directApps = useMemo(() => {
+    const real = (apps ?? []).filter((a) => !a.gateway);
+    if (real.some((a) => a.id === "google")) return real;
+    const google: EngineApp = {
+      id: "google", title: "Google", integration: "cli", status: "disconnected",
+      configured: false, domains: [], lastSuccessTs: null, lastError: null,
+      account: null, refresh: null, community: false,
+    };
+    return [...real, google];
+  }, [apps]);
   // Filter by the search box (name or method), then group into Connected vs
   // Setup (authorizing / connecting / needs attention) vs Not connected so the
   // left list reads top-to-bottom like Claude Desktop / ChatGPT connectors.
@@ -364,6 +375,16 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // of the sidebar for quick access. A pinned catalog app and its installed self
   // share a normalized key, so once connected it shows from the connected side.
   const favs = useFavorites();
+  // Favorite an app; for Google, scaffold it to disk first so pinning it puts a
+  // real app on the home screen (the sidebar lists vault apps).
+  const favApp = useCallback(async (a: EngineApp) => {
+    const key = favKeyOf(a.title || a.id);
+    if (a.id === "google" && !favs.has(key) && !favs.has(favKeyOf("google"))) {
+      await invoke("google_scaffold", { vault: vaultPath }).catch(() => {});
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+    }
+    toggleFavorite(key);
+  }, [favs, vaultPath]);
   const pinned = useMemo(() => {
     const connected = directApps.filter((a) => favs.has(favKeyOf(a.title || a.id)) || favs.has(favKeyOf(a.id)));
     const connectedKeys = new Set(connected.map((a) => favKeyOf(a.title || a.id)));
@@ -492,39 +513,6 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
               <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{liveCount} of {directApps.length} live</div>
             )}
             <div className="space-y-4 lg:max-h-[60vh] lg:overflow-y-auto lg:pr-1">
-              {/* Google: a first-class app object. One row with the Google mark;
-                  its detail holds the per-profile workspace management. Always
-                  shown (matches the search box). */}
-              {(!query || "google workspace gmail calendar drive".includes(query.trim().toLowerCase())) && (
-                <div className={`group flex w-full items-center gap-1 rounded-lg border pr-2 transition-colors ${selected === "google" ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}>
-                  <button
-                    onClick={() => { setConnecting(false); setCatalogPick(null); setSelected("google"); }}
-                    className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pl-2.5 text-left"
-                  >
-                    <AppRowLogo app={{ title: "Google", id: "google" }} logos={logos} size={28} fallback="letter" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-text-primary">Google</span>
-                      <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Workspace · all profiles</span>
-                    </span>
-                  </button>
-                  {/* Favorite (star) - scaffolds the Google app so it lands on the
-                      home screen, like any other app. */}
-                  <button
-                    onClick={async () => {
-                      const key = favKeyOf("google");
-                      if (!favs.has(key)) {
-                        await invoke("google_scaffold", { vault: vaultPath }).catch(() => {});
-                        window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
-                      }
-                      toggleFavorite(key);
-                    }}
-                    title={favs.has(favKeyOf("google")) ? "On your home screen - click to remove" : "Add to your home screen"}
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors hover:text-accent ${favs.has(favKeyOf("google")) ? "text-accent" : "text-text-muted opacity-0 group-hover:opacity-100"}`}
-                  >
-                    <Star className={`h-3.5 w-3.5 ${favs.has(favKeyOf("google")) ? "fill-accent" : ""}`} />
-                  </button>
-                </div>
-              )}
               {groups.length === 0 && catalogView.shown.length === 0 ? (
                 <div className="px-1 text-xs text-text-muted">No apps match "{query}".</div>
               ) : (
@@ -542,7 +530,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                           active={selected === a.id && !catalogPick}
                           onSelect={() => { setSelected(a.id); setCatalogPick(null); }}
                           isFav
-                          onToggleFav={() => toggleFavorite(favKeyOf(a.title || a.id))}
+                          onToggleFav={() => void favApp(a)}
                         />
                       ))}
                       {pinned.catalog.map((c) => (
@@ -570,7 +558,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                           active={selected === a.id && !catalogPick}
                           onSelect={() => { setSelected(a.id); setCatalogPick(null); }}
                           isFav={favs.has(favKeyOf(a.title || a.id)) || favs.has(favKeyOf(a.id))}
-                          onToggleFav={() => toggleFavorite(favKeyOf(a.title || a.id))}
+                          onToggleFav={() => void favApp(a)}
                         />
                       ))}
                     </section>
