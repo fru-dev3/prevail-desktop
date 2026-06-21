@@ -63,24 +63,52 @@ fn composio_agent_mcp_config() -> Option<String> {
     Some(path.to_string_lossy().to_string())
 }
 
+// Vault Lock guardrail for the chat agent. Mirrors the CLI bridge's preamble so
+// the desktop chat path (which spawns the agent CLI directly) enforces the same
+// hard filesystem scope. The agent must refuse anything outside the vault.
+fn vault_lock_preamble() -> String {
+    "# FILESYSTEM SCOPE - VAULT LOCK IS ON. HARD CONSTRAINT.\n\
+     You may only read, write, list, search, or modify files inside the vault (this working directory and its data/ and build/ folders). \
+     Do NOT access, read, list, search, or execute ANYTHING outside the vault: no other directories, no home folder, no system paths, no temp dirs, \
+     and no tools or commands that reach beyond the vault (e.g. scanning the Mac for files). \
+     If a request would require touching files outside the vault, REFUSE and state that Vault Lock is enabled (turn it off in Settings to allow full-machine access).\n\n---\n\n".to_string()
+}
+
 fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String>) {
     // Match the prevail CLI's dispatch table. -p / --prompt for one-shot
     // non-interactive mode. When `model` is supplied, inject the right
     // flag for each vendor (ollama uses a positional arg, the rest use
     // --model <id>).
+    // Vault Lock: when ON, the agent is confined to the vault. We (1) prepend a
+    // hard scope rule, (2) drop the Bash escape hatch + confine file tools to the
+    // vault via --add-dir, and (3) skip the external Composio MCP - so a prompt
+    // like "scan my Mac for big files" cannot reach outside the vault.
+    let locked = crate::vault_lock::vault_lock_enabled();
+    let vault = crate::engine::vault_root();
+    let prompt_owned = if locked { format!("{}{}", vault_lock_preamble(), prompt) } else { prompt.to_string() };
+    let prompt = prompt_owned.as_str();
     match cli {
         "claude" => {
             let mut v = vec!["--dangerously-skip-permissions".to_string()];
+            if locked {
+                if let Some(ref vp) = vault { v.push("--add-dir".to_string()); v.push(vp.clone()); }
+                // Remove the shell escape hatch so the agent can't du/find the
+                // whole filesystem; vault file ops still work via Read/Glob/Grep.
+                v.push("--disallowedTools".to_string());
+                v.push("Bash".to_string());
+            }
             if let Some(m) = model {
                 v.push("--model".to_string());
                 v.push(m.to_string());
             }
             // Give the chat agent the Composio gateway MCP when a key is set, so it
             // can fetch live data for a connected app (Notion, PayPal, etc.) instead
-            // of guessing. No-op when Composio is not configured.
-            if let Some(cfg) = composio_agent_mcp_config() {
-                v.push("--mcp-config".to_string());
-                v.push(cfg);
+            // of guessing. Skipped when Vault Lock is on (external = out of scope).
+            if !locked {
+                if let Some(cfg) = composio_agent_mcp_config() {
+                    v.push("--mcp-config".to_string());
+                    v.push(cfg);
+                }
             }
             v.push("-p".to_string());
             // `--` ends option parsing so a prompt that starts with "--"
@@ -114,6 +142,11 @@ fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String
         }
         "antigravity" => {
             let mut v = vec!["--dangerously-skip-permissions".to_string()];
+            if locked {
+                if let Some(ref vp) = vault { v.push("--add-dir".to_string()); v.push(vp.clone()); }
+                v.push("--disallowedTools".to_string());
+                v.push("Bash".to_string());
+            }
             if let Some(m) = model {
                 v.push("--model".to_string());
                 v.push(m.to_string());
