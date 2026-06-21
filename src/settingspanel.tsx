@@ -236,10 +236,13 @@ export function SettingsPanel({
                 <button
                   key={it.id}
                   onClick={() => setSection(it.id)}
+                  aria-current={active ? "page" : undefined}
                   className={`flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm transition-colors ${
                     active
-                      ? "bg-accent-soft text-accent"
-                      : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+                      // Selected: solid accent, bold - unmistakable against hover.
+                      ? "bg-accent font-semibold text-background shadow-sm"
+                      // Hover: a clearly contrasted fill (surface-strong), not a faint tint.
+                      : "text-text-secondary hover:bg-surface-strong hover:text-text-primary"
                   }`}
                 >
                   <Icon className="h-4 w-4" />
@@ -290,7 +293,7 @@ export function SettingsPanel({
           {section === "benchmark" && (
             <>
               <SettingsHeader
-                title="Benchmark"
+                title="Arena"
                 icon={Target}
                 subtitle="Your personal eval suite. Run any model against your own questions across every domain, see who leads where, and manage the question set: write, AI-draft from your data, import, export."
               />

@@ -117,12 +117,9 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
   // Backup status surfaced next to the toggle: schedule, next-run, run-now, folder.
   const [backupTick, setBackupTick] = useState(0);
   const [backupBusy, setBackupBusy] = useState(false);
-  const backupFreq = lsGet(BACKUP_CFG.freq, "weekly") || "weekly";
-  const backupFreqLabel = (() => {
-    const m = /^custom:(\d+)$/.exec(backupFreq);
-    if (m) return `Every ${m[1]} day${m[1] === "1" ? "" : "s"}`;
-    return backupFreq.charAt(0).toUpperCase() + backupFreq.slice(1);
-  })();
+  const [backupFreq, setBackupFreqState] = useState(() => lsGet(BACKUP_CFG.freq, "weekly") || "weekly");
+  const setBackupFreq = (v: string) => { setBackupFreqState(v); lsSet(BACKUP_CFG.freq, v); window.dispatchEvent(new Event("prevail:bench-sched")); setBackupTick((t) => t + 1); };
+  const customDays = /^custom:(\d+)$/.exec(backupFreq)?.[1] ?? "2";
   const backupNextLabel = (() => {
     void backupTick; // re-evaluate after a manual backup
     const last = Number(lsGet(BACKUP_CFG.lastRun, "0")) || 0;
@@ -163,8 +160,29 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
     backupOn ? (
       // Schedule on the left; actions as right-aligned icon buttons (with tooltips)
       // that match the path row's icon-button style for an even, clean layout.
-      <div className="mt-1.5 flex items-center gap-2 font-mono text-[10px] text-text-muted">
-        <span className="min-w-0 flex-1 truncate" title="How often automatic backups run (Backups settings)">{backupFreqLabel} · next ~{backupNextLabel}</span>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2 font-mono text-[10px] text-text-muted">
+        {/* Editable schedule, right here: daily / weekly / monthly / every N days
+            (every other day = 2, every other week = 14). */}
+        <select
+          value={/^custom:/.test(backupFreq) ? "custom" : backupFreq}
+          onChange={(e) => setBackupFreq(e.target.value === "custom" ? `custom:${customDays}` : e.target.value)}
+          title="How often automatic backups run"
+          className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none"
+        >
+          <option value="daily">daily</option>
+          <option value="weekly">weekly</option>
+          <option value="monthly">monthly</option>
+          <option value="custom">every N days</option>
+        </select>
+        {/^custom:/.test(backupFreq) && (
+          <span className="inline-flex items-center gap-1">
+            <input type="number" min={1} max={365} value={customDays}
+              onChange={(e) => setBackupFreq(`custom:${Math.max(1, Math.min(365, parseInt(e.target.value, 10) || 1))}`)}
+              className="w-12 rounded border border-border bg-background px-1.5 py-0.5 text-right font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none" />
+            <span>days</span>
+          </span>
+        )}
+        <span className="min-w-0 flex-1 truncate" title="Next scheduled backup">· next ~{backupNextLabel}</span>
         <div className="flex shrink-0 items-center gap-0.5">
           <button onClick={backupNow} disabled={backupBusy} title="Back up now" className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent disabled:opacity-40">
             {backupBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DatabaseBackup className="h-3.5 w-3.5" />}
