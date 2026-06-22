@@ -12,11 +12,11 @@ import { modelsFor, prettyModelId } from "./helpers2";
 import { LS, PREF, getPref, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Ghost } from "lucide-react";
 import { Toggle } from "./ui";
-import { GroupLabel } from "./panels";
 import { COUNCIL_CHAIR_KEY, COUNCIL_MEMBERS_KEY, councilModelsFor, councilSlotKey, readCouncilChair, readCouncilMembers } from "./council";
 import { SettingsHeader, authLoginCmd } from "./sectionutil";
 import { cliVerifyLive, loadVerifyMap, saveVerifyMap, setCliVerify, useCliVerifyLive, verifyCliDefaultModel } from "./verify";
 import { ProviderMark } from "./marks";
+import { MasterDetail } from "./masterdetail";
 import { MemoryContextSection, TasksCrossDomainSection } from "./settings2";
 import { TelemetrySettings } from "./settings4";
 import type { CliInfo, ModelVerifyStatus, UsageSummary } from "./types";
@@ -705,6 +705,7 @@ export function AgentCard({
   onMakeDefault,
   cost,
   chattable = true,
+  forceOpen = false,
 }: {
   cli: CliInfo;
   onStartChat?: (cliId: string, modelId?: string) => void;
@@ -715,6 +716,9 @@ export function AgentCard({
   /** Whether this runtime can power the chat composer. Harnesses are false —
       they're catalog-only and never offered "Start chat". */
   chattable?: boolean;
+  /** Render always-expanded with no collapse chevron - used as the detail pane
+      in the Runtimes master-detail, where the row IS the only thing shown. */
+  forceOpen?: boolean;
 }) {
   const brand = VENDOR_BRAND[cli.id] ?? VENDOR_BRAND.other;
   const liveVerify = useCliVerifyLive();
@@ -727,6 +731,7 @@ export function AgentCard({
   }, []);
   const models = modelsFor(cli.id);
   const [open, setOpen] = useState(false);
+  const isOpen = forceOpen || open;
   // The provider's default model (what a new chat uses). Set right here in
   // Models, so there's no separate Defaults page.
   const modelKey = `prevail.model.${cli.id}`;
@@ -779,11 +784,11 @@ export function AgentCard({
   // Auto-run verification when the card is opened the first time
   // and there are unverified models in the list.
   useEffect(() => {
-    if (!open) return;
+    if (!isOpen) return;
     const unverified = models.some((m) => status[m.id] !== "ok");
     if (unverified) verifyAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [isOpen]);
 
   function StatusGlyph({ s }: { s: ModelVerifyStatus | undefined }) {
     if (s === "ok") return <span className="text-accent" title="Verified">✓</span>;
@@ -794,18 +799,18 @@ export function AgentCard({
 
   const cliErr = liveVerify.get(cli.id);
   return (
-    <div className={`rounded-lg border bg-surface transition-colors ${open ? "border-accent-border" : "border-border-subtle"}`}>
+    <div className={forceOpen ? "bg-surface" : `rounded-lg border bg-surface transition-colors ${open ? "border-accent-border" : "border-border-subtle"}`}>
       {/* Single-line runtime row, Multica-style columns: Runtime · Health · Cost
           · Version · action. Column widths mirror the header strip in AgentsSection. */}
       <div className="flex items-center gap-3 px-4 py-3">
         <ProviderMark vendor={cli.id} size={40} />
-        {/* Runtime identity (click to expand the model list). */}
+        {/* Runtime identity (click to expand the model list; no-op in detail mode). */}
         <button
-          onClick={() => cli.available && setOpen((v) => !v)}
-          disabled={!cli.available || models.length === 0}
+          onClick={() => !forceOpen && cli.available && setOpen((v) => !v)}
+          disabled={forceOpen || !cli.available || models.length === 0}
           className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default"
         >
-          {cli.available && models.length > 0 && (
+          {!forceOpen && cli.available && models.length > 0 && (
             <span className="shrink-0 text-[11px] text-text-muted">{open ? "▾" : "▸"}</span>
           )}
           <span className="truncate font-display text-sm font-semibold tracking-tight">{cli.label}</span>
@@ -904,7 +909,7 @@ export function AgentCard({
         </div>
       )}
 
-      {open && cli.available && models.length > 0 && (
+      {isOpen && cli.available && models.length > 0 && (
         <div className="border-t border-border-subtle px-4 py-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
@@ -1019,6 +1024,38 @@ export function AgentCard({
 // card here reflect the BACKEND policy (bunker.rs), which is the real source of
 // truth and enforcer; this screen never decides anything on its own.
 
+// One row in the Runtimes master-detail list: provider mark, name, a health
+// dot, version sub-line, and the default marker. Selecting it shows the runtime
+// detail (an always-open AgentCard) on the right.
+function RuntimeRow({ cli, active, vstatus, isDefault, onSelect }: {
+  cli: CliInfo;
+  active: boolean;
+  vstatus?: string;
+  isDefault?: boolean;
+  onSelect: () => void;
+}) {
+  const dot = !cli.available ? "bg-border"
+    : vstatus === "ok" ? "bg-ok"
+    : vstatus === "failed" ? "bg-warn"
+    : vstatus === "verifying" ? "bg-text-muted animate-pulse"
+    : "bg-text-muted/50";
+  const sub = !cli.available ? "not installed" : (cli.version ? cli.version.slice(0, 22) : "detected");
+  return (
+    <button
+      onClick={onSelect}
+      className={`flex w-full items-center gap-2.5 rounded-lg border-l-2 px-2.5 py-2 text-left transition-colors ${active ? "border-l-accent bg-accent-soft shadow-sm ring-1 ring-accent-border" : "border-l-transparent ring-1 ring-transparent hover:bg-surface-warm"}`}
+    >
+      <ProviderMark vendor={cli.id} size={28} />
+      <span className="min-w-0 flex-1">
+        <span className={`block truncate text-sm font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{cli.label}</span>
+        <span className="block truncate font-mono text-[9px] uppercase tracking-wider text-text-muted">{sub}</span>
+      </span>
+      {isDefault && <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-background">def</span>}
+      <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} title={vstatus ?? (cli.available ? "detected" : "not installed")} />
+    </button>
+  );
+}
+
 export function AgentsSection({
   clis,
   onStartChatWith,
@@ -1051,11 +1088,8 @@ export function AgentsSection({
   const isLocalRuntime = (id: string) => LOCAL_RUNTIME_IDS.has(id.toLowerCase());
   const localClis = cliRuntimes.filter((c) => isLocalRuntime(c.id));
   const cloudClis = cliRuntimes.filter((c) => !isLocalRuntime(c.id));
-  const [showCloud, setShowCloud] = useState(true);
-  const [showLocal, setShowLocal] = useState(true);
-  const [showHarnesses, setShowHarnesses] = useState(true);
-  // Per-runtime spend (cumulative), from the local usage ledger. Multica-style
-  // Cost column; "—" when nothing has been spent / no vault.
+  // Per-runtime spend (cumulative), from the local usage ledger. Shown in the
+  // detail; "-" when nothing has been spent / no vault.
   const [costByCli, setCostByCli] = useState<Record<string, number>>({});
   useEffect(() => {
     if (!vaultPath) return;
@@ -1070,54 +1104,70 @@ export function AgentsSection({
       .catch(() => {});
     return () => { alive = false; };
   }, [vaultPath]);
+
+  // Master-detail: pick a runtime on the left, see its full detail (an
+  // always-open AgentCard) on the right - the canonical app layout.
+  const groups = [
+    { key: "cloud", label: "Cloud models", list: cloudClis },
+    { key: "local", label: "Local models", list: localClis },
+    { key: "harness", label: "Harnesses", list: harnesses },
+  ].filter((g) => g.list.length > 0);
+  const all = groups.flatMap((g) => g.list);
+  const verify = useCliVerifyLive();
+  const [selectedId, setSelectedId] = useState("");
+  const selectedEff = selectedId || defaultChatCli || all.find((c) => c.available)?.id || all[0]?.id || "";
+  const selected = all.find((c) => c.id === selectedEff) ?? null;
+
+  const listEl = (
+    <div className="space-y-3">
+      {groups.map((g) => {
+        const ready = g.list.filter((c) => c.available).length;
+        return (
+          <div key={g.key} className="space-y-1">
+            <div className="flex items-baseline justify-between px-1">
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{g.label} · {g.list.length}</span>
+              <span className="font-mono text-[9px] text-text-muted/60">{ready}/{g.list.length} set up</span>
+            </div>
+            {g.list.map((c) => (
+              <RuntimeRow
+                key={c.id}
+                cli={c}
+                active={c.id === selectedEff}
+                vstatus={verify.get(c.id)?.status}
+                isDefault={defaultChatCli === c.id}
+                onSelect={() => setSelectedId(c.id)}
+              />
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const detailEl = selected ? (
+    <AgentCard
+      key={selected.id}
+      cli={selected}
+      forceOpen
+      onStartChat={onStartChatWith}
+      isDefault={defaultChatCli === selected.id}
+      onMakeDefault={onMakeDefault ? () => onMakeDefault(selected.id) : undefined}
+      cost={costByCli[selected.id]}
+      chattable={!isHarnessRuntime(selected.id)}
+    />
+  ) : (
+    <div className="p-8 text-center text-sm text-text-muted">Select a runtime to see its status, models, and actions.</div>
+  );
+
   return (
     <>
       {!embedded && (
         <SettingsHeader
-          title="Agents"
-          subtitle="CLIs Prevail can route prompts to. Each agent is detected from your machine. Prevail doesn't install or update them."
+          title="Runtimes"
+          subtitle="CLIs Prevail can route prompts to. Each runtime is detected from your machine. Prevail doesn't install or update them."
         />
       )}
-      {[
-        { key: "cloud", label: "Cloud models", hint: "Hosted vendor coding-agent CLIs (Claude, Codex, Gemini, Antigravity, ...) offered on the chat composer.", list: cloudClis, open: showCloud, toggle: () => setShowCloud((v) => !v), chattable: true },
-        { key: "local", label: "Local models", hint: "On-device runtimes (Ollama, LM Studio, MLX, LocalAI, llama.cpp) that run models on your machine.", list: localClis, open: showLocal, toggle: () => setShowLocal((v) => !v), chattable: true },
-        { key: "harness", label: "Harnesses", hint: "Agent harnesses that wrap a base protocol. Set up here; not shown on the homepage composer.", list: harnesses, open: showHarnesses, toggle: () => setShowHarnesses((v) => !v), chattable: false },
-      ].filter((g) => g.list.length > 0).map((g) => {
-        const ready = g.list.filter((c) => c.available).length;
-        return (
-          <section key={g.key} className="mb-6">
-            <button onClick={g.toggle} className="mb-2 flex w-full items-center gap-2 text-left" title={g.hint}>
-              <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${g.open ? "rotate-90" : ""}`} strokeWidth={2.5} />
-              <GroupLabel className="mb-0">{g.label} · {g.list.length}</GroupLabel>
-              <span className="font-mono text-[10px] text-text-muted/60">{ready}/{g.list.length} set up</span>
-            </button>
-            {g.open && (
-              <div className="flex flex-col gap-3 pl-5">
-                {/* Multica-style column header: aligns with each row's right-hand
-                    Health / Cost / Version columns. */}
-                <div className="flex items-center gap-3 px-4 font-mono text-[9px] uppercase tracking-[0.16em] text-text-muted/70">
-                  <span className="flex-1">Runtime</span>
-                  <span className="w-[124px] shrink-0">Health</span>
-                  <span className="w-[64px] shrink-0 text-right">Cost</span>
-                  <span className="w-[116px] shrink-0 text-right">Version</span>
-                  <span className="w-[92px] shrink-0" />
-                </div>
-                {g.list.map((c) => (
-                  <AgentCard
-                    key={c.id}
-                    cli={c}
-                    onStartChat={onStartChatWith}
-                    isDefault={defaultChatCli === c.id}
-                    onMakeDefault={onMakeDefault ? () => onMakeDefault(c.id) : undefined}
-                    cost={costByCli[c.id]}
-                    chattable={g.chattable}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        );
-      })}
+      <MasterDetail title="Runtimes" storageKey="prevail.runtimes.listCollapsed" list={listEl} detail={detailEl} />
     </>
   );
 }
