@@ -6,6 +6,7 @@
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowUpRight, Boxes, Cable, Check, ChevronLeft, ChevronRight, Download, ExternalLink, FolderOpen, Globe, Info, Link2, Loader2, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Star, Terminal, Trash2, X } from "lucide-react";
+import { MasterDetail } from "./masterdetail";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "./bridge";
 import { appName, relTime, titleCase } from "./format";
@@ -1158,80 +1159,71 @@ function ComposioMode({ vaultPath, expanded }: { vaultPath: string; expanded: bo
       </div>
       )}
 
-      {/* Two-column master-detail below the full-width header. */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-      {/* LEFT - search + the connected / available app lists. Selecting an app
-          shows its detail on the right. */}
-      <aside className="w-full shrink-0 rounded-xl border border-border bg-surface p-3 lg:w-72 lg:max-w-xs">
-        {usable && (
-          <>
-            <div className="relative mb-2">
+      {/* Master-detail (shared template), shown once the gateway is usable. */}
+      {usable && (
+      <MasterDetail
+        title="Apps"
+        storageKey="prevail.composio.listCollapsed"
+        toolbar={
+          <div className="space-y-2">
+            <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search apps, or type any Composio app name"
                 className="w-full rounded-lg border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none" />
             </div>
-            {/* Connect any Composio app by name, even ones not in the curated list. */}
             {q && availableApps.length === 0 && connectedApps.length === 0 && (
               <button onClick={() => void connectApp(q.replace(/[^a-z0-9_]/g, ""))} disabled={connectingSlug !== null}
-                className="mb-2 inline-flex w-full items-center justify-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
+                className="inline-flex w-full items-center justify-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
                 {connectingSlug ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Connect "{q}"
               </button>
             )}
             <button onClick={() => void loadConnections(true)} disabled={refreshingConn} title="Refresh connection status"
-              className="mb-3 inline-flex w-full items-center justify-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+              className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
               {refreshingConn ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh
             </button>
-            {connectMsg && <div className="mb-3 rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2 text-[12px] text-text-secondary">{connectMsg}</div>}
-            <div className="space-y-4 lg:max-h-[60vh] lg:overflow-y-auto lg:pr-1">
-              {connectedApps.length > 0 && (
-                <section className="space-y-1">
-                  <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
-                  {connectedApps.map((a) => (
-                    <GatewayRow key={a.slug} title={a.name} sub={a.cat} logoId={a.slug} logos={logos} connected active={selectedSlug === a.slug} onSelect={() => setSelectedSlug(a.slug)} fav={gatewayFav(a.slug, a.name)} />
-                  ))}
-                </section>
-              )}
+            {connectMsg && <div className="rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2 text-[12px] text-text-secondary">{connectMsg}</div>}
+          </div>
+        }
+        list={
+          <div className="space-y-4">
+            {connectedApps.length > 0 && (
               <section className="space-y-1">
-                <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Available to connect · {availableApps.length}</div>
-                {availableApps.map((a) => (
-                  <GatewayRow key={a.slug} title={a.name} sub={a.cat} logoId={a.slug} logos={logos} active={selectedSlug === a.slug} onSelect={() => setSelectedSlug(a.slug)} />
+                <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
+                {connectedApps.map((a) => (
+                  <GatewayRow key={a.slug} title={a.name} sub={a.cat} logoId={a.slug} logos={logos} connected active={selectedSlug === a.slug} onSelect={() => setSelectedSlug(a.slug)} fav={gatewayFav(a.slug, a.name)} />
                 ))}
               </section>
-              {shown.length === 0 && <div className="px-1 text-xs text-text-muted">No Composio apps match "{query}".</div>}
-            </div>
+            )}
+            <section className="space-y-1">
+              <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Available to connect · {availableApps.length}</div>
+              {availableApps.map((a) => (
+                <GatewayRow key={a.slug} title={a.name} sub={a.cat} logoId={a.slug} logos={logos} active={selectedSlug === a.slug} onSelect={() => setSelectedSlug(a.slug)} />
+              ))}
+            </section>
+            {shown.length === 0 && <div className="px-1 text-xs text-text-muted">No Composio apps match "{query}".</div>}
+          </div>
+        }
+        rail={
+          <>
+            {shown.map((a) => (
+              <button key={a.slug} onClick={() => setSelectedSlug(a.slug)} title={a.name}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${selectedSlug === a.slug ? "ring-2 ring-accent" : "hover:bg-surface-strong"}`}>
+                <AppRowLogo app={{ title: a.name, id: a.slug }} logos={logos} size={26} fallback="letter" />
+              </button>
+            ))}
           </>
-        )}
-      </aside>
-
-      {/* RIGHT - the selected app's detail: ConnectedGatewayDetail when connected,
-          a small Connect pane when available, else a placeholder. */}
-      <div className="min-w-0 flex-1">
-        {!usable ? (
-          <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
-            <Boxes className="mx-auto h-7 w-7 text-text-muted opacity-50" />
-            <p className="mt-3 text-sm text-text-secondary">{composioMethod === "cli" ? "Install the Composio CLI and sign in to browse and connect apps." : "Set up your Composio key to browse and connect apps."}</p>
-          </div>
-        ) : selected && selectedConnected ? (
-          <ConnectedGatewayDetail key={selected.slug} method="composio" slug={selected.slug} title={selected.name} vaultPath={vaultPath} logos={logos} onBack={() => setSelectedSlug(null)} />
-        ) : selected ? (
-          <GatewayConnectDetail
-            key={selected.slug}
-            title={selected.name}
-            sub={selected.cat}
-            logoId={selected.slug}
-            logos={logos}
-            method="composio"
-            connecting={connectingSlug === selected.slug}
-            onConnect={() => void connectApp(selected.slug)}
-          />
-        ) : (
-          <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
-            <Plug className="mx-auto h-7 w-7 text-text-muted opacity-50" />
-            <p className="mt-3 text-sm text-text-secondary">Select an app to view details.</p>
-          </div>
-        )}
-      </div>
-      </div>
+        }
+        detail={
+          selected && selectedConnected ? (
+            <ConnectedGatewayDetail key={selected.slug} method="composio" slug={selected.slug} title={selected.name} vaultPath={vaultPath} logos={logos} onBack={() => setSelectedSlug(null)} />
+          ) : selected ? (
+            <GatewayConnectDetail key={selected.slug} title={selected.name} sub={selected.cat} logoId={selected.slug} logos={logos} method="composio" connecting={connectingSlug === selected.slug} onConnect={() => void connectApp(selected.slug)} />
+          ) : (
+            <div className="p-8 text-center text-sm text-text-muted">Select an app to view details.</div>
+          )
+        }
+      />
+      )}
     </div>
   );
 }
@@ -1377,79 +1369,71 @@ function NangoMode({ vaultPath, expanded }: { vaultPath: string; expanded: boole
       </div>
       )}
 
-      {/* Two-column master-detail below the full-width header. */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-      {/* LEFT - search + the connected / available integration lists. Selecting
-          one shows its detail on the right. */}
-      <aside className="w-full shrink-0 rounded-xl border border-border bg-surface p-3 lg:w-72 lg:max-w-xs">
-        {verified === true && (
-          <>
-            <div className="relative mb-2">
+      {/* Master-detail (shared template), shown once the key is verified. */}
+      {verified === true && (
+      <MasterDetail
+        title="Apps"
+        storageKey="prevail.nango.listCollapsed"
+        toolbar={
+          <div className="space-y-2">
+            <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search your Nango integrations"
                 className="w-full rounded-lg border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none" />
             </div>
             <button onClick={() => void loadData(true)} title="Refresh integrations + connections"
-              className="mb-3 inline-flex w-full items-center justify-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent">
+              className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent">
               <RefreshCw className="h-3.5 w-3.5" /> Refresh
             </button>
-            {connectMsg && <div className="mb-3 rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2 text-[12px] text-text-secondary">{connectMsg}</div>}
-            {integrations.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-center text-[12px] text-text-secondary">
-                No integrations configured in your Nango project yet. Add one in the <button onClick={() => void openUrl("https://app.nango.dev")} className="text-accent hover:underline">Nango dashboard</button>, then Refresh.
-              </div>
-            ) : (
-              <div className="space-y-4 lg:max-h-[60vh] lg:overflow-y-auto lg:pr-1">
-                {connectedApps.length > 0 && (
-                  <section className="space-y-1">
-                    <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
-                    {connectedApps.map((i) => (
-                      <GatewayRow key={i.unique_key} title={i.display_name} sub={i.provider || i.unique_key} logoId={i.provider || i.unique_key} logos={logos} connected active={selectedKey === i.unique_key} onSelect={() => setSelectedKey(i.unique_key)} fav={gatewayFav(i.unique_key, i.display_name)} />
-                    ))}
-                  </section>
-                )}
+            {connectMsg && <div className="rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2 text-[12px] text-text-secondary">{connectMsg}</div>}
+          </div>
+        }
+        list={
+          integrations.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-center text-[12px] text-text-secondary">
+              No integrations configured in your Nango project yet. Add one in the <button onClick={() => void openUrl("https://app.nango.dev")} className="text-accent hover:underline">Nango dashboard</button>, then Refresh.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {connectedApps.length > 0 && (
                 <section className="space-y-1">
-                  <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Available to connect · {availableApps.length}</div>
-                  {availableApps.map((i) => (
-                    <GatewayRow key={i.unique_key} title={i.display_name} sub={i.provider || i.unique_key} logoId={i.provider || i.unique_key} logos={logos} active={selectedKey === i.unique_key} onSelect={() => setSelectedKey(i.unique_key)} />
+                  <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
+                  {connectedApps.map((i) => (
+                    <GatewayRow key={i.unique_key} title={i.display_name} sub={i.provider || i.unique_key} logoId={i.provider || i.unique_key} logos={logos} connected active={selectedKey === i.unique_key} onSelect={() => setSelectedKey(i.unique_key)} fav={gatewayFav(i.unique_key, i.display_name)} />
                   ))}
                 </section>
-                {shown.length === 0 && <div className="px-1 text-xs text-text-muted">No integrations match "{query}".</div>}
-              </div>
-            )}
+              )}
+              <section className="space-y-1">
+                <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Available to connect · {availableApps.length}</div>
+                {availableApps.map((i) => (
+                  <GatewayRow key={i.unique_key} title={i.display_name} sub={i.provider || i.unique_key} logoId={i.provider || i.unique_key} logos={logos} active={selectedKey === i.unique_key} onSelect={() => setSelectedKey(i.unique_key)} />
+                ))}
+              </section>
+              {shown.length === 0 && <div className="px-1 text-xs text-text-muted">No integrations match "{query}".</div>}
+            </div>
+          )
+        }
+        rail={
+          <>
+            {shown.map((i) => (
+              <button key={i.unique_key} onClick={() => setSelectedKey(i.unique_key)} title={i.display_name}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${selectedKey === i.unique_key ? "ring-2 ring-accent" : "hover:bg-surface-strong"}`}>
+                <AppRowLogo app={{ title: i.display_name, id: i.provider || i.unique_key }} logos={logos} size={26} fallback="letter" />
+              </button>
+            ))}
           </>
-        )}
-      </aside>
-
-      {/* RIGHT - the selected integration's detail: ConnectedGatewayDetail when
-          connected, a small Connect pane when available, else a placeholder. */}
-      <div className="min-w-0 flex-1">
-        {verified !== true ? (
-          <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
-            <Cable className="mx-auto h-7 w-7 text-text-muted opacity-50" />
-            <p className="mt-3 text-sm text-text-secondary">Set up your Nango secret key to list and connect integrations.</p>
-          </div>
-        ) : selected && selectedConnected ? (
-          <ConnectedGatewayDetail key={selected.unique_key} method="nango" slug={selected.unique_key} title={selected.display_name} vaultPath={vaultPath} logos={logos} onBack={() => setSelectedKey(null)} />
-        ) : selected ? (
-          <GatewayConnectDetail
-            key={selected.unique_key}
-            title={selected.display_name}
-            sub={selected.provider || selected.unique_key}
-            logoId={selected.provider || selected.unique_key}
-            logos={logos}
-            method="nango"
-            connecting={connectingKey === selected.unique_key}
-            onConnect={() => void connect(selected.unique_key)}
-          />
-        ) : (
-          <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
-            <Plug className="mx-auto h-7 w-7 text-text-muted opacity-50" />
-            <p className="mt-3 text-sm text-text-secondary">Select an app to view details.</p>
-          </div>
-        )}
-      </div>
-      </div>
+        }
+        detail={
+          selected && selectedConnected ? (
+            <ConnectedGatewayDetail key={selected.unique_key} method="nango" slug={selected.unique_key} title={selected.display_name} vaultPath={vaultPath} logos={logos} onBack={() => setSelectedKey(null)} />
+          ) : selected ? (
+            <GatewayConnectDetail key={selected.unique_key} title={selected.display_name} sub={selected.provider || selected.unique_key} logoId={selected.provider || selected.unique_key} logos={logos} method="nango" connecting={connectingKey === selected.unique_key} onConnect={() => void connect(selected.unique_key)} />
+          ) : (
+            <div className="p-8 text-center text-sm text-text-muted">Select an app to view details.</div>
+          )
+        }
+      />
+      )}
     </div>
   );
 }
@@ -1583,7 +1567,7 @@ function GatewayConnectDetail({ title, sub, logoId, logos, method, connecting, o
 }) {
   const label = method === "composio" ? "Composio" : "Nango";
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface">
+    <div className="overflow-hidden bg-surface">
       <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle px-5 py-5">
         <AppRowLogo app={{ title, id: logoId }} logos={logos} size={56} fallback="letter" />
         <div className="min-w-0 flex-1">
