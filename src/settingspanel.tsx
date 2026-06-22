@@ -1,9 +1,9 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { Activity, ArrowLeft, Briefcase, Compass, Dices, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Repeat, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Swords, Target, Wrench, Zap } from "lucide-react";
+import { Activity, ArrowLeft, Briefcase, ChevronLeft, ChevronRight, Compass, Dices, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Repeat, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Swords, Target, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
-import { LS, lsGet } from "./storage";
+import { LS, lsGet, lsSet } from "./storage";
 import { useAppearance } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
 import { PrevailLogo } from "./PrevailLogo";
@@ -180,6 +180,10 @@ export function SettingsPanel({
   }, [vaultPath]);
 
   // MCP live indicator - read from localStorage; McpCard writes the same key.
+  // Collapsible settings nav (icon rail when collapsed), mirroring the home
+  // sidebar. Persisted so the choice survives navigation + reload.
+  const [navCollapsed, setNavCollapsed] = useState(() => lsGet("prevail.settings.navCollapsed") === "1");
+  const toggleNav = () => setNavCollapsed((v) => { const n = !v; lsSet("prevail.settings.navCollapsed", n ? "1" : "0"); return n; });
   const [mcpLive, setMcpLive] = useState(() => lsGet(LS.mcpEnabled) === "1");
   useEffect(() => {
     const id = window.setInterval(() => setMcpLive(lsGet(LS.mcpEnabled) === "1"), 2000);
@@ -190,55 +194,81 @@ export function SettingsPanel({
     // min-h-0 + flex-1 so the panel fills the space ABOVE the app footer ribbon
     // instead of taking the full screen height and pushing the ribbon off-screen.
     <div className="flex min-h-0 flex-1">
-      {/* Sidebar nav - Codex-style with Back to app at top */}
-      <aside className="flex h-full min-h-0 w-56 shrink-0 flex-col overflow-hidden border-r border-border-subtle bg-surface-warm">
+      {/* Sidebar nav - Codex-style with Back to app at top. Collapsible to an
+          icon rail (56px) like the home sidebar. */}
+      <aside
+        className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-border-subtle bg-surface-warm transition-[width] duration-150"
+        style={{ width: navCollapsed ? 56 : 224 }}
+      >
         {/* Branded banner - mirrors the home sidebar header (dark, logo + serif
-            wordmark), with the Back button underneath. pt-9 clears the macOS
-            traffic-light controls so nothing is hidden under them. Draggable. */}
-        {/* Inverted BACKGROUND vs the home header (dark): a prominent bluish
-            banner so it's unmistakable you're in Settings, not on home. */}
-        <div data-tauri-drag-region className="shrink-0 border-b border-black/20 bg-gradient-to-br from-[#5fa4bd] via-[#558fa6] to-[#467a8f] px-4 pb-3 pt-3">
-          <div className="flex items-center gap-2.5">
-            <span className="shrink-0 overflow-hidden rounded-lg ring-1 ring-white/40"><PrevailLogo size={26} animated={false} /></span>
-            {/* White letters on the bluish banner, with "AI" in black so it pops. */}
-            <span className="flex min-w-0 flex-1 items-center justify-between font-display text-2xl font-bold text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.35)]" aria-label="Prevail">
-              <span>P</span><span>R</span><span>E</span><span>V</span>
-              <span className="text-black [text-shadow:none]">A</span><span className="text-black [text-shadow:none]">I</span>
-              <span>L</span>
-            </span>
-          </div>
-          {onBack && (
-            <button
-              onClick={onBack}
-              className="mt-2 inline-flex items-center gap-1 px-1 text-xs font-medium text-white/70 transition-colors hover:text-white"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Back to app
-            </button>
+            wordmark), with the Back button + a collapse toggle. Draggable. */}
+        <div data-tauri-drag-region className={`shrink-0 border-b border-black/20 bg-gradient-to-br from-[#5fa4bd] via-[#558fa6] to-[#467a8f] pb-3 pt-3 ${navCollapsed ? "px-2" : "px-4"}`}>
+          {navCollapsed ? (
+            <div className="flex flex-col items-center gap-2">
+              <span className="overflow-hidden rounded-lg ring-1 ring-white/40"><PrevailLogo size={26} animated={false} /></span>
+              <button onClick={toggleNav} title="Expand settings nav" className="flex h-7 w-7 items-center justify-center rounded-md bg-white/15 text-white transition-colors hover:bg-white/30">
+                <ChevronRight className="h-[18px] w-[18px]" strokeWidth={2} />
+              </button>
+              {onBack && (
+                <button onClick={onBack} title="Back to app" className="flex h-7 w-7 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/20 hover:text-white">
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2.5">
+                <span className="shrink-0 overflow-hidden rounded-lg ring-1 ring-white/40"><PrevailLogo size={26} animated={false} /></span>
+                {/* White letters on the bluish banner, with "AI" in black so it pops. */}
+                <span className="flex min-w-0 flex-1 items-center justify-between font-display text-2xl font-bold text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.35)]" aria-label="Prevail">
+                  <span>P</span><span>R</span><span>E</span><span>V</span>
+                  <span className="text-black [text-shadow:none]">A</span><span className="text-black [text-shadow:none]">I</span>
+                  <span>L</span>
+                </span>
+                <button onClick={toggleNav} title="Collapse settings nav" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white/12 text-white transition-colors hover:bg-white/25">
+                  <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={2} />
+                </button>
+              </div>
+              {onBack && (
+                <button
+                  onClick={onBack}
+                  className="mt-2 inline-flex items-center gap-1 px-1 text-xs font-medium text-white/70 transition-colors hover:text-white"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Back to app
+                </button>
+              )}
+            </>
           )}
         </div>
         {/* Only the nav list scrolls; the branded banner above stays pinned. */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-3">
-        <div className="mb-1 px-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
-          Settings
-        </div>
+        <div className={`min-h-0 flex-1 overflow-y-auto pb-3 pt-3 ${navCollapsed ? "px-1.5" : "px-2"}`}>
+        {!navCollapsed && (
+          <div className="mb-1 px-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">
+            Settings
+          </div>
+        )}
         {navGroups.map((group) => (
           <div key={group.heading} className="mb-1.5">
-            <div className="mb-0.5 mt-2 px-3 font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted/70">
-              {group.heading}
-            </div>
+            {!navCollapsed && (
+              <div className="mb-0.5 mt-2 px-3 font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted/70">
+                {group.heading}
+              </div>
+            )}
             {group.items.map((it) => {
               const Icon = it.icon;
               const active = section === it.id;
               const showLiveGateway = it.id === "gateway" && liveBridges > 0;
               const showLiveMcp = it.id === "mcp" && mcpLive;
               const showRecCount = it.id === "recommendations" && recCount > 0;
+              const hasBadge = showLiveGateway || showLiveMcp || showRecCount;
               return (
                 <button
                   key={it.id}
                   onClick={() => setSection(it.id)}
                   aria-current={active ? "page" : undefined}
-                  className={`flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm transition-colors ${
+                  title={navCollapsed ? it.label : undefined}
+                  className={`flex w-full items-center rounded-md py-1.5 text-left text-sm transition-colors ${navCollapsed ? "relative justify-center px-0" : "gap-3 px-3"} ${
                     active
                       // Selected: solid accent, bold - unmistakable against hover.
                       ? "bg-accent font-semibold text-background shadow-sm"
@@ -246,9 +276,12 @@ export function SettingsPanel({
                       : "text-text-secondary hover:bg-surface-strong hover:text-text-primary"
                   }`}
                 >
-                  <Icon className="h-4 w-4" />
-                  <span className="flex-1">{it.label}</span>
-                  {showLiveGateway && (
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {navCollapsed && hasBadge && (
+                    <span className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${showLiveMcp ? "bg-ai" : "bg-accent"}`} />
+                  )}
+                  {!navCollapsed && <span className="flex-1">{it.label}</span>}
+                  {!navCollapsed && showLiveGateway && (
                     <span
                       className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent"
                       title={`${liveBridges} bridge${liveBridges === 1 ? "" : "s"} live`}
@@ -257,7 +290,7 @@ export function SettingsPanel({
                       live{liveBridges > 1 ? ` ${liveBridges}` : ""}
                     </span>
                   )}
-                  {showLiveMcp && (
+                  {!navCollapsed && showLiveMcp && (
                     <span
                       className="inline-flex items-center gap-1 rounded-full bg-ai/15 px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-ai"
                       title="MCP server enabled"
@@ -266,7 +299,7 @@ export function SettingsPanel({
                       on
                     </span>
                   )}
-                  {showRecCount && (
+                  {!navCollapsed && showRecCount && (
                     <span
                       className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1.5 py-0 font-mono text-[9px] font-bold text-background"
                       title={`${recCount} recommendation${recCount === 1 ? "" : "s"}`}
