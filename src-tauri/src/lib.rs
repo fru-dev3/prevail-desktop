@@ -509,6 +509,7 @@ pub fn run() {
             integrations::mcp_install,
             integrations::mcp_install_status,
             integrations::set_auto_council,
+            integrations::get_auto_council,
             engine::headless_learn_status,
             engine::headless_learn_set,
             engine::engine_vault_unlock,
