@@ -5,7 +5,7 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Boxes, Cable, Check, ChevronRight, Download, ExternalLink, FolderOpen, Globe, Info, Link2, Loader2, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Star, Terminal, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Boxes, Cable, Check, ChevronLeft, ChevronRight, Download, ExternalLink, FolderOpen, Globe, Info, Link2, Loader2, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Star, Terminal, Trash2, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "./bridge";
 import { appName, relTime, titleCase } from "./format";
@@ -216,6 +216,11 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // active gateway tab toggles its config dropdown, so only the tabs show by
   // default - never a second always-on setup row.
   const [gatewayOpen, setGatewayOpen] = useState(false);
+  // The app list attaches to the detail as one panel and collapses to a thin
+  // rail (expand chevron) so the detail can take the full width, like the home
+  // sidebar / thread list. Persisted.
+  const [listCollapsed, setListCollapsed] = useState(() => { try { return localStorage.getItem("prevail.apps.listCollapsed") === "1"; } catch { return false; } });
+  const toggleList = useCallback(() => setListCollapsed((v) => { const n = !v; try { localStorage.setItem("prevail.apps.listCollapsed", n ? "1" : "0"); } catch { /* ignore */ } return n; }), []);
   // The Composio managed-gateway pane (one OAuth fronts 1000+ apps for the agent).
   const [query, setQuery] = useState("");
   // Real brand marks for every connector (AllTrails, Booking.com, Garmin, …),
@@ -546,11 +551,30 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         )
       ) : (
         // Master-detail. Stacks vertically on narrow widths, side-by-side on lg+.
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-          {/* LEFT - the connectors list: search, "+ connect", grouped rows.
-              Its own bordered surface so it reads as a distinct column from the
-              detail card on the right. */}
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-stretch">
+          {/* LEFT - the connectors list, attached to the detail. Collapses to a
+              thin rail (expand chevron) so the detail can take the full width,
+              like the home sidebar / thread list. */}
+          {listCollapsed ? (
+            <button
+              onClick={toggleList}
+              title="Show apps list"
+              className="flex shrink-0 items-center justify-center rounded-xl border border-border bg-surface py-3 text-text-muted transition-colors hover:border-accent-border hover:text-accent lg:w-10"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          ) : (
           <aside className="w-full shrink-0 rounded-xl border border-border bg-surface p-3 lg:w-72 lg:max-w-xs">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Apps</span>
+              <button
+                onClick={toggleList}
+                title="Collapse list"
+                className="flex h-6 w-6 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            </div>
             <div className="relative mb-2">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
               <input
@@ -649,6 +673,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
               )}
             </div>
           </aside>
+          )}
 
           {/* RIGHT - the connect flow (in place, keeping the app's context), OR
               the selected connector's full config, OR a catalog app's detail +
