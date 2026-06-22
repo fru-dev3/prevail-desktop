@@ -56,3 +56,21 @@ pub async fn mcp_install(client: String) -> Result<serde_json::Value, String> {
 pub async fn mcp_install_status() -> Result<serde_json::Value, String> {
     engine_json(vec!["mcp".into(), "status".into()]).await
 }
+
+/// Mirror the desktop's per-domain auto-council toggle into the engine config
+/// (`modes set <domain> --auto auto|off`). The MCP server reads that config, so
+/// flipping auto-council in the preview chat also makes `prevail.chat` calls from
+/// host LLMs (Codex, Gemini, …) escalate high-stakes questions to the council.
+#[tauri::command]
+pub async fn set_auto_council(domain: String, on: bool) -> Result<serde_json::Value, String> {
+    let mode = if on { "auto" } else { "off" };
+    engine_json(vec![
+        "modes".into(),
+        "set".into(),
+        domain,
+        "--auto".into(),
+        mode.into(),
+        "--json".into(),
+    ])
+    .await
+}
