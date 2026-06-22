@@ -554,15 +554,29 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         // Master-detail in ONE attached panel: a flush list column (border-r,
         // like the home threads rail) + the detail, joined - not floating cards.
         <div className="flex min-h-[55vh] flex-col overflow-hidden rounded-xl border border-border lg:flex-row lg:items-stretch">
-          {/* LEFT - flush connectors column, collapses to a thin rail. */}
+          {/* LEFT - flush connectors column, collapses to a logo rail. */}
           {listCollapsed ? (
-            <button
-              onClick={toggleList}
-              title="Show apps list"
-              className="flex shrink-0 items-center justify-center border-b border-border-subtle bg-surface-warm py-3 text-text-muted transition-colors hover:text-accent lg:w-10 lg:border-b-0 lg:border-r"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
+            <div className="flex shrink-0 flex-col items-center gap-2 border-b border-border-subtle bg-surface-warm py-2 lg:w-14 lg:border-b-0 lg:border-r">
+              <button
+                onClick={toggleList}
+                title="Show apps list"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-strong hover:text-accent"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <div className="flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto px-1 pb-1">
+                {directApps.map((a) => (
+                  <button
+                    key={a.id}
+                    onClick={() => { setSelected(a.id); setCatalogPick(null); }}
+                    title={a.title || a.id}
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${selected === a.id && !catalogPick ? "ring-2 ring-accent" : "hover:bg-surface-strong"}`}
+                  >
+                    <AppRowLogo app={a} logos={logos} size={26} fallback="letter" />
+                  </button>
+                ))}
+              </div>
+            </div>
           ) : (
           <aside className="flex w-full shrink-0 flex-col border-b border-border-subtle bg-surface-warm lg:w-72 lg:max-w-xs lg:border-b-0 lg:border-r">
             <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-3 py-2.5">
