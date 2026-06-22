@@ -57,10 +57,12 @@ pub async fn mcp_install_status() -> Result<serde_json::Value, String> {
     engine_json(vec!["mcp".into(), "status".into()]).await
 }
 
-/// Mirror the desktop's per-domain auto-council toggle into the engine config
-/// (`modes set <domain> --auto auto|off`). The MCP server reads that config, so
-/// flipping auto-council in the preview chat also makes `prevail.chat` calls from
-/// host LLMs (Codex, Gemini, …) escalate high-stakes questions to the council.
+/// Mirror an auto-council toggle into the engine config (`modes set <domain>
+/// --auto auto|off`). The MCP server reads that config, so flipping auto-council
+/// also makes `prevail.chat` calls from host LLMs (Codex, Gemini, …) escalate
+/// high-stakes questions to the council. Pass domain "general" for the GLOBAL
+/// setting (applies to every domain, since over MCP the routed domain is the
+/// host LLM's choice); a real domain name sets a per-domain override.
 #[tauri::command]
 pub async fn set_auto_council(domain: String, on: bool) -> Result<serde_json::Value, String> {
     let mode = if on { "auto" } else { "off" };
@@ -73,4 +75,12 @@ pub async fn set_auto_council(domain: String, on: bool) -> Result<serde_json::Va
         "--json".into(),
     ])
     .await
+}
+
+/// Read the GLOBAL auto-council mode (off | suggest | auto). "general" resolves
+/// to the global default, so this reflects what an MCP call gets for a domain
+/// with no per-domain override.
+#[tauri::command]
+pub async fn get_auto_council() -> Result<serde_json::Value, String> {
+    engine_json(vec!["modes".into(), "get".into(), "general".into(), "--json".into()]).await
 }
