@@ -334,6 +334,11 @@ export function DomainStatusBar({
     const next = !cur;
     set(next);
     setDomainToggle(domain, t, next);
+    // Auto-council also lives in the engine config so the SAME escalation fires
+    // when a host LLM calls prevail.chat over MCP, not only in this preview chat.
+    if (t === "auto") {
+      void invoke("set_auto_council", { domain: domain ?? "general", on: next }).catch(() => {});
+    }
   };
   // One row of the Modes popover: name + one-line description on the left, a pill
   // toggle on the right that slides on/off.
