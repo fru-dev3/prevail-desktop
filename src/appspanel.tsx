@@ -212,9 +212,10 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // Each track's one-paragraph explainer now lives in a popover off the tabs
   // (toggled here), not an always-on card - keeps the top compact.
   const [infoOpen, setInfoOpen] = useState(false);
-  // The header is one row by default (title + clamped description + logos); the
-  // chevron expands the full description in place and collapses back.
-  const [headerOpen, setHeaderOpen] = useState(false);
+  // Gateway setup (Composio / Nango) is folded into the tab row: clicking the
+  // active gateway tab toggles its config dropdown, so only the tabs show by
+  // default - never a second always-on setup row.
+  const [gatewayOpen, setGatewayOpen] = useState(false);
   // The Composio managed-gateway pane (one OAuth fronts 1000+ apps for the agent).
   const [query, setQuery] = useState("");
   // Real brand marks for every connector (AllTrails, Booking.com, Garmin, …),
@@ -427,30 +428,30 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
 
   return (
     <>
-      {/* One-row header: title + a clamped description that the chevron expands
-          in place, and a compact logo strip on the right (kept in-flow so it can
-          never sit under the text). */}
-      <div className="mb-4 overflow-hidden rounded-xl border border-border-subtle bg-surface/40 px-5 py-3">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Plug className="h-4 w-4" /></span>
-          <h2 className="shrink-0 font-display text-xl font-bold tracking-tight">Apps</h2>
-          <p className={`min-w-0 flex-1 text-sm text-text-secondary ${headerOpen ? "" : "truncate"}`}>
-            Services that feed your vault. Connect each one once and it's available to any domain's context, no duplicates.
-          </p>
-          <button
-            onClick={() => setHeaderOpen((v) => !v)}
-            title={headerOpen ? "Show less" : "What is this?"}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-accent"
-          >
-            <ChevronRight className={`h-4 w-4 transition-transform ${headerOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
-          </button>
-          <div aria-hidden className="ml-1 hidden shrink-0 select-none items-center gap-1.5 [mask-image:linear-gradient(to_right,transparent,black_30%)] lg:flex">
-            {APP_LOGO_FIELD.slice(0, 8).map((s, i) => (
-              <span key={`${s.id}-${i}`} className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-warm/70 ring-1 ring-border-subtle">
-                <AppRowLogo app={s} logos={logos} size={22} fallback="letter" />
+      {/* Full-width header band: title + description on the left, a dense brand
+          field filling the right ~half (right-to-left under a fade) so the space
+          reads as "lots of apps". */}
+      <div className="relative mb-4 overflow-hidden rounded-xl border border-border-subtle bg-surface/40">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 hidden w-[58%] select-none lg:block [mask-image:linear-gradient(to_right,transparent,black_45%)]"
+        >
+          <div className="flex h-full flex-wrap content-center justify-end gap-2 p-4">
+            {APP_LOGO_FIELD.map((s, i) => (
+              <span key={`${s.id}-${i}`} className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-warm/70 ring-1 ring-border-subtle">
+                <AppRowLogo app={s} logos={logos} size={24} fallback="letter" />
               </span>
             ))}
           </div>
+        </div>
+        <div className="relative z-10 max-w-xl px-5 py-5">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Plug className="h-4 w-4" /></span>
+            <h2 className="font-display text-2xl font-bold tracking-tight">Apps</h2>
+          </div>
+          <p className="mt-2 text-sm leading-relaxed text-text-secondary">
+            Services that feed your vault. Connect each one once - mail, calendar, repos, docs, payments, and more - and it's available to any domain's context, no duplicates. Prevail keeps each app's data grounded in what's actually happening.
+          </p>
         </div>
       </div>
 
@@ -458,16 +459,26 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
           not in an always-on card). Direct vs Composio vs Nango: parallel tracks. */}
       <div className="relative mb-4 flex items-center gap-2">
         <div className="inline-flex rounded-lg border border-border bg-surface p-1">
-          {([["direct", "Direct", Plug], ["composio", "Composio", Boxes], ["nango", "Nango", Cable]] as const).map(([m, label, Icon]) => (
-            <button
-              key={m}
-              onClick={() => setAppsMode(m)}
-              className={`inline-flex items-center gap-1.5 rounded-md px-5 py-1.5 text-sm font-semibold transition-colors ${appsMode === m ? "bg-accent text-background" : "text-text-secondary hover:text-text-primary"}`}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
+          {([["direct", "Direct", Plug], ["composio", "Composio", Boxes], ["nango", "Nango", Cable]] as const).map(([m, label, Icon]) => {
+            const isGateway = m === "composio" || m === "nango";
+            const active = appsMode === m;
+            return (
+              <button
+                key={m}
+                onClick={() => {
+                  // Click the active gateway tab to toggle its config dropdown;
+                  // otherwise switch tracks (and collapse the dropdown).
+                  if (active && isGateway) setGatewayOpen((o) => !o);
+                  else { setAppsMode(m); setGatewayOpen(false); }
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-md px-5 py-1.5 text-sm font-semibold transition-colors ${active ? "bg-accent text-background" : "text-text-secondary hover:text-text-primary"}`}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+                {active && isGateway && <ChevronRight className={`h-3.5 w-3.5 transition-transform ${gatewayOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />}
+              </button>
+            );
+          })}
         </div>
         <button
           onClick={() => setInfoOpen((v) => !v)}
@@ -500,9 +511,9 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
           context and the sidebar stay put - the connect flow never replaces the
           whole view. Only the rare zero-apps-and-zero-catalog case hosts it here. */}
       {appsMode === "composio" ? (
-        <ComposioMode vaultPath={vaultPath} />
+        <ComposioMode vaultPath={vaultPath} expanded={gatewayOpen} />
       ) : appsMode === "nango" ? (
-        <NangoMode vaultPath={vaultPath} />
+        <NangoMode vaultPath={vaultPath} expanded={gatewayOpen} />
       ) : (
         <>
         {apps === null ? (
@@ -878,7 +889,7 @@ function clearGatewayCache(key: string) {
 // a Composio auth link in the browser. Connections live in Composio; Prevail's
 // agent uses them through the Composio MCP endpoint.
 type ComposioCliStatus = { installed: boolean; loggedIn: boolean; account: string | null; bin: string | null };
-function ComposioMode({ vaultPath }: { vaultPath: string }) {
+function ComposioMode({ vaultPath, expanded }: { vaultPath: string; expanded: boolean }) {
   // The home-screen star for connected Composio apps (scaffold-then-favorite).
   const gatewayFav = useGatewayFav("composio");
   // Connect-via sub-mode: CLI (browser OAuth, the default) or MCP (the existing
@@ -888,8 +899,6 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
     try { return localStorage.getItem("prevail.composio.method") === "mcp" ? "mcp" : "cli"; } catch { return "cli"; }
   });
   useEffect(() => { try { localStorage.setItem("prevail.composio.method", composioMethod); } catch { /* ignore */ } }, [composioMethod]);
-  // null = follow connected state (collapse once usable); true/false once toggled.
-  const [setupOpen, setSetupOpen] = useState<boolean | null>(null);
   // CLI setup state.
   const [cliStatus, setCliStatus] = useState<ComposioCliStatus | null>(null);
   const [cliBusy, setCliBusy] = useState<null | "status" | "install" | "login">(null);
@@ -1012,32 +1021,16 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
   // MCP key verified OR the CLI is logged in. Connecting an app still uses the
   // existing composio_connect_app MCP path in both modes.
   const usable = (composioMethod === "mcp" && verified === true) || (composioMethod === "cli" && cliLoggedIn);
-  // Collapse the setup/config card by default once connected, so the apps below
-  // are the focus. Until the user toggles, it follows !usable (open when there's
-  // still setup to do). Same pattern in NangoMode.
-  const setupExpanded = setupOpen === null ? !usable : setupOpen;
-  const setupSummary = usable
-    ? composioMethod === "cli" ? `CLI${cliStatus?.account ? ` · ${cliStatus.account}` : ""}` : "MCP key"
-    : "Not connected yet";
+  // The setup/config dropdown is driven by the tab row (expanded), so there's no
+  // separate header line. It still shows whenever there's setup left to do, so a
+  // disconnected user can always reach the connect steps.
+  const showSetup = expanded || !usable;
   return (
     <div className="space-y-4">
-      {/* Collapsible setup/config card. Header line stays; the gateway details +
-          connect steps live inside, collapsed by default once connected. */}
+      {/* Setup/config dropdown - opened from the Composio tab, no header row. */}
+      {showSetup && (
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <button
-          onClick={() => setSetupOpen(!setupExpanded)}
-          className="flex w-full items-center gap-2.5 px-5 py-3 text-left hover:bg-surface-warm"
-        >
-          <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${setupExpanded ? "rotate-90" : ""}`} strokeWidth={2.5} />
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#6d5efc] to-[#3b2fb8] text-white"><Boxes className="h-4 w-4" /></span>
-          <span className="text-base font-semibold text-text-primary">Composio</span>
-          {usable
-            ? <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>
-            : <span className="rounded-full border border-border bg-surface-warm px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-text-muted">Not set up</span>}
-          <span className="ml-auto truncate font-mono text-[10px] text-text-muted">{setupSummary}</span>
-        </button>
-        {setupExpanded && (
-        <div className="flex items-start gap-4 border-t border-border-subtle px-5 py-4">
+        <div className="flex items-start gap-4 px-5 py-4">
         <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           {composioMethod === "mcp" && verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-danger">Invalid key</span>}
@@ -1135,8 +1128,8 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
         </div>
         <HeaderLogoCluster slugs={COMPOSIO_APPS.slice(0, 10).map((a) => ({ title: a.name, id: a.slug }))} logos={logos} />
         </div>
-        )}
       </div>
+      )}
 
       {/* Two-column master-detail below the full-width header. */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
@@ -1220,7 +1213,7 @@ function ComposioMode({ vaultPath }: { vaultPath: string }) {
 // Prevail lists the integrations configured in their Nango project, and connecting
 // one opens a Nango Connect session in the browser. Nango then syncs the data.
 type NangoIntegration = { unique_key: string; provider: string; display_name: string };
-function NangoMode({ vaultPath }: { vaultPath: string }) {
+function NangoMode({ vaultPath, expanded }: { vaultPath: string; expanded: boolean }) {
   // The home-screen star for connected Nango apps (scaffold-then-favorite).
   const gatewayFav = useGatewayFav("nango");
   const [configured, setConfigured] = useState<boolean | null>(null);
@@ -1229,8 +1222,6 @@ function NangoMode({ vaultPath }: { vaultPath: string }) {
   const [busy, setBusy] = useState<null | "save" | "verify">(null);
   const [verified, setVerified] = useState<boolean | null>(null);
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
-  // null = follow connected state (collapse once verified); true/false once toggled.
-  const [setupOpen, setSetupOpen] = useState<boolean | null>(null);
   const [integrations, setIntegrations] = useState<NangoIntegration[]>([]);
   const [connected, setConnected] = useState<Set<string>>(new Set());
   // Master-detail selection: the unique_key of the integration shown on the right.
@@ -1312,29 +1303,15 @@ function NangoMode({ vaultPath }: { vaultPath: string }) {
   const selected = selectedKey ? integrations.find((i) => i.unique_key === selectedKey) ?? null : null;
   const selectedConnected = selected ? connected.has(selected.unique_key) : false;
   const usable = verified === true;
-  const setupExpanded = setupOpen === null ? !usable : setupOpen;
-  const setupSummary = usable ? "Secret key set" : "Not connected yet";
+  // Setup/config dropdown driven by the Nango tab (expanded); always shown while
+  // there's still setup to do so a disconnected user can reach the key field.
+  const showSetup = expanded || !usable;
   return (
     <div className="space-y-4">
-      {/* Collapsible setup/config card. Header line stays; the gateway details +
-          key controls live inside, collapsed by default once connected. */}
+      {/* Setup/config dropdown - opened from the Nango tab, no header row. */}
+      {showSetup && (
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <button
-          onClick={() => setSetupOpen(!setupExpanded)}
-          className="flex w-full items-center gap-2.5 px-5 py-3 text-left hover:bg-surface-warm"
-        >
-          <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${setupExpanded ? "rotate-90" : ""}`} strokeWidth={2.5} />
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#1f9d8f] to-[#0d6e63] text-white"><Cable className="h-4 w-4" /></span>
-          <span className="text-base font-semibold text-text-primary">Nango</span>
-          {usable
-            ? <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-accent"><Check className="h-2.5 w-2.5" /> Connected</span>
-            : verified === false
-              ? <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-danger">Invalid key</span>
-              : <span className="rounded-full border border-border bg-surface-warm px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-text-muted">Not set up</span>}
-          <span className="ml-auto truncate font-mono text-[10px] text-text-muted">{setupSummary}</span>
-        </button>
-        {setupExpanded && (
-        <div className="flex items-start gap-4 border-t border-border-subtle px-5 py-4">
+        <div className="flex items-start gap-4 px-5 py-4">
         <div className="min-w-0 flex-1">
         <p className="max-w-prose text-[12px] leading-relaxed text-text-secondary">Your own Nango project, fronted by one secret key. Prevail lists the integrations you configured in Nango; connect one and Nango runs the sign-in and syncs its data for the agent to use. <button onClick={() => void openUrl("https://nango.dev")} className="text-accent hover:underline">What is Nango?</button></p>
         {showForm ? (
@@ -1370,8 +1347,8 @@ function NangoMode({ vaultPath }: { vaultPath: string }) {
           logos={logos}
         />
         </div>
-        )}
       </div>
+      )}
 
       {/* Two-column master-detail below the full-width header. */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
