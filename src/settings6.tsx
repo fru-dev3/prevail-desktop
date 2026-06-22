@@ -1034,12 +1034,14 @@ function RuntimeRow({ cli, active, vstatus, isDefault, onSelect }: {
   isDefault?: boolean;
   onSelect: () => void;
 }) {
-  const dot = !cli.available ? "bg-border"
-    : vstatus === "ok" ? "bg-ok"
-    : vstatus === "failed" ? "bg-warn"
-    : vstatus === "verifying" ? "bg-text-muted animate-pulse"
-    : "bg-text-muted/50";
   const sub = !cli.available ? "not installed" : (cli.version ? cli.version.slice(0, 22) : "detected");
+  const badge = !cli.available ? "bg-surface-strong text-text-muted"
+    : vstatus === "ok" ? "bg-ok text-background"
+    : vstatus === "failed" ? "bg-warn text-background"
+    : vstatus === "verifying" ? "animate-pulse bg-text-muted text-background"
+    : "bg-surface-strong text-text-muted";
+  const glyph = !cli.available ? "" : vstatus === "ok" ? "✓" : vstatus === "failed" ? "✗" : vstatus === "verifying" ? "·" : "○";
+  const tip = !cli.available ? "not installed" : vstatus === "ok" ? "valid" : vstatus === "failed" ? "not valid" : vstatus === "verifying" ? "checking…" : "detected";
   return (
     <button
       onClick={onSelect}
@@ -1051,7 +1053,7 @@ function RuntimeRow({ cli, active, vstatus, isDefault, onSelect }: {
         <span className="block truncate font-mono text-[9px] uppercase tracking-wider text-text-muted">{sub}</span>
       </span>
       {isDefault && <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-background">def</span>}
-      <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} title={vstatus ?? (cli.available ? "detected" : "not installed")} />
+      <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold leading-none ${badge}`} title={tip}>{glyph}</span>
     </button>
   );
 }

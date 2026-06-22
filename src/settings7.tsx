@@ -1,8 +1,8 @@
 // Settings sections extracted from App.tsx: Providers (API-key activation +
 // OpenRouter catalog) and Models (the per-provider model catalog), plus the
 // refreshDiscoveredModels helper they share (imported from helpers2).
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Check, ChevronDown, Clock, Globe, Layers, Loader2, RotateCw, Sparkles, Zap } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Check, ChevronDown, Clock, Globe, Layers, Loader2, Sparkles, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
 import { DISCOVERED_MODELS, MODELS } from "./constants";
@@ -16,8 +16,7 @@ import { track } from "./telemetry";
 const TELEMETRY_PROVIDERS = new Set(["openrouter", "anthropic", "openai", "google", "ollama", "lmstudio", "bedrock"]);
 const telemetryProvider = (id: string): string => (TELEMETRY_PROVIDERS.has(id) ? id : "other");
 import { SettingsHeader } from "./sectionutil";
-import { autoVerifyClis, setCliVerify, useCliVerifyLive } from "./verify";
-import { ProviderMark } from "./marks";
+import { autoVerifyClis, setCliVerify } from "./verify";
 import { AgentsSection } from "./settings6";
 import { OrVendorMark, orVendorOf } from "./providermarks";
 import type { CliInfo } from "./types";
@@ -68,7 +67,9 @@ function refreshPeriodLabel(p: string): string {
 // On-brand cadence picker: a chip that opens a styled popover of presets plus a
 // "every N days" custom field. Replaces the native <select> (no OS dropdown, and
 // any interval is reachable).
-function RefreshCadence({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+// Vestigial after the Runtimes status strip was removed; kept (exported) in case
+// an explicit cadence picker returns. Not currently rendered.
+export function RefreshCadence({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   const [days, setDays] = useState(() => { const m = /^custom:(\d+)$/.exec(value); return m ? m[1] : "3"; });
   const ref = useRef<HTMLDivElement>(null);
@@ -427,36 +428,13 @@ export function ModelsSection({
   }, [firstAvailable]);
   // Live model discovery: pull each provider's current models so newly released
   // ones appear without a code change. Runs once on launch + a manual Refresh.
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
-  // W3 (Monday feedback): default the model-list refresh to "Every launch".
-  const [refreshPeriod, setRefreshPeriod] = useState(() => lsGet("prevail.models.refreshPeriod") || "launch");
-  const verify = useCliVerifyLive();
-  const discover = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await refreshDiscoveredModels(["ollama", "lmstudio", "openrouter"]);
-      const now = Date.now();
-      setRefreshedAt(now);
-      lsSet("prevail.models.lastRefreshed", String(now));
-    } finally { setRefreshing(false); }
-  }, []);
-  // Auto-discover based on schedule: compare last refresh to the chosen period.
+  // Validate detected providers (idempotent / cached) and refresh model lists on
+  // mount, so the per-runtime checkmarks populate without a separate status row.
   useEffect(() => {
-    const ms = refreshPeriodMs(refreshPeriod);
-    if (ms === Infinity) return;
-    const last = parseInt(lsGet("prevail.models.lastRefreshed") || "0", 10);
-    if (Date.now() - last >= ms) void discover();
-  }, [discover, refreshPeriod]);
-  // Re-check = re-discover model lists AND re-validate every detected
-  // provider; the status badges flip to "checking" live, so the click
-  // visibly does something.
-  const recheck = useCallback(async () => {
-    autoVerifyClis(clis, true);
-    await discover();
-  }, [clis, discover]);
-  const detectedClis = clis.filter((c) => c.available);
-  const okCount = detectedClis.filter((c) => verify.get(c.id)?.status === "ok").length;
+    autoVerifyClis(clis);
+    void refreshDiscoveredModels(["ollama", "lmstudio", "openrouter"]).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <>
       <SettingsHeader
@@ -464,48 +442,9 @@ export function ModelsSection({
         icon={Layers}
         subtitle="A runtime is a model plus a way to run it — a local CLI, a direct vendor key, or an aggregator. The same model can run several ways, each with its own cost, speed, and privacy. Validated at launch with a real call; expand one to test individual models and set the default new chats open with."
       />
-      {/* Validity at a glance: one badged mark per detected provider. */}
-      <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-border-subtle bg-surface px-4 py-2.5">
-        <div className="flex items-center gap-3.5">
-          {detectedClis.map((c) => {
-            const v = verify.get(c.id)?.status;
-            return (
-              <span
-                key={c.id}
-                className="relative"
-                title={`${c.label}: ${v === "ok" ? "valid" : v === "failed" ? "not valid" : v === "verifying" ? "checking…" : "not checked"}`}
-              >
-                <ProviderMark vendor={c.id} size={32} />
-                <span className={`absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] font-bold leading-none ${
-                  v === "ok" ? "bg-ok text-background"
-                  : v === "failed" ? "bg-warn text-background"
-                  : v === "verifying" ? "animate-pulse bg-text-muted text-background"
-                  : "bg-surface-strong text-text-muted"
-                }`}>
-                  {v === "ok" ? "✓" : v === "failed" ? "✗" : v === "verifying" ? "·" : "○"}
-                </span>
-              </span>
-            );
-          })}
-        </div>
-        <span className="font-mono text-[10px] text-text-muted">
-          {okCount}/{detectedClis.length} providers valid
-          {refreshedAt ? ` · lists updated ${Math.max(1, Math.round((Date.now() - refreshedAt) / 1000))}s ago` : ""}
-        </span>
-        <RefreshCadence
-          value={refreshPeriod}
-          onChange={(v) => { setRefreshPeriod(v); lsSet("prevail.models.refreshPeriod", v); }}
-        />
-        <button
-          onClick={() => void recheck()}
-          disabled={refreshing}
-          className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50"
-        >
-          <RotateCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
-          Re-check all
-        </button>
-      </div>
-      {/* Three collapsible groups - all collapsed by default for a clean landing */}
+      {/* Three collapsible groups. CLI runtimes open by default (the main list);
+          per-runtime validity shows as a checkmark in the list itself, so the
+          old status strip is gone. */}
       {([
         {
           id: "clis",
@@ -543,7 +482,14 @@ export function ModelsSection({
           content: <DirectProvidersSection onActivated={onActivated} />,
         },
       ] as const).map(({ id, label, icon: Icon, desc, content }) => (
-        <CollapsibleSection key={id} icon={Icon} title={label} summary={desc} storageKey={`prevail.settings.models.${id}`}>
+        <CollapsibleSection
+          key={id}
+          icon={Icon}
+          title={label}
+          summary={desc}
+          defaultOpen={id === "clis"}
+          storageKey={id === "clis" ? "prevail.settings.models.clis.v2" : `prevail.settings.models.${id}`}
+        >
           {content}
         </CollapsibleSection>
       ))}
