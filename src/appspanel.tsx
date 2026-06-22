@@ -547,8 +547,10 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       ) : (
         // Master-detail. Stacks vertically on narrow widths, side-by-side on lg+.
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-          {/* LEFT - the connectors list: search, "+ connect", grouped rows. */}
-          <aside className="w-full shrink-0 lg:w-72 lg:max-w-xs">
+          {/* LEFT - the connectors list: search, "+ connect", grouped rows.
+              Its own bordered surface so it reads as a distinct column from the
+              detail card on the right. */}
+          <aside className="w-full shrink-0 rounded-xl border border-border bg-surface p-3 lg:w-72 lg:max-w-xs">
             <div className="relative mb-2">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
               <input
@@ -1135,7 +1137,7 @@ function ComposioMode({ vaultPath, expanded }: { vaultPath: string; expanded: bo
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
       {/* LEFT - search + the connected / available app lists. Selecting an app
           shows its detail on the right. */}
-      <aside className="w-full shrink-0 lg:w-72 lg:max-w-xs">
+      <aside className="w-full shrink-0 rounded-xl border border-border bg-surface p-3 lg:w-72 lg:max-w-xs">
         {usable && (
           <>
             <div className="relative mb-2">
@@ -1354,7 +1356,7 @@ function NangoMode({ vaultPath, expanded }: { vaultPath: string; expanded: boole
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
       {/* LEFT - search + the connected / available integration lists. Selecting
           one shows its detail on the right. */}
-      <aside className="w-full shrink-0 lg:w-72 lg:max-w-xs">
+      <aside className="w-full shrink-0 rounded-xl border border-border bg-surface p-3 lg:w-72 lg:max-w-xs">
         {verified === true && (
           <>
             <div className="relative mb-2">
@@ -1513,14 +1515,14 @@ function GatewayRow({ title, sub, logoId, logos, connected, active, onSelect, fa
   fav?: { on: boolean; toggle: () => void };
 }) {
   return (
-    <div className={`group flex w-full items-center gap-1 rounded-lg border pr-2 transition-colors ${active ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}>
+    <div className={`group flex w-full items-center gap-1 rounded-lg border-l-2 pr-2 transition-colors ${active ? "border-l-accent bg-accent-soft shadow-sm ring-1 ring-accent-border" : "border-l-transparent ring-1 ring-transparent hover:bg-surface-warm"}`}>
       <button
         onClick={onSelect}
         className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pl-2.5 text-left"
       >
         <AppRowLogo app={{ title, id: logoId }} logos={logos} size={28} fallback="letter" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-text-primary">{title}</span>
+          <span className={`block truncate text-sm font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{title}</span>
           <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{sub}</span>
         </span>
       </button>
@@ -1613,11 +1615,11 @@ function ConnectorRow({ app, logos, status, active, onSelect, isFav, onToggleFav
 }) {
   const meta = STATUS_META[status];
   return (
-    <div className={`group flex items-center gap-1 rounded-lg border pr-1 transition-colors ${active ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}>
+    <div className={`group flex items-center gap-1 rounded-lg border-l-2 pr-1 transition-colors ${active ? "border-l-accent bg-accent-soft shadow-sm ring-1 ring-accent-border" : "border-l-transparent ring-1 ring-transparent hover:bg-surface-warm"}`}>
       <button onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left">
         <AppRowLogo app={app} logos={logos} size={28} fallback="letter" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-text-primary">{app.title || app.id}</span>
+          <span className={`block truncate text-sm font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{app.title || app.id}</span>
           <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>
         </span>
         <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot} ${status === "connecting" ? "animate-pulse" : ""}`} title={meta.label} />
@@ -1647,11 +1649,11 @@ function CatalogRow({ app, logos, active, onSelect, isFav, onToggleFav }: {
 }) {
   const sub = app.domain || (app.tags && app.tags[0]) || "catalog";
   return (
-    <div className={`group flex items-center gap-1 rounded-lg border pr-1 transition-colors ${active ? "border-accent-border bg-accent-soft/30" : "border-transparent hover:bg-surface-warm"}`}>
+    <div className={`group flex items-center gap-1 rounded-lg border-l-2 pr-1 transition-colors ${active ? "border-l-accent bg-accent-soft shadow-sm ring-1 ring-accent-border" : "border-l-transparent ring-1 ring-transparent hover:bg-surface-warm"}`}>
       <button onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left">
         <AppRowLogo app={catalogLogoApp(app)} logos={logos} size={28} fallback="letter" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-text-primary">{app.name}</span>
+          <span className={`block truncate text-sm font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{app.name}</span>
           <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{titleCase(sub)}</span>
         </span>
       </button>
@@ -2554,39 +2556,6 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
               </ul>
             </div>
           )}
-          {/* Information - at-a-glance facts the app exposes: config folder (with
-              reveal), domains fed, and the schedule summary. We only show fields
-              the app actually has (no invented homepage/website data). */}
-          <div className="rounded-lg border border-border-subtle bg-surface-warm/40 px-3 py-2.5">
-            <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Information</div>
-            <div className="space-y-1.5 text-[12px] text-text-secondary">
-              {app.path && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Config</span>
-                  <code className="break-all font-mono text-[11px] text-text-secondary">{app.path}</code>
-                  <button onClick={() => void invoke("open_in_finder", { path: app.path! }).catch(() => {})}
-                    title="Open this app's config folder (manifest + MCP/connector config)"
-                    className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
-                    <FolderOpen className="h-2.5 w-2.5" /> reveal
-                  </button>
-                </div>
-              )}
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Domains</span>
-                <span>{(app.domains ?? []).length ? app.domains.map(titleCase).join(", ") : "none yet"}</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Schedule</span>
-                <span>{scheduleLabel(app.refresh)}{app.nextDueTs ? ` · next ${relTime(app.nextDueTs)}` : ""}</span>
-              </div>
-              {(gatewayProvider || app.community) && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Source</span>
-                  <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> {gatewayProvider ? `${titleCase(gatewayProvider)} gateway` : "Community connector"}</span>
-                </div>
-              )}
-            </div>
-          </div>
           {/* Bottom action bar: scheduled-sync toggle on the left; an evenly
               spaced icon-button group (Sync, Visit, Reveal, Delete) on the right.
               Sync moved here from the top-right so the header stays uncluttered.
