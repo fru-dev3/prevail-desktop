@@ -550,31 +550,31 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         </div>
         )
       ) : (
-        // Master-detail. Stacks vertically on narrow widths, side-by-side on lg+.
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-stretch">
-          {/* LEFT - the connectors list, attached to the detail. Collapses to a
-              thin rail (expand chevron) so the detail can take the full width,
-              like the home sidebar / thread list. */}
+        // Master-detail in ONE attached panel: a flush list column (border-r,
+        // like the home threads rail) + the detail, joined - not floating cards.
+        <div className="flex min-h-[55vh] flex-col overflow-hidden rounded-xl border border-border lg:flex-row lg:items-stretch">
+          {/* LEFT - flush connectors column, collapses to a thin rail. */}
           {listCollapsed ? (
             <button
               onClick={toggleList}
               title="Show apps list"
-              className="flex shrink-0 items-center justify-center rounded-xl border border-border bg-surface py-3 text-text-muted transition-colors hover:border-accent-border hover:text-accent lg:w-10"
+              className="flex shrink-0 items-center justify-center border-b border-border-subtle bg-surface-warm py-3 text-text-muted transition-colors hover:text-accent lg:w-10 lg:border-b-0 lg:border-r"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
           ) : (
-          <aside className="w-full shrink-0 rounded-xl border border-border bg-surface p-3 lg:w-72 lg:max-w-xs">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Apps</span>
+          <aside className="flex w-full shrink-0 flex-col border-b border-border-subtle bg-surface-warm lg:w-72 lg:max-w-xs lg:border-b-0 lg:border-r">
+            <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-3 py-2.5">
+              <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Apps</span>
               <button
                 onClick={toggleList}
                 title="Collapse list"
-                className="flex h-6 w-6 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+                className="flex h-6 w-6 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-strong hover:text-accent"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
             </div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3">
             <div className="relative mb-2">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
               <input
@@ -594,7 +594,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
             {liveCount > 0 && (
               <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{liveCount} of {directApps.length} live</div>
             )}
-            <div className="space-y-4 lg:max-h-[60vh] lg:overflow-y-auto lg:pr-1">
+            <div className="space-y-4">
               {groups.length === 0 && catalogView.shown.length === 0 ? (
                 <div className="px-1 text-xs text-text-muted">No apps match "{query}".</div>
               ) : (
@@ -672,13 +672,13 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                 </>
               )}
             </div>
+            </div>
           </aside>
           )}
 
-          {/* RIGHT - the connect flow (in place, keeping the app's context), OR
-              the selected connector's full config, OR a catalog app's detail +
-              "Connect" pane when a not-yet-installed app is picked. */}
-          <div className="min-w-0 flex-1">
+          {/* RIGHT - the connect flow, the selected connector's config, or a
+              catalog app's detail. Flush inside the panel (no own card). */}
+          <div className="min-w-0 flex-1 overflow-y-auto bg-surface">
             {connecting ? (
               <ConnectAppFlow
                 vaultPath={vaultPath}
@@ -2190,7 +2190,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
     }
   };
   return (
-    <div className={`overflow-hidden rounded-xl border bg-surface ${meta.ring}`}>
+    <div className="overflow-hidden bg-surface">
       {/* Enriched detail header: big brand mark, name, status pill, method,
           optional description, and the "Open in chat" + Sync CTAs. */}
       <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle px-5 py-4">
