@@ -450,7 +450,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
             <h2 className="font-display text-2xl font-bold tracking-tight">Apps</h2>
           </div>
           <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-            Services that feed your vault. Connect each one once - mail, calendar, repos, docs, payments, and more - and it's available to any domain's context, no duplicates. Prevail keeps each app's data grounded in what's actually happening.
+            Services that feed your vault. Connect each one once - mail, calendar, repos, docs, payments, and more - and it's available to any domain's context, no duplicates.
           </p>
         </div>
       </div>
