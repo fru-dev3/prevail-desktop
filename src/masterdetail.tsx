@@ -13,6 +13,7 @@ export function MasterDetail({
   storageKey,
   toolbar,
   list,
+  rail,
   detail,
   minHeight = "55vh",
 }: {
@@ -25,6 +26,10 @@ export function MasterDetail({
   // The scrollable list body (rows/groups). The caller renders its own rows
   // (e.g. with the selected row highlighted).
   list: ReactNode;
+  // Optional icon rail shown when collapsed: the caller passes the items' logos
+  // (clickable to select) so collapsing keeps the items reachable instead of
+  // hiding them. Without it, collapse leaves just the expand chevron.
+  rail?: ReactNode;
   // The detail pane for the current selection. Render flush (no outer card of
   // its own) - the panel already provides the frame.
   detail: ReactNode;
@@ -44,13 +49,16 @@ export function MasterDetail({
       style={{ minHeight }}
     >
       {collapsed ? (
-        <button
-          onClick={toggle}
-          title={`Show ${title.toLowerCase()}`}
-          className="flex shrink-0 items-center justify-center border-b border-border-subtle bg-surface-warm py-3 text-text-muted transition-colors hover:text-accent lg:w-10 lg:border-b-0 lg:border-r"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
+        <div className="flex shrink-0 flex-col items-center gap-2 border-b border-border-subtle bg-surface-warm py-2 lg:w-14 lg:border-b-0 lg:border-r">
+          <button
+            onClick={toggle}
+            title={`Show ${title.toLowerCase()}`}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-strong hover:text-accent"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          {rail && <div className="flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto px-1 pb-1">{rail}</div>}
+        </div>
       ) : (
         <aside className="flex w-full shrink-0 flex-col border-b border-border-subtle bg-surface-warm lg:w-72 lg:max-w-xs lg:border-b-0 lg:border-r">
           <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-3 py-2.5">

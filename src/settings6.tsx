@@ -1146,6 +1146,23 @@ export function AgentsSection({
     </div>
   );
 
+  // Collapsed icon rail: each runtime's mark, clickable to select (so collapsing
+  // keeps every runtime reachable, not hidden).
+  const railEl = (
+    <>
+      {all.map((c) => (
+        <button
+          key={c.id}
+          onClick={() => setSelectedId(c.id)}
+          title={`${c.label}${c.available ? "" : " (not installed)"}`}
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${c.id === selectedEff ? "ring-2 ring-accent" : "hover:bg-surface-strong"} ${c.available ? "" : "opacity-50"}`}
+        >
+          <ProviderMark vendor={c.id} size={26} />
+        </button>
+      ))}
+    </>
+  );
+
   const detailEl = selected ? (
     <AgentCard
       key={selected.id}
@@ -1169,7 +1186,7 @@ export function AgentsSection({
           subtitle="CLIs Prevail can route prompts to. Each runtime is detected from your machine. Prevail doesn't install or update them."
         />
       )}
-      <MasterDetail title="Runtimes" storageKey="prevail.runtimes.listCollapsed" list={listEl} detail={detailEl} />
+      <MasterDetail title="Runtimes" storageKey="prevail.runtimes.listCollapsed" list={listEl} rail={railEl} detail={detailEl} />
     </>
   );
 }
