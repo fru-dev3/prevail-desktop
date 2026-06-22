@@ -434,10 +434,10 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       <div className="relative mb-4 overflow-hidden rounded-xl border border-border-subtle bg-surface/40">
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 right-0 hidden w-[58%] select-none lg:block [mask-image:linear-gradient(to_right,transparent,black_45%)]"
+          className="pointer-events-none absolute inset-y-0 right-0 hidden w-[42%] select-none lg:block [mask-image:linear-gradient(to_right,transparent,black_62%)]"
         >
           <div className="flex h-full flex-wrap content-center justify-end gap-2 p-4">
-            {APP_LOGO_FIELD.map((s, i) => (
+            {APP_LOGO_FIELD.slice(0, 15).map((s, i) => (
               <span key={`${s.id}-${i}`} className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-warm/70 ring-1 ring-border-subtle">
                 <AppRowLogo app={s} logos={logos} size={24} fallback="letter" />
               </span>
