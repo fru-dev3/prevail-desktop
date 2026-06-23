@@ -45,3 +45,4 @@ robius-authentication = "0.1.1"
 aes-gcm = "0.10"
 base64 = "0.22"
 rand = "0.8"
+zeroize = "1.8" # wipe the in-memory vault DEK on lock (already in the tree via aes-gcm)
