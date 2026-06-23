@@ -131,7 +131,7 @@ fn cursor_path(domain_dir: &Path) -> PathBuf {
 }
 
 fn read_cursor(domain_dir: &Path) -> Cursor {
-    std::fs::read_to_string(cursor_path(domain_dir))
+    crate::read_to_string_retry(cursor_path(domain_dir))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default()
@@ -139,7 +139,7 @@ fn read_cursor(domain_dir: &Path) -> Cursor {
 
 fn write_cursor(domain_dir: &Path, c: &Cursor) {
     if let Ok(j) = serde_json::to_string_pretty(c) {
-        let _ = std::fs::write(cursor_path(domain_dir), j);
+        let _ = crate::vaultio::write_atomic(&cursor_path(domain_dir), &j);
     }
 }
 
@@ -151,8 +151,8 @@ async fn run_once_inner(cfg: &TaskGenConfig, force: bool) -> Result<(u64, u64), 
         return Err(format!("vault not found: {}", cfg.vault));
     }
 
-    let soul = std::fs::read_to_string(vault.join("soul.md")).unwrap_or_default();
-    let goals = std::fs::read_to_string(vault.join("goals.md")).unwrap_or_default();
+    let soul = crate::read_to_string_retry(vault.join("soul.md")).unwrap_or_default();
+    let goals = crate::read_to_string_retry(vault.join("goals.md")).unwrap_or_default();
 
     let today_ts = now_secs();
     const ONE_DAY: u64 = 86400;
@@ -205,8 +205,8 @@ async fn generate_for_domain(
     soul: &str,
     goals: &str,
 ) -> Result<u64, String> {
-    let memory = std::fs::read_to_string(domain_dir.join("_memory.md")).unwrap_or_default();
-    let state_md = std::fs::read_to_string(domain_dir.join("_state.md")).unwrap_or_default();
+    let memory = crate::read_to_string_retry(domain_dir.join("_memory.md")).unwrap_or_default();
+    let state_md = crate::read_to_string_retry(domain_dir.join("_state.md")).unwrap_or_default();
     let existing = crate::read_to_string_retry(domain_dir.join("_tasks.md")).unwrap_or_default();
 
     if memory.trim().is_empty() && state_md.trim().is_empty() {
@@ -254,7 +254,7 @@ async fn generate_for_domain(
     for t in &fresh {
         content.push_str(&format!("- [ ] {t} +{stamp} ~daemon\n"));
     }
-    std::fs::write(&tasks_path, crate::engine::maybe_encrypt(&tasks_path, &content)).map_err(|e| format!("write _tasks.md: {e}"))?;
+    crate::vaultio::write_atomic(&tasks_path, &content).map_err(|e| format!("write _tasks.md: {e}"))?;
 
     Ok(fresh.len() as u64)
 }

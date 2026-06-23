@@ -45,7 +45,7 @@ pub(crate) fn write_user_md(vault: String, body: String) -> Result<(), String> {
     // Write the canonical build/_profile.md (config_write_path is build-rooted).
     let p = config_write_path(&vault, "_profile.md");
     if let Some(parent) = p.parent() { let _ = fs::create_dir_all(parent); }
-    fs::write(&p, body).map_err(|e| format!("write _profile.md: {e}"))
+    crate::vaultio::write_atomic(&p, &body).map_err(|e| format!("write _profile.md: {e}"))
 }
 
 // The user's Ideal State — their constitution. A single `<vault>/ideal-state.md`
@@ -82,10 +82,10 @@ pub(crate) fn write_ideal_state(vault: String, body: String) -> Result<(), Strin
                 .unwrap_or(0);
             let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
             let vp = vdir.join(format!("{y:04}-{mo:02}-{d:02}_{h:02}{mi:02}{s:02}.md"));
-            let _ = fs::write(&vp, engine::maybe_encrypt(&vp, &existing));
+            let _ = crate::vaultio::write_atomic(&vp, &existing);
         }
     }
-    fs::write(&p, engine::maybe_encrypt(&p, &body)).map_err(|e| format!("write ideal-state.md: {e}"))
+    crate::vaultio::write_atomic(&p, &body).map_err(|e| format!("write ideal-state.md: {e}"))
 }
 
 /// Dated snapshots of the constitution, newest first.
@@ -126,7 +126,7 @@ pub(crate) fn write_domain_ideal(vault: String, domain: Option<String>, body: St
     let dir = domain_dir(&vault, &domain);
     let _ = fs::create_dir_all(&dir);
     let p = dir.join("ideal-state.md");
-    fs::write(&p, engine::maybe_encrypt(&p, &body)).map_err(|e| format!("write domain ideal: {e}"))
+    crate::vaultio::write_atomic(&p, &body).map_err(|e| format!("write domain ideal: {e}"))
 }
 
 // Distilled long-term memory for a domain (vault root for General), written
