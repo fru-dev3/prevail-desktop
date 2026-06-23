@@ -102,6 +102,7 @@ fn bridge_cfg(cfg: &DiscordConfig) -> BridgeConfig {
     BridgeConfig {
         token: String::new(), chat_id: cfg.channel.clone(), cli: cfg.cli.clone(),
         model: cfg.model.clone(), domain: cfg.domain.clone(), vault: cfg.vault.clone(), routes: cfg.routes.clone(),
+        allowed_telegram_users: vec![],
     }
 }
 
@@ -154,7 +155,7 @@ async fn run_gateway(cfg: DiscordConfig, mut stop_rx: watch::Receiver<bool>, sta
                 { let mut s = status.lock().await; s.inbound_count += 1; s.last_inbound_ts = Some(now_secs()); }
                 let bcfg = bridge_cfg(&cfg);
                 let domain = cfg.domain.clone().or_else(|| resolve_domain(&bcfg, &content));
-                let reply = match run_cli(&cfg.cli, cfg.model.as_deref(), &content).await {
+                let reply = match run_cli(&cfg.cli, cfg.model.as_deref(), &crate::telegram_bridge::fence_untrusted_inbound(&content)).await {
                     Ok(r) => r,
                     Err(e) => { status.lock().await.last_error = Some(e); continue; }
                 };
