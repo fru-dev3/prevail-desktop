@@ -57,7 +57,7 @@ export function SafetySection({ vaultPath }: { vaultPath: string }) {
   const [approvalTimeout, setApprovalTimeout] = useState(() => getPref(PREF.approvalTimeoutSec, "60"));
   const [confirmMcp, setConfirmMcp] = useState(() => getPref(PREF.confirmMcpReloads, "1") === "1");
   const [allowlist, setAllowlist] = useState(() => getPref(PREF.commandAllowlist, ""));
-  const [redact, setRedact] = useState(() => getPref(PREF.redactSecrets, "0") === "1");
+  const [redact, setRedact] = useState(() => getPref(PREF.redactSecrets, "1") !== "0");
   const [allowPrivate, setAllowPrivate] = useState(() => getPref(PREF.allowPrivateUrls, "0") === "1");
   const [checkpoints, setCheckpoints] = useState(() => getPref(PREF.fileCheckpoints, "0") === "1");
   return (

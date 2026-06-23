@@ -37,6 +37,8 @@ pub(crate) use chat::{build_cli_env, ideal_state_preamble, resolve_bin_abs, scru
 pub(crate) use settings::close_to_tray_enabled;
 pub(crate) use appcmds::secs_to_ymdhms;
 mod engine;
+mod vaultio;
+mod approval;
 mod loops;
 mod activity;
 mod ingestion;
@@ -522,6 +524,7 @@ pub fn run() {
             engine::engine_score_stream,
             loops::loops_run_once,
             loops::loop_execute_action,
+            loops::loop_request_approval,
             loops::loop_run_now,
             loops::loop_run_now_stream,
             loops::loop_pending_drop,

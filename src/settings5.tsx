@@ -1057,10 +1057,14 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
   }
 
   async function exportConfig() {
+    // Never export credentials or personal identifiers in a shareable config (O62).
+    const SENSITIVE = /(pass|token|secret|api[_-]?key|webui|telemetry|chat[_-]?id|phone)/i;
     const cfg: Record<string, string> = {};
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i)!;
-      if (k.startsWith("prevail.")) cfg[k] = localStorage.getItem(k) ?? "";
+      if (!k.startsWith("prevail.")) continue;
+      if (SENSITIVE.test(k)) continue;
+      cfg[k] = localStorage.getItem(k) ?? "";
     }
     try {
       const path = await save({ defaultPath: "prevail-config.json", filters: [{ name: "JSON", extensions: ["json"] }] });
@@ -1075,7 +1079,13 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
       if (!path || typeof path !== "string") return;
       const json = await invoke<string>("read_text_file", { path });
       const cfg = JSON.parse(json) as Record<string, string>;
-      for (const [k, v] of Object.entries(cfg)) if (k.startsWith("prevail.")) localStorage.setItem(k, String(v));
+      // An imported file must NOT silently relax safety settings or inject
+      // credentials — reject security prefs + secrets (O61).
+      const BLOCKED = /(pref\.bunkerMode|pref\.redactSecrets|pref\.approvalMode|pref\.allowPrivateUrls|pass|token|secret|api[_-]?key|webui)/i;
+      for (const [k, v] of Object.entries(cfg)) {
+        if (!k.startsWith("prevail.") || BLOCKED.test(k)) continue;
+        localStorage.setItem(k, String(v));
+      }
       window.location.reload();
     } catch (e) { console.error("importConfig", e); }
   }

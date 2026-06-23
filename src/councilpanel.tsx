@@ -176,7 +176,9 @@ export function CouncilPanel({
     });
   };
   const panelistSlots = useMemo(
-    () => allSlots.filter((s) => selectedSlots.has(s.key)),
+    // Under Bunker, drop already-selected CLOUD panelists entirely — not just
+    // from the picker — so they never convene and leak the prompt off-device (O60).
+    () => allSlots.filter((s) => selectedSlots.has(s.key) && (!isBunkerOn() || isLocalCli(s.cli))),
     [allSlots, selectedSlots],
   );
   // Auto-verify any panelist slot that hasn't been verified yet (or

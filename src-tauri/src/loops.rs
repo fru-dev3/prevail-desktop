@@ -42,17 +42,31 @@ pub(crate) async fn loops_run_once(
     .map_err(|e| format!("loops task failed: {e}"))?
 }
 
+/// Mint a single-use approval token bound to (domain, action). The UI calls this
+/// at the moment the user approves, then passes the token to loop_execute_action.
+/// (C1/O16 — backend-verified approval, not UI trust.)
+#[tauri::command]
+pub(crate) fn loop_request_approval(domain: String, action: String) -> String {
+    crate::approval::mint(&crate::approval::action_payload(&domain, &action))
+}
+
 /// Execute ONE user-approved loop action for real, via the engine agent's tools
 /// and connectors (`daemon --loops --exec`). Returns the agent's report of what
-/// it did. The action was explicitly approved in the UI before reaching here.
+/// it did. Requires a valid single-use `approval` token bound to this exact
+/// (domain, action) — minted by loop_request_approval — so a UI bug or injected
+/// invoke can't drive a consequential action without real approval (C1/O16).
 #[tauri::command]
 pub(crate) async fn loop_execute_action(
     vault: String,
     domain: String,
     action: String,
+    approval: String,
     provider: Option<String>,
     model: Option<String>,
 ) -> Result<String, String> {
+    if !crate::approval::verify_and_consume(&approval, &crate::approval::action_payload(&domain, &action)) {
+        return Err("approval token invalid, expired, or already used".into());
+    }
     tauri::async_runtime::spawn_blocking(move || {
         let mut args: Vec<String> = vec![
             "--vault".into(),
@@ -159,7 +173,7 @@ pub(crate) fn loop_pending_drop(
     text: String,
 ) -> Result<(), String> {
     let path = crate::paths::domain_dir_pub(&vault, &domain).join("_loops_runtime.json");
-    let raw = match std::fs::read_to_string(&path) {
+    let raw = match crate::read_to_string_retry(&path) {
         Ok(s) => s,
         Err(_) => return Ok(()), // no runtime yet → nothing to drop
     };
@@ -170,5 +184,5 @@ pub(crate) fn loop_pending_drop(
         }
     }
     let body = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
-    std::fs::write(&path, body).map_err(|e| e.to_string())
+    crate::vaultio::write_atomic(&path, &body).map_err(|e| e.to_string())
 }

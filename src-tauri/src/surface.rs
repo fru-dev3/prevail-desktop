@@ -28,6 +28,20 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+// Per-domain privacy.localOnly (manifest.json), honored in addition to global
+// Bunker so a domain flagged local-only never reaches a cloud model (O33).
+fn domain_local_only(dir: &Path) -> bool {
+    crate::read_to_string_retry(dir.join("manifest.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| {
+            v.get("privacy")
+                .and_then(|p| p.get("localOnly"))
+                .and_then(|b| b.as_bool())
+        })
+        .unwrap_or(false)
+}
+
 // Build the proactive prompt from a domain's vault context.
 fn build_prompt(domain: &str, context: &str) -> String {
     format!(
@@ -50,7 +64,7 @@ re-ask a settled question. Keep each item under ~110 chars.\n\n--- CONTEXT ---\n
 fn gather_context(dir: &Path) -> String {
     let mut out = String::new();
     let read_head = |p: PathBuf, label: &str, max: usize, out: &mut String| {
-        if let Ok(s) = std::fs::read_to_string(&p) {
+        if let Ok(s) = crate::read_to_string_retry(&p) {
             let s = s.trim();
             if !s.is_empty() {
                 out.push_str(&format!("## {label}\n"));
@@ -65,7 +79,7 @@ fn gather_context(dir: &Path) -> String {
     read_head(dir.join("goals.md"), "Goals", 1000, &mut out);
     // Decisions already made — so the coach builds on them instead of re-asking
     // settled questions (council verdicts + chat/distill-extracted decisions).
-    if let Ok(raw) = std::fs::read_to_string(dir.join("_decisions.jsonl")) {
+    if let Ok(raw) = crate::read_to_string_retry(dir.join("_decisions.jsonl")) {
         let decs: Vec<String> = raw
             .lines()
             .rev()
@@ -88,7 +102,7 @@ fn gather_context(dir: &Path) -> String {
         }
     }
     // Last few intent messages from the ledger.
-    if let Ok(raw) = std::fs::read_to_string(dir.join("_intents.jsonl")) {
+    if let Ok(raw) = crate::read_to_string_retry(dir.join("_intents.jsonl")) {
         let msgs: Vec<String> = raw
             .lines()
             .rev()
@@ -146,7 +160,7 @@ pub async fn domain_surface(
 
     // Serve fresh cache unless forced.
     if !force {
-        if let Ok(s) = std::fs::read_to_string(&cache) {
+        if let Ok(s) = crate::read_to_string_retry(&cache) {
             if let Ok(mut r) = serde_json::from_str::<SurfaceResult>(&s) {
                 if now_ms() - r.generated_at < TTL_MS {
                     r.stale = false;
@@ -168,7 +182,7 @@ pub async fn domain_surface(
     // so there's no reason to go dark. `resolve_cli` NEVER returns a cloud CLI
     // under Bunker, so the local-only guarantee holds; it only hard-blocks when
     // no local provider is up (so the UI can prompt the user to start one).
-    let effective = crate::bunker::resolve_cli(&provider)?;
+    let effective = crate::bunker::resolve_cli_forced(&provider, domain_local_only(&dir))?;
     // When Bunker swapped a cloud provider for a local one, the requested cloud
     // model id (e.g. "claude-haiku-4-5") is meaningless to it — drop it and let
     // the local provider use its default model.
@@ -184,7 +198,7 @@ pub async fn domain_surface(
     if let Some(parent) = cache.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let _ = std::fs::write(&cache, serde_json::to_string_pretty(&res).unwrap_or_default());
+    let _ = crate::vaultio::write_atomic(&cache, &serde_json::to_string_pretty(&res).unwrap_or_default());
     Ok(res)
 }
 
@@ -211,7 +225,7 @@ goals, and decisions where possible — but aspirational. Return ONLY the ideal-
 --- CONTEXT ---\n{context}",
         crate::ideal_state_preamble(Path::new(&vault)),
     );
-    let effective = crate::bunker::resolve_cli(&provider)?;
+    let effective = crate::bunker::resolve_cli_forced(&provider, domain_local_only(&dir))?;
     let switched = effective != provider;
     let model_opt = if switched || model.is_empty() { None } else { Some(model.as_str()) };
     let out = crate::telegram_bridge::run_cli(&effective, model_opt, &prompt).await?;

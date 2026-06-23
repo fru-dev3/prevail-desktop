@@ -150,7 +150,10 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
     try {
       const provider = getPref(PREF.memoryProvider, "claude");
       const model = getPref(PREF.distillModel, "claude-haiku-4-5");
-      const report = await invoke<string>("loop_execute_action", { vault: vaultPath, domain, action: text, provider, model });
+      // Mint a single-use approval token bound to this exact action (C1/O16),
+      // then execute with it — the backend verifies approval, not UI trust.
+      const approval = await invoke<string>("loop_request_approval", { domain, action: text });
+      const report = await invoke<string>("loop_execute_action", { vault: vaultPath, domain, action: text, approval, provider, model });
       // Record what was done as a domain decision (provenance the loop learns from).
       try {
         await invoke("decision_append", { vault: vaultPath, domain, record: { kind: "decision", source: "loop-exec", action: text, report, ts: Date.now() } });

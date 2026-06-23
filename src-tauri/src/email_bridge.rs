@@ -40,6 +40,12 @@ pub struct EmailConfig {
     pub routes: Vec<RouteRule>,
     #[serde(default)]
     pub poll_secs: Option<u64>,
+    // Sender allowlist (bare addresses). The bridge runs an agent on inbound mail,
+    // so it must ONLY act on verified senders — otherwise any stranger can drive
+    // the agent and receive exfiltrated output by reply. Fail-closed: if this is
+    // empty, NO mail is acted on. (Critical: audit B3 / O2.)
+    #[serde(default)]
+    pub allowed_senders: Vec<String>,
 }
 
 #[derive(Default)]
@@ -99,12 +105,27 @@ impl EmailState {
                             Ok(Err(e)) => { status_task.lock().await.last_error = Some(e); continue; }
                             Err(e) => { status_task.lock().await.last_error = Some(format!("imap task: {e}")); continue; }
                         };
+                        // Sender allowlist (B3/O2): fail-closed. With no allowlist
+                        // configured, refuse to act on any inbound mail.
+                        let allowed: Vec<String> = cfg.allowed_senders.iter()
+                            .map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()).collect();
                         for inc in msgs {
                             { let mut s = status_task.lock().await; s.inbound_count += 1; s.last_inbound_ts = Some(now_secs()); }
+                            let from_norm = inc.from.trim().to_lowercase();
+                            if allowed.is_empty() {
+                                status_task.lock().await.last_error =
+                                    Some("email bridge: no allowed_senders configured — refusing to act on unverified mail".into());
+                                continue;
+                            }
+                            if !allowed.iter().any(|a| a == &from_norm) {
+                                status_task.lock().await.last_error =
+                                    Some(format!("email bridge: ignored mail from non-allowlisted sender {from_norm}"));
+                                continue;
+                            }
                             let prompt = if inc.subject.is_empty() { inc.body.clone() } else { format!("{}\n\n{}", inc.subject, inc.body) };
                             let bcfg = bridge_cfg(&cfg);
                             let domain = cfg.domain.clone().or_else(|| resolve_domain(&bcfg, &prompt));
-                            let reply = match run_cli(&cfg.cli, cfg.model.as_deref(), &prompt).await {
+                            let reply = match run_cli(&cfg.cli, cfg.model.as_deref(), &crate::telegram_bridge::fence_untrusted_inbound(&prompt)).await {
                                 Ok(r) => r,
                                 Err(e) => { status_task.lock().await.last_error = Some(e); continue; }
                             };
@@ -138,6 +159,7 @@ fn bridge_cfg(cfg: &EmailConfig) -> BridgeConfig {
     BridgeConfig {
         token: String::new(), chat_id: cfg.username.clone(), cli: cfg.cli.clone(),
         model: cfg.model.clone(), domain: cfg.domain.clone(), vault: cfg.vault.clone(), routes: cfg.routes.clone(),
+        allowed_telegram_users: vec![],
     }
 }
 
