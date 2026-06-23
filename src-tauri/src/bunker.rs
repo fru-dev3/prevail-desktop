@@ -168,7 +168,13 @@ pub fn preferred_local_cli() -> Option<&'static str> {
 /// local equivalent (web search, Telegram, Composio) stay hard-blocked via
 /// `guard_cloud` — there is nothing local to switch them to.
 pub fn resolve_cli(requested: &str) -> Result<String, String> {
-    if !bunker_enabled() || is_local_cli(requested) {
+    resolve_cli_forced(requested, false)
+}
+
+/// Like `resolve_cli`, but `force_local` (e.g. a per-domain `privacy.localOnly`
+/// manifest flag) forces the local swap even when global Bunker is off (O33).
+pub fn resolve_cli_forced(requested: &str, force_local: bool) -> Result<String, String> {
+    if (!force_local && !bunker_enabled()) || is_local_cli(requested) {
         return Ok(requested.to_string());
     }
     match preferred_local_cli() {

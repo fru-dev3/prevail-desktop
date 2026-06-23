@@ -3393,6 +3393,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "walkdir",
+ "zeroize",
 ]
 
 [[package]]

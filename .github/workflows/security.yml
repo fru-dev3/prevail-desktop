@@ -1,0 +1,50 @@
+# Security gates (audit B12 / O103 / O92). Separate from release.yml so it never
+# blocks a release build, but surfaces vulnerable deps + leaked secrets on every
+# push to main and every PR. Rust + JS dependency audit + secret scan.
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Rust dependency audit
+        # RUSTSEC-2026-0185 (quinn-proto, transitive QUIC dep) is accepted: this
+        # desktop app is not a QUIC server reassembling untrusted inbound streams,
+        # so the memory-exhaustion vector isn't reachable. Revisit on upstream fix.
+        # (Unmaintained gtk-rs advisories are warnings and don't fail the build.)
+        run: cd src-tauri && cargo audit --ignore RUSTSEC-2026-0185
+
+  npm-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: JS dependency audit (fail on high)
+        run: npm audit --audit-level=high
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

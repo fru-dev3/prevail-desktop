@@ -247,8 +247,8 @@ async fn distill_dir(target: &DistillTarget, cfg: &DistillConfig) -> Result<u64,
 
     let memory_path = content_dir.join("_memory.md");
     let state_path = content_dir.join("_state.md");
-    let existing_memory = std::fs::read_to_string(&memory_path).unwrap_or_default();
-    let existing_state = std::fs::read_to_string(&state_path).unwrap_or_default();
+    let existing_memory = crate::read_to_string_retry(&memory_path).unwrap_or_default();
+    let existing_state = crate::read_to_string_retry(&state_path).unwrap_or_default();
     let domain_label = content_dir
         .file_name()
         .and_then(|s| s.to_str())
@@ -548,7 +548,7 @@ fn append_decisions(dir: &Path, decisions: &[serde_json::Value]) {
         }
     }
     if !out.is_empty() {
-        let _ = crate::engine::vault_append_line(&path, &out);
+        let _ = crate::vaultio::append_line(&path, &out);
     }
 }
 
@@ -606,7 +606,7 @@ fn ledger_dirs(vault: &Path) -> Vec<DistillTarget> {
 }
 
 fn read_cursor(dir: &Path) -> Cursor {
-    std::fs::read_to_string(dir.join("_distill.json"))
+    crate::read_to_string_retry(dir.join("_distill.json"))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default()
@@ -618,11 +618,9 @@ fn write_cursor(dir: &Path, c: &Cursor) {
     }
 }
 
-// Write via temp + rename so concurrent readers never see a half-written file.
+// Write via the shared crypto-aware, atomic, locked vault writer (C4).
 fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, crate::engine::maybe_encrypt(path, contents))?;
-    std::fs::rename(&tmp, path)
+    crate::vaultio::write_atomic(path, contents)
 }
 
 fn now_secs() -> u64 {
@@ -683,7 +681,7 @@ pub async fn build_domain_state(
     model: String,
 ) -> Result<BuildStateResult, String> {
     let content_dir = crate::paths::domain_dir(&vault, &domain);
-    let read_ne = |p: PathBuf| std::fs::read_to_string(&p).ok().filter(|s| !s.trim().is_empty());
+    let read_ne = |p: PathBuf| crate::read_to_string_retry(&p).ok().filter(|s| !s.trim().is_empty());
     // Activity source: the journal (root + build/) plus a tail of the decisions ledger.
     let mut activity = String::new();
     let bases = [content_dir.clone(), crate::paths::build_root(&vault)];
@@ -716,8 +714,8 @@ pub async fn build_domain_state(
     }
 
     let domain_label = domain.clone().unwrap_or_else(|| "General".into());
-    let existing_memory = std::fs::read_to_string(content_dir.join("_memory.md")).unwrap_or_default();
-    let existing_state = std::fs::read_to_string(content_dir.join("_state.md")).unwrap_or_default();
+    let existing_memory = crate::read_to_string_retry(content_dir.join("_memory.md")).unwrap_or_default();
+    let existing_state = crate::read_to_string_retry(content_dir.join("_state.md")).unwrap_or_default();
     let ideal = content_dir.parent().map(crate::ideal_state_preamble).unwrap_or_default();
     let prompt = format!(
         "{}{}",

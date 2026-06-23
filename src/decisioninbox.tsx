@@ -64,7 +64,10 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
     try {
       const provider = getPref(PREF.memoryProvider, "claude");
       const model = getPref(PREF.distillModel, "claude-haiku-4-5");
-      const rep = await invoke<string>("loop_execute_action", { vault: vaultPath, domain: it.domain, action: it.text, provider, model });
+      // Mint a single-use approval token bound to this exact action (C1/O16),
+      // then execute with it — the backend verifies approval, not UI trust.
+      const approval = await invoke<string>("loop_request_approval", { domain: it.domain, action: it.text });
+      const rep = await invoke<string>("loop_execute_action", { vault: vaultPath, domain: it.domain, action: it.text, approval, provider, model });
       try {
         await invoke("decision_append", { vault: vaultPath, domain: it.domain, record: { kind: "decision", source: "inbox-exec", action: it.text, report: rep, ts: Date.now() } });
       } catch { /* best effort */ }

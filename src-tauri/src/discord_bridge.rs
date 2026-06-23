@@ -40,6 +40,11 @@ pub struct DiscordConfig {
     pub vault: Option<String>,
     #[serde(default)]
     pub routes: Vec<RouteRule>,
+    // Optional per-user allowlist (Discord user ids). When non-empty, ONLY these
+    // authors can drive the agent — otherwise any non-bot user in the channel
+    // can (O28). Empty = keep channel-scoping (non-breaking for single-user setups).
+    #[serde(default)]
+    pub allowed_users: Vec<String>,
 }
 
 #[derive(Default)]
@@ -97,6 +102,7 @@ fn bridge_cfg(cfg: &DiscordConfig) -> BridgeConfig {
     BridgeConfig {
         token: String::new(), chat_id: cfg.channel.clone(), cli: cfg.cli.clone(),
         model: cfg.model.clone(), domain: cfg.domain.clone(), vault: cfg.vault.clone(), routes: cfg.routes.clone(),
+        allowed_telegram_users: vec![],
     }
 }
 
@@ -144,12 +150,12 @@ async fn run_gateway(cfg: DiscordConfig, mut stop_rx: watch::Receiver<bool>, sta
                 let v: serde_json::Value = match serde_json::from_str(&msg) { Ok(v) => v, Err(_) => continue };
                 if let Some(s) = v.get("s").and_then(|s| s.as_u64()) { last_seq = Some(s); }
                 // The decision logic is extracted + unit-tested (extract_message).
-                let content = match extract_message(&v, &cfg.channel) { Some(c) => c, None => continue };
+                let content = match extract_message(&v, &cfg.channel, &cfg.allowed_users) { Some(c) => c, None => continue };
 
                 { let mut s = status.lock().await; s.inbound_count += 1; s.last_inbound_ts = Some(now_secs()); }
                 let bcfg = bridge_cfg(&cfg);
                 let domain = cfg.domain.clone().or_else(|| resolve_domain(&bcfg, &content));
-                let reply = match run_cli(&cfg.cli, cfg.model.as_deref(), &content).await {
+                let reply = match run_cli(&cfg.cli, cfg.model.as_deref(), &crate::telegram_bridge::fence_untrusted_inbound(&content)).await {
                     Ok(r) => r,
                     Err(e) => { status.lock().await.last_error = Some(e); continue; }
                 };
@@ -175,12 +181,17 @@ fn parse_hello(v: &serde_json::Value) -> Option<u64> {
 }
 // A dispatched MESSAGE_CREATE (op 0) → the content, IFF it's a non-bot message in
 // the configured channel and non-empty. Anything else → None (ignored).
-fn extract_message(v: &serde_json::Value, channel: &str) -> Option<String> {
+fn extract_message(v: &serde_json::Value, channel: &str, allowed_users: &[String]) -> Option<String> {
     if v.get("op").and_then(|o| o.as_u64()) != Some(0) { return None; }
     if v.get("t").and_then(|t| t.as_str()) != Some("MESSAGE_CREATE") { return None; }
     let d = v.get("d")?;
     if d.pointer("/author/bot").and_then(|b| b.as_bool()).unwrap_or(false) { return None; }
     if d.get("channel_id").and_then(|c| c.as_str()) != Some(channel) { return None; }
+    // Per-user allowlist (O28): when set, only listed author ids may drive the agent.
+    if !allowed_users.is_empty() {
+        let author = d.pointer("/author/id").and_then(|i| i.as_str()).unwrap_or("");
+        if !allowed_users.iter().any(|u| u == author) { return None; }
+    }
     let content = d.get("content").and_then(|c| c.as_str()).unwrap_or("");
     if content.trim().is_empty() { return None; }
     Some(content.to_string())
@@ -232,7 +243,7 @@ mod tests {
     }
     #[test]
     fn bridge_cfg_never_carries_token() {
-        let c = DiscordConfig { token: "secret".into(), channel: "123".into(), cli: "claude".into(), model: None, domain: None, vault: None, routes: vec![] };
+        let c = DiscordConfig { token: "secret".into(), channel: "123".into(), cli: "claude".into(), model: None, domain: None, vault: None, routes: vec![], allowed_users: vec![] };
         assert!(bridge_cfg(&c).token.is_empty());
         assert_eq!(bridge_cfg(&c).chat_id, "123");
     }
@@ -265,19 +276,27 @@ mod tests {
     fn extract_message_accepts_user_msg_in_channel() {
         let v = serde_json::json!({ "op": 0, "t": "MESSAGE_CREATE",
             "d": { "channel_id": "C1", "content": "hello", "author": { "bot": false } } });
-        assert_eq!(extract_message(&v, "C1").as_deref(), Some("hello"));
+        assert_eq!(extract_message(&v, "C1", &[]).as_deref(), Some("hello"));
     }
     #[test]
     fn extract_message_rejects_bots_other_channels_empties_and_nondispatch() {
         let bot = serde_json::json!({ "op": 0, "t": "MESSAGE_CREATE", "d": { "channel_id": "C1", "content": "x", "author": { "bot": true } } });
-        assert_eq!(extract_message(&bot, "C1"), None, "skip bot authors (no self-loop)");
+        assert_eq!(extract_message(&bot, "C1", &[]), None, "skip bot authors (no self-loop)");
         let other = serde_json::json!({ "op": 0, "t": "MESSAGE_CREATE", "d": { "channel_id": "C2", "content": "x" } });
-        assert_eq!(extract_message(&other, "C1"), None, "skip other channels");
+        assert_eq!(extract_message(&other, "C1", &[]), None, "skip other channels");
         let empty = serde_json::json!({ "op": 0, "t": "MESSAGE_CREATE", "d": { "channel_id": "C1", "content": "   " } });
-        assert_eq!(extract_message(&empty, "C1"), None, "skip empty content");
+        assert_eq!(extract_message(&empty, "C1", &[]), None, "skip empty content");
         let heartbeat_ack = serde_json::json!({ "op": 11 });
-        assert_eq!(extract_message(&heartbeat_ack, "C1"), None, "non-dispatch ignored");
+        assert_eq!(extract_message(&heartbeat_ack, "C1", &[]), None, "non-dispatch ignored");
         let typing = serde_json::json!({ "op": 0, "t": "TYPING_START", "d": { "channel_id": "C1" } });
-        assert_eq!(extract_message(&typing, "C1"), None, "non-message dispatch ignored");
+        assert_eq!(extract_message(&typing, "C1", &[]), None, "non-message dispatch ignored");
+    }
+    #[test]
+    fn extract_message_enforces_user_allowlist() {
+        let from = |id: &str| serde_json::json!({ "op": 0, "t": "MESSAGE_CREATE",
+            "d": { "channel_id": "C1", "content": "hi", "author": { "bot": false, "id": id } } });
+        let allow = vec!["U_OWNER".to_string()];
+        assert_eq!(extract_message(&from("U_OWNER"), "C1", &allow).as_deref(), Some("hi"), "listed user allowed");
+        assert_eq!(extract_message(&from("U_STRANGER"), "C1", &allow), None, "non-listed user rejected");
     }
 }

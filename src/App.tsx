@@ -28,6 +28,7 @@ import { startLoopsScheduler, readLoops, ensureBriefingLoop, ensureModelScoutLoo
 import { startAppsScheduler } from "./appspanel";
 import { startOmegaScheduler } from "./omega";
 import { OnboardingTour } from "./onboarding";
+import { VaultEncryptPrompt, vaultEncryptOffered } from "./vault-encrypt-prompt";
 import { migrateModelPrefs } from "./helpers2";
 import { AppHeaderBar, DomainActionsMenu, LockScreen, QuickSwitcher, ThreadsRail, WebLogin } from "./panels";
 
@@ -193,6 +194,10 @@ export default function App() {
   const [lockSet, setLockSet] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [vaultEncrypted, setVaultEncrypted] = useState(false);
+  // Has the engine_vault_status check completed? Gates the first-run encrypt
+  // prompt so it never flashes before we know whether the vault is encrypted.
+  const [vaultStatusChecked, setVaultStatusChecked] = useState(false);
+  const [encryptPromptClosed, setEncryptPromptClosed] = useState(false);
   useEffect(() => {
     if (isBrowser()) return;
     (async () => {
@@ -216,7 +221,7 @@ export default function App() {
         const s = await invoke<{ encrypted: boolean; unlocked: boolean }>("engine_vault_status", { vault: vaultPath });
         setVaultEncrypted(!!s.encrypted);
         if (s.unlocked) setUnlocked(true);
-      } catch { /* engine not ready */ }
+      } catch { /* engine not ready */ } finally { setVaultStatusChecked(true); }
     })();
   }, [vaultPath]);
   const [domains, setDomains] = useState<Domain[]>([]);
@@ -1244,6 +1249,11 @@ export default function App() {
     <div className="relative flex h-screen flex-col bg-background text-text-primary">
       {/* O1 (Monday feedback): first-run onboarding tour (dismissible, replayable). */}
       <OnboardingTour />
+      {/* C4: first-run encrypt-at-rest prompt (default-ON). Only for a fresh,
+          confirmed-unencrypted vault the user hasn't been offered yet. */}
+      {!isBrowser() && vaultPath && vaultStatusChecked && !vaultEncrypted && !encryptPromptClosed && !vaultEncryptOffered() && (
+        <VaultEncryptPrompt vaultPath={vaultPath} onClose={() => setEncryptPromptClosed(true)} />
+      )}
       {memoryAlert && (
         <div className="fixed left-1/2 top-3 z-[100] flex max-w-xl -translate-x-1/2 items-start gap-2.5 rounded-lg border border-warn/40 bg-warn/10 px-4 py-2.5 shadow-lg backdrop-blur">
           <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-warn" />

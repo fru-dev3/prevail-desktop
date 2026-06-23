@@ -28,17 +28,29 @@ use tauri::Emitter;
 // engine spawn as PREVAIL_VAULT_KEY so the sidecar can read/write the encrypted
 // vault. Lives only in the desktop process memory, never on disk, never sent to
 // the JS layer. None = vault is plaintext / locked.
-static VAULT_KEY: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+// Wrapped in Zeroizing so the DEK's heap buffer is wiped when the slot is
+// replaced/cleared (e.g. on lock), instead of lingering in process memory (O29).
+static VAULT_KEY: std::sync::Mutex<Option<zeroize::Zeroizing<String>>> = std::sync::Mutex::new(None);
 // The encrypted vault's root path — injected as PREVAIL_VAULT_ROOT so the engine
 // only encrypts/decrypts files UNDER the vault (never an external path a skill
 // might write to).
 static VAULT_ROOT: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
+// Serializes the tests that mutate the process-global VAULT_KEY/VAULT_ROOT so
+// they can't race each other under parallel `cargo test`.
+#[cfg(test)]
+pub(crate) static KEY_STATE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub fn set_vault_key(k: Option<String>) {
-    *VAULT_KEY.lock().unwrap_or_else(|e| e.into_inner()) = k;
+    // Replacing the slot drops (and thus zeroes) any prior Zeroizing<String>.
+    *VAULT_KEY.lock().unwrap_or_else(|e| e.into_inner()) = k.map(zeroize::Zeroizing::new);
 }
 fn vault_key() -> Option<String> {
-    VAULT_KEY.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    VAULT_KEY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .map(|z| z.to_string())
 }
 pub fn set_vault_root(r: Option<String>) {
     *VAULT_ROOT.lock().unwrap_or_else(|e| e.into_inner()) = r;
@@ -1406,6 +1418,13 @@ pub(crate) fn provider_env_pairs() -> Vec<(String, String)> {
 /// run scheduled syncs) the same way provider_env_pairs() is.
 pub(crate) fn gateway_env_pairs() -> Vec<(&'static str, String)> {
     let mut out = Vec::new();
+    // Bunker / local-only mode must not hand cloud-gateway secrets to any
+    // subprocess — injecting them unconditionally leaks Composio/Nango keys
+    // while the user believes the app is offline. Gated here so all five spawn
+    // sites are covered at once. (Critical: audit B4 / O14.)
+    if crate::bunker::bunker_enabled() {
+        return out;
+    }
     if let Ok(key) = crate::ingestion::keychain::get("prevail.ingestion", "composio") {
         if !key.is_empty() {
             out.push(("COMPOSIO_API_KEY", key));
@@ -2315,6 +2334,7 @@ mod vault_key_state_tests {
 
     #[test]
     fn vault_crypto_round_trip_and_passthrough() {
+        let _g = KEY_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("prevail-enc-rt-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -2341,6 +2361,7 @@ mod vault_key_state_tests {
     // unlocked encrypted-vault session.
     #[test]
     fn vault_key_and_root_round_trip() {
+        let _g = KEY_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_vault_key(Some("dGVzdC1rZXk=".into()));
         set_vault_root(Some("/Users/x/vault".into()));
         assert_eq!(vault_key().as_deref(), Some("dGVzdC1rZXk="));
