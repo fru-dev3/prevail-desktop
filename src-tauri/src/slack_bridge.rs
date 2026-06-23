@@ -33,6 +33,10 @@ pub struct SlackConfig {
     pub vault: Option<String>,
     #[serde(default)]
     pub routes: Vec<RouteRule>,
+    // Optional per-user allowlist (Slack user ids). When non-empty, only these
+    // users can drive the agent (O28). Empty = channel-scoping (non-breaking).
+    #[serde(default)]
+    pub allowed_users: Vec<String>,
 }
 
 #[derive(Default)]
@@ -97,12 +101,17 @@ fn bridge_cfg(cfg: &SlackConfig) -> BridgeConfig {
 // text IFF it's an events_api message event, not bot-authored / not an edit, in
 // the configured channel, and non-empty. Everything else (hello, disconnect,
 // other event types) → None.
-fn extract_text(v: &serde_json::Value, channel: &str) -> Option<String> {
+fn extract_text(v: &serde_json::Value, channel: &str, allowed_users: &[String]) -> Option<String> {
     if v.get("type").and_then(|t| t.as_str()) != Some("events_api") { return None; }
     let event = v.pointer("/payload/event")?;
     if event.get("type").and_then(|t| t.as_str()) != Some("message") { return None; }
     if event.get("bot_id").is_some() || event.get("subtype").is_some() { return None; }
     if event.get("channel").and_then(|c| c.as_str()) != Some(channel) { return None; }
+    // Per-user allowlist (O28): when set, only listed user ids may drive the agent.
+    if !allowed_users.is_empty() {
+        let user = event.get("user").and_then(|u| u.as_str()).unwrap_or("");
+        if !allowed_users.iter().any(|u| u == user) { return None; }
+    }
     let text = event.get("text").and_then(|t| t.as_str()).unwrap_or("");
     if text.trim().is_empty() { return None; }
     Some(text.to_string())
@@ -142,7 +151,7 @@ async fn run_socket(cfg: SlackConfig, mut stop_rx: watch::Receiver<bool>, status
                     let _ = write.send(WsMessage::Text(serde_json::json!({ "envelope_id": env }).to_string())).await;
                 }
                 // Decision logic is extracted + unit-tested (extract_text).
-                let text = match extract_text(&v, &cfg.channel) { Some(t) => t, None => continue };
+                let text = match extract_text(&v, &cfg.channel, &cfg.allowed_users) { Some(t) => t, None => continue };
 
                 { let mut s = status.lock().await; s.inbound_count += 1; s.last_inbound_ts = Some(now_secs()); }
                 let bcfg = bridge_cfg(&cfg);
@@ -210,7 +219,7 @@ mod tests {
     use super::*;
     #[test]
     fn bridge_cfg_drops_tokens() {
-        let c = SlackConfig { app_token: "xapp".into(), bot_token: "xoxb".into(), channel: "C1".into(), cli: "claude".into(), model: None, domain: Some("career".into()), vault: None, routes: vec![] };
+        let c = SlackConfig { app_token: "xapp".into(), bot_token: "xoxb".into(), channel: "C1".into(), cli: "claude".into(), model: None, domain: Some("career".into()), vault: None, routes: vec![], allowed_users: vec![] };
         let b = bridge_cfg(&c);
         assert!(b.token.is_empty());
         assert_eq!(b.chat_id, "C1");
@@ -240,19 +249,27 @@ mod tests {
     fn extract_text_accepts_user_message_in_channel() {
         let v = serde_json::json!({ "type": "events_api", "envelope_id": "e1",
             "payload": { "event": { "type": "message", "channel": "C1", "text": "hi council" } } });
-        assert_eq!(extract_text(&v, "C1").as_deref(), Some("hi council"));
+        assert_eq!(extract_text(&v, "C1", &[]).as_deref(), Some("hi council"));
+    }
+    #[test]
+    fn extract_text_enforces_user_allowlist() {
+        let from = |u: &str| serde_json::json!({ "type": "events_api",
+            "payload": { "event": { "type": "message", "channel": "C1", "text": "hi", "user": u } } });
+        let allow = vec!["U_OWNER".to_string()];
+        assert_eq!(extract_text(&from("U_OWNER"), "C1", &allow).as_deref(), Some("hi"), "listed user allowed");
+        assert_eq!(extract_text(&from("U_STRANGER"), "C1", &allow), None, "non-listed user rejected");
     }
     #[test]
     fn extract_text_rejects_bots_edits_other_channels_and_nonmessages() {
         let bot = serde_json::json!({ "type": "events_api", "payload": { "event": { "type": "message", "channel": "C1", "text": "x", "bot_id": "B1" } } });
-        assert_eq!(extract_text(&bot, "C1"), None, "skip bot_id (no self-loop)");
+        assert_eq!(extract_text(&bot, "C1", &[]), None, "skip bot_id (no self-loop)");
         let edit = serde_json::json!({ "type": "events_api", "payload": { "event": { "type": "message", "channel": "C1", "text": "x", "subtype": "message_changed" } } });
-        assert_eq!(extract_text(&edit, "C1"), None, "skip edits/subtypes");
+        assert_eq!(extract_text(&edit, "C1", &[]), None, "skip edits/subtypes");
         let other = serde_json::json!({ "type": "events_api", "payload": { "event": { "type": "message", "channel": "C2", "text": "x" } } });
-        assert_eq!(extract_text(&other, "C1"), None, "skip other channels");
+        assert_eq!(extract_text(&other, "C1", &[]), None, "skip other channels");
         let hello = serde_json::json!({ "type": "hello" });
-        assert_eq!(extract_text(&hello, "C1"), None, "hello frame ignored");
+        assert_eq!(extract_text(&hello, "C1", &[]), None, "hello frame ignored");
         let reaction = serde_json::json!({ "type": "events_api", "payload": { "event": { "type": "reaction_added", "channel": "C1" } } });
-        assert_eq!(extract_text(&reaction, "C1"), None, "non-message events ignored");
+        assert_eq!(extract_text(&reaction, "C1", &[]), None, "non-message events ignored");
     }
 }
