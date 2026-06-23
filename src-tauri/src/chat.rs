@@ -26,6 +26,10 @@ pub struct ChatArgs {
     // code so the UI can show a "timed out" reply rather than a hang.
     #[serde(default)]
     pub timeout_sec: Option<u64>,
+    // Per-turn web access (the chat "Web access" Modes toggle). Some(false) =>
+    // hard-block web for this turn. None => unconstrained (back-compat).
+    #[serde(default)]
+    pub web: Option<bool>,
 }
 
 /// Materialize ~/.prevail/agent-mcp.json (the Composio HTTP MCP server with the
@@ -74,7 +78,7 @@ fn vault_lock_preamble() -> String {
      If a request would require touching files outside the vault, REFUSE and state that Vault Lock is enabled (turn it off in Settings to allow full-machine access).\n\n---\n\n".to_string()
 }
 
-fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String>) {
+fn cli_args(cli: &str, prompt: &str, model: Option<&str>, web_denied: bool) -> (String, Vec<String>) {
     // Match the prevail CLI's dispatch table. -p / --prompt for one-shot
     // non-interactive mode. When `model` is supplied, inject the right
     // flag for each vendor (ollama uses a positional arg, the rest use
@@ -90,12 +94,21 @@ fn cli_args(cli: &str, prompt: &str, model: Option<&str>) -> (String, Vec<String
     match cli {
         "claude" => {
             let mut v = vec!["--dangerously-skip-permissions".to_string()];
+            // Tools removed from the model's context. --disallowedTools wins over
+            // --dangerously-skip-permissions, so these stay genuinely unavailable.
+            let mut disallowed: Vec<String> = Vec::new();
             if locked {
                 if let Some(ref vp) = vault { v.push("--add-dir".to_string()); v.push(vp.clone()); }
                 // Remove the shell escape hatch so the agent can't du/find the
                 // whole filesystem; vault file ops still work via Read/Glob/Grep.
+                disallowed.push("Bash".to_string());
+            }
+            // Web lockdown: WebSearch/WebFetch are the only built-ins that make
+            // outbound requests; removing them hard-blocks web for this turn.
+            if web_denied { disallowed.push("WebSearch".to_string()); disallowed.push("WebFetch".to_string()); }
+            if !disallowed.is_empty() {
                 v.push("--disallowedTools".to_string());
-                v.push("Bash".to_string());
+                v.extend(disallowed);
             }
             if let Some(m) = model {
                 v.push("--model".to_string());
@@ -348,7 +361,19 @@ pub(crate) async fn chat_send(
     let switched = cli_id != args.cli;
     let model = if switched { None } else { args.model.as_deref() };
 
-    let (bin_name, cli_args) = cli_args(&cli_id, &args.prompt, model);
+    // Web lockdown (General / no-domain chat). We can only GUARANTEE web is off
+    // for Claude (WebSearch/WebFetch removed via --disallowedTools) and local
+    // engines (ollama). Other providers keep web tools we can't switch off here,
+    // so refuse rather than risk a silent outbound call. Mirrors the engine's
+    // cli-bridge gate so both chat paths behave identically.
+    let web_denied = args.web == Some(false);
+    if web_denied && !(cli_id == "claude" || cli_id == "ollama") {
+        return Err(format!(
+            "Web access is OFF, and it can't be guaranteed off for the \"{cli_id}\" engine. Switch to Claude or a local model, or turn Web access back on."
+        ));
+    }
+
+    let (bin_name, cli_args) = cli_args(&cli_id, &args.prompt, model, web_denied);
     let bin_abs = resolve_bin_abs(&bin_name);
 
     let (combined_path, user, logname) = build_cli_env();
@@ -492,7 +517,7 @@ pub(crate) async fn verify_cli_model(args: VerifyArgs) -> Result<String, String>
     use tokio::process::Command as TokioCommand;
     use tokio::time::{timeout, Duration};
 
-    let (bin_name, cli_args) = cli_args(&args.cli, "respond with just: OK", args.model.as_deref());
+    let (bin_name, cli_args) = cli_args(&args.cli, "respond with just: OK", args.model.as_deref(), false);
     let bin_abs = resolve_bin_abs(&bin_name);
     let (combined_path, user, logname) = build_cli_env();
 
@@ -555,7 +580,7 @@ pub(crate) async fn model_oneshot(args: OneshotArgs) -> Result<String, String> {
     use tokio::process::Command as TokioCommand;
     use tokio::time::{timeout, Duration};
 
-    let (bin_name, cli_args) = cli_args(&args.cli, &args.prompt, args.model.as_deref());
+    let (bin_name, cli_args) = cli_args(&args.cli, &args.prompt, args.model.as_deref(), false);
     let bin_abs = resolve_bin_abs(&bin_name);
     let (combined_path, user, logname) = build_cli_env();
 

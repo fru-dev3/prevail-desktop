@@ -989,15 +989,20 @@ pub async fn composio_cli_login(_app: tauri::AppHandle) -> Result<serde_json::Va
 /// becomes a real connectable App. Returns { ok, path?, error? }.
 #[tauri::command]
 pub fn engine_app_add(
+    vault: String,
     id: String,
     title: String,
     integration: String,
     domains: Vec<String>,
 ) -> Result<serde_json::Value, String> {
     let doms = domains.join(",");
+    // Pass --vault explicitly: `connectors add` resolves the vault from this
+    // flag first, so the scaffold lands in the real vault even if the engine's
+    // PREVAIL_VAULT_ROOT env wasn't set for this call (which otherwise made it
+    // fall back to a bogus default path and fail with EROFS).
     run_engine_json(&[
         "connectors", "add", "--id", &id, "--title", &title,
-        "--integration", &integration, "--domains", &doms, "--json",
+        "--integration", &integration, "--domains", &doms, "--vault", &vault, "--json",
     ])
 }
 
@@ -2245,6 +2250,10 @@ pub async fn engine_chat(
     cli: Option<String>,
     model: Option<String>,
     #[allow(non_snake_case)] localOnly: Option<bool>,
+    // Per-turn web access (the chat "Web access" Modes toggle). Some(false) =>
+    // the engine hard-blocks web for this turn (--web deny). None => the engine
+    // falls back to its own global setting.
+    web: Option<bool>,
 ) -> Result<(), String> {
     // Build the arg vector. `--vault V` goes BEFORE the subcommand,
     // matching every other engine command here.
@@ -2287,6 +2296,14 @@ pub async fn engine_chat(
     }
     if bunker || localOnly.unwrap_or(false) {
         args.push("--local-only".to_string());
+    }
+    // Forward the per-turn web-access decision so the engine can hard-block web
+    // (remove Claude's WebSearch/WebFetch, refuse providers it can't gate). Only
+    // sent when the caller is explicit; absent => engine uses its global setting.
+    match web {
+        Some(true) => { args.push("--web".to_string()); args.push("allow".to_string()); }
+        Some(false) => { args.push("--web".to_string()); args.push("deny".to_string()); }
+        None => {}
     }
 
     run_engine_stream_stdin(app, session, args, message, "engine-chat", extra_env).await
