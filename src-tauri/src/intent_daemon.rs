@@ -61,7 +61,7 @@ fn legacy_cursor_path(vault: &str) -> PathBuf {
     crate::paths::build_root(vault).join("_meta").join("intents_distill_cursor.json")
 }
 fn read_checkpoint(vault: &str) -> DistillCheckpoint {
-    if let Some(cp) = std::fs::read_to_string(checkpoint_path(vault))
+    if let Some(cp) = crate::read_to_string_retry(checkpoint_path(vault))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
     {
@@ -70,7 +70,7 @@ fn read_checkpoint(vault: &str) -> DistillCheckpoint {
     // Migrate the old {last_count,last_run_ts} cursor (streams default to empty,
     // so already-captured prompts count as "new" once, a harmless one-time
     // re-distill that folds the capture streams in).
-    std::fs::read_to_string(legacy_cursor_path(vault))
+    crate::read_to_string_retry(legacy_cursor_path(vault))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or_default()
@@ -81,7 +81,7 @@ fn write_checkpoint(vault: &str, c: &DistillCheckpoint) {
         let _ = std::fs::create_dir_all(dir);
     }
     if let Ok(body) = serde_json::to_string(c) {
-        let _ = std::fs::write(&p, body);
+        let _ = crate::vaultio::write_atomic(&p, &body);
     }
 }
 fn now_secs() -> u64 {

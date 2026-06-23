@@ -39,7 +39,6 @@ pub struct ChatArgs {
 /// Composio configured is byte-for-byte unchanged. Mirrors the CLI engine's
 /// agent-mcp.ts contract exactly.
 fn composio_agent_mcp_config() -> Option<String> {
-    use std::os::unix::fs::PermissionsExt;
     let key = crate::ingestion::keychain::get("prevail.ingestion", "composio").ok()?;
     let key = key.trim();
     if key.is_empty() {
@@ -63,7 +62,13 @@ fn composio_agent_mcp_config() -> Option<String> {
     });
     let body = serde_json::to_string_pretty(&cfg).ok()?;
     std::fs::write(&path, &body).ok()?;
-    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    // 0600 is a Unix concept; on Windows this is a no-op (NTFS ACLs differ).
+    // Mirrors the guarded pattern in ingestion/storage.rs so the Windows build compiles.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
     Some(path.to_string_lossy().to_string())
 }
 

@@ -60,6 +60,9 @@ const UI_PREFS_EXCLUDE_PREFIX = [
   "prevail.desktop.vaultPath", "prevail.desktop.vaultProduction", "prevail.web.",
   "prevail.about.", "prevail.backup.", "prevail.bench.schedule.", "prevail.desktop.theme",
   "prevail.desktop.palette",
+  // Credentials must never replicate off-device through the synced prefs blob
+  // (O13): the WebUI login is a remote control-plane password.
+  "prevail.pref.webuiPass", "prevail.pref.webuiUser",
 ];
 export function isSyncablePrefKey(k: string): boolean {
   if (!k.startsWith("prevail.")) return false;

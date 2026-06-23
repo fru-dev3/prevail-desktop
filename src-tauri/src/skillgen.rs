@@ -133,7 +133,7 @@ fn cursor_path(domain_dir: &Path) -> PathBuf {
 }
 
 fn read_cursor(domain_dir: &Path) -> Cursor {
-    std::fs::read_to_string(cursor_path(domain_dir))
+    crate::read_to_string_retry(cursor_path(domain_dir))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default()
@@ -141,7 +141,7 @@ fn read_cursor(domain_dir: &Path) -> Cursor {
 
 fn write_cursor(domain_dir: &Path, c: &Cursor) {
     if let Ok(j) = serde_json::to_string_pretty(c) {
-        let _ = std::fs::write(cursor_path(domain_dir), j);
+        let _ = crate::vaultio::write_atomic(&cursor_path(domain_dir), &j);
     }
 }
 
@@ -153,7 +153,7 @@ async fn run_once_inner(cfg: &SkillGenConfig, force: bool) -> Result<(u64, u64),
         return Err(format!("vault not found: {}", cfg.vault));
     }
 
-    let soul = std::fs::read_to_string(vault.join("soul.md")).unwrap_or_default();
+    let soul = crate::read_to_string_retry(vault.join("soul.md")).unwrap_or_default();
 
     let today_ts = now_secs();
     const ONE_DAY: u64 = 86400;
@@ -206,8 +206,8 @@ async fn generate_for_domain(
     domain_dir: &Path,
     soul: &str,
 ) -> Result<u64, String> {
-    let memory = std::fs::read_to_string(domain_dir.join("_memory.md")).unwrap_or_default();
-    let state_md = std::fs::read_to_string(domain_dir.join("_state.md")).unwrap_or_default();
+    let memory = crate::read_to_string_retry(domain_dir.join("_memory.md")).unwrap_or_default();
+    let state_md = crate::read_to_string_retry(domain_dir.join("_state.md")).unwrap_or_default();
     let activity = recent_activity(domain_dir, 40);
 
     // Need *some* lived signal — a conversation history or distilled context —
@@ -258,7 +258,7 @@ async fn generate_for_domain(
             title = d.title,
             body = d.body.trim(),
         );
-        if std::fs::write(dir.join("SKILL.md"), content).is_ok() {
+        if crate::vaultio::write_atomic(&dir.join("SKILL.md"), &content).is_ok() {
             created += 1;
         }
     }
@@ -270,7 +270,7 @@ async fn generate_for_domain(
 // mirroring distill::render_activity so the model sees real dialogue.
 fn recent_activity(domain_dir: &Path, max_records: usize) -> String {
     let ledger = domain_dir.join("_intents.jsonl");
-    let Ok(raw) = std::fs::read_to_string(&ledger) else {
+    let Ok(raw) = crate::read_to_string_retry(&ledger) else {
         return String::new();
     };
     let lines: Vec<&str> = raw.lines().filter(|l| !l.trim().is_empty()).collect();

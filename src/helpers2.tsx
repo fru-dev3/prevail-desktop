@@ -134,7 +134,8 @@ export function buildOmegaPreamble(omegaMd: string): string {
 }
 
 export function maybeRedact(s: string): string {
-  if (lsGet("prevail.pref.redactSecrets") !== "1") return s;
+  // Default ON (O58): redact unless the user explicitly turned it off ("0").
+  if (lsGet("prevail.pref.redactSecrets") === "0") return s;
   return s
     .replace(/\b(?:sk|pk|rk|ghp|gho|ghs|xoxb|xoxp|AKIA)[-_A-Za-z0-9]{12,}/g, "***REDACTED***")
     .replace(/\bBearer\s+[A-Za-z0-9._-]{12,}/gi, "Bearer ***REDACTED***")
