@@ -63,14 +63,17 @@ struct Inner {
 }
 
 // Constant-time comparison so the secret can't be probed via response timing.
+// Folds the length difference into the accumulator and iterates over the longer
+// input (zero-padding the shorter), so it never early-returns on a length
+// mismatch (O42).
 fn ct_eq(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for i in 0..a.len() {
-        diff |= a[i] ^ b[i];
+    let mut diff: u32 = (a.len() ^ b.len()) as u32; // nonzero if the lengths differ
+    let n = a.len().max(b.len());
+    for i in 0..n {
+        let x = *a.get(i).unwrap_or(&0);
+        let y = *b.get(i).unwrap_or(&0);
+        diff |= (x ^ y) as u32;
     }
     diff == 0
 }
