@@ -301,7 +301,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       const integration = hintToIntegration(c.connection_hint?.method || c.via);
       const domains = c.domain ? [c.domain] : [];
       try {
-        await invoke("engine_app_add", { id, title: c.name, integration, domains });
+        await invoke("engine_app_add", { vault: vaultPath, id, title: c.name, integration, domains });
       } catch (e) {
         // Already installed: just open it. Anything else is a real failure.
         if (!/already exists/i.test(String(e))) throw e;
@@ -314,26 +314,18 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     } finally {
       setCatalogConnecting(false);
     }
-  }, [reload]);
+  }, [reload, vaultPath]);
 
   // Direct mode shows ONLY directly-connected apps. Gateway apps (Composio /
   // Nango) live in their own modes and must never leak into the Direct list -
   // so everything the Direct branch renders (list, "my list", counts, detail)
   // is derived from this gateway-free slice, not the raw `apps`.
-  // Google lists like any other app (alphabetically / grouped, favoritable),
-  // NOT a pinned-top special. Until it's scaffolded to disk (on favorite or
-  // "Connect for the agent"), inject a synthetic entry so it still appears in
-  // the list; its detail is the multi-profile panel (selected === "google").
-  const directApps = useMemo(() => {
-    const real = (apps ?? []).filter((a) => !a.gateway);
-    if (real.some((a) => a.id === "google")) return real;
-    const google: EngineApp = {
-      id: "google", title: "Google", integration: "cli", status: "disconnected",
-      configured: false, domains: [], lastSuccessTs: null, lastError: null,
-      account: null, refresh: null, community: false,
-    };
-    return [...real, google];
-  }, [apps]);
+  // Google is NOT special here: until it's scaffolded to disk it lives in the
+  // catalog ("Available to add") like every other connector - it's the single
+  // unified `gws` entry (see catalog.json). Selecting it opens the multi-profile
+  // panel, and scaffolding (on favorite or "Connect for the agent") turns it
+  // into a real vault app that then shows in this list like any installed app.
+  const directApps = useMemo(() => (apps ?? []).filter((a) => !a.gateway), [apps]);
   // Filter by the search box (name or method), then group into Connected vs
   // Setup (authorizing / connecting / needs attention) vs Not connected so the
   // left list reads top-to-bottom like Claude Desktop / ChatGPT connectors.
@@ -406,10 +398,27 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   const favs = useFavorites();
   // Favorite an app; for Google, scaffold it to disk first so pinning it puts a
   // real app on the home screen (the sidebar lists vault apps).
-  const favApp = useCallback(async (a: EngineApp) => {
+  const favApp = useCallback(async (a: { id: string; title?: string | null }) => {
     const key = favKeyOf(a.title || a.id);
     if (a.id === "google" && !favs.has(key) && !favs.has(favKeyOf("google"))) {
       await invoke("google_scaffold", { vault: vaultPath }).catch(() => {});
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+    }
+    toggleFavorite(key);
+  }, [favs, vaultPath]);
+  // Favorite a CATALOG app (one not yet installed). Pinning means "put it on the
+  // home screen", and the home sidebar lists VAULT apps - so scaffold it to disk
+  // first (same as Google / gateway apps), then favorite it. Without this, the
+  // star only writes a localStorage key the home widget can never resolve to an
+  // app, so pinned catalog apps silently never appear there.
+  const favCatalogApp = useCallback(async (c: CatalogApp) => {
+    const key = favKeyOf(c.name);
+    if (!favs.has(key)) {
+      const id = (c.iconSlug || c.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+      const integration = hintToIntegration(c.connection_hint?.method || c.via);
+      const domains = c.domain ? [c.domain] : [];
+      try { await invoke("engine_app_add", { vault: vaultPath, id, title: c.name, integration, domains }); }
+      catch (e) { if (!/already exists/i.test(String(e))) console.error("scaffold on pin", e); }
       window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
     }
     toggleFavorite(key);
@@ -666,17 +675,25 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                   {catalogView.shown.length > 0 && (
                     <section className="space-y-1">
                       <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Available to add · {catalogView.total}</div>
-                      {catalogView.shown.map((c) => (
+                      {catalogView.shown.map((c) => {
+                        // Google is a catalog entry like any other, but its detail
+                        // is the multi-profile workspace panel (selected==="google")
+                        // and favoriting it scaffolds the real vault app first.
+                        const isGoogle = c.iconSlug === "google" || c.name === "Google";
+                        return (
                         <CatalogRow
                           key={c.iconSlug || c.name}
                           app={c}
                           logos={logos}
-                          active={catalogPick?.name === c.name}
-                          onSelect={() => { setCatalogPick(c); setConnecting(false); }}
+                          active={isGoogle ? selected === "google" && !catalogPick : catalogPick?.name === c.name}
+                          onSelect={isGoogle
+                            ? () => { setSelected("google"); setCatalogPick(null); setConnecting(false); }
+                            : () => { setCatalogPick(c); setConnecting(false); }}
                           isFav={favs.has(favKeyOf(c.name))}
-                          onToggleFav={() => toggleFavorite(favKeyOf(c.name))}
+                          onToggleFav={isGoogle ? () => void favApp({ id: "google", title: "Google" }) : () => void favCatalogApp(c)}
                         />
-                      ))}
+                        );
+                      })}
                       {!catalogView.searching && catalogView.total > catalogView.shown.length && (
                         <div className="px-1 pt-0.5 text-[10px] text-text-muted/70">
                           showing {catalogView.shown.length} of {catalogView.total} - search to find more

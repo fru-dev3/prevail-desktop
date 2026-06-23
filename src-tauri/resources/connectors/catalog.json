@@ -443,27 +443,6 @@
       "curated": true
     },
     {
-      "name": "Google Calendar",
-      "domain": "calendar",
-      "pattern": "oauth",
-      "sources": [
-        "chatgpt",
-        "claude",
-        "gemini"
-      ],
-      "verified": true,
-      "tier": 1,
-      "iconSlug": "googlecalendar",
-      "obscure": false,
-      "curated": true,
-      "connection_hint": {
-        "method": "mcp",
-        "server": "taylorwilsdon/google_workspace_mcp",
-        "privacy": "local",
-        "readOnly": true
-      }
-    },
-    {
       "name": "Microsoft Outlook Calendar",
       "domain": "calendar",
       "pattern": "api",
@@ -1912,30 +1891,6 @@
       "verified": true,
       "tier": 2,
       "obscure": true
-    },
-    {
-      "name": "Google Chat",
-      "domain": "communication",
-      "pattern": "oauth",
-      "sources": [
-        "gemini"
-      ],
-      "verified": true,
-      "tier": 2,
-      "iconSlug": "googlechat"
-    },
-    {
-      "name": "Google Meet",
-      "domain": "communication",
-      "pattern": "oauth",
-      "sources": [
-        "gemini"
-      ],
-      "verified": true,
-      "tier": 1,
-      "iconSlug": "googlemeet",
-      "obscure": false,
-      "curated": true
     },
     {
       "name": "Klaxoon",
@@ -3615,6 +3570,35 @@
       ],
       "verified": true,
       "tier": 2
+    },
+    {
+      "name": "Google",
+      "domain": "productivity",
+      "pattern": "cli",
+      "sources": [
+        "chatgpt",
+        "claude",
+        "gemini"
+      ],
+      "verified": true,
+      "tier": 1,
+      "note": "gws",
+      "iconSlug": "google",
+      "tags": [
+        "email",
+        "calendar",
+        "files",
+        "productivity",
+        "communication"
+      ],
+      "obscure": false,
+      "curated": true,
+      "connection_hint": {
+        "method": "cli",
+        "server": "googleworkspace/cli",
+        "privacy": "local",
+        "note": "One connection for the whole Google Workspace - Gmail, Calendar, Drive, Docs, Sheets, Slides, Tasks, Contacts, Chat, Meet, Keep - across multiple profiles, via the gws CLI."
+      }
     },
     {
       "name": "Google Business Profile",
@@ -5865,32 +5849,6 @@
       "curated": true
     },
     {
-      "name": "Gmail",
-      "domain": "email",
-      "pattern": "oauth",
-      "sources": [
-        "chatgpt",
-        "claude",
-        "gemini"
-      ],
-      "verified": true,
-      "tier": 1,
-      "iconSlug": "gmail",
-      "tags": [
-        "communication",
-        "productivity"
-      ],
-      "obscure": false,
-      "curated": true,
-      "connection_hint": {
-        "method": "mcp",
-        "server": "taylorwilsdon/google_workspace_mcp",
-        "privacy": "local",
-        "readOnly": true,
-        "note": "Local stdio, gmail.readonly scope."
-      }
-    },
-    {
       "name": "iCloud Mail",
       "domain": "email",
       "pattern": "browser",
@@ -6432,49 +6390,6 @@
       "obscure": true
     },
     {
-      "name": "Google Docs",
-      "domain": "files",
-      "pattern": "oauth",
-      "sources": [
-        "gemini"
-      ],
-      "verified": true,
-      "tier": 1,
-      "iconSlug": "googledocs",
-      "obscure": false,
-      "curated": true,
-      "connection_hint": {
-        "method": "mcp",
-        "server": "taylorwilsdon/google_workspace_mcp",
-        "privacy": "local",
-        "readOnly": true
-      }
-    },
-    {
-      "name": "Google Drive",
-      "domain": "files",
-      "pattern": "oauth",
-      "sources": [
-        "chatgpt",
-        "claude",
-        "gemini"
-      ],
-      "verified": true,
-      "tier": 1,
-      "iconSlug": "googledrive",
-      "tags": [
-        "productivity"
-      ],
-      "obscure": false,
-      "curated": true,
-      "connection_hint": {
-        "method": "mcp",
-        "server": "taylorwilsdon/google_workspace_mcp",
-        "privacy": "local",
-        "readOnly": true
-      }
-    },
-    {
       "name": "Google Photos",
       "domain": "files",
       "pattern": "oauth",
@@ -6487,25 +6402,6 @@
       "tags": [
         "media"
       ],
-      "obscure": false,
-      "curated": true,
-      "connection_hint": {
-        "method": "mcp",
-        "server": "taylorwilsdon/google_workspace_mcp",
-        "privacy": "local",
-        "readOnly": true
-      }
-    },
-    {
-      "name": "Google Sheets",
-      "domain": "files",
-      "pattern": "oauth",
-      "sources": [
-        "gemini"
-      ],
-      "verified": true,
-      "tier": 1,
-      "iconSlug": "googlesheets",
       "obscure": false,
       "curated": true,
       "connection_hint": {
@@ -11823,63 +11719,6 @@
       "tier": 2
     },
     {
-      "name": "Google Contacts",
-      "domain": "productivity",
-      "pattern": "oauth",
-      "sources": [
-        "chatgpt",
-        "gemini"
-      ],
-      "verified": true,
-      "tier": 1,
-      "iconSlug": "google",
-      "obscure": false,
-      "curated": true,
-      "connection_hint": {
-        "method": "mcp",
-        "server": "taylorwilsdon/google_workspace_mcp",
-        "privacy": "local",
-        "readOnly": true
-      }
-    },
-    {
-      "name": "Google Keep",
-      "domain": "productivity",
-      "pattern": "oauth",
-      "sources": [
-        "gemini"
-      ],
-      "verified": true,
-      "tier": 1,
-      "iconSlug": "googlekeep",
-      "obscure": false,
-      "curated": true
-    },
-    {
-      "name": "Google Slides",
-      "domain": "productivity",
-      "pattern": "oauth",
-      "sources": [
-        "gemini"
-      ],
-      "verified": true,
-      "tier": 2,
-      "iconSlug": "googleslides"
-    },
-    {
-      "name": "Google Tasks",
-      "domain": "productivity",
-      "pattern": "oauth",
-      "sources": [
-        "gemini"
-      ],
-      "verified": true,
-      "tier": 1,
-      "iconSlug": "googletasks",
-      "obscure": false,
-      "curated": true
-    },
-    {
       "name": "Granola",
       "domain": "productivity",
       "pattern": "api",
@@ -16688,5 +16527,5 @@
       }
     }
   ],
-  "curatedCount": 195
+  "curatedCount": 187
 }
