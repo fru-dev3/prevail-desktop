@@ -172,13 +172,31 @@ pub(crate) fn create_domain(vault: String, name: String) -> Result<Domain, Strin
     })
 }
 
-// Open a path in the OS default file manager (Finder on macOS).
+// Open/reveal a path in the OS default file manager (Finder on macOS).
 #[tauri::command]
 pub(crate) async fn open_in_finder(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    // Harden against a frontend bug/injection turning this into "launch an
+    // arbitrary app": resolve the real path, refuse executable bundles, and for
+    // files use `-R` (reveal in Finder) rather than `open` (which would run an
+    // .app/.command). Directories are safe to open directly. (O36)
+    let canon = std::fs::canonicalize(&path).map_err(|e| format!("no such path: {e}"))?;
+    let lower = canon.to_string_lossy().to_lowercase();
+    if [".app", ".command", ".workflow", ".scpt", ".applescript", ".term"]
+        .iter()
+        .any(|ext| lower.ends_with(ext))
+    {
+        return Err("refusing to open an application/script bundle".into());
+    }
+    let target = canon.to_string_lossy().to_string();
     let bin = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    let args: Vec<String> = if cfg!(target_os = "macos") && canon.is_file() {
+        vec!["-R".into(), target] // reveal the file, never execute it
+    } else {
+        vec![target]
+    };
     app.shell()
         .command(bin)
-        .args([&path])
+        .args(args)
         .output()
         .await
         .map_err(|e| format!("open failed: {e}"))?;
