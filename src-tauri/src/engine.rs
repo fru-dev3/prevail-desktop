@@ -1406,6 +1406,13 @@ pub(crate) fn provider_env_pairs() -> Vec<(String, String)> {
 /// run scheduled syncs) the same way provider_env_pairs() is.
 pub(crate) fn gateway_env_pairs() -> Vec<(&'static str, String)> {
     let mut out = Vec::new();
+    // Bunker / local-only mode must not hand cloud-gateway secrets to any
+    // subprocess — injecting them unconditionally leaks Composio/Nango keys
+    // while the user believes the app is offline. Gated here so all five spawn
+    // sites are covered at once. (Critical: audit B4 / O14.)
+    if crate::bunker::bunker_enabled() {
+        return out;
+    }
     if let Ok(key) = crate::ingestion::keychain::get("prevail.ingestion", "composio") {
         if !key.is_empty() {
             out.push(("COMPOSIO_API_KEY", key));
