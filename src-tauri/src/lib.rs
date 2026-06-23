@@ -37,6 +37,7 @@ pub(crate) use chat::{build_cli_env, ideal_state_preamble, resolve_bin_abs, scru
 pub(crate) use settings::close_to_tray_enabled;
 pub(crate) use appcmds::secs_to_ymdhms;
 mod engine;
+mod vaultio;
 mod loops;
 mod activity;
 mod ingestion;

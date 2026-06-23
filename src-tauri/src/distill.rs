@@ -618,11 +618,9 @@ fn write_cursor(dir: &Path, c: &Cursor) {
     }
 }
 
-// Write via temp + rename so concurrent readers never see a half-written file.
+// Write via the shared crypto-aware, atomic, locked vault writer (C4).
 fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, crate::engine::maybe_encrypt(path, contents))?;
-    std::fs::rename(&tmp, path)
+    crate::vaultio::write_atomic(path, contents)
 }
 
 fn now_secs() -> u64 {
