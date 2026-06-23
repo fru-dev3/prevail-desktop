@@ -3,7 +3,7 @@
 // shared chatviews + domainpanels.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ArrowUpRight, BookOpen, Boxes, Check, FileText, Folder, Ghost, Layers, PanelRightOpen, Paperclip, Plus, Scale, Sparkles } from "lucide-react";
+import { ArrowUpRight, BookOpen, Check, FileText, Folder, Ghost, Layers, PanelRightOpen, Paperclip, Plus, Scale, Sparkles } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
 import { MODELS, isHarnessRuntime } from "./constants";
@@ -16,7 +16,7 @@ import { LS, PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, lsGet,
 import { Markdown } from "./Markdown";
 import { ContextScoreBadge, NewSkillForm, SkillsList } from "./panels";
 import { InsightsPanel, UsageDashboard } from "./panels2";
-import { ContextScorePanel, DomainAppsTab } from "./panels3";
+import { ContextScorePanel, DomainAppsTab, AppRowLogo } from "./panels3";
 import { domainIcon } from "./icons";
 import { useFrameworkLens } from "./hooks";
 import { ProviderMark } from "./marks";
@@ -25,7 +25,7 @@ import { LoopsPanel } from "./loopspanel";
 import { BoardPanel } from "./boardpanel";
 import { AgentPickerRail, ContextCanvas, DomainContextDrawer, DomainPrefsPanel } from "./domainpanels";
 import { HomeBriefing } from "./recommendationspanel";
-import type { ChatEvent, ChatMessage, CliInfo, ContextScore, Domain, DomainContextBundle, DomainTab, EngineApp, LifeReadiness, SkillEntry, ThreadMeta, ThreadTurn } from "./types";
+import type { BrandLogo, ChatEvent, ChatMessage, CliInfo, ContextScore, Domain, DomainContextBundle, DomainTab, EngineApp, LifeReadiness, SkillEntry, ThreadMeta, ThreadTurn } from "./types";
 import type { UnlistenFn } from "./bridge";
 
 // Per-domain cache of the cheap (no-audit) context score. engine_score spawns the
@@ -301,6 +301,21 @@ export function ChatPanel({
       return [...cur, { label, body }];
     });
   }
+  // The icon for an attached-context chip, matched to what it actually is - a
+  // domain (its domain icon), an app (its brand logo), or a skill (sparkles).
+  // primedContext stores only a label, so we read its prefix - the same prefixes
+  // the attach paths write: "auto:" / "extra:" -> domain, "app:" / "auto-app:" ->
+  // app, "app-skill:" -> skill. Anything else falls back to a generic book.
+  function ctxChipIcon(label: string) {
+    if (label.startsWith("app-skill:")) return <Sparkles className="h-3 w-3" />;
+    const appTitle = label.startsWith("auto-app:") ? label.slice("auto-app:".length).replace(/\s+skill\s*$/i, "").trim()
+      : label.startsWith("app:") ? label.slice("app:".length).trim()
+      : null;
+    if (appTitle) return <AppRowLogo app={{ title: appTitle }} logos={logos} size={14} fallback="letter" />;
+    const dom = label.match(/^(?:auto|extra(?:\s*\([^)]*\))?):\s*([^/]+)/);
+    if (dom) { const I = domainIcon(dom[1].trim().toLowerCase()); return I ? <I className="h-3 w-3" /> : <Layers className="h-3 w-3" />; }
+    return <BookOpen className="h-3 w-3" />;
+  }
   // Per-domain preferences popover - explicit view of overrides saved
   // for this domain with reset controls. Implicit auto-save still
   // happens in pickers; this only surfaces + clears the result.
@@ -571,7 +586,7 @@ export function ChatPanel({
     return () => window.removeEventListener("mousedown", onClick);
   }, [plusOpen]);
   // Pre-fetch skills whenever the domain changes so both the `+`
-  // menu and the slash-autocomplete have a populated cache.
+  // menu and the suggested-skills row (both domain-scoped) have a cache.
   useEffect(() => {
     if (!domain || !vaultPath) {
       setSkillsCache([]);
@@ -581,6 +596,18 @@ export function ChatPanel({
       .then((s) => setSkillsCache(s.filter((sk) => sk.domain === domain)))
       .catch(() => setSkillsCache([]));
   }, [domain, vaultPath]);
+  // ALL skills across the vault - powers the `/` slash autocomplete, which must
+  // offer skills even on the home screen / a general chat where no domain is
+  // selected (the domain-scoped `skillsCache` above is empty there).
+  const [allSkills, setAllSkills] = useState<SkillEntry[]>([]);
+  useEffect(() => {
+    if (!vaultPath) { setAllSkills([]); return; }
+    invoke<SkillEntry[]>("scan_skills", { vault: vaultPath }).then(setAllSkills).catch(() => setAllSkills([]));
+  }, [vaultPath]);
+  // Brand logos for app rows/chips in the `$` mention popover - same source the
+  // Apps panel uses. Without this the chat composer can only show monograms.
+  const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
+  useEffect(() => { invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {}); }, []);
   // Pre-fetch apps so the `$` mention can offer them as context alongside
   // domains. Refreshed when the vault changes or apps are added/removed.
   useEffect(() => {
@@ -616,10 +643,11 @@ export function ChatPanel({
   const slashCandidates = useMemo(() => {
     if (!slashMatch) return [];
     const q = slashMatch.token.toLowerCase();
-    return skillsCache
-      .filter((s) => s.name.toLowerCase().includes(q))
-      .slice(0, 6);
-  }, [slashMatch, skillsCache]);
+    const matched = allSkills.filter((s) => s.name.toLowerCase().includes(q));
+    // Current-domain skills first (most relevant), then the rest of the vault.
+    const rank = (s: SkillEntry) => (domain && s.domain === domain ? 0 : 1);
+    return [...matched].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)).slice(0, 8);
+  }, [slashMatch, allSkills, domain]);
   const [slashIdx, setSlashIdx] = useState(0);
   useEffect(() => { setSlashIdx(0); }, [slashMatch?.token]);
   function applySlashCompletion(name: string) {
@@ -661,7 +689,9 @@ export function ChatPanel({
     const apps: DollarItem[] = appsCache
       .map((a) => ({ kind: "app" as const, id: a.id, label: a.title, sub: a.integration }))
       .filter((a) => a.id.toLowerCase().includes(q) || a.label.toLowerCase().includes(q));
-    return [...doms, ...apps].slice(0, 6);
+    // Apps FIRST so they're never starved out by the long domain list (there are
+    // many domains; a 6-item cap that listed domains first hid every app).
+    return [...apps, ...doms].slice(0, 8);
   }, [dollarMatch, domains, appsCache]);
   const [dollarIdx, setDollarIdx] = useState(0);
   useEffect(() => { setDollarIdx(0); }, [dollarMatch?.token]);
@@ -1343,11 +1373,15 @@ export function ChatPanel({
     // a crash/quit mid-reply. Captures the exact prompt sent + every
     // preference in effect, so a future better model can replay it. The
     // matching raw reply is appended on completion (persistUsage).
+    // The web-access decision for THIS turn: off in Bunker mode, else the
+    // per-domain "Web access" toggle (default off). Passed to the engine so it
+    // actually enforces the lockdown - not just logged in prefs.
+    const webAllowed = isBunkerOn() ? false : getDomainToggle(domain, "web", false);
     const prefs = {
       framework: fwLens.framework ?? null,
       lens: fwLens.lens ?? null,
       localOnly: localOnly,
-      web: isBunkerOn() ? false : getDomainToggle(domain, "web", false),
+      web: webAllowed,
       serendipity: getDomainToggle(domain, "serendipity", false),
       auto: getDomainToggle(domain, "auto", false),
       council: getDomainToggle(domain, "council", false),
@@ -1407,6 +1441,7 @@ export function ChatPanel({
           cli: chatCli || null,
           model: chatModel,
           localOnly,
+          web: webAllowed,
         });
       } else {
         await invoke("chat_send", {
@@ -1416,6 +1451,7 @@ export function ChatPanel({
             prompt: promptText,
             session_id: sessionRef.current,
             timeout_sec: (() => { const n = parseInt(getPref(PREF.llmPromptTimeoutSec, "300"), 10); return Number.isFinite(n) && n > 0 ? n : null; })(),
+            web: webAllowed,
           },
         });
       }
@@ -1814,7 +1850,7 @@ export function ChatPanel({
                   className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft py-0.5 pl-2 pr-1 font-mono text-[11px] text-accent"
                   title={c.body.slice(0, 200)}
                 >
-                  <BookOpen className="h-3 w-3" />
+                  {ctxChipIcon(c.label)}
                   {c.label}
                   <button
                     onClick={() => setPrimedContext((cur) => cur.filter((_, j) => j !== i))}
@@ -1916,8 +1952,10 @@ export function ChatPanel({
                   }`}
                 >
                   {c.kind === "domain"
-                    ? <Layers className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />
-                    : <Boxes className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />}
+                    ? (() => { const I = domainIcon(c.id); return I
+                        ? <I className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />
+                        : <Layers className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />; })()
+                    : <AppRowLogo app={{ id: c.id, title: c.label }} logos={logos} size={18} fallback="letter" />}
                   <div className="min-w-0">
                     <div className={`font-mono text-xs ${i === dollarIdx ? "text-accent" : "text-text-primary"}`}>
                       ${c.id}
