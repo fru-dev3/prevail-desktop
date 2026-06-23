@@ -125,7 +125,7 @@ impl EmailState {
                             let prompt = if inc.subject.is_empty() { inc.body.clone() } else { format!("{}\n\n{}", inc.subject, inc.body) };
                             let bcfg = bridge_cfg(&cfg);
                             let domain = cfg.domain.clone().or_else(|| resolve_domain(&bcfg, &prompt));
-                            let reply = match run_cli(&cfg.cli, cfg.model.as_deref(), &prompt).await {
+                            let reply = match run_cli(&cfg.cli, cfg.model.as_deref(), &crate::telegram_bridge::fence_untrusted_inbound(&prompt)).await {
                                 Ok(r) => r,
                                 Err(e) => { status_task.lock().await.last_error = Some(e); continue; }
                             };
@@ -159,6 +159,7 @@ fn bridge_cfg(cfg: &EmailConfig) -> BridgeConfig {
     BridgeConfig {
         token: String::new(), chat_id: cfg.username.clone(), cli: cfg.cli.clone(),
         model: cfg.model.clone(), domain: cfg.domain.clone(), vault: cfg.vault.clone(), routes: cfg.routes.clone(),
+        allowed_telegram_users: vec![],
     }
 }
 
