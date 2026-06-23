@@ -36,6 +36,11 @@ static VAULT_KEY: std::sync::Mutex<Option<zeroize::Zeroizing<String>>> = std::sy
 // might write to).
 static VAULT_ROOT: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
+// Serializes the tests that mutate the process-global VAULT_KEY/VAULT_ROOT so
+// they can't race each other under parallel `cargo test`.
+#[cfg(test)]
+pub(crate) static KEY_STATE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub fn set_vault_key(k: Option<String>) {
     // Replacing the slot drops (and thus zeroes) any prior Zeroizing<String>.
     *VAULT_KEY.lock().unwrap_or_else(|e| e.into_inner()) = k.map(zeroize::Zeroizing::new);
@@ -2329,6 +2334,7 @@ mod vault_key_state_tests {
 
     #[test]
     fn vault_crypto_round_trip_and_passthrough() {
+        let _g = KEY_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("prevail-enc-rt-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -2355,6 +2361,7 @@ mod vault_key_state_tests {
     // unlocked encrypted-vault session.
     #[test]
     fn vault_key_and_root_round_trip() {
+        let _g = KEY_STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_vault_key(Some("dGVzdC1rZXk=".into()));
         set_vault_root(Some("/Users/x/vault".into()));
         assert_eq!(vault_key().as_deref(), Some("dGVzdC1rZXk="));
