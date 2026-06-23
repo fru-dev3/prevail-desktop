@@ -31,11 +31,8 @@ fn lock_for(path: &Path) -> Arc<Mutex<()>> {
         .clone()
 }
 
-/// Read a vault file, transparently decrypting sealed content (passthrough for
-/// plaintext / foreign paths). EINTR-retry. The canonical vault read.
-pub(crate) fn read<P: AsRef<Path>>(p: P) -> std::io::Result<String> {
-    crate::read_to_string_retry(p)
-}
+// Reads use the existing canonical `crate::read_to_string_retry` (retry +
+// transparent decrypt) — call sites use it directly; vaultio owns the write side.
 
 /// Atomically + crypto-aware write a vault file. Holds the per-path lock for the
 /// whole sequence. Pass PLAIN content — encryption is applied here when the vault
@@ -77,11 +74,11 @@ mod tests {
         let f = dir.join("note.md");
 
         write_atomic(&f, "first").unwrap();
-        assert_eq!(read(&f).unwrap(), "first");
+        assert_eq!(crate::read_to_string_retry(&f).unwrap(),"first");
         assert!(!f.with_extension("bak").exists(), "no .bak before the second write");
 
         write_atomic(&f, "second").unwrap();
-        assert_eq!(read(&f).unwrap(), "second");
+        assert_eq!(crate::read_to_string_retry(&f).unwrap(),"second");
         // The .bak holds the prior content, so a crash mid-write is recoverable.
         assert_eq!(std::fs::read_to_string(f.with_extension("bak")).unwrap(), "first");
         // No leftover temp file after a successful rename.
@@ -97,7 +94,7 @@ mod tests {
         let f = dir.join("ledger.jsonl");
         append_line(&f, "a").unwrap();
         append_line(&f, "b").unwrap();
-        let body = read(&f).unwrap();
+        let body = crate::read_to_string_retry(&f).unwrap();
         assert!(body.contains('a') && body.contains('b'));
         let _ = std::fs::remove_dir_all(&dir);
     }

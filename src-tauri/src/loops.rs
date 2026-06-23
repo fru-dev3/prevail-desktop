@@ -159,7 +159,7 @@ pub(crate) fn loop_pending_drop(
     text: String,
 ) -> Result<(), String> {
     let path = crate::paths::domain_dir_pub(&vault, &domain).join("_loops_runtime.json");
-    let raw = match std::fs::read_to_string(&path) {
+    let raw = match crate::read_to_string_retry(&path) {
         Ok(s) => s,
         Err(_) => return Ok(()), // no runtime yet → nothing to drop
     };
@@ -170,5 +170,5 @@ pub(crate) fn loop_pending_drop(
         }
     }
     let body = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
-    std::fs::write(&path, body).map_err(|e| e.to_string())
+    crate::vaultio::write_atomic(&path, &body).map_err(|e| e.to_string())
 }

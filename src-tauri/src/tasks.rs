@@ -230,7 +230,7 @@ pub fn tasks_set(vault: String, domain: String, tasks: Vec<Task>) -> Result<(), 
     }
     let mut tasks = tasks;
     normalize(&mut tasks);
-    std::fs::write(&p, crate::engine::maybe_encrypt(&p, &render_tasks(&tasks))).map_err(|e| format!("write _tasks.md: {e}"))
+    crate::vaultio::write_atomic(&p, &render_tasks(&tasks)).map_err(|e| format!("write _tasks.md: {e}"))
 }
 
 // Append one task if not already present (used by "add as task" on a surfaced
@@ -308,29 +308,37 @@ fn details_path(vault: &str, domain: &str) -> PathBuf {
     crate::paths::domain_dir_pub(vault, domain).join("_task_details.json")
 }
 
-fn read_details_doc(vault: &str, domain: &str) -> serde_json::Value {
+// O71 data-loss guard: a missing sidecar is a fresh, empty `{}` (legitimate),
+// but a sidecar that EXISTS yet fails to read/parse must NOT be silently treated
+// as empty — otherwise the read-modify-write callers below would persist `{}`
+// over the real file and wipe every task's description/comments on a single
+// transient read or decrypt failure. So we only return `{}` when the file is
+// genuinely absent; any other failure is surfaced as an error and the caller
+// (which uses `?`) aborts before writing, leaving the on-disk file untouched.
+fn read_details_doc(vault: &str, domain: &str) -> Result<serde_json::Value, String> {
     let p = details_path(vault, domain);
-    match crate::read_to_string_retry(&p) {
-        Ok(s) => {
-            let raw = crate::engine::maybe_decrypt(&p, s);
-            serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({}))
-        }
-        Err(_) => serde_json::json!({}),
+    if !p.exists() {
+        return Ok(serde_json::json!({}));
     }
+    let s = crate::read_to_string_retry(&p)
+        .map_err(|e| format!("read _task_details.json: {e}"))?;
+    let raw = crate::engine::maybe_decrypt(&p, s);
+    serde_json::from_str(&raw)
+        .map_err(|e| format!("refusing to overwrite unparseable _task_details.json: {e}"))
 }
 
 fn write_details_doc(vault: &str, domain: &str, doc: &serde_json::Value) -> Result<(), String> {
     let p = details_path(vault, domain);
     if let Some(parent) = p.parent() { let _ = std::fs::create_dir_all(parent); }
     let body = serde_json::to_string_pretty(doc).map_err(|e| e.to_string())?;
-    std::fs::write(&p, crate::engine::maybe_encrypt(&p, &body)).map_err(|e| format!("write _task_details.json: {e}"))
+    crate::vaultio::write_atomic(&p, &body).map_err(|e| format!("write _task_details.json: {e}"))
 }
 
 /// The detail object for one task: { description, comments: [{ts, text, author}] }.
 /// Returns an empty shell when nothing has been recorded yet.
 #[tauri::command]
 pub fn task_detail_get(vault: String, domain: String, id: String) -> Result<serde_json::Value, String> {
-    let doc = read_details_doc(&vault, &domain);
+    let doc = read_details_doc(&vault, &domain)?;
     let entry = doc.get(&id).cloned().unwrap_or_else(|| serde_json::json!({ "description": "", "comments": [] }));
     Ok(entry)
 }
@@ -338,7 +346,7 @@ pub fn task_detail_get(vault: String, domain: String, id: String) -> Result<serd
 /// Set a task's long-form description (sidecar). Returns the updated detail.
 #[tauri::command]
 pub fn task_detail_set_description(vault: String, domain: String, id: String, description: String) -> Result<serde_json::Value, String> {
-    let mut doc = read_details_doc(&vault, &domain);
+    let mut doc = read_details_doc(&vault, &domain)?;
     let entry = doc.as_object_mut().ok_or("corrupt details doc")?
         .entry(id.clone()).or_insert_with(|| serde_json::json!({ "description": "", "comments": [] }));
     entry["description"] = serde_json::Value::String(description);
@@ -352,7 +360,7 @@ pub fn task_detail_add_comment(vault: String, domain: String, id: String, text: 
     let text = text.trim().to_string();
     if text.is_empty() { return Err("empty comment".into()); }
     let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
-    let mut doc = read_details_doc(&vault, &domain);
+    let mut doc = read_details_doc(&vault, &domain)?;
     let entry = doc.as_object_mut().ok_or("corrupt details doc")?
         .entry(id.clone()).or_insert_with(|| serde_json::json!({ "description": "", "comments": [] }));
     let comments = entry["comments"].as_array_mut().ok_or("corrupt comments")?;
@@ -474,7 +482,7 @@ pub fn decisions_pending(vault: String) -> Result<Vec<serde_json::Value>, String
 
             // loopId → human name (best-effort, for the "why" line).
             let mut loop_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-            if let Ok(raw) = std::fs::read_to_string(ddir.join("_loops.json")) {
+            if let Ok(raw) = crate::read_to_string_retry(ddir.join("_loops.json")) {
                 if let Ok(doc) = serde_json::from_str::<serde_json::Value>(&raw) {
                     if let Some(loops) = doc.get("loops").and_then(|v| v.as_array()) {
                         for l in loops {
@@ -487,7 +495,7 @@ pub fn decisions_pending(vault: String) -> Result<Vec<serde_json::Value>, String
             }
 
             // 1. loop approvals
-            if let Ok(raw) = std::fs::read_to_string(ddir.join("_loops_runtime.json")) {
+            if let Ok(raw) = crate::read_to_string_retry(ddir.join("_loops_runtime.json")) {
                 if let Ok(doc) = serde_json::from_str::<serde_json::Value>(&raw) {
                     if let Some(loops) = doc.get("loops").and_then(|v| v.as_object()) {
                         for (loop_id, entry) in loops {
