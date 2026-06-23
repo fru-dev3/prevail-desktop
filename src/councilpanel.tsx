@@ -22,7 +22,8 @@ import { useSuites } from "./bench-presets";
 import { BrandMark } from "./brandmark";
 import { DomainStatusBar } from "./chatviews";
 import { ContextCanvas, DomainContextDrawer } from "./domainpanels";
-import type { CliInfo, DomainContextBundle, ModelPick, PanelistReply, PanelistSlot, ThreadMeta, ThreadTurn } from "./types";
+import { AppRowLogo } from "./panels3";
+import type { BrandLogo, CliInfo, Domain, DomainContextBundle, EngineApp, ModelPick, PanelistReply, PanelistSlot, SkillEntry, ThreadMeta, ThreadTurn } from "./types";
 import type { UnlistenFn } from "./bridge";
 
 export function CouncilPanel({
@@ -303,6 +304,114 @@ export function CouncilPanel({
     return () => { mounted = false; };
   }, [domain, _vaultPath]);
   const [prompt, setPrompt] = useState("");
+  // ── `$`/`/` context mentions (parity with Chat) ─────────────────────────
+  // Type `$` to attach a domain or connected app, `/` to attach a skill - the
+  // same machinery Chat uses, ported here so the council composer behaves
+  // identically. Caret-tracked matchers drive the popovers; caches feed them.
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const [caretPos, setCaretPos] = useState(0);
+  const syncCaret = useCallback((el: HTMLTextAreaElement | null) => {
+    if (el) setCaretPos(el.selectionStart ?? el.value.length);
+  }, []);
+  const [mentionDomains, setMentionDomains] = useState<Domain[]>([]);
+  const [appsCache, setAppsCache] = useState<EngineApp[]>([]);
+  const [allSkills, setAllSkills] = useState<SkillEntry[]>([]);
+  const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
+  useEffect(() => {
+    if (!_vaultPath) { setMentionDomains([]); setAllSkills([]); return; }
+    invoke<Domain[]>("scan_vault", { path: _vaultPath }).then(setMentionDomains).catch(() => setMentionDomains([]));
+    invoke<SkillEntry[]>("scan_skills", { vault: _vaultPath }).then(setAllSkills).catch(() => setAllSkills([]));
+  }, [_vaultPath]);
+  useEffect(() => {
+    if (!_vaultPath) { setAppsCache([]); return; }
+    const load = () => invoke<EngineApp[]>("engine_apps_list").then(setAppsCache).catch(() => setAppsCache([]));
+    void load();
+    window.addEventListener("prevail:apps-changed", load);
+    return () => window.removeEventListener("prevail:apps-changed", load);
+  }, [_vaultPath]);
+  useEffect(() => { invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {}); }, []);
+  // Attach a connected app as context (mirror of attachCouncilDomain - council
+  // had no app-attach before). Compact identity card, same as Chat.
+  const attachCouncilApp = useCallback(async (id: string) => {
+    if (!id) return;
+    try {
+      const all = await invoke<EngineApp[]>("engine_apps_list");
+      const app = all.find((a) => a.id === id);
+      if (!app) return;
+      const body = [
+        `# App: ${app.title}${app.account?.label ? ` (${app.account.label})` : ""}`,
+        `Connector: ${app.integration} · status: ${app.status}`,
+        app.domains.length ? `Feeds these domains: ${app.domains.map(titleCase).join(", ")}` : "Not bound to any domain yet.",
+      ].join("\n");
+      injectContext(body, `app: ${app.title}`);
+    } catch (err) { console.error("attach council app", err); }
+  }, [_vaultPath]);
+  type DollarItem = { kind: "domain" | "app"; id: string; label: string; sub?: string };
+  const slashMatch = useMemo(() => {
+    const caret = Math.min(caretPos, prompt.length);
+    const m = prompt.slice(0, caret).match(/(^|\s)\/([a-zA-Z0-9_-]*)$/);
+    if (!m) return null;
+    return { token: m[2], start: caret - m[2].length - 1, end: caret };
+  }, [prompt, caretPos]);
+  const slashCandidates = useMemo(() => {
+    if (!slashMatch) return [];
+    const q = slashMatch.token.toLowerCase();
+    const matched = allSkills.filter((s) => s.name.toLowerCase().includes(q));
+    const rank = (s: SkillEntry) => (domain && s.domain === domain ? 0 : 1);
+    return [...matched].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)).slice(0, 8);
+  }, [slashMatch, allSkills, domain]);
+  const [slashIdx, setSlashIdx] = useState(0);
+  useEffect(() => { setSlashIdx(0); }, [slashMatch?.token]);
+  const dollarMatch = useMemo(() => {
+    const caret = Math.min(caretPos, prompt.length);
+    const m = prompt.slice(0, caret).match(/(^|\s)\$([a-zA-Z0-9_-]*)$/);
+    if (!m) return null;
+    return { token: m[2], start: caret - m[2].length - 1, end: caret };
+  }, [prompt, caretPos]);
+  const dollarCandidates = useMemo<DollarItem[]>(() => {
+    if (!dollarMatch) return [];
+    const q = dollarMatch.token.toLowerCase();
+    const doms: DollarItem[] = mentionDomains
+      .map((d) => ({ kind: "domain" as const, id: d.name, label: titleCase(d.name) }))
+      .filter((d) => d.id.toLowerCase().includes(q) || d.label.toLowerCase().includes(q));
+    const apps: DollarItem[] = appsCache
+      .map((a) => ({ kind: "app" as const, id: a.id, label: a.title, sub: a.integration }))
+      .filter((a) => a.id.toLowerCase().includes(q) || a.label.toLowerCase().includes(q));
+    // Apps first so they're never starved out by the long domain list.
+    return [...apps, ...doms].slice(0, 8);
+  }, [dollarMatch, mentionDomains, appsCache]);
+  const [dollarIdx, setDollarIdx] = useState(0);
+  useEffect(() => { setDollarIdx(0); }, [dollarMatch?.token]);
+  function applySlashCompletion(name: string) {
+    if (!slashMatch) return;
+    const head = prompt.slice(0, slashMatch.start).replace(/\s$/, "");
+    const tail = prompt.slice(slashMatch.end);
+    setPrompt(`${head}${head && tail && !tail.startsWith(" ") ? " " : ""}${tail}`);
+    setCaretPos(head.length);
+    insertSkillSlash(name);
+    requestAnimationFrame(() => { const ta = taRef.current; if (ta) { ta.focus(); ta.setSelectionRange(head.length, head.length); } });
+  }
+  function applyDollarCompletion(item: DollarItem | undefined) {
+    if (!dollarMatch || !item) return;
+    const head = prompt.slice(0, dollarMatch.start).replace(/\s$/, "");
+    const tail = prompt.slice(dollarMatch.end);
+    setPrompt(`${head}${head && tail && !tail.startsWith(" ") ? " " : ""}${tail}`);
+    setCaretPos(head.length);
+    if (item.kind === "domain") void attachCouncilDomain(item.id, false);
+    else void attachCouncilApp(item.id);
+    requestAnimationFrame(() => { const ta = taRef.current; if (ta) { ta.focus(); ta.setSelectionRange(head.length, head.length); } });
+  }
+  // Chip icon by label prefix (parity with Chat): domain icon / app logo / skill.
+  function ctxChipIcon(label: string) {
+    if (label.startsWith("app-skill:")) return <Sparkles className="h-3 w-3" />;
+    const appTitle = label.startsWith("auto-app:") ? label.slice("auto-app:".length).replace(/\s+skill\s*$/i, "").trim()
+      : label.startsWith("app:") ? label.slice("app:".length).trim()
+      : null;
+    if (appTitle) return <AppRowLogo app={{ title: appTitle }} logos={logos} size={14} fallback="letter" />;
+    const dom = label.match(/^(?:auto|extra(?:\s*\([^)]*\))?):\s*([^/]+)/);
+    if (dom) { const I = domainIcon(dom[1].trim().toLowerCase()); return I ? <I className="h-3 w-3" /> : <Layers className="h-3 w-3" />; }
+    return <BookOpen className="h-3 w-3" />;
+  }
   // G3: incognito for council. Reflects effective state (global master OR the
   // council flag); the toggle flips the council-specific flag. When the global
   // master is on it stays on and the per-surface toggle can't turn it off here.
@@ -1074,6 +1183,40 @@ export function CouncilPanel({
             <Ghost className="h-3 w-3" /> Incognito
           </span>
         )}
+        {/* Slash-command popover for skills (parity with Chat) */}
+        {slashMatch && slashCandidates.length > 0 && (
+          <div className="absolute bottom-full left-3 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-border bg-surface shadow-xl">
+            <div className="border-b border-border-subtle bg-surface-warm px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Skills · enter to insert</div>
+            {slashCandidates.map((s, i) => (
+              <button key={s.path} onMouseDown={(e) => { e.preventDefault(); applySlashCompletion(s.name); }}
+                className={`flex w-full items-start gap-2 px-3 py-1.5 text-left ${i === slashIdx ? "bg-accent-soft" : "hover:bg-surface-warm"}`}>
+                <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />
+                <div className="min-w-0">
+                  <div className={`font-mono text-xs ${i === slashIdx ? "text-accent" : "text-text-primary"}`}>/{s.name}</div>
+                  {s.description && <div className="line-clamp-1 text-[10px] text-text-muted">{s.description}</div>}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+        {/* Context-mention popover for `$<domain|app>` (parity with Chat) */}
+        {dollarMatch && dollarCandidates.length > 0 && (
+          <div className="absolute bottom-full left-3 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-border bg-surface shadow-xl">
+            <div className="border-b border-border-subtle bg-surface-warm px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Add context · enter to attach</div>
+            {dollarCandidates.map((c, i) => (
+              <button key={`${c.kind}:${c.id}`} onMouseDown={(e) => { e.preventDefault(); applyDollarCompletion(c); }}
+                className={`flex w-full items-start gap-2 px-3 py-1.5 text-left ${i === dollarIdx ? "bg-accent-soft" : "hover:bg-surface-warm"}`}>
+                {c.kind === "domain"
+                  ? (() => { const I = domainIcon(c.id); return I ? <I className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" /> : <Layers className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />; })()
+                  : <AppRowLogo app={{ id: c.id, title: c.label }} logos={logos} size={18} fallback="letter" />}
+                <div className="min-w-0">
+                  <div className={`font-mono text-xs ${i === dollarIdx ? "text-accent" : "text-text-primary"}`}>${c.id}</div>
+                  <div className="line-clamp-1 text-[10px] text-text-muted">{c.kind === "domain" ? "domain · attaches state.md" : `app · ${c.sub ?? "context card"}`}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
         <div className={`rounded-2xl border bg-surface p-3 shadow-sm transition-shadow ${(incognito || globalIncognito) ? "border-accent ring-2 ring-accent/40 shadow-[0_0_24px_-4px] shadow-accent/40" : "border-border"}`}>
           {/* One row (parity with chat): context pills on the left, the
               context-window meter on the right - so they share a line. */}
@@ -1085,7 +1228,7 @@ export function CouncilPanel({
                   className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft py-0.5 pl-2 pr-1 font-mono text-[11px] text-accent"
                   title={c.body.slice(0, 200)}
                 >
-                  <BookOpen className="h-3 w-3" />
+                  {ctxChipIcon(c.label)}
                   {c.label}
                   <button
                     onClick={() => setPrimedContext((cur) => cur.filter((_, j) => j !== i))}
@@ -1127,8 +1270,12 @@ export function CouncilPanel({
             </div>
           )}
           <textarea
+            ref={taRef}
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(e) => { setPrompt(e.target.value); setCaretPos(e.target.selectionStart ?? e.target.value.length); }}
+            onSelect={(e) => syncCaret(e.currentTarget)}
+            onKeyUp={(e) => syncCaret(e.currentTarget)}
+            onClick={(e) => syncCaret(e.currentTarget)}
             onDragOver={(e) => {
               const types = Array.from(e.dataTransfer.types);
               if (types.includes("application/x-prevail-domain") || types.includes("text/plain")) {
@@ -1154,6 +1301,20 @@ export function CouncilPanel({
               void attachCouncilDomain(name, e.shiftKey);
             }}
             onKeyDown={(e) => {
+              // Route nav keys to the `/` skills popover when it's open.
+              if (slashMatch && slashCandidates.length > 0) {
+                if (e.key === "ArrowDown") { e.preventDefault(); setSlashIdx((i) => (i + 1) % slashCandidates.length); return; }
+                if (e.key === "ArrowUp") { e.preventDefault(); setSlashIdx((i) => (i - 1 + slashCandidates.length) % slashCandidates.length); return; }
+                if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); applySlashCompletion(slashCandidates[slashIdx].name); return; }
+                if (e.key === "Escape") { e.preventDefault(); setPrompt((cur) => cur + " "); return; }
+              }
+              // Route nav keys to the `$` context-mention popover when it's open.
+              if (dollarMatch && dollarCandidates.length > 0) {
+                if (e.key === "ArrowDown") { e.preventDefault(); setDollarIdx((i) => (i + 1) % dollarCandidates.length); return; }
+                if (e.key === "ArrowUp") { e.preventDefault(); setDollarIdx((i) => (i - 1 + dollarCandidates.length) % dollarCandidates.length); return; }
+                if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); applyDollarCompletion(dollarCandidates[dollarIdx]); return; }
+                if (e.key === "Escape") { e.preventDefault(); setPrompt((cur) => cur + " "); return; }
+              }
               const wantCmd = getPref(PREF.sendKey, "enter") === "cmd-enter";
               const cmd = e.metaKey || e.ctrlKey;
               const fires = e.key === "Enter" && !e.shiftKey && !e.altKey && (wantCmd ? cmd : !cmd);
