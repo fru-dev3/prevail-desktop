@@ -52,6 +52,7 @@ impl NativeBridgeConfig {
             domain: self.domain.clone(),
             vault: self.vault.clone(),
             routes: self.routes.clone(),
+            allowed_telegram_users: vec![],
         }
     }
 }
@@ -145,7 +146,7 @@ impl NativeBridgeState {
                                     }
                                     let bcfg = cfg.to_bridge_config();
                                     let domain = cfg.domain.clone().or_else(|| resolve_domain(&bcfg, &inc.text));
-                                    let reply = match run_cli(&cfg.cli, cfg.model.as_deref(), &inc.text).await {
+                                    let reply = match run_cli(&cfg.cli, cfg.model.as_deref(), &crate::telegram_bridge::fence_untrusted_inbound(&inc.text)).await {
                                         Ok(r) => r,
                                         Err(e) => {
                                             let mut s = status_for_task.lock().await;

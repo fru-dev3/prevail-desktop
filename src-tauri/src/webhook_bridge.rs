@@ -192,6 +192,7 @@ fn handle(mut req: tiny_http::Request, cfg: &WebhookConfig, status: &Arc<Mutex<B
                 domain: cfg.domain.clone(),
                 vault: cfg.vault.clone(),
                 routes: cfg.routes.clone(),
+                allowed_telegram_users: vec![],
             };
             crate::telegram_bridge::resolve_domain(&probe, &hook.message)
         });
@@ -206,13 +207,14 @@ fn handle(mut req: tiny_http::Request, cfg: &WebhookConfig, status: &Arc<Mutex<B
         domain: domain.clone(),
         vault: cfg.vault.clone(),
         routes: cfg.routes.clone(),
+        allowed_telegram_users: vec![],
     };
     {
         let mut s = status.lock().unwrap_or_else(|e| e.into_inner());
         s.inbound_count += 1;
         s.last_inbound_ts = Some(now_secs());
     }
-    let result = tauri::async_runtime::block_on(run_cli(&cfg.cli, cfg.model.as_deref(), &hook.message));
+    let result = tauri::async_runtime::block_on(run_cli(&cfg.cli, cfg.model.as_deref(), &crate::telegram_bridge::fence_untrusted_inbound(&hook.message)));
     match result {
         Ok(reply) => {
             if let Some(d) = domain.as_deref() {
