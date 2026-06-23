@@ -50,7 +50,7 @@ re-ask a settled question. Keep each item under ~110 chars.\n\n--- CONTEXT ---\n
 fn gather_context(dir: &Path) -> String {
     let mut out = String::new();
     let read_head = |p: PathBuf, label: &str, max: usize, out: &mut String| {
-        if let Ok(s) = std::fs::read_to_string(&p) {
+        if let Ok(s) = crate::read_to_string_retry(&p) {
             let s = s.trim();
             if !s.is_empty() {
                 out.push_str(&format!("## {label}\n"));
@@ -65,7 +65,7 @@ fn gather_context(dir: &Path) -> String {
     read_head(dir.join("goals.md"), "Goals", 1000, &mut out);
     // Decisions already made — so the coach builds on them instead of re-asking
     // settled questions (council verdicts + chat/distill-extracted decisions).
-    if let Ok(raw) = std::fs::read_to_string(dir.join("_decisions.jsonl")) {
+    if let Ok(raw) = crate::read_to_string_retry(dir.join("_decisions.jsonl")) {
         let decs: Vec<String> = raw
             .lines()
             .rev()
@@ -88,7 +88,7 @@ fn gather_context(dir: &Path) -> String {
         }
     }
     // Last few intent messages from the ledger.
-    if let Ok(raw) = std::fs::read_to_string(dir.join("_intents.jsonl")) {
+    if let Ok(raw) = crate::read_to_string_retry(dir.join("_intents.jsonl")) {
         let msgs: Vec<String> = raw
             .lines()
             .rev()
@@ -146,7 +146,7 @@ pub async fn domain_surface(
 
     // Serve fresh cache unless forced.
     if !force {
-        if let Ok(s) = std::fs::read_to_string(&cache) {
+        if let Ok(s) = crate::read_to_string_retry(&cache) {
             if let Ok(mut r) = serde_json::from_str::<SurfaceResult>(&s) {
                 if now_ms() - r.generated_at < TTL_MS {
                     r.stale = false;
@@ -184,7 +184,7 @@ pub async fn domain_surface(
     if let Some(parent) = cache.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let _ = std::fs::write(&cache, serde_json::to_string_pretty(&res).unwrap_or_default());
+    let _ = crate::vaultio::write_atomic(&cache, &serde_json::to_string_pretty(&res).unwrap_or_default());
     Ok(res)
 }
 

@@ -163,7 +163,7 @@ pub(crate) fn create_domain(vault: String, name: String) -> Result<Domain, Strin
         "# {title}\n\n_State for the {title} domain. Edit freely._\n\n## Current focus\n\n- (none yet)\n\n## Open decisions\n\n- (none yet)\n"
     );
     let state_path = domain_dir.join("state.md");
-    fs::write(&state_path, &stub).map_err(|e| format!("write state.md failed: {e}"))?;
+    crate::vaultio::write_atomic(&state_path, &stub).map_err(|e| format!("write state.md failed: {e}"))?;
     Ok(Domain {
         name: slug,
         path: domain_dir.to_string_lossy().to_string(),
@@ -255,7 +255,6 @@ pub(crate) fn read_skill(path: String) -> Result<String, String> {
 // archiving must never block or break spark generation.
 #[tauri::command]
 pub(crate) fn spark_archive_append(vault: String, record: serde_json::Value) -> Result<(), String> {
-    use std::io::Write;
     let root = PathBuf::from(&vault);
     if !root.exists() {
         return Err(format!("vault not found: {vault}"));
@@ -264,12 +263,7 @@ pub(crate) fn spark_archive_append(vault: String, record: serde_json::Value) -> 
     let mut line =
         serde_json::to_string(&record).map_err(|e| format!("serialize spark failed: {e}"))?;
     line.push('\n');
-    let mut f = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .map_err(|e| format!("open spark archive failed: {e}"))?;
-    f.write_all(line.as_bytes())
+    crate::vaultio::append_line(&path, &line)
         .map_err(|e| format!("append spark failed: {e}"))?;
     Ok(())
 }
@@ -417,7 +411,7 @@ pub(crate) fn write_paste_attachment(vault: String, body: String) -> Result<Stri
     let (y, m, d, hh, mm, ss) = secs_to_ymdhms(now as i64);
     let name = format!("{y:04}-{m:02}-{d:02}_{hh:02}-{mm:02}-{ss:02}.txt");
     let p = dir.join(&name);
-    fs::write(&p, body).map_err(|e| format!("write paste: {e}"))?;
+    crate::vaultio::write_atomic(&p, &body).map_err(|e| format!("write paste: {e}"))?;
     Ok(p.to_string_lossy().to_string())
 }
 
@@ -478,7 +472,7 @@ pub(crate) fn save_session(
         };
         body.push_str(&format!("## {speaker}\n\n{}\n\n", t.content.trim()));
     }
-    fs::write(&file, &body).map_err(|e| format!("write session: {e}"))?;
+    crate::vaultio::write_atomic(&file, &body).map_err(|e| format!("write session: {e}"))?;
 
     // Append a one-line summary to _journal.md so the user has a
     // running record of every session without having to open _log/.
@@ -502,7 +496,7 @@ pub(crate) fn save_session(
         } else {
             format!("# Journal\n\n{entry}")
         };
-        let _ = fs::write(&journal_path, merged);
+        let _ = crate::vaultio::write_atomic(&journal_path, &merged);
     }
     Ok(file.to_string_lossy().to_string())
 }
