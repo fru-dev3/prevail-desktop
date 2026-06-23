@@ -28,6 +28,20 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+// Per-domain privacy.localOnly (manifest.json), honored in addition to global
+// Bunker so a domain flagged local-only never reaches a cloud model (O33).
+fn domain_local_only(dir: &Path) -> bool {
+    crate::read_to_string_retry(dir.join("manifest.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| {
+            v.get("privacy")
+                .and_then(|p| p.get("localOnly"))
+                .and_then(|b| b.as_bool())
+        })
+        .unwrap_or(false)
+}
+
 // Build the proactive prompt from a domain's vault context.
 fn build_prompt(domain: &str, context: &str) -> String {
     format!(
@@ -168,7 +182,7 @@ pub async fn domain_surface(
     // so there's no reason to go dark. `resolve_cli` NEVER returns a cloud CLI
     // under Bunker, so the local-only guarantee holds; it only hard-blocks when
     // no local provider is up (so the UI can prompt the user to start one).
-    let effective = crate::bunker::resolve_cli(&provider)?;
+    let effective = crate::bunker::resolve_cli_forced(&provider, domain_local_only(&dir))?;
     // When Bunker swapped a cloud provider for a local one, the requested cloud
     // model id (e.g. "claude-haiku-4-5") is meaningless to it — drop it and let
     // the local provider use its default model.
@@ -211,7 +225,7 @@ goals, and decisions where possible — but aspirational. Return ONLY the ideal-
 --- CONTEXT ---\n{context}",
         crate::ideal_state_preamble(Path::new(&vault)),
     );
-    let effective = crate::bunker::resolve_cli(&provider)?;
+    let effective = crate::bunker::resolve_cli_forced(&provider, domain_local_only(&dir))?;
     let switched = effective != provider;
     let model_opt = if switched || model.is_empty() { None } else { Some(model.as_str()) };
     let out = crate::telegram_bridge::run_cli(&effective, model_opt, &prompt).await?;
