@@ -28,17 +28,24 @@ use tauri::Emitter;
 // engine spawn as PREVAIL_VAULT_KEY so the sidecar can read/write the encrypted
 // vault. Lives only in the desktop process memory, never on disk, never sent to
 // the JS layer. None = vault is plaintext / locked.
-static VAULT_KEY: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+// Wrapped in Zeroizing so the DEK's heap buffer is wiped when the slot is
+// replaced/cleared (e.g. on lock), instead of lingering in process memory (O29).
+static VAULT_KEY: std::sync::Mutex<Option<zeroize::Zeroizing<String>>> = std::sync::Mutex::new(None);
 // The encrypted vault's root path — injected as PREVAIL_VAULT_ROOT so the engine
 // only encrypts/decrypts files UNDER the vault (never an external path a skill
 // might write to).
 static VAULT_ROOT: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 pub fn set_vault_key(k: Option<String>) {
-    *VAULT_KEY.lock().unwrap_or_else(|e| e.into_inner()) = k;
+    // Replacing the slot drops (and thus zeroes) any prior Zeroizing<String>.
+    *VAULT_KEY.lock().unwrap_or_else(|e| e.into_inner()) = k.map(zeroize::Zeroizing::new);
 }
 fn vault_key() -> Option<String> {
-    VAULT_KEY.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    VAULT_KEY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .map(|z| z.to_string())
 }
 pub fn set_vault_root(r: Option<String>) {
     *VAULT_ROOT.lock().unwrap_or_else(|e| e.into_inner()) = r;
