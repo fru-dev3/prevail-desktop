@@ -32,3 +32,7 @@ src-tauri/gen/
 
 # Bundled engine sidecar — built by scripts/prepare-sidecar.sh
 src-tauri/binaries/
+
+# Private planning + launch material — local only, never publish
+docs/
+launch/
