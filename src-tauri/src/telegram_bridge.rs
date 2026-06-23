@@ -662,7 +662,18 @@ fn format_for_telegram(md: &str) -> String {
     out.trim_end().to_string()
 }
 
+// Global cap on concurrent agent spawns through run_cli (O6). Every bridge
+// (Telegram/Discord/Slack/email/webhook) plus distillation/surface flows through
+// here, so a flood of inbound messages can't fan out into unbounded agent
+// processes (DoS + runaway API cost). Excess spawns queue for a permit.
+static RUN_CLI_SEM: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
 pub(crate) async fn run_cli(cli: &str, model: Option<&str>, prompt: &str) -> Result<String, String> {
+    // Bound concurrency first; the permit is held for this spawn's lifetime.
+    let _permit = RUN_CLI_SEM
+        .acquire()
+        .await
+        .map_err(|_| "run_cli concurrency limiter closed".to_string())?;
     // Single guarded choke point: every model spawn that flows through run_cli
     // (Telegram bridge, distillation, surface generation) is subject to Bunker
     // Mode. Local providers pass; cloud providers are refused while Bunker is on.
