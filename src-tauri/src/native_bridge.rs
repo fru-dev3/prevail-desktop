@@ -62,6 +62,43 @@ struct Incoming {
     text: String,
 }
 
+// H2: reject a matrix/mattermost base_url that would leak the bearer token to an
+// unsafe target — require https, block cloud-metadata hosts and obfuscated IP
+// literals. Dotted localhost / RFC1918 stay allowed (legit self-hosted servers).
+fn is_unsafe_bridge_url(raw: &str) -> bool {
+    let Ok(u) = reqwest::Url::parse(raw) else { return true };
+    if u.scheme() != "https" {
+        return true;
+    }
+    let Some(host) = u.host_str() else { return true };
+    let h = host.to_lowercase();
+    if h == "metadata.google.internal" || h == "metadata" || h == "100.100.100.200" {
+        return true;
+    }
+    if h.starts_with("169.254.") {
+        return true;
+    }
+    // Single-label numeric/hex host (e.g. 2852039166 or 0x… == 169.254.169.254).
+    if !h.contains('.') && !h.contains(':') && h.trim_start_matches("0x").chars().all(|c| c.is_ascii_hexdigit()) && h.chars().any(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    false
+}
+
+#[cfg(test)]
+mod h2_tests {
+    use super::is_unsafe_bridge_url;
+    #[test]
+    fn rejects_unsafe_allows_real_https() {
+        for u in ["http://m.org", "https://169.254.169.254/", "https://metadata.google.internal/", "https://2852039166/"] {
+            assert!(is_unsafe_bridge_url(u), "should reject {u}");
+        }
+        for u in ["https://matrix.org", "https://chat.example.com:8448", "https://192.168.1.10:8008", "https://localhost:8008"] {
+            assert!(!is_unsafe_bridge_url(u), "should allow {u}");
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct NativeBridgeState {
     // One running loop per platform.
@@ -110,6 +147,15 @@ impl NativeBridgeState {
         let platform = cfg.platform.to_lowercase();
         if !matches!(platform.as_str(), "matrix" | "mattermost" | "signal") {
             return Err(format!("unsupported native platform: {platform}"));
+        }
+        // H2: matrix/mattermost send the bearer token to base_url, so it must be a
+        // real https endpoint — never http, a cloud-metadata host, or an obfuscated
+        // IP. (signal's base_url is a local account path, not an HTTP URL.)
+        if matches!(platform.as_str(), "matrix" | "mattermost") && is_unsafe_bridge_url(&cfg.base_url) {
+            return Err(format!(
+                "refusing bridge base_url (must be https, not internal/metadata): {}",
+                cfg.base_url.chars().take(60).collect::<String>()
+            ));
         }
         self.stop(&platform).await;
         let (stop_tx, mut stop_rx) = watch::channel(false);
