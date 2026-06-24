@@ -1996,7 +1996,7 @@ function BenchFrontier({
           <span key={g} className="absolute -translate-y-1/2 pr-1.5 text-right font-mono text-[9px] tabular-nums text-text-muted" style={{ left: 0, width: `${PL}%`, top: `${yPct(g)}%` }}>{g}</span>
         ))}
         {/* Y-axis title — rotated along the axis. */}
-        <span className="pointer-events-none absolute left-0 origin-center -rotate-90 font-mono text-[9px] uppercase tracking-[0.14em] text-text-muted" style={{ top: `${(PT + PB) / 2}%`, transform: "translateY(-50%) rotate(-90deg) translateX(0)", marginLeft: -14 }}>intelligence</span>
+        <span className="pointer-events-none absolute left-0 font-mono text-[9px] uppercase tracking-[0.14em] text-text-muted" style={{ top: `${(PT + PB) / 2}%`, transform: "translateY(-50%) rotate(-90deg)", transformOrigin: "center", marginLeft: -14 }}>intelligence</span>
         {/* X-axis tick numbers — centered under each gridpoint. */}
         <span className="absolute -translate-x-1/2 font-mono text-[9px] text-text-muted" style={{ left: `${PL}%`, top: `${PB + 3}%` }}>free</span>
         {positives.length > 0 && [xmin, Math.sqrt(xmin * xmax), xmax].map((c, i) => (
