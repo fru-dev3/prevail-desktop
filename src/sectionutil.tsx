@@ -1,6 +1,7 @@
 // Pure settings-section helpers extracted from App.tsx: CLI login-command map,
 // auth-error detection, section-header / ideal-state icon pickers, the MCP engine
 // path resolver, and the skill-avatar color palette + hash picker.
+import type { ReactNode } from "react";
 import { Activity, Award, Brain, Briefcase, Coins, Compass, Folder, Github, Globe, GraduationCap, Heart, Home, Layers, Lightbulb, MessagesSquare, Monitor, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sparkles, Target, Users, Wrench } from "lucide-react";
 
 export const CLI_LOGIN_CMD: Record<string, string> = {
@@ -104,7 +105,7 @@ export function pickSkillColor(name: string): { bg: string; fg: string } {
 // The level-1 header at the top of every Settings page: a big icon tile + title
 // + optional subtitle, with a hairline rule. Picks an icon from the title when
 // one isn't supplied.
-export function SettingsHeader({ title, subtitle, icon }: { title: string; subtitle?: string; icon?: typeof Folder }) {
+export function SettingsHeader({ title, subtitle, icon, right }: { title: string; subtitle?: string; icon?: typeof Folder; right?: ReactNode }) {
   const Icon = icon ?? settingsHeaderIcon(title);
   return (
     <div className="relative mb-4 overflow-hidden border-b border-border-subtle pb-4">
@@ -125,6 +126,7 @@ export function SettingsHeader({ title, subtitle, icon }: { title: string; subti
           <h2 className="font-display text-[26px] font-bold leading-tight tracking-tight">{title}</h2>
           {subtitle && <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-text-secondary">{subtitle}</p>}
         </div>
+        {right && <div className="ml-auto hidden shrink-0 items-center self-center sm:flex">{right}</div>}
       </div>
     </div>
   );
