@@ -1933,13 +1933,19 @@ function BenchFrontier({
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 font-mono text-[10px] text-text-muted">
-        <span>↑ smarter</span><span>→ pricier</span><span>● bigger = faster</span>
-        <span className="ml-auto inline-flex items-center gap-1"><span className="inline-block h-0 w-4 border-t border-dashed border-accent" /> best-value frontier (top-left wins)</span>
+    <div className="space-y-3">
+      {/* Legend — what the visual encodings mean. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-border-subtle bg-surface-warm/40 px-3 py-2 font-mono text-[10px] text-text-muted">
+        <span className="inline-flex items-center gap-1"><span className="text-accent">↑</span> smarter (judge /10)</span>
+        <span className="inline-flex items-center gap-1"><span className="text-accent">→</span> pricier (log cost)</span>
+        <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full border border-border bg-surface-warm" /> bigger = faster</span>
+        <span className="inline-flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-full border border-accent bg-accent-soft" /> ★ best-value frontier</span>
+        <span className="ml-auto inline-flex items-center gap-1.5"><span className="inline-block h-0 w-5 border-t border-dashed border-accent" /> most intelligence per dollar</span>
       </div>
-      <div className="relative w-full rounded-xl border border-border-subtle bg-surface" style={{ height: 420 }}>
+      <div className="relative w-full rounded-xl border border-border-subtle bg-surface" style={{ height: 440 }}>
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
+          {/* "Sweet spot" tint — top-left corner is smart + cheap. */}
+          <rect x={PL} y={PT} width={(PR - PL) * 0.42} height={(PB - PT) * 0.4} className="text-accent" fill="currentColor" opacity={0.04} />
           {[0, 2, 4, 6, 8, 10].map((g) => (
             <line key={g} x1={PL} y1={yPct(g)} x2={PR} y2={yPct(g)} stroke="currentColor" className="text-border-subtle" strokeWidth={1} strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />
           ))}
@@ -1947,14 +1953,19 @@ function BenchFrontier({
           <line x1={PL} y1={PB} x2={PR} y2={PB} stroke="currentColor" className="text-border" strokeWidth={1} vectorEffect="non-scaling-stroke" />
           {frontier.length >= 2 && <path d={frontierPath} fill="none" stroke="currentColor" className="text-accent" strokeWidth={1.5} strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />}
         </svg>
+        {/* Y-axis tick numbers — right-aligned in the gutter, sitting on each gridline. */}
         {[0, 2, 4, 6, 8, 10].map((g) => (
-          <span key={g} className="absolute -translate-y-1/2 font-mono text-[9px] text-text-muted" style={{ left: 4, top: `${yPct(g)}%` }}>{g}</span>
+          <span key={g} className="absolute -translate-y-1/2 pr-1.5 text-right font-mono text-[9px] tabular-nums text-text-muted" style={{ left: 0, width: `${PL}%`, top: `${yPct(g)}%` }}>{g}</span>
         ))}
-        <span className="absolute font-mono text-[9px] uppercase tracking-wider text-text-muted" style={{ left: 4, top: 2 }}>intel</span>
-        <span className="absolute font-mono text-[9px] text-text-muted" style={{ left: `${PL}%`, top: `${PB + 3}%`, transform: "translateX(-50%)" }}>free</span>
+        {/* Y-axis title — rotated along the axis. */}
+        <span className="pointer-events-none absolute left-0 origin-center -rotate-90 font-mono text-[9px] uppercase tracking-[0.14em] text-text-muted" style={{ top: `${(PT + PB) / 2}%`, transform: "translateY(-50%) rotate(-90deg) translateX(0)", marginLeft: -14 }}>intelligence</span>
+        {/* X-axis tick numbers — centered under each gridpoint. */}
+        <span className="absolute -translate-x-1/2 font-mono text-[9px] text-text-muted" style={{ left: `${PL}%`, top: `${PB + 3}%` }}>free</span>
         {positives.length > 0 && [xmin, Math.sqrt(xmin * xmax), xmax].map((c, i) => (
-          <span key={i} className="absolute font-mono text-[9px] text-text-muted" style={{ left: `${xPct(c)}%`, top: `${PB + 3}%`, transform: "translateX(-50%)" }}>{fmtCost(c)}</span>
+          <span key={i} className="absolute -translate-x-1/2 font-mono text-[9px] tabular-nums text-text-muted" style={{ left: `${xPct(c)}%`, top: `${PB + 3}%` }}>{fmtCost(c)}</span>
         ))}
+        {/* X-axis title — centered under the plot. */}
+        <span className="absolute -translate-x-1/2 font-mono text-[9px] uppercase tracking-[0.14em] text-text-muted" style={{ left: `${(PL + PR) / 2}%`, top: `${PB + 9}%` }}>cost per run →</span>
         {plotted.map((p) => {
           const rad = radius(p.ms);
           const on = frontierKeys.has(p.key);
@@ -1965,6 +1976,7 @@ function BenchFrontier({
               onClick={() => onPick(p.key)}
               onMouseEnter={() => setHover(p.key)}
               onMouseLeave={() => setHover((h) => (h === p.key ? null : h))}
+              title={`${p.label} — ${p.intel.toFixed(1)}/10 · ${fmtLatency(p.ms)} · ${fmtCost(p.cost, p.local ? "local" : undefined)}${on ? " · best-value frontier" : ""}`}
               className={`absolute flex items-center justify-center rounded-full border transition-transform ${on ? "border-accent bg-accent-soft" : "border-border bg-surface-warm"} ${isHover ? "ring-2 ring-accent/40" : ""}`}
               style={{ left: `${xPct(p.cost)}%`, top: `${yPct(p.intel)}%`, width: rad * 2, height: rad * 2, transform: `translate(-50%,-50%) scale(${isHover ? 1.15 : 1})`, zIndex: isHover ? 30 : on ? 10 : 2 }}
             >
@@ -1974,15 +1986,17 @@ function BenchFrontier({
         })}
         {/* Always-on labels: name + intel · speed · cost under each bubble (above
             for low ones so they don't fall off the axis), so every model reads at
-            a glance with no hover. A ★ marks the best-value frontier members. */}
+            a glance with no hover. A ★ marks the best-value frontier members. A
+            faint backdrop keeps text legible where bubbles crowd together. */}
         {plotted.map((p) => {
           const rad = radius(p.ms);
           const low = yPct(p.intel) > 62;
+          const isHover = hover === p.key;
           return (
             <div
               key={`lbl-${p.key}`}
-              className="pointer-events-none absolute z-[15] flex w-28 flex-col items-center text-center"
-              style={{ left: `${xPct(p.cost)}%`, top: `calc(${yPct(p.intel)}% ${low ? `- ${rad + 5}px` : `+ ${rad + 5}px`})`, transform: `translate(-50%, ${low ? "-100%" : "0"})` }}
+              className="pointer-events-none absolute flex w-24 flex-col items-center rounded px-1 text-center"
+              style={{ left: `${xPct(p.cost)}%`, top: `calc(${yPct(p.intel)}% ${low ? `- ${rad + 5}px` : `+ ${rad + 5}px`})`, transform: `translate(-50%, ${low ? "-100%" : "0"})`, zIndex: isHover ? 31 : 15, background: "color-mix(in srgb, var(--color-surface) 70%, transparent)" }}
             >
               <span className={`max-w-full truncate font-mono text-[10px] font-semibold ${frontierKeys.has(p.key) ? "text-accent" : "text-text-primary"}`}>
                 {frontierKeys.has(p.key) ? "★ " : ""}{p.label}
@@ -1992,6 +2006,13 @@ function BenchFrontier({
           );
         })}
       </div>
+      {/* Plain-language explanation of how to read the chart. */}
+      <p className="px-1 text-[11px] leading-relaxed text-text-muted">
+        Each bubble is a model. <span className="text-text-secondary">Higher is smarter</span> (judge score out of 10),{" "}
+        <span className="text-text-secondary">further left is cheaper</span> (cost per run, log scale), and a{" "}
+        <span className="text-text-secondary">bigger bubble is faster</span>. The dashed line connects the{" "}
+        <span className="text-accent">best-value picks</span> (★) — the most intelligence you can buy at each price. The tinted top-left corner is the sweet spot: smart and cheap.
+      </p>
       {unpriced.length > 0 && (
         <div className="px-1 font-mono text-[10px] text-text-muted">unpriced (no cost axis): {unpriced.map((p) => p.label).join(", ")}</div>
       )}

@@ -4,6 +4,7 @@ import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
 import { Archive, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Cpu, Download, Folder, Lightbulb, Loader2, LucideIcon, Mail, MessagesSquare, PenLine, Pencil, Plus, Shield, Sparkles, Wrench, X } from "lucide-react";
 import { siWhatsapp } from "simple-icons";
 import { PrevailLogo } from "./PrevailLogo";
+import { ProviderMark } from "./marks";
 import { invoke, setWebToken } from "./bridge";
 import { INTEGRATION_LABEL, PATTERN_LABEL, PATTERN_TIER, PATTERN_TINT, STATUS_TINT } from "./constants";
 import { formatFreshness, scoreColor, titleCase } from "./format";
@@ -432,14 +433,14 @@ export function ThreadsRail({
             <button
               key={t.path}
               onClick={() => onPick(t.path)}
-              title={t.title}
+              title={t.cli ? `${t.title} · ${t.model || t.cli}` : t.title}
               className={`flex h-5 w-5 items-center justify-center rounded text-[9px] font-mono ${
                 t.path === activePath
-                  ? "bg-accent-soft text-accent"
+                  ? "bg-accent-soft text-accent ring-1 ring-accent-border"
                   : "text-text-muted hover:bg-surface-warm hover:text-text-primary"
               }`}
             >
-              {(t.title || "·").charAt(0).toUpperCase()}
+              {t.cli ? <ProviderMark vendor={t.cli} size={16} /> : (t.title || "·").charAt(0).toUpperCase()}
             </button>
           ))}
         </div>
@@ -553,6 +554,11 @@ export function ThreadsRail({
                       title="double-click to rename"
                     >
                       <div className="flex items-center gap-1.5">
+                        {t.cli && (
+                          <span className="shrink-0" title={`Last model: ${t.model || t.cli}`}>
+                            <ProviderMark vendor={t.cli} size={14} />
+                          </span>
+                        )}
                         <span className={`truncate text-sm ${active ? "font-medium text-text-primary" : "text-text-secondary"}`}>
                           {t.title}
                         </span>
