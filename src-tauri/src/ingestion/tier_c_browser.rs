@@ -125,7 +125,9 @@ impl BrowserRunner {
             std::thread::spawn(move || {
                 use tauri::Emitter;
                 let reader = BufReader::new(out);
-                for line in reader.lines().flatten() {
+                // map_while(Result::ok) stops on the first read error; .flatten()
+                // would spin forever if the stream keeps yielding Err.
+                for line in reader.lines().map_while(Result::ok) {
                     // Re-emit verbatim; UI parses the shape.
                     let _ = app2.emit(
                         "ingestion:browser",
@@ -194,7 +196,7 @@ impl BrowserRunner {
             std::thread::spawn(move || {
                 use tauri::Emitter;
                 let reader = BufReader::new(err);
-                for line in reader.lines().flatten() {
+                for line in reader.lines().map_while(Result::ok) {
                     let _ = app3.emit(
                         "ingestion:browser",
                         serde_json::json!({

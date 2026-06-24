@@ -48,3 +48,27 @@ jobs:
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # NOTE: the clippy bug-class gate (deny correctness + suspicious) runs in the
+  # macos-14 `rust` job in test.yml, which already builds the sidecar + native
+  # webview. Running clippy on ubuntu here would need the full GTK/glib apt
+  # toolchain just to satisfy the build, so it lives with the existing macOS
+  # rust job instead of being duplicated.
+
+  # Software Bill of Materials: a CycloneDX SBOM of the Rust dependency tree,
+  # published as a build artifact for supply-chain auditing (O92 sibling).
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx --locked
+      - name: Generate CycloneDX SBOM
+        run: cd src-tauri && cargo cyclonedx --format json
+      - name: Upload SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom-cyclonedx
+          path: src-tauri/**/*.cdx.json
+          if-no-files-found: warn
