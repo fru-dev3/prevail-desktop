@@ -532,7 +532,7 @@ export function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLo
         {/* feature pills */}
         <motion.div variants={item} className="mt-6 flex flex-wrap items-center justify-center gap-2">
           {[
-            { Icon: Shield, t: "Local-first · no cloud" },
+            { Icon: Shield, t: "Local-first vault · cloud optional" },
             { Icon: TrendingUp, t: "Context Score" },
             { Icon: Users, t: "Multi-model council" },
           ].map(({ Icon, t }) => (
