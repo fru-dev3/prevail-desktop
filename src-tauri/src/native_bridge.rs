@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use tauri::async_runtime::JoinHandle;
 use tokio::sync::{watch, Mutex as AsyncMutex};
 
-use crate::telegram_bridge::{record_exchange, resolve_domain, run_cli, BridgeConfig, BridgeStatus, RouteRule};
+use crate::telegram_bridge::{record_exchange, resolve_domain, run_cli_readonly, BridgeConfig, BridgeStatus, RouteRule};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NativeBridgeConfig {
@@ -146,7 +146,7 @@ impl NativeBridgeState {
                                     }
                                     let bcfg = cfg.to_bridge_config();
                                     let domain = cfg.domain.clone().or_else(|| resolve_domain(&bcfg, &inc.text));
-                                    let reply = match run_cli(&cfg.cli, cfg.model.as_deref(), &crate::telegram_bridge::fence_untrusted_inbound(&inc.text)).await {
+                                    let reply = match run_cli_readonly(&cfg.cli, cfg.model.as_deref(), &crate::telegram_bridge::fence_untrusted_inbound(&inc.text)).await {
                                         Ok(r) => r,
                                         Err(e) => {
                                             let mut s = status_for_task.lock().await;
