@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
-use crate::telegram_bridge::{run_cli, BridgeConfig, BridgeStatus};
+use crate::telegram_bridge::{run_cli_readonly, BridgeConfig, BridgeStatus};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WebhookConfig {
@@ -214,7 +214,7 @@ fn handle(mut req: tiny_http::Request, cfg: &WebhookConfig, status: &Arc<Mutex<B
         s.inbound_count += 1;
         s.last_inbound_ts = Some(now_secs());
     }
-    let result = tauri::async_runtime::block_on(run_cli(&cfg.cli, cfg.model.as_deref(), &crate::telegram_bridge::fence_untrusted_inbound(&hook.message)));
+    let result = tauri::async_runtime::block_on(run_cli_readonly(&cfg.cli, cfg.model.as_deref(), &crate::telegram_bridge::fence_untrusted_inbound(&hook.message)));
     match result {
         Ok(reply) => {
             if let Some(d) = domain.as_deref() {
