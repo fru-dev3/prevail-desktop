@@ -11,7 +11,6 @@ import { isLocalCli } from "./helpers";
 import { curatedFor, modelLabel, modelsFor, parseRunLabel } from "./helpers2";
 import { BenchScheduleCard } from "./cards";
 import { isBunkerOn, lsGet, lsSet } from "./storage";
-import { Sparkline } from "./ui";
 import { BenchCrumbs, Field, ScoreBar } from "./panels";
 import { CollapsibleSection } from "./collapsible";
 import { domainIcon } from "./icons";
@@ -1456,20 +1455,24 @@ export function BenchResults({
   // not two). Value = 50% intelligence · 25% speed · 25% cost, normalized over
   // the visible models. Default sort stays Intelligence.
   const [boardSort, setBoardSort] = useState<"intel" | "value" | "speed" | "cost">("intel");
-  const boardRows = useMemo(() => {
-    const costsPos = modelAgg.map((m) => (m.latestRun?.cost_basis === "local" ? 0 : m.latestRun?.cost_usd_est)).filter((c): c is number => c != null && c > 0);
+  const { rankedRows, unrankedRows } = useMemo(() => {
+    // A model is "rankable" only if it produced a real judged score. Models that
+    // errored or never scored (best == null) can look deceptively fast ($0, ~0ms)
+    // and must NEVER float to the top — they're parked below the standings.
+    const rankable = modelAgg.filter((m) => m.best != null);
+    const costsPos = rankable.map((m) => (m.latestRun?.cost_basis === "local" ? 0 : m.latestRun?.cost_usd_est)).filter((c): c is number => c != null && c > 0);
     const costMax = costsPos.length ? Math.max(...costsPos, 0.0001) : 1;
-    const msVals = modelAgg.map((m) => m.latestRun?.ms_avg).filter((v): v is number => v != null && v > 0);
+    const msVals = rankable.map((m) => m.latestRun?.ms_avg).filter((v): v is number => v != null && v > 0);
     const msMin = msVals.length ? Math.min(...msVals) : 0;
     const msMax = msVals.length ? Math.max(...msVals) : 1;
     const speedN = (ms: number | null | undefined) => ms == null ? 0.5 : msMax === msMin ? 0.5 : 1 - (ms - msMin) / (msMax - msMin);
     const costN = (c: number | null | undefined) => c == null ? 0.5 : costMax <= 0 ? 1 : 1 - c / costMax;
-    const withV = modelAgg.map((m) => {
+    const withV = rankable.map((m) => {
       const local = m.latestRun?.cost_basis === "local";
       const cost = local ? 0 : (m.latestRun?.cost_usd_est ?? null);
       return { ...m, value: (0.5 * ((m.best ?? 0) / 10) + 0.25 * speedN(m.latestRun?.ms_avg) + 0.25 * costN(cost)) * 10 };
     });
-    return [...withV].sort((a, b) => {
+    const ranked = [...withV].sort((a, b) => {
       if (boardSort === "cost") {
         const ac = a.latestRun?.cost_basis === "local" ? 0 : (a.latestRun?.cost_usd_est ?? Infinity);
         const bc = b.latestRun?.cost_basis === "local" ? 0 : (b.latestRun?.cost_usd_est ?? Infinity);
@@ -1478,7 +1481,119 @@ export function BenchResults({
       const f = (x: typeof withV[number]) => boardSort === "intel" ? (x.best ?? -1) : boardSort === "speed" ? speedN(x.latestRun?.ms_avg) : boardSort === "value" ? x.value : (x.best ?? -1);
       return f(b) - f(a);
     });
+    // Unranked: no score. Add a value of null so the row renders dashes, not 0.
+    const unranked = modelAgg
+      .filter((m) => m.best == null)
+      .map((m) => ({ ...m, value: null as number | null }))
+      .sort((a, b) => (b.latestDate || "").localeCompare(a.latestDate || ""));
+    return { rankedRows: ranked, unrankedRows: unranked };
   }, [modelAgg, boardSort]);
+
+  // One leaderboard row. rank === null means the model produced no judged score
+  // (errored / unscored) — it renders muted, parked below the standings, and its
+  // speed/cost are hidden so a $0/0ms error can't masquerade as a great result.
+  const renderBoardRow = (m: (typeof rankedRows)[number] | (typeof unrankedRows)[number], rank: number | null) => {
+    const total = rankedRows.length;
+    const leader = rank === 0 && total > 1;
+    const podium = rank !== null && rank < 3 && total > 1;
+    return (
+      <div
+        key={m.key}
+        className={`overflow-hidden rounded-xl border transition-colors ${
+          rank === null
+            ? "border-border-subtle bg-surface/60 opacity-70"
+            : leader
+              ? "border-accent bg-gradient-to-r from-accent-soft/70 to-surface"
+              : podium
+                ? "border-accent-border/50 bg-surface"
+                : "border-border-subtle bg-surface"
+        }`}
+      >
+        <button
+          onClick={() => setExpandedModel(expandedModel === m.key ? null : m.key)}
+          className={`flex w-full items-center gap-3 text-left hover:bg-surface-warm/60 ${leader ? "px-4 py-3" : "px-4 py-2"}`}
+        >
+          {/* Rank */}
+          <span className={`flex shrink-0 items-center justify-center rounded-full font-mono font-bold ${
+            rank === null
+              ? "h-6 w-6 text-[11px] text-text-muted/50"
+              : leader
+                ? "h-8 w-8 bg-accent text-background"
+                : podium
+                  ? "h-6 w-6 border border-accent-border bg-accent-soft text-[11px] text-accent"
+                  : "h-6 w-6 text-[11px] text-text-muted"
+          }`}>
+            {rank === null ? "–" : leader ? <Crown className="h-4 w-4" /> : rank + 1}
+          </span>
+          <ProviderMark vendor={m.parsed.vendor} size={leader ? 28 : 22} />
+          <span className="min-w-0 flex-1">
+            <span className={`block truncate font-display tracking-tight ${leader ? "text-base font-bold" : "text-sm font-semibold"}`}>
+              {m.parsed.model}
+            </span>
+            <span className="block font-mono text-[10px] text-text-muted">
+              {m.runs.length} run{m.runs.length === 1 ? "" : "s"} · {m.domains.length} domain{m.domains.length === 1 ? "" : "s"} · last {m.latestDate || "-"}
+              {rank === null ? (
+                <span className="ml-1.5 font-semibold text-warn" title="No judged score — this model errored or hasn't been scored, so it isn't ranked.">· no score</span>
+              ) : m.delta !== null && Math.abs(m.delta) >= 0.05 ? (
+                <span className={`ml-1.5 font-semibold ${m.delta > 0 ? "text-ok" : "text-warn"}`} title={`Judge trend: ${m.history.map((v) => v.toFixed(1)).join(" → ")}`}>
+                  {m.delta > 0 ? "▲" : "▼"}{Math.abs(m.delta).toFixed(1)}
+                </span>
+              ) : null}
+            </span>
+          </span>
+          {/* Numeric columns — fixed widths + always rendered so every row lines
+              up. Speed/cost are dashed for unranked models (can't be trusted). */}
+          <span className={`hidden w-16 shrink-0 text-right font-mono text-[11px] tabular-nums sm:block ${boardSort === "speed" && rank !== null ? "text-text-primary" : "text-text-muted"}`} title="Speed: avg latency per question (latest run)">
+            {rank !== null && m.latestRun?.ms_avg != null ? fmtLatency(m.latestRun.ms_avg) : "–"}
+          </span>
+          <span className={`hidden w-20 shrink-0 text-right font-mono text-[11px] tabular-nums sm:block ${boardSort === "cost" && rank !== null ? "text-text-primary" : "text-text-muted"}`} title="Cost: est. per run (latest run)">
+            {rank !== null && m.latestRun?.cost_usd_est != null ? fmtCost(m.latestRun.cost_usd_est, m.latestRun.cost_basis) : "–"}
+          </span>
+          <span className={`hidden w-12 shrink-0 text-right font-mono text-[11px] tabular-nums md:block ${boardSort === "value" && rank !== null ? "text-accent" : "text-text-muted"}`} title="Value: 50% intelligence · 25% speed · 25% cost">
+            {m.value != null ? m.value.toFixed(1) : "–"}
+          </span>
+          <div className="hidden w-24 shrink-0 lg:block"><ScoreBar value={m.best} max={10} color={scoreColor((m.best ?? 0) * 10)} /></div>
+          <span className={`shrink-0 text-right font-mono font-bold tabular-nums ${rank === null ? "text-text-muted/50" : "text-accent"} ${leader ? "w-14 text-2xl" : "w-12 text-sm"}`}>
+            {m.best?.toFixed(1) ?? "–"}
+          </span>
+        </button>
+        {expandedModel === m.key && (
+          <div className="border-t border-border-subtle bg-surface px-4 py-2">
+            {m.runs.map((r) => (
+              <div key={r.run_dir} className="flex w-full items-center gap-3 rounded px-2 py-1.5 hover:bg-surface-warm">
+                <button
+                  onClick={() => r.scored && loadRun(r.run_dir)}
+                  disabled={!r.scored}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
+                >
+                  <span className="w-20 shrink-0 font-mono text-[10px] text-text-muted">{r.date || "undated"}</span>
+                  <span className="flex min-w-0 flex-1 items-center gap-1">
+                    {r.domains.slice(0, 6).map((d) => (
+                      <span key={d} className="rounded bg-surface-warm px-1.5 py-0 font-mono text-[9px] text-text-muted">{d}</span>
+                    ))}
+                    {r.domains.length > 6 && <span className="font-mono text-[9px] text-text-muted">+{r.domains.length - 6}</span>}
+                  </span>
+                  <span className="font-mono text-[10px] text-text-muted">{r.questions} q</span>
+                  {r.scored ? (
+                    <RunDims run={r} />
+                  ) : (
+                    <span className="font-mono text-[10px] text-warn">unscored</span>
+                  )}
+                </button>
+                <button
+                  onClick={() => onRerun(r)}
+                  title="Rerun: same model, same domains, as a fresh run"
+                  className="shrink-0 rounded-md border border-border p-1 text-text-muted hover:border-accent-border hover:text-accent"
+                >
+                  <RotateCw className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // K2 (Monday feedback): the "Coverage by domain" summary table was removed -
   // it restated runs/models-per-domain that the main Model × domain matrix below
@@ -1632,113 +1747,36 @@ export function BenchResults({
               </button>
             </div>
           )}
-          <div className="mb-2 flex flex-wrap items-center gap-1 px-1">
-            <span className="mr-1 font-mono text-[10px] text-text-muted">sort:</span>
-            {([["intel", "Intelligence"], ["value", "Value"], ["speed", "Speed"], ["cost", "Cost"]] as const).map(([k, label]) => (
-              <button key={k} onClick={() => setBoardSort(k)} className={`rounded-md px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${boardSort === k ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-secondary"}`}>{label}</button>
-            ))}
+          <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Sort by</span>
+            <div className="inline-flex items-center rounded-lg border border-border-subtle bg-surface p-0.5">
+              {([["intel", "Intelligence"], ["value", "Value"], ["speed", "Speed"], ["cost", "Cost"]] as const).map(([k, label]) => (
+                <button key={k} onClick={() => setBoardSort(k)} className={`rounded-md px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${boardSort === k ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-text-primary"}`}>{label}</button>
+              ))}
+            </div>
+          </div>
+          {/* Column header — aligns with the fixed-width columns below. */}
+          <div className="mb-1 hidden items-center gap-3 px-4 font-mono text-[9px] uppercase tracking-wider text-text-muted/70 sm:flex">
+            <span className="min-w-0 flex-1" />
+            <span className="w-16 text-right">Speed</span>
+            <span className="w-20 text-right">Cost</span>
+            <span className="hidden w-12 text-right md:block">Value</span>
+            <span className="hidden w-24 lg:block">Score</span>
+            <span className="w-12 text-right">/10</span>
           </div>
           <div className="flex flex-col gap-2">
-            {boardRows.map((m, i) => {
-              const leader = i === 0 && boardRows.length > 1;
-              const podium = i < 3 && boardRows.length > 1;
-              return (
-              <div
-                key={m.key}
-                className={`overflow-hidden rounded-xl border transition-colors ${
-                  leader
-                    ? "border-accent bg-gradient-to-r from-accent-soft/70 to-surface"
-                    : podium
-                      ? "border-accent-border/50 bg-surface"
-                      : "border-border-subtle bg-surface"
-                }`}
-              >
-                <button
-                  onClick={() => setExpandedModel(expandedModel === m.key ? null : m.key)}
-                  className={`flex w-full items-center gap-3 text-left hover:bg-surface-warm/60 ${leader ? "px-4 py-3" : "px-4 py-2"}`}
-                >
-                  {/* Rank */}
-                  <span className={`flex shrink-0 items-center justify-center rounded-full font-mono font-bold ${
-                    leader
-                      ? "h-8 w-8 bg-accent text-background"
-                      : podium
-                        ? "h-6 w-6 border border-accent-border bg-accent-soft text-[11px] text-accent"
-                        : "h-6 w-6 text-[11px] text-text-muted"
-                  }`}>
-                    {leader ? <Crown className="h-4 w-4" /> : i + 1}
-                  </span>
-                  <ProviderMark vendor={m.parsed.vendor} size={leader ? 28 : 22} />
-                  <span className="min-w-0 flex-1">
-                    <span className={`block truncate font-display tracking-tight ${leader ? "text-base font-bold" : "text-sm font-semibold"}`}>
-                      {m.parsed.model}
-                    </span>
-                    <span className="block font-mono text-[10px] text-text-muted">
-                      {m.runs.length} run{m.runs.length === 1 ? "" : "s"} · {m.domains.length} domain{m.domains.length === 1 ? "" : "s"} · last {m.latestDate || "-"}
-                    </span>
-                  </span>
-                  {/* Drift: score history + latest delta */}
-                  {m.history.length >= 2 && (
-                    <span className="hidden items-center gap-1.5 md:flex" title={`Judge scores over time: ${m.history.map((v) => v.toFixed(1)).join(" → ")}`}>
-                      <Sparkline values={m.history} />
-                      {m.delta !== null && Math.abs(m.delta) >= 0.05 && (
-                        <span className={`font-mono text-[10px] font-semibold ${m.delta > 0 ? "text-ok" : "text-warn"}`}>
-                          {m.delta > 0 ? "▲" : "▼"}{Math.abs(m.delta).toFixed(1)}
-                        </span>
-                      )}
-                    </span>
-                  )}
-                  {/* Speed + cost at a glance (from the latest run) so the board
-                      reads as intelligence · speed · cost, not just a score. */}
-                  {m.latestRun && (m.latestRun.ms_avg != null || m.latestRun.cost_usd_est != null) && (
-                    <span className="hidden shrink-0 items-center gap-2.5 font-mono text-[11px] sm:flex" title="Speed (avg latency per question) · Cost (est. per run), from the latest run">
-                      <span className="inline-flex items-center gap-1 text-text-muted"><Zap className="h-3 w-3" />{fmtLatency(m.latestRun.ms_avg)}</span>
-                      <span className="inline-flex items-center gap-1 text-text-muted"><DollarSign className="h-3 w-3" />{fmtCost(m.latestRun.cost_usd_est, m.latestRun.cost_basis)}</span>
-                      <span className={`inline-flex items-center gap-1 ${boardSort === "value" ? "text-accent" : "text-text-muted"}`} title="Value: 50% intelligence · 25% speed · 25% cost"><Scale className="h-3 w-3" />{m.value.toFixed(1)}</span>
-                    </span>
-                  )}
-                  <div className="hidden w-32 lg:block"><ScoreBar value={m.best} max={10} color={scoreColor((m.best ?? 0) * 10)} /></div>
-                  <span className={`shrink-0 text-right font-mono font-bold text-accent ${leader ? "w-16 text-2xl" : "w-12 text-sm"}`}>
-                    {m.best?.toFixed(1) ?? "-"}
-                  </span>
-                </button>
-                {expandedModel === m.key && (
-                  <div className="border-t border-border-subtle bg-surface px-4 py-2">
-                    {m.runs.map((r) => (
-                      <div key={r.run_dir} className="flex w-full items-center gap-3 rounded px-2 py-1.5 hover:bg-surface-warm">
-                        <button
-                          onClick={() => r.scored && loadRun(r.run_dir)}
-                          disabled={!r.scored}
-                          className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
-                        >
-                          <span className="w-20 shrink-0 font-mono text-[10px] text-text-muted">{r.date || "undated"}</span>
-                          <span className="flex min-w-0 flex-1 items-center gap-1">
-                            {r.domains.slice(0, 6).map((d) => (
-                              <span key={d} className="rounded bg-surface-warm px-1.5 py-0 font-mono text-[9px] text-text-muted">{d}</span>
-                            ))}
-                            {r.domains.length > 6 && <span className="font-mono text-[9px] text-text-muted">+{r.domains.length - 6}</span>}
-                          </span>
-                          <span className="font-mono text-[10px] text-text-muted">{r.questions} q</span>
-                          {r.scored ? (
-                            <RunDims run={r} />
-                          ) : (
-                            <span className="font-mono text-[10px] text-warn">unscored</span>
-                          )}
-                        </button>
-                        <button
-                          onClick={() => onRerun(r)}
-                          title="Rerun: same model, same domains, as a fresh run"
-                          className="shrink-0 rounded-md border border-border p-1 text-text-muted hover:border-accent-border hover:text-accent"
-                        >
-                          <RotateCw className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              );
-            })}
+            {rankedRows.map((m, i) => renderBoardRow(m, i))}
           </div>
+          {unrankedRows.length > 0 && (
+            <div className="mt-4">
+              <div className="mb-1.5 flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+                <AlertTriangle className="h-3 w-3 text-warn" /> Not ranked — no judged score (errored or unscored)
+              </div>
+              <div className="flex flex-col gap-2">
+                {unrankedRows.map((m) => renderBoardRow(m, null))}
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -2229,83 +2267,90 @@ export function BenchmarkPanel({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Sub-nav - a segmented control, deliberately a different shape from
-          the underline top tab bar so the two rows don't read as twins. */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pb-3 pt-1">
-        {/* THE navigation - every destination, one level, one bar. */}
-        <div className="inline-flex items-center gap-0.5 rounded-xl border border-border-subtle bg-surface-warm/60 p-1">
+      {/* Sub-nav - one full-width bar, the destinations sorted into named
+          groups (Run · Results · Discover · Automation) with dividers so the
+          eight tabs read as four jobs-to-be-done, not a flat blur. */}
+      <div className="flex shrink-0 flex-col gap-2 px-4 pb-3 pt-1">
+        <div className="flex w-full flex-wrap items-stretch overflow-hidden rounded-xl border border-border-subtle bg-surface-warm/60">
           {([
-            ["run", "Run", Sparkles],
-            ["board", "Leaderboard", Crown],
-            ["frontier", "Chart", Target],
-            ["history", "History", Activity],
-            ["matrix", "Model × domain", Layers],
-            ["questions", "Questions", FileText],
-            ["scout", "Scout", BrainCircuit],
-            ["schedule", "Schedule", CalendarClock],
-          ] as const).map(([id, label, Icon]) => (
-            <button
-              key={id}
-              onClick={() => setView(id)}
-              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
-                view === id
-                  ? "bg-surface text-accent shadow-sm ring-1 ring-black/5"
-                  : "text-text-muted hover:text-text-secondary"
-              }`}
-            >
-              <Icon className="h-3 w-3" />
-              {label}
-            </button>
+            ["Run", [["run", "Run", Sparkles]]],
+            ["Results", [["board", "Leaderboard", Crown], ["frontier", "Chart", Target], ["history", "History", Activity], ["matrix", "Model × domain", Layers], ["questions", "Questions", FileText]]],
+            ["Discover", [["scout", "Scout", BrainCircuit]]],
+            ["Automation", [["schedule", "Schedule", CalendarClock]]],
+          ] as const).map(([group, tabs], gi) => (
+            <div key={group} className={`flex items-center gap-1.5 px-2.5 py-1.5 ${gi > 0 ? "border-l border-border-subtle" : ""}`}>
+              {(tabs.length > 1 || group !== tabs[0][1]) && (
+                <span className="shrink-0 select-none font-mono text-[8px] uppercase tracking-[0.14em] text-text-muted/50">{group}</span>
+              )}
+              <div className="flex flex-wrap items-center gap-0.5">
+                {tabs.map(([id, label, Icon]) => (
+                  <button
+                    key={id}
+                    onClick={() => setView(id)}
+                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                      view === id
+                        ? "bg-surface text-accent shadow-sm ring-1 ring-black/5"
+                        : "text-text-muted hover:text-text-secondary"
+                    }`}
+                  >
+                    <Icon className="h-3 w-3" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
-        {/* The domain you're scoped to is shown ONCE, by the "scoped to ..."
-            pill on the right - no redundant chip here. */}
-        {/* Contextual, same bar: run mode while configuring; domain filter on
-            the score views (global Arena only - inside a domain it's fixed). */}
-        {view === "run" && (
-          <div className="inline-flex items-center gap-0.5 rounded-xl border border-border-subtle bg-surface-warm/60 p-1">
-            {([
-              ["single", "Models", Layers],
-              ["council", "Council", Scale],
-            ] as const).map(([id, label, Icon]) => (
-              <button
-                key={id}
-                onClick={() => setMode(id)}
-                disabled={id === "council" && isBunkerOn()}
-                title={
-                  id === "single"
-                    ? "Compare models head-to-head"
-                    : isBunkerOn()
-                      ? "Blocked by Bunker Mode: the Council convenes cloud models"
-                      : "Run the multi-model Council"
-                }
-                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
-                  mode === id
-                    ? "bg-surface text-accent shadow-sm ring-1 ring-black/5"
-                    : "text-text-muted hover:text-text-secondary"
-                }`}
+        {/* Contextual controls, their own row: run mode while configuring;
+            domain filter on the score views; the scoped-to pill in a domain. */}
+        {(view === "run" || !!initialDomain || (!initialDomain && (view === "board" || view === "history") && allDomains.length > 0)) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {view === "run" && (
+              <div className="inline-flex items-center gap-0.5 rounded-xl border border-border-subtle bg-surface-warm/60 p-1">
+                {([
+                  ["single", "Models", Layers],
+                  ["council", "Council", Scale],
+                ] as const).map(([id, label, Icon]) => (
+                  <button
+                    key={id}
+                    onClick={() => setMode(id)}
+                    disabled={id === "council" && isBunkerOn()}
+                    title={
+                      id === "single"
+                        ? "Compare models head-to-head"
+                        : isBunkerOn()
+                          ? "Blocked by Bunker Mode: the Council convenes cloud models"
+                          : "Run the multi-model Council"
+                    }
+                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                      mode === id
+                        ? "bg-surface text-accent shadow-sm ring-1 ring-black/5"
+                        : "text-text-muted hover:text-text-secondary"
+                    }`}
+                  >
+                    <Icon className="h-3 w-3" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {!initialDomain && (view === "board" || view === "history") && allDomains.length > 0 && (
+              <select
+                value={domainFilter}
+                onChange={(e) => setDomainFilter(e.target.value)}
+                className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary"
               >
-                <Icon className="h-3 w-3" />
-                {label}
-              </button>
-            ))}
+                <option value="all">all domains</option>
+                {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+              </select>
+            )}
+            {initialDomain && (
+              <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-3 py-1 font-mono text-[11px] text-text-muted">
+                <Target className="h-3 w-3 text-accent" />
+                scoped to <span className="font-semibold text-accent">{titleCase(initialDomain)}</span>
+              </span>
+            )}
           </div>
-        )}
-        {!initialDomain && (view === "board" || view === "history") && allDomains.length > 0 && (
-          <select
-            value={domainFilter}
-            onChange={(e) => setDomainFilter(e.target.value)}
-            className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary"
-          >
-            <option value="all">all domains</option>
-            {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
-          </select>
-        )}
-        {initialDomain && (
-          <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-3 py-1 font-mono text-[11px] text-text-muted">
-            <Target className="h-3 w-3 text-accent" />
-            scoped to <span className="font-semibold text-accent">{titleCase(initialDomain)}</span>
-          </span>
         )}
       </div>
 
