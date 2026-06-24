@@ -11,7 +11,7 @@ import { relTime, scoreColor, titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
 import { ContextMeter, contextWindowFor, estimateTokens } from "./contextmeter";
 import { domainBlurb, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
-import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, loadPreferredSkills, maybeRedact, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
+import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, curatedFor, loadPreferredSkills, maybeRedact, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
 import { ContextScoreBadge, NewSkillForm, SkillsList } from "./panels";
@@ -204,6 +204,9 @@ export function ChatPanel({
     lsSet(domainModelKey, "");
   }
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  // Per-provider search over the full catalog (OpenRouter is 300+); empty shows
+  // the curated defaults so the menu isn't a wall.
+  const [modelSearch, setModelSearch] = useState<Record<string, string>>({});
   const modelMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!modelMenuOpen) return;
@@ -1294,7 +1297,7 @@ export function ChatPanel({
     if (isBunkerOn() && !isLocalCli(chatCli)) {
       const local = preferredLocalCli(clis);
       if (!local) {
-        setMessages((m) => [...m, { role: "user", content: input.trim(), ts: Date.now() }, { role: "assistant", content: "Bunker Mode is on, so replies stay on this device, but no local model provider (Ollama) was detected. Install or start Ollama, or leave Bunker Mode in Settings → Privacy.", ts: Date.now() }]);
+        setMessages((m) => [...m, { role: "user", content: input.trim(), ts: Date.now() }, { role: "assistant", content: "Bunker Mode is on, so replies stay on this device, but no local model provider (Ollama) was detected. Install or start Ollama, or leave Bunker Mode in Settings → Privacy.", ts: Date.now(), cli: chatCli }]);
         setInput("");
         return;
       }
@@ -1374,9 +1377,11 @@ export function ChatPanel({
     // preference in effect, so a future better model can replay it. The
     // matching raw reply is appended on completion (persistUsage).
     // The web-access decision for THIS turn: off in Bunker mode, else the
-    // per-domain "Web access" toggle (default off). Passed to the engine so it
-    // actually enforces the lockdown - not just logged in prefs.
-    const webAllowed = isBunkerOn() ? false : getDomainToggle(domain, "web", false);
+    // per-domain "Web access" toggle. The default MUST match the Modes UI
+    // (chatviews reads it with fallback `true`) - otherwise an untouched toggle
+    // shows ON in the UI while the engine is told "deny", and the turn is wrongly
+    // refused. Passed to the engine so it actually enforces the lockdown.
+    const webAllowed = isBunkerOn() ? false : getDomainToggle(domain, "web", true);
     const prefs = {
       framework: fwLens.framework ?? null,
       lens: fwLens.lens ?? null,
@@ -1419,15 +1424,21 @@ export function ChatPanel({
     // path grounds replies in the domain's real state again. Falls back to the
     // native chat_send path when the CLI isn't present.
     const ENGINE_CHAT_ENABLED = true;
-    const useEngine = ENGINE_CHAT_ENABLED && engineAvailable && !!domain;
     // Engine-only providers (no spawnable binary): OpenRouter is an HTTP gateway;
     // LM Studio / MLX are local HTTP servers the engine reaches via the ollama
-    // provider path. In the no-domain General space the engine path isn't used,
-    // so guide the user to a domain rather than failing on a missing binary.
+    // provider path. They have no native chat_send path, so they must always go
+    // through the engine — including in the no-domain General space, which the
+    // engine now serves as a first-class "general" domain.
     const ENGINE_ONLY = new Set(["openrouter", "lmstudio", "mlx"]);
+    // Use the engine when we're in a domain, OR when the chosen provider can only
+    // run through the engine (so General + OpenRouter/LM Studio/MLX works).
+    const useEngine = ENGINE_CHAT_ENABLED && engineAvailable && (!!domain || (!!chatCli && ENGINE_ONLY.has(chatCli)));
+    // The engine treats General as the "general" domain (general_dir), so a
+    // null/empty domain maps to that here.
+    const engineDomain = domain || "general";
     if (chatCli && ENGINE_ONLY.has(chatCli) && !useEngine) {
       const label = chatCli === "openrouter" ? "OpenRouter" : chatCli === "lmstudio" ? "LM Studio" : "oMLX";
-      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which needs a domain. Pick a domain (left sidebar) to chat with ${label}: or use an installed CLI here in General.`, ts: Date.now() }]);
+      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which isn't available right now. Make sure the Prevail engine is installed, then try again.`, ts: Date.now(), cli: chatCli, model: chatModel ?? undefined }]);
       onStreamEnd(sessionRef.current);
       return;
     }
@@ -1436,7 +1447,7 @@ export function ChatPanel({
         await invoke("engine_chat", {
           session: sessionRef.current,
           vault: vaultPath,
-          domain,
+          domain: engineDomain,
           message: promptText,
           cli: chatCli || null,
           model: chatModel,
@@ -1475,7 +1486,7 @@ export function ChatPanel({
           return;
         } catch { /* fall through to error rendering */ }
       }
-      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `(error spawning ${chatCli}: ${e})`, ts: Date.now() }]);
+      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `(error spawning ${chatCli}: ${e})`, ts: Date.now(), cli: chatCli, model: chatModel ?? undefined }]);
       onStreamEnd(sessionRef.current);
     }
   }
@@ -2304,8 +2315,14 @@ export function ChatPanel({
                   </div>
                   <div className="max-h-80 overflow-y-auto">
                     {clis.filter((c) => !isHarnessRuntime(c.id)).filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
-                      const cliModels = MODELS[c.id] ?? [];
+                      const cliModels = modelsFor(c.id);
                       if (cliModels.length === 0) return null;
+                      const curated = curatedFor(c.id);
+                      const searchable = cliModels.length > curated.length;
+                      const q = (modelSearch[c.id] ?? "").trim().toLowerCase();
+                      const shown = q
+                        ? cliModels.filter((m) => `${m.id} ${m.label ?? ""}`.toLowerCase().includes(q)).slice(0, 50)
+                        : (searchable ? curated : cliModels);
                       return (
                         <div key={c.id} className={c.available ? "" : "opacity-40"}>
                           <div className="flex items-center gap-2 bg-surface-warm/60 px-3 py-1">
@@ -2317,7 +2334,16 @@ export function ChatPanel({
                               <span className="ml-auto font-mono text-[10px] text-text-muted">not installed</span>
                             )}
                           </div>
-                          {cliModels.map((m) => {
+                          {searchable && c.available && (
+                            <input
+                              value={modelSearch[c.id] ?? ""}
+                              onChange={(e) => setModelSearch((s) => ({ ...s, [c.id]: e.target.value }))}
+                              placeholder={`Search all ${cliModels.length} ${c.label} models…`}
+                              className="mx-3 my-1 w-[calc(100%-1.5rem)] rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] focus:border-accent-border focus:outline-none"
+                            />
+                          )}
+                          {shown.length === 0 && <div className="px-4 py-1.5 font-mono text-[11px] text-text-muted">No models match "{q}".</div>}
+                          {shown.map((m) => {
                             const isActive = selectedCli === c.id && selectedModel === m.id;
                             return (
                               <button
@@ -2345,6 +2371,9 @@ export function ChatPanel({
                               </button>
                             );
                           })}
+                          {!q && searchable && c.available && (
+                            <div className="px-4 py-1 font-mono text-[10px] text-text-muted">+{cliModels.length - shown.length} more · search to pick any model</div>
+                          )}
                         </div>
                       );
                     })}

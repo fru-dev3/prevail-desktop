@@ -18,6 +18,9 @@ export interface ThreadMeta {
   updated: number;
   turn_count: number;
   preview: string;
+  // The model that last answered in this thread (for the rail icon).
+  cli: string | null;
+  model: string | null;
 }
 
 export interface ThreadTurn {

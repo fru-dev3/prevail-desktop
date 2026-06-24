@@ -46,12 +46,20 @@ export function modelLabel(cli?: string, id?: string): string {
   return m?.label ?? prettyModelId(id);
 }
 
+// Curated defaults + the full live/discovered catalog (deduped). For OpenRouter
+// that's 300+ models - the pickers render the curated set by default and add a
+// search box over the whole list, so any model is runnable without "pinning".
 export function modelsFor(cli: string): ModelPick[] {
   const curated = MODELS[cli] ?? [];
-  if (cli === "openrouter") return curated;
   const seen = new Set(curated.map((m) => m.id));
   const extra = (DISCOVERED_MODELS[cli] ?? []).filter((d) => !seen.has(d.id));
   return [...curated, ...extra];
+}
+
+// Just the curated defaults for a CLI - what a picker shows before the user
+// searches. Pairs with modelsFor() (the full searchable list).
+export function curatedFor(cli: string): ModelPick[] {
+  return MODELS[cli] ?? [];
 }
 
 export function buildQuickActions(domain: string | null): { glyph: string; label: string; prompt: string; council?: boolean }[] {
