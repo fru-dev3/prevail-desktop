@@ -49,22 +49,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Lint gate scoped to the BUG classes (correctness + suspicious), not style.
-  # A blanket -D warnings would false-fail on Tauri #[command] fns clippy can't
-  # see are invoked from JS; this gate catches real defects (e.g. .flatten() that
-  # loops forever on a read error) without churn.
-  clippy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          workspaces: src-tauri
-      - name: Clippy (deny correctness + suspicious)
-        run: cd src-tauri && cargo clippy --all-targets -- -D clippy::correctness -D clippy::suspicious
+  # NOTE: the clippy bug-class gate (deny correctness + suspicious) runs in the
+  # macos-14 `rust` job in test.yml, which already builds the sidecar + native
+  # webview. Running clippy on ubuntu here would need the full GTK/glib apt
+  # toolchain just to satisfy the build, so it lives with the existing macOS
+  # rust job instead of being duplicated.
 
   # Software Bill of Materials: a CycloneDX SBOM of the Rust dependency tree,
   # published as a build artifact for supply-chain auditing (O92 sibling).

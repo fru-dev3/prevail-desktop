@@ -48,7 +48,10 @@ jobs:
       - name: Test
         working-directory: src-tauri
         run: cargo test
-      - name: Clippy
+      - name: Clippy (deny bug classes)
         working-directory: src-tauri
-        # Not -D warnings yet (pre-existing lint debt); tighten after a cleanup pass.
-        run: cargo clippy
+        # Deny the BUG classes (correctness + suspicious) — these catch real
+        # defects like .flatten() that loops forever on a read error. NOT
+        # -D warnings: that would false-fail on Tauri #[command] fns clippy
+        # can't see are invoked from JS, plus pre-existing style lint debt.
+        run: cargo clippy --all-targets -- -D clippy::correctness -D clippy::suspicious
