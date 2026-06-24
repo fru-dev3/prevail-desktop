@@ -81,6 +81,11 @@ export const RUNTIME_META: Record<string, { blurb: string; install: string; prot
   claude:      { blurb: "Anthropic's agentic CLI.", install: "https://claude.com/claude-code", protocol: "claude", category: "cli" },
   codex:       { blurb: "OpenAI's coding agent CLI.", install: "https://developers.openai.com/codex/cli", protocol: "codex", category: "cli" },
   antigravity: { blurb: "Google's agentic CLI (agy).", install: "https://antigravity.google", protocol: "gemini", category: "cli" },
+  // ── Local model runtimes (on-device, no subscription) ──
+  ollama:      { blurb: "Run open models locally with Ollama — private, offline, free.", install: "https://ollama.com/download", protocol: "openai", category: "cli" },
+  lmstudio:    { blurb: "LM Studio: a local model server with a desktop GUI.", install: "https://lmstudio.ai", protocol: "openai", category: "cli" },
+  mlx:         { blurb: "Apple-silicon local inference via MLX.", install: "https://github.com/ml-explore/mlx", protocol: "openai", category: "cli" },
+  omlx:        { blurb: "Apple-silicon local inference via MLX (oMLX server).", install: "https://github.com/ml-explore/mlx", protocol: "openai", category: "cli" },
   // ── Harnesses (catalog only, NOT homepage) ──
   opencode:    { blurb: "Open-source terminal coding harness.", install: "https://opencode.ai", protocol: "openai", category: "harness" },
   openclaw:    { blurb: "Claude-protocol gateway harness.", install: "https://github.com/openclaw/openclaw", protocol: "claude", category: "harness" },
