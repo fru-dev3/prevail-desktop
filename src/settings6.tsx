@@ -1044,6 +1044,13 @@ export function AgentCard({
               <div className="flex items-center gap-2 rounded-md border border-border-subtle bg-surface-warm/60 px-2 py-1.5">
                 <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-primary" title={RUNTIME_META[cli.id]!.cmd}>{RUNTIME_META[cli.id]!.cmd}</code>
                 <button
+                  onClick={() => { void invoke("open_in_terminal", { command: RUNTIME_META[cli.id]!.cmd }).catch((e) => console.error("open_in_terminal", e)); }}
+                  title="Open Terminal and run this install command (you'll see it run and can confirm any prompts)"
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+                >
+                  <Terminal className="h-3 w-3" /> Install
+                </button>
+                <button
                   onClick={() => { navigator.clipboard.writeText(RUNTIME_META[cli.id]!.cmd!).then(() => { setCmdCopied(true); window.setTimeout(() => setCmdCopied(false), 1500); }).catch(() => {}); }}
                   className="inline-flex shrink-0 items-center gap-1 rounded border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
                 >

@@ -83,6 +83,33 @@ fn vault_lock_preamble() -> String {
      If a request would require touching files outside the vault, REFUSE and state that Vault Lock is enabled (turn it off in Settings to allow full-machine access).\n\n---\n\n".to_string()
 }
 
+/// Open Terminal.app and run a one-line install command, so a runtime setup is
+/// one click but still fully transparent: the user sees the exact command run,
+/// can authenticate (sudo/brew), and confirm — never a silent background install.
+/// The command originates from our own RUNTIME_META table (trusted), not user
+/// input. macOS-only (the app ships on macOS).
+#[tauri::command]
+pub(crate) fn open_in_terminal(command: String) -> Result<(), String> {
+    let cmd = command.trim();
+    if cmd.is_empty() {
+        return Err("empty command".into());
+    }
+    if cmd.len() > 500 {
+        return Err("command too long".into());
+    }
+    // Escape for an AppleScript string literal.
+    let escaped = cmd.replace('\\', "\\\\").replace('"', "\\\"");
+    let script = format!(
+        "tell application \"Terminal\"\nactivate\ndo script \"{escaped}\"\nend tell"
+    );
+    std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .spawn()
+        .map_err(|e| format!("failed to open Terminal: {e}"))?;
+    Ok(())
+}
+
 fn cli_args(cli: &str, prompt: &str, model: Option<&str>, web_denied: bool) -> (String, Vec<String>) {
     // Match the prevail CLI's dispatch table. -p / --prompt for one-shot
     // non-interactive mode. When `model` is supplied, inject the right

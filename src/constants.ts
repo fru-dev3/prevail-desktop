@@ -83,17 +83,17 @@ export const RUNTIME_META: Record<string, { blurb: string; install: string; prot
   // ── Primary CLIs (homepage + catalog) ──
   claude:      { blurb: "Anthropic's agentic CLI.", install: "https://claude.com/claude-code", protocol: "claude", category: "cli", cmd: "npm install -g @anthropic-ai/claude-code" },
   codex:       { blurb: "OpenAI's coding agent CLI.", install: "https://developers.openai.com/codex/cli", protocol: "codex", category: "cli", cmd: "npm install -g @openai/codex" },
-  antigravity: { blurb: "Google's agentic CLI (agy).", install: "https://antigravity.google", protocol: "gemini", category: "cli" },
+  antigravity: { blurb: "Google's agentic CLI (agy).", install: "https://antigravity.google", protocol: "gemini", category: "cli", cmd: "curl -fsSL https://antigravity.google/cli/install.sh | bash" },
   // ── Local model runtimes (on-device, no subscription) ──
   ollama:      { blurb: "Run open models locally with Ollama — private, offline, free.", install: "https://ollama.com/download", protocol: "openai", category: "cli", cmd: "brew install ollama" },
   lmstudio:    { blurb: "LM Studio: a local model server with a desktop GUI.", install: "https://lmstudio.ai", protocol: "openai", category: "cli", cmd: "brew install --cask lm-studio" },
   mlx:         { blurb: "Apple-silicon local inference via MLX.", install: "https://github.com/ml-explore/mlx", protocol: "openai", category: "cli", cmd: "pip install mlx-lm" },
   omlx:        { blurb: "Apple-silicon local inference via MLX (oMLX server).", install: "https://github.com/ml-explore/mlx", protocol: "openai", category: "cli", cmd: "pip install mlx-lm" },
   // ── Harnesses (catalog only, NOT homepage) ──
-  opencode:    { blurb: "Open-source terminal coding harness.", install: "https://opencode.ai", protocol: "openai", category: "harness" },
-  openclaw:    { blurb: "Claude-protocol gateway harness.", install: "https://github.com/openclaw/openclaw", protocol: "claude", category: "harness" },
+  opencode:    { blurb: "Open-source terminal coding harness.", install: "https://opencode.ai", protocol: "openai", category: "harness", cmd: "brew install opencode" },
+  openclaw:    { blurb: "Claude-protocol gateway harness.", install: "https://github.com/openclaw/openclaw", protocol: "claude", category: "harness", cmd: "curl -fsSL https://openclaw.ai/install.sh | bash" },
   hermes:      { blurb: "Hermes agent harness.", install: "https://github.com/hermes-cli/hermes", protocol: "openai", category: "harness" },
-  pi:          { blurb: "Pi agent harness.", install: "https://pi.ai", protocol: "openai", category: "harness" },
+  pi:          { blurb: "Pi agent harness.", install: "https://pi.ai", protocol: "openai", category: "harness", cmd: "npm install -g @earendil-works/pi-coding-agent" },
 };
 
 // Convenience: is this runtime id a harness (vs a primary CLI)? Unknown ids are
