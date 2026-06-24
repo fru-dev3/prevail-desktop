@@ -27,13 +27,10 @@ life-domain — **wealth, health, tax, career** — grounded in a markdown vault
 
 ## Install
 
-**One line** — downloads, installs to `/Applications`, and launches:
+**One line** — downloads the signed DMG, installs to `/Applications`, and launches:
 
 ```bash
-curl -fsSL https://github.com/fru-dev3/prevail-desktop/releases/latest/download/Prevail-mac-arm64.dmg -o /tmp/Prevail.dmg && \
-VOL="$(hdiutil attach -nobrowse -noautoopen /tmp/Prevail.dmg | grep -o '/Volumes/.*' | head -1)" && \
-cp -R "$VOL/Prevail.app" /Applications/ && hdiutil detach "$VOL" >/dev/null && \
-xattr -dr com.apple.quarantine /Applications/Prevail.app 2>/dev/null; open -a Prevail
+curl -fsSL https://prevail.sh/install-mac | bash
 ```
 
 Prefer to click? **[⤓ Download the `.dmg`](https://github.com/fru-dev3/prevail-desktop/releases/latest/download/Prevail-mac-arm64.dmg)** and drag `Prevail.app` to Applications. Signed & **notarized** — no Gatekeeper warning. _Requires macOS 13+ (Apple Silicon)._
