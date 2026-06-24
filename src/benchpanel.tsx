@@ -48,12 +48,12 @@ function ModelScoutSuggestions({ vaultPath }: { vaultPath: string }) {
   };
   const items = doc?.items ?? [];
   return (
-    <CollapsibleSection
-      icon={BrainCircuit}
-      title="Model Scout"
-      defaultOpen={items.length > 0}
-      summary={items.length ? `${items.length} suggested${doc?.generated ? ` · scanned ${new Date(doc.generated).toLocaleDateString()}` : ""}` : "daily web scan"}
-    >
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <BrainCircuit className="h-4 w-4 text-accent" />
+        <span className="text-sm font-semibold text-text-primary">Model Scout</span>
+        <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-text-muted">{items.length ? `${items.length} suggested${doc?.generated ? ` · scanned ${new Date(doc.generated).toLocaleDateString()}` : ""}` : "daily web scan"}</span>
+      </div>
       <div className="space-y-2 px-1">
         <div className="flex items-center gap-2 text-[11px] text-text-muted">
           <BrainCircuit className="h-3.5 w-3.5 text-accent" />
@@ -84,7 +84,7 @@ function ModelScoutSuggestions({ vaultPath }: { vaultPath: string }) {
           </ul>
         )}
       </div>
-    </CollapsibleSection>
+    </div>
   );
 }
 
@@ -197,7 +197,14 @@ export function BenchMatrix({
   // dimensions to show so a vault with many domains doesn't force a sideways
   // scroll. null selection = the default top-N; otherwise the explicit picks.
   const TOP_DIMS = 5;
-  const defaultDims = useMemo(() => orderedDomains.slice(0, TOP_DIMS), [orderedDomains]);
+  const defaultDims = useMemo(() => {
+    // Default to dimensions that actually have data (so empty columns like a
+    // never-tested Career/Homestead don't take space), capped at the top N;
+    // keep the current domain visible if we're scoped to one.
+    const withData = orderedDomains.filter((d) => (bestPerDomain[d] ?? -1) >= 0);
+    const base = (withData.length ? withData : orderedDomains).slice(0, TOP_DIMS);
+    return cur && orderedDomains.includes(cur) && !base.includes(cur) ? [cur, ...base].slice(0, TOP_DIMS) : base;
+  }, [orderedDomains, bestPerDomain, cur]);
   const [dimSel, setDimSel] = useState<string[] | null>(() => {
     try { const v = localStorage.getItem("prevail.bench.matrixDims"); return v ? JSON.parse(v) : null; } catch { return null; }
   });
@@ -227,7 +234,7 @@ export function BenchMatrix({
           {visibleRows.length}/{rows.length} models · {visibleDomains.length}/{orderedDomains.length} dimensions
         </span>
         <div className="flex flex-wrap items-center gap-2">
-        {orderedDomains.length > TOP_DIMS && (
+        {orderedDomains.length > 1 && (
           <div className="relative">
             <button
               onClick={() => setDimPickerOpen((o) => !o)}
@@ -1303,7 +1310,7 @@ export function BenchResults({
     setLoadingDetail(true);
     setExpandedQ(null);
     setSelectedRun(runs.find((r) => r.run_dir === runDir) ?? null);
-    setSelectedFrom(from ?? { view: resultsView === "history" ? "History" : resultsView === "matrix" ? "Model × domain" : resultsView === "frontier" ? "Frontier" : "Leaderboard" });
+    setSelectedFrom(from ?? { view: resultsView === "history" ? "History" : resultsView === "matrix" ? "Model × domain" : resultsView === "frontier" ? "Chart" : "Leaderboard" });
     try {
       setSelected(await invoke<RunDetail>("benchmark_run_detail", { runDir }));
     } catch { /* ignore */ } finally {
@@ -1444,6 +1451,35 @@ export function BenchResults({
   }, [visibleRuns, matrix, domainFilter]);
   const [expandedModel, setExpandedModel] = useState<string | null>(initialModel ?? null);
 
+  // The Leaderboard is sortable across all dimensions + a composite Value
+  // (this folds in the old Compare "Ranked" view so there's one ranked list,
+  // not two). Value = 50% intelligence · 25% speed · 25% cost, normalized over
+  // the visible models. Default sort stays Intelligence.
+  const [boardSort, setBoardSort] = useState<"intel" | "value" | "speed" | "cost">("intel");
+  const boardRows = useMemo(() => {
+    const costsPos = modelAgg.map((m) => (m.latestRun?.cost_basis === "local" ? 0 : m.latestRun?.cost_usd_est)).filter((c): c is number => c != null && c > 0);
+    const costMax = costsPos.length ? Math.max(...costsPos, 0.0001) : 1;
+    const msVals = modelAgg.map((m) => m.latestRun?.ms_avg).filter((v): v is number => v != null && v > 0);
+    const msMin = msVals.length ? Math.min(...msVals) : 0;
+    const msMax = msVals.length ? Math.max(...msVals) : 1;
+    const speedN = (ms: number | null | undefined) => ms == null ? 0.5 : msMax === msMin ? 0.5 : 1 - (ms - msMin) / (msMax - msMin);
+    const costN = (c: number | null | undefined) => c == null ? 0.5 : costMax <= 0 ? 1 : 1 - c / costMax;
+    const withV = modelAgg.map((m) => {
+      const local = m.latestRun?.cost_basis === "local";
+      const cost = local ? 0 : (m.latestRun?.cost_usd_est ?? null);
+      return { ...m, value: (0.5 * ((m.best ?? 0) / 10) + 0.25 * speedN(m.latestRun?.ms_avg) + 0.25 * costN(cost)) * 10 };
+    });
+    return [...withV].sort((a, b) => {
+      if (boardSort === "cost") {
+        const ac = a.latestRun?.cost_basis === "local" ? 0 : (a.latestRun?.cost_usd_est ?? Infinity);
+        const bc = b.latestRun?.cost_basis === "local" ? 0 : (b.latestRun?.cost_usd_est ?? Infinity);
+        return ac - bc;
+      }
+      const f = (x: typeof withV[number]) => boardSort === "intel" ? (x.best ?? -1) : boardSort === "speed" ? speedN(x.latestRun?.ms_avg) : boardSort === "value" ? x.value : (x.best ?? -1);
+      return f(b) - f(a);
+    });
+  }, [modelAgg, boardSort]);
+
   // K2 (Monday feedback): the "Coverage by domain" summary table was removed -
   // it restated runs/models-per-domain that the main Model × domain matrix below
   // already conveys ("What's the point of this. Remove it.").
@@ -1552,7 +1588,7 @@ export function BenchResults({
         items={[
           { label: "Arena", onClick: onCrumbHome },
           {
-            label: resultsView === "history" ? "History" : resultsView === "matrix" ? "Model × domain" : resultsView === "frontier" ? "Frontier" : "Leaderboard",
+            label: resultsView === "history" ? "History" : resultsView === "matrix" ? "Model × domain" : resultsView === "frontier" ? "Chart" : "Leaderboard",
             // Clickable only when a domain filter pushes it off the tail - then
             // it walks back to the same view across all domains.
             onClick: domainFilter !== "all" ? onClearDomain : undefined,
@@ -1596,10 +1632,16 @@ export function BenchResults({
               </button>
             </div>
           )}
+          <div className="mb-2 flex flex-wrap items-center gap-1 px-1">
+            <span className="mr-1 font-mono text-[10px] text-text-muted">sort:</span>
+            {([["intel", "Intelligence"], ["value", "Value"], ["speed", "Speed"], ["cost", "Cost"]] as const).map(([k, label]) => (
+              <button key={k} onClick={() => setBoardSort(k)} className={`rounded-md px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${boardSort === k ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-secondary"}`}>{label}</button>
+            ))}
+          </div>
           <div className="flex flex-col gap-2">
-            {modelAgg.map((m, i) => {
-              const leader = i === 0 && modelAgg.length > 1;
-              const podium = i < 3 && modelAgg.length > 1;
+            {boardRows.map((m, i) => {
+              const leader = i === 0 && boardRows.length > 1;
+              const podium = i < 3 && boardRows.length > 1;
               return (
               <div
                 key={m.key}
@@ -1651,6 +1693,7 @@ export function BenchResults({
                     <span className="hidden shrink-0 items-center gap-2.5 font-mono text-[11px] sm:flex" title="Speed (avg latency per question) · Cost (est. per run), from the latest run">
                       <span className="inline-flex items-center gap-1 text-text-muted"><Zap className="h-3 w-3" />{fmtLatency(m.latestRun.ms_avg)}</span>
                       <span className="inline-flex items-center gap-1 text-text-muted"><DollarSign className="h-3 w-3" />{fmtCost(m.latestRun.cost_usd_est, m.latestRun.cost_basis)}</span>
+                      <span className={`inline-flex items-center gap-1 ${boardSort === "value" ? "text-accent" : "text-text-muted"}`} title="Value: 50% intelligence · 25% speed · 25% cost"><Scale className="h-3 w-3" />{m.value.toFixed(1)}</span>
                     </span>
                   )}
                   <div className="hidden w-32 lg:block"><ScoreBar value={m.best} max={10} color={scoreColor((m.best ?? 0) * 10)} /></div>
@@ -1784,7 +1827,7 @@ export function BenchResults({
         <BenchMatrix matrix={matrix} allDomains={allDomains} onPick={loadRun} currentDomain={currentDomain} />
       )}
       {resultsView === "frontier" && visibleRuns.length > 0 && (
-        <BenchDimensions
+        <BenchFrontier
           models={modelAgg}
           onPick={(key) => { const mm = modelAgg.find((x) => x.key === key); if (mm?.latestRun?.scored) loadRun(mm.latestRun.run_dir); }}
         />
@@ -1914,96 +1957,6 @@ function BenchFrontier({
       {unpriced.length > 0 && (
         <div className="px-1 font-mono text-[10px] text-text-muted">unpriced (no cost axis): {unpriced.map((p) => p.label).join(", ")}</div>
       )}
-    </div>
-  );
-}
-
-// The "Compare" view: one place to look at intelligence · speed · cost, with a
-// mode switcher. Scatter = the quality-cost frontier; Ranked = a sortable list
-// with a per-dimension bar + a composite value score. Same data, two lenses.
-type DimModel = { key: string; parsed: { vendor: string; model: string }; best: number | null; latestRun: BenchmarkRun | null };
-
-function BenchDimensions({ models, onPick }: { models: DimModel[]; onPick: (key: string) => void }) {
-  const [mode, setMode] = useState<"scatter" | "ranked">("scatter");
-  return (
-    <div className="space-y-3">
-      <div className="inline-flex items-center gap-0.5 rounded-lg border border-border-subtle bg-surface-warm/60 p-0.5">
-        {([["scatter", "Scatter", Target], ["ranked", "Ranked list", TrendingUp]] as const).map(([id, label, Icon]) => (
-          <button
-            key={id}
-            onClick={() => setMode(id)}
-            className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-all ${mode === id ? "bg-surface text-accent shadow-sm ring-1 ring-black/5" : "text-text-muted hover:text-text-secondary"}`}
-          >
-            <Icon className="h-3 w-3" />{label}
-          </button>
-        ))}
-      </div>
-      {mode === "scatter" ? <BenchFrontier models={models} onPick={onPick} /> : <BenchRanked models={models} onPick={onPick} />}
-    </div>
-  );
-}
-
-// Sortable ranked list: every model with a per-dimension mini-bar (intelligence,
-// speed, cost) and a composite Value score, sortable by any dimension. Bars all
-// read "fuller = better" (cheaper/faster fill more) so the eye scans one way.
-function BenchRanked({ models, onPick }: { models: DimModel[]; onPick: (key: string) => void }) {
-  const [sortKey, setSortKey] = useState<"value" | "intel" | "speed" | "cost">("value");
-  const rows = models.filter((m) => m.best != null).map((m) => {
-    const r = m.latestRun;
-    const local = r?.cost_basis === "local";
-    const cost = local ? 0 : (r?.cost_usd_est ?? null);
-    return { key: m.key, vendor: m.parsed.vendor, label: m.parsed.model, intel: m.best as number, ms: r?.ms_avg ?? null, cost, local };
-  });
-  const costsPos = rows.map((r) => r.cost).filter((c): c is number => c != null);
-  const costMax = costsPos.length ? Math.max(...costsPos, 0.0001) : 1;
-  const msVals = rows.map((r) => r.ms).filter((v): v is number => v != null && v > 0);
-  const msMin = msVals.length ? Math.min(...msVals) : 0;
-  const msMax = msVals.length ? Math.max(...msVals) : 1;
-  const speedN = (ms: number | null) => ms == null ? 0.5 : msMax === msMin ? 0.5 : 1 - (ms - msMin) / (msMax - msMin);
-  const costN = (c: number | null) => c == null ? 0.5 : costMax <= 0 ? 1 : 1 - c / costMax;
-  const valueOf = (r: { intel: number; ms: number | null; cost: number | null }) => (0.5 * (r.intel / 10) + 0.25 * speedN(r.ms) + 0.25 * costN(r.cost)) * 10;
-  const withV = rows.map((r) => ({ ...r, value: valueOf(r) }));
-  const sorted = [...withV].sort((a, b) => {
-    if (sortKey === "cost") return (a.cost ?? Infinity) - (b.cost ?? Infinity);
-    const f = (x: typeof withV[number]) => sortKey === "intel" ? x.intel : sortKey === "speed" ? speedN(x.ms) : x.value;
-    return f(b) - f(a);
-  });
-  const Bar = ({ frac, tone }: { frac: number; tone?: string }) => (
-    <span className="inline-block h-1.5 w-12 overflow-hidden rounded-full bg-surface-warm align-middle">
-      <span className={`block h-full rounded-full ${tone ?? "bg-accent"}`} style={{ width: `${Math.max(2, Math.min(100, frac * 100))}%` }} />
-    </span>
-  );
-  const SortBtn = ({ k, label }: { k: typeof sortKey; label: string }) => (
-    <button onClick={() => setSortKey(k)} className={`rounded-md px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${sortKey === k ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-secondary"}`}>{label}</button>
-  );
-  // One shared grid so the header and every row align perfectly: rank · model
-  // (flexes) · the three dimensions (each bar+value as one tight cell) · value.
-  const gridCols = { gridTemplateColumns: "1.5rem minmax(8rem,1fr) 8.5rem 7.5rem 8.5rem 2.75rem" };
-  const dimCell = "flex items-center gap-2 justify-self-start";
-  if (rows.length === 0) return <div className="rounded-xl border border-border-subtle bg-surface px-4 py-10 text-center text-sm text-text-muted">No scored runs yet — run a benchmark to populate the list.</div>;
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-1 px-1"><span className="mr-1 font-mono text-[10px] text-text-muted">sort:</span><SortBtn k="value" label="Value" /><SortBtn k="intel" label="Intelligence" /><SortBtn k="speed" label="Speed" /><SortBtn k="cost" label="Cost" /></div>
-      <div className="overflow-hidden rounded-xl border border-border-subtle">
-        <div className="grid items-center gap-x-5 border-b border-border-subtle bg-surface-warm/50 px-3 py-1.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" style={gridCols}>
-          <span /><span>model</span>
-          <span className={`justify-self-start ${sortKey === "intel" ? "text-accent" : ""}`}>intelligence</span>
-          <span className={`justify-self-start ${sortKey === "speed" ? "text-accent" : ""}`}>speed</span>
-          <span className={`justify-self-start ${sortKey === "cost" ? "text-accent" : ""}`}>cost</span>
-          <span className={`justify-self-end ${sortKey === "value" ? "text-accent" : ""}`}>value</span>
-        </div>
-        {sorted.map((r, i) => (
-          <button key={r.key} onClick={() => onPick(r.key)} className="grid w-full items-center gap-x-5 border-b border-border-subtle/50 px-3 py-2 text-left last:border-0 hover:bg-surface-warm" style={gridCols}>
-            <span className="font-mono text-[11px] text-text-muted">{i + 1}</span>
-            <span className="flex min-w-0 items-center gap-2"><ProviderMark vendor={r.vendor} size={18} /><span className="truncate text-sm font-medium text-text-primary">{r.label}</span></span>
-            <span className={dimCell}><Bar frac={r.intel / 10} /><span className="font-mono text-[11px] font-semibold text-accent">{r.intel.toFixed(1)}</span></span>
-            <span className={dimCell}><Bar frac={speedN(r.ms)} tone="bg-text-secondary" /><span className="font-mono text-[10px] text-text-muted">{fmtLatency(r.ms)}</span></span>
-            <span className={dimCell}><Bar frac={costN(r.cost)} tone="bg-text-secondary" /><span className="font-mono text-[10px] text-text-muted">{r.cost != null ? fmtCost(r.cost, r.local ? "local" : undefined) : "—"}</span></span>
-            <span className="justify-self-end font-mono text-sm font-bold text-text-primary">{r.value.toFixed(1)}</span>
-          </button>
-        ))}
-      </div>
-      <div className="px-1 font-mono text-[9px] text-text-muted">value = 50% intelligence · 25% speed · 25% cost (normalized across these models). bars read fuller = better.</div>
     </div>
   );
 }
@@ -2284,7 +2237,7 @@ export function BenchmarkPanel({
           {([
             ["run", "Run", Sparkles],
             ["board", "Leaderboard", Crown],
-            ["frontier", "Compare", Target],
+            ["frontier", "Chart", Target],
             ["history", "History", Activity],
             ["matrix", "Model × domain", Layers],
             ["questions", "Questions", FileText],
