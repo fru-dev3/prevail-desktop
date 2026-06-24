@@ -1081,7 +1081,11 @@ export function AgentsSection({
   // "Set up" link. All groups open by default so every supported runtime is
   // visible to set up.
   const sortReady = (a: CliInfo, b: CliInfo) => Number(b.available) - Number(a.available) || a.label.localeCompare(b.label);
-  const cliRuntimes = clis.filter((c) => !isHarnessRuntime(c.id)).sort(sortReady);
+  // Aggregators (OpenRouter, Bedrock) are HTTP gateways, not spawnable CLIs —
+  // they have their own "Aggregator runtimes" section with key + catalog, so
+  // they must NOT also appear in the CLI runtimes list (and can't be "spawned").
+  const AGGREGATOR_IDS = new Set(["openrouter", "bedrock"]);
+  const cliRuntimes = clis.filter((c) => !isHarnessRuntime(c.id) && !AGGREGATOR_IDS.has(c.id)).sort(sortReady);
   const harnesses = clis.filter((c) => isHarnessRuntime(c.id)).sort(sortReady);
   // Split the vendor CLIs into on-device (local) vs hosted (cloud) so the user
   // can configure local-only models in one place. Match local runtimes by id,
