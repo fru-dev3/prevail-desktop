@@ -6,8 +6,8 @@ import { invoke } from "./bridge";
 import { LS, lsGet, lsSet } from "./storage";
 import { useAppearance } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
+import { ProviderMark } from "./marks";
 import { PrevailLogo } from "./PrevailLogo";
-import { BenchScheduleCard } from "./cards";
 import { FrameworksSection, RemoteSection, ShortcutsSection } from "./settings1";
 import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection } from "./settings2";
 import { BoardPanel } from "./boardpanel";
@@ -330,13 +330,18 @@ export function SettingsPanel({
                 title="Arena"
                 icon={Target}
                 subtitle="Your personal eval suite. Run any model against your own questions across every domain, see who leads where, and manage the question set: write, AI-draft from your data, import, export."
+                right={
+                  <div className="flex items-center -space-x-2">
+                    {["claude", "codex", "antigravity", "openrouter", "ollama", "lmstudio"].map((v) => (
+                      <span key={v} className="rounded-md ring-2 ring-surface transition-transform hover:z-10 hover:-translate-y-0.5">
+                        <ProviderMark vendor={v} size={30} />
+                      </span>
+                    ))}
+                  </div>
+                }
               />
               <div className="-mx-4 min-h-[60vh]">
                 <BenchmarkPanel vaultPath={vaultPath} />
-              </div>
-              {/* K1 (Monday feedback): scheduled runs live at the BOTTOM, not the top. */}
-              <div className="mt-8 border-t border-border-subtle pt-6">
-                <BenchScheduleCard vault={vaultPath} />
               </div>
             </>
           )}
