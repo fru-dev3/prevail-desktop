@@ -929,7 +929,11 @@ pub async fn composio_cli_install(_app: tauri::AppHandle) -> Result<serde_json::
         let (_p, user, logname) = crate::build_cli_env();
         let out = Command::new("bash")
             .arg("-lc")
-            .arg("curl -fsSL https://composio.dev/install | bash")
+            // Download the installer to a temp file, then run it — don't pipe
+            // remote code straight into bash (O37). The script never bypasses
+            // disk, so it's inspectable and the download can fail cleanly.
+            // (Cryptographic SHA-pinning awaits an upstream-published checksum.)
+            .arg("set -euo pipefail; t=\"$(mktemp -t composio-install.XXXXXX)\"; curl -fsSL https://composio.dev/install -o \"$t\"; bash \"$t\"; rm -f \"$t\"")
             .env_clear()
             .envs(crate::scrubbed_env_pairs())
             .env("PATH", path)

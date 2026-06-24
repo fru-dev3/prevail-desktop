@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use tauri::async_runtime::JoinHandle;
 use tokio::sync::{watch, Mutex as AsyncMutex};
 
-use crate::telegram_bridge::{record_exchange, resolve_domain, run_cli, BridgeConfig, BridgeStatus, RouteRule};
+use crate::telegram_bridge::{record_exchange, resolve_domain, run_cli_readonly, BridgeConfig, BridgeStatus, RouteRule};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EmailConfig {
@@ -125,7 +125,7 @@ impl EmailState {
                             let prompt = if inc.subject.is_empty() { inc.body.clone() } else { format!("{}\n\n{}", inc.subject, inc.body) };
                             let bcfg = bridge_cfg(&cfg);
                             let domain = cfg.domain.clone().or_else(|| resolve_domain(&bcfg, &prompt));
-                            let reply = match run_cli(&cfg.cli, cfg.model.as_deref(), &crate::telegram_bridge::fence_untrusted_inbound(&prompt)).await {
+                            let reply = match run_cli_readonly(&cfg.cli, cfg.model.as_deref(), &crate::telegram_bridge::fence_untrusted_inbound(&prompt)).await {
                                 Ok(r) => r,
                                 Err(e) => { status_task.lock().await.last_error = Some(e); continue; }
                             };
