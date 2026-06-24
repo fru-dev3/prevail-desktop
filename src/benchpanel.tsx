@@ -1486,10 +1486,13 @@ export function BenchResults({
   // the visible models. Default sort stays Intelligence.
   const [boardSort, setBoardSort] = useState<"intel" | "value" | "speed" | "cost">("intel");
   const { rankedRows, unrankedRows } = useMemo(() => {
-    // A model is "rankable" only if it produced a real judged score. Models that
-    // errored or never scored (best == null) can look deceptively fast ($0, ~0ms)
-    // and must NEVER float to the top — they're parked below the standings.
-    const rankable = modelAgg.filter((m) => m.best != null);
+    // A model is "rankable" only if it produced a real judged score — meaning a
+    // score that is BOTH present and > 0. A model that errored/never ran shows up
+    // with a null OR a 0 score, and its speed ($0) and latency (~0ms) are equally
+    // bogus. Excluding it from the rankable set here keeps it off the top of
+    // EVERY sort (Intelligence, Value, Speed AND Cost), not just Intelligence.
+    const hasRealScore = (b: number | null) => b != null && b > 0;
+    const rankable = modelAgg.filter((m) => hasRealScore(m.best));
     const costsPos = rankable.map((m) => (m.latestRun?.cost_basis === "local" ? 0 : m.latestRun?.cost_usd_est)).filter((c): c is number => c != null && c > 0);
     const costMax = costsPos.length ? Math.max(...costsPos, 0.0001) : 1;
     const msVals = rankable.map((m) => m.latestRun?.ms_avg).filter((v): v is number => v != null && v > 0);
@@ -1511,9 +1514,10 @@ export function BenchResults({
       const f = (x: typeof withV[number]) => boardSort === "intel" ? (x.best ?? -1) : boardSort === "speed" ? speedN(x.latestRun?.ms_avg) : boardSort === "value" ? x.value : (x.best ?? -1);
       return f(b) - f(a);
     });
-    // Unranked: no score. Add a value of null so the row renders dashes, not 0.
+    // Unranked: didn't produce a real score (null OR 0). Value is null so the
+    // row renders dashes, not a misleading 0.
     const unranked = modelAgg
-      .filter((m) => m.best == null)
+      .filter((m) => !hasRealScore(m.best))
       .map((m) => ({ ...m, value: null as number | null }))
       .sort((a, b) => (b.latestDate || "").localeCompare(a.latestDate || ""));
     return { rankedRows: ranked, unrankedRows: unranked };
