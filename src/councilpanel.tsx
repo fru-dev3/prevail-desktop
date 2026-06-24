@@ -7,7 +7,7 @@ import { invoke, listen } from "./bridge";
 import { titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
 import { isLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
-import { buildCouncilQuickActions, buildIdealStatePreamble, buildSynthesisPrompt, loadPreferredSkills, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
+import { buildCouncilQuickActions, buildIdealStatePreamble, buildSynthesisPrompt, curatedFor, loadPreferredSkills, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { ThinkingDisclosure } from "./ui";
 import { ContextMeter, estimateTokens, contextWindowFor } from "./contextmeter";
@@ -868,6 +868,9 @@ export function CouncilPanel({
   // panelist (provider → model), one for picking the chair.
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [chairMenuOpen, setChairMenuOpen] = useState(false);
+  // Per-provider model search over the full catalog (OpenRouter 300+); empty
+  // shows the curated defaults. Shared by the add-panelist + chair pickers.
+  const [modelSearch, setModelSearch] = useState<Record<string, string>>({});
   const [councilMenuOpen, setCouncilMenuOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const chairMenuRef = useRef<HTMLDivElement>(null);
@@ -1437,6 +1440,12 @@ export function CouncilPanel({
                     {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
                       const cliModels = modelsFor(c.id);
                       if (cliModels.length === 0) return null;
+                      const curated = curatedFor(c.id);
+                      const searchable = cliModels.length > curated.length;
+                      const q = (modelSearch[c.id] ?? "").trim().toLowerCase();
+                      const shown = q
+                        ? cliModels.filter((m) => `${m.id} ${m.label ?? ""}`.toLowerCase().includes(q)).slice(0, 50)
+                        : (searchable ? curated : cliModels);
                       return (
                         <div key={c.id} className={c.available ? "" : "opacity-40"}>
                           <div className="flex items-center gap-2 bg-surface-warm/60 px-3 py-1">
@@ -1448,7 +1457,16 @@ export function CouncilPanel({
                               <span className="ml-auto font-mono text-[10px] text-text-muted">not installed</span>
                             )}
                           </div>
-                          {cliModels.map((m) => {
+                          {searchable && c.available && (
+                            <input
+                              value={modelSearch[c.id] ?? ""}
+                              onChange={(e) => setModelSearch((s) => ({ ...s, [c.id]: e.target.value }))}
+                              placeholder={`Search all ${cliModels.length} ${c.label} models…`}
+                              className="mx-3 my-1 w-[calc(100%-1.5rem)] rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] focus:border-accent-border focus:outline-none"
+                            />
+                          )}
+                          {shown.length === 0 && <div className="px-4 py-1.5 font-mono text-[11px] text-text-muted">No models match "{q}".</div>}
+                          {shown.map((m) => {
                             const slotKey = `${c.id}::${m.id}`;
                             const onPanel = selectedSlots.has(slotKey);
                             return (
@@ -1512,6 +1530,12 @@ export function CouncilPanel({
                     {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
                       const cliModels = modelsFor(c.id);
                       if (cliModels.length === 0) return null;
+                      const curated = curatedFor(c.id);
+                      const searchable = cliModels.length > curated.length;
+                      const q = (modelSearch[`chair:${c.id}`] ?? "").trim().toLowerCase();
+                      const shown = q
+                        ? cliModels.filter((m) => `${m.id} ${m.label ?? ""}`.toLowerCase().includes(q)).slice(0, 50)
+                        : (searchable ? curated : cliModels);
                       return (
                         <div key={c.id} className={c.available ? "" : "opacity-40"}>
                           <div className="flex items-center gap-2 bg-surface-warm/60 px-3 py-1">
@@ -1520,7 +1544,16 @@ export function CouncilPanel({
                               {c.label}
                             </span>
                           </div>
-                          {cliModels.map((m) => {
+                          {searchable && c.available && (
+                            <input
+                              value={modelSearch[`chair:${c.id}`] ?? ""}
+                              onChange={(e) => setModelSearch((s) => ({ ...s, [`chair:${c.id}`]: e.target.value }))}
+                              placeholder={`Search all ${cliModels.length} ${c.label} models…`}
+                              className="mx-3 my-1 w-[calc(100%-1.5rem)] rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] focus:border-accent-border focus:outline-none"
+                            />
+                          )}
+                          {shown.length === 0 && <div className="px-4 py-1.5 font-mono text-[11px] text-text-muted">No models match "{q}".</div>}
+                          {shown.map((m) => {
                             const slotKey = `${c.id}::${m.id}`;
                             const isChair = chairSlot === slotKey;
                             return (

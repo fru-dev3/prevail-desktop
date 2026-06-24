@@ -5,7 +5,7 @@ import { ArrowRight, Box, Check, ChevronDown, ChevronRight, Code, Compass, Cpu, 
 import { distillCfgFromPrefs } from "./daemoncfg";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES, isHarnessRuntime } from "./constants";
-import { modelsFor } from "./helpers2";
+import { curatedFor, modelsFor } from "./helpers2";
 import { formatFreshness, titleCase } from "./format";
 import { isLocalCli } from "./helpers";
 import { PREF, getPref, isBunkerOn, lsGet, lsSet } from "./storage";
@@ -681,6 +681,9 @@ export function DomainPrefsPanel({
   // can collapse everything. Initialized to the currently picked cli so the panel
   // opens as before on first render.
   const [expandedCli, setExpandedCli] = useState<string | null>(() => lsGet(`prevail.domain.${domain}.cli`) || null);
+  // Per-provider model search over the full catalog (OpenRouter 300+); empty
+  // shows curated defaults so the list isn't a wall.
+  const [modelSearch, setModelSearch] = useState<Record<string, string>>({});
 
   const cliKey = `prevail.domain.${domain}.cli`;
   const modelKey = `prevail.domain.${domain}.model`;
@@ -982,7 +985,14 @@ export function DomainPrefsPanel({
                 </button>
                 {/* Models - indented under the expanded CLI, collapsed otherwise.
                     Expansion is independent of selection (expandedCli, not picked). */}
-                {expanded && models.length > 0 && (
+                {expanded && models.length > 0 && (() => {
+                  const curated = curatedFor(c.id);
+                  const searchable = models.length > curated.length;
+                  const q = (modelSearch[c.id] ?? "").trim().toLowerCase();
+                  const shown = q
+                    ? models.filter((m) => `${m.id} ${m.label ?? ""}`.toLowerCase().includes(q)).slice(0, 50)
+                    : (searchable ? curated : models);
+                  return (
                   <div className="ml-4 mt-1.5 flex flex-col gap-1.5 border-l-2 border-accent-border/40 pl-4">
                     <div className="flex items-center justify-between pt-0.5">
                       <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">Model</span>
@@ -995,7 +1005,16 @@ export function DomainPrefsPanel({
                         </button>
                       )}
                     </div>
-                    {models.map((m) => {
+                    {searchable && (
+                      <input
+                        value={modelSearch[c.id] ?? ""}
+                        onChange={(e) => setModelSearch((s) => ({ ...s, [c.id]: e.target.value }))}
+                        placeholder={`Search all ${models.length} ${c.label} models…`}
+                        className="w-full rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] focus:border-accent-border focus:outline-none"
+                      />
+                    )}
+                    {shown.length === 0 && <span className="font-mono text-[11px] text-text-muted">No models match "{q}".</span>}
+                    {shown.map((m) => {
                       const mpicked = pickedModel === m.id;
                       return (
                         <button
@@ -1017,8 +1036,12 @@ export function DomainPrefsPanel({
                         </button>
                       );
                     })}
+                    {!q && searchable && (
+                      <span className="font-mono text-[10px] text-text-muted">+{models.length - shown.length} more · search to pick any model</span>
+                    )}
                   </div>
-                )}
+                  );
+                })()}
               </div>
             );
           })}

@@ -11,7 +11,7 @@ import { relTime, scoreColor, titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
 import { ContextMeter, contextWindowFor, estimateTokens } from "./contextmeter";
 import { domainBlurb, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
-import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, loadPreferredSkills, maybeRedact, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
+import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, curatedFor, loadPreferredSkills, maybeRedact, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
 import { ContextScoreBadge, NewSkillForm, SkillsList } from "./panels";
@@ -204,6 +204,9 @@ export function ChatPanel({
     lsSet(domainModelKey, "");
   }
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  // Per-provider search over the full catalog (OpenRouter is 300+); empty shows
+  // the curated defaults so the menu isn't a wall.
+  const [modelSearch, setModelSearch] = useState<Record<string, string>>({});
   const modelMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!modelMenuOpen) return;
@@ -2308,6 +2311,12 @@ export function ChatPanel({
                     {clis.filter((c) => !isHarnessRuntime(c.id)).filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
                       const cliModels = modelsFor(c.id);
                       if (cliModels.length === 0) return null;
+                      const curated = curatedFor(c.id);
+                      const searchable = cliModels.length > curated.length;
+                      const q = (modelSearch[c.id] ?? "").trim().toLowerCase();
+                      const shown = q
+                        ? cliModels.filter((m) => `${m.id} ${m.label ?? ""}`.toLowerCase().includes(q)).slice(0, 50)
+                        : (searchable ? curated : cliModels);
                       return (
                         <div key={c.id} className={c.available ? "" : "opacity-40"}>
                           <div className="flex items-center gap-2 bg-surface-warm/60 px-3 py-1">
@@ -2319,7 +2328,16 @@ export function ChatPanel({
                               <span className="ml-auto font-mono text-[10px] text-text-muted">not installed</span>
                             )}
                           </div>
-                          {cliModels.map((m) => {
+                          {searchable && c.available && (
+                            <input
+                              value={modelSearch[c.id] ?? ""}
+                              onChange={(e) => setModelSearch((s) => ({ ...s, [c.id]: e.target.value }))}
+                              placeholder={`Search all ${cliModels.length} ${c.label} models…`}
+                              className="mx-3 my-1 w-[calc(100%-1.5rem)] rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] focus:border-accent-border focus:outline-none"
+                            />
+                          )}
+                          {shown.length === 0 && <div className="px-4 py-1.5 font-mono text-[11px] text-text-muted">No models match "{q}".</div>}
+                          {shown.map((m) => {
                             const isActive = selectedCli === c.id && selectedModel === m.id;
                             return (
                               <button
@@ -2347,6 +2365,9 @@ export function ChatPanel({
                               </button>
                             );
                           })}
+                          {!q && searchable && c.available && (
+                            <div className="px-4 py-1 font-mono text-[10px] text-text-muted">+{cliModels.length - shown.length} more · search to pick any model</div>
+                          )}
                         </div>
                       );
                     })}
