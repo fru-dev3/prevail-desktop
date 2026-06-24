@@ -19,7 +19,7 @@ use tauri::async_runtime::JoinHandle;
 use tokio::sync::{watch, Mutex as AsyncMutex};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
-use crate::telegram_bridge::{record_exchange, resolve_domain, run_cli, BridgeConfig, BridgeStatus, RouteRule};
+use crate::telegram_bridge::{record_exchange, resolve_domain, run_cli_readonly, BridgeConfig, BridgeStatus, RouteRule};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SlackConfig {
@@ -157,7 +157,7 @@ async fn run_socket(cfg: SlackConfig, mut stop_rx: watch::Receiver<bool>, status
                 { let mut s = status.lock().await; s.inbound_count += 1; s.last_inbound_ts = Some(now_secs()); }
                 let bcfg = bridge_cfg(&cfg);
                 let domain = cfg.domain.clone().or_else(|| resolve_domain(&bcfg, &text));
-                let reply = match run_cli(&cfg.cli, cfg.model.as_deref(), &crate::telegram_bridge::fence_untrusted_inbound(&text)).await {
+                let reply = match run_cli_readonly(&cfg.cli, cfg.model.as_deref(), &crate::telegram_bridge::fence_untrusted_inbound(&text)).await {
                     Ok(r) => r,
                     Err(e) => { status.lock().await.last_error = Some(e); continue; }
                 };
