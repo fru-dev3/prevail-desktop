@@ -1297,7 +1297,7 @@ export function ChatPanel({
     if (isBunkerOn() && !isLocalCli(chatCli)) {
       const local = preferredLocalCli(clis);
       if (!local) {
-        setMessages((m) => [...m, { role: "user", content: input.trim(), ts: Date.now() }, { role: "assistant", content: "Bunker Mode is on, so replies stay on this device, but no local model provider (Ollama) was detected. Install or start Ollama, or leave Bunker Mode in Settings → Privacy.", ts: Date.now() }]);
+        setMessages((m) => [...m, { role: "user", content: input.trim(), ts: Date.now() }, { role: "assistant", content: "Bunker Mode is on, so replies stay on this device, but no local model provider (Ollama) was detected. Install or start Ollama, or leave Bunker Mode in Settings → Privacy.", ts: Date.now(), cli: chatCli }]);
         setInput("");
         return;
       }
@@ -1438,7 +1438,7 @@ export function ChatPanel({
     const engineDomain = domain || "general";
     if (chatCli && ENGINE_ONLY.has(chatCli) && !useEngine) {
       const label = chatCli === "openrouter" ? "OpenRouter" : chatCli === "lmstudio" ? "LM Studio" : "oMLX";
-      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which isn't available right now. Make sure the Prevail engine is installed, then try again.`, ts: Date.now() }]);
+      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which isn't available right now. Make sure the Prevail engine is installed, then try again.`, ts: Date.now(), cli: chatCli, model: chatModel ?? undefined }]);
       onStreamEnd(sessionRef.current);
       return;
     }
@@ -1486,7 +1486,7 @@ export function ChatPanel({
           return;
         } catch { /* fall through to error rendering */ }
       }
-      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `(error spawning ${chatCli}: ${e})`, ts: Date.now() }]);
+      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `(error spawning ${chatCli}: ${e})`, ts: Date.now(), cli: chatCli, model: chatModel ?? undefined }]);
       onStreamEnd(sessionRef.current);
     }
   }
