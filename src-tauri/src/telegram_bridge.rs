@@ -277,7 +277,7 @@ impl BridgeState {
                                     // Dispatch to the CLI and reply. Keyword-route to a
                                     // domain first so the exchange is recorded there.
                                     let routed_domain = resolve_domain(&cfg, &text);
-                                    let cli_result = run_cli(&cfg.cli, cfg.model.as_deref(), &fence_untrusted_inbound(&text)).await;
+                                    let cli_result = run_cli_readonly(&cfg.cli, cfg.model.as_deref(), &fence_untrusted_inbound(&text)).await;
                                     typing_task.abort();
                                     match cli_result {
                                         Ok(reply) => {
@@ -699,7 +699,21 @@ pub(crate) fn fence_untrusted_inbound(content: &str) -> String {
 // processes (DoS + runaway API cost). Excess spawns queue for a permit.
 static RUN_CLI_SEM: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
 
+/// Full-capability model spawn (distillation, surface, user-initiated paths).
 pub(crate) async fn run_cli(cli: &str, model: Option<&str>, prompt: &str) -> Result<String, String> {
+    run_cli_inner(cli, model, prompt, false).await
+}
+
+/// Read-only spawn for UNTRUSTED inbound (bridges): the agent may read/search to
+/// compose a reply but is denied consequential/tool actions (B3/O1). Enforced for
+/// claude via --allowedTools (read tools only, no permission bypass); ollama is
+/// inherently tool-less. Other CLIs fall back to full args but stay bounded by the
+/// untrusted-content fence + sender allowlists + the autonomy-off defaults.
+pub(crate) async fn run_cli_readonly(cli: &str, model: Option<&str>, prompt: &str) -> Result<String, String> {
+    run_cli_inner(cli, model, prompt, true).await
+}
+
+async fn run_cli_inner(cli: &str, model: Option<&str>, prompt: &str, read_only: bool) -> Result<String, String> {
     // Bound concurrency first; the permit is held for this spawn's lifetime.
     let _permit = RUN_CLI_SEM
         .acquire()
@@ -711,7 +725,13 @@ pub(crate) async fn run_cli(cli: &str, model: Option<&str>, prompt: &str) -> Res
     crate::bunker::guard_cli(cli)?;
     let (bin, args) = match cli {
         "claude" => {
-            let mut v = vec!["--dangerously-skip-permissions".to_string()];
+            // Read-only bridge profile (O1): restrict to read tools rather than
+            // bypassing every permission gate.
+            let mut v = if read_only {
+                vec!["--allowedTools".to_string(), "Read,Grep,Glob,WebSearch,WebFetch".to_string()]
+            } else {
+                vec!["--dangerously-skip-permissions".to_string()]
+            };
             if let Some(m) = model {
                 v.push("--model".into());
                 v.push(m.to_string());
