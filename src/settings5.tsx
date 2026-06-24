@@ -1113,37 +1113,51 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
   }
 
   const [installing, setInstalling] = useState(false);
+  // Download progress (0-100) during an in-place install, and an explicit manual
+  // download URL we only set when the in-place path genuinely can't run.
+  const [downloadPct, setDownloadPct] = useState<number | null>(null);
+  const [manualUrl, setManualUrl] = useState<string | null>(null);
   async function checkForUpdates() {
     setChecking(true);
     setCheckErr(null);
     setLatest(null);
+    setManualUrl(null);
+    setDownloadPct(null);
     try {
       // Preferred path: the Tauri updater - checks the signed latest.json feed,
-      // downloads + installs in-place, then relaunches. No browser detour.
+      // downloads + installs IN PLACE, then relaunches. No browser detour.
       const update = await checkUpdate();
       if (update) {
         setLatest(update.version);
         setInstalling(true);
-        await update.downloadAndInstall();
+        // Stream download progress so the user sees the install happen, then
+        // relaunch into the new version automatically.
+        let total = 0;
+        let got = 0;
+        await update.downloadAndInstall((ev) => {
+          if (ev.event === "Started") { total = ev.data.contentLength ?? 0; setDownloadPct(0); }
+          else if (ev.event === "Progress") { got += ev.data.chunkLength; setDownloadPct(total > 0 ? Math.min(100, Math.round((got / total) * 100)) : null); }
+          else if (ev.event === "Finished") { setDownloadPct(100); }
+        });
         await relaunch();
         return;
       }
       // No update object → already current.
       setLatest(APP_VERSION);
-    } catch (_pluginErr) {
-      // Updater feed not reachable yet (e.g. first release before latest.json
-      // is published) → fall back to the GitHub releases API + open the page.
+    } catch (pluginErr) {
+      // The in-place updater couldn't run: offline, the feed isn't published
+      // yet, a signature/pubkey mismatch, OR this is a `tauri dev` build (which
+      // can't self-replace). Surface the REAL reason instead of silently
+      // bouncing to a browser, and offer an explicit manual download as backup.
+      setCheckErr(`In-place update couldn't run (${String(pluginErr).slice(0, 140)}). You can download it manually below.`);
       try {
         const r = await fetch("https://api.github.com/repos/fru-dev3/prevail-desktop/releases?per_page=10");
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const releases = await r.json() as Array<{ tag_name: string; prerelease: boolean; html_url: string }>;
-        const top = releases.find((rel) => !rel.prerelease) ?? releases[0];
-        if (!top) throw new Error("no releases found");
-        setLatest(top.tag_name);
-        try { await invoke("open_in_finder", { path: top.html_url }); } catch {}
-      } catch (e) {
-        setCheckErr(String(e).slice(0, 200));
-      }
+        if (r.ok) {
+          const releases = await r.json() as Array<{ tag_name: string; prerelease: boolean; html_url: string }>;
+          const top = releases.find((rel) => !rel.prerelease) ?? releases[0];
+          if (top) { setLatest(top.tag_name); setManualUrl(top.html_url); }
+        }
+      } catch { /* keep the in-place error visible */ }
     } finally {
       setChecking(false);
       setInstalling(false);
@@ -1188,7 +1202,9 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
             disabled={checking}
             className="rounded-md bg-text-primary px-3 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {installing ? "Installing…" : checking ? "Checking…" : newer ? "Download & install" : "Check for updates"}
+            {installing
+              ? (downloadPct != null ? `Installing… ${downloadPct}%` : "Installing…")
+              : checking ? "Checking…" : newer ? "Download & install" : "Check for updates"}
           </button>
           {latest ? (
             <span className={`font-mono text-[10px] ${upToDate ? "text-accent" : "text-warn"}`}>
@@ -1198,7 +1214,22 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
             <span className="font-mono text-[10px] text-text-muted">{newer ? "ready to install" : "in-place updates"}</span>
           )}
         </div>
-        {checkErr && <div className="w-full rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-xs text-warn">{checkErr}</div>}
+        {/* In-place download progress bar. */}
+        {installing && downloadPct != null && (
+          <div className="h-1 w-full overflow-hidden rounded-full bg-surface-warm">
+            <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${downloadPct}%` }} />
+          </div>
+        )}
+        {checkErr && (
+          <div className="flex w-full flex-wrap items-center gap-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-xs text-warn">
+            <span className="min-w-0 flex-1">{checkErr}</span>
+            {manualUrl && (
+              <a href={manualUrl} target="_blank" rel="noreferrer" className="shrink-0 rounded border border-warn/50 bg-warn/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider hover:bg-warn/20">
+                Download manually ›
+              </a>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Links - a horizontal wrap of chips (was a tall stacked list) to use the
