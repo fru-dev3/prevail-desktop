@@ -2,6 +2,7 @@
 // state, domains, active selection, and a set of callbacks); renders the live
 // gateway/MCP/benchmark status strips from shared modules.
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
 import { Archive, ChevronDown, ChevronLeft, ChevronRight, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, Pin, Plug, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Star, Sun } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
@@ -308,6 +309,24 @@ export function Sidebar({
     }
   }
 
+  // Archive a domain straight from its sidebar row (the spot users look first).
+  // Nothing is deleted — it moves to the collapsible "Archived" section below
+  // and can be restored any time.
+  async function archiveDomain(name: string) {
+    try {
+      const ok = await tauriConfirm(
+        `Hide "${titleCase(name)}" from the active list? Nothing is deleted — restore it any time from the Archived section.`,
+        { title: "Archive domain", kind: "warning" },
+      );
+      if (!ok) return;
+      await invoke("engine_vault_archive", { vault: vaultPath, domain: name });
+      await refreshArchived();
+      onDomainsChanged();
+    } catch (e) {
+      console.error("archive domain", e);
+    }
+  }
+
   return (
     <aside
       className="flex shrink-0 flex-col border-r border-border-subtle bg-surface-strong"
@@ -576,6 +595,15 @@ export function Sidebar({
                   title={`Open ${titleCase(d.name)} in Finder`}
                 >
                   <Folder className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); void archiveDomain(d.name); }}
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-warn ${
+                    active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                  }`}
+                  title={`Archive ${titleCase(d.name)} (hide from the list; restore any time)`}
+                >
+                  <Archive className="h-3.5 w-3.5" />
                 </button>
               </li>
                 )}
