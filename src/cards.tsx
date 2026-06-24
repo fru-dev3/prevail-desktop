@@ -2,18 +2,16 @@
 // benchmark progress strip, the framework/lens cycle row, and the Settings
 // scheduled-benchmark card.
 import { useEffect, useState } from "react";
-import { Activity, Archive, CalendarClock, Check, Loader2, RotateCw, SlidersHorizontal } from "lucide-react";
+import { Activity, Archive, CalendarClock, Loader2, RotateCw, SlidersHorizontal } from "lucide-react";
 import { useProcesses } from "./processes";
 import { Toggle } from "./ui";
 import { BACKUP_CFG } from "./backup";
-import { invoke } from "./bridge";
-import { FRAMEWORKS, LENSES, MODELS, MODEL_SEP } from "./constants";
-import { formatFreshness, titleCase } from "./format";
-import { isLocalCli } from "./helpers";
-import { isBunkerOn, lsGet, lsSet } from "./storage";
+import { FRAMEWORKS, LENSES } from "./constants";
+import { formatFreshness } from "./format";
+import { lsGet, lsSet } from "./storage";
 import { CycleChip } from "./widgets";
 import { useFrameworkLens } from "./hooks";
-import { allBenchModelKeys, BENCH_CLI_OPTIONS, benchFreqLabel, benchFreqMs, BENCH_SCHED, cancelBenchBatch, runScheduledBatch, scheduledRunPreview, useBenchBatches } from "./bench";
+import { benchFreqLabel, benchFreqMs, BENCH_SCHED, cancelBenchBatch, runScheduledBatch, scheduledRunPreview, useBenchBatches } from "./bench";
 
 // B2-7: a concrete next-run label, e.g. "Mon Jun 23, 2:30 PM". Shows the weekday
 // + date only when it's not today, so a same-day run reads as just the time.
@@ -297,10 +295,11 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
   // BENCH-2: show exactly what the scheduled run will execute (models + scope).
   const [preview, setPreview] = useState<{ models: string[]; scopeLabel: string; council: boolean; empty: boolean; mode: string } | null>(null);
   // BENCH-2: the DECOUPLED scheduled scope (independent of the manual Run picker).
-  const [scopeMode, setScopeMode] = useState(() => lsGet(BENCH_SCHED.scopeMode, "latest"));
-  const [scopeModels, setScopeModels] = useState<Set<string>>(() => new Set(lsGet(BENCH_SCHED.scopeModels, "").split(",").map((s) => s.trim()).filter(Boolean)));
-  const [scopeDomains, setScopeDomains] = useState<Set<string>>(() => new Set(lsGet(BENCH_SCHED.scopeDomains, "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)));
-  const [vaultDomains, setVaultDomains] = useState<string[]>([]);
+  const [scopeMode, setScopeMode] = useState(() => {
+    const m = lsGet(BENCH_SCHED.scopeMode, "latest");
+    if (m === "custom") { lsSet(BENCH_SCHED.scopeMode, "latest"); return "latest"; } // Custom scope removed
+    return m;
+  });
   useEffect(() => {
     const f = () => force((n) => n + 1);
     window.addEventListener("prevail:bench-sched", f);
@@ -310,20 +309,8 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
     let alive = true;
     void scheduledRunPreview(vault).then((p) => { if (alive) setPreview(p); }).catch(() => {});
     return () => { alive = false; };
-    // re-derive when a run finishes or the scope changes.
-  }, [vault, busy, scopeMode, scopeModels, scopeDomains]);
-  useEffect(() => {
-    if (scopeMode === "custom" && vaultDomains.length === 0) {
-      void invoke<{ name: string }[]>("scan_vault", { path: vault })
-        .then((ds) => setVaultDomains((ds ?? []).map((d) => d.name.toLowerCase()).sort()))
-        .catch(() => {});
-    }
-  }, [scopeMode, vault, vaultDomains.length]);
+  }, [vault, busy, scopeMode]);
   const setMode = (m: string) => { setScopeMode(m); lsSet(BENCH_SCHED.scopeMode, m); window.dispatchEvent(new Event("prevail:bench-sched")); };
-  const toggleScopeModel = (k: string) => setScopeModels((cur) => { const n = new Set(cur); n.has(k) ? n.delete(k) : n.add(k); lsSet(BENCH_SCHED.scopeModels, [...n].join(",")); return n; });
-  const toggleScopeDomain = (d: string) => setScopeDomains((cur) => { const n = new Set(cur); n.has(d) ? n.delete(d) : n.add(d); lsSet(BENCH_SCHED.scopeDomains, [...n].join(",")); return n; });
-  const selectAllModels = () => { const all = new Set(allBenchModelKeys()); setScopeModels(all); lsSet(BENCH_SCHED.scopeModels, [...all].join(",")); };
-  const clearModels = () => { setScopeModels(new Set()); lsSet(BENCH_SCHED.scopeModels, ""); };
   const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
   const isCustom = /^custom:/.test(freq);
   const customDays = isCustom ? (/^custom:(\d+)$/.exec(freq)?.[1] ?? "3") : "3";
@@ -410,65 +397,13 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
           <span className="text-[11px] text-text-muted">independent of your manual Run selection</span>
         </div>
         <div className="inline-flex flex-wrap rounded-lg border border-border bg-background p-1 text-xs">
-          {([["latest", "Repeat latest run"], ["all", "All models × all domains"], ["custom", "Custom"]] as const).map(([m, l]) => (
+          {([["latest", "Repeat latest run"], ["all", "All models × all domains"]] as const).map(([m, l]) => (
             <button key={m} onClick={() => setMode(m)} disabled={!enabled}
               className={`rounded px-2.5 py-1 transition-colors disabled:opacity-40 ${scopeMode === m ? "bg-accent text-background shadow-sm" : "text-text-secondary hover:bg-surface-warm"}`}>
               {l}
             </button>
           ))}
         </div>
-        {scopeMode === "custom" && enabled && (
-          <div className="mt-3 space-y-3 rounded-lg border border-border-subtle bg-background p-3">
-            <div>
-              <div className="mb-1.5 flex items-center gap-2">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Models · {scopeModels.size}</span>
-                <button onClick={selectAllModels} className="font-mono text-[10px] uppercase tracking-wider text-accent hover:underline">all</button>
-                <button onClick={clearModels} className="font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-text-secondary">none</button>
-              </div>
-              <div className="space-y-2">
-                {BENCH_CLI_OPTIONS.map((c) => {
-                  const models = MODELS[c.id] ?? [];
-                  if (models.length === 0) return null;
-                  const blocked = isBunkerOn() && !isLocalCli(c.id);
-                  return (
-                    <div key={c.id}>
-                      <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary">{c.label}</div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {models.map((m) => {
-                          const k = `${c.id}${MODEL_SEP}${m.id}`;
-                          const on = scopeModels.has(k);
-                          return (
-                            <button key={m.id} onClick={() => toggleScopeModel(k)} disabled={blocked}
-                              title={blocked ? "Blocked by Bunker Mode" : m.blurb}
-                              className={`rounded-full border px-2 py-0.5 text-[11px] disabled:opacity-40 ${on ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-surface text-text-muted hover:border-accent-border"}`}>
-                              {on && <Check className="mr-1 inline h-2.5 w-2.5" />}{m.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div>
-              <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Domains · {scopeDomains.size === 0 ? "all" : scopeDomains.size}</div>
-              <div className="flex flex-wrap gap-1.5">
-                {vaultDomains.length === 0 ? <span className="text-[11px] text-text-muted">loading domains…</span> :
-                  vaultDomains.map((d) => {
-                    const on = scopeDomains.has(d);
-                    return (
-                      <button key={d} onClick={() => toggleScopeDomain(d)}
-                        className={`rounded-full border px-2 py-0.5 text-[11px] ${on ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-surface text-text-muted hover:border-accent-border"}`}>
-                        {on && <Check className="mr-1 inline h-2.5 w-2.5" />}{titleCase(d)}
-                      </button>
-                    );
-                  })}
-              </div>
-              <div className="mt-1 text-[10px] text-text-muted">None selected = all domains.</div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* BENCH-2: exactly what the scheduled run will execute, + the
@@ -476,7 +411,7 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
       {preview && !preview.empty && (
         <div className="mt-2 rounded-lg border border-border-subtle bg-background px-3 py-2">
           <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
-            Will run {preview.mode === "all" ? "(all models × all domains)" : preview.mode === "custom" ? "(your scheduled selection)" : "(repeats your latest batch)"}
+            Will run {preview.mode === "all" ? "(all models × all domains)" : "(repeats your latest batch)"}
           </div>
           <div className="mt-0.5 text-xs text-text-secondary">
             {[preview.council ? "Council" : null, ...preview.models].filter(Boolean).join(" · ") || "-"}
@@ -484,16 +419,14 @@ export function BenchScheduleCard({ vault }: { vault: string }) {
           </div>
           {preview.mode === "latest" && preview.models.length === 1 && !preview.council && (
             <div className="mt-1 text-[11px] text-warn">
-              Only 1 model in your last run, so "Repeat latest run" only tracks that one. Switch to "All models" or "Custom" above to track drift across models.
+              Only 1 model in your last run, so "Repeat latest run" only tracks that one. Switch to "All models × all domains" above to track drift across every model.
             </div>
           )}
         </div>
       )}
       {preview?.empty && enabled && (
         <div className="mt-2 text-[11px] text-text-muted">
-          {scopeMode === "custom"
-            ? "Pick at least one model above for the scheduled run."
-            : "No previous batch yet: run a benchmark once, or switch the scope to \"All models × all domains\"."}
+          No previous batch yet: run a benchmark once, or switch the scope to "All models × all domains".
         </div>
       )}
       {msg && <div className="mt-2 text-xs text-text-secondary">{msg}</div>}
