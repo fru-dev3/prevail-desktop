@@ -64,9 +64,9 @@ pub(crate) async fn loop_execute_action(
     provider: Option<String>,
     model: Option<String>,
 ) -> Result<String, String> {
-    if !crate::approval::verify_and_consume(&approval, &crate::approval::action_payload(&domain, &action)) {
-        return Err("approval token invalid, expired, or already used".into());
-    }
+    // Single authorization checkpoint (C1): the broker verifies the approval token
+    // is valid, single-use, and bound to this exact (domain, action).
+    crate::broker::authorize_action(&domain, &action, &approval)?;
     tauri::async_runtime::spawn_blocking(move || {
         let mut args: Vec<String> = vec![
             "--vault".into(),
