@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, Box, Check, ChevronDown, ChevronRight, Code, Compass, Cpu, Eye, Folder, Globe, Loader2, Lock, MessageSquare, PanelRightClose, Pin, RefreshCw, Share2, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { distillCfgFromPrefs } from "./daemoncfg";
 import { invoke } from "./bridge";
-import { FRAMEWORKS, LENSES, MODELS, isHarnessRuntime } from "./constants";
+import { FRAMEWORKS, LENSES, isHarnessRuntime } from "./constants";
+import { modelsFor } from "./helpers2";
 import { formatFreshness, titleCase } from "./format";
 import { isLocalCli } from "./helpers";
 import { PREF, getPref, isBunkerOn, lsGet, lsSet } from "./storage";
@@ -933,7 +934,7 @@ export function DomainPrefsPanel({
           {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
             const picked = pickedCli === c.id;
             const disabled = !c.available;
-            const models = MODELS[c.id] ?? [];
+            const models = modelsFor(c.id);
             const expanded = expandedCli === c.id;
             return (
               <div key={c.id}>

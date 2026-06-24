@@ -8,7 +8,7 @@ import { invoke, listen } from "./bridge";
 import { MODELS, MODEL_SEP } from "./constants";
 import { scoreColor, titleCase } from "./format";
 import { isLocalCli } from "./helpers";
-import { modelLabel, parseRunLabel } from "./helpers2";
+import { modelLabel, modelsFor, parseRunLabel } from "./helpers2";
 import { isBunkerOn, lsGet, lsSet } from "./storage";
 import { Sparkline } from "./ui";
 import { BenchCrumbs, Field, ScoreBar } from "./panels";
@@ -997,7 +997,7 @@ export function BenchRunConfig({
           )}
           <div className="space-y-3">
             {BENCH_CLI_OPTIONS.map((c) => {
-              const models = MODELS[c.id] ?? [];
+              const models = modelsFor(c.id);
               const selectedHere = models.filter((m) => selModels.has(`${c.id}${MODEL_SEP}${m.id}`)).length;
               const collapsed = collapsedProviders.has(c.id);
               const bunkerBlocked = isBunkerOn() && !isLocalCli(c.id);
@@ -1351,6 +1351,7 @@ export function BenchResults({
         parsed,
         runs: [...rr].sort((a, b) => b.date.localeCompare(a.date)),
         best,
+        latestRun: latest ?? null,
         latestJudge: latest ? judgeFor(latest) : null,
         latestKw: latest ? kwFor(latest) : null,
         latestDate: latest?.date ?? "",
@@ -1562,6 +1563,14 @@ export function BenchResults({
                           {m.delta > 0 ? "▲" : "▼"}{Math.abs(m.delta).toFixed(1)}
                         </span>
                       )}
+                    </span>
+                  )}
+                  {/* Speed + cost at a glance (from the latest run) so the board
+                      reads as intelligence · speed · cost, not just a score. */}
+                  {m.latestRun && (m.latestRun.ms_avg != null || m.latestRun.cost_usd_est != null) && (
+                    <span className="hidden shrink-0 items-center gap-2.5 font-mono text-[11px] sm:flex" title="Speed (avg latency per question) · Cost (est. per run), from the latest run">
+                      <span className="inline-flex items-center gap-1 text-text-muted"><Zap className="h-3 w-3" />{fmtLatency(m.latestRun.ms_avg)}</span>
+                      <span className="inline-flex items-center gap-1 text-text-muted"><DollarSign className="h-3 w-3" />{fmtCost(m.latestRun.cost_usd_est, m.latestRun.cost_basis)}</span>
                     </span>
                   )}
                   <div className="hidden w-32 lg:block"><ScoreBar value={m.best} max={10} color={scoreColor((m.best ?? 0) * 10)} /></div>
