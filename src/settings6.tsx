@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOf
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
-import { RUNTIME_META, VENDOR_BRAND, isHarnessRuntime } from "./constants";
+import { DISCOVERED_MODELS, RUNTIME_META, VENDOR_BRAND, isHarnessRuntime } from "./constants";
 import { isLocalCli } from "./helpers";
 import { modelsFor, prettyModelId } from "./helpers2";
 import { LS, PREF, getPref, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
@@ -534,13 +534,21 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   // Each provider expands/collapses INDEPENDENTLY - a Set of open provider ids,
   // not a single value (opening one never closes another).
   const [expandedSet, setExpandedSet] = useState<Set<string>>(() => new Set());
+  // Per-provider catalog search (aggregators like OpenRouter expose hundreds of
+  // models — search, don't scroll a fixed list).
+  const [panelSearch, setPanelSearch] = useState<Record<string, string>>({});
   // Once providers are detected: prune any stale slot keys that no longer map to
   // a real (available provider, model) - that's what made the count drift from
   // the visible badges - then seed a sensible default if the panel is empty.
+  // Discovered (live-catalog) models count as valid too, so a model added via
+  // search (e.g. an OpenRouter GLM) isn't pruned away on the next mount.
   useEffect(() => {
     if (available.length === 0) return;
     const valid = new Set<string>();
-    for (const c of available) for (const m of councilModelsFor(c.id)) valid.add(councilSlotKey(c.id, m.id));
+    for (const c of available) {
+      for (const m of councilModelsFor(c.id)) valid.add(councilSlotKey(c.id, m.id));
+      for (const m of (DISCOVERED_MODELS[c.id] ?? [])) valid.add(councilSlotKey(c.id, m.id));
+    }
     setMembers((prev) => {
       const pruned = new Set([...prev].filter((k) => valid.has(k)));
       if (pruned.size > 0) return pruned.size === prev.size ? prev : pruned;
@@ -601,8 +609,30 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
       <div className="space-y-2">
         {available.length === 0 && <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-sm text-text-muted">No providers available{isBunkerOn() ? " in Bunker Mode (local only)" : ""}.</div>}
         {available.map((c) => {
-          const models = councilModelsFor(c.id);
-          const picked = models.filter((m) => members.has(councilSlotKey(c.id, m.id))).length;
+          const curated = councilModelsFor(c.id);
+          const live = DISCOVERED_MODELS[c.id] ?? [];
+          // Aggregators (OpenRouter) ship a big live catalog — make every model
+          // reachable via search, not just the curated handful.
+          const isAggregator = live.length > 0;
+          const q = (panelSearch[c.id] ?? "").trim().toLowerCase();
+          // Slot keys already on the panel for this provider (so search-added
+          // models still render as checked, even if not in the curated list).
+          const onPanelIds = [...members].filter((k) => k.startsWith(`${c.id}::`)).map((k) => k.slice(c.id.length + 2));
+          const picked = onPanelIds.length;
+          let models: { id: string; label: string; blurb?: string }[];
+          if (isAggregator && q) {
+            models = live.filter((m) => `${m.id} ${m.label ?? ""}`.toLowerCase().includes(q)).slice(0, 40)
+              .map((m) => ({ id: m.id, label: m.label && m.label !== m.id ? m.label : m.id, blurb: "" }));
+          } else if (isAggregator) {
+            const curatedIds = new Set(curated.map((m) => m.id));
+            const extras = onPanelIds.filter((id) => !curatedIds.has(id)).map((id) => {
+              const lm = live.find((x) => x.id === id);
+              return { id, label: lm?.label ?? id, blurb: "" };
+            });
+            models = [...curated, ...extras];
+          } else {
+            models = curated;
+          }
           const isExp = expandedSet.has(c.id);
           return (
             <div key={c.id} className={`overflow-hidden rounded-lg border bg-surface transition-colors ${isExp || picked > 0 ? "border-accent-border" : "border-border-subtle"}`}>
@@ -611,10 +641,24 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
                 <ProviderMark vendor={c.id} size={26} />
                 <span className="flex-1 font-display text-sm font-semibold text-text-primary">{c.label}</span>
                 {picked > 0 && <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-background">{picked} on panel</span>}
-                <span className="shrink-0 font-mono text-[10px] text-text-muted">{models.length} model{models.length === 1 ? "" : "s"}</span>
+                <span className="shrink-0 font-mono text-[10px] text-text-muted">{isAggregator ? `${live.length} models, search` : `${models.length} model${models.length === 1 ? "" : "s"}`}</span>
               </button>
               {isExp && (
                 <div className="space-y-1.5 border-t border-border-subtle bg-background/40 p-3">
+                  {isAggregator && (
+                    <div className="relative mb-1">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+                      <input
+                        value={panelSearch[c.id] ?? ""}
+                        onChange={(e) => setPanelSearch((s) => ({ ...s, [c.id]: e.target.value }))}
+                        placeholder={`Search all ${live.length} models (e.g. glm, kimi, qwen)…`}
+                        className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+                      />
+                    </div>
+                  )}
+                  {models.length === 0 && (
+                    <div className="px-1 py-2 font-mono text-[11px] text-text-muted">No models match "{panelSearch[c.id]}".</div>
+                  )}
                   {models.map((m) => {
                     const key = councilSlotKey(c.id, m.id);
                     const on = members.has(key);
