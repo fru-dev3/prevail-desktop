@@ -3,6 +3,7 @@ import { invoke } from "./bridge";
 import { DEAD_MODELS, DISCOVERED_MODELS, MODELS, SYCOPHANCY_RE } from "./constants";
 import { titleCase } from "./format";
 import { lsGet, lsSet } from "./storage";
+import { mergeOpenrouterPicks, readOpenrouterPins } from "./openrouterpins";
 import type { ModelPick, PanelistReply, PanelistSlot } from "./types";
 
 // Best-effort live model discovery for the given providers; fills
@@ -48,7 +49,11 @@ export function modelLabel(cli?: string, id?: string): string {
 
 export function modelsFor(cli: string): ModelPick[] {
   const curated = MODELS[cli] ?? [];
-  if (cli === "openrouter") return curated;
+  // OpenRouter has a 300+ model live catalog - far too many to list in a picker.
+  // So instead of merging ALL discovered models, we offer the curated defaults
+  // plus whatever the user has explicitly PINNED from the catalog. Pinning is
+  // the curation.
+  if (cli === "openrouter") return mergeOpenrouterPicks(curated, readOpenrouterPins());
   const seen = new Set(curated.map((m) => m.id));
   const extra = (DISCOVERED_MODELS[cli] ?? []).filter((d) => !seen.has(d.id));
   return [...curated, ...extra];

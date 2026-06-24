@@ -2,11 +2,12 @@
 // OpenRouter catalog) and Models (the per-provider model catalog), plus the
 // refreshDiscoveredModels helper they share (imported from helpers2).
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Check, ChevronDown, Clock, Globe, Layers, Loader2, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Clock, Globe, Layers, Loader2, Sparkles, Star, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
 import { DISCOVERED_MODELS, MODELS } from "./constants";
 import { refreshDiscoveredModels } from "./helpers2";
+import { mergeOpenrouterPicks, toggleOpenrouterPin, useOpenrouterPins } from "./openrouterpins";
 import { LS, lsGet, lsSet } from "./storage";
 import { track } from "./telemetry";
 
@@ -148,6 +149,11 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
     return () => window.removeEventListener("prevail:models-refreshed", h);
   }, []);
   const orCurated = MODELS.openrouter ?? [];
+  const orPins = useOpenrouterPins();
+  const orPinIds = new Set(orPins.map((m) => m.id));
+  // The defaults row = built-in curated picks + the user's pins, deduped. Pins
+  // are removable (×); curated built-ins are permanent.
+  const orChips = mergeOpenrouterPicks(orCurated, orPins);
   const orLive = DISCOVERED_MODELS.openrouter ?? [];
   const orResults = orQuery.trim()
     ? orLive.filter((m) => `${m.id} ${m.label ?? ""}`.toLowerCase().includes(orQuery.trim().toLowerCase())).slice(0, 60)
@@ -235,11 +241,17 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
             {orLive.length > 0 && <span className="text-text-muted normal-case tracking-normal">· full live catalog: {orLive.length} models, search to browse</span>}
           </div>
           <div className="mb-2 flex flex-wrap gap-1.5">
-            {orCurated.map((m) => (
-              <span key={m.id} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary" title={m.id}>
-                <OrVendorMark id={m.id} size={12} />{m.label}
-              </span>
-            ))}
+            {orChips.map((m) => {
+              const pinned = orPinIds.has(m.id);
+              return (
+                <span key={m.id} className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[11px] ${pinned ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-secondary"}`} title={m.id}>
+                  <OrVendorMark id={m.id} size={12} />{m.label}
+                  {pinned && (
+                    <button onClick={() => toggleOpenrouterPin(m)} title="Unpin" className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-text-muted hover:bg-surface-warm hover:text-err">×</button>
+                  )}
+                </span>
+              );
+            })}
           </div>
           <input
             value={orQuery}
@@ -254,18 +266,29 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
               {(orQuery.trim() ? orResults : orLive.slice(0, 80)).length === 0 ? (
                 <div className="px-3 py-2 text-xs text-text-muted">No models match "{orQuery}".</div>
               ) : (
-                (orQuery.trim() ? orResults : orLive.slice(0, 80)).map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => { navigator.clipboard.writeText(m.id).catch(() => {}); }}
-                    title="Click to copy the model id"
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-warm"
-                  >
-                    <OrVendorMark id={m.id} size={16} />
-                    <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-primary">{m.label && m.label !== m.id ? m.label : m.id}</span>
-                    <span className="shrink-0 font-mono text-[9px] text-text-muted">{orVendorOf(m.id) || "model"}</span>
-                  </button>
-                ))
+                (orQuery.trim() ? orResults : orLive.slice(0, 80)).map((m) => {
+                  const pinned = orPinIds.has(m.id);
+                  return (
+                  <div key={m.id} className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-surface-warm">
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(m.id).catch(() => {}); }}
+                      title="Click to copy the model id"
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    >
+                      <OrVendorMark id={m.id} size={16} />
+                      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-primary">{m.label && m.label !== m.id ? m.label : m.id}</span>
+                      <span className="shrink-0 font-mono text-[9px] text-text-muted">{orVendorOf(m.id) || "model"}</span>
+                    </button>
+                    <button
+                      onClick={() => toggleOpenrouterPin({ id: m.id, label: m.label || m.id, blurb: "via OpenRouter" })}
+                      title={pinned ? "Unpin from defaults" : "Pin to defaults (shows in every model picker)"}
+                      className="shrink-0 rounded p-0.5 hover:bg-background"
+                    >
+                      <Star className={`h-3.5 w-3.5 ${pinned ? "fill-accent text-accent" : "text-text-muted hover:text-accent"}`} />
+                    </button>
+                  </div>
+                  );
+                })
               )}
               {!orQuery.trim() && orLive.length > 80 && (
                 <div className="px-3 py-1.5 font-mono text-[10px] text-text-muted">+{orLive.length - 80} more, search to find them</div>

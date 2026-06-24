@@ -4,12 +4,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, BookOpen, Check, ChevronRight, Crown, Folder, Ghost, Layers, MessageSquare, PanelRightOpen, Plus, Scale, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 import { invoke, listen } from "./bridge";
-import { MODELS } from "./constants";
 import { titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
 import { isLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
-import { buildCouncilQuickActions, buildIdealStatePreamble, buildSynthesisPrompt, loadPreferredSkills, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
-import { LS, PREF, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
+import { buildCouncilQuickActions, buildIdealStatePreamble, buildSynthesisPrompt, loadPreferredSkills, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
+import { LS, PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { ThinkingDisclosure } from "./ui";
 import { ContextMeter, estimateTokens, contextWindowFor } from "./contextmeter";
 import { Markdown } from "./Markdown";
@@ -73,7 +72,8 @@ export function CouncilPanel({
   const allSlots = useMemo<PanelistSlot[]>(() => {
     const out: PanelistSlot[] = [];
     for (const c of clis) {
-      const models = MODELS[c.id] ?? [{ id: "", label: "default" } as ModelPick];
+      const found = modelsFor(c.id);
+      const models = found.length ? found : [{ id: "", label: "default" } as ModelPick];
       for (const m of models) {
         out.push({
           key: `${c.id}::${m.id}`,
@@ -582,6 +582,7 @@ export function CouncilPanel({
           model: chairSlotObj.model || null,
           prompt: synthesisPrompt,
           session_id: `${sessionRef.current}:chair`,
+          web: isBunkerOn() ? false : getDomainToggle(domain, "web", true),
         },
       });
     } catch (e) {
@@ -851,6 +852,7 @@ export function CouncilPanel({
             model: s.model || null,
             prompt: enrichedPrompt,
             session_id: `${sessionRef.current}:slot:${s.key}`,
+            web: isBunkerOn() ? false : getDomainToggle(domain, "web", true),
           },
         });
       } catch (e) {
@@ -1433,7 +1435,7 @@ export function CouncilPanel({
                   </div>
                   <div className="max-h-80 overflow-y-auto">
                     {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
-                      const cliModels = MODELS[c.id] ?? [];
+                      const cliModels = modelsFor(c.id);
                       if (cliModels.length === 0) return null;
                       return (
                         <div key={c.id} className={c.available ? "" : "opacity-40"}>
@@ -1508,7 +1510,7 @@ export function CouncilPanel({
                   </div>
                   <div className="max-h-80 overflow-y-auto">
                     {clis.filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
-                      const cliModels = MODELS[c.id] ?? [];
+                      const cliModels = modelsFor(c.id);
                       if (cliModels.length === 0) return null;
                       return (
                         <div key={c.id} className={c.available ? "" : "opacity-40"}>

@@ -11,7 +11,7 @@ import { relTime, scoreColor, titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
 import { ContextMeter, contextWindowFor, estimateTokens } from "./contextmeter";
 import { domainBlurb, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
-import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, loadPreferredSkills, maybeRedact, maybeStripSycophancy, savePreferredSkills } from "./helpers2";
+import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, loadPreferredSkills, maybeRedact, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
 import { ContextScoreBadge, NewSkillForm, SkillsList } from "./panels";
@@ -1374,9 +1374,11 @@ export function ChatPanel({
     // preference in effect, so a future better model can replay it. The
     // matching raw reply is appended on completion (persistUsage).
     // The web-access decision for THIS turn: off in Bunker mode, else the
-    // per-domain "Web access" toggle (default off). Passed to the engine so it
-    // actually enforces the lockdown - not just logged in prefs.
-    const webAllowed = isBunkerOn() ? false : getDomainToggle(domain, "web", false);
+    // per-domain "Web access" toggle. The default MUST match the Modes UI
+    // (chatviews reads it with fallback `true`) - otherwise an untouched toggle
+    // shows ON in the UI while the engine is told "deny", and the turn is wrongly
+    // refused. Passed to the engine so it actually enforces the lockdown.
+    const webAllowed = isBunkerOn() ? false : getDomainToggle(domain, "web", true);
     const prefs = {
       framework: fwLens.framework ?? null,
       lens: fwLens.lens ?? null,
@@ -2304,7 +2306,7 @@ export function ChatPanel({
                   </div>
                   <div className="max-h-80 overflow-y-auto">
                     {clis.filter((c) => !isHarnessRuntime(c.id)).filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
-                      const cliModels = MODELS[c.id] ?? [];
+                      const cliModels = modelsFor(c.id);
                       if (cliModels.length === 0) return null;
                       return (
                         <div key={c.id} className={c.available ? "" : "opacity-40"}>
