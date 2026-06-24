@@ -24,6 +24,10 @@ pub struct ThreadMeta {
     pub updated: u64,
     pub turn_count: usize,
     pub preview: String,
+    // The model that last answered in this thread (for the rail icon). Taken
+    // from the most recent turn that recorded a CLI.
+    pub cli: Option<String>,
+    pub model: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -251,6 +255,10 @@ fn thread_meta_from(
                 .to_string()
         });
     let preview: String = preview.chars().take(120).collect();
+    // Last model to answer: walk turns from the end for the first recorded CLI.
+    let last_with_cli = turns.iter().rev().find(|t| t.cli.is_some());
+    let cli = last_with_cli.and_then(|t| t.cli.clone());
+    let model = last_with_cli.and_then(|t| t.model.clone());
     ThreadMeta {
         path: path.to_string_lossy().to_string(),
         slug,
@@ -260,6 +268,8 @@ fn thread_meta_from(
         updated,
         turn_count,
         preview,
+        cli,
+        model,
     }
 }
 
