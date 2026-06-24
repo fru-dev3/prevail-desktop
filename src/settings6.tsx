@@ -1004,6 +1004,62 @@ export function AgentCard({
           </div>
         </div>
       )}
+
+      {/* Installed but no model list (harnesses): the body was previously blank,
+          which read as "broken." Explain what it is and that it's ready. */}
+      {isOpen && cli.available && models.length === 0 && (
+        <div className="space-y-2 border-t border-border-subtle px-4 py-3">
+          <div className="text-sm text-text-secondary">
+            {RUNTIME_META[cli.id]?.blurb || `${cli.label} is a harness runtime.`}
+          </div>
+          <p className="text-xs leading-relaxed text-text-muted">
+            This is a <span className="font-semibold text-text-secondary">harness</span> — it wraps the{" "}
+            <code className="text-accent">{RUNTIME_META[cli.id]?.protocol ?? "base"}</code> protocol and runs through your installed base CLI. It's installed and validated, so it's ready to use wherever harnesses are offered (it isn't a homepage chat runtime).
+          </p>
+          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+            <span className="font-mono text-[10px] text-text-muted/80">{cli.version ? `version ${cli.version} · ` : ""}{cli.bin}</span>
+            {RUNTIME_META[cli.id]?.install && (
+              <a href={RUNTIME_META[cli.id]!.install} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border border-border-subtle px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+                Docs <ArrowUpRight className="h-3 w-3" />
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Not installed: a real setup body (not just a tiny link), so the detail
+          pane always says something actionable. */}
+      {isOpen && !cli.available && (
+        <div className="space-y-2.5 border-t border-border-subtle px-4 py-3">
+          <div className="text-sm text-text-secondary">
+            {RUNTIME_META[cli.id]?.blurb || `${cli.label} isn't installed on this Mac yet.`}
+          </div>
+          <div className="space-y-2 rounded-lg border border-border-subtle bg-background p-3">
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Set up {cli.label}</div>
+            <p className="text-xs leading-relaxed text-text-secondary">
+              Install {cli.label} from its setup guide. It runs on your own subscription — no key to paste here. Prevail auto-detects it; hit Re-check once it's installed.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {RUNTIME_META[cli.id]?.install && (
+                <a
+                  href={RUNTIME_META[cli.id]!.install}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-background hover:opacity-90"
+                >
+                  Open setup guide <ArrowUpRight className="h-3 w-3" />
+                </a>
+              )}
+              <button
+                onClick={() => void verifyCliDefaultModel(cli.id)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"
+              >
+                Re-check
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
