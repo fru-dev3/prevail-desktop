@@ -162,8 +162,11 @@ fn cli_args(cli: &str, prompt: &str, model: Option<&str>, web_denied: bool) -> (
             let mut v = vec!["--dangerously-skip-permissions".to_string()];
             if locked {
                 if let Some(ref vp) = vault { v.push("--add-dir".to_string()); v.push(vp.clone()); }
-                v.push("--disallowedTools".to_string());
-                v.push("Bash".to_string());
+                // agy has NO --disallowedTools flag (that's Claude-only). Passing
+                // it made agy abort with "flags provided but not defined" and dump
+                // its usage. agy's terminal/shell restriction is --sandbox, so use
+                // that to drop the Bash escape hatch under Vault Lock.
+                v.push("--sandbox".to_string());
             }
             if let Some(m) = model {
                 v.push("--model".to_string());
