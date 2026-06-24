@@ -1356,7 +1356,7 @@ export default function App() {
         )}
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <div data-tour="nav" className="flex shrink-0 items-center gap-1 border-b border-border-subtle bg-background px-4">
+          <div data-tour="nav" className="flex shrink-0 items-center gap-1 border-b border-border-subtle bg-background pl-2 pr-4">
             {/* DEV-only marker: lets you tell THIS live window apart from a stale
                 installed build at a glance. Stripped from production bundles. */}
             {import.meta.env.DEV && (
