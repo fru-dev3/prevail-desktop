@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, ChevronDown, Clock, Globe, Layers, Loader2, Sparkles, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
-import { DISCOVERED_MODELS, MODELS } from "./constants";
+import { DISCOVERED_MODELS } from "./constants";
 import { refreshDiscoveredModels } from "./helpers2";
 import { LS, lsGet, lsSet } from "./storage";
 import { track } from "./telemetry";
@@ -147,7 +147,6 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
     window.addEventListener("prevail:models-refreshed", h);
     return () => window.removeEventListener("prevail:models-refreshed", h);
   }, []);
-  const orCurated = MODELS.openrouter ?? [];
   const orLive = DISCOVERED_MODELS.openrouter ?? [];
   const orResults = orQuery.trim()
     ? orLive.filter((m) => `${m.id} ${m.label ?? ""}`.toLowerCase().includes(orQuery.trim().toLowerCase())).slice(0, 60)
@@ -228,18 +227,12 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
             Key saved, but OpenRouter didn&apos;t come online. Double-check the key at openrouter.ai/keys.
           </div>
         )}
-        {/* Curated picks shown by default; search reveals the full live catalog. */}
+        {/* Pure search over the full live catalog — every model is available;
+            there's no curated/highlighted subset to maintain. */}
         <div className="mt-4 border-t border-border-subtle pt-3">
           <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
-            <Layers className="h-3 w-3 text-accent" /> Prevail defaults
-            {orLive.length > 0 && <span className="text-text-muted normal-case tracking-normal">· full live catalog: {orLive.length} models, search to browse</span>}
-          </div>
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {orCurated.map((m) => (
-              <span key={m.id} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary" title={m.id}>
-                <OrVendorMark id={m.id} size={12} />{m.label}
-              </span>
-            ))}
+            <Layers className="h-3 w-3 text-accent" /> Model catalog
+            {orLive.length > 0 && <span className="text-text-muted normal-case tracking-normal">· {orLive.length} live models — search to browse</span>}
           </div>
           <input
             value={orQuery}
