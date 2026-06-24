@@ -7,7 +7,6 @@ import { LS, lsGet, lsSet } from "./storage";
 import { useAppearance } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
 import { PrevailLogo } from "./PrevailLogo";
-import { BenchScheduleCard } from "./cards";
 import { FrameworksSection, RemoteSection, ShortcutsSection } from "./settings1";
 import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection } from "./settings2";
 import { BoardPanel } from "./boardpanel";
@@ -333,10 +332,6 @@ export function SettingsPanel({
               />
               <div className="-mx-4 min-h-[60vh]">
                 <BenchmarkPanel vaultPath={vaultPath} />
-              </div>
-              {/* K1 (Monday feedback): scheduled runs live at the BOTTOM, not the top. */}
-              <div className="mt-8 border-t border-border-subtle pt-6">
-                <BenchScheduleCard vault={vaultPath} />
               </div>
             </>
           )}

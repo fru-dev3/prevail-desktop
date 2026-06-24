@@ -3,7 +3,6 @@ import { invoke } from "./bridge";
 import { DEAD_MODELS, DISCOVERED_MODELS, MODELS, SYCOPHANCY_RE } from "./constants";
 import { titleCase } from "./format";
 import { lsGet, lsSet } from "./storage";
-import { mergeOpenrouterPicks, readOpenrouterPins } from "./openrouterpins";
 import type { ModelPick, PanelistReply, PanelistSlot } from "./types";
 
 // Best-effort live model discovery for the given providers; fills
@@ -47,16 +46,20 @@ export function modelLabel(cli?: string, id?: string): string {
   return m?.label ?? prettyModelId(id);
 }
 
+// Curated defaults + the full live/discovered catalog (deduped). For OpenRouter
+// that's 300+ models - the pickers render the curated set by default and add a
+// search box over the whole list, so any model is runnable without "pinning".
 export function modelsFor(cli: string): ModelPick[] {
   const curated = MODELS[cli] ?? [];
-  // OpenRouter has a 300+ model live catalog - far too many to list in a picker.
-  // So instead of merging ALL discovered models, we offer the curated defaults
-  // plus whatever the user has explicitly PINNED from the catalog. Pinning is
-  // the curation.
-  if (cli === "openrouter") return mergeOpenrouterPicks(curated, readOpenrouterPins());
   const seen = new Set(curated.map((m) => m.id));
   const extra = (DISCOVERED_MODELS[cli] ?? []).filter((d) => !seen.has(d.id));
   return [...curated, ...extra];
+}
+
+// Just the curated defaults for a CLI - what a picker shows before the user
+// searches. Pairs with modelsFor() (the full searchable list).
+export function curatedFor(cli: string): ModelPick[] {
+  return MODELS[cli] ?? [];
 }
 
 export function buildQuickActions(domain: string | null): { glyph: string; label: string; prompt: string; council?: boolean }[] {
