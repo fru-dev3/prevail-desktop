@@ -2398,14 +2398,30 @@ export function BenchmarkPanel({
               </div>
             )}
             {!initialDomain && (view === "board" || view === "history") && allDomains.length > 0 && (
-              <select
-                value={domainFilter}
-                onChange={(e) => setDomainFilter(e.target.value)}
-                className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary"
-              >
-                <option value="all">all domains</option>
-                {allDomains.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
-              </select>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Domain</span>
+                <div className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-border-subtle bg-surface p-0.5">
+                  <button
+                    onClick={() => setDomainFilter("all")}
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${domainFilter === "all" ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-text-primary"}`}
+                  >
+                    <Layers className="h-3 w-3" /> All
+                  </button>
+                  {allDomains.map((d) => {
+                    const Icon = domainIcon(d) ?? Circle;
+                    const on = domainFilter === d;
+                    return (
+                      <button
+                        key={d}
+                        onClick={() => setDomainFilter(d)}
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${on ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-text-primary"}`}
+                      >
+                        <Icon className="h-3 w-3" /> {titleCase(d)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
             {initialDomain && (
               <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-3 py-1 font-mono text-[11px] text-text-muted">
