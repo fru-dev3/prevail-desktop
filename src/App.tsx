@@ -1356,11 +1356,12 @@ export default function App() {
         )}
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <div data-tour="nav" className="flex shrink-0 items-center gap-1 border-b border-border-subtle bg-background pl-2 pr-4">
+          <div data-tour="nav" className="relative flex shrink-0 items-center gap-1 border-b border-border-subtle bg-background pl-1.5 pr-4">
             {/* DEV-only marker: lets you tell THIS live window apart from a stale
-                installed build at a glance. Stripped from production bundles. */}
+                installed build. Absolutely positioned at the bottom-right corner so
+                it never pushes the first icon off the left edge. */}
             {import.meta.env.DEV && (
-              <span className="mr-1 shrink-0 rounded bg-danger px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-background">DEV</span>
+              <span className="pointer-events-none absolute bottom-0.5 right-1.5 z-10 rounded bg-danger px-1 py-0 font-mono text-[8px] font-bold uppercase tracking-wide text-background opacity-70">DEV</span>
             )}
             {/* Quick visual cue: are we in an APP or a DOMAIN? An icon (no text)
                 at the far left, so the two contexts are instantly distinguishable.
