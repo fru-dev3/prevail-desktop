@@ -1424,15 +1424,21 @@ export function ChatPanel({
     // path grounds replies in the domain's real state again. Falls back to the
     // native chat_send path when the CLI isn't present.
     const ENGINE_CHAT_ENABLED = true;
-    const useEngine = ENGINE_CHAT_ENABLED && engineAvailable && !!domain;
     // Engine-only providers (no spawnable binary): OpenRouter is an HTTP gateway;
     // LM Studio / MLX are local HTTP servers the engine reaches via the ollama
-    // provider path. In the no-domain General space the engine path isn't used,
-    // so guide the user to a domain rather than failing on a missing binary.
+    // provider path. They have no native chat_send path, so they must always go
+    // through the engine — including in the no-domain General space, which the
+    // engine now serves as a first-class "general" domain.
     const ENGINE_ONLY = new Set(["openrouter", "lmstudio", "mlx"]);
+    // Use the engine when we're in a domain, OR when the chosen provider can only
+    // run through the engine (so General + OpenRouter/LM Studio/MLX works).
+    const useEngine = ENGINE_CHAT_ENABLED && engineAvailable && (!!domain || (!!chatCli && ENGINE_ONLY.has(chatCli)));
+    // The engine treats General as the "general" domain (general_dir), so a
+    // null/empty domain maps to that here.
+    const engineDomain = domain || "general";
     if (chatCli && ENGINE_ONLY.has(chatCli) && !useEngine) {
       const label = chatCli === "openrouter" ? "OpenRouter" : chatCli === "lmstudio" ? "LM Studio" : "oMLX";
-      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which needs a domain. Pick a domain (left sidebar) to chat with ${label}: or use an installed CLI here in General.`, ts: Date.now() }]);
+      setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which isn't available right now. Make sure the Prevail engine is installed, then try again.`, ts: Date.now() }]);
       onStreamEnd(sessionRef.current);
       return;
     }
@@ -1441,7 +1447,7 @@ export function ChatPanel({
         await invoke("engine_chat", {
           session: sessionRef.current,
           vault: vaultPath,
-          domain,
+          domain: engineDomain,
           message: promptText,
           cli: chatCli || null,
           model: chatModel,
