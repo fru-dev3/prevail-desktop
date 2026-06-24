@@ -39,6 +39,7 @@ pub(crate) use appcmds::secs_to_ymdhms;
 mod engine;
 mod vaultio;
 mod approval;
+mod broker;
 mod loops;
 mod activity;
 mod ingestion;

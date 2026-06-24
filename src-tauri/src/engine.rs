@@ -1713,14 +1713,28 @@ pub fn engine_vault_status(vault: String) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "encrypted": encrypted, "unlocked": vault_key().is_some() }))
 }
 
+/// Extract the DEK from a `vault unlock` response. O69: prefer the file handoff —
+/// the engine writes the DEK to a 0600 temp file and returns only its path, so the
+/// key never rides on stdout; read it, then delete the file. Falls back to an
+/// inline `key` for resilience.
+fn read_dek_from_unlock(r: &serde_json::Value) -> Result<Option<String>, String> {
+    if let Some(kf) = r.get("keyFile").and_then(|v| v.as_str()) {
+        let k = std::fs::read_to_string(kf).map_err(|e| format!("read key handoff: {e}"))?;
+        let _ = std::fs::remove_file(kf);
+        Ok(Some(k.trim().to_string()))
+    } else {
+        Ok(r.get("key").and_then(|v| v.as_str()).map(|s| s.to_string()))
+    }
+}
+
 /// Unlock the session: verify the passcode, hold the returned DEK in memory.
 /// Returns { ok } only — the key stays in Rust, never reaching JS.
 #[tauri::command]
 pub fn engine_vault_unlock(vault: String, passcode: String) -> Result<serde_json::Value, String> {
     let r = run_engine_json_stdin(&["--vault", &vault, "vault", "unlock"], &passcode)?;
     if r.get("ok").and_then(|v| v.as_bool()) == Some(true) {
-        if let Some(k) = r.get("key").and_then(|v| v.as_str()) {
-            set_vault_key(Some(k.to_string()));
+        if let Some(k) = read_dek_from_unlock(&r)? {
+            set_vault_key(Some(k));
             set_vault_root(Some(vault.clone()));
         }
         return Ok(serde_json::json!({ "ok": true }));
@@ -2376,5 +2390,21 @@ mod vault_key_state_tests {
         set_vault_root(None);
         assert_eq!(vault_key(), None);
         assert_eq!(vault_root(), None);
+    }
+
+    #[test]
+    fn unlock_dek_file_handoff_is_read_then_deleted() {
+        // O69: the engine returns the DEK via a temp file; we read it and delete it.
+        let dir = std::env::temp_dir().join(format!("prevail-dek-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let kf = dir.join("dek");
+        std::fs::write(&kf, "BASE64DEK==\n").unwrap();
+        let r = serde_json::json!({ "ok": true, "keyFile": kf.to_string_lossy() });
+        assert_eq!(read_dek_from_unlock(&r).unwrap().as_deref(), Some("BASE64DEK=="));
+        assert!(!kf.exists(), "handoff file is deleted after read");
+        // Resilience: fall back to an inline key when no keyFile is present.
+        let r2 = serde_json::json!({ "ok": true, "key": "INLINE==" });
+        assert_eq!(read_dek_from_unlock(&r2).unwrap().as_deref(), Some("INLINE=="));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
