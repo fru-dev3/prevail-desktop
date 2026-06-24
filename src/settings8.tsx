@@ -3,7 +3,7 @@
 // card).
 import { useEffect, useState } from "react";
 import { confirm as tauriConfirm, open } from "@tauri-apps/plugin-dialog";
-import { Archive, Briefcase, Check, ChevronRight, Database, DatabaseBackup, Download, ExternalLink, Folder, FolderOpen, FolderTree, GraduationCap, Home, Loader2, Monitor, Moon, Package, RotateCw, ShieldCheck, Sparkles, Sun, TrendingUp, Users } from "lucide-react";
+import { Archive, Briefcase, Check, ChevronRight, Database, DatabaseBackup, Download, ExternalLink, Folder, FolderCog, FolderOpen, FolderTree, GraduationCap, Home, Loader2, Monitor, Moon, Package, RotateCw, ShieldCheck, Sparkles, Sun, TrendingUp, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 // Pick a glyph for a starter pack from its name, so the list reads visually.
@@ -133,10 +133,34 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
   };
   const openBackupsFolder = async () => {
     try {
+      // Prefer an existing backup's folder; fall back to the effective backup dir
+      // so this works even before the first backup has been written.
       const list = await invoke<{ path: string }[]>("vault_backups_list", { destDir: lsGet(BACKUP_CFG.dest) || null });
-      const p = Array.isArray(list) && list[0]?.path;
+      const p = (Array.isArray(list) && list[0]?.path) || (await invoke<string>("vault_backup_dir", { destDir: lsGet(BACKUP_CFG.dest) || null }));
       if (p) await invoke("open_in_finder", { path: p });
     } catch (e) { console.error("open backups folder", e); }
+  };
+  // The folder backups are actually written to: a saved override (BACKUP_CFG.dest)
+  // or the default app-support/backups. Shown + changeable right on the card.
+  const [backupDir, setBackupDir] = useState<string>("");
+  const [backupDirCustom, setBackupDirCustom] = useState<boolean>(() => !!lsGet(BACKUP_CFG.dest));
+  useEffect(() => {
+    invoke<string>("vault_backup_dir", { destDir: lsGet(BACKUP_CFG.dest) || null }).then(setBackupDir).catch(() => {});
+  }, [backupTick]);
+  const changeBackupDir = async () => {
+    const picked = await open({ directory: true, multiple: false, title: "Choose a backup folder" });
+    if (typeof picked === "string" && picked) {
+      lsSet(BACKUP_CFG.dest, picked);
+      setBackupDirCustom(true);
+      setBackupTick((t) => t + 1);
+      window.dispatchEvent(new Event("prevail:backup-done"));
+    }
+  };
+  const resetBackupDir = () => {
+    lsSet(BACKUP_CFG.dest, "");
+    setBackupDirCustom(false);
+    setBackupTick((t) => t + 1);
+    window.dispatchEvent(new Event("prevail:backup-done"));
   };
   // Rescan the workspace: re-read domains/apps from disk (picks up anything added
   // outside the app, or a file that went missing) and refresh every surface.
@@ -187,9 +211,20 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
           <button onClick={backupNow} disabled={backupBusy} title="Back up now" className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent disabled:opacity-40">
             {backupBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DatabaseBackup className="h-3.5 w-3.5" />}
           </button>
+          <button onClick={changeBackupDir} title={`Change backup folder (now: ${backupDir || "default"})`} className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent">
+            <FolderCog className="h-3.5 w-3.5" />
+          </button>
           <button onClick={openBackupsFolder} title="Open backups folder" className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-accent">
             <Archive className="h-3.5 w-3.5" />
           </button>
+        </div>
+        {/* Where backups land — visible + changeable right here. Kept OUTSIDE the
+            vault (a backup inside what it backs up is circular). */}
+        <div className="flex w-full items-center gap-1.5 text-[9px] text-text-muted">
+          <FolderOpen className="h-3 w-3 shrink-0" />
+          <span className="min-w-0 flex-1 truncate" title={backupDir}>{backupDir || "default location"}{backupDirCustom ? "" : " · default"}</span>
+          <button onClick={changeBackupDir} className="shrink-0 uppercase tracking-wider hover:text-accent">change</button>
+          {backupDirCustom && <button onClick={resetBackupDir} className="shrink-0 uppercase tracking-wider hover:text-accent">reset</button>}
         </div>
       </div>
     ) : null
