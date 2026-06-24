@@ -3,7 +3,8 @@
 // run registry + executor live in ./bench; this is the presentation layer.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm, open, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
-import { Activity, AlertTriangle, Archive, Bookmark, BrainCircuit, CalendarClock, Check, ChevronRight, Circle, Crown, DollarSign, Download, FileText, Layers, Loader2, MessagesSquare, Pencil, Play, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X, Zap } from "lucide-react";
+import { Activity, AlertTriangle, Archive, Bookmark, BrainCircuit, CalendarClock, Check, ChevronRight, Circle, Crown, DollarSign, Download, ExternalLink, FileText, Layers, Loader2, MessagesSquare, Pencil, Play, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X, Zap } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke, listen } from "./bridge";
 import { MODELS, MODEL_SEP } from "./constants";
 import { scoreColor, titleCase } from "./format";
@@ -27,7 +28,7 @@ import type { UnlistenFn } from "./bridge";
 // build/_meta/model_suggestions.json. This panel surfaces that list in the Arena
 // and lets the user force a fresh scan. Models in the benchmark are defined in
 // the MODELS catalog, so this RECOMMENDS - the user folds the ones they want in.
-interface ScoutItem { name: string; provider: string; kind: "open" | "frontier"; reason: string }
+interface ScoutItem { name: string; provider: string; kind: "open" | "frontier"; reason: string; url?: string; source?: string }
 interface ScoutFile { generated?: number; model?: string; items?: ScoutItem[] }
 
 function ModelScoutSuggestions({ vaultPath }: { vaultPath: string }) {
@@ -46,6 +47,9 @@ function ModelScoutSuggestions({ vaultPath }: { vaultPath: string }) {
     finally { setScanning(false); }
   };
   const items = doc?.items ?? [];
+  // Without a source URL from the scan, give every suggestion a useful link:
+  // a web search for the exact model so you can read about it and decide.
+  const linkFor = (it: ScoutItem) => it.url || `https://www.google.com/search?q=${encodeURIComponent(`${it.provider} ${it.name} AI model`)}`;
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
@@ -53,15 +57,20 @@ function ModelScoutSuggestions({ vaultPath }: { vaultPath: string }) {
         <span className="text-sm font-semibold text-text-primary">Model Scout</span>
         <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-text-muted">{items.length ? `${items.length} suggested${doc?.generated ? ` · scanned ${new Date(doc.generated).toLocaleDateString()}` : ""}` : "daily web scan"}</span>
       </div>
+      {/* Why this page matters — new models ship constantly; Scout keeps the
+          Arena's roster current so you don't have to track releases yourself. */}
+      <div className="rounded-lg border border-accent-border/40 bg-accent-soft/30 px-3 py-2.5">
+        <p className="text-[12px] leading-relaxed text-text-secondary">
+          <span className="font-semibold text-text-primary">New models ship every week.</span> Scout's daily web scan flags freshly-released models — open-weight and frontier — worth adding to your Arena, so your benchmarks stay current without you tracking announcements. Each suggestion links to its source; pick the ones you care about and add them as Arena models to run.
+        </p>
+      </div>
       <div className="space-y-2 px-1">
-        <div className="flex items-center gap-2 text-[11px] text-text-muted">
-          <BrainCircuit className="h-3.5 w-3.5 text-accent" />
-          <span>The General domain's daily loop searches the web for new AI models to benchmark.</span>
+        <div className="flex items-center justify-end gap-2 text-[11px] text-text-muted">
           <button
             onClick={rescan}
             disabled={scanning}
             title="Scan the web for models now"
-            className="ml-auto inline-flex items-center gap-1 rounded-md border border-border-subtle px-2 py-1 text-[11px] text-text-secondary hover:bg-surface-warm hover:text-accent disabled:opacity-40"
+            className="inline-flex items-center gap-1 rounded-md border border-border-subtle px-2 py-1 text-[11px] text-text-secondary hover:bg-surface-warm hover:text-accent disabled:opacity-40"
           >
             <RotateCw className={`h-3 w-3 ${scanning ? "animate-spin" : ""}`} /> {scanning ? "Scanning…" : "Scan now"}
           </button>
@@ -73,11 +82,18 @@ function ModelScoutSuggestions({ vaultPath }: { vaultPath: string }) {
             {items.map((it, i) => (
               <li key={`${it.name}-${i}`} className="flex items-start gap-2 rounded-md border border-border-subtle bg-surface-warm/40 px-2 py-1.5">
                 <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase ${it.kind === "open" ? "bg-accent/15 text-accent" : "bg-warn/15 text-warn"}`}>{it.kind}</span>
-                <span className="min-w-0">
+                <span className="min-w-0 flex-1">
                   <span className="text-xs font-medium text-text-primary">{it.name}</span>
                   <span className="ml-1 text-[11px] text-text-muted">({it.provider})</span>
                   {it.reason && <span className="block text-[11px] leading-snug text-text-muted">{it.reason}</span>}
                 </span>
+                <button
+                  onClick={() => void openUrl(linkFor(it))}
+                  title={it.url ? `Open source: ${it.url}` : `Search the web for ${it.name}`}
+                  className="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-md border border-border-subtle px-1.5 py-0.5 font-mono text-[10px] text-text-muted hover:border-accent-border hover:text-accent"
+                >
+                  {it.url ? "source" : "look up"} <ExternalLink className="h-2.5 w-2.5" />
+                </button>
               </li>
             ))}
           </ul>
@@ -1352,6 +1368,7 @@ export function BenchResults({
   // distinct. Runs from before batch-stamping are clustered into
   // pseudo-batches by launch time (folders created within minutes of each
   // other were one launch), so old history reads as real sessions too.
+  const [historySort, setHistorySort] = useState<"recent" | "oldest" | "score" | "size">("recent");
   const runsByBatch = useMemo(() => {
     type Group = { key: string; label: string; date: string; runs: BenchmarkRun[]; isBatch: boolean };
     const groups = new Map<string, Group>();
@@ -1393,10 +1410,23 @@ export function BenchResults({
       cluster.push(r);
     }
     flush();
-    return Array.from(groups.values()).sort((a, b) =>
-      b.date.localeCompare(a.date) || (b.runs[0]?.created_ms ?? 0) - (a.runs[0]?.created_ms ?? 0),
-    );
-  }, [visibleRuns]);
+    // Enrich each group with sort keys: the most recent run's timestamp (so
+    // "latest on top" is reliable, not dependent on insertion order), the best
+    // score, and the model count. Runs within a group are ordered newest-first.
+    const enriched = Array.from(groups.values()).map((g) => ({
+      ...g,
+      runs: [...g.runs].sort((a, b) => (b.created_ms ?? 0) - (a.created_ms ?? 0)),
+      latestMs: g.runs.reduce((mx, r) => Math.max(mx, r.created_ms ?? 0), 0),
+      best: g.runs.reduce<number | null>((acc, r) => (r.judge_avg == null ? acc : acc == null ? r.judge_avg : Math.max(acc, r.judge_avg)), null),
+    }));
+    enriched.sort((a, b) => {
+      if (historySort === "oldest") return a.latestMs - b.latestMs;
+      if (historySort === "score") return (b.best ?? -1) - (a.best ?? -1);
+      if (historySort === "size") return b.runs.length - a.runs.length;
+      return b.latestMs - a.latestMs; // "recent" (default): latest on top
+    });
+    return enriched;
+  }, [visibleRuns, historySort]);
 
   // By-model aggregation: every run of the same model folded into one row -
   // best/latest scores, run count, and the domains it has been tested on.
@@ -1785,8 +1815,16 @@ export function BenchResults({
           many models, and the session's best score. */}
       {resultsView === "history" && visibleRuns.length > 0 && (
         <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2 px-1">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Sort by</span>
+            <div className="inline-flex items-center rounded-lg border border-border-subtle bg-surface p-0.5">
+              {([["recent", "Latest"], ["oldest", "Oldest"], ["score", "Best score"], ["size", "Most models"]] as const).map(([k, label]) => (
+                <button key={k} onClick={() => setHistorySort(k)} className={`rounded-md px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${historySort === k ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-text-primary"}`}>{label}</button>
+              ))}
+            </div>
+          </div>
           {runsByBatch.map((group) => {
-            const best = group.runs.reduce<number | null>((acc, r) => (r.judge_avg === null ? acc : acc === null ? r.judge_avg : Math.max(acc, r.judge_avg)), null);
+            const best = group.best;
             const unscored = group.runs.filter((r) => !r.scored).length;
             return (
             <details key={group.key} className="group/date overflow-hidden rounded-2xl border border-border bg-surface">
