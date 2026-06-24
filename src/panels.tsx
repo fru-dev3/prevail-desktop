@@ -577,7 +577,10 @@ export function ThreadsRail({
                           </>
                         )}
                       </div>
-                      {t.preview && (
+                      {/* Only show the preview when it adds information — for a
+                          fresh thread the title IS the first prompt, so showing
+                          the preview too just repeats it. */}
+                      {t.preview && t.preview.trim().toLowerCase() !== t.title.trim().toLowerCase() && (
                         <div className="mt-0.5 line-clamp-1 text-[11px] text-text-muted">
                           {t.preview}
                         </div>

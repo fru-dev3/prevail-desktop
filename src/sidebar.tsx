@@ -3,7 +3,7 @@
 // gateway/MCP/benchmark status strips from shared modules.
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
-import { Archive, ChevronDown, ChevronLeft, ChevronRight, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, Pin, Plug, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Star, Sun } from "lucide-react";
+import { Archive, ChevronDown, ChevronLeft, ChevronRight, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Star, Sun } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { STATUS_TINT } from "./constants";
@@ -140,6 +140,17 @@ export function Sidebar({
   const [archivedOpen, setArchivedOpen] = useState<boolean>(() => lsGet("prevail.sidebar.archivedOpen") === "1");
   useEffect(() => { lsSet("prevail.sidebar.archivedOpen", archivedOpen ? "1" : "0"); }, [archivedOpen]);
   const [restoring, setRestoring] = useState<string | null>(null);
+  // Which domain's kebab (⋮) action menu is open (one at a time).
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || !t.closest("[data-domain-menu]")) setMenuOpen(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [menuOpen]);
   const refreshArchived = useCallback(async () => {
     if (!vaultPath) return;
     try {
@@ -578,33 +589,42 @@ export function Sidebar({
                     />
                   ) : null}
                 </button>
-                <button
-                  onClick={() => togglePin(d.name)}
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${
-                    active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                  }`}
-                  title={isPinned ? "Unpin" : "Pin to top"}
-                >
-                  <Pin className={`h-3 w-3 ${isPinned ? "fill-accent text-accent" : ""}`} />
-                </button>
-                <button
-                  onClick={() => openInFinder(d.path)}
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${
-                    active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                  }`}
-                  title={`Open ${titleCase(d.name)} in Finder`}
-                >
-                  <Folder className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); void archiveDomain(d.name); }}
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-warn ${
-                    active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                  }`}
-                  title={`Archive ${titleCase(d.name)} (hide from the list; restore any time)`}
-                >
-                  <Archive className="h-3.5 w-3.5" />
-                </button>
+                {/* Row actions collapsed into a kebab (⋮) so the list stays
+                    clean: pin / open in Finder / archive live behind one click. */}
+                <div className="relative shrink-0" data-domain-menu>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setMenuOpen((cur) => (cur === d.name ? null : d.name)); }}
+                    className={`flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${
+                      active || menuOpen === d.name ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                    }`}
+                    title="Domain actions"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                  {menuOpen === d.name && (
+                    <div className="absolute right-0 top-7 z-50 w-36 rounded-md border border-border bg-surface p-0.5 shadow-xl">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); togglePin(d.name); setMenuOpen(null); }}
+                        className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+                      >
+                        <Pin className={`h-3 w-3 shrink-0 ${isPinned ? "fill-accent text-accent" : ""}`} /> {isPinned ? "Unpin" : "Pin to top"}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openInFinder(d.path); setMenuOpen(null); }}
+                        className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+                      >
+                        <Folder className="h-3 w-3 shrink-0" /> Open in Finder
+                      </button>
+                      <div className="my-0.5 h-px bg-border-subtle" />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setMenuOpen(null); void archiveDomain(d.name); }}
+                        className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-warn hover:bg-warn/10"
+                      >
+                        <Archive className="h-3 w-3 shrink-0" /> Archive…
+                      </button>
+                    </div>
+                  )}
+                </div>
               </li>
                 )}
               </Fragment>
