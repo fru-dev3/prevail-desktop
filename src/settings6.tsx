@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOf
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
-import { RUNTIME_META, VENDOR_BRAND, isHarnessRuntime } from "./constants";
+import { DISCOVERED_MODELS, RUNTIME_META, VENDOR_BRAND, isHarnessRuntime } from "./constants";
 import { isLocalCli } from "./helpers";
 import { modelsFor, prettyModelId } from "./helpers2";
 import { LS, PREF, getPref, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
@@ -534,13 +534,21 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   // Each provider expands/collapses INDEPENDENTLY - a Set of open provider ids,
   // not a single value (opening one never closes another).
   const [expandedSet, setExpandedSet] = useState<Set<string>>(() => new Set());
+  // Per-provider catalog search (aggregators like OpenRouter expose hundreds of
+  // models — search, don't scroll a fixed list).
+  const [panelSearch, setPanelSearch] = useState<Record<string, string>>({});
   // Once providers are detected: prune any stale slot keys that no longer map to
   // a real (available provider, model) - that's what made the count drift from
   // the visible badges - then seed a sensible default if the panel is empty.
+  // Discovered (live-catalog) models count as valid too, so a model added via
+  // search (e.g. an OpenRouter GLM) isn't pruned away on the next mount.
   useEffect(() => {
     if (available.length === 0) return;
     const valid = new Set<string>();
-    for (const c of available) for (const m of councilModelsFor(c.id)) valid.add(councilSlotKey(c.id, m.id));
+    for (const c of available) {
+      for (const m of councilModelsFor(c.id)) valid.add(councilSlotKey(c.id, m.id));
+      for (const m of (DISCOVERED_MODELS[c.id] ?? [])) valid.add(councilSlotKey(c.id, m.id));
+    }
     setMembers((prev) => {
       const pruned = new Set([...prev].filter((k) => valid.has(k)));
       if (pruned.size > 0) return pruned.size === prev.size ? prev : pruned;
@@ -601,8 +609,30 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
       <div className="space-y-2">
         {available.length === 0 && <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-sm text-text-muted">No providers available{isBunkerOn() ? " in Bunker Mode (local only)" : ""}.</div>}
         {available.map((c) => {
-          const models = councilModelsFor(c.id);
-          const picked = models.filter((m) => members.has(councilSlotKey(c.id, m.id))).length;
+          const curated = councilModelsFor(c.id);
+          const live = DISCOVERED_MODELS[c.id] ?? [];
+          // Aggregators (OpenRouter) ship a big live catalog — make every model
+          // reachable via search, not just the curated handful.
+          const isAggregator = live.length > 0;
+          const q = (panelSearch[c.id] ?? "").trim().toLowerCase();
+          // Slot keys already on the panel for this provider (so search-added
+          // models still render as checked, even if not in the curated list).
+          const onPanelIds = [...members].filter((k) => k.startsWith(`${c.id}::`)).map((k) => k.slice(c.id.length + 2));
+          const picked = onPanelIds.length;
+          let models: { id: string; label: string; blurb?: string }[];
+          if (isAggregator && q) {
+            models = live.filter((m) => `${m.id} ${m.label ?? ""}`.toLowerCase().includes(q)).slice(0, 40)
+              .map((m) => ({ id: m.id, label: m.label && m.label !== m.id ? m.label : m.id, blurb: "" }));
+          } else if (isAggregator) {
+            const curatedIds = new Set(curated.map((m) => m.id));
+            const extras = onPanelIds.filter((id) => !curatedIds.has(id)).map((id) => {
+              const lm = live.find((x) => x.id === id);
+              return { id, label: lm?.label ?? id, blurb: "" };
+            });
+            models = [...curated, ...extras];
+          } else {
+            models = curated;
+          }
           const isExp = expandedSet.has(c.id);
           return (
             <div key={c.id} className={`overflow-hidden rounded-lg border bg-surface transition-colors ${isExp || picked > 0 ? "border-accent-border" : "border-border-subtle"}`}>
@@ -611,10 +641,24 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
                 <ProviderMark vendor={c.id} size={26} />
                 <span className="flex-1 font-display text-sm font-semibold text-text-primary">{c.label}</span>
                 {picked > 0 && <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-background">{picked} on panel</span>}
-                <span className="shrink-0 font-mono text-[10px] text-text-muted">{models.length} model{models.length === 1 ? "" : "s"}</span>
+                <span className="shrink-0 font-mono text-[10px] text-text-muted">{isAggregator ? `${live.length} models, search` : `${models.length} model${models.length === 1 ? "" : "s"}`}</span>
               </button>
               {isExp && (
                 <div className="space-y-1.5 border-t border-border-subtle bg-background/40 p-3">
+                  {isAggregator && (
+                    <div className="relative mb-1">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+                      <input
+                        value={panelSearch[c.id] ?? ""}
+                        onChange={(e) => setPanelSearch((s) => ({ ...s, [c.id]: e.target.value }))}
+                        placeholder={`Search all ${live.length} models (e.g. glm, kimi, qwen)…`}
+                        className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+                      />
+                    </div>
+                  )}
+                  {models.length === 0 && (
+                    <div className="px-1 py-2 font-mono text-[11px] text-text-muted">No models match "{panelSearch[c.id]}".</div>
+                  )}
                   {models.map((m) => {
                     const key = councilSlotKey(c.id, m.id);
                     const on = members.has(key);
@@ -748,6 +792,7 @@ export function AgentCard({
     return out;
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [cmdCopied, setCmdCopied] = useState(false);
 
   async function verifyModel(modelId: string) {
     setStatus((s) => ({ ...s, [modelId]: "verifying" }));
@@ -1004,6 +1049,80 @@ export function AgentCard({
           </div>
         </div>
       )}
+
+      {/* Installed but no model list (harnesses): the body was previously blank,
+          which read as "broken." Explain what it is and that it's ready. */}
+      {isOpen && cli.available && models.length === 0 && (
+        <div className="space-y-2 border-t border-border-subtle px-4 py-3">
+          <div className="text-sm text-text-secondary">
+            {RUNTIME_META[cli.id]?.blurb || `${cli.label} is a harness runtime.`}
+          </div>
+          <p className="text-xs leading-relaxed text-text-muted">
+            This is a <span className="font-semibold text-text-secondary">harness</span> — it wraps the{" "}
+            <code className="text-accent">{RUNTIME_META[cli.id]?.protocol ?? "base"}</code> protocol and runs through your installed base CLI. It's installed and validated, so it's ready to use wherever harnesses are offered (it isn't a homepage chat runtime).
+          </p>
+          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+            <span className="font-mono text-[10px] text-text-muted/80">{cli.version ? `version ${cli.version} · ` : ""}{cli.bin}</span>
+            {RUNTIME_META[cli.id]?.install && (
+              <a href={RUNTIME_META[cli.id]!.install} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border border-border-subtle px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+                Docs <ArrowUpRight className="h-3 w-3" />
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Not installed: a real setup body (not just a tiny link), so the detail
+          pane always says something actionable. */}
+      {isOpen && !cli.available && (
+        <div className="space-y-2.5 border-t border-border-subtle px-4 py-3">
+          <div className="text-sm text-text-secondary">
+            {RUNTIME_META[cli.id]?.blurb || `${cli.label} isn't installed on this Mac yet.`}
+          </div>
+          <div className="space-y-2 rounded-lg border border-border-subtle bg-background p-3">
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Set up {cli.label}</div>
+            <p className="text-xs leading-relaxed text-text-secondary">
+              Install {cli.label} from its setup guide. It runs on your own subscription — no key to paste here. Prevail auto-detects it; hit Re-check once it's installed.
+            </p>
+            {RUNTIME_META[cli.id]?.cmd && (
+              <div className="flex items-center gap-2 rounded-md border border-border-subtle bg-surface-warm/60 px-2 py-1.5">
+                <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-primary" title={RUNTIME_META[cli.id]!.cmd}>{RUNTIME_META[cli.id]!.cmd}</code>
+                <button
+                  onClick={() => { void invoke("open_in_terminal", { command: RUNTIME_META[cli.id]!.cmd }).catch((e) => console.error("open_in_terminal", e)); }}
+                  title="Open Terminal and run this install command (you'll see it run and can confirm any prompts)"
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+                >
+                  <Terminal className="h-3 w-3" /> Install
+                </button>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(RUNTIME_META[cli.id]!.cmd!).then(() => { setCmdCopied(true); window.setTimeout(() => setCmdCopied(false), 1500); }).catch(() => {}); }}
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                >
+                  {cmdCopied ? <><Check className="h-3 w-3" /> Copied</> : "Copy"}
+                </button>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {RUNTIME_META[cli.id]?.install && (
+                <a
+                  href={RUNTIME_META[cli.id]!.install}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-background hover:opacity-90"
+                >
+                  Open setup guide <ArrowUpRight className="h-3 w-3" />
+                </a>
+              )}
+              <button
+                onClick={() => void verifyCliDefaultModel(cli.id)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"
+              >
+                Re-check
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1081,7 +1200,11 @@ export function AgentsSection({
   // "Set up" link. All groups open by default so every supported runtime is
   // visible to set up.
   const sortReady = (a: CliInfo, b: CliInfo) => Number(b.available) - Number(a.available) || a.label.localeCompare(b.label);
-  const cliRuntimes = clis.filter((c) => !isHarnessRuntime(c.id)).sort(sortReady);
+  // Aggregators (OpenRouter, Bedrock) are HTTP gateways, not spawnable CLIs —
+  // they have their own "Aggregator runtimes" section with key + catalog, so
+  // they must NOT also appear in the CLI runtimes list (and can't be "spawned").
+  const AGGREGATOR_IDS = new Set(["openrouter", "bedrock"]);
+  const cliRuntimes = clis.filter((c) => !isHarnessRuntime(c.id) && !AGGREGATOR_IDS.has(c.id)).sort(sortReady);
   const harnesses = clis.filter((c) => isHarnessRuntime(c.id)).sort(sortReady);
   // Split the vendor CLIs into on-device (local) vs hosted (cloud) so the user
   // can configure local-only models in one place. Match local runtimes by id,
