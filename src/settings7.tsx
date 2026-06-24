@@ -443,7 +443,7 @@ export function ModelsSection({
           id: "clis",
           label: "CLI runtimes",
           icon: Sparkles,
-          desc: `local · uses your subscription · ${clis.filter((c) => c.available).length} detected · ${clis.filter((c) => !c.available).length} not installed`,
+          desc: (() => { const cliOnly = clis.filter((c) => c.id !== "openrouter" && c.id !== "bedrock"); return `local · uses your subscription · ${cliOnly.filter((c) => c.available).length} detected · ${cliOnly.filter((c) => !c.available).length} not installed`; })(),
           content: (
             <AgentsSection
               clis={clis}
