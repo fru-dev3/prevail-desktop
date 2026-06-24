@@ -389,6 +389,15 @@ pub(crate) fn app_uninstall(app: tauri::AppHandle, scope: String) -> Result<(), 
     let home = std::env::var("HOME").unwrap_or_default();
     let mut script = String::from("#!/bin/bash\nsleep 2\n");
     if scope == "data" {
+        // G11: the Tauri dirs below do NOT cover the engine's machine-local
+        // secrets under ~/.prevail — OAuth refresh tokens (every connector), the
+        // MCP server token, the Telegram bot token, app config, the passcode
+        // verifier, and session caches. Without this they survive a "remove all
+        // data and secrets" uninstall. The engine's `reset` purges exactly those
+        // while PRESERVING the vault (and an encrypted vault's keyring), so we
+        // delegate rather than rm -rf ~/.prevail (which could nuke a default-
+        // located vault). Best-effort: a missing/unrunnable sidecar is a no-op.
+        let _ = crate::engine::run_engine_json(&["reset", "--yes"]);
         for p in [
             format!("{home}/Library/Application Support/sh.prevail.desktop"),
             format!("{home}/Library/WebKit/sh.prevail.desktop"),
