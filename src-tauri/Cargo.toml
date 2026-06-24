@@ -46,3 +46,11 @@ aes-gcm = "0.10"
 base64 = "0.22"
 rand = "0.8"
 zeroize = "1.8" # wipe the in-memory vault DEK on lock (already in the tree via aes-gcm)
+
+# Release hardening (audit: lto/codegen-units/panic=abort) — smaller, faster, and
+# panic=abort avoids unwinding through FFI boundaries.
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
