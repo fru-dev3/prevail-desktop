@@ -65,7 +65,9 @@ impl ComposioRuntime {
         };
 
         let mut cmd = Command::new("npx");
-        cmd.args(["-y", "@composio/mcp"])
+        // Pin the version (O17a) so a compromised/yanked latest can't be pulled
+        // silently. Bump deliberately when upgrading Composio.
+        cmd.args(["-y", "@composio/mcp@1.0.9"])
             .env("PATH", combined)
             .env("COMPOSIO_API_KEY", key)
             .stdin(Stdio::piped())
