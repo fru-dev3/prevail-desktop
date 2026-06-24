@@ -1655,7 +1655,7 @@ function ConnectorRow({ app, logos, status, active, onSelect, isFav, onToggleFav
 }) {
   const meta = STATUS_META[status];
   return (
-    <div className={`group flex items-center gap-1 rounded-lg border-l-2 pr-1 transition-colors ${active ? "border-l-accent bg-accent-soft shadow-sm ring-1 ring-accent-border" : "border-l-transparent ring-1 ring-transparent hover:bg-surface-warm"}`}>
+    <div className={`group flex items-center gap-1 rounded-lg border-l-2 pr-2.5 transition-colors ${active ? "border-l-accent bg-accent-soft shadow-sm ring-1 ring-accent-border" : "border-l-transparent ring-1 ring-transparent hover:bg-surface-warm"}`}>
       <button onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left">
         <AppRowLogo app={app} logos={logos} size={28} fallback="letter" />
         <span className="min-w-0 flex-1">
@@ -1689,7 +1689,7 @@ function CatalogRow({ app, logos, active, onSelect, isFav, onToggleFav }: {
 }) {
   const sub = app.domain || (app.tags && app.tags[0]) || "catalog";
   return (
-    <div className={`group flex items-center gap-1 rounded-lg border-l-2 pr-1 transition-colors ${active ? "border-l-accent bg-accent-soft shadow-sm ring-1 ring-accent-border" : "border-l-transparent ring-1 ring-transparent hover:bg-surface-warm"}`}>
+    <div className={`group flex items-center gap-1 rounded-lg border-l-2 pr-2.5 transition-colors ${active ? "border-l-accent bg-accent-soft shadow-sm ring-1 ring-accent-border" : "border-l-transparent ring-1 ring-transparent hover:bg-surface-warm"}`}>
       <button onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left">
         <AppRowLogo app={catalogLogoApp(app)} logos={logos} size={28} fallback="letter" />
         <span className="min-w-0 flex-1">
