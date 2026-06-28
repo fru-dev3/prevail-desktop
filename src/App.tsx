@@ -998,6 +998,14 @@ export default function App() {
       if (s) openSectionAt(s);
     };
     window.addEventListener("prevail:open-settings", onOpen as EventListener);
+    // The shared sidebar's Work surfaces dispatch this. Route through openWorkAt
+    // so the section reaches WorkPanel via jumpTo even when it's mounting fresh
+    // (a plain event would fire before its listener attaches).
+    const onWorkSection = (e: Event) => {
+      const s = (e as CustomEvent<string>).detail;
+      if (s) openWorkAt(s);
+    };
+    window.addEventListener("prevail:work-section", onWorkSection as EventListener);
     // Jump straight to a domain (from the Recommendations "Open" action or the
     // Loop Board). "" = General (a real domain now), so accept any string.
     const onOpenDomain = (e: Event) => {
@@ -1026,6 +1034,7 @@ export default function App() {
     window.addEventListener("prevail:tasks-changed", bump);
     return () => {
       window.removeEventListener("prevail:open-settings", onOpen as EventListener);
+      window.removeEventListener("prevail:work-section", onWorkSection as EventListener);
       window.removeEventListener("prevail:open-domain", onOpenDomain as EventListener);
       window.removeEventListener("prevail:domain-tab", onDomainTabEvt as EventListener);
       window.removeEventListener("prevail:new-chat", onNewChat);
@@ -1386,6 +1395,7 @@ export default function App() {
           </Suspense>
         </div>
         <BunkerRibbon enabled={bunkerEnabled} />
+        <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
         <BridgeStatusChips />
       </div>
     );
