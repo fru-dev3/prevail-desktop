@@ -873,7 +873,9 @@ export function AgentCard({
           {(() => {
             const v = cli.available ? cliVerifyLive.get(cli.id) : undefined;
             const chip = !cli.available
-              ? { cls: "border-border bg-surface-warm text-text-muted", label: "Not installed", Icon: null, spin: false }
+              ? cli.error
+                ? { cls: "border-danger/40 bg-danger/10 text-danger", label: "Broken", Icon: X, spin: false }
+                : { cls: "border-border bg-surface-warm text-text-muted", label: "Not installed", Icon: null, spin: false }
               : v?.status === "ok"
                 ? { cls: "border-ok/40 bg-ok/10 text-ok", label: "Valid", Icon: Check, spin: false }
                 : v?.status === "failed"
@@ -900,7 +902,7 @@ export function AgentCard({
         </div>
         {/* Version column. */}
         <div className="w-[116px] shrink-0 truncate text-right font-mono text-[10px] text-text-muted/80">
-          {cli.available ? (cli.version ?? `${cli.bin} in PATH`) : `${cli.bin} not found`}
+          {cli.available ? (cli.version ?? `${cli.bin} in PATH`) : cli.error ? "won't run" : `${cli.bin} not found`}
         </div>
         {cli.available && chattable ? (
           <button
@@ -1077,12 +1079,24 @@ export function AgentCard({
       {isOpen && !cli.available && (
         <div className="space-y-2.5 border-t border-border-subtle px-4 py-3">
           <div className="text-sm text-text-secondary">
-            {RUNTIME_META[cli.id]?.blurb || `${cli.label} isn't installed on this Mac yet.`}
+            {cli.error
+              ? `${cli.label} is installed but won't run — its launcher is on disk but failed to start.`
+              : RUNTIME_META[cli.id]?.blurb || `${cli.label} isn't installed on this Mac yet.`}
           </div>
+          {/* Broken install: show the actual failure so the user knows what to
+              fix (the most common cause is a wrapper pointing at a removed env). */}
+          {cli.error && (
+            <div className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger/5 px-2.5 py-2">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" />
+              <code className="min-w-0 flex-1 break-all font-mono text-[10px] leading-relaxed text-text-secondary">{cli.error}</code>
+            </div>
+          )}
           <div className="space-y-2 rounded-lg border border-border-subtle bg-background p-3">
-            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Set up {cli.label}</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">{cli.error ? `Reinstall ${cli.label}` : `Set up ${cli.label}`}</div>
             <p className="text-xs leading-relaxed text-text-secondary">
-              Install {cli.label} from its setup guide. It runs on your own subscription — no key to paste here. Prevail auto-detects it; hit Re-check once it's installed.
+              {cli.error
+                ? `Reinstall ${cli.label} to repair the launcher. It runs on your own subscription — no key to paste here. Prevail auto-detects it; hit Re-check once it's fixed.`
+                : `Install ${cli.label} from its setup guide. It runs on your own subscription — no key to paste here. Prevail auto-detects it; hit Re-check once it's installed.`}
             </p>
             {RUNTIME_META[cli.id]?.cmd && (
               <div className="flex items-center gap-2 rounded-md border border-border-subtle bg-surface-warm/60 px-2 py-1.5">
