@@ -11,6 +11,7 @@ import { appName, relTime, scoreColor, titleCase } from "./format";
 import { lsGet, lsSet } from "./storage";
 import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
 import { SidebarGatewayLive, SidebarMcpLive } from "./panels";
+import { ProfileSwitcher } from "./profileswitcher";
 import { domainIcon } from "./icons";
 import { useAppearance } from "./hooks";
 import { SidebarBackupActive, SidebarBenchmarkRuns, SidebarBenchScheduled, SidebarProcesses } from "./cards";
@@ -865,6 +866,10 @@ export function Sidebar({
       <SidebarBenchmarkRuns collapsed={collapsed} />
       <SidebarBenchScheduled collapsed={collapsed} />
       <SidebarBackupActive collapsed={collapsed} />
+
+      {/* Profile switcher (2026 redesign): the active isolated profile + a menu
+          to switch/add/manage. Self-contained — dispatches prevail:switch-profile. */}
+      <ProfileSwitcher collapsed={collapsed} />
 
       {/* Work / Editor + theme - a full-width ribbon pinned to the bottom. The
           2026 redesign splits the old single "Settings" button into the two

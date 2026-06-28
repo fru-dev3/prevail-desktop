@@ -1,7 +1,7 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { Activity, ArrowLeft, ChevronLeft, ChevronRight, Compass, Database, Github, Layers, Lightbulb, MessagesSquare, Network, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Swords, Target, Webhook, Wrench, Zap } from "lucide-react";
+import { Activity, ArrowLeft, ChevronLeft, ChevronRight, Compass, Database, Github, Layers, Lightbulb, MessagesSquare, Network, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Swords, Target, UserRound, Webhook, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { LS, lsGet, lsSet } from "./storage";
 import { useAppearance } from "./hooks";
@@ -26,6 +26,7 @@ import { ModelsSection } from "./settings7";
 import { AppearanceSection, WorkspaceSection } from "./settings8";
 import { BenchmarkPanel } from "./benchpanel";
 import { HooksSection } from "./hookssection";
+import { ProfilesSection } from "./profilessection";
 import type { CliInfo } from "./types";
 
 export function SettingsPanel({
@@ -53,7 +54,7 @@ export function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "integrations" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "loopboard" | "spark" | "hooks";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "integrations" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "loopboard" | "spark" | "hooks" | "profiles";
   // Editor lands on General. The operational surfaces (Work board / Insights /
   // Spark) moved to Work mode, so Editor opens on a config page. A specific
   // jumpTo (e.g. "connectors") still wins.
@@ -130,6 +131,8 @@ export function SettingsPanel({
       { id: "safety", label: "Safety", icon: Shield },
     ]},
     { heading: "App", items: [
+      // Profiles — isolated identities, each its own vault (2026 redesign).
+      { id: "profiles", label: "Profiles", icon: UserRound },
       // Vault / data location — "Indexing & Docs" in the redesign vocabulary.
       { id: "workspace", label: "Indexing & Docs", icon: Database },
       { id: "general", label: "General", icon: SettingsIcon },
@@ -398,6 +401,7 @@ export function SettingsPanel({
           {section === "gateway" && <><GatewaySection /><GatewayLogsCard vaultPath={vaultPath} /></>}
           {section === "mcp" && <IntegrationsPanel vaultPath={vaultPath} clis={clis} />}
           {section === "hooks" && <HooksSection />}
+          {section === "profiles" && <ProfilesSection />}
           {section === "remote" && <RemoteSection />}
           {/* IA-1: "workspace" is the umbrella; "vault"/"demo" remain as
               deep-link aliases (e.g. the demo ribbon's jump) → same section. */}

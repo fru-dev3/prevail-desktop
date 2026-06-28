@@ -6,6 +6,7 @@ import { titleCase } from "./format";
 import type { CliInfo, Domain, DomainTab, EngineApp, TabId, ThreadMeta } from "./types";
 import { BUNKER_LS, LS, PREF, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet } from "./storage";
 import { track } from "./telemetry";
+import { ensureDefaultProfile } from "./profiles";
 import { BridgeStatusChips, DemoRibbon, ResizeHandle } from "./widgets";
 import { useProcesses } from "./processes";
 import { OnboardingModal } from "./panels3";
@@ -224,6 +225,36 @@ export default function App() {
         if (s.unlocked) setUnlocked(true);
       } catch { /* engine not ready */ } finally { setVaultStatusChecked(true); }
     })();
+  }, [vaultPath]);
+  // Profiles (2026 redesign): on first run, adopt the current vault as a default
+  // "Personal" profile so existing users keep working with zero setup. Idempotent.
+  useEffect(() => {
+    if (isBrowser() || !vaultPath) return;
+    ensureDefaultProfile(vaultPath);
+  }, [vaultPath]);
+  // Switch profile = swap the active vault. Each profile has its own vault, so
+  // this re-points the whole app (domains, threads, loops, notes) at it and
+  // re-locks (encrypted vaults re-gate via the LockScreen). The vaultPath effect
+  // propagates the change to the engine/config. The passcode gate (if any) was
+  // already cleared by the switcher before this event fired.
+  useEffect(() => {
+    const onSwitch = (e: Event) => {
+      const vp = (e as CustomEvent<{ vaultPath?: string; profileId?: string }>).detail?.vaultPath;
+      if (!vp || vp === vaultPath) return;
+      setSelectedApp(null);
+      setAppView(false);
+      setSelectedDomain(null);
+      setActiveThreadPath(null);
+      setChatViewNonce((n) => n + 1);
+      setUnlocked(false);
+      setVaultStatusChecked(false);
+      setVaultPath(vp);
+      lsSet(LS.vault, vp);
+      setTab("chat");
+      window.dispatchEvent(new Event("prevail:domains-changed"));
+    };
+    window.addEventListener("prevail:switch-profile", onSwitch as EventListener);
+    return () => window.removeEventListener("prevail:switch-profile", onSwitch as EventListener);
   }, [vaultPath]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
