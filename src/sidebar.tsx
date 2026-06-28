@@ -836,6 +836,44 @@ export function Sidebar({
           </div>
         )}
 
+        {/* Archived domains - collapsible, grouped right under Domains (it's a
+            domains concept). Hidden from the active list; restore re-scans. */}
+        {!collapsed && domainsOpen && archived.length > 0 && (
+          <div className="mt-2 px-2">
+            <button
+              onClick={() => setArchivedOpen((v) => !v)}
+              className="flex w-full items-center gap-1.5 rounded px-1 py-1 pl-4 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-text-secondary"
+            >
+              {archivedOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              <Archive className="h-3 w-3" />
+              Archived
+              <span className="ml-auto rounded-full bg-surface-strong px-1.5 text-[9px] text-text-muted">{archived.length}</span>
+            </button>
+            {archivedOpen && (
+              <ul className="mt-1 space-y-0.5">
+                {archived.map((name) => (
+                  <li
+                    key={name}
+                    className="group flex items-center gap-2 rounded-md px-2 py-1 pl-6 text-text-muted"
+                  >
+                    <Archive className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                    <span className="min-w-0 flex-1 truncate text-xs">{titleCase(name)}</span>
+                    <button
+                      onClick={() => restoreDomain(name)}
+                      disabled={restoring === name}
+                      title={`Restore ${titleCase(name)}`}
+                      className="flex shrink-0 items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted opacity-0 hover:border-accent-border hover:text-accent group-hover:opacity-100 disabled:opacity-100"
+                    >
+                      {restoring === name ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                      restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         {/* Apps - peer to Domains. Always shown so it stays first-class even
             with nothing connected yet. Favorites expand by default; the full
             list stays collapsed so a long catalog never floods the rail. */}
@@ -883,43 +921,6 @@ export function Sidebar({
           </div>
         )}
 
-        {/* Archived domains - collapsible. Hidden from the active list;
-            restore brings them back into the vault scan. */}
-        {!collapsed && domainsOpen && archived.length > 0 && (
-          <div className="mt-3 px-2">
-            <button
-              onClick={() => setArchivedOpen((v) => !v)}
-              className="flex w-full items-center gap-1.5 rounded px-1 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-text-secondary"
-            >
-              {archivedOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              <Archive className="h-3 w-3" />
-              Archived
-              <span className="ml-auto rounded-full bg-surface-strong px-1.5 text-[9px] text-text-muted">{archived.length}</span>
-            </button>
-            {archivedOpen && (
-              <ul className="mt-1 space-y-0.5">
-                {archived.map((name) => (
-                  <li
-                    key={name}
-                    className="group flex items-center gap-2 rounded-md px-2 py-1 text-text-muted"
-                  >
-                    <Archive className="h-3.5 w-3.5 shrink-0 opacity-60" />
-                    <span className="min-w-0 flex-1 truncate text-xs">{titleCase(name)}</span>
-                    <button
-                      onClick={() => restoreDomain(name)}
-                      disabled={restoring === name}
-                      title={`Restore ${titleCase(name)}`}
-                      className="flex shrink-0 items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted opacity-0 hover:border-accent-border hover:text-accent group-hover:opacity-100 disabled:opacity-100"
-                    >
-                      {restoring === name ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                      restore
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
         </>)}
       </div>
 
