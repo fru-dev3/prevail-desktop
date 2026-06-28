@@ -5,7 +5,8 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
-import { Check, FolderOpen, Lock, Pencil, Plus, Trash2, UserRound, X } from "lucide-react";
+import { Check, FolderOpen, Lock, Pencil, Plus, Sparkles, Trash2, UserRound, X } from "lucide-react";
+import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import {
   getActiveId, hashPasscode, initials, loadProfiles, newProfileId, PROFILE_COLORS,
@@ -40,11 +41,27 @@ export function ProfilesSection() {
     setDraft({ id: p.id, label: p.label, email: p.email ?? "", vaultPath: p.vaultPath, passcode: "", color: p.color || PROFILE_COLORS[0], hadPass: !!p.passHash });
   };
 
+  const [sampling, setSampling] = useState(false);
   const pickFolder = async () => {
     try {
       const picked = await open({ directory: true, multiple: false, title: "Choose this profile's vault folder" });
       if (typeof picked === "string" && draft) setDraft({ ...draft, vaultPath: picked });
     } catch (e) { console.error("pick vault", e); }
+  };
+  // One-click: create a fresh, populated vault from the bundled sample and use
+  // it as this profile's vault — so a new profile isn't an empty dead end.
+  const useSampleData = async () => {
+    if (!draft) return;
+    setSampling(true);
+    setErr(null);
+    try {
+      const path = await invoke<string>("import_sample_vault");
+      if (path) setDraft({ ...draft, vaultPath: path });
+    } catch (e) {
+      setErr(`Couldn't create a sample vault: ${e}`);
+    } finally {
+      setSampling(false);
+    }
   };
 
   const save = async () => {
@@ -138,7 +155,12 @@ export function ProfilesSection() {
                 <input value={draft.vaultPath} readOnly placeholder="Choose a folder…" className="min-w-0 flex-1 truncate rounded-md border border-border bg-background px-3 py-2 text-sm text-text-secondary" />
                 <button onClick={() => void pickFolder()} className="flex shrink-0 items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:bg-surface-strong hover:text-text-primary"><FolderOpen className="h-4 w-4" /> Browse</button>
               </div>
-              <p className="mt-1 text-[11px] text-text-muted">Each profile needs its own vault folder — that's what makes it isolated.</p>
+              <div className="mt-1.5 flex items-center justify-between">
+                <p className="text-[11px] text-text-muted">Each profile needs its own vault folder — that's what makes it isolated.</p>
+                <button onClick={() => void useSampleData()} disabled={sampling} className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-accent hover:underline disabled:opacity-50">
+                  <Sparkles className="h-3 w-3" /> {sampling ? "Creating…" : "Start from sample data"}
+                </button>
+              </div>
             </div>
             <div>
               <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-text-muted">Passcode <span className="text-text-muted/60">(optional)</span></label>
