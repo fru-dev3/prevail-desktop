@@ -112,6 +112,22 @@ pub(crate) fn resolve_prevail_bin() -> String {
     }
 }
 
+/// Where the bundled engine looks for (and auto-installs, on first browser use)
+/// its Chromium for browser connectors. Injected as PLAYWRIGHT_BROWSERS_PATH on
+/// every engine spawn. Chromium is NOT bundled in the signed app — the engine
+/// downloads it here on demand, which deliberately avoids deep-signing/
+/// notarizing Chromium's helper apps. Needs the hardened-runtime entitlement
+/// `com.apple.security.cs.allow-dyld-environment-variables` to survive the spawn.
+pub(crate) fn playwright_browsers_path() -> Option<String> {
+    let home = std::env::var("HOME").ok()?;
+    Some(
+        Path::new(&home)
+            .join("Library/Application Support/sh.prevail.desktop/playwright-browsers")
+            .to_string_lossy()
+            .to_string(),
+    )
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Generic helpers
 
@@ -144,6 +160,9 @@ pub fn run_engine_raw(args: &[&str]) -> Result<String, String> {
     }
     if let Some(r) = vault_root() {
         cmd.env("PREVAIL_VAULT_ROOT", r);
+    }
+    if let Some(p) = playwright_browsers_path() {
+        cmd.env("PLAYWRIGHT_BROWSERS_PATH", p);
     }
     let out = cmd.output().map_err(|e| format!("spawn {bin} failed: {e}"))?;
     if !out.status.success() {
@@ -188,6 +207,9 @@ pub fn run_engine_json(args: &[&str]) -> Result<serde_json::Value, String> {
     }
     if let Some(r) = vault_root() {
         cmd.env("PREVAIL_VAULT_ROOT", r);
+    }
+    if let Some(p) = playwright_browsers_path() {
+        cmd.env("PLAYWRIGHT_BROWSERS_PATH", p);
     }
     let out = cmd.output().map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
@@ -245,6 +267,9 @@ pub fn run_engine_json_stdin(
     }
     if let Some(r) = vault_root() {
         cmd.env("PREVAIL_VAULT_ROOT", r);
+    }
+    if let Some(p) = playwright_browsers_path() {
+        cmd.env("PLAYWRIGHT_BROWSERS_PATH", p);
     }
     let mut child = cmd.spawn().map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
@@ -327,6 +352,9 @@ pub async fn run_engine_stream(
     }
     if let Some(r) = vault_root() {
         scmd.env("PREVAIL_VAULT_ROOT", r);
+    }
+    if let Some(p) = playwright_browsers_path() {
+        scmd.env("PLAYWRIGHT_BROWSERS_PATH", p);
     }
     let mut child = scmd.spawn().map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
@@ -500,6 +528,9 @@ pub async fn run_engine_stream_stdin(
     }
     if let Some(r) = vault_root() {
         cmd.env("PREVAIL_VAULT_ROOT", r);
+    }
+    if let Some(p) = playwright_browsers_path() {
+        cmd.env("PLAYWRIGHT_BROWSERS_PATH", p);
     }
     let mut child = cmd
         .spawn()
@@ -2001,6 +2032,56 @@ pub async fn engine_score_stream(
         "score",
     )
     .await
+}
+
+/// Streaming agentic browser LEARN run for a connector. Drives a HEADED Chromium
+/// (the user watches + completes 2FA); the engine emits NDJSON progress
+/// (`{phase:"step"|"await_user"|"download"|"complete", ...}`) which
+/// run_engine_stream relays as `connector_learn:line`, then `connector_learn:done`
+/// on child exit. PLAYWRIGHT_BROWSERS_PATH is injected by run_engine_stream so the
+/// engine finds (or auto-downloads) Chromium. Session id makes the run killable
+/// via abort_sessions.
+#[tauri::command]
+pub async fn engine_connector_learn_stream(
+    app: tauri::AppHandle,
+    id: String,
+    session: String,
+    goal: Option<String>,
+) -> Result<(), String> {
+    let mut args = vec![
+        "connectors".to_string(),
+        "browser-learn".to_string(),
+        id,
+        "--stream".to_string(),
+    ];
+    if let Some(g) = goal {
+        if !g.trim().is_empty() {
+            args.push("--goal".to_string());
+            args.push(g);
+        }
+    }
+    run_engine_stream(app, session, args, "connector_learn").await
+}
+
+/// Streaming browser sync for a connector. `mode = "replay"` runs the recorded
+/// skill fast (headless, no model); `mode = "relearn"` re-runs the agentic learn
+/// (headed) to repair a drifted recipe. Emits `connector_run:line` /
+/// `connector_run:done`.
+#[tauri::command]
+pub async fn engine_connector_run_stream(
+    app: tauri::AppHandle,
+    id: String,
+    session: String,
+    mode: String,
+) -> Result<(), String> {
+    let sub = if mode == "relearn" { "browser-learn" } else { "browser-replay" };
+    let args = vec![
+        "connectors".to_string(),
+        sub.to_string(),
+        id,
+        "--stream".to_string(),
+    ];
+    run_engine_stream(app, session, args, "connector_run").await
 }
 
 /// One historical context-score sample for a domain.

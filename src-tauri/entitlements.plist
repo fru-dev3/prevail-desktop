@@ -9,5 +9,13 @@
        full hardened-runtime memory protection (smaller blast radius if a
        memory-corruption bug is ever found). Verify the webview renders. -->
   <key>com.apple.security.cs.allow-jit</key><true/>
+  <!-- The bundled `prevail` engine sidecar spawns a browser-automation helper
+       (Chromium, auto-downloaded to Application Support — NOT bundled, so its
+       helper apps never need deep-signing/notarizing). For the engine to find
+       it we pass PLAYWRIGHT_BROWSERS_PATH across the spawn boundary; under the
+       hardened runtime that DYLD/env var is stripped unless this is set. Scoped
+       to the app; the downloaded Chromium runs as its own non-notarized process
+       (Gatekeeper allows it because it is fetched without the quarantine flag). -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key><true/>
 </dict>
 </plist>
