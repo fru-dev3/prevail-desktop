@@ -249,7 +249,7 @@ export interface Lens {
   instruction: string;
 }
 
-export type TabId = "chat" | "council" | "benchmark" | "settings";
+export type TabId = "chat" | "council" | "benchmark" | "settings" | "work";
 
 export type DomainTab = "chat" | "context" | "insights" | "usage" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs" | "apps" | "loops" | "work";
 
