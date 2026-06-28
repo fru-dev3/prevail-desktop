@@ -173,6 +173,9 @@ export interface CliInfo {
   bin: string;
   available: boolean;
   version?: string | null;
+  // Present when the binary is on disk but couldn't run (e.g. a wrapper whose
+  // target is missing). `available` is false in that case; this says why.
+  error?: string | null;
 }
 
 export interface BenchmarkRun {
