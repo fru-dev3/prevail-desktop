@@ -946,7 +946,10 @@ export default function App() {
   // moved out of Settings into Work mode, so deep-links to them route here.
   const [workJump, setWorkJump] = useState<{ section: string; n: number } | null>(null);
   // Sections that now live in Work mode rather than the Editor (Settings).
-  const WORK_SECTIONS = ["tasks", "recommendations", "spark"];
+  // "loopboard" is the legacy Settings id for the LoopBoard — now "Automations"
+  // in Work mode; kept here so old deep-links still route correctly (WorkPanel
+  // normalizes the alias).
+  const WORK_SECTIONS = ["tasks", "recommendations", "spark", "automations", "calendar", "notes", "loopboard"];
   const openWorkAt = (section: string) => {
     setWorkJump((j) => ({ section, n: (j?.n ?? 0) + 1 }));
     setTab("work");
