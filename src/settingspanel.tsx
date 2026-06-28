@@ -133,8 +133,9 @@ export function SettingsPanel({
     { heading: "App", items: [
       // Profiles — isolated identities, each its own vault (2026 redesign).
       { id: "profiles", label: "Profiles", icon: UserRound },
-      // Vault / data location — "Indexing & Docs" in the redesign vocabulary.
-      { id: "workspace", label: "Indexing & Docs", icon: Database },
+      // The context layer: vault + skills + apps together. The user brings the
+      // context; this is where it's managed. (Vault settings live under here.)
+      { id: "workspace", label: "Context", icon: Database },
       { id: "general", label: "General", icon: SettingsIcon },
       { id: "about", label: "About", icon: Github },
     ]},
