@@ -17,7 +17,9 @@ pub mod storage;
 pub mod keychain;
 pub mod tier_a_mcp;
 pub mod tier_b_composio;
-pub mod tier_c_browser;
+// Tier C (headed Playwright browser automation) RETIRED: the browser lane now
+// lives entirely in the prevail-cli engine (connectors browser-learn / browser-
+// replay), surfaced by ConnectorRunPanel. One engine-owned browser path.
 pub mod tier_d_cli;
 
 use serde::{Deserialize, Serialize};
@@ -63,25 +65,6 @@ pub struct IngestedArtifact {
     pub size: u64,
 }
 
-/// Request payload for kicking off a Tier C portal run.
-#[derive(Debug, Clone, Deserialize)]
-pub struct BrowserRunRequest {
-    pub domain: String,
-    pub portal: String,        // e.g. "fidelity", "td-ameritrade"
-    pub start_url: String,
-    /// Seconds to wait for human MFA/login completion before aborting.
-    #[serde(default = "default_mfa_timeout")]
-    pub mfa_timeout_sec: u64,
-    /// CSS selector or URL substring confirming login complete.
-    pub success_selector: Option<String>,
-    pub success_url_contains: Option<String>,
-    /// Post-login automation steps executed by the Playwright sidecar.
-    #[serde(default)]
-    pub actions: Vec<PostLoginAction>,
-}
-
-fn default_mfa_timeout() -> u64 { 90 }
-
 // ─────────────────────────────────────────────────────────────────────
 // Orchestrator state — shared across Tauri commands
 
@@ -91,7 +74,6 @@ fn default_mfa_timeout() -> u64 { 90 }
 pub struct OrchestratorState {
     pub tier_a: Mutex<tier_a_mcp::McpRegistry>,
     pub tier_b: Mutex<tier_b_composio::ComposioRuntime>,
-    pub tier_c: Mutex<tier_c_browser::BrowserRunner>,
     pub tier_d: Mutex<tier_d_cli::CliRunner>,
 }
 
@@ -100,7 +82,6 @@ impl Default for OrchestratorState {
         Self {
             tier_a: Mutex::new(tier_a_mcp::McpRegistry::new()),
             tier_b: Mutex::new(tier_b_composio::ComposioRuntime::new()),
-            tier_c: Mutex::new(tier_c_browser::BrowserRunner::new()),
             tier_d: Mutex::new(tier_d_cli::CliRunner::new()),
         }
     }
@@ -115,9 +96,8 @@ pub fn ingestion_status(
 ) -> Result<Vec<TierStatus>, String> {
     let a = state.tier_a.lock().map_err(|e| e.to_string())?.status();
     let b = state.tier_b.lock().map_err(|e| e.to_string())?.status();
-    let c = state.tier_c.lock().map_err(|e| e.to_string())?.status();
     let d = state.tier_d.lock().map_err(|e| e.to_string())?.status();
-    Ok(vec![a, b, c, d])
+    Ok(vec![a, b, d])
 }
 
 #[tauri::command]
@@ -175,17 +155,6 @@ pub fn ingestion_composio_stop(
 ) -> Result<(), String> {
     let mut rt = state.tier_b.lock().map_err(|e| e.to_string())?;
     rt.stop().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn ingestion_browser_run(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, OrchestratorState>,
-    req: BrowserRunRequest,
-) -> Result<(), String> {
-    crate::bunker::guard_cloud()?; // browser automation hits external web portals
-    let mut br = state.tier_c.lock().map_err(|e| e.to_string())?;
-    br.run(app, req).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -249,46 +218,6 @@ pub fn ingestion_mcp_reload(
     let mut reg = state.tier_a.lock().map_err(|e| e.to_string())?;
     reg.reload();
     Ok(())
-}
-
-/// Portal recipes for Tier C — a starter library so users don't have
-/// to type URLs from scratch. Loaded from the bundled resources.
-///
-/// `actions` is the post-login automation sequence executed by the
-/// Playwright runner once the success check passes. Empty / absent
-/// means "stop after login, let the user click around manually."
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct PortalRecipe {
-    pub id: String,
-    pub label: String,
-    pub domain_hint: String,
-    pub start_url: String,
-    pub success_url_contains: Option<String>,
-    pub notes: Option<String>,
-    #[serde(default)]
-    pub actions: Vec<PostLoginAction>,
-}
-
-/// One step the Playwright runner executes after login completes.
-/// Kept intentionally narrow — extend with new variants only when a
-/// real portal needs them. Each variant maps to a Playwright primitive.
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum PostLoginAction {
-    /// page.goto(url) — change to a known statements page directly.
-    Goto { url: String, #[serde(default)] wait_until: Option<String> },
-    /// page.click(selector) — fire the click as if the user did it.
-    Click { selector: String, #[serde(default)] timeout_sec: Option<u64> },
-    /// page.waitForSelector(selector) — pause until an element appears.
-    WaitFor { selector: String, #[serde(default)] timeout_sec: Option<u64> },
-    /// page.selectOption(selector, value) — pick from a <select>.
-    SelectOption { selector: String, value: String },
-    /// Click every link matching the selector. Each click triggers a
-    /// download event, which the runner already routes through the
-    /// storage sandbox. Useful for "download all statements".
-    DownloadAllLinks { selector: String, #[serde(default)] max: Option<usize> },
-    /// Pause N seconds — sometimes portals lazy-load after navigation.
-    Sleep { seconds: u64 },
 }
 
 /// A single artifact entry as surfaced to the UI.
@@ -363,67 +292,6 @@ pub fn ingestion_mcp_stderr(
 ) -> Result<String, String> {
     let mut reg = state.tier_a.lock().map_err(|e| e.to_string())?;
     reg.drain_stderr(&name)
-}
-
-/// User-recipe overlay path. Persistent across upgrades since the
-/// app bundle never touches Application Support.
-fn user_recipes_path() -> Result<std::path::PathBuf, String> {
-    Ok(storage::app_support_root()?.join("recipes_user.json"))
-}
-
-#[tauri::command]
-pub fn ingestion_browser_recipes(app: tauri::AppHandle) -> Result<Vec<PortalRecipe>, String> {
-    use tauri::Manager;
-    let resource = app
-        .path()
-        .resolve(
-            "resources/automation/recipes.json",
-            tauri::path::BaseDirectory::Resource,
-        )
-        .map_err(|e| format!("resolve recipes.json: {e}"))?;
-    let mut bundled: Vec<PortalRecipe> = if resource.exists() {
-        let raw = std::fs::read_to_string(&resource).map_err(|e| format!("read recipes.json: {e}"))?;
-        serde_json::from_str(&raw).map_err(|e| format!("parse recipes.json: {e}"))?
-    } else {
-        Vec::new()
-    };
-    // Merge user overlay — user entries win on `id` collision so
-    // someone overriding "fidelity" with a custom URL gets their
-    // version, not the bundled one.
-    let user_path = user_recipes_path()?;
-    if user_path.exists() {
-        if let Ok(raw) = std::fs::read_to_string(&user_path) {
-            if let Ok(user_recipes) = serde_json::from_str::<Vec<PortalRecipe>>(&raw) {
-                let user_ids: std::collections::HashSet<_> =
-                    user_recipes.iter().map(|r| r.id.clone()).collect();
-                bundled.retain(|r| !user_ids.contains(&r.id));
-                bundled.extend(user_recipes);
-            }
-        }
-    }
-    bundled.sort_by(|a, b| a.label.cmp(&b.label));
-    Ok(bundled)
-}
-
-/// Upsert a user recipe into recipes_user.json. Overwrites by id.
-#[tauri::command]
-pub fn ingestion_recipe_save(recipe: PortalRecipe) -> Result<(), String> {
-    let path = user_recipes_path()?;
-    let mut existing: Vec<PortalRecipe> = if path.exists() {
-        let raw = std::fs::read_to_string(&path).map_err(|e| format!("read user recipes: {e}"))?;
-        serde_json::from_str(&raw).unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    existing.retain(|r| r.id != recipe.id);
-    existing.push(recipe);
-    existing.sort_by(|a, b| a.label.cmp(&b.label));
-    let text = serde_json::to_string_pretty(&existing).map_err(|e| format!("serialize: {e}"))?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
-    }
-    std::fs::write(&path, text).map_err(|e| format!("write user recipes: {e}"))?;
-    Ok(())
 }
 
 /// Bundled connector catalog — the pre-populated, pattern-tagged list of

@@ -1,13 +1,12 @@
 // Components extracted from App.tsx.
 import { useEffect, useState } from "react";
 import { Activity, Coins, Cpu, Layers, Loader2, LucideIcon, MessageSquare, MessagesSquare, RefreshCw, TrendingUp, Users } from "lucide-react";
-import { invoke, listen } from "./bridge";
+import { invoke } from "./bridge";
 import { formatFreshness, titleCase } from "./format";
 import { compactNum, fmtCost } from "./helpers";
 import { InsightsDisclosure } from "./widgets";
-import { PreambleCard, RecipeActionEditor, SurfacePanel, TasksPanel, UsageBreakdown } from "./panels";
-import type { IngestionAction, PortalRecipe, PreambleOption, UsageSummary } from "./types";
-import type { UnlistenFn } from "./bridge";
+import { PreambleCard, SurfacePanel, TasksPanel, UsageBreakdown } from "./panels";
+import type { PreambleOption, UsageSummary } from "./types";
 
 export function InsightsPanel({ vaultPath, domain, onSeed }: { vaultPath: string; domain: string; onSeed: (t: string) => void }) {
   const [taskNonce, setTaskNonce] = useState(0);
@@ -275,209 +274,20 @@ export function PreambleColumn({
   );
 }
 
+// Browser automation moved to the agentic Apps lane (connectors browser-learn /
+// browser-replay in the engine, surfaced by ConnectorRunPanel). The old per-
+// portal manual runner (desktop-side Playwright, tier_c) has been retired in
+// favor of one engine-owned browser path. This stub keeps the Settings tab a
+// pointer rather than a dead end.
 export function IngestionBrowserRunner() {
-  const [domain, setDomain] = useState("");
-  const [portal, setPortal] = useState("");
-  const [startUrl, setStartUrl] = useState("");
-  const [successUrl, setSuccessUrl] = useState("");
-  const [timeoutSec, setTimeoutSec] = useState<string>("90");
-  const [busy, setBusy] = useState(false);
-  const [log, setLog] = useState<string[]>([]);
-  const [recipes, setRecipes] = useState<PortalRecipe[]>([]);
-  const [pickedRecipe, setPickedRecipe] = useState<string>("");
-  // Editable working copy of the actions list. Initialized from the
-  // picked recipe; mutations stay local until "save as recipe" is
-  // clicked. Lets the user tweak a bundled recipe without diverging
-  // its source file.
-  const [draftActions, setDraftActions] = useState<IngestionAction[]>([]);
-
-  useEffect(() => {
-    invoke<PortalRecipe[]>("ingestion_browser_recipes")
-      .then(setRecipes)
-      .catch(() => setRecipes([]));
-  }, []);
-
-  function applyRecipe(id: string) {
-    setPickedRecipe(id);
-    const r = recipes.find((x) => x.id === id);
-    if (!r) {
-      setDraftActions([]);
-      return;
-    }
-    setPortal(r.id);
-    setDomain(r.domain_hint);
-    setStartUrl(r.start_url);
-    setSuccessUrl(r.success_url_contains ?? "");
-    setDraftActions(r.actions ?? []);
-  }
-
-  useEffect(() => {
-    let unl: UnlistenFn | null = null;
-    (async () => {
-      unl = await listen<{ line: string; stream?: string }>(
-        "ingestion:browser",
-        (e) => {
-          const line = e.payload.line ?? "";
-          setLog((cur) => [...cur.slice(-300), line]);
-        },
-      );
-    })();
-    return () => { if (unl) unl(); };
-  }, []);
-
-  async function run() {
-    if (!domain.trim() || !portal.trim() || !startUrl.trim()) return;
-    setBusy(true);
-    setLog([]);
-    try {
-      // The draft list reflects the user's current edits, NOT the
-      // bundled recipe - so tweaks they made stick for this run.
-      await invoke("ingestion_browser_run", {
-        req: {
-          domain: domain.trim(),
-          portal: portal.trim(),
-          start_url: startUrl.trim(),
-          mfa_timeout_sec: parseInt(timeoutSec, 10) || 90,
-          success_url_contains: successUrl.trim() || null,
-          success_selector: null,
-          actions: draftActions,
-        },
-      });
-    } catch (e) {
-      setLog((cur) => [...cur, `error: ${e}`]);
-    }
-    setBusy(false);
-  }
-
   return (
-    <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
-      <div className="font-display text-base font-semibold tracking-tight">Run portal automation</div>
-      <p className="mt-0.5 text-xs text-text-muted">
-        Opens a headed Chromium for the chosen portal. Complete MFA in the window; downloads land in the domain's <code className="text-accent">imports/</code>.
+    <div className="rounded-lg border border-border bg-surface p-4 text-sm text-text-secondary">
+      <div className="mb-1 font-medium text-text-primary">Browser sync moved to Apps</div>
+      <p className="text-[13px] text-text-muted">
+        Per-portal browser automation now lives under <span className="font-medium text-text-secondary">Apps</span>. Connect an
+        app on the browser lane, then use <span className="font-medium text-text-secondary">Connect &amp; learn</span> to log in
+        once and let the agent record the steps; later syncs replay automatically with no AI.
       </p>
-      {recipes.length > 0 && (
-        <>
-          <div className="mt-3 flex items-center gap-2">
-            <label className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Recipe</label>
-            <select
-              value={pickedRecipe}
-              onChange={(e) => applyRecipe(e.target.value)}
-              className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm focus:border-accent-border focus:outline-none"
-            >
-              <option value="">start from blank</option>
-              {recipes.map((r) => (
-                <option key={r.id} value={r.id}>{r.label} · {r.domain_hint}</option>
-              ))}
-            </select>
-          </div>
-          <RecipeActionEditor actions={draftActions} onChange={setDraftActions} />
-          {pickedRecipe && (() => {
-            const r = recipes.find((x) => x.id === pickedRecipe);
-            return r?.notes
-              ? <p className="mt-1 text-[11px] italic text-text-muted">{r.notes}</p>
-              : null;
-          })()}
-        </>
-      )}
-      <div className="mt-4 grid grid-cols-1 gap-3">
-        <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="domain (e.g. wealth)" className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none" />
-        <input value={portal} onChange={(e) => setPortal(e.target.value)} placeholder="portal slug (e.g. fidelity)" className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none" />
-        <input value={startUrl} onChange={(e) => setStartUrl(e.target.value)} placeholder="https://login.example.com" className="col-span-2 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-xs focus:border-accent-border focus:outline-none" />
-        <input value={successUrl} onChange={(e) => setSuccessUrl(e.target.value)} placeholder="login success URL fragment (optional)" className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-xs focus:border-accent-border focus:outline-none" />
-        <div className="flex items-center gap-2">
-          <input type="number" min={10} max={600} value={timeoutSec} onChange={(e) => setTimeoutSec(e.target.value)} className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-right text-sm focus:border-accent-border focus:outline-none" />
-          <span className="font-mono text-xs text-text-muted">s MFA timeout</span>
-        </div>
-      </div>
-      <div className="mt-4 flex items-center gap-3">
-        <button
-          onClick={run}
-          disabled={busy || !domain.trim() || !portal.trim() || !startUrl.trim()}
-          className="rounded-md bg-accent px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-background hover:bg-accent-hover disabled:opacity-50"
-        >
-          {busy ? "launching…" : "Run automation"}
-        </button>
-        <button
-          onClick={async () => {
-            if (!portal.trim() || !startUrl.trim()) return;
-            try {
-              await invoke("ingestion_recipe_save", {
-                recipe: {
-                  id: portal.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-                  label: portal.trim(),
-                  domain_hint: domain.trim() || "wealth",
-                  start_url: startUrl.trim(),
-                  success_url_contains: successUrl.trim() || null,
-                  notes: null,
-                  actions: draftActions,
-                },
-              });
-              const r = await invoke<PortalRecipe[]>("ingestion_browser_recipes");
-              setRecipes(r);
-            } catch (e) { console.error(e); }
-          }}
-          disabled={!portal.trim() || !startUrl.trim()}
-          className="rounded border border-border bg-background px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
-        >
-          save as recipe
-        </button>
-        <button
-          onClick={async () => {
-            const recipeJson = {
-              id: (portal.trim() || "untitled").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-              label: portal.trim() || "Untitled",
-              domain_hint: domain.trim() || "wealth",
-              start_url: startUrl.trim(),
-              success_url_contains: successUrl.trim() || null,
-              notes: null,
-              actions: draftActions,
-            };
-            try {
-              await navigator.clipboard.writeText(JSON.stringify(recipeJson, null, 2));
-              setLog((cur) => [...cur, "recipe copied to clipboard"]);
-            } catch (e) { console.error(e); }
-          }}
-          className="rounded border border-border bg-background px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
-          title="Copy current draft as JSON"
-        >
-          export json
-        </button>
-        <button
-          onClick={async () => {
-            const pasted = window.prompt("Paste recipe JSON:");
-            if (!pasted) return;
-            try {
-              const r = JSON.parse(pasted);
-              if (typeof r.id !== "string" || typeof r.start_url !== "string") {
-                throw new Error("recipe must have id + start_url");
-              }
-              await invoke("ingestion_recipe_save", { recipe: {
-                id: r.id, label: r.label ?? r.id, domain_hint: r.domain_hint ?? "wealth",
-                start_url: r.start_url, success_url_contains: r.success_url_contains ?? null,
-                notes: r.notes ?? null, actions: Array.isArray(r.actions) ? r.actions : [],
-              }});
-              const all = await invoke<PortalRecipe[]>("ingestion_browser_recipes");
-              setRecipes(all);
-              applyRecipe(r.id);
-              setLog((cur) => [...cur, `imported recipe ${r.id}`]);
-            } catch (e) {
-              setLog((cur) => [...cur, `import failed: ${e}`]);
-            }
-          }}
-          className="rounded border border-border bg-background px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
-          title="Paste recipe JSON to import"
-        >
-          import json
-        </button>
-        <span className="font-mono text-[10px] text-text-muted">
-          requires <code className="text-accent">node</code> + <code className="text-accent">playwright-core</code>
-        </span>
-      </div>
-      {log.length > 0 && (
-        <pre className="mt-4 max-h-64 overflow-auto rounded border border-border-subtle bg-background px-3 py-2 font-mono text-[10px] leading-relaxed text-text-secondary">
-          {log.join("\n")}
-        </pre>
-      )}
     </div>
   );
 }
