@@ -1,7 +1,7 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { Activity, ArrowLeft, Briefcase, ChevronLeft, ChevronRight, Compass, Dices, Folder, Github, Globe, Layers, Lightbulb, MessagesSquare, Plug, Repeat, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Swords, Target, Wrench, Zap } from "lucide-react";
+import { Activity, ArrowLeft, ChevronLeft, ChevronRight, Compass, Database, Github, Layers, Lightbulb, MessagesSquare, Network, Plug, Repeat, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Swords, Target, Webhook, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { LS, lsGet, lsSet } from "./storage";
 import { useAppearance } from "./hooks";
@@ -25,6 +25,7 @@ import { CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6"
 import { ModelsSection } from "./settings7";
 import { AppearanceSection, WorkspaceSection } from "./settings8";
 import { BenchmarkPanel } from "./benchpanel";
+import { HooksSection } from "./hookssection";
 import type { CliInfo } from "./types";
 
 export function SettingsPanel({
@@ -52,10 +53,11 @@ export function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "integrations" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "loopboard" | "spark";
-  // Default landing is the Work board ("tasks") - the most important area - not
-  // General. A specific jumpTo (e.g. "connectors") still wins.
-  const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "tasks");
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "integrations" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "loopboard" | "spark" | "hooks";
+  // Editor lands on General. The operational surfaces (Work board / Insights /
+  // Spark) moved to Work mode, so Editor opens on a config page. A specific
+  // jumpTo (e.g. "connectors") still wins.
+  const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
   useEffect(() => {
@@ -88,30 +90,15 @@ export function SettingsPanel({
   // unrelated concerns (e.g. General vs Defaults overlap). Organized into
   // labeled sections so related settings sit together and the redundancy reads
   // as intentional structure.
-  type NavItem = { id: Section; label: string; icon: typeof Folder };
+  type NavItem = { id: Section; label: string; icon: typeof Database };
   // Grouped by function, not feature soup: how the AI thinks (Intelligence),
   // how it runs itself (Memory & Automation), what it reaches (Connections),
   // the guardrails (Privacy & Safety), where data lives (Vault), and the app.
+  // 2026 redesign: Settings is now "Editor" — the CONFIGURATION half of the app.
+  // The operational surfaces (Work board, Insights, Spark) moved to "Work" mode
+  // (workpanel.tsx) and are no longer listed here. Loops stays for now (it gets
+  // promoted into the Automations dashboard in Phase 2).
   const navGroups: Array<{ heading: string; items: NavItem[] }> = [
-    // Work is the first thing you see: bring your work up when you open the app.
-    // The pipeline reads top to bottom - Board (committed tasks, you + AI), Insights
-    // (AI proposals you add to the board), Workspace (files). Decisions is NOT a
-    // separate page: it folds into the Board as a "Needs you" view + the top-bar pill.
-    { heading: "Work", items: [
-      { id: "tasks", label: "Work", icon: Briefcase },
-      { id: "loopboard", label: "Loops", icon: Repeat },
-      { id: "recommendations", label: "Insights", icon: Sparkles },
-      { id: "spark", label: "Spark", icon: Dices },
-      { id: "workspace", label: "Workspace", icon: Folder },
-    ]},
-    // What shapes the work: Ideals (you author) -> Intents (your goals, distilled)
-    // -> Routines (standing loops that drive toward them).
-    { heading: "Context & Memory", items: [
-      { id: "ideal-state", label: "Ideals", icon: Compass },
-      { id: "intents", label: "Intents", icon: Lightbulb },
-      { id: "daemons", label: "Daemons", icon: Zap },
-      { id: "activity", label: "Activity", icon: Activity },
-    ]},
     { heading: "Intelligence", items: [
       { id: "models", label: "Runtimes", icon: Layers },
       { id: "council", label: "Council", icon: Scale },
@@ -119,19 +106,31 @@ export function SettingsPanel({
       { id: "skills", label: "Skills", icon: Sparkles },
       { id: "benchmark", label: "Arena", icon: Swords },
     ]},
+    // What shapes the work: Ideals (you author) -> Intents (your goals, distilled)
+    // -> Routines (standing loops that drive toward them).
+    { heading: "Context & Memory", items: [
+      { id: "ideal-state", label: "Ideals", icon: Compass },
+      { id: "intents", label: "Intents", icon: Lightbulb },
+      { id: "daemons", label: "Daemons", icon: Zap },
+      { id: "loopboard", label: "Loops", icon: Repeat },
+      { id: "activity", label: "Activity", icon: Activity },
+    ]},
     { heading: "Connections", items: [
       { id: "connectors", label: "Apps", icon: Plug },
       { id: "gateway", label: "Gateway", icon: MessagesSquare },
       { id: "mcp", label: "MCP", icon: Wrench },
-      // A5 (Monday feedback): the WebUI/localhost toggle was orphaned (no nav
-      // entry). Surface it under Connections where it's expected.
-      { id: "remote", label: "WebUI", icon: Globe },
+      // New in the redesign: a place to manage Hooks (stub for now).
+      { id: "hooks", label: "Hooks", icon: Webhook },
+      // "Network" = how Prevail reaches the outside (the WebUI/localhost bridge).
+      { id: "remote", label: "Network", icon: Network },
     ]},
     { heading: "Privacy & Safety", items: [
       { id: "privacy", label: "Privacy", icon: ShieldCheck },
       { id: "safety", label: "Safety", icon: Shield },
     ]},
     { heading: "App", items: [
+      // Vault / data location — "Indexing & Docs" in the redesign vocabulary.
+      { id: "workspace", label: "Indexing & Docs", icon: Database },
       { id: "general", label: "General", icon: SettingsIcon },
       { id: "about", label: "About", icon: Github },
     ]},
@@ -397,6 +396,7 @@ export function SettingsPanel({
           {section === "safety" && <SafetySection vaultPath={vaultPath} />}
           {section === "gateway" && <><GatewaySection /><GatewayLogsCard vaultPath={vaultPath} /></>}
           {section === "mcp" && <IntegrationsPanel vaultPath={vaultPath} clis={clis} />}
+          {section === "hooks" && <HooksSection />}
           {section === "remote" && <RemoteSection />}
           {/* IA-1: "workspace" is the umbrella; "vault"/"demo" remain as
               deep-link aliases (e.g. the demo ribbon's jump) → same section. */}
