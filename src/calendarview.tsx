@@ -11,7 +11,7 @@
 //              Two-way sync is handled by the app-sync; "Sync now" fires
 //              prevail:sync-calendar for it to pick up, then reloads.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, Check, ChevronLeft, ChevronRight, ExternalLink, Plus, RefreshCw, Repeat, Trash2, X } from "lucide-react";
+import { Bot, CalendarDays, Check, ChevronLeft, ChevronRight, ExternalLink, MessageSquare, Plus, RefreshCw, Repeat, Trash2, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { makeLoop, readLoops, writeLoops } from "./loops";
 import { titleCase } from "./format";
@@ -44,6 +44,28 @@ function startOfWeek(d: Date): Date { const x = new Date(d); x.setHours(0, 0, 0,
 function addDays(d: Date, n: number): Date { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
 function quarterOf(d: Date): number { return Math.floor(d.getMonth() / 3); }
 function prettyDate(key: string): string { const [y, m, dd] = key.split("-").map(Number); return new Date(y, m - 1, dd).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }); }
+function daysUntil(key: string): number {
+  const [y, m, dd] = key.split("-").map(Number);
+  const due = new Date(y, m - 1, dd); due.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.round((due.getTime() - today.getTime()) / 86400000);
+}
+// The right-side urgency badge: the single most useful fact (when it's due),
+// color-coded so the eye lands on what's urgent without extra noise.
+function dueBadge(key: string, kind: CalEvent["kind"]): { label: string; cls: string } {
+  const n = daysUntil(key);
+  if (kind === "loop") {
+    const label = n <= 0 ? "runs now" : n === 1 ? "runs in 1 day" : `runs in ${n} days`;
+    return { label, cls: "bg-ai/15 text-ai" };
+  }
+  if (n < 0) return { label: `${-n}d overdue`, cls: "bg-err/10 text-err" };
+  if (n === 0) return { label: "today", cls: "bg-warn/15 text-warn" };
+  if (n === 1) return { label: "tomorrow", cls: "bg-accent-soft text-accent" };
+  if (n <= 7) return { label: `in ${n} days`, cls: "bg-accent-soft text-accent" };
+  if (n <= 30) return { label: `in ${n} days`, cls: "bg-surface-warm text-text-secondary" };
+  return { label: `in ${Math.round(n / 7)} wks`, cls: "bg-surface-warm text-text-muted" };
+}
+const PRIORITY_CLS: Record<string, string> = { high: "bg-err/10 text-err", urgent: "bg-err/10 text-err", med: "bg-warn/15 text-warn", medium: "bg-warn/15 text-warn", low: "bg-surface-warm text-text-muted" };
 
 export function CalendarView({ vaultPath }: { vaultPath: string }) {
   const [view, setView] = useState<ViewMode>("month");
@@ -213,11 +235,52 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
     } catch (e) { console.error("loop edit", e); } finally { setEditBusy(false); }
   };
 
+  // Card actions: chat about it, hand it to an AI agent, or turn it into a loop.
+  const chatAbout = (ev: CalEvent) => {
+    const seed = `Let's work on this task: "${ev.title}". `;
+    try { localStorage.setItem("prevail.compose.pending", seed); } catch { /* ignore */ }
+    setEdit(null);
+    window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: ev.domain || "" }));
+    window.dispatchEvent(new CustomEvent("prevail:compose-seed", { detail: seed }));
+  };
+  const handToAgent = async (ev: CalEvent) => {
+    if (!ev.task?.id) return;
+    setEditBusy(true);
+    try {
+      await invoke("tasks_set_owner", { vault: vaultPath, domain: ev.domain, id: ev.task.id, owner: "ai" });
+      if ((ev.task.status || "todo") === "todo") await invoke("tasks_set_status", { vault: vaultPath, domain: ev.domain, id: ev.task.id, status: "doing" });
+      window.dispatchEvent(new CustomEvent("prevail:tasks-changed"));
+      setEdit(null);
+      await load();
+    } catch (e) { console.error("hand to agent", e); } finally { setEditBusy(false); }
+  };
+  const turnIntoLoop = async (ev: CalEvent) => {
+    const dom = domains.find((d) => d.name === ev.domain);
+    if (!dom) return;
+    setEditBusy(true);
+    try {
+      const doc = await readLoops(dom.path);
+      await writeLoops(dom.path, { ...doc, loops: [...doc.loops, makeLoop({ name: ev.title, cadence: "weekly", purpose: ev.title })] });
+      window.dispatchEvent(new CustomEvent("prevail:loops-changed"));
+      setEdit(null);
+      window.dispatchEvent(new CustomEvent("prevail:work-section", { detail: "automations" }));
+    } catch (e) { console.error("turn into loop", e); } finally { setEditBusy(false); }
+  };
+
   const syncGoogle = async () => {
     setSyncing(true);
     try {
-      // Hand off to the app-sync (it owns the Google Calendar two-way sync); then
-      // re-read whatever it wrote. Safe no-op if nothing listens yet.
+      // Syncing rides on the Google Workspace CLI. If it isn't set up, take the
+      // user to its setup in Apps instead of silently doing nothing.
+      const status = await invoke<{ installed?: boolean }>("google_cli_status").catch(() => ({ installed: false }));
+      if (!status?.installed) {
+        window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }));
+        // Let the Apps panel mount, then select the Google Workspace connector.
+        setTimeout(() => window.dispatchEvent(new CustomEvent("prevail:app-open", { detail: "google" })), 300);
+        return;
+      }
+      // Set up → hand off to the app-sync (it owns the Google Calendar two-way
+      // sync, using the gws CLI), then re-read whatever it wrote.
       window.dispatchEvent(new CustomEvent("prevail:sync-calendar"));
       await new Promise((r) => setTimeout(r, 600));
       await load();
@@ -316,17 +379,35 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
           <p className="py-10 text-center text-sm text-text-muted">Nothing scheduled this day.</p>
         ) : (
           <ul className="space-y-1.5">
-            {dayEvents.map((e) => (
-              <li key={e.key}>
-                <button onClick={() => openEdit(e)} className="flex w-full items-center gap-3 rounded-lg border border-border-subtle bg-surface p-3 text-left transition-colors hover:border-accent-border">
-                  {e.kind === "loop" ? <Repeat className="h-4 w-4 shrink-0 text-ai" /> : e.kind === "google" ? <CalendarDays className="h-4 w-4 shrink-0 text-purple-500" /> : <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-accent" />}
-                  <span className="flex min-w-0 flex-1 flex-col leading-tight">
-                    <span className="truncate text-sm text-text-primary">{e.title}</span>
-                    <span className="truncate text-[11px] text-text-muted">{e.domain ? titleCase(e.domain) : (e.kind === "google" ? "Google Calendar" : "General")} · {e.detail}</span>
-                  </span>
-                </button>
-              </li>
-            ))}
+            {dayEvents.map((e) => {
+              const due = dueBadge(e.dateKey, e.kind);
+              const prio = e.task?.priority?.toLowerCase();
+              const status = e.task?.status;
+              return (
+                <li key={e.key}>
+                  <button onClick={() => openEdit(e)} className="group/card flex w-full items-center gap-3 rounded-lg border border-border-subtle bg-surface p-3 text-left transition-all hover:border-accent-border hover:shadow-sm">
+                    {/* Kind marker */}
+                    {e.kind === "loop" ? <Repeat className="h-4 w-4 shrink-0 text-ai" /> : e.kind === "google" ? <CalendarDays className="h-4 w-4 shrink-0 text-purple-500" /> : <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-accent" />}
+                    {/* Title + quiet metadata line */}
+                    <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                      <span className="truncate text-sm font-medium text-text-primary">{e.title}</span>
+                      <span className="flex items-center gap-1.5 truncate text-[11px] text-text-muted">
+                        <span className="truncate">{e.domain ? titleCase(e.domain) : (e.kind === "google" ? "Google Calendar" : "General")}</span>
+                        {status && status !== "todo" && <span className="capitalize">· {status}</span>}
+                      </span>
+                    </span>
+                    {/* Right side: priority (if any) + the urgency badge — the
+                        important bit, color-coded. */}
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      {prio && PRIORITY_CLS[prio] && (
+                        <span className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider ${PRIORITY_CLS[prio]}`}>{prio}</span>
+                      )}
+                      <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wide ${due.cls}`}>{due.label}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -422,7 +503,7 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
           <Source id="loop" label="Loops" color="color-mix(in srgb, var(--color-ai, #3CD8FF) 40%, transparent)" />
           <Source id="task" label="Tasks" color="var(--color-accent, #0d7a6e)" />
           <Source id="google" label="Google" color="#a855f7" />
-          <button onClick={() => void syncGoogle()} disabled={syncing} title="Sync with Google Calendar (via app-sync)" className="ml-1 flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:bg-surface-warm hover:text-text-primary disabled:opacity-50">
+          <button onClick={() => void syncGoogle()} disabled={syncing} title="Sync with Google Calendar — uses the Google Workspace CLI (takes you to set it up if it isn't yet)" className="ml-1 flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:bg-surface-warm hover:text-text-primary disabled:opacity-50">
             <RefreshCw className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing…" : "Sync"}
           </button>
         </div>
@@ -503,6 +584,15 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
                   <button onClick={() => void saveTaskEdit()} disabled={editBusy} className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">Save</button>
                   <button onClick={() => void saveTaskEdit({ done: true })} disabled={editBusy} className="flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-warm"><Check className="h-3.5 w-3.5" /> Mark done</button>
                   <button onClick={() => void saveTaskEdit({ trash: true })} disabled={editBusy} className="flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-sm text-err hover:bg-err/10"><Trash2 className="h-3.5 w-3.5" /> Trash</button>
+                </div>
+                {/* Do something with this task */}
+                <div className="mt-3 border-t border-border-subtle pt-3">
+                  <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Work on it</div>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    <button onClick={() => chatAbout(edit)} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-left text-sm text-text-secondary hover:border-accent-border hover:text-accent"><MessageSquare className="h-4 w-4 shrink-0" /> Chat about this</button>
+                    <button onClick={() => void handToAgent(edit)} disabled={editBusy || !edit.task?.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-left text-sm text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"><Bot className="h-4 w-4 shrink-0" /> Hand to an agent</button>
+                    <button onClick={() => void turnIntoLoop(edit)} disabled={editBusy} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-left text-sm text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"><Repeat className="h-4 w-4 shrink-0" /> Turn into a loop</button>
+                  </div>
                 </div>
               </div>
             )}
