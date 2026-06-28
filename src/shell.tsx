@@ -352,12 +352,6 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
       <span className="font-mono font-semibold uppercase tracking-[0.18em]">
         {enabled ? "Bunker Mode" : "Cloud Connected"}
       </span>
-      <span className="opacity-90">
-        ·{" "}
-        {enabled
-          ? "Local models only • Network disabled"
-          : "Cloud models and web access enabled"}
-      </span>
       {/* Vault Lock indicator - centered inline with the trust line (not floated
           far right). Minimalist: a lock glyph + one short word. Lit when locked,
           dimmed/unlocked otherwise. Reflects the live state and updates the instant
