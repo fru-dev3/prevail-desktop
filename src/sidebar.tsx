@@ -1016,7 +1016,7 @@ export function Sidebar({
           </button>
           <button
             onClick={() => { const cycle: Mode[] = ["light", "dark", "system"]; const i = cycle.indexOf(appearance.mode); appearance.setMode(cycle[(i + 1) % cycle.length]); }}
-            className={`flex w-12 shrink-0 items-center justify-center border-l border-border transition-colors ${tab === "settings" || tab === "work" ? "bg-accent text-background hover:bg-accent-hover" : "bg-surface-warm text-text-muted hover:bg-accent-soft hover:text-accent"}`}
+            className="flex w-12 shrink-0 items-center justify-center border-l border-border bg-surface-warm text-text-muted transition-colors hover:bg-accent-soft hover:text-accent"
             title={`Theme: ${appearance.mode}: click to cycle`}
           >
             {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
