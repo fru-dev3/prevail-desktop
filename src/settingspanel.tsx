@@ -400,7 +400,7 @@ export function SettingsPanel({
           {section === "safety" && <SafetySection vaultPath={vaultPath} />}
           {section === "gateway" && <><GatewaySection /><GatewayLogsCard vaultPath={vaultPath} /></>}
           {section === "mcp" && <IntegrationsPanel vaultPath={vaultPath} clis={clis} />}
-          {section === "hooks" && <HooksSection />}
+          {section === "hooks" && <HooksSection vaultPath={vaultPath} />}
           {section === "profiles" && <ProfilesSection />}
           {section === "remote" && <RemoteSection />}
           {/* IA-1: "workspace" is the umbrella; "vault"/"demo" remain as

@@ -9,11 +9,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, Plus, Repeat, X } from "lucide-react";
 import { invoke } from "./bridge";
-import { readLoops } from "./loops";
+import { makeLoop, readLoops, writeLoops } from "./loops";
 import { titleCase } from "./format";
 import { SettingsHeader } from "./sectionutil";
 import type { BoardTask, Domain } from "./types";
-import type { Loop } from "./loops";
+import type { Loop, LoopCadence } from "./loops";
 
 const CADENCE_MS: Record<string, number> = { continuous: 3600e3, daily: 864e5, weekly: 6048e5, monthly: 2592e6 };
 
@@ -43,6 +43,8 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
   const [composeDay, setComposeDay] = useState<string | null>(null);
   const [evText, setEvText] = useState("");
   const [evDomain, setEvDomain] = useState("");
+  const [evKind, setEvKind] = useState<"task" | "automation">("task");
+  const [evCadence, setEvCadence] = useState<LoopCadence>("weekly");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -112,6 +114,8 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
     setComposeDay(key);
     setEvText("");
     setEvDomain(domains[0]?.name ?? "");
+    setEvKind("task");
+    setEvCadence("weekly");
   };
   const saveEvent = async () => {
     const text = evText.trim();
@@ -119,13 +123,25 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
     if (!text || !domain || !composeDay) return;
     setSaving(true);
     try {
-      // The engine parses a trailing "@YYYY-MM-DD" into the task's due date.
-      await invoke("tasks_add", { vault: vaultPath, domain, text: `${text} @${composeDay}`, source: "calendar" });
-      window.dispatchEvent(new CustomEvent("prevail:tasks-changed"));
+      if (evKind === "automation") {
+        // Create a standing loop (automation) in the domain. Loops run on a
+        // cadence, not a single day, so the picked day just seeds it.
+        const dom = domains.find((d) => d.name === domain);
+        if (dom) {
+          const doc = await readLoops(dom.path);
+          const loop = makeLoop({ name: text, cadence: evCadence, purpose: text });
+          await writeLoops(dom.path, { ...doc, loops: [...doc.loops, loop] });
+          window.dispatchEvent(new CustomEvent("prevail:loops-changed"));
+        }
+      } else {
+        // The engine parses a trailing "@YYYY-MM-DD" into the task's due date.
+        await invoke("tasks_add", { vault: vaultPath, domain, text: `${text} @${composeDay}`, source: "calendar" });
+        window.dispatchEvent(new CustomEvent("prevail:tasks-changed"));
+      }
       setComposeDay(null);
       await load();
     } catch (e) {
-      console.error("calendar tasks_add", e);
+      console.error("calendar save event", e);
     } finally {
       setSaving(false);
     }
@@ -214,16 +230,46 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
               <h3 className="flex items-center gap-2 font-display text-lg font-semibold text-text-primary"><CalendarDays className="h-5 w-5 text-accent" /> New event</h3>
               <button onClick={() => setComposeDay(null)} className="rounded p-1 text-text-muted hover:text-text-primary"><X className="h-4 w-4" /></button>
             </div>
-            <p className="mb-3 text-xs text-text-muted">A task due <span className="font-mono text-text-secondary">{composeDay}</span>, tied to a domain.</p>
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-text-muted">Task</label>
+            {/* Type toggle: a one-off dated task, or a standing automation. */}
+            <div className="mb-3 flex rounded-md border border-border p-0.5">
+              {(["task", "automation"] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setEvKind(k)}
+                  className={`flex-1 rounded px-3 py-1.5 text-xs font-semibold capitalize transition-colors ${evKind === k ? "bg-accent text-background" : "text-text-secondary hover:text-text-primary"}`}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+            <p className="mb-3 text-xs text-text-muted">
+              {evKind === "task"
+                ? <>A task due <span className="font-mono text-text-secondary">{composeDay}</span>, tied to a domain.</>
+                : <>A standing automation (loop) that runs on a cadence, tied to a domain.</>}
+            </p>
+            <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-text-muted">{evKind === "task" ? "Task" : "Automation"}</label>
             <input
               autoFocus
               value={evText}
               onChange={(e) => setEvText(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") void saveEvent(); }}
-              placeholder="e.g. Review portfolio"
+              placeholder={evKind === "task" ? "e.g. Review portfolio" : "e.g. Weekly portfolio review"}
               className="mb-3 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-accent-border focus:outline-none"
             />
+            {evKind === "automation" && (
+              <>
+                <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-text-muted">Cadence</label>
+                <select
+                  value={evCadence}
+                  onChange={(e) => setEvCadence(e.target.value as LoopCadence)}
+                  className="mb-3 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-accent-border focus:outline-none"
+                >
+                  {(["continuous", "daily", "weekly", "monthly"] as LoopCadence[]).map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </>
+            )}
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-text-muted">Domain</label>
             <select
               value={evDomain}
@@ -240,7 +286,7 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
                 disabled={saving || !evText.trim() || !evDomain}
                 className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50"
               >
-                {saving ? "Adding…" : "Add task"}
+                {saving ? "Adding…" : evKind === "task" ? "Add task" : "Add automation"}
               </button>
             </div>
           </div>

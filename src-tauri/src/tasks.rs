@@ -257,6 +257,8 @@ pub fn tasks_add(vault: String, domain: String, text: String, source: Option<Str
             priority: m.priority,
         });
         tasks_set(vault.clone(), domain.clone(), tasks)?;
+        // Fire any user hooks bound to task creation (non-blocking).
+        crate::hooks::fire_hooks(&vault, "task.created", Some(&domain));
         return tasks_read(vault, domain); // re-read so the minted id is returned
     }
     Ok(tasks)

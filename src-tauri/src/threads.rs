@@ -501,6 +501,15 @@ pub(crate) fn save_thread(
         body.push_str(&format!("## {speaker}\n\n{}\n\n", t.content.trim()));
     }
     fs::write(&file_path, &body).map_err(|e| format!("write thread: {e}"))?;
+    // Fire chat.reply hooks only when a real assistant reply just landed (not on
+    // the empty pre-create or a user-only autosave), so the event is meaningful.
+    let landed_reply = turns
+        .last()
+        .map(|t| t.role == "assistant" && !t.content.trim().is_empty())
+        .unwrap_or(false);
+    if landed_reply {
+        crate::hooks::fire_hooks(&vault, "chat.reply", domain.as_deref());
+    }
     Ok(file_path.to_string_lossy().to_string())
 }
 
