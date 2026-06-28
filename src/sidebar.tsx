@@ -12,6 +12,7 @@ import { lsGet, lsSet } from "./storage";
 import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
 import { SidebarGatewayLive, SidebarMcpLive } from "./panels";
 import { ProfileSwitcher } from "./profileswitcher";
+import { EDITOR_NAV, WORK_NAV } from "./navdefs";
 import { domainIcon } from "./icons";
 import { useAppearance } from "./hooks";
 import { SidebarBackupActive, SidebarBenchmarkRuns, SidebarBenchScheduled, SidebarProcesses } from "./cards";
@@ -143,6 +144,27 @@ export function Sidebar({
   // conversations across all domains. Persisted like the other groups.
   const [todayOpen, setTodayOpen] = useState<boolean>(() => lsGet("prevail.sidebar.todayOpen") !== "0");
   useEffect(() => { lsSet("prevail.sidebar.todayOpen", todayOpen ? "1" : "0"); }, [todayOpen]);
+
+  // Mode-aware nav (2026 redesign): the single left bar shows Work surfaces or
+  // Editor sections depending on the active mode, rather than a second column.
+  // Track which section is active for highlighting, kept in sync with the events
+  // the content panels listen to.
+  const [editorActive, setEditorActive] = useState("general");
+  const [workActive, setWorkActive] = useState("tasks");
+  useEffect(() => {
+    const onEd = (e: Event) => { const d = (e as CustomEvent<string>).detail || "general"; setEditorActive(d.split(":")[0]); };
+    const onWk = (e: Event) => { const d = (e as CustomEvent<string>).detail || "tasks"; setWorkActive(d); };
+    window.addEventListener("prevail:settings-section", onEd as EventListener);
+    window.addEventListener("prevail:work-section", onWk as EventListener);
+    return () => {
+      window.removeEventListener("prevail:settings-section", onEd as EventListener);
+      window.removeEventListener("prevail:work-section", onWk as EventListener);
+    };
+  }, []);
+  // App owns the actual mode switch + section jump (reliable even when the
+  // content panel isn't mounted yet); we just reflect the choice + announce it.
+  const selectEditor = (id: string) => { setEditorActive(id); window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: id })); };
+  const selectWork = (id: string) => { setWorkActive(id); window.dispatchEvent(new CustomEvent("prevail:work-section", { detail: id })); };
 
   // Archived domains - fetched from the engine. Shown in a collapsible
   // group at the bottom of the rail, each with a Restore action.
@@ -390,6 +412,40 @@ export function Sidebar({
 
       {/* Domain list (icon rail when collapsed, full list when expanded) */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        {/* EDITOR MODE: the single left bar becomes the configuration nav (no
+            second column). Selecting an item drives the content panel via event. */}
+        {tab === "settings" && (
+          <div className={`pt-2 ${collapsed ? "px-1.5" : "px-2"}`}>
+            {EDITOR_NAV.map((group) => (
+              <div key={group.heading} className="mb-1.5">
+                {!collapsed && (
+                  <div className="mb-0.5 mt-2 px-3 font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted/70">{group.heading}</div>
+                )}
+                {group.items.map((it) => {
+                  const Icon = it.icon;
+                  const active = editorActive === it.id;
+                  return (
+                    <button
+                      key={it.id}
+                      onClick={() => selectEditor(it.id)}
+                      title={collapsed ? it.label : undefined}
+                      className={`flex w-full items-center rounded-md py-1.5 text-left text-sm transition-colors ${collapsed ? "justify-center px-0" : "gap-3 px-3"} ${
+                        active ? "bg-accent font-semibold text-background shadow-sm" : "text-text-secondary hover:bg-surface-strong hover:text-text-primary"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {!collapsed && <span className="flex-1">{it.label}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* WORK MODE (everything that isn't Editor): Today + Work surfaces +
+            Domains + Apps, all in this one bar. */}
+        {tab !== "settings" && (<>
         {/* Today - the most recent conversations across every domain whose last
             activity is in the local day (top 5). Hidden when the rail is
             collapsed to keep the icon rail clean. */}
@@ -438,18 +494,18 @@ export function Sidebar({
           <button
             onClick={() => {
               setSelectedDomain("");
-              if (tab === "settings" || tab === "work") setTab("chat");
+              if (tab === "work") setTab("chat");
             }}
             title="General: chats not tied to any domain"
             className={
               collapsed
                 ? `flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
-                    selectedDomain === "" && tab !== "settings" && tab !== "work"
+                    selectedDomain === "" && tab !== "work"
                       ? "bg-accent-soft text-accent"
                       : "text-text-muted hover:bg-surface-warm hover:text-text-primary"
                   }`
                 : `flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
-                    selectedDomain === "" && tab !== "settings" && tab !== "work"
+                    selectedDomain === "" && tab !== "work"
                       ? "bg-accent-soft text-accent"
                       : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
                   }`
@@ -459,6 +515,32 @@ export function Sidebar({
             {!collapsed && "General"}
           </button>
         </div>
+
+        {/* Work surfaces — board, automations, calendar, notes — right in the
+            main bar (no second column). Selecting one opens it in Work mode. */}
+        <div className={collapsed ? "px-1.5 pt-1" : "px-2 pt-1"}>
+          {!collapsed && (
+            <div className="mb-0.5 mt-2 px-3 font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted/70">Work</div>
+          )}
+          {WORK_NAV.flatMap((g) => g.items).map((it) => {
+            const Icon = it.icon;
+            const active = tab === "work" && workActive === it.id;
+            return (
+              <button
+                key={it.id}
+                onClick={() => selectWork(it.id)}
+                title={collapsed ? it.label : undefined}
+                className={`flex w-full items-center rounded-md py-1.5 text-left text-sm transition-colors ${collapsed ? "justify-center px-0" : "gap-2 px-2.5"} ${
+                  active ? "bg-accent-soft font-semibold text-accent ring-1 ring-inset ring-accent-border/60" : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+                }`}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {!collapsed && <span className="flex-1 truncate">{it.label}</span>}
+              </button>
+            );
+          })}
+        </div>
+
         {!collapsed && (
           <button
             data-tour="domains"
@@ -491,7 +573,7 @@ export function Sidebar({
         {/* "Set up domains" moved to Settings → Vault to declutter the sidebar. */}
         <ul className={`space-y-0.5 ${collapsed ? "px-1.5 py-2" : "px-2"}`}>
           {sortedDomains.map((d, i) => {
-            const active = d.name === selectedDomain && tab !== "settings" && tab !== "work";
+            const active = d.name === selectedDomain && tab !== "work";
             const Icon = domainIcon(d.name);
             const isPinned = pinned.has(d.name);
             const isFirstPinned = !collapsed && isPinned && (i === 0 || !pinned.has(sortedDomains[i - 1].name));
@@ -522,7 +604,7 @@ export function Sidebar({
                   <button
                     onClick={() => {
                       setSelectedDomain(d.name);
-                      if (tab === "settings" || tab === "work") setTab("chat");
+                      if (tab === "work") setTab("chat");
                     }}
                     title={titleCase(d.name)}
                     className={`flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
@@ -604,7 +686,7 @@ export function Sidebar({
                   }}
                   onClick={() => {
                     setSelectedDomain(d.name);
-                    if (tab === "settings" || tab === "work") setTab("chat");
+                    if (tab === "work") setTab("chat");
                   }}
                   title="Click to enter · drag to chat as context (plain: state · ⇧ full · ⌥ entire folder)"
                   className={`flex flex-1 cursor-grab items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors active:cursor-grabbing ${
@@ -824,6 +906,7 @@ export function Sidebar({
             )}
           </div>
         )}
+        </>)}
       </div>
 
       {/* App-wide readiness - the aggregate of every domain's score. */}
@@ -877,8 +960,8 @@ export function Sidebar({
           A solid edge-to-edge bar so it reads as the app's footer action. */}
       {collapsed ? (
         <div data-tour="settings" className="flex flex-col items-center gap-1 border-t border-border-subtle p-2">
-          <button onClick={() => setTab("work")} title="Work — board, insights & spark"
-            className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${tab === "work" ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}>
+          <button onClick={() => setTab("chat")} title="Work — your domains, board, automations, calendar & notes"
+            className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${tab !== "settings" ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}>
             <Briefcase className="h-4 w-4" />
           </button>
           <button onClick={() => setTab("settings")} title="Editor — models, connections & settings"
@@ -893,10 +976,10 @@ export function Sidebar({
       ) : (
         <div data-tour="settings" className="flex items-stretch border-t border-border">
           <button
-            onClick={() => setTab("work")}
-            title="Work — your board, insights & spark"
+            onClick={() => setTab("chat")}
+            title="Work — your domains, board, automations, calendar & notes"
             className={`flex flex-1 items-center justify-center gap-2 px-3 py-3 text-[13px] font-semibold tracking-wide transition-colors ${
-              tab === "work"
+              tab !== "settings"
                 ? "bg-accent text-background"
                 : "bg-surface-warm text-text-secondary hover:bg-accent-soft hover:text-accent"
             }`}
