@@ -3,9 +3,10 @@
 // setup).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion";
-import { Activity, Archive, ArrowRight, Briefcase, Clock, Cloud, Folder, FolderLock, FolderOpen, Heart, Home, KeyRound, Layers, Plus, Receipt, RefreshCw, Shield, ShieldCheck, Sparkles, TrendingUp, Users, Wallet, X, Zap } from "lucide-react";
+import { Activity, Archive, ArrowRight, Briefcase, Clock, Cloud, Folder, FolderLock, FolderOpen, Ghost, Heart, Home, KeyRound, Layers, Plus, Receipt, RefreshCw, Shield, ShieldCheck, Sparkles, TrendingUp, Users, Wallet, X, Zap } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
+import { PREF, getPref } from "./storage";
 import { APP_VERSION, AUTONOMY_LABEL, AUTONOMY_TINT, INTEGRATION_LABEL, STATUS_TINT } from "./constants";
 import { relTime, titleCase } from "./format";
 import { appScheduleText } from "./helpers";
@@ -325,52 +326,83 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
   // reads/writes are confined to the vault. Defaults to ON (locked) until the
   // backend says otherwise, and refreshes when the toggle changes or on focus.
   const [vaultLocked, setVaultLocked] = useState(true);
+  // Global incognito: a separate axis from network/vault posture - it governs
+  // whether prompts are logged + memory is written. Reflected live so the bar
+  // updates the instant the master toggle fires `prevail:incognito-changed`.
+  const [incognito, setIncognito] = useState(() => getPref(PREF.incognito, "0") === "1");
   useEffect(() => {
     const pull = () => { void invoke<{ enabled: boolean }>("vault_lock_status").then((s) => setVaultLocked(s?.enabled !== false)).catch(() => {}); };
+    const syncIncognito = () => setIncognito(getPref(PREF.incognito, "0") === "1");
     pull();
+    syncIncognito();
     window.addEventListener("prevail:vault-lock-changed", pull);
+    window.addEventListener("prevail:incognito-changed", syncIncognito);
     window.addEventListener("focus", pull);
-    return () => { window.removeEventListener("prevail:vault-lock-changed", pull); window.removeEventListener("focus", pull); };
+    window.addEventListener("focus", syncIncognito);
+    return () => {
+      window.removeEventListener("prevail:vault-lock-changed", pull);
+      window.removeEventListener("prevail:incognito-changed", syncIncognito);
+      window.removeEventListener("focus", pull);
+      window.removeEventListener("focus", syncIncognito);
+    };
   }, []);
-  // High-contrast in BOTH modes: a clear tinted bar (not a translucent wash that
-  // disappears over warm/cream themes) with dark text in light mode and light
-  // text in dark mode. Legibility is non-negotiable for an always-on trust bar.
+  // The bar carries three INDEPENDENT trust axes, each its own labelled segment
+  // with a tooltip so the distinction is obvious at a glance (feedback: "the
+  // difference between Cloud Connected and Vault Locked isn't clear"):
+  //   1. Network  - does anything leave this machine? (Cloud vs Bunker)
+  //   2. Vault    - are file reads/writes confined to your vault folder?
+  //   3. Incognito- shown only when the global master is on (no logging/memory).
+  // High-contrast in BOTH modes: a tinted bar (not a translucent wash that
+  // disappears over warm/cream themes), dark text on cyan, light text on dark.
+  const Seg = ({ Icon, label, on, tip }: { Icon: typeof Cloud; label: string; on: boolean; tip: string }) => (
+    <span
+      className={`inline-flex cursor-default select-none items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] ${on ? "opacity-100" : "opacity-55"}`}
+      title={tip}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </span>
+  );
+  const divider = <span className="select-none opacity-30">|</span>;
   return (
     <div
-      className={`relative flex shrink-0 items-center justify-center gap-2 border-t px-4 py-1 text-[11px] ${
+      className={`relative flex shrink-0 items-center justify-center gap-3 border-t px-4 py-1 text-[11px] ${
         enabled
           ? "border-ai bg-ai text-[#0a2230]"
           : "border-black/30 bg-[#141416] text-white/90"
       }`}
-      title={
-        enabled
-          ? "Bunker Mode: your data stays on this device. No requests leave your machine."
-          : "Cloud Connected: cloud models, web search, and external services are enabled."
-      }
     >
-      {enabled ? <ShieldCheck className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}
-      <span className="font-mono font-semibold uppercase tracking-[0.18em]">
-        {enabled ? "Bunker Mode" : "Cloud Connected"}
-      </span>
-      <span className="opacity-90">
-        ·{" "}
-        {enabled
-          ? "Local models only • Network disabled"
-          : "Cloud models and web access enabled"}
-      </span>
-      {/* Vault Lock indicator - centered inline with the trust line (not floated
-          far right). Minimalist: a lock glyph + one short word. Lit when locked,
-          dimmed/unlocked otherwise. Reflects the live state and updates the instant
-          the toggle fires `prevail:vault-lock-changed`. */}
-      <span
-        className={`ml-1 inline-flex select-none items-center gap-1 font-mono text-[10px] uppercase tracking-wider ${vaultLocked ? "opacity-90" : "opacity-50"}`}
-        title={vaultLocked
-          ? "Your vault folder is locked: the assistant only reads and writes inside it."
-          : "Your vault folder is unlocked: the assistant may reach files outside it."}
-      >
-        · {vaultLocked ? <FolderLock className="h-3 w-3" /> : <FolderOpen className="h-3 w-3" />}
-        {vaultLocked ? "Vault locked" : "Vault unlocked"}
-      </span>
+      {/* 1. Network posture */}
+      <Seg
+        Icon={enabled ? ShieldCheck : Cloud}
+        label={enabled ? "Bunker mode" : "Cloud connected"}
+        on
+        tip={enabled
+          ? "Bunker Mode: nothing leaves this device. Only local models run; cloud models and web access are blocked."
+          : "Cloud Connected: cloud models and web access are enabled. Requests may leave this device. Switch to Bunker Mode for local-only."}
+      />
+      {divider}
+      {/* 2. Vault filesystem scope */}
+      <Seg
+        Icon={vaultLocked ? FolderLock : FolderOpen}
+        label={vaultLocked ? "Vault locked" : "Vault unlocked"}
+        on={vaultLocked}
+        tip={vaultLocked
+          ? "Vault Locked: the assistant only reads and writes inside your vault folder."
+          : "Vault Unlocked: the assistant may reach files outside your vault folder."}
+      />
+      {/* 3. Incognito - only present when the global master is on. */}
+      {incognito && (
+        <>
+          {divider}
+          <Seg
+            Icon={Ghost}
+            label="Incognito"
+            on
+            tip="Global Incognito is ON: prompts aren't logged and nothing is written to memory, everywhere in the app."
+          />
+        </>
+      )}
       {/* Version - inside the ribbon so it inherits the high-contrast ribbon
           text color (the old standalone pill was invisible over the dark bar). */}
       <span className="pointer-events-none absolute right-3 select-none font-mono text-[10px] tracking-wider opacity-70">
