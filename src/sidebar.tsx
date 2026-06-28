@@ -144,6 +144,9 @@ export function Sidebar({
   // conversations across all domains. Persisted like the other groups.
   const [todayOpen, setTodayOpen] = useState<boolean>(() => lsGet("prevail.sidebar.todayOpen") !== "0");
   useEffect(() => { lsSet("prevail.sidebar.todayOpen", todayOpen ? "1" : "0"); }, [todayOpen]);
+  // "Work" surfaces group — collapsible like Domains. Persisted.
+  const [workOpen, setWorkOpen] = useState<boolean>(() => lsGet("prevail.sidebar.workOpen") !== "0");
+  useEffect(() => { lsSet("prevail.sidebar.workOpen", workOpen ? "1" : "0"); }, [workOpen]);
 
   // Mode-aware nav (2026 redesign): the single left bar shows Work surfaces or
   // Editor sections depending on the active mode, rather than a second column.
@@ -516,30 +519,41 @@ export function Sidebar({
           </button>
         </div>
 
-        {/* Work surfaces — board, automations, calendar, notes — right in the
-            main bar (no second column). Selecting one opens it in Work mode. */}
-        <div className={collapsed ? "px-1.5 pt-1" : "px-2 pt-1"}>
-          {!collapsed && (
-            <div className="mb-0.5 mt-2 px-3 font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted/70">Work</div>
-          )}
-          {WORK_NAV.flatMap((g) => g.items).map((it) => {
-            const Icon = it.icon;
-            const active = tab === "work" && workActive === it.id;
-            return (
-              <button
-                key={it.id}
-                onClick={() => selectWork(it.id)}
-                title={collapsed ? it.label : undefined}
-                className={`flex w-full items-center rounded-md py-1.5 text-left text-sm transition-colors ${collapsed ? "justify-center px-0" : "gap-2 px-2.5"} ${
-                  active ? "bg-accent-soft font-semibold text-accent ring-1 ring-inset ring-accent-border/60" : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
-                }`}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {!collapsed && <span className="flex-1 truncate">{it.label}</span>}
-              </button>
-            );
-          })}
-        </div>
+        {/* Work surfaces — board, automations, calendar, notes — in the main bar
+            (no second column). Collapsible + indented, mirroring Domains. */}
+        {!collapsed && (
+          <button
+            onClick={() => setWorkOpen((v) => !v)}
+            className="group/h mt-2 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted hover:text-text-secondary transition-colors"
+          >
+            <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${workOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+            <Briefcase className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+            <span>Work</span>
+            <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{WORK_NAV.flatMap((g) => g.items).length}</span>
+          </button>
+        )}
+        {(collapsed || workOpen) && (
+          <ul className={`space-y-0.5 ${collapsed ? "px-1.5 py-1" : "px-2"}`}>
+            {WORK_NAV.flatMap((g) => g.items).map((it) => {
+              const Icon = it.icon;
+              const active = tab === "work" && workActive === it.id;
+              return (
+                <li key={it.id}>
+                  <button
+                    onClick={() => selectWork(it.id)}
+                    title={collapsed ? it.label : undefined}
+                    className={`flex w-full items-center rounded-md py-1.5 text-left text-sm transition-colors ${collapsed ? "justify-center px-0" : "gap-2.5 pl-6 pr-2"} ${
+                      active ? "bg-accent-soft font-semibold text-accent ring-1 ring-inset ring-accent-border/60" : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {!collapsed && <span className="flex-1 truncate">{it.label}</span>}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
 
         {!collapsed && (
           <button
