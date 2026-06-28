@@ -6,7 +6,7 @@
 // Heavy lifting lives in the prevail engine (`prevail capture …`, `prevail mcp
 // install …`), reached through async Tauri commands that never block the UI.
 import { useCallback, useEffect, useState } from "react";
-import { Check, Download, FolderOpen, FolderSearch, History, Loader2, Plug, RefreshCw, Scale, Zap } from "lucide-react";
+import { Check, Download, FolderOpen, FolderSearch, History, Loader2, Plug, RefreshCw, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { Toggle } from "./ui";
@@ -56,11 +56,6 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
   const [mcpBusyClient, setMcpBusyClient] = useState("");
   const [mcpMsg, setMcpMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [mcpTab, setMcpTab] = useState<"oneclick" | "manual">("oneclick");
-  // Global auto-council: high-stakes questions escalate to the council across
-  // EVERY domain (the routed domain is the host LLM's choice over MCP). Mirrors
-  // the engine config the MCP server reads.
-  const [autoCouncil, setAutoCouncil] = useState(false);
-  const [autoCouncilBusy, setAutoCouncilBusy] = useState(false);
 
   const loadCapture = useCallback(async () => {
     try {
@@ -82,22 +77,7 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
   useEffect(() => {
     void loadCapture();
     void loadMcp();
-    invoke<{ auto?: string }>("get_auto_council")
-      .then((m) => setAutoCouncil(m?.auto === "auto"))
-      .catch(() => {});
   }, [loadCapture, loadMcp]);
-
-  async function toggleAutoCouncil(on: boolean) {
-    setAutoCouncilBusy(true);
-    setAutoCouncil(on); // optimistic
-    try {
-      await invoke("set_auto_council", { domain: "general", on });
-    } catch {
-      setAutoCouncil(!on); // revert on failure
-    } finally {
-      setAutoCouncilBusy(false);
-    }
-  }
 
   async function runInstall() {
     setBusy("install");
@@ -216,16 +196,8 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
           MCP (Model Context Protocol) lets the AI CLIs you already use call into Prevail - run a council across your models, read a life domain's state, or list your domains - right inside the tool. Register Prevail once and it shows up as tools in Claude Code, Codex, Gemini and more. Uses a local stdio connection; nothing leaves your machine.
         </div>
 
-        {/* Global auto-council: applies to every domain (the routed domain is the
-            host LLM's choice), and to the preview chat too. */}
-        <div className="mb-4 flex items-center gap-3 rounded-lg border border-border-subtle bg-surface-warm/40 px-4 py-3">
-          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${autoCouncil ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}><Scale className="h-4 w-4" /></span>
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-text-primary">Auto-council for AI tools</div>
-            <div className="mt-0.5 text-xs text-text-secondary">When on, a high-stakes judgment call asked through any AI tool - or the Prevail chat - is automatically escalated to a multi-model council and the verdict is saved, in whichever domain it lands. Routine questions stay single-model. Per-domain overrides still apply.</div>
-          </div>
-          <Toggle on={autoCouncil} disabled={autoCouncilBusy} onChange={toggleAutoCouncil} label="Auto-council for AI tools" />
-        </div>
+        {/* Auto-council moved to Settings → Council (it governs the council, not
+            the MCP integration). */}
         <div className="mb-4 inline-flex gap-1 rounded-lg border border-border-subtle bg-surface-warm/60 p-1">
           {(
             [

@@ -2,7 +2,7 @@
 // Council defaults, Configuration (groups the memory/tasks/ideal sub-sections),
 // and the Agents catalog (AgentCard + AgentsSection).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, FileX, FolderCheck, FolderX, Globe, ListChecks, Loader2, Lock, LockOpen, Search, Server, ShieldCheck, ShieldOff, Sigma, Target, Terminal, User, Wifi, WifiOff, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, FileX, FolderCheck, FolderX, Globe, ListChecks, Loader2, Lock, LockOpen, Scale, Search, Server, ShieldCheck, ShieldOff, Sigma, Target, Terminal, User, Wifi, WifiOff, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
@@ -537,6 +537,22 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
   // Per-provider catalog search (aggregators like OpenRouter expose hundreds of
   // models — search, don't scroll a fixed list).
   const [panelSearch, setPanelSearch] = useState<Record<string, string>>({});
+  // Global auto-council: a high-stakes judgment call asked through any AI tool
+  // (over MCP) or the Prevail chat auto-escalates to a multi-model council.
+  // Mirrors the engine config the MCP server reads. Lives here (not in
+  // Integrations) because it governs the council. (feedback: moved here.)
+  const [autoCouncil, setAutoCouncil] = useState(false);
+  const [autoCouncilBusy, setAutoCouncilBusy] = useState(false);
+  useEffect(() => {
+    invoke<{ auto?: string }>("get_auto_council").then((m) => setAutoCouncil(m?.auto === "auto")).catch(() => {});
+  }, []);
+  async function toggleAutoCouncil(on: boolean) {
+    setAutoCouncilBusy(true);
+    setAutoCouncil(on); // optimistic
+    try { await invoke("set_auto_council", { domain: "general", on }); }
+    catch { setAutoCouncil(!on); /* revert on failure */ }
+    finally { setAutoCouncilBusy(false); }
+  }
   // Once providers are detected: prune any stale slot keys that no longer map to
   // a real (available provider, model) - that's what made the count drift from
   // the visible badges - then seed a sensible default if the panel is empty.
@@ -605,6 +621,18 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
       <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-accent-border bg-accent-soft px-4 py-3 text-sm">
         <span className="font-semibold text-text-primary">{members.size} model{members.size === 1 ? "" : "s"} on the panel</span>
         <span className="inline-flex items-center gap-1 text-text-secondary"><Crown className="h-3.5 w-3.5 text-accent" /> chair: <span className="font-medium text-text-primary">{chairLabel}</span></span>
+      </div>
+      {/* Global auto-council: when a question is high-stakes, convene the panel
+          automatically instead of answering single-model. Applies to every
+          domain and every entry point (the Prevail chat and any AI tool over
+          MCP). Moved here from Integrations - it's a council behavior. */}
+      <div className="mb-5 flex items-center gap-3 rounded-lg border border-border-subtle bg-surface-warm/40 px-4 py-3">
+        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${autoCouncil ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}><Scale className="h-4 w-4" /></span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-text-primary">Auto-convene on high-stakes questions</div>
+          <div className="mt-0.5 text-xs text-text-secondary">When on, a high-stakes judgment call - asked in the Prevail chat or through any AI tool over MCP - is automatically escalated to this council and the verdict is saved, in whichever domain it lands. Routine questions stay single-model. Per-domain overrides still apply.</div>
+        </div>
+        <Toggle on={autoCouncil} disabled={autoCouncilBusy} onChange={toggleAutoCouncil} label="Auto-convene the council on high-stakes questions" />
       </div>
       <div className="space-y-2">
         {available.length === 0 && <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-sm text-text-muted">No providers available{isBunkerOn() ? " in Bunker Mode (local only)" : ""}.</div>}

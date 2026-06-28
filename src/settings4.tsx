@@ -3,7 +3,7 @@
 // start-on-boot, embedded Shortcuts).
 import { useEffect, useMemo, useState } from "react";
 import { disable as autostartDisable, enable as autostartEnable, isEnabled as autostartIsEnabled } from "@tauri-apps/plugin-autostart";
-import { Activity, Clock, Compass, Eye, EyeOff, FileClock, Globe, History, Keyboard, Lock, Monitor, Moon, Palette, PenLine, RefreshCw, ShieldAlert, ShieldCheck, SlidersHorizontal, Sun, Terminal } from "lucide-react";
+import { Activity, Clock, Compass, Eye, EyeOff, FileClock, Globe, History, Lock, Monitor, Moon, Palette, PenLine, RefreshCw, ShieldAlert, ShieldCheck, SlidersHorizontal, Sun, Terminal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { CollapsibleSection } from "./collapsible";
 import { ALLOWED_EVENTS, clearTelemetryLog, crashOn, setCrash, setUsage, telemetryConfigured, telemetryLog, usageOn } from "./telemetry";
@@ -16,7 +16,6 @@ import { AlignmentCard, AppLockCard, SettingsRowLite } from "./panels";
 import { PaletteCard } from "./panels3";
 import { useAppearance } from "./hooks";
 import { SettingsHeader, idealSectionIcon } from "./sectionutil";
-import { ShortcutsSection } from "./settings1";
 import { VaultEncryptionCard } from "./settings3";
 import type { Mode } from "./types";
 
@@ -599,9 +598,6 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
           </div>
         </GenSub>
       )}
-      <GenSub id="shortcuts" title="Shortcuts" icon={Keyboard} summary="keyboard">
-        <ShortcutsSection />
-      </GenSub>
       </div>
     </>
   );

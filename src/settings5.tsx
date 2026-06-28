@@ -3,7 +3,7 @@
 // (version, update check, changelog).
 import { useEffect, useState } from "react";
 import { confirm as tauriConfirm, open, save } from "@tauri-apps/plugin-dialog";
-import { check as checkUpdate } from "@tauri-apps/plugin-updater";
+import { check as checkUpdate, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { Check, ChevronRight, Folder, Loader2, Mail, MessageSquare, MessagesSquare, Network, Radio, Send, Sparkles, Webhook, Wrench, Zap } from "lucide-react";
 import { siDiscord, siMatrix, siMattermost, siSignal, siTelegram } from "simple-icons";
@@ -1028,7 +1028,7 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
       out.push({
         label: "Updates", status: u ? "warn" : "ok",
         detail: u ? `v${u.version} available` : `on the latest (v${APP_VERSION})`,
-        why: u ? "Click 'Check for updates' above to install it in place." : "You're running the newest release.",
+        why: u ? "Use 'Check for updates' above, then click Install to apply it in place." : "You're running the newest release.",
       });
     } catch {
       out.push({ label: "Updates", status: "info", detail: "couldn't check", why: "Update feed unreachable (offline or first release). Not a problem." });
@@ -1117,39 +1117,35 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
   // download URL we only set when the in-place path genuinely can't run.
   const [downloadPct, setDownloadPct] = useState<number | null>(null);
   const [manualUrl, setManualUrl] = useState<string | null>(null);
+  // A found-but-not-yet-installed update. Checking only DISCOVERS it; the user
+  // must click Install to actually download + replace + relaunch. (feedback:
+  // "when you check for updates, don't auto start installing").
+  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
   async function checkForUpdates() {
     setChecking(true);
     setCheckErr(null);
     setLatest(null);
     setManualUrl(null);
     setDownloadPct(null);
+    setPendingUpdate(null);
     try {
-      // Preferred path: the Tauri updater - checks the signed latest.json feed,
-      // downloads + installs IN PLACE, then relaunches. No browser detour.
+      // Only CHECK here: hit the signed latest.json feed and report whether a
+      // newer build exists. We deliberately do NOT install - that waits for an
+      // explicit Install click (see installUpdate).
       const update = await checkUpdate();
       if (update) {
         setLatest(update.version);
-        setInstalling(true);
-        // Stream download progress so the user sees the install happen, then
-        // relaunch into the new version automatically.
-        let total = 0;
-        let got = 0;
-        await update.downloadAndInstall((ev) => {
-          if (ev.event === "Started") { total = ev.data.contentLength ?? 0; setDownloadPct(0); }
-          else if (ev.event === "Progress") { got += ev.data.chunkLength; setDownloadPct(total > 0 ? Math.min(100, Math.round((got / total) * 100)) : null); }
-          else if (ev.event === "Finished") { setDownloadPct(100); }
-        });
-        await relaunch();
-        return;
+        setPendingUpdate(update);
+      } else {
+        // No update object → already current.
+        setLatest(APP_VERSION);
       }
-      // No update object → already current.
-      setLatest(APP_VERSION);
     } catch (pluginErr) {
-      // The in-place updater couldn't run: offline, the feed isn't published
+      // The updater feed couldn't be reached: offline, the feed isn't published
       // yet, a signature/pubkey mismatch, OR this is a `tauri dev` build (which
       // can't self-replace). Surface the REAL reason instead of silently
       // bouncing to a browser, and offer an explicit manual download as backup.
-      setCheckErr(`In-place update couldn't run (${String(pluginErr).slice(0, 140)}). You can download it manually below.`);
+      setCheckErr(`Update check couldn't run (${String(pluginErr).slice(0, 140)}). You can download it manually below.`);
       try {
         const r = await fetch("https://api.github.com/repos/fru-dev3/prevail-desktop/releases?per_page=10");
         if (r.ok) {
@@ -1157,9 +1153,40 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
           const top = releases.find((rel) => !rel.prerelease) ?? releases[0];
           if (top) { setLatest(top.tag_name); setManualUrl(top.html_url); }
         }
-      } catch { /* keep the in-place error visible */ }
+      } catch { /* keep the check error visible */ }
     } finally {
       setChecking(false);
+    }
+  }
+  async function installUpdate() {
+    if (!pendingUpdate) return;
+    setInstalling(true);
+    setCheckErr(null);
+    setDownloadPct(null);
+    try {
+      // Download + install IN PLACE, then relaunch into the new version. No
+      // browser detour. Stream progress so the user sees it happen.
+      let total = 0;
+      let got = 0;
+      await pendingUpdate.downloadAndInstall((ev) => {
+        if (ev.event === "Started") { total = ev.data.contentLength ?? 0; setDownloadPct(0); }
+        else if (ev.event === "Progress") { got += ev.data.chunkLength; setDownloadPct(total > 0 ? Math.min(100, Math.round((got / total) * 100)) : null); }
+        else if (ev.event === "Finished") { setDownloadPct(100); }
+      });
+      await relaunch();
+    } catch (pluginErr) {
+      // In-place replace failed (e.g. a `tauri dev` build, or a signature
+      // mismatch). Offer the manual download as backup.
+      setCheckErr(`In-place install couldn't run (${String(pluginErr).slice(0, 140)}). You can download it manually below.`);
+      try {
+        const r = await fetch("https://api.github.com/repos/fru-dev3/prevail-desktop/releases?per_page=10");
+        if (r.ok) {
+          const releases = await r.json() as Array<{ tag_name: string; prerelease: boolean; html_url: string }>;
+          const top = releases.find((rel) => !rel.prerelease) ?? releases[0];
+          if (top) { setManualUrl(top.html_url); }
+        }
+      } catch { /* keep the install error visible */ }
+    } finally {
       setInstalling(false);
     }
   }
@@ -1181,6 +1208,10 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
   const cmp = latest ? compareSemver(latest.replace(/^v/, ""), APP_VERSION) : 0;
   const upToDate = latest && cmp <= 0;
   const newer = latest && cmp > 0;
+  // A verified, downloadable update is staged and waiting for an explicit
+  // Install click. (manualUrl-only "newer" means the in-place path failed, so
+  // we keep the button on Check and let the manual download banner take over.)
+  const readyToInstall = !!pendingUpdate && !installing;
 
   return (
     // ABOUT-1: full-width single column (was a narrow centered max-w-xl). The
@@ -1198,20 +1229,20 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <button
-            onClick={checkForUpdates}
-            disabled={checking}
+            onClick={readyToInstall ? installUpdate : checkForUpdates}
+            disabled={checking || installing}
             className="rounded-md bg-text-primary px-3 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {installing
               ? (downloadPct != null ? `Installing… ${downloadPct}%` : "Installing…")
-              : checking ? "Checking…" : newer ? "Download & install" : "Check for updates"}
+              : checking ? "Checking…" : readyToInstall ? "Install update" : "Check for updates"}
           </button>
           {latest ? (
             <span className={`font-mono text-[10px] ${upToDate ? "text-accent" : "text-warn"}`}>
-              {upToDate ? `latest (${latest})` : newer ? `update: ${latest}` : `latest: ${latest}`}
+              {upToDate ? `latest (${latest})` : newer ? `update ready: ${latest}` : `latest: ${latest}`}
             </span>
           ) : (
-            <span className="font-mono text-[10px] text-text-muted">{newer ? "ready to install" : "in-place updates"}</span>
+            <span className="font-mono text-[10px] text-text-muted">in-place updates</span>
           )}
         </div>
         {/* In-place download progress bar. */}
