@@ -1,7 +1,7 @@
 // The Settings page shell, extracted from App.tsx. Owns the section router /
 // left-nav and composes every Settings section from its own module.
 import { useEffect, useState } from "react";
-import { Activity, ArrowLeft, ChevronLeft, ChevronRight, Compass, Database, Github, Layers, Lightbulb, MessagesSquare, Network, Plug, Repeat, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Swords, Target, Webhook, Wrench, Zap } from "lucide-react";
+import { Activity, ArrowLeft, ChevronLeft, ChevronRight, Compass, Database, Github, Layers, Lightbulb, MessagesSquare, Network, Plug, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sigma, Sparkles, Swords, Target, Webhook, Wrench, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { LS, lsGet, lsSet } from "./storage";
 import { useAppearance } from "./hooks";
@@ -112,7 +112,8 @@ export function SettingsPanel({
       { id: "ideal-state", label: "Ideals", icon: Compass },
       { id: "intents", label: "Intents", icon: Lightbulb },
       { id: "daemons", label: "Daemons", icon: Zap },
-      { id: "loopboard", label: "Loops", icon: Repeat },
+      // Loops moved to Work mode → Automations (Phase 2). The render case below
+      // is kept as a harmless deep-link fallback; no nav entry here.
       { id: "activity", label: "Activity", icon: Activity },
     ]},
     { heading: "Connections", items: [
