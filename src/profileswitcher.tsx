@@ -56,14 +56,17 @@ export function ProfileSwitcher({ collapsed }: { collapsed: boolean }) {
   // Nothing to show until a default profile is established (App bootstraps one).
   if (!active) return null;
 
-  const avatar = (p: Profile, size: number) => (
-    <span
-      className="flex shrink-0 items-center justify-center rounded-full font-semibold text-background"
-      style={{ width: size, height: size, fontSize: size * 0.42, background: p.color || "#C4A35A" }}
-    >
-      {initials(p)}
-    </span>
-  );
+  const avatar = (p: Profile, size: number) =>
+    p.image ? (
+      <img src={p.image} alt="" className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />
+    ) : (
+      <span
+        className="flex shrink-0 items-center justify-center rounded-full font-semibold text-background"
+        style={{ width: size, height: size, fontSize: size * 0.42, background: p.color || "#C4A35A" }}
+      >
+        {initials(p)}
+      </span>
+    );
 
   return (
     <div ref={ref} className="relative border-t border-border-subtle">

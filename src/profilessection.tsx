@@ -9,14 +9,26 @@ import { Check, FolderOpen, Lock, Pencil, Plus, Sparkles, Trash2, UserRound, X }
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import {
-  getActiveId, hashPasscode, initials, loadProfiles, newProfileId, PROFILE_COLORS,
+  getActiveId, hashPasscode, imageFileToDataUrl, loadProfiles, newProfileId, PROFILE_COLORS,
   removeProfile, setActiveId, upsertProfile, verifyPasscode, type Profile,
 } from "./profiles";
 
-type Draft = { id: string; label: string; email: string; vaultPath: string; passcode: string; color: string; hadPass: boolean };
+type Draft = { id: string; label: string; email: string; vaultPath: string; passcode: string; color: string; image?: string; hadPass: boolean };
 
 function blankDraft(existingCount: number): Draft {
-  return { id: newProfileId(), label: "", email: "", vaultPath: "", passcode: "", color: PROFILE_COLORS[existingCount % PROFILE_COLORS.length], hadPass: false };
+  return { id: newProfileId(), label: "", email: "", vaultPath: "", passcode: "", color: PROFILE_COLORS[existingCount % PROFILE_COLORS.length], image: undefined, hadPass: false };
+}
+
+// Small avatar that prefers an uploaded image, falling back to a colored initial.
+function Avatar({ p, size }: { p: { label: string; email?: string; color?: string; image?: string }; size: number }) {
+  if (p.image) {
+    return <img src={p.image} alt="" className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />;
+  }
+  return (
+    <span className="flex shrink-0 items-center justify-center rounded-full font-semibold text-background" style={{ width: size, height: size, fontSize: size * 0.42, background: p.color || "#C4A35A" }}>
+      {(p.label || p.email || "?").trim().slice(0, 1).toUpperCase()}
+    </span>
+  );
 }
 
 export function ProfilesSection() {
@@ -38,7 +50,17 @@ export function ProfilesSection() {
   const startAdd = () => { setErr(null); setDraft(blankDraft(profiles.length)); };
   const startEdit = (p: Profile) => {
     setErr(null);
-    setDraft({ id: p.id, label: p.label, email: p.email ?? "", vaultPath: p.vaultPath, passcode: "", color: p.color || PROFILE_COLORS[0], hadPass: !!p.passHash });
+    setDraft({ id: p.id, label: p.label, email: p.email ?? "", vaultPath: p.vaultPath, passcode: "", color: p.color || PROFILE_COLORS[0], image: p.image, hadPass: !!p.passHash });
+  };
+
+  const onPickImage = async (file: File | undefined) => {
+    if (!file || !draft) return;
+    try {
+      const dataUrl = await imageFileToDataUrl(file);
+      setDraft({ ...draft, image: dataUrl });
+    } catch (e) {
+      setErr(`Couldn't load that image: ${e}`);
+    }
   };
 
   const [sampling, setSampling] = useState(false);
@@ -76,7 +98,7 @@ export function ProfilesSection() {
     let passHash = existing?.passHash;
     if (draft.passcode.trim()) passHash = await hashPasscode(draft.passcode.trim());
     else if (!draft.hadPass) passHash = undefined; // explicitly no passcode on a new profile
-    const p: Profile = { id: draft.id, label, email: draft.email.trim() || undefined, vaultPath: draft.vaultPath.trim(), color: draft.color, passHash };
+    const p: Profile = { id: draft.id, label, email: draft.email.trim() || undefined, vaultPath: draft.vaultPath.trim(), color: draft.color, image: draft.image, passHash };
     upsertProfile(p);
     // First profile created becomes active automatically.
     if (!getActiveId()) setActiveId(p.id);
@@ -142,6 +164,20 @@ export function ProfilesSection() {
           </div>
           <div className="grid grid-cols-1 gap-3">
             <div>
+              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-text-muted">Picture</label>
+              <div className="flex items-center gap-3">
+                <Avatar p={{ label: draft.label, email: draft.email, color: draft.color, image: draft.image }} size={48} />
+                <label className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-strong hover:text-text-primary">
+                  {draft.image ? "Change image" : "Upload image"}
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => { void onPickImage(e.target.files?.[0]); e.currentTarget.value = ""; }} />
+                </label>
+                {draft.image && (
+                  <button onClick={() => setDraft({ ...draft, image: undefined })} className="text-[11px] text-text-muted underline hover:text-err">Remove</button>
+                )}
+              </div>
+              <p className="mt-1 text-[11px] text-text-muted">Optional. Falls back to a colored initial if no image is set.</p>
+            </div>
+            <div>
               <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-text-muted">Name</label>
               <input value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} placeholder="e.g. Personal" className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-accent-border focus:outline-none" />
             </div>
@@ -193,7 +229,7 @@ export function ProfilesSection() {
         {profiles.map((p) => (
           <li key={p.id} className={`rounded-lg border bg-surface p-3 ${p.id === activeId ? "border-accent-border" : "border-border-subtle"}`}>
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base font-semibold text-background" style={{ background: p.color || "#C4A35A" }}>{initials(p)}</span>
+              <Avatar p={p} size={40} />
               <div className="flex min-w-0 flex-1 flex-col leading-tight">
                 <span className="flex items-center gap-1.5 truncate text-sm font-semibold text-text-primary">
                   {p.label}

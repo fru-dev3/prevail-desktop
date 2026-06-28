@@ -1298,57 +1298,95 @@ export default function App() {
   if (!isBrowser() && (lockSet || vaultEncrypted) && !unlocked) return <LockScreen vault={vaultPath} encrypted={vaultEncrypted} onUnlock={() => setUnlocked(true)} />;
   if (!vaultPath) return <VaultWizard onPick={pickVault} onLoadSample={loadSample} />;
 
+  // The left Sidebar is shared across every mode (chat, Work, Editor) so the
+  // Work/Editor toggle + profile switcher are always present and switching
+  // between modes is one click — no "Back to app" needed.
+  const sidebarEl = (
+    <Sidebar
+      collapsed={sidebarCollapsed}
+      setCollapsed={setSidebarCollapsed}
+      vaultPath={vaultPath}
+      domains={domains}
+      vaultError={vaultError}
+      selectedDomain={selectedDomain}
+      setSelectedDomain={(name) => { setSelectedApp(null); setAppView(false); setSelectedDomain(name); }}
+      activeAppId={appView && selectedApp ? selectedApp.id : null}
+      openInFinder={openInFinder}
+      tab={tab}
+      setTab={setTab}
+      onDomainCreated={(d) => {
+        setDomains((cur) => [...cur, d].sort((a, b) => a.name.localeCompare(b.name)));
+        setSelectedApp(null); setAppView(false);
+        setSelectedDomain(d.name);
+      }}
+      appearance={appearance}
+      runningDomains={runningDomains}
+      finishedDomains={finishedDomainSet}
+      domainStats={domainStats}
+      railWidth={domainRailWidth}
+      onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
+      onDomainsChanged={() => void refreshDomains()}
+      onOpenApp={openApp}
+      todayThreads={todayThreads}
+      onOpenThread={openTodayThread}
+    />
+  );
+
+  // Editor mode — configuration. Renders inside the shared shell (sidebar stays
+  // put) so the Work/Editor toggle is always visible; no "Back to app" button.
   if (tab === "settings") {
     return (
       <div className="relative flex h-screen flex-col bg-background text-text-primary">
-        <Suspense fallback={<PanelLoading />}>
-        <SettingsPanel
-          appearance={appearance}
-          vaultPath={vaultPath}
-          clis={clis}
-          onRefreshClis={refreshClis}
-          bunkerEnabled={bunkerEnabled}
-          onBunkerChange={applyBunker}
-          onSetupDomains={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
-          onVaultMoved={(p) => {
-            setVaultPath(p);
-            lsSet(LS.vault, p);
-            void invoke("remember_vault", { path: p }).catch(() => {});
-            setSelectedDomain(null);
-            // Force every panel that listens for domain changes (sidebar, stats,
-            // threads, …) to re-scan the NEW vault instead of showing stale data.
-            window.dispatchEvent(new Event("prevail:domains-changed"));
-          }}
-          onBack={() => setTab("chat")}
-          jumpTo={settingsJump}
-          onStartChatWith={(cliId, modelId) => {
-            lsSet(LS.defaultChatCli, cliId);
-            if (modelId) lsSet(`prevail.model.${cliId}`, modelId);
-            setSelectedDomain("");
-            setTab("chat");
-          }}
-        />
-        </Suspense>
+        <div className="flex min-h-0 flex-1">
+          {sidebarEl}
+          <Suspense fallback={<PanelLoading />}>
+          <SettingsPanel
+            appearance={appearance}
+            vaultPath={vaultPath}
+            clis={clis}
+            onRefreshClis={refreshClis}
+            bunkerEnabled={bunkerEnabled}
+            onBunkerChange={applyBunker}
+            onSetupDomains={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
+            onVaultMoved={(p) => {
+              setVaultPath(p);
+              lsSet(LS.vault, p);
+              void invoke("remember_vault", { path: p }).catch(() => {});
+              setSelectedDomain(null);
+              // Force every panel that listens for domain changes (sidebar, stats,
+              // threads, …) to re-scan the NEW vault instead of showing stale data.
+              window.dispatchEvent(new Event("prevail:domains-changed"));
+            }}
+            jumpTo={settingsJump}
+            onStartChatWith={(cliId, modelId) => {
+              lsSet(LS.defaultChatCli, cliId);
+              if (modelId) lsSet(`prevail.model.${cliId}`, modelId);
+              setSelectedDomain("");
+              setTab("chat");
+            }}
+          />
+          </Suspense>
+        </div>
         <BunkerRibbon enabled={bunkerEnabled} />
         <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
+        <BridgeStatusChips />
       </div>
     );
   }
 
-  // Work mode — the operational hub (Work board / Insights / Spark), a sibling
-  // of Editor (Settings). Full-screen like Settings.
+  // Work mode — the operational hub (board / automations / calendar / notes).
+  // Same shared shell as Editor; the sidebar toggle moves between the two.
   if (tab === "work") {
     return (
       <div className="relative flex h-screen flex-col bg-background text-text-primary">
-        <Suspense fallback={<PanelLoading />}>
-          <WorkPanel
-            vaultPath={vaultPath}
-            clis={clis}
-            onBack={() => setTab("chat")}
-            jumpTo={workJump}
-          />
-        </Suspense>
+        <div className="flex min-h-0 flex-1">
+          {sidebarEl}
+          <Suspense fallback={<PanelLoading />}>
+            <WorkPanel vaultPath={vaultPath} clis={clis} jumpTo={workJump} />
+          </Suspense>
+        </div>
         <BunkerRibbon enabled={bunkerEnabled} />
+        <BridgeStatusChips />
       </div>
     );
   }
@@ -1380,34 +1418,7 @@ export default function App() {
         </div>
       )}
       <div className="flex min-h-0 flex-1">
-        <Sidebar
-          collapsed={sidebarCollapsed}
-          setCollapsed={setSidebarCollapsed}
-          vaultPath={vaultPath}
-          domains={domains}
-          vaultError={vaultError}
-          selectedDomain={selectedDomain}
-          setSelectedDomain={(name) => { setSelectedApp(null); setAppView(false); setSelectedDomain(name); }}
-          activeAppId={appView && selectedApp ? selectedApp.id : null}
-          openInFinder={openInFinder}
-          tab={tab}
-          setTab={setTab}
-          onDomainCreated={(d) => {
-            setDomains((cur) => [...cur, d].sort((a, b) => a.name.localeCompare(b.name)));
-            setSelectedApp(null); setAppView(false);
-            setSelectedDomain(d.name);
-          }}
-          appearance={appearance}
-          runningDomains={runningDomains}
-          finishedDomains={finishedDomainSet}
-          domainStats={domainStats}
-          railWidth={domainRailWidth}
-          onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
-          onDomainsChanged={() => void refreshDomains()}
-          onOpenApp={openApp}
-          todayThreads={todayThreads}
-          onOpenThread={openTodayThread}
-        />
+        {sidebarEl}
         {!sidebarCollapsed && (
           <ResizeHandle
             ariaLabel="Resize domain rail"
