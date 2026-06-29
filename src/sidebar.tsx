@@ -413,6 +413,10 @@ export function Sidebar({
         )}
       </div>
 
+      {/* Profile switcher — pinned at the top under the logo (workspace-context
+          convention: Notion/Linear), keeping the bottom uncluttered. */}
+      <ProfileSwitcher collapsed={collapsed} />
+
       {/* Domain list (icon rail when collapsed, full list when expanded) */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
         {/* EDITOR MODE: the single left bar becomes the configuration nav (no
@@ -964,10 +968,6 @@ export function Sidebar({
       <SidebarBenchmarkRuns collapsed={collapsed} />
       <SidebarBenchScheduled collapsed={collapsed} />
       <SidebarBackupActive collapsed={collapsed} />
-
-      {/* Profile switcher (2026 redesign): the active isolated profile + a menu
-          to switch/add/manage. Self-contained — dispatches prevail:switch-profile. */}
-      <ProfileSwitcher collapsed={collapsed} />
 
       {/* Work / Editor + theme - a full-width ribbon pinned to the bottom. The
           2026 redesign splits the old single "Settings" button into the two
