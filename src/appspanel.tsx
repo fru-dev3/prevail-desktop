@@ -1924,39 +1924,200 @@ function skillMethod(s: AppSkill): "Browser" | "MCP" | "API" {
   return "Browser";
 }
 
-// Short, friendly elaboration of WHAT a few notable apps expose and how Prevail
-// uses it, so the Soul tab reads like researched instructions rather than one
-// line. Keyed by normalized id/name. Anything not listed falls back to the
-// generic composer below. No em dashes (app-wide style rule).
+// Bespoke, researched Soul text for the headline connectors people actually
+// reach for first. Each entry reads like instructions: what the app is, what
+// data it exposes, how that data reaches the vault, and how the agent puts it
+// to work for the relevant life domain. Keyed by normalized id/name (lowercase,
+// alphanumeric only), which matches both the catalog-derived id and the title.
+//
+// COVERAGE: these ~55 entries cover the curated, recognizable set across every
+// domain (money, fitness, productivity, media, travel, food, security, etc.).
+// The full catalog is ~1,400+ apps, so the long tail does NOT get hand-written
+// text; it falls through to the category-aware composer below, which produces a
+// solid multi-sentence Soul from the app's primary domain. No em dashes anywhere
+// (app-wide style rule).
 const SOUL_DETAILS: Record<string, string> = {
+  // Fitness and health
   alltrails: "AllTrails knows where and how you move outdoors: the trails you save, the hikes and runs you log, distance, elevation gain, pace, and the conditions you faced. Prevail brings those activities and saved routes into your vault so the picture of your training load and outdoor time lives next to the rest of your health data. With it in context, your AI can plan routes that fit your fitness, balance hard and easy days, line up nutrition and recovery around big efforts, and steer you toward trails that match your goals and the weather.",
   strava: "Strava is your training diary: rides, runs, and workouts with pace, heart rate, power, distance, and elevation, plus the segments and personal records you care about. Prevail pulls these activities into your vault so effort and recovery trends are visible over weeks, not just per session. In context, your AI can spot overtraining, suggest when to push or rest, and tie performance to sleep, nutrition, and schedule.",
-  spotify: "Spotify reflects your listening: the tracks, artists, and genres you return to, your playlists, and how your taste shifts over time. Prevail brings this into your vault as a signal of mood, focus, and routine. Your AI can use it to shape focus sessions, surface music for the task at hand, and notice patterns worth acting on.",
+  garminconnect: "Garmin Connect holds the full readout from your watch or bike computer: workouts, steps, heart rate, sleep stages, stress, body battery, and training status. Prevail brings these daily metrics and activities into your vault so recovery and load sit alongside the rest of your health picture. Your AI can use it to time hard sessions, flag undertraining or burnout, and align nutrition and rest with how your body is actually responding.",
+  ouraring: "Oura tracks recovery and readiness: sleep stages and timing, resting heart rate, heart rate variability, body temperature, and a daily readiness score. Prevail pulls these nightly metrics into your vault so sleep and recovery trends are visible next to your training and schedule. In context, your AI can tell you when to push and when to back off, protect your sleep window, and connect poor nights to the choices that caused them.",
+  whoop: "Whoop measures strain and recovery continuously: heart rate, heart rate variability, respiratory rate, sleep performance, and a daily recovery score. Prevail brings these readings into your vault so effort and recovery are tracked as a system, not isolated days. Your AI can use it to plan training intensity, surface when recovery is lagging, and tie strain to sleep, stress, and nutrition.",
+  fitbit: "Fitbit logs your everyday movement and wellness: steps, heart rate, active minutes, sleep, and weight. Prevail pulls these metrics into your vault so the slow trends in your activity and rest are easy to see. In context, your AI can nudge you toward movement goals, watch sleep consistency, and relate your energy to how you have been living.",
+  peloton: "Peloton records your guided workouts: rides, runs, strength, and yoga with duration, output, heart rate, and the classes and instructors you favor. Prevail brings this workout history into your vault so your training volume and preferences live with the rest of your fitness data. Your AI can use it to build a balanced week, suggest classes that fit your goals, and keep effort and recovery in sync.",
+  applehealth: "Apple Health is the hub your iPhone and Apple Watch feed: steps, heart rate, workouts, sleep, and any health records other apps write into it. Prevail brings this consolidated health picture into your vault so the signals scattered across devices live in one place. In context, your AI can track trends across activity, sleep, and vitals, prep you for appointments, and connect how you feel to how you have been living.",
+  epicmychart: "Epic MyChart is your patient portal: visit summaries, lab results, medications, immunizations, upcoming appointments, and messages from your care team. Prevail brings these records into your vault so your medical history is in your hands and not scattered across portals. Your AI can use it to track results over time, keep medications and follow-ups straight, and help you walk into appointments fully prepared.",
+  onemedical: "One Medical holds your primary-care relationship: appointments, visit notes, prescriptions, and messages with your providers. Prevail brings these into your vault so your care history and next steps are easy to find. In context, your AI can track follow-ups, remember what was said, and help you prepare for and act on each visit.",
+  calm: "Calm reflects how you tend to your mind: the meditations, sleep stories, and breathing sessions you use and how consistent you are. Prevail brings this into your vault as a signal of stress and routine. Your AI can use it to protect wind-down time, suggest the right session for the moment, and notice when stress is creeping up.",
+  headspace: "Headspace tracks your mindfulness practice: the sessions you complete, your streaks, and the themes you return to. Prevail brings this into your vault as a window into stress, focus, and routine. In context, your AI can help you keep the habit, surface a session that fits how your day is going, and tie practice to how you feel and perform.",
+
+  // Money, banking, and payments
   plaid: "Plaid is an aggregator: with one secure connection it pulls balances and transactions across many of your bank and card accounts at once. Prevail brings that unified financial picture into your vault so spending, cash flow, and net worth are all in one place. In context, your AI can categorize spending, flag unusual charges, and keep budgets and goals honest against real numbers.",
+  chase: "Chase exposes your checking, savings, and credit card activity: balances, posted and pending transactions, statements, and payment due dates. Prevail brings this into your vault so your day-to-day money lives in one place you control. Your AI can use it to categorize spending, watch cash flow, flag unusual charges, and keep your budget honest against what actually cleared.",
+  bankofamerica: "Bank of America exposes your account balances, transactions, statements, and card activity. Prevail brings this into your vault so your everyday spending and cash flow are visible alongside the rest of your money. In context, your AI can categorize transactions, surface recurring charges, and keep budgets and savings goals tied to real numbers.",
+  americanexpress: "American Express holds your card activity: charges, statements, payment due dates, rewards balances, and the merchants you spend with. Prevail brings this into your vault so card spending sits next to the rest of your financial picture. Your AI can use it to track spending by category, watch for unusual charges, surface rewards worth using, and keep payments from slipping.",
+  capitalone: "Capital One exposes your card and bank activity: balances, transactions, statements, and rewards. Prevail brings this into your vault so spending and cash flow are easy to follow. In context, your AI can categorize charges, flag anomalies, and keep your budget aligned with what you are actually spending.",
+  wellsfargo: "Wells Fargo exposes your checking, savings, and card activity: balances, transactions, and statements. Prevail brings this into your vault so your accounts are visible in one place you own. Your AI can use it to track cash flow, categorize spending, and keep budgets and bills on track.",
+  paypal: "PayPal holds your payments and transfers: purchases, money sent and received, balances, and linked funding sources. Prevail brings this into your vault so the spending and income flowing through PayPal joins the rest of your money picture. In context, your AI can categorize activity, track who you pay and get paid by, and surface recurring charges.",
+  venmo: "Venmo records the money you move with people: payments, requests, transfers, and the notes attached to them. Prevail brings this into your vault so peer-to-peer spending is part of your full financial picture rather than an untracked gap. Your AI can use it to categorize what you spend socially, settle who owes what, and fold it into your budget.",
+  applepay: "Apple Pay reflects your tap-to-pay and in-app purchases: the transactions, merchants, and cards behind them. Prevail brings this into your vault so contactless spending is captured alongside your other accounts. In context, your AI can categorize purchases, spot recurring charges, and keep your budget complete.",
+
+  // Investing
+  fidelityinvestments: "Fidelity holds your investing and retirement accounts: positions, balances, trades, dividends, cost basis, and performance. Prevail brings this into your vault so your portfolio sits next to the rest of your wealth picture. Your AI can use it to track allocation and returns, watch fees and cash drag, and keep your investing aligned with your goals and risk tolerance.",
+  charlesschwab: "Charles Schwab exposes your brokerage and retirement holdings: positions, balances, transactions, and performance. Prevail brings this into your vault so your investments are visible alongside your cash and debts. In context, your AI can track allocation, monitor gains and losses, and help you keep the portfolio aligned with your plan.",
+  robinhood: "Robinhood holds your trading activity: stock, ETF, options, and crypto positions, orders, and balances. Prevail brings this into your vault so your investing sits with the rest of your money. Your AI can use it to track allocation and performance, watch risk concentration, and keep trading honest against your longer-term goals.",
+  coinbase: "Coinbase exposes your crypto holdings and activity: balances, buys, sells, transfers, and the assets you hold. Prevail brings this into your vault so your crypto is part of your full net-worth picture rather than a silo. In context, your AI can track value and cost basis, watch volatility and concentration, and prepare clean records for taxes.",
+  vanguard: "Vanguard holds your funds and retirement accounts: positions, balances, contributions, and performance. Prevail brings this into your vault so your long-term investing lives with the rest of your wealth. Your AI can use it to track allocation, monitor contributions toward goals, and keep fees and balance in view.",
+
+  // Budgeting and taxes
+  intuitquickbooks: "QuickBooks holds your business books: income, expenses, invoices, bills, and reports. Prevail brings this into your vault so your business finances are part of the context your AI reasons over. In context, your AI can track profit and cash flow, organize deductible spending, and keep records ready well before tax time.",
+  intuitturbotax: "TurboTax holds your tax filings: prior returns, income documents, deductions, and refund or balance history. Prevail brings these into your vault so your tax picture is available year-round, not just in April. Your AI can use it to estimate what you will owe, surface deductions worth tracking, and keep documents organized for the next filing.",
+  ynab: "YNAB is your zero-based budget: categories, assigned money, transactions, and goals. Prevail brings this into your vault so your plan for every dollar lives alongside your real account activity. In context, your AI can keep categories funded, flag overspending early, and help you steer money toward the goals you set.",
+  monarchmoney: "Monarch Money aggregates your accounts and budget: balances, transactions, categories, net worth, and recurring bills. Prevail brings this unified picture into your vault so your whole financial life is in one place you control. Your AI can use it to track spending and net worth, watch subscriptions, and keep budgets and goals on course.",
+  rocketmoney: "Rocket Money surfaces your subscriptions and recurring spending: bills, free trials, and where your money leaks each month. Prevail brings this into your vault so recurring costs are visible and easy to manage. In context, your AI can flag subscriptions worth canceling, watch for surprise increases, and keep monthly commitments under control.",
+  expensify: "Expensify holds your expenses and receipts: scanned receipts, categorized spending, mileage, and reports. Prevail brings this into your vault so business and reimbursable spending is organized and searchable. Your AI can use it to keep deductible spending tidy, prepare reports, and have clean records ready for taxes.",
+  creditkarma: "Credit Karma exposes your credit picture: scores, report details, open accounts, balances, and inquiries. Prevail brings this into your vault so your credit health is tracked over time, not checked once and forgotten. In context, your AI can watch your score, catch errors or signs of fraud early, and help you plan moves like paying down balances or applying for new credit.",
+
+  // Productivity and notes
+  google: "Google is the hub of your digital life: Gmail, Calendar, Drive, Contacts, and more. Prevail signs in once and brings the pieces you choose into your vault, so your mail, schedule, documents, and contacts become shared context. In context, your AI can pull commitments and dates out of email, protect focus time on your calendar, find the right document fast, and tie it all to the goals you set.",
+  notion: "Notion holds your knowledge and projects: notes, docs, databases, tasks, and wikis. Prevail brings the pages and databases you choose into your vault so your second brain is part of the context your AI reasons over. Your AI can use it to connect notes to the work they belong to, track tasks and deadlines, and turn loose ideas into next steps.",
+  asana: "Asana holds your projects and tasks: assignments, due dates, statuses, and the projects they roll up to. Prevail brings this into your vault so the work you owe and the work you are waiting on is visible alongside your calendar. In context, your AI can keep deadlines in view, surface what needs attention next, and tie tasks to your larger goals.",
+  todoist: "Todoist is your task list: tasks, projects, due dates, priorities, and labels. Prevail brings this into your vault so your commitments live next to your calendar and notes. Your AI can use it to keep deadlines straight, surface what to do next, and turn vague intentions into scheduled action.",
+  trello: "Trello holds your boards: cards, lists, due dates, and the flow of work across them. Prevail brings this into your vault so the state of your projects is part of your working context. In context, your AI can track what is in flight, surface what is stuck, and keep momentum on what matters.",
+  jira: "Jira holds your engineering work: issues, sprints, statuses, assignees, and priorities. Prevail brings this into your vault so the work in flight is visible alongside your schedule. Your AI can use it to track what needs attention, surface blockers, and keep effort tied to your priorities.",
+  linear: "Linear holds your product and engineering work: issues, projects, cycles, and statuses. Prevail brings this into your vault so what you are building is part of your working context. In context, your AI can track progress, surface what needs review or attention, and keep work aligned with your goals.",
+  obsidian: "Obsidian is your local knowledge base: linked markdown notes, daily notes, and the web of ideas between them. Prevail brings these notes into your vault so your thinking is part of the context your AI reasons over. Your AI can use it to connect ideas, resurface relevant notes, and turn what you have written into action.",
+  evernote: "Evernote holds your captured notes, clippings, and documents. Prevail brings these into your vault so the things you saved are searchable and connected to the rest of your context. In context, your AI can surface the right note at the right moment and tie what you captured to what you are doing.",
+  things3: "Things holds your tasks and projects: to-dos, areas, deadlines, and your plan for today and upcoming. Prevail brings this into your vault so your commitments live next to your calendar and notes. Your AI can use it to keep deadlines in view, plan a realistic day, and move projects forward.",
+  calendly: "Calendly holds your scheduling: booked meetings, event types, availability, and who booked time with you. Prevail brings this into your vault so meetings others book land in your working context. In context, your AI can protect focus time, spot conflicts, and plan your day around what is on the books.",
+
+  // Communication and email
+  slack: "Slack holds your team conversations: channels, direct messages, mentions, threads, and shared files. Prevail brings the conversations you choose into your vault so commitments and decisions are not buried in chat. Your AI can use it to surface what needs a response, pull out action items and dates, and keep the people and decisions that matter in context.",
+  microsoftteams: "Microsoft Teams holds your work conversations and meetings: chats, channels, calls, and shared files. Prevail brings these into your vault so commitments and decisions are searchable alongside your other work. In context, your AI can surface what needs a reply, extract action items, and keep collaboration tied to your tasks and calendar.",
+  discord: "Discord holds your community conversations: servers, channels, direct messages, and shared content. Prevail brings the conversations you choose into your vault so the threads you care about are part of your context. Your AI can use it to track open discussions, surface what needs a response, and keep useful content findable.",
+  whatsapp: "WhatsApp holds your personal conversations: chats, groups, and shared media. Prevail brings the conversations you choose into your vault so commitments and plans made in chat are not lost. In context, your AI can surface what needs a reply, pull out dates and to-dos, and keep the people who matter in context.",
+  protonmail: "Proton Mail holds your private, encrypted email: messages, threads, contacts, and attachments. Prevail brings the mail you choose into your vault so the commitments and records living in your inbox become usable context. Your AI can use it to surface what needs a reply, pull out receipts, dates, and tasks, and keep important threads from getting buried.",
+
+  // Media
+  spotify: "Spotify reflects your listening: the tracks, artists, and genres you return to, your playlists, and how your taste shifts over time. Prevail brings this into your vault as a signal of mood, focus, and routine. Your AI can use it to shape focus sessions, surface music for the task at hand, and notice patterns worth acting on.",
+  applemusic: "Apple Music reflects your listening: the songs, artists, and playlists you favor and your library over time. Prevail brings this into your vault as a signal of mood, focus, and routine. In context, your AI can shape focus and downtime, surface the right music for the moment, and notice patterns worth acting on.",
+  netflix: "Netflix reflects your viewing: the shows and films you watch, your list, and your habits over time. Prevail brings this into your vault as a window into how you spend downtime. Your AI can use it to surface what fits the moment, notice how much time goes here, and connect it to your routine.",
+  youtubemusic: "YouTube Music reflects your listening: the tracks, artists, and playlists you return to and your library. Prevail brings this into your vault as a signal of mood, focus, and routine. In context, your AI can shape focus sessions, surface music for the task at hand, and notice patterns worth acting on.",
+
+  // Travel
+  uber: "Uber holds your rides: trips taken, routes, fares, and the places you go. Prevail brings this into your vault so your movement and travel spending are part of your context. Your AI can use it to track travel costs, remember the places you visit, and plan trips that fit your schedule and budget.",
+  lyft: "Lyft holds your rides: trips, routes, fares, and destinations. Prevail brings this into your vault so where you go and what it costs are part of your picture. In context, your AI can track travel spending, recall frequent destinations, and help you plan around your day.",
+  bookingcom: "Booking.com holds your travel reservations: hotels and stays, dates, prices, confirmations, and cancellation windows. Prevail brings these into your vault so your trips and their costs live in one place. Your AI can use it to keep itineraries straight, watch cancellation deadlines, and plan travel that fits your calendar and budget.",
+  airbnb: "Airbnb holds your stays: bookings, dates, locations, prices, and saved listings. Prevail brings these into your vault so your trips and lodging costs are part of your travel picture. In context, your AI can keep itineraries together, track spending, and plan stays around your schedule and budget.",
+  expedia: "Expedia holds your trips: flights, hotels, cars, dates, prices, and confirmations. Prevail brings these into your vault so the moving parts of a trip live in one itinerary. Your AI can use it to keep travel organized, watch dates and deadlines, and plan trips that fit your budget and calendar.",
+  tripit: "TripIt assembles your itineraries: flights, hotels, cars, and reservations pulled together into one trip plan. Prevail brings these into your vault so every leg of a trip is in one place. In context, your AI can keep your schedule and travel in sync, surface the next step, and flag conflicts and timing risks.",
+  googlemaps: "Google Maps holds your places and movement: saved locations, your timeline, frequent spots, and routes. Prevail brings the pieces you choose into your vault so where you go is part of your context. Your AI can use it to plan routes, remember the places you care about, and tie travel time to your schedule.",
+
+  // Food
+  doordash: "DoorDash holds your food orders: restaurants, items, prices, delivery history, and favorites. Prevail brings these into your vault so food spending and habits are part of your picture. Your AI can use it to track what you spend on food, remember the places and dishes you liked, and plan meals around your schedule and budget.",
+  ubereats: "Uber Eats holds your food orders: restaurants, items, prices, and delivery history. Prevail brings these into your vault so eating-out spending and preferences are tracked. In context, your AI can watch food spending, recall favorites, and help you plan meals that fit your budget.",
+  opentable: "OpenTable holds your dining reservations: restaurants, dates, party sizes, and your dining history. Prevail brings these into your vault so your plans and the places you love are part of your context. Your AI can use it to keep reservations on your calendar, remember favorites, and suggest spots that fit the occasion.",
+  grubhub: "Grubhub holds your food orders: restaurants, items, prices, and delivery history. Prevail brings these into your vault so food spending and preferences are part of your picture. In context, your AI can track what you spend, recall favorites, and help plan meals around your budget.",
+  instacart: "Instacart holds your grocery orders: items, stores, prices, and reorder history. Prevail brings these into your vault so grocery spending and what you actually buy are part of your context. Your AI can use it to track food costs, remember staples, and help plan shopping around meals and budget.",
+
+  // Security
+  "1password": "1Password holds the keys to your digital life: logins, passwords, passkeys, secure notes, and security alerts. Prevail brings the metadata you choose into your vault so you can see where your accounts live without exposing secrets. In context, your AI can map your account footprint, flag weak or reused credentials and breaches, and help you keep everything locked down.",
+  bitwarden: "Bitwarden holds your credentials: logins, passwords, and secure notes across your accounts. Prevail brings the metadata you choose into your vault so your account footprint is visible without exposing secrets. Your AI can use it to surface weak or reused passwords, flag breaches, and keep your security tight.",
+  dashlane: "Dashlane holds your logins, passwords, and security health. Prevail brings the metadata you choose into your vault so where your accounts live is part of your context without revealing secrets. In context, your AI can flag weak or reused credentials and breaches and help you stay secure.",
+  nordvpn: "NordVPN reflects how you protect your connection: usage, servers, and security settings. Prevail brings what you choose into your vault so your privacy posture is part of your context. Your AI can use it to keep protection consistent and surface anything that needs attention.",
+
+  // Shopping
+  amazon: "Amazon holds your purchase history: orders, items, prices, subscriptions, and deliveries. Prevail brings these into your vault so what you buy and what it costs are part of your context. Your AI can use it to track spending, watch recurring orders and subscriptions, remember past purchases, and follow deliveries.",
+  costco: "Costco holds your membership and purchases: orders, items, prices, and renewal dates. Prevail brings these into your vault so warehouse and online spending is part of your picture. In context, your AI can track spending, remember what you stock up on, and keep the membership and its costs in view.",
+  ebay: "eBay holds your buying and selling: orders, bids, listings, prices, and history. Prevail brings these into your vault so the money flowing through eBay is part of your context. Your AI can use it to track spending and proceeds, watch listings, and remember what you bought and sold.",
+
+  // Learning
+  audible: "Audible holds your listening life: the audiobooks in your library, your progress, and what you have finished. Prevail brings these into your vault so what you are learning and enjoying is part of your context. Your AI can use it to track progress toward reading goals, surface the next title worth your time, and connect what you are listening to with your interests.",
+  duolingo: "Duolingo tracks your language learning: lessons, streaks, skills, and progress. Prevail brings these into your vault so your learning habit and momentum are visible. In context, your AI can help you keep the streak alive, surface what to practice next, and tie progress to your goals.",
+  goodreads: "Goodreads holds your reading life: the books you have read, are reading, and want to read, plus your ratings and shelves. Prevail brings these into your vault so your reading goals and tastes are part of your context. Your AI can use it to track progress, surface your next read, and connect books to your interests.",
+
+  // Career and social
+  linkedin: "LinkedIn holds your professional life: your profile, connections, messages, and activity. Prevail brings the pieces you choose into your vault so your network and career signals are part of your context. In context, your AI can track opportunities and contacts, keep your record current, and tie career moves to your longer-term goals.",
+  instagram: "Instagram reflects your social activity: the accounts you follow, what you post and save, and how you engage. Prevail brings what you choose into your vault as a window into your interests and time spent. Your AI can use it to track what you have shared and saved, surface what is worth attention, and notice patterns in how you spend time there.",
+  reddit: "Reddit holds your interests and activity: the communities you follow, your posts and comments, and what you save. Prevail brings what you choose into your vault so the topics you care about are part of your context. In context, your AI can surface saved content, track discussions you care about, and notice where your attention goes.",
+  xtwitter: "X holds your feed and activity: who you follow, your posts, bookmarks, and engagement. Prevail brings what you choose into your vault as a signal of your interests and attention. Your AI can use it to surface what you saved, track topics you care about, and notice patterns in how you spend time there.",
+
+  // Smart home
+  ring: "Ring holds your home security activity: doorbell and camera events, motion alerts, and recordings. Prevail brings the metadata you choose into your vault so what happens at home is part of your context. In context, your AI can surface events that need attention and keep a record of activity at your doors.",
+  philipshue: "Philips Hue reflects your lighting: scenes, routines, and how your lights respond to your day. Prevail brings what you choose into your vault so your home routines are part of your context. Your AI can use it to align lighting with your schedule and surface routines worth automating.",
+  googlehome: "Google Home holds your smart-home setup: devices, routines, and activity. Prevail brings what you choose into your vault so what is happening at home is part of your context. In context, your AI can track device activity, automate routines, and surface anything that needs attention.",
+
+  // Dev and automotive
+  github: "GitHub holds your code and project activity: repositories, issues, pull requests, commits, and reviews. Prevail brings these into your vault so the work you are building is part of your context. Your AI can use it to track work in flight, surface what needs review or attention, and keep engineering effort tied to your priorities.",
+  zoom: "Zoom holds your meetings: scheduled calls, recordings, and transcripts. Prevail brings what you choose into your vault so what was said and decided is searchable alongside your other work. In context, your AI can pull out action items and decisions, keep follow-ups straight, and tie meetings to your tasks and calendar.",
+  tesla: "Tesla exposes your vehicle: charge level and history, location, trips, climate, and software status. Prevail brings what you choose into your vault so your car is part of your daily context. Your AI can use it to plan charging and routes, track mileage and efficiency, and keep maintenance and costs in view.",
 };
+
+// Category-aware fallback for the long tail. The catalog runs to ~1,400+ apps,
+// far more than is sensible to hand-write, so any app without a bespoke entry
+// above leans on its primary domain to still produce a solid, multi-sentence
+// Soul. Each domain says what that kind of app typically holds and what the
+// agent does with it; the method clause explains how the data reaches the vault.
+const CATEGORY_SOUL: Record<string, { holds: string; uses: string }> = {
+  money: { holds: "your balances, transactions, transfers, and statements", uses: "track spending, cash flow, and net worth, flag unusual charges, and keep your budget and goals honest against real numbers" },
+  credit: { holds: "your credit scores, report details, open accounts, and inquiries", uses: "watch your score over time, catch errors or signs of fraud early, and plan moves like paying down balances or applying for new credit" },
+  investing: { holds: "your holdings, balances, trades, dividends, and performance", uses: "track allocation and returns, watch fees and risk, and keep your investing aligned with your goals" },
+  taxes: { holds: "your income, expenses, receipts, and tax documents", uses: "organize deductible spending, estimate what you owe, and keep clean records ready well before filing season" },
+  insurance: { holds: "your policies, coverage, premiums, claims, and renewal dates", uses: "track what you are covered for, surface gaps or overlaps, and remind you before renewals and deadlines" },
+  realestate: { holds: "your listings, bookings, properties, and related costs", uses: "track value and expenses, plan stays or moves, and keep housing decisions tied to your budget and calendar" },
+  health: { holds: "your records, results, prescriptions, appointments, and visit history", uses: "keep a clear picture of your health over time, track medications and follow-ups, and prepare for appointments with full context" },
+  fitness: { holds: "your workouts, activity, heart rate, sleep, and recovery", uses: "see training load and recovery trends, balance hard and easy days, and tie performance to sleep, nutrition, and schedule" },
+  email: { holds: "your messages, threads, contacts, and attachments", uses: "surface what needs a reply, pull out commitments, receipts, and dates, and keep important threads from getting buried" },
+  communication: { holds: "your conversations, contacts, and shared files", uses: "track open threads and commitments, surface what needs a response, and keep the people and decisions that matter in context" },
+  productivity: { holds: "your notes, tasks, projects, and documents", uses: "keep tasks and deadlines in one place, connect notes to the work they belong to, and turn loose ideas into tracked next steps" },
+  calendar: { holds: "your events, meetings, invitations, and availability", uses: "protect focus time, spot conflicts and travel gaps, and plan your days around what actually matters" },
+  files: { holds: "your documents, photos, and stored files", uses: "find the right file fast, keep important records together, and bring relevant documents into whatever you are working on" },
+  security: { holds: "your logins, passkeys, and security alerts", uses: "map where your accounts live, flag weak or reused credentials and breaches, and keep your digital life locked down" },
+  career: { holds: "your profile, connections, documents, and professional activity", uses: "track opportunities and contacts, keep your record current, and tie career moves to your longer-term goals" },
+  shopping: { holds: "your orders, purchases, subscriptions, and delivery status", uses: "track spending and deliveries, watch recurring charges, and remember what you bought and when" },
+  travel: { holds: "your trips, bookings, itineraries, loyalty points, and routes", uses: "keep itineraries in one place, track points and status, and plan trips that fit your schedule and budget" },
+  smarthome: { holds: "your devices, routines, sensors, and activity", uses: "track what is happening at home, automate routines, and surface anything that needs attention" },
+  social: { holds: "your posts, activity, connections, and saved content", uses: "track what you have shared and saved, surface what is worth your attention, and notice patterns in how you spend time there" },
+  media: { holds: "your listening and viewing: the music, shows, and content you return to", uses: "shape focus and downtime, surface what fits the moment, and notice patterns in mood and routine worth acting on" },
+  learning: { holds: "your courses, books, progress, and library", uses: "track what you are learning and reading, keep momentum on goals, and surface the next thing worth your time" },
+  government: { holds: "your official records, benefits, filings, and notices", uses: "keep important documents and deadlines in one place, track benefits and obligations, and never miss a required action" },
+  utilities: { holds: "your accounts, usage, bills, and service status", uses: "track usage and costs, catch billing surprises, and stay ahead of due dates and outages" },
+  automotive: { holds: "your vehicle status, trips, charging or fuel, and service history", uses: "track mileage and maintenance, plan routes and charging, and keep ownership costs in view" },
+  food: { holds: "your orders, reservations, favorites, and delivery history", uses: "track food spending, remember the places and dishes you liked, and plan meals around your schedule and budget" },
+  family: { holds: "your shared schedules, contacts, tasks, and care arrangements", uses: "keep the household coordinated, track commitments and appointments, and make sure nothing for the people you care about slips" },
+  giving: { holds: "your donations, pledges, and giving history", uses: "track what you have given, keep records ready for taxes, and align your giving with the causes you care about" },
+  legal: { holds: "your documents, contracts, signatures, and deadlines", uses: "keep agreements and key dates in one place, track what needs signing or review, and have the right documents on hand" },
+  news: { holds: "the sources, topics, and articles you follow", uses: "surface what matters to you, cut through the noise, and keep you current on the subjects you track" },
+  dev: { holds: "your repositories, issues, builds, and project activity", uses: "track work in flight, surface what needs review or attention, and keep engineering effort tied to your priorities" },
+};
+
+const CATEGORY_SOUL_DEFAULT = { holds: "the records it keeps about you", uses: "fold that into the context your AI reasons over and put it to work on the goals you set" };
+
+// Build the "how the data reaches your vault" clause from the connection method.
+function howClause(name: string, method: string): string {
+  return method === "Browser"
+    ? `Prevail signs into ${name} once in a real browser, learns how to fetch what you ask for, and replays that automatically on a schedule.`
+    : method === "MCP"
+      ? `Prevail talks to ${name} through its MCP server and pulls what you ask for on a schedule.`
+      : method === "API"
+        ? `Prevail connects to the ${name} API and pulls what you ask for on a schedule.`
+        : `Prevail connects to ${name} and keeps what you ask for in sync on a schedule.`;
+}
 
 // Compose a rich, instruction-style description of what connecting this app
 // does: what data it exposes, how it is collected into the vault, and how it is
 // used. Used as the always-shown "How this connection works" block in the Soul
-// tab so every app reads richly even without a hand-written entry.
+// tab so every app reads richly. Bespoke text covers the curated set above; the
+// long tail uses the category-aware composer keyed on the app's primary domain.
 function richSoulFor(app: EngineApp): string {
   const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const hit = SOUL_DETAILS[norm(app.id)] || SOUL_DETAILS[norm(app.title || "")];
   if (hit) return hit;
   const name = app.title || app.id;
-  const domains = (app.domains ?? []).map(titleCase);
   const method = methodLabel(app.integration);
-  const how = method === "Browser"
-    ? `Prevail signs into ${name} once in a real browser, learns how to fetch the data you ask for, and replays that automatically on a schedule.`
-    : method === "MCP"
-      ? `Prevail talks to ${name} through its MCP server and pulls the data you ask for on a schedule.`
-      : method === "API"
-        ? `Prevail connects to the ${name} API and pulls the data you ask for on a schedule.`
-        : `Prevail connects to ${name} and keeps the data you ask for in sync on a schedule.`;
-  const where = domains.length
-    ? `Everything it pulls lands in your private vault and feeds your ${domains.join(", ")} ${domains.length > 1 ? "domains" : "domain"}, so it is part of the context your AI reasons over.`
-    : "Everything it pulls lands in your private vault, so it is part of the context your AI reasons over.";
-  return `Connecting ${name} brings the records it holds about you into one place you control. ${how} ${where} Edit the note above to tell your AI exactly why ${name} matters to you and what to do with it.`;
+  const domain = (app.domains ?? [])[0] || "";
+  const cat = CATEGORY_SOUL[domain] || CATEGORY_SOUL_DEFAULT;
+  return `${name} holds ${cat.holds}. ${howClause(name, method)} Everything it pulls lands in your private vault, where your AI can ${cat.uses}.`;
 }
 
 // Shown in the Skills tab before any skill is learned, so the skill pack reads
