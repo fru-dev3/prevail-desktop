@@ -7,6 +7,7 @@ import type { CliInfo, Domain, DomainTab, EngineApp, TabId, ThreadMeta } from ".
 import { BUNKER_LS, LS, PREF, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet } from "./storage";
 import { track } from "./telemetry";
 import { ensureDefaultProfile } from "./profiles";
+import { QuickCapture } from "./quickcapture";
 import { BridgeStatusChips, DemoRibbon, ResizeHandle } from "./widgets";
 import { useProcesses } from "./processes";
 import { OnboardingModal } from "./panels3";
@@ -1379,6 +1380,7 @@ export default function App() {
         <BunkerRibbon enabled={bunkerEnabled} />
         <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
         <BridgeStatusChips />
+        <QuickCapture vaultPath={vaultPath} />
       </div>
     );
   }
@@ -1397,6 +1399,7 @@ export default function App() {
         <BunkerRibbon enabled={bunkerEnabled} />
         <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
         <BridgeStatusChips />
+        <QuickCapture vaultPath={vaultPath} />
       </div>
     );
   }
@@ -1853,6 +1856,7 @@ export default function App() {
           onApplied={() => void refreshDomains()}
         />
       )}
+      <QuickCapture vaultPath={vaultPath} />
     </div>
   );
 }
