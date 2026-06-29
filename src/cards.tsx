@@ -39,7 +39,7 @@ export function SidebarProcesses({ collapsed, setTab }: { collapsed: boolean; se
   const jump = (p: { kind: string; domain?: string | null }) => {
     if (p.kind === "council") setTab?.("council");
     else if (p.kind === "benchmark") setTab?.("benchmark");
-    else if (p.kind === "loop" && p.domain) window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: p.domain }));
+    else if ((p.kind === "loop" || p.kind === "audit") && p.domain) window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: p.domain }));
     else setTab?.("chat");
   };
   if (collapsed) {
