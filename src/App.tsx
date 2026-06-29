@@ -604,7 +604,7 @@ export default function App() {
         }
       }));
       // Forward the event channels the UI listens to → web clients.
-      const channels = ["chat:chunk", "chat:done", "engine-chat:line", "engine-chat:done", "benchmark:chunk", "benchmark:done", "ingestion:artifact", "ingestion:browser", "connector_learn:line", "connector_learn:done", "connector_run:line", "connector_run:done", "tg:message_in", "tg:message_out"];
+      const channels = ["chat:chunk", "chat:done", "engine-chat:line", "engine-chat:done", "engine-agent:line", "engine-agent:done", "benchmark:chunk", "benchmark:done", "ingestion:artifact", "ingestion:browser", "connector_learn:line", "connector_learn:done", "connector_run:line", "connector_run:done", "tg:message_in", "tg:message_out"];
       for (const ch of channels) {
         unlistens.push(await listen<unknown>(ch, (e) => { void invoke("webui_event", { event: ch, payload: e.payload }); }));
       }
@@ -1214,6 +1214,14 @@ export default function App() {
   }, []);
   useEffect(() => {
     void refreshClis();
+  }, [refreshClis]);
+
+  // Re-detect runtimes on demand (the Runtimes "Re-check" button), so repairing
+  // a broken install clears its BROKEN/not-installed state without an app restart.
+  useEffect(() => {
+    const onRescan = () => { void refreshClis(); };
+    window.addEventListener("prevail:rescan-clis", onRescan);
+    return () => window.removeEventListener("prevail:rescan-clis", onRescan);
   }, [refreshClis]);
 
   useEffect(() => {

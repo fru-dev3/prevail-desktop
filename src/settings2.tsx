@@ -13,6 +13,8 @@ import { Toggle } from "./ui";
 import { DaemonCard, HeadlessLearnCard } from "./panels";
 import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
 import { SettingsHeader } from "./sectionutil";
+import { VENDOR_BRAND, isHarnessRuntime } from "./constants";
+import { useDetectedClis } from "./hooks";
 import type { DaemonStatus, SkillEntry } from "./types";
 
 // One collapsible card per routine. Routes through the canonical CollapsibleSection
@@ -59,6 +61,12 @@ function DaemonGroup({ icon, title, summary, running, enabled = true, defaultOpe
 }
 
 export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
+  // Installed runtimes for the provider dropdown (the global default executor for
+  // distill + loops). Only ones actually on the machine; harnesses included so a
+  // loop can default to an agent.
+  const installedRuntimes = useDetectedClis().filter((c) => c.available);
+  const provModels = installedRuntimes.map((c) => c.id).filter((id) => !isHarnessRuntime(id));
+  const provHarnesses = installedRuntimes.map((c) => c.id).filter((id) => isHarnessRuntime(id));
   const [distillSt, setDistillSt] = useState<DaemonStatus | null>(null);
   const [remindersSt, setRemindersSt] = useState<DaemonStatus | null>(null);
   const [taskgenSt, setTaskgenSt] = useState<DaemonStatus | null>(null);
@@ -170,9 +178,17 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
             control={
               <select value={dProvider} onChange={(e) => { setDProvider(e.target.value); setPref(PREF.memoryProvider, e.target.value); }}
                 className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none">
-                <option value="claude">Claude</option>
-                <option value="codex">Codex</option>
-                <option value="ollama">Ollama (local)</option>
+                {provModels.length === 0 && provHarnesses.length === 0 && <option value={dProvider}>{VENDOR_BRAND[dProvider]?.name ?? dProvider}</option>}
+                {provModels.length > 0 && (
+                  <optgroup label="Models">
+                    {provModels.map((id) => <option key={id} value={id}>{VENDOR_BRAND[id]?.name ?? id}</option>)}
+                  </optgroup>
+                )}
+                {provHarnesses.length > 0 && (
+                  <optgroup label="Harnesses (agent)">
+                    {provHarnesses.map((id) => <option key={id} value={id}>{VENDOR_BRAND[id]?.name ?? id}</option>)}
+                  </optgroup>
+                )}
               </select>} />
           <Row title="Distill model" desc="Model id used for distillation, e.g. claude-haiku-4-5."
             control={<input value={dModel} onChange={(e) => { setDModel(e.target.value); setPref(PREF.distillModel, e.target.value); }}

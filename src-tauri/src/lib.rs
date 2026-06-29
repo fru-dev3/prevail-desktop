@@ -559,6 +559,7 @@ pub fn run() {
             engine::engine_list_archived,
             engine::engine_manifest_set,
             engine::engine_chat,
+            engine::engine_agent_run,
             threads::list_threads,
             threads::load_thread,
             threads::save_thread,
