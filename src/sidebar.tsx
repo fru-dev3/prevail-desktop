@@ -21,7 +21,7 @@ import { BENCH_SCHED, useBenchBatches } from "./bench";
 import { BACKUP_CFG } from "./backup";
 import { BrandMark } from "./brandmark";
 import { AppRowLogo } from "./panels3";
-import type { BrandLogo, Domain, EngineApp, LifeReadiness, Mode, TabId, ThreadMeta } from "./types";
+import type { BrandLogo, CatalogApp, ConnectorCatalog, Domain, EngineApp, LifeReadiness, Mode, TabId, ThreadMeta } from "./types";
 
 export function Sidebar({
   collapsed,
@@ -211,11 +211,16 @@ export function Sidebar({
   // row can show the real mark instead of a bare status dot.
   const [appLogos, setAppLogos] = useState<Record<string, BrandLogo>>({});
   useEffect(() => { invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setAppLogos).catch(() => {}); }, []);
+  // The connector catalog, so apps the user STARRED but has not connected yet
+  // still pin to the rail (matching the Apps panel "My list" - a star pins,
+  // period, whether or not the app is connected).
+  const [appCatalog, setAppCatalog] = useState<CatalogApp[]>([]);
+  useEffect(() => { invoke<ConnectorCatalog>("ingestion_connector_catalog").then((c) => setAppCatalog(c?.apps ?? [])).catch(() => {}); }, []);
   const [appsOpen, setAppsOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsOpen") !== "0");
   useEffect(() => { lsSet("prevail.sidebar.appsOpen", appsOpen ? "1" : "0"); }, [appsOpen]);
   useEffect(() => {
     let alive = true;
-    const pull = () => { invoke<EngineApp[]>("engine_apps_list").then((a) => { if (alive) setSidebarApps((a ?? []).map((x) => ({ ...x, title: appName(x.title) }))); }).catch(() => {}); };
+    const pull = () => { invoke<EngineApp[]>("engine_apps_list", { vault: vaultPath }).then((a) => { if (alive) setSidebarApps((a ?? []).map((x) => ({ ...x, title: appName(x.title) }))); }).catch(() => {}); };
     pull();
     // Re-pull when an app is added/removed elsewhere (e.g. the Apps catalog).
     const onChanged = () => pull();
@@ -231,6 +236,25 @@ export function Sidebar({
       .sort((a, b) => a.title.localeCompare(b.title)),
     [sidebarApps, favs],
   );
+  // Starred catalog apps the user has NOT connected yet. Matched by the same
+  // normalized name key the Apps panel uses (favKeyOf(name)), deduped, and
+  // excluding any already shown as a connected row above so nothing appears
+  // twice. This is what makes a star pin to the rail immediately, before the
+  // app is connected - the behavior the Apps panel "My list" already has.
+  const favoritedCatalogApps = useMemo(() => {
+    const connectedKeys = new Set<string>();
+    for (const a of favoritedSidebarApps) { connectedKeys.add(favKeyOf(a.title || a.id)); connectedKeys.add(favKeyOf(a.id)); }
+    const seen = new Set<string>();
+    return appCatalog
+      .filter((c) => {
+        const k = favKeyOf(c.name);
+        if (!favs.has(k) || connectedKeys.has(k) || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [appCatalog, favs, favoritedSidebarApps]);
+  const pinnedAppCount = favoritedSidebarApps.length + favoritedCatalogApps.length;
   // The same app can be connected via Direct creds, Composio, or Nango (e.g.
   // two "Notion" rows). Surface which one each row is so identical titles are
   // distinguishable. The gateway provider is derived from the id prefix
@@ -341,6 +365,38 @@ export function Sidebar({
             <Folder className="h-3.5 w-3.5" />
           </button>
         )}
+      </li>
+    );
+  };
+
+  // A starred app the user has not connected yet. It still pins here (a star
+  // pins), shown muted with a "Not connected" hint. Clicking opens the Apps
+  // panel to finish connecting it; the star removes it from the rail.
+  const renderCatalogFavRow = (c: CatalogApp) => {
+    const k = favKeyOf(c.name);
+    return (
+      <li key={`cat-${k}`} className="group flex items-center gap-1 pl-6">
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
+          className="flex flex-1 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm text-text-secondary transition-colors hover:bg-surface-warm hover:text-text-primary"
+          title={`Open Apps to connect ${c.name}`}
+        >
+          <span className="relative shrink-0">
+            <AppRowLogo app={{ title: c.name, id: c.iconSlug || k }} logos={appLogos} size={18} fallback="letter" />
+            <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-text-muted/50 ring-2 ring-surface-strong" />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="truncate text-sm">{c.name}</span>
+            <span className="truncate text-[10px] text-text-muted">Not connected</span>
+          </span>
+        </button>
+        <button
+          onClick={() => { if (favs.has(k)) toggleFavorite(k); }}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-accent opacity-0 hover:bg-surface-warm group-hover:opacity-100"
+          title="Remove from home screen"
+        >
+          <Star className="h-3 w-3 fill-accent" />
+        </button>
       </li>
     );
   };
@@ -893,13 +949,15 @@ export function Sidebar({
               <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${appsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
               <Plug className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
               <span>Apps</span>
-              <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{favoritedSidebarApps.length}</span>
+              <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{pinnedAppCount}</span>
             </button>
-            {appsOpen && (favoritedSidebarApps.length > 0 ? (
+            {appsOpen && (pinnedAppCount > 0 ? (
               <ul className="mt-0.5 space-y-0.5 px-2">
-                {/* The home screen = starred apps only (any mode). The star on a
-                    row removes it from home; the Apps panel adds new ones. */}
+                {/* The home screen = starred apps only (any mode). Connected apps
+                    first, then starred-but-not-yet-connected catalog apps. The
+                    star on a row removes it from home; the Apps panel adds new ones. */}
                 {favoritedSidebarApps.map(renderAppRow)}
+                {favoritedCatalogApps.map(renderCatalogFavRow)}
                 {/* Add another app. */}
                 <li className="mt-0.5">
                   <button
