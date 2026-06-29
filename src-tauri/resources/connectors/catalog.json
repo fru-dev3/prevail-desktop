@@ -63,6 +63,106 @@
  ],
  "apps": [
   {
+   "name": "Filesystem (MCP)",
+   "domain": "files",
+   "tags": [
+    "files",
+    "local",
+    "mcp"
+   ],
+   "pattern": "api",
+   "verified": true,
+   "tier": 1,
+   "curated": true,
+   "connection_hint": {
+    "method": "mcp",
+    "command": "npx -y @modelcontextprotocol/server-filesystem ~",
+    "privacy": "local",
+    "readOnly": false,
+    "note": "Official reference server. Gives the agent local file access under the path you pass (here your home folder). Runs entirely on your machine."
+   }
+  },
+  {
+   "name": "GitHub (MCP)",
+   "domain": "dev",
+   "tags": [
+    "code",
+    "dev",
+    "mcp"
+   ],
+   "pattern": "api",
+   "verified": true,
+   "tier": 1,
+   "curated": true,
+   "connection_hint": {
+    "method": "mcp",
+    "command": "npx -y @modelcontextprotocol/server-github",
+    "privacy": "vendor-cloud",
+    "readOnly": false,
+    "note": "Official reference server. Reads and acts on your GitHub repos, issues, and pull requests. Needs a GitHub token in its environment."
+   }
+  },
+  {
+   "name": "Memory (MCP)",
+   "domain": "productivity",
+   "tags": [
+    "memory",
+    "local",
+    "mcp"
+   ],
+   "pattern": "api",
+   "verified": true,
+   "tier": 1,
+   "curated": true,
+   "connection_hint": {
+    "method": "mcp",
+    "command": "npx -y @modelcontextprotocol/server-memory",
+    "privacy": "local",
+    "readOnly": false,
+    "note": "Official reference server. A local knowledge-graph memory the agent can read and write across sessions."
+   }
+  },
+  {
+   "name": "Sequential Thinking (MCP)",
+   "domain": "dev",
+   "tags": [
+    "reasoning",
+    "local",
+    "mcp"
+   ],
+   "pattern": "api",
+   "verified": true,
+   "tier": 1,
+   "curated": true,
+   "connection_hint": {
+    "method": "mcp",
+    "command": "npx -y @modelcontextprotocol/server-sequential-thinking",
+    "privacy": "local",
+    "readOnly": true,
+    "note": "Official reference server. Lets the agent work through problems in structured, revisable steps. Runs locally, no external data."
+   }
+  },
+  {
+   "name": "Everything (MCP)",
+   "domain": "dev",
+   "tags": [
+    "demo",
+    "test",
+    "mcp"
+   ],
+   "pattern": "api",
+   "verified": true,
+   "tier": 1,
+   "curated": true,
+   "connection_hint": {
+    "method": "mcp",
+    "command": "npx -y @modelcontextprotocol/server-everything",
+    "privacy": "local",
+    "readOnly": true,
+    "note": "Official demo and test server that exercises every MCP feature (tools, prompts, resources). Useful for trying the MCP flow, not for real data."
+   }
+  },
+  {
    "name": "AutoIQ",
    "domain": "automotive",
    "pattern": "api",
