@@ -455,6 +455,8 @@ pub fn run() {
             engine::engine_app_set_domains,
             engine::engine_app_set_integration,
             engine::engine_app_set_schedule,
+            engine::engine_app_get_soul,
+            engine::engine_app_set_soul,
             engine::engine_app_set_enabled,
             engine::engine_app_runs,
             engine::engine_app_sync,

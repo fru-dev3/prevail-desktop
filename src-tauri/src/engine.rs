@@ -1117,6 +1117,20 @@ pub fn engine_app_set_pull_instructions(id: String, instructions: String) -> Res
     run_engine_json(&["connectors", "set", &id, "instructions", &instructions, "--json"])
 }
 
+/// Read an app's soul note (apps/<id>/soul.md) — the same construct domains use,
+/// declaring WHY the app is in the user's harness. The agent reads it on every
+/// run. Returns { ok, soul, path? }.
+#[tauri::command]
+pub fn engine_app_get_soul(id: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "soul", &id, "--json"])
+}
+
+/// Write (or clear, when empty) an app's soul note. Returns { ok, path?, soul? }.
+#[tauri::command]
+pub fn engine_app_set_soul(id: String, soul: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "set", &id, "soul", &soul, "--json"])
+}
+
 /// Discover what data a gateway app CAN provide (one agent turn over the
 /// gateway). Long-running like a sync; returns { ok, markdown?, error? }.
 #[tauri::command]
