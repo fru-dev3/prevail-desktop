@@ -526,6 +526,7 @@ pub fn run() {
             engine::engine_score_stream,
             engine::engine_connector_learn_stream,
             engine::engine_connector_run_stream,
+            engine::engine_connector_import_login,
             loops::loops_run_once,
             loops::loop_execute_action,
             loops::loop_request_approval,
