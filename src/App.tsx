@@ -358,6 +358,16 @@ export default function App() {
     window.addEventListener("prevail:apps-changed", onAppsChanged);
     return () => window.removeEventListener("prevail:apps-changed", onAppsChanged);
   }, [appView, selectedApp]);
+  // Quick Capture floating widget — opt-in (default OFF). Tracks
+  // PREF.quickCaptureEnabled and reacts live to the General-settings toggle via
+  // the "prevail:quickcapture-changed" event so the widget appears/disappears
+  // without a reload.
+  const [quickCaptureOn, setQuickCaptureOn] = useState(() => getPref(PREF.quickCaptureEnabled, "0") === "1");
+  useEffect(() => {
+    const sync = () => setQuickCaptureOn(getPref(PREF.quickCaptureEnabled, "0") === "1");
+    window.addEventListener("prevail:quickcapture-changed", sync);
+    return () => window.removeEventListener("prevail:quickcapture-changed", sync);
+  }, []);
   // Threads - backed by <vault>/<domain>/_threads/<slug>.md files.
   // Active thread defines what's loaded into the chat transcript.
   const [threads, setThreads] = useState<ThreadMeta[]>([]);
@@ -1388,7 +1398,7 @@ export default function App() {
         <BunkerRibbon enabled={bunkerEnabled} />
         <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
         <BridgeStatusChips />
-        <QuickCapture vaultPath={vaultPath} />
+        {quickCaptureOn && <QuickCapture vaultPath={vaultPath} />}
       </div>
     );
   }
@@ -1407,7 +1417,7 @@ export default function App() {
         <BunkerRibbon enabled={bunkerEnabled} />
         <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
         <BridgeStatusChips />
-        <QuickCapture vaultPath={vaultPath} />
+        {quickCaptureOn && <QuickCapture vaultPath={vaultPath} />}
       </div>
     );
   }
@@ -1864,7 +1874,7 @@ export default function App() {
           onApplied={() => void refreshDomains()}
         />
       )}
-      <QuickCapture vaultPath={vaultPath} />
+      {quickCaptureOn && <QuickCapture vaultPath={vaultPath} />}
     </div>
   );
 }

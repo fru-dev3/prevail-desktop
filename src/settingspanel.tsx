@@ -130,7 +130,7 @@ export function SettingsPanel({
                 large
                 icon={Compass}
                 title="Constitution"
-                subtitle="Your operating vision and principles — highest precedence everywhere."
+                subtitle="Your operating vision and principles. Highest precedence everywhere."
                 defaultOpen
                 storageKey="prevail.settings.ideals.constitution"
               >

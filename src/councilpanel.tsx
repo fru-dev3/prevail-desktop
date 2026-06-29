@@ -1196,7 +1196,7 @@ export function CouncilPanel({
           <div className="absolute bottom-full left-3 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-border bg-surface shadow-xl">
             <div className="border-b border-border-subtle bg-surface-warm px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Skills · enter to insert</div>
             {slashCandidates.length === 0 ? (
-              <div className="px-3 py-2 text-[11px] text-text-muted">No skills in this vault yet — add one in a domain's <span className="font-mono">_skills/</span> folder.</div>
+              <div className="px-3 py-2 text-[11px] text-text-muted">No skills in this vault yet. Add one in a domain's <span className="font-mono">_skills/</span> folder.</div>
             ) : slashCandidates.map((s, i) => (
               <button key={s.path} onMouseDown={(e) => { e.preventDefault(); applySlashCompletion(s.name); }}
                 className={`flex w-full items-start gap-2 px-3 py-1.5 text-left ${i === slashIdx ? "bg-accent-soft" : "hover:bg-surface-warm"}`}>

@@ -400,6 +400,7 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
   const [stripSyc, setStripSyc] = useState(() => getPref(PREF.stripSycophancy, "0") === "1");
   const [showThinking, setShowThinking] = useState(() => getPref(PREF.showThinking, "1") === "1");
   const [showBriefing, setShowBriefing] = useState(() => getPref(PREF.showHomeBriefing, "0") === "1");
+  const [showQuickCapture, setShowQuickCapture] = useState(() => getPref(PREF.quickCaptureEnabled, "0") === "1");
   const [promptTimeout, setPromptTimeout] = useState<string>(() => getPref(PREF.llmPromptTimeoutSec, "300"));
   const [budgetCap, setBudgetCap] = useState<string>(() => getPref(PREF.budgetMonthlyCapUsd, ""));
   // Running spend estimate. Display-only: seeded from localStorage and, if the
@@ -472,6 +473,11 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
           title="Show Briefing on home"
           desc="Show the proactive Briefing (top recommendations + what Prevail learned) on the home screen. Off keeps the landing minimal."
           control={<Switch on={showBriefing} onChange={(v) => { setShowBriefing(v); setPref(PREF.showHomeBriefing, v ? "1" : "0"); }} />}
+        />
+        <Row
+          title="Show Quick Capture"
+          desc="Show the floating Quick Capture mic widget pinned to the right edge for jotting a note or recording a voice memo from anywhere. Off keeps it hidden."
+          control={<Switch on={showQuickCapture} onChange={(v) => { setShowQuickCapture(v); setPref(PREF.quickCaptureEnabled, v ? "1" : "0"); window.dispatchEvent(new Event("prevail:quickcapture-changed")); }} />}
         />
         <Row
           title="Close to tray"

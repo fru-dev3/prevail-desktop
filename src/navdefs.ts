@@ -56,7 +56,7 @@ export const EDITOR_NAV: NavGroup[] = [
   ]},
   { heading: "Settings", items: [
     { id: "profiles", label: "Profiles", icon: UserRound },
-    { id: "workspace", label: "Context", icon: Database },
+    { id: "workspace", label: "Vault", icon: Database },
     { id: "general", label: "General", icon: SettingsIcon },
     { id: "about", label: "About", icon: Github },
   ]},

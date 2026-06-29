@@ -98,20 +98,25 @@ export function credFieldsFor(app: EngineApp): CredField[] | undefined {
   return generic.length ? generic : undefined;
 }
 
-// The three connection LANES the user thinks in: an official CLI, a data
-// aggregator (Plaid), or a direct app connection (api / oauth / agentic browser).
-// Works for both catalog entries (pattern/via) and installed apps (integration).
-export type AppLane = "cli" | "aggregator" | "direct";
+// The connection LANES the user thinks in: an official CLI, or a direct app
+// connection (api / oauth / agentic browser). Works for both catalog entries
+// (pattern/via) and installed apps (integration).
+// NOTE (fix #9): we used to surface an "Aggregators" lane keyed off `via:
+// "plaid"`, but that tagged the ~28 BANKS that connect THROUGH Plaid as
+// aggregators, not Plaid itself. A bank is not an aggregator; the aggregator is
+// the one app (Plaid) that pulls data across many accounts. With Plaid being
+// effectively the only true aggregator in the catalog, a dedicated tab just
+// added a confusing, near-empty filter, so the lane was dropped. Plaid-backed
+// banks now classify as "direct" like any other directly-fetched app.
+export type AppLane = "cli" | "direct";
 function laneOf(a: { pattern?: string; via?: string; integration?: string; gateway?: unknown | null }): AppLane {
-  if ((a.via || "").toLowerCase() === "plaid" || (a as { gateway?: unknown }).gateway) return "aggregator";
   const p = (a.pattern || a.integration || "").toLowerCase();
   if (p.includes("cli")) return "cli";
-  return "direct"; // api / oauth / browser
+  return "direct"; // api / oauth / browser / plaid-backed
 }
 export const LANE_FILTERS: { key: "all" | AppLane; label: string }[] = [
   { key: "all", label: "All" },
   { key: "cli", label: "CLI" },
-  { key: "aggregator", label: "Aggregators" },
   { key: "direct", label: "Direct" },
 ];
 
@@ -231,8 +236,14 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   const toggleList = useCallback(() => setListCollapsed((v) => { const n = !v; try { localStorage.setItem("prevail.apps.listCollapsed", n ? "1" : "0"); } catch { /* ignore */ } return n; }), []);
   // The Composio managed-gateway pane (one OAuth fronts 1000+ apps for the agent).
   const [query, setQuery] = useState("");
-  // Lane filter: All / CLI / Aggregators (Plaid) / Direct.
+  // Lane filter: All / CLI / Direct.
   const [lane, setLane] = useState<"all" | AppLane>("all");
+  // Collapsible left-list sections (fix #4). "My list" starts COLLAPSED for a
+  // cleaner initial view; "Available to add" starts open. Both persist.
+  const [myListOpen, setMyListOpen] = useState(() => { try { return localStorage.getItem("prevail.apps.myListOpen") === "1"; } catch { return false; } });
+  const [availOpen, setAvailOpen] = useState(() => { try { return localStorage.getItem("prevail.apps.availOpen") !== "0"; } catch { return true; } });
+  const toggleMyList = useCallback(() => setMyListOpen((v) => { const n = !v; try { localStorage.setItem("prevail.apps.myListOpen", n ? "1" : "0"); } catch { /* ignore */ } return n; }), []);
+  const toggleAvail = useCallback(() => setAvailOpen((v) => { const n = !v; try { localStorage.setItem("prevail.apps.availOpen", n ? "1" : "0"); } catch { /* ignore */ } return n; }), []);
   // Real brand marks for every connector (AllTrails, Booking.com, Garmin, …),
   // loaded once and shared by the list rows + the detail header via AppRowLogo so
   // logos render identically here, in the per-domain list, and in the connect flow.
@@ -445,17 +456,22 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     toggleFavorite(key);
   }, [favs, vaultPath]);
   const pinned = useMemo(() => {
-    const connected = directApps.filter((a) => favs.has(favKeyOf(a.title || a.id)) || favs.has(favKeyOf(a.id)));
+    // MY LIST must respect the active lane filter (fix #9): a pinned CLI app
+    // should not surface while the "Direct" tab is selected, and vice-versa, so
+    // the section never shows items that don't match the chosen category.
+    const laneOk = (x: { pattern?: string; via?: string; integration?: string }) => lane === "all" || laneOf(x) === lane;
+    const connected = directApps.filter((a) => (favs.has(favKeyOf(a.title || a.id)) || favs.has(favKeyOf(a.id))) && laneOk(a));
     const connectedKeys = new Set(connected.map((a) => favKeyOf(a.title || a.id)));
     const seen = new Set<string>();
     const catalogPinned = catalog.filter((c) => {
       const k = favKeyOf(c.name);
       if (!favs.has(k) || connectedKeys.has(k) || seen.has(k)) return false;
+      if (!laneOk(c)) return false;
       seen.add(k);
       return true;
     });
     return { connected, catalog: catalogPinned, count: connected.length + catalogPinned.length };
-  }, [directApps, catalog, favs]);
+  }, [directApps, catalog, favs, lane]);
   const selectedApp = (apps ?? []).find((a) => a.id === selected) ?? null;
   // The Direct detail pane only ever shows a Direct app. A gateway app that
   // happens to be the shared `selected` (e.g. just-scaffolded) must not render
@@ -531,7 +547,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       ) : (
         // Master-detail in ONE attached panel: a flush list column (border-r,
         // like the home threads rail) + the detail, joined - not floating cards.
-        <div className="flex min-h-[55vh] flex-col overflow-hidden rounded-xl border border-border lg:flex-row lg:items-stretch">
+        <div className="flex max-h-[82vh] min-h-[55vh] flex-col overflow-hidden rounded-xl border border-border lg:max-h-[calc(100vh-13rem)] lg:flex-row lg:items-stretch">
           {/* LEFT - flush connectors column, collapses to a logo rail. */}
           {listCollapsed ? (
             <div className="flex shrink-0 flex-col items-center gap-2 border-b border-border-subtle bg-surface-warm py-2 lg:w-14 lg:border-b-0 lg:border-r">
@@ -567,7 +583,9 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                 <ChevronLeft className="h-4 w-4" />
               </button>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3">
+            {/* Sticky controls (fix #2): search, lane tabs, and "Connect an app"
+                stay fixed while only the list below scrolls. */}
+            <div className="shrink-0 border-b border-border-subtle p-3">
             <div className="relative mb-2">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
               <input
@@ -587,24 +605,30 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
             </div>
             <button
               onClick={() => { setConnecting(true); setCatalogPick(null); }}
-              className="mb-3 flex w-full items-center gap-2.5 rounded-lg border border-dashed border-accent-border bg-accent-soft/20 px-3 py-2 text-left transition-colors hover:bg-accent-soft/40"
+              className="flex w-full items-center gap-2.5 rounded-lg border border-dashed border-accent-border bg-accent-soft/20 px-3 py-2 text-left transition-colors hover:bg-accent-soft/40"
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-background"><Plus className="h-3.5 w-3.5" /></span>
               <span className="text-xs font-semibold text-text-primary">Connect an app</span>
             </button>
             {liveCount > 0 && (
-              <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{liveCount} of {directApps.length} live</div>
+              <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{liveCount} of {directApps.length} live</div>
             )}
-            <div className="space-y-4">
+            </div>
+            {/* Only this region scrolls. */}
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
               {groups.length === 0 && catalogView.shown.length === 0 ? (
                 <div className="px-1 text-xs text-text-muted">No apps match "{query}".</div>
               ) : (
                 <>
-                  {/* My list - the user's pinned apps, connected or catalog, up top. */}
+                  {/* My list - the user's pinned apps, connected or catalog, up top.
+                      Collapsible (fix #4); collapsed by default. */}
                   {pinned.count > 0 && (
                     <section className="space-y-1">
-                      <div className="flex items-center gap-1 px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-accent"><Star className="h-2.5 w-2.5 fill-accent" /> My list · {pinned.count}</div>
-                      {pinned.connected.map((a) => (
+                      <button onClick={toggleMyList} className="flex w-full items-center gap-1 px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-accent transition-colors hover:text-accent-hover">
+                        <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${myListOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+                        <Star className="h-2.5 w-2.5 fill-accent" /> My list · {pinned.count}
+                      </button>
+                      {myListOpen && pinned.connected.map((a) => (
                         <ConnectorRow
                           key={`pin-${a.id}`}
                           app={a}
@@ -616,7 +640,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                           onToggleFav={() => void favApp(a)}
                         />
                       ))}
-                      {pinned.catalog.map((c) => (
+                      {myListOpen && pinned.catalog.map((c) => (
                         <CatalogRow
                           key={`pin-${c.iconSlug || c.name}`}
                           app={c}
@@ -651,8 +675,11 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                       visually distinct from catalog-available. */}
                   {catalogView.shown.length > 0 && (
                     <section className="space-y-1">
-                      <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Available to add · {catalogView.total}</div>
-                      {catalogView.shown.map((c) => {
+                      <button onClick={toggleAvail} className="flex w-full items-center gap-1 px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted transition-colors hover:text-text-secondary">
+                        <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${availOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+                        Available to add · {catalogView.total}
+                      </button>
+                      {availOpen && catalogView.shown.map((c) => {
                         // Google is a catalog entry like any other, but its detail
                         // is the multi-profile workspace panel (selected==="google")
                         // and favoriting it scaffolds the real vault app first.
@@ -671,7 +698,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                         />
                         );
                       })}
-                      {!catalogView.searching && catalogView.total > catalogView.shown.length && (
+                      {availOpen && !catalogView.searching && catalogView.total > catalogView.shown.length && (
                         <div className="px-1 pt-0.5 text-[10px] text-text-muted/70">
                           showing {catalogView.shown.length} of {catalogView.total} - search to find more
                         </div>
@@ -680,7 +707,6 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                   )}
                 </>
               )}
-            </div>
             </div>
           </aside>
           )}
@@ -695,11 +721,14 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                 onDone={async () => { setConnecting(false); setCatalogPick(null); await reload(); }}
                 onCancel={() => setConnecting(false)}
               />
-            ) : selected === "google" ? (
-              // Google is an app object: its detail IS the multi-profile workspace
-              // panel (each Google account is a profile inside this one app).
-              <GoogleWorkspacePanel vaultPath={vaultPath} logos={logos} />
             ) : catalogPick ? (
+              // Fix #14/#3: a catalog pick must win over a stale `selected ===
+              // "google"`. Selecting any catalog app sets catalogPick but leaves
+              // `selected` untouched, so checking google FIRST left the Google
+              // panel showing after you clicked, say, DoorDash. catalogPick is
+              // now evaluated before the google branch, and because the google
+              // ROW clears catalogPick (and other rows set it), the right branch
+              // always reflects the just-clicked item synchronously.
               <>
                 {catalogConnectErr && (
                   <div className="mb-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{catalogConnectErr}</div>
@@ -717,6 +746,10 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                   connect={{ onConnect: () => connectCatalogApp(catalogPick), connecting: catalogConnecting, soul: catalogPick.soul }}
                 />
               </>
+            ) : selected === "google" ? (
+              // Google is an app object: its detail IS the multi-profile workspace
+              // panel (each Google account is a profile inside this one app).
+              <GoogleWorkspacePanel vaultPath={vaultPath} logos={logos} />
             ) : directSelectedApp ? (
               <AppDetail
                 key={directSelectedApp.id}
@@ -1873,6 +1906,109 @@ function catalogToApp(c: CatalogApp): EngineApp {
   } as EngineApp;
 }
 
+// The detail pane is a TABBED interface (fix #7), mirroring the chat-experience
+// tab pattern: a pill row under the header, one panel shown at a time.
+type AppTab = "welcome" | "soul" | "skills" | "connections" | "chat";
+
+// A recorded/learned skill as the UI displays it. The skill MODEL (favorite /
+// fallback ordering, method preference) is owned by the cli repo; here we only
+// DISPLAY whatever the engine returns, tolerating fields that don't exist yet.
+type AppSkill = { id: string; runner: string; trigger: string; method?: string; favorite?: boolean; primary?: boolean };
+
+// Method badge for a skill row: Browser / MCP / API, derived from the skill's
+// declared method when present, else inferred from its runner.
+function skillMethod(s: AppSkill): "Browser" | "MCP" | "API" {
+  const m = (s.method || s.runner || "").toLowerCase();
+  if (m.includes("mcp")) return "MCP";
+  if (m.includes("api") || m.includes("http") || m.includes("oauth")) return "API";
+  return "Browser";
+}
+
+// Short, friendly elaboration of WHAT a few notable apps expose and how Prevail
+// uses it, so the Soul tab reads like researched instructions rather than one
+// line. Keyed by normalized id/name. Anything not listed falls back to the
+// generic composer below. No em dashes (app-wide style rule).
+const SOUL_DETAILS: Record<string, string> = {
+  alltrails: "AllTrails knows where and how you move outdoors: the trails you save, the hikes and runs you log, distance, elevation gain, pace, and the conditions you faced. Prevail brings those activities and saved routes into your vault so the picture of your training load and outdoor time lives next to the rest of your health data. With it in context, your AI can plan routes that fit your fitness, balance hard and easy days, line up nutrition and recovery around big efforts, and steer you toward trails that match your goals and the weather.",
+  strava: "Strava is your training diary: rides, runs, and workouts with pace, heart rate, power, distance, and elevation, plus the segments and personal records you care about. Prevail pulls these activities into your vault so effort and recovery trends are visible over weeks, not just per session. In context, your AI can spot overtraining, suggest when to push or rest, and tie performance to sleep, nutrition, and schedule.",
+  spotify: "Spotify reflects your listening: the tracks, artists, and genres you return to, your playlists, and how your taste shifts over time. Prevail brings this into your vault as a signal of mood, focus, and routine. Your AI can use it to shape focus sessions, surface music for the task at hand, and notice patterns worth acting on.",
+  plaid: "Plaid is an aggregator: with one secure connection it pulls balances and transactions across many of your bank and card accounts at once. Prevail brings that unified financial picture into your vault so spending, cash flow, and net worth are all in one place. In context, your AI can categorize spending, flag unusual charges, and keep budgets and goals honest against real numbers.",
+};
+
+// Compose a rich, instruction-style description of what connecting this app
+// does: what data it exposes, how it is collected into the vault, and how it is
+// used. Used as the always-shown "How this connection works" block in the Soul
+// tab so every app reads richly even without a hand-written entry.
+function richSoulFor(app: EngineApp): string {
+  const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const hit = SOUL_DETAILS[norm(app.id)] || SOUL_DETAILS[norm(app.title || "")];
+  if (hit) return hit;
+  const name = app.title || app.id;
+  const domains = (app.domains ?? []).map(titleCase);
+  const method = methodLabel(app.integration);
+  const how = method === "Browser"
+    ? `Prevail signs into ${name} once in a real browser, learns how to fetch the data you ask for, and replays that automatically on a schedule.`
+    : method === "MCP"
+      ? `Prevail talks to ${name} through its MCP server and pulls the data you ask for on a schedule.`
+      : method === "API"
+        ? `Prevail connects to the ${name} API and pulls the data you ask for on a schedule.`
+        : `Prevail connects to ${name} and keeps the data you ask for in sync on a schedule.`;
+  const where = domains.length
+    ? `Everything it pulls lands in your private vault and feeds your ${domains.join(", ")} ${domains.length > 1 ? "domains" : "domain"}, so it is part of the context your AI reasons over.`
+    : "Everything it pulls lands in your private vault, so it is part of the context your AI reasons over.";
+  return `Connecting ${name} brings the records it holds about you into one place you control. ${how} ${where} Edit the note above to tell your AI exactly why ${name} matters to you and what to do with it.`;
+}
+
+// Shown in the Skills tab before any skill is learned, so the skill pack reads
+// as a clear, populated list (display only, no real skills yet).
+const PLACEHOLDER_SKILLS: AppSkill[] = [
+  { id: "fetch-recent-activity", runner: "browser", trigger: "weekly", method: "browser", primary: true },
+  { id: "export-account-summary", runner: "api", trigger: "monthly", method: "api" },
+];
+
+// One skill row in the Skills tab: brand-neutral icon, name, the method it runs
+// by, a primary/favorite indicator, and (for real skills) a Run control.
+function SkillRow({ s, label, method, primary, disabled, placeholder, onRun }: {
+  s: AppSkill;
+  label: string;
+  method: "Browser" | "MCP" | "API";
+  primary: boolean;
+  disabled?: boolean;
+  placeholder?: boolean;
+  onRun?: () => void;
+}) {
+  return (
+    <li className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-3 py-2.5">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Sparkles className="h-4 w-4" /></span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-medium text-text-primary">{label}</span>
+          <Star className={`h-3 w-3 shrink-0 ${primary ? "fill-accent text-accent" : "text-text-muted/50"}`} aria-label={primary ? "Primary skill" : "Fallback skill"} />
+        </div>
+        <div className="text-[11px] text-text-muted">{primary ? "Primary" : "Fallback"}{s.trigger ? ` · ${s.trigger}` : ""}</div>
+      </div>
+      <span className="inline-flex shrink-0 items-center rounded-full border border-border-subtle bg-surface-warm px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">{method}</span>
+      {placeholder ? (
+        <span className="hidden font-mono text-[10px] uppercase tracking-wider text-text-muted/60 sm:inline">example</span>
+      ) : (
+        <button onClick={onRun} disabled={disabled}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+          <Play className="h-3 w-3" /> Run now
+        </button>
+      )}
+    </li>
+  );
+}
+
+// One-paragraph "what connecting does" overview for the Welcome tab.
+function welcomeText(app: EngineApp, notConnected: boolean): string {
+  const name = app.title || app.id;
+  if (notConnected) {
+    return `Connecting ${name} lets Prevail pull your data from ${name} into your private vault on this Mac. You connect once; Prevail confirms the best method, drives any sign-in for you, then keeps the data in sync. Once connected, it is available as context to any domain you point it at, with no copies leaving your machine unless you say so.`;
+  }
+  return `${name} is connected and feeding your vault. Prevail keeps its data in sync on the schedule you set, and that data is available as context to the domains it feeds. Use the tabs below to give it a soul, see the skills Prevail has learned on it, manage which domains it feeds, or open a chat scoped to ${name}.`;
+}
+
 function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, onReload, gatewayProvider, connect }: {
   app: EngineApp;
   vaultPath: string;
@@ -1911,9 +2047,12 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   const [learnMode, setLearnMode] = useState<ConnectorRunMode | null>(null);
   const [composing, setComposing] = useState(false);
   const [goalText, setGoalText] = useState("");
-  const [skills, setSkills] = useState<{ id: string; runner: string; trigger: string }[]>([]);
+  // Which detail tab is showing. AppDetail is keyed by app.id upstream, so this
+  // resets to "welcome" whenever a different app is selected.
+  const [tab, setTab] = useState<AppTab>("welcome");
+  const [skills, setSkills] = useState<AppSkill[]>([]);
   const loadSkills = useCallback(() => {
-    invoke<{ id: string; runner: string; trigger: string }[]>("engine_app_skills", { id: app.id })
+    invoke<AppSkill[]>("engine_app_skills", { id: app.id })
       .then((s) => setSkills(Array.isArray(s) ? s : []))
       .catch(() => setSkills([]));
   }, [app.id]);
@@ -1942,6 +2081,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
       setGoalText(pendingAutolearn.goal);
       setComposing(false);
       setLearnMode("learn");
+      setTab("skills");
       pendingAutolearn = null;
     }
   }, [app.id, connect]);
@@ -2196,7 +2336,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <button onClick={() => toggleFavorite(favKey)} title={isFav ? "On your home screen — click to remove" : "Add to your home screen"} aria-pressed={isFav}
+          <button onClick={() => toggleFavorite(favKey)} title={isFav ? "On your home screen, click to remove" : "Add to your home screen"} aria-pressed={isFav}
             className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${isFav ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
             <Star className={`h-4 w-4 ${isFav ? "fill-accent" : ""}`} />
           </button>
@@ -2211,70 +2351,100 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
         </div>
       </div>
 
-      {/* Even two-column grid — row 1: About | Browser Sync, row 2: Learned Skills | Schedule */}
-      <div className="grid grid-cols-1 items-stretch gap-4 px-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        {/* Soul (top-left) — same construct domains use */}
-        <div className={`${card} flex h-full flex-col`}>
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Soul</h3>
-            {!editSoul && <button onClick={openSoulEditor} title="Edit soul" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
-          </div>
-          {editSoul ? (
-            <div className="mt-2 flex flex-1 flex-col">
-              <textarea autoFocus rows={4} value={soulDraft} onChange={(e) => setSoulDraft(e.target.value)}
-                placeholder={`Why ${app.title || app.id} is in your harness — what it feeds your world.`}
-                className="w-full flex-1 resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-relaxed text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
-              <div className="mt-2 flex items-center gap-2">
-                <button onClick={saveSoul} disabled={soulBusy} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{soulBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
-                <button onClick={() => setEditSoul(false)} className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">Cancel</button>
-                <span className="ml-auto font-mono text-[10px] text-text-muted/70">apps/{app.id}/soul.md</span>
-              </div>
-            </div>
-          ) : soulText.trim() ? (
-            <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-text-secondary">{soulText.trim()}</p>
-          ) : (
-            <button onClick={openSoulEditor} className="mt-2 flex flex-1 flex-col items-start justify-center rounded-lg border border-dashed border-border bg-surface/40 px-4 py-5 text-left hover:border-accent-border">
-              <span className="text-[13px] text-text-secondary">Give {app.title || app.id} a soul.</span>
-              <span className="mt-0.5 text-[12px] text-text-muted">Why it's in your harness — your AI reads this as standing context.</span>
-            </button>
-          )}
+      {/* Tabbed detail (fix #7), mirroring the chat-experience tab pattern: a
+          pill row, one panel shown at a time. */}
+      <div className="border-b border-border-subtle px-6">
+        <div className="flex flex-wrap items-center gap-1 pb-3">
+          {([
+            { id: "welcome", label: "Welcome", icon: Plug },
+            { id: "soul", label: "Soul", icon: Sparkles },
+            { id: "skills", label: "Skills", icon: Boxes },
+            { id: "connections", label: "Connections", icon: Link2 },
+            ...(!notConnected ? [{ id: "chat" as const, label: "Chat", icon: MessageSquare }] : []),
+          ] as { id: AppTab; label: string; icon: typeof Plug }[]).map((t) => {
+            const Icon = t.icon;
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => {
+                  // Chat reuses the existing app-chat navigation (the same event
+                  // the header chat button fires) instead of rendering inline.
+                  if (t.id === "chat") { window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app })); return; }
+                  setTab(t.id);
+                }}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${active ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-text-secondary"}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {t.label}
+                {t.id === "skills" && skills.length > 0 && <span className={`rounded-full px-1.5 py-px font-mono text-[9px] ${active ? "bg-background/20 text-background" : "bg-surface-warm text-text-muted"}`}>{skills.length}</span>}
+              </button>
+            );
+          })}
         </div>
+      </div>
 
-        {/* Browser Sync (top-right) */}
-        {!gatewayProvider ? (
-          <div className={`${card} flex h-full flex-col`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Globe className="h-4 w-4 text-accent" /> Browser Sync</div>
-              <HelpCircle className="h-4 w-4 text-text-muted/70" />
-            </div>
-            <div className="flex flex-1 flex-col justify-center">
-              <div className="my-4 flex items-center justify-center gap-3">
-                <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-border-subtle bg-white"><ChromeLogo size={28} /></span>
-                <span className="font-mono text-text-muted/50">·····</span>
-                <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-accent-border bg-accent-soft text-accent"><Sparkles className="h-6 w-6" /></span>
-              </div>
-              {notConnected ? (
-                <p className="text-center text-[12px] leading-snug text-text-muted">Log in once in your own Chrome — the agent learns how to fetch your data, then replays it automatically.</p>
-              ) : (
-                <div className="flex flex-col items-center">
-                  <button onClick={importLogins} disabled={importing}
-                    title="Already signed into this site in Chrome? Import that login (quit Chrome first) so you skip signing in."
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
-                    {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} {importing ? "Importing…" : "Import login"}
-                  </button>
-                  {importMsg && <p className={`mt-1.5 text-center text-[11px] ${importMsg.startsWith("✓") ? "text-ok" : "text-danger"}`}>{importMsg}</p>}
-                </div>
-              )}
+      <div className="px-6 py-5">
+        {/* WELCOME - a short overview of what connecting this app does. */}
+        {tab === "welcome" && (
+          <div className="max-w-2xl space-y-4">
+            <div className={card}>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Plug className="h-4 w-4 text-accent" /> What connecting {app.title || app.id} does</h3>
+              <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">{welcomeText(app, notConnected)}</p>
+              <dl className="mt-4 grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
+                {!gatewayProvider && !learnedLane && <CatalogField label="Connection">{methodLabel(app.integration)}</CatalogField>}
+                {gatewayProvider && <CatalogField label="Connection">{`Via ${titleCase(gatewayProvider)}`}</CatalogField>}
+                <CatalogField label="Status">{meta.label}</CatalogField>
+                {domainsLine && <CatalogField label="Feeds domains">{domainsLine}</CatalogField>}
+              </dl>
             </div>
           </div>
-        ) : (
-          <div className="hidden lg:block" />
         )}
 
-        {/* Learned Skills (bottom-left) */}
-        <div className={`${card} h-full`}>
+        {/* SOUL - the editable note plus a rich, instruction-style description. */}
+        {tab === "soul" && (
+          <div className="max-w-2xl space-y-4">
+            <div className={`${card} flex flex-col`}>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Soul</h3>
+                {!editSoul && <button onClick={openSoulEditor} title="Edit soul" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
+              </div>
+              {editSoul ? (
+                <div className="mt-2 flex flex-col">
+                  <textarea autoFocus rows={5} value={soulDraft} onChange={(e) => setSoulDraft(e.target.value)}
+                    placeholder={`Why ${app.title || app.id} is in your harness: what it feeds your world.`}
+                    className="w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-relaxed text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
+                  <div className="mt-2 flex items-center gap-2">
+                    <button onClick={saveSoul} disabled={soulBusy} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{soulBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
+                    <button onClick={() => setEditSoul(false)} className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">Cancel</button>
+                    <span className="ml-auto font-mono text-[10px] text-text-muted/70">apps/{app.id}/soul.md</span>
+                  </div>
+                </div>
+              ) : soulText.trim() ? (
+                <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-text-secondary">{soulText.trim()}</p>
+              ) : (
+                <button onClick={openSoulEditor} className="mt-2 flex flex-col items-start justify-center rounded-lg border border-dashed border-border bg-surface/40 px-4 py-5 text-left hover:border-accent-border">
+                  <span className="text-[13px] text-text-secondary">Give {app.title || app.id} a soul.</span>
+                  <span className="mt-0.5 text-[12px] text-text-muted">Why it's in your harness: your AI reads this as standing context.</span>
+                </button>
+              )}
+            </div>
+            {/* Always-shown rich elaboration: what it exposes, how it reaches the
+                vault, and how it is used. Leaves the editable note above untouched. */}
+            <div className={card}>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><HelpCircle className="h-4 w-4 text-accent" /> How this connection works</h3>
+              <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">{richSoulFor(app)}</p>
+            </div>
+          </div>
+        )}
+
+        {/* SKILLS - the app's skill pack: method badge + primary indicator, with
+            the Learn New Skill flow preserved. The skill MODEL is owned by the
+            cli repo; this only displays what the engine returns (or a placeholder). */}
+        {tab === "skills" && (
+          <div className="max-w-2xl">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Learned Skills{skills.length > 0 && <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-muted">{skills.length}</span>}</div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Learned skills{skills.length > 0 && <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-muted">{skills.length}</span>}</div>
               {!learnMode && !composing && (
                 <button onClick={() => { setGoalText(""); setComposing(true); }}
                   className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10">
@@ -2282,9 +2452,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                 </button>
               )}
             </div>
-            {!gatewayProvider && (
-              <p className="mt-1.5 text-[12px] text-text-muted">Skills are actions Prevail learned to do for you on {app.title || app.id} — taught once, replayed automatically.</p>
-            )}
+            <p className="mt-1.5 text-[12px] text-text-muted">Skills are actions Prevail learned to do for you on {app.title || app.id}: taught once, replayed automatically. Each runs by a method (Browser, MCP, or API); your primary skill is the one Prevail prefers.</p>
 
             {learnMode ? (
               <div className="mt-3">
@@ -2306,61 +2474,102 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                     className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-40">{notConnected && connect?.connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Start learning</button>
                   <button onClick={() => setComposing(false)} className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary">Cancel</button>
                 </div>
-                <p className="text-[11px] text-text-muted">Your Chrome opens — log in once. I'll learn the steps + remember the folder and cadence from what you said.</p>
+                <p className="text-[11px] text-text-muted">Your Chrome opens, log in once. I'll learn the steps and remember the folder and cadence from what you said.</p>
               </div>
             ) : skills.length === 0 ? (
-              <div className="mt-3 rounded-lg border border-dashed border-border bg-surface/40 px-4 py-6 text-center">
-                <div className="text-[13px] text-text-secondary">No skills yet.</div>
-                <div className="mt-0.5 text-[12px] text-text-muted">Click <span className="text-accent">Learn New Skill</span>, say what to fetch{notConnected ? " — I'll connect and learn it in one go." : <> — saved in <code className="rounded bg-surface-warm px-1 font-mono text-[11px]">vault/apps/{app.id}/skills/</code></>}</div>
+              <div className="mt-3 space-y-2">
+                <div className="rounded-lg border border-dashed border-border bg-surface/40 px-4 py-4 text-center">
+                  <div className="text-[13px] text-text-secondary">No skills yet.</div>
+                  <div className="mt-0.5 text-[12px] text-text-muted">Click <span className="text-accent">Learn New Skill</span>, say what to fetch{notConnected ? ": I'll connect and learn it in one go." : <>: saved in <code className="rounded bg-surface-warm px-1 font-mono text-[11px]">vault/apps/{app.id}/skills/</code></>}</div>
+                </div>
+                {/* Placeholder examples so the skill pack reads clearly before the
+                    first skill is learned (display only). */}
+                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Examples</div>
+                <ul className="space-y-2 opacity-60">
+                  {PLACEHOLDER_SKILLS.map((s) => (
+                    <SkillRow key={s.id} s={s} label={humanizeSkill(s.id)} method={skillMethod(s)} primary={!!s.primary} disabled placeholder />
+                  ))}
+                </ul>
               </div>
             ) : (
               <ul className="mt-3 space-y-2">
-                {skills.map((s) => (
-                  <li key={s.id} className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-3 py-2.5">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Sparkles className="h-4 w-4" /></span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-text-primary">{humanizeSkill(s.id)}</div>
-                      <div className="text-[11px] text-text-muted">{s.runner === "browser" ? "Browser skill" : s.runner}{s.trigger ? ` · ${s.trigger}` : ""}</div>
-                    </div>
-                    <span className="hidden items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-ok sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-ok" /> ready</span>
-                    <button onClick={() => setLearnMode("replay")} disabled={!!learnMode}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
-                      <Play className="h-3 w-3" /> Run now
-                    </button>
-                  </li>
+                {skills.map((s, i) => (
+                  <SkillRow key={s.id} s={s} label={humanizeSkill(s.id)} method={skillMethod(s)} primary={s.primary ?? s.favorite ?? i === 0}
+                    disabled={!!learnMode} onRun={() => setLearnMode("replay")} />
                 ))}
               </ul>
             )}
-        </div>
+          </div>
+        )}
 
-        {/* Schedule / Domains / Status (bottom-right) */}
-        <div className={`${card} h-full`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Tag className="h-4 w-4 text-accent" /> Domains fed</div>
-              {!editDomains && !notConnected && <button onClick={openDomainEditor} title="Edit domains" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
-            </div>
-            <div className="mt-3">
-              {!editDomains ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {(app.domains ?? []).length ? (app.domains).map((d) => (
-                    <button key={d} onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: d }))} className="rounded-full border border-border bg-surface px-2.5 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">{titleCase(d)}</button>
-                  )) : <span className="text-[12px] text-text-muted">none yet</span>}
+        {/* CONNECTIONS - downloads / browser sync AND the editable connected-domains
+            list, combined (fix #7). "Domains fed" is renamed "Connected domains". */}
+        {tab === "connections" && (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {!gatewayProvider ? (
+              <div className={`${card} flex flex-col`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Globe className="h-4 w-4 text-accent" /> Browser Sync</div>
+                  <HelpCircle className="h-4 w-4 text-text-muted/70" />
                 </div>
-              ) : (
-                <div>
+                <div className="flex flex-1 flex-col justify-center">
+                  <div className="my-4 flex items-center justify-center gap-3">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-border-subtle bg-white"><ChromeLogo size={28} /></span>
+                    <span className="font-mono text-text-muted/50">·····</span>
+                    <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-accent-border bg-accent-soft text-accent"><Sparkles className="h-6 w-6" /></span>
+                  </div>
+                  {notConnected ? (
+                    <p className="text-center text-[12px] leading-snug text-text-muted">Log in once in your own Chrome: the agent learns how to fetch your data, then replays it automatically.</p>
+                  ) : (
+                    <div className="flex flex-col items-center">
+                      <button onClick={importLogins} disabled={importing}
+                        title="Already signed into this site in Chrome? Import that login (quit Chrome first) so you skip signing in."
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+                        {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} {importing ? "Importing…" : "Import login"}
+                      </button>
+                      {importMsg && <p className={`mt-1.5 text-center text-[11px] ${importMsg.startsWith("✓") ? "text-ok" : "text-danger"}`}>{importMsg}</p>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className={`${card} flex flex-col justify-center`}>
+                <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Check className="h-4 w-4 text-accent" /> Connected via {titleCase(gatewayProvider)}</div>
+                <p className="mt-2 text-[12px] leading-relaxed text-text-muted">{app.title || app.id} is fronted by {titleCase(gatewayProvider)}. Authorization and data fetch run through the gateway.</p>
+              </div>
+            )}
+
+            {/* Connected domains (renamed from "Domains fed"), editable. */}
+            <div className={`${card} flex flex-col`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Tag className="h-4 w-4 text-accent" /> Connected domains</div>
+                {!editDomains && !notConnected && <button onClick={openDomainEditor} title="Add or remove domains this app feeds" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
+              </div>
+              <p className="mt-1.5 text-[12px] text-text-muted">The domains {app.title || app.id} feeds with its data. {notConnected ? "Editable once connected." : "Use the pencil to add or remove."}</p>
+              <div className="mt-3">
+                {!editDomains ? (
                   <div className="flex flex-wrap gap-1.5">
-                    {(allDomains.length ? allDomains : [...domSel]).map((d) => { const on = domSel.has(d); return (
-                      <button key={d} onClick={() => setDomSel((cur) => { const n = new Set(cur); n.has(d) ? n.delete(d) : n.add(d); return n; })} className={`rounded-full border px-2.5 py-0.5 text-[11px] ${on ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-surface text-text-muted hover:text-text-secondary"}`}>{titleCase(d)}</button>
-                    ); })}
+                    {(app.domains ?? []).length ? (app.domains).map((d) => (
+                      <button key={d} onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: d }))} className="rounded-full border border-border bg-surface px-2.5 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">{titleCase(d)}</button>
+                    )) : <span className="text-[12px] text-text-muted">none yet</span>}
                   </div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <button onClick={saveDomains} disabled={domBusy} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{domBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
-                    <button onClick={() => setEditDomains(false)} className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">Cancel</button>
+                ) : (
+                  <div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(allDomains.length ? allDomains : [...domSel]).map((d) => { const on = domSel.has(d); return (
+                        <button key={d} onClick={() => setDomSel((cur) => { const n = new Set(cur); n.has(d) ? n.delete(d) : n.add(d); return n; })} className={`rounded-full border px-2.5 py-0.5 text-[11px] ${on ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-surface text-text-muted hover:text-text-secondary"}`}>{titleCase(d)}</button>
+                      ); })}
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <button onClick={saveDomains} disabled={domBusy} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{domBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
+                      <button onClick={() => setEditDomains(false)} className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">Cancel</button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
+        )}
       </div>
 
       {/* Footer */}
@@ -2389,7 +2598,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
         ) : (
           <div className="flex items-center gap-1.5">
             <button onClick={() => void runSync()} disabled={busy} title="Sync now" className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} {busy ? "Syncing…" : "Sync"}</button>
-            <button onClick={openSchedModal} title={`Schedule & sync — ${scheduleLabel(app.refresh)}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent"><Clock className="h-3.5 w-3.5" /> Schedule{enabled && app.refresh ? <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-ok" /> : null}</button>
+            <button onClick={openSchedModal} title={`Schedule & sync: ${scheduleLabel(app.refresh)}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent"><Clock className="h-3.5 w-3.5" /> Schedule{enabled && app.refresh ? <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-ok" /> : null}</button>
             {app.path && <button onClick={() => void invoke("open_in_finder", { path: app.path! }).catch(() => {})} title="Open folder" className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-muted hover:border-accent-border hover:text-accent"><FolderOpen className="h-4 w-4" /></button>}
             <button onClick={() => setConfirmDelete(true)} title="Remove this app entirely" className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-danger/10 hover:text-danger"><Trash2 className="h-4 w-4" /></button>
           </div>

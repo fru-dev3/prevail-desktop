@@ -92,7 +92,7 @@ export function NotesPanel({ vaultPath }: { vaultPath: string }) {
       <SettingsHeader
         title="Notes"
         icon={FileText}
-        subtitle="Quick brain-dumps, ideas, and logs — searchable, saved to your vault. Everything here lives in notes.json inside your vault folder."
+        subtitle="Quick brain-dumps, ideas, and logs, searchable, saved to your vault. Everything here lives in notes.json inside your vault folder."
         right={
           <button onClick={createNote} className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover">
             <Plus className="h-4 w-4" /> New note

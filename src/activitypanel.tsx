@@ -4,13 +4,16 @@
 // (_meta/activity.jsonl) - loop runs, executed approvals, tasks filed by loops,
 // briefings, app syncs. Full transparency into the autonomous system, at scale.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, ChevronRight, ListPlus, Loader2, Mail, RefreshCw, RotateCw, Zap, Repeat, Bell } from "lucide-react";
+import { Activity, ChevronRight, ListPlus, Loader2, Mail, RefreshCw, RotateCw, Zap, Repeat, Bell, Workflow, CornerDownRight } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase, relTime } from "./format";
 import { useProcesses } from "./processes";
 import { SettingsHeader } from "./sectionutil";
 
-type ActivityType = "loop_run" | "loop_exec" | "task_filed" | "briefing" | "sync" | "nudge" | "other";
+// These mirror the engine's activity-ledger producer types (cli activity.ts).
+// Keep them in lockstep: any type the engine writes must be representable here,
+// or the event falls through to the generic "other" label and can't be filtered.
+type ActivityType = "loop_run" | "loop_exec" | "task_filed" | "briefing" | "sync" | "nudge" | "playbook" | "playbook_step" | "other";
 interface ActivityEvent {
   ts: number;
   type: ActivityType;
@@ -128,6 +131,8 @@ const TYPE_META: Record<ActivityType, { label: string; icon: typeof Activity; ti
   briefing:   { label: "Briefing",   icon: Mail,     tint: "text-accent" },
   sync:       { label: "App sync",   icon: RotateCw, tint: "text-text-secondary" },
   nudge:      { label: "Nudge",      icon: Bell,     tint: "text-text-secondary" },
+  playbook:      { label: "Playbook",      icon: Workflow,        tint: "text-accent" },
+  playbook_step: { label: "Playbook step", icon: CornerDownRight, tint: "text-text-secondary" },
   other:      { label: "Event",      icon: Activity, tint: "text-text-muted" },
 };
 
@@ -137,8 +142,17 @@ const FILTERS: { id: ActivityType | "all"; label: string }[] = [
   { id: "loop_exec", label: "Executed" },
   { id: "task_filed", label: "Tasks" },
   { id: "briefing", label: "Briefings" },
+  { id: "playbook", label: "Playbooks" },
   { id: "sync", label: "Syncs" },
 ];
+
+// The Playbooks tab covers both the run-level "playbook" event and its
+// per-step "playbook_step" children, so a single tab shows the whole run.
+function matchesType(eventType: ActivityType, filter: ActivityType | "all"): boolean {
+  if (filter === "all") return true;
+  if (filter === "playbook") return eventType === "playbook" || eventType === "playbook_step";
+  return eventType === filter;
+}
 
 export function SystemActivity({ vaultPath }: { vaultPath: string }) {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
@@ -179,7 +193,7 @@ export function SystemActivity({ vaultPath }: { vaultPath: string }) {
   }, [events]);
 
   const shown = useMemo(() => events.filter((e) =>
-    (typeFilter === "all" || e.type === typeFilter) &&
+    matchesType(e.type, typeFilter) &&
     (domainFilter === "all" || e.domain === domainFilter),
   ), [events, typeFilter, domainFilter]);
 
