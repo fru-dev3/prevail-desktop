@@ -287,6 +287,10 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
   const runWithAgent = async (t: BoardTask, cli: string) => {
     if (!t.id) return;
     const taskId = t.id;
+    // "prevail" is the built-in agent: run with the default runtime (no --cli),
+    // so it uses whatever model Prevail already runs on, no harness login needed.
+    const effectiveCli = cli === "prevail" ? "" : cli;
+    const agentLabel = cli === "prevail" ? "Prevail" : cli;
     setAgentPickerFor(null);
     setAgentRunning((s) => new Set(s).add(taskId));
     const session = `agent-${taskId}-${Date.now()}`;
@@ -309,7 +313,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
         if (e.payload.session !== session) return;
         try {
           if (result.trim()) {
-            await invoke("task_detail_add_comment", { vault: vaultPath, domain: t.domain, id: taskId, text: result.trim(), author: cli });
+            await invoke("task_detail_add_comment", { vault: vaultPath, domain: t.domain, id: taskId, text: result.trim(), author: agentLabel });
             if (t.status === "todo" || t.status === "doing") {
               await invoke("tasks_set_status", { vault: vaultPath, domain: t.domain, id: taskId, status: "review" });
             }
@@ -318,16 +322,17 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
         cleanup();
         window.dispatchEvent(new Event("prevail:tasks-changed"));
       });
-      await invoke("engine_agent_run", { session, vault: vaultPath, domain: t.domain, goal: t.text, taskId, cli, autonomy: "safe" });
+      await invoke("engine_agent_run", { session, vault: vaultPath, domain: t.domain, goal: t.text, taskId, cli: effectiveCli, autonomy: "safe" });
     } catch (err) {
       console.error("engine_agent_run", err);
       cleanup();
     }
   };
   // The per-task "Run with agent" control (shared by card + list views): a Zap
-  // button that opens the HarnessPicker. Only shown when a harness is installed.
+  // button that opens the HarnessPicker. Always available (the built-in Prevail
+  // agent is always an option, even with no external harness installed).
   const agentButton = (t: BoardTask) => {
-    if (harnesses.length === 0 || !t.id) return null;
+    if (!t.id) return null;
     const runningThis = agentRunning.has(t.id);
     const open = agentPickerFor === t.id;
     return (
@@ -335,7 +340,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
         <button
           onClick={() => setAgentPickerFor(open ? null : t.id!)}
           disabled={runningThis}
-          title="Run this task with a harness agent (Hermes, Pi, OpenCode)"
+          title="Run with agent: hand this task to Prevail's agent (or an installed harness like Hermes, Pi, OpenCode). It works in safe mode and posts its result as a comment."
           className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-text-muted transition-colors hover:border-accent-border hover:text-accent disabled:opacity-50"
         >
           {runningThis ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}

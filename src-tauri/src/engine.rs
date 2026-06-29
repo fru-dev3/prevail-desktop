@@ -835,8 +835,16 @@ pub fn engine_domains(vault: String) -> Result<serde_json::Value, String> {
 /// ~/.prevail/apps + vault apps), with connection + sync state. This is the
 /// live counterpart to the static connector catalog: what is actually wired up.
 #[tauri::command]
-pub fn engine_apps_list() -> Result<serde_json::Value, String> {
-    run_engine_json(&["connectors", "list", "--json"])
+pub fn engine_apps_list(vault: Option<String>) -> Result<serde_json::Value, String> {
+    // Scope the listing to the SAME vault the UI adds into. engine_app_add passes
+    // --vault explicitly; if the list relied only on the ambient env it could
+    // resolve a DIFFERENT vault (the user may have several), so a just-added app
+    // would never appear and the UI would treat it as not-connected. Pass --vault
+    // when we have it so add and list always agree.
+    match vault.filter(|v| !v.trim().is_empty()) {
+        Some(v) => run_engine_json(&["connectors", "list", "--vault", &v, "--json"]),
+        None => run_engine_json(&["connectors", "list", "--json"]),
+    }
 }
 
 /// Probe one app's connectivity/auth (api/oauth/browser/mcp/cli/manual).
