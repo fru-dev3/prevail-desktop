@@ -560,6 +560,7 @@ pub fn run() {
             engine::engine_manifest_set,
             engine::engine_chat,
             engine::engine_agent_run,
+            engine::engine_app_run_skill,
             threads::list_threads,
             threads::load_thread,
             threads::save_thread,

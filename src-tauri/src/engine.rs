@@ -242,9 +242,16 @@ pub fn run_engine_json(args: &[&str]) -> Result<serde_json::Value, String> {
 
     if !out.status.success() {
         let code = out.status.code().unwrap_or(-1);
+        // Fix #18 (opacity): surface the REAL cause. Prefer stderr, but many engine
+        // failures (connect agent, connectors) write a JSON `{ ok:false, error }`
+        // to STDOUT and exit nonzero with an empty stderr, so fall back to stdout
+        // so the UI never shows a bare "prevail exited 1" with no reason.
         let stderr = String::from_utf8_lossy(&out.stderr);
         let stderr = stderr.trim();
-        return Err(format!("prevail exited {code}: {stderr}"));
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stdout = stdout.trim();
+        let detail = if !stderr.is_empty() { stderr } else { stdout };
+        return Err(format!("prevail exited {code}: {detail}"));
     }
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -320,9 +327,14 @@ pub fn run_engine_json_stdin(
 
     if !out.status.success() {
         let code = out.status.code().unwrap_or(-1);
+        // Fix #18 (opacity): prefer stderr, fall back to stdout (where the engine
+        // often writes a JSON `{ ok:false, error }` on a nonzero exit).
         let stderr = String::from_utf8_lossy(&out.stderr);
         let stderr = stderr.trim();
-        return Err(format!("prevail exited {code}: {stderr}"));
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stdout = stdout.trim();
+        let detail = if !stderr.is_empty() { stderr } else { stdout };
+        return Err(format!("prevail exited {code}: {detail}"));
     }
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -2613,6 +2625,40 @@ pub async fn engine_agent_run(
     args.push(auto.to_string());
 
     run_engine_stream(app, session, args, "engine-agent").await
+}
+
+/// Run one of an app's skills, streaming progress to the frontend.
+///
+/// `prevail connectors skill-run --app <app> --skill <skill> --vault <vault>
+///  [--cli <provider>] --json`. The browser-method skill performs its
+/// first-time login on the first run, so this also covers setup. Streams the
+/// same ChatEvent NDJSON shape as `engine_chat` / `engine_agent_run`, on
+/// `engine-skill:line` and `engine-skill:done`, so the UI reuses its existing
+/// stream parser. Mirrors `engine_agent_run`'s spawn/stream/emit path.
+#[tauri::command]
+pub async fn engine_app_run_skill(
+    handle: tauri::AppHandle,
+    session: String,
+    vault: String,
+    app: String,
+    skill: String,
+    cli: Option<String>,
+) -> Result<(), String> {
+    let mut args: Vec<String> = vec![
+        "connectors".to_string(),
+        "skill-run".to_string(),
+        "--app".to_string(),
+        app,
+        "--skill".to_string(),
+        skill,
+        "--vault".to_string(),
+        vault,
+    ];
+    if let Some(c) = cli.filter(|s| !s.is_empty()) {
+        args.push("--cli".to_string());
+        args.push(c);
+    }
+    run_engine_stream(handle, session, args, "engine-skill").await
 }
 
 #[cfg(test)]
