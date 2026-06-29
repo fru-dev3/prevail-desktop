@@ -57,7 +57,7 @@ export function WorkPanel({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="w-full px-8 py-10">
-        {section === "tasks" && <BoardPanel vaultPath={vaultPath} />}
+        {section === "tasks" && <BoardPanel vaultPath={vaultPath} clis={clis} />}
         {section === "recommendations" && <RecommendationsPanel vaultPath={vaultPath} />}
         {section === "spark" && <SparkPanel vaultPath={vaultPath} clis={clis} />}
         {section === "automations" && <LoopBoard vaultPath={vaultPath} />}
