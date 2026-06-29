@@ -2,7 +2,7 @@
 id: policy-renewal-review
 runner: llm
 trigger: on-demand
-description: Before auto-renewing any policy — coverage still right, price still fair, loyalty-tax check.
+description: Before auto-renewing any policy, coverage still right, price still fair, loyalty-tax check.
 source: seed
 ---
 

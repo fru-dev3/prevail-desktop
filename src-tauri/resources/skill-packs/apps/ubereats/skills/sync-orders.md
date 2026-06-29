@@ -14,6 +14,6 @@ Pull the takeout you actually order so the spending, the cravings, and the rhyth
 1. **Open order history.** In the logged-in browser, navigate to Uber Eats order history.
 2. **Read each order.** Capture date and time, restaurant, items, item count, subtotal, fees, tip, total, and currency.
 3. **Scroll back.** Page through history to cover the last several months, staying read-only the whole time.
-4. **Write the file.** Save the orders as one normalized JSON document — never reorder, add to cart, or place an order.
+4. **Write the file.** Save the orders as one normalized JSON document, never reorder, add to cart, or place an order.
 
 Output: data/ubereats-orders-${date}.json with your recent order history, items, and totals.

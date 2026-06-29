@@ -2,7 +2,7 @@
 id: packing-and-docs-check
 runner: llm
 trigger: on-demand
-description: T-minus-3-days check — documents, money, health, and the pack list that fits the actual trip.
+description: T-minus-3-days check, documents, money, health, and the pack list that fits the actual trip.
 source: seed
 ---
 
