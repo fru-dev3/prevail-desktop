@@ -3,7 +3,7 @@
 // gateway/MCP/benchmark status strips from shared modules.
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
-import { Archive, Briefcase, ChevronDown, ChevronLeft, ChevronRight, Clock, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Star, Sun } from "lucide-react";
+import { Activity, Archive, Briefcase, ChevronDown, ChevronLeft, ChevronRight, Clock, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Star, Sun, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { STATUS_TINT } from "./constants";
@@ -16,6 +16,9 @@ import { EDITOR_NAV, WORK_NAV } from "./navdefs";
 import { domainIcon } from "./icons";
 import { useAppearance } from "./hooks";
 import { SidebarBackupActive, SidebarBenchmarkRuns, SidebarBenchScheduled, SidebarProcesses } from "./cards";
+import { useProcesses } from "./processes";
+import { BENCH_SCHED, useBenchBatches } from "./bench";
+import { BACKUP_CFG } from "./backup";
 import { BrandMark } from "./brandmark";
 import { AppRowLogo } from "./panels3";
 import type { BrandLogo, Domain, EngineApp, LifeReadiness, Mode, TabId, ThreadMeta } from "./types";
@@ -959,15 +962,9 @@ export function Sidebar({
         </button>
       )}
 
-      {/* P2: live process indicator (chat / council / benchmark / loop). */}
-      <SidebarProcesses collapsed={collapsed} setTab={setTab} />
-
-      {/* External connectivity indicators */}
-      <SidebarGatewayLive collapsed={collapsed} />
-      <SidebarMcpLive collapsed={collapsed} setTab={setTab} />
-      <SidebarBenchmarkRuns collapsed={collapsed} />
-      <SidebarBenchScheduled collapsed={collapsed} />
-      <SidebarBackupActive collapsed={collapsed} />
+      {/* The live process / benchmark / backup / connectivity strips used to
+          stack here and made the footer busy. They now live behind the single
+          "Processes" icon in the footer line below (opens a modal on click). */}
 
       {/* Work / Editor + theme - a full-width ribbon pinned to the bottom. The
           2026 redesign splits the old single "Settings" button into the two
@@ -987,6 +984,7 @@ export function Sidebar({
             title={`Theme: ${appearance.mode}: click to cycle`} className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:text-text-secondary">
             {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
           </button>
+          <FooterProcesses collapsed setTab={setTab} />
         </div>
       ) : (
         <div data-tour="settings" className="flex items-center gap-2 border-t border-border px-3 py-2.5">
@@ -1013,37 +1011,114 @@ export function Sidebar({
               Editor
             </button>
           </div>
-          <button
-            onClick={() => { const cycle: Mode[] = ["light", "dark", "system"]; const i = cycle.indexOf(appearance.mode); appearance.setMode(cycle[(i + 1) % cycle.length]); }}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-surface-strong text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
-            title={`Theme: ${appearance.mode}: click to cycle`}
-          >
-            {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-          </button>
         </div>
       )}
       {!collapsed && (
-        // Slim one-line footer: alpha badge + feedback link. The warranty detail
-        // lives in the badge tooltip so the corner stays clean, not a busy card.
-        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border-subtle px-3 py-2">
-          <span
-            title="Experimental alpha build. Provided as-is, no warranty: use at your own risk."
-            className="inline-flex cursor-help items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-accent"
-          >
-            <span className="text-[7px] leading-none">◆</span> Alpha
-          </span>
+        // Slim one-line footer. The Alpha badge IS the feedback link (Prevail is
+        // a research project; the tooltip carries the use-at-your-own-risk
+        // notice), and the theme toggle + Processes icon are kept tiny on the
+        // right so this corner stays minimal rather than a stack of status cards.
+        <div className="flex shrink-0 items-center gap-2 border-t border-border-subtle px-3 py-2">
           <a
             href="https://github.com/fru-dev3/prevail-desktop/issues/new"
             target="_blank"
             rel="noreferrer"
-            title="Report a bug or share feedback"
-            className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
+            title="Alpha — Prevail is an early research project, provided as-is with no warranty: use at your own risk. Click to send feedback or report a bug."
+            className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-accent transition-colors hover:bg-accent hover:text-background"
           >
-            <MessageSquare className="h-3 w-3" /> Feedback
+            <span className="text-[7px] leading-none">◆</span> Alpha
           </a>
+          <div className="flex-1" />
+          <button
+            onClick={() => { const cycle: Mode[] = ["light", "dark", "system"]; const i = cycle.indexOf(appearance.mode); appearance.setMode(cycle[(i + 1) % cycle.length]); }}
+            title={`Theme: ${appearance.mode} — click to cycle (light · dark · system)`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+          >
+            {appearance.mode === "dark" ? <Moon className="h-3.5 w-3.5" /> : appearance.mode === "system" ? <Monitor className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
+          </button>
+          <FooterProcesses collapsed={false} setTab={setTab} />
         </div>
       )}
     </aside>
+  );
+}
+
+// Footer "Processes" control: one small icon (with a live count badge) that
+// replaces the old stack of always-visible status strips. Clicking it opens a
+// modal listing everything happening in the background, so the sidebar corner
+// stays minimal until the user actually wants the detail.
+function FooterProcesses({ collapsed, setTab }: { collapsed: boolean; setTab: (t: TabId) => void }) {
+  const [open, setOpen] = useState(false);
+  const procs = useProcesses();
+  const runningBench = useBenchBatches().filter((b) => b.running);
+  const count = procs.length + runningBench.length;
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        title={count > 0
+          ? `${count} background process${count === 1 ? "" : "es"} running — click for details`
+          : "Background processes — scheduled benchmarks, backups & live activity"}
+        className={`relative flex ${collapsed ? "h-8 w-8" : "h-6 w-6"} shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-warm hover:text-accent`}
+      >
+        <Activity className={collapsed ? "h-4 w-4" : "h-3.5 w-3.5"} />
+        {count > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 font-mono text-[8px] font-bold leading-none text-background">
+            {count}
+          </span>
+        )}
+      </button>
+      {open && <ProcessesModal onClose={() => setOpen(false)} setTab={setTab} />}
+    </>
+  );
+}
+
+// The consolidated background-activity modal. Reuses the existing strip
+// components (they self-hide when inactive) so nothing about how a process,
+// benchmark, backup, or connection renders had to be reimplemented.
+function ProcessesModal({ onClose, setTab }: { onClose: () => void; setTab: (t: TabId) => void }) {
+  const procs = useProcesses();
+  const runningBench = useBenchBatches().filter((b) => b.running);
+  const benchSched = lsGet(BENCH_SCHED.enabled, "0") === "1";
+  const backupOn = lsGet(BACKUP_CFG.enabled, "0") === "1";
+  const empty = procs.length === 0 && runningBench.length === 0 && !benchSched && !backupOn;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-sm overflow-hidden rounded-xl border border-border bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+          <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-secondary">
+            <Activity className="h-3.5 w-3.5 text-accent" /> Background processes
+          </span>
+          <button onClick={onClose} title="Close" className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto">
+          {empty ? (
+            <p className="px-4 py-8 text-center text-xs leading-relaxed text-text-muted">
+              Nothing running right now.<br />Scheduled benchmarks, automatic backups, and live activity (chats, council, loops) will appear here.
+            </p>
+          ) : (
+            <>
+              <SidebarProcesses collapsed={false} setTab={setTab} />
+              <SidebarBenchmarkRuns collapsed={false} />
+              <SidebarBenchScheduled collapsed={false} />
+              <SidebarBackupActive collapsed={false} />
+              <SidebarGatewayLive collapsed={false} />
+              <SidebarMcpLive collapsed={false} setTab={setTab} />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

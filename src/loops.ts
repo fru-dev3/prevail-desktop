@@ -54,6 +54,7 @@ export interface Loop {
   lastRunTs: number | null;
   createdTs: number;
   model?: string;           // per-loop model override ("" = use the global loops model)
+  executor?: string;        // per-loop runtime/cli override ("" = use the global loops provider). May be a harness (hermes/pi/opencode) now that they run as agents.
   kind?: "steward" | "briefing" | "scout"; // briefing = domain digest · scout = web-search AI models for the benchmark · default steward
   channel?: "gmail" | "telegram" | "log"; // briefing delivery target (default gmail)
 }

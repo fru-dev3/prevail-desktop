@@ -2558,6 +2558,63 @@ pub async fn engine_chat(
     run_engine_stream_stdin(app, session, args, message, "engine-chat", extra_env).await
 }
 
+/// `prevail --vault <vault> agent-run --domain <domain> --goal <goal>
+///  [--cli X] [--model Y] [--task id] [--autonomy safe|auto] --json`.
+///
+/// Hands a single task to an agent runtime (typically a harness like Hermes/Pi/
+/// OpenCode). The harness runs its own tool/agent loop; this streams the same
+/// ChatEvent NDJSON shape as `engine_chat`, on `engine-agent:line` and
+/// `engine-agent:done`, so the frontend reuses its existing stream parser.
+#[tauri::command]
+pub async fn engine_agent_run(
+    app: tauri::AppHandle,
+    session: String,
+    vault: String,
+    domain: String,
+    goal: String,
+    cli: Option<String>,
+    model: Option<String>,
+    #[allow(non_snake_case)] taskId: Option<String>,
+    autonomy: Option<String>,
+) -> Result<(), String> {
+    // A harness agent reaches the network and may take actions; Bunker Mode's
+    // no-network guarantee forbids that outright.
+    if crate::bunker::bunker_enabled() {
+        return Err("Agent runs are disabled in Bunker Mode (a harness agent reaches the network).".to_string());
+    }
+    let mut args: Vec<String> = vec![
+        "--vault".to_string(),
+        vault,
+        "agent-run".to_string(),
+        "--domain".to_string(),
+        domain,
+        "--goal".to_string(),
+        goal,
+    ];
+    if let Some(c) = cli.filter(|s| !s.is_empty()) {
+        args.push("--cli".to_string());
+        args.push(c);
+    }
+    if let Some(m) = model.filter(|s| !s.is_empty()) {
+        args.push("--model".to_string());
+        args.push(m);
+    }
+    if let Some(t) = taskId.filter(|s| !s.is_empty()) {
+        args.push("--task".to_string());
+        args.push(t);
+    }
+    // Default to the safe (read-and-propose) autonomy; the engine's broker gate
+    // is the real guardrail for consequential actions.
+    let auto = match autonomy.as_deref() {
+        Some("auto") => "auto",
+        _ => "safe",
+    };
+    args.push("--autonomy".to_string());
+    args.push(auto.to_string());
+
+    run_engine_stream(app, session, args, "engine-agent").await
+}
+
 #[cfg(test)]
 mod vault_key_state_tests {
     use super::*;

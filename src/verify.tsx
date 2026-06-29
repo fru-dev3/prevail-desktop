@@ -58,6 +58,16 @@ export async function verifyCliDefaultModel(cliId: string): Promise<void> {
   }
 }
 
+// "Re-check" from the Runtimes screen. The BROKEN / "won't run" / "not
+// installed" status comes from detect_clis (binary probe), which otherwise only
+// runs at app launch - so after the user repairs an install, a model-only
+// re-verify can't clear it. Re-run detection first (App listens for this event
+// and calls refreshClis), then re-verify the end-to-end model for this runtime.
+export function recheckCli(cliId: string): void {
+  window.dispatchEvent(new Event("prevail:rescan-clis"));
+  void verifyCliDefaultModel(cliId);
+}
+
 export let cliAutoVerifyStarted = false;
 
 export function autoVerifyClis(clis: { id: string; available: boolean }[], force = false) {
