@@ -11,7 +11,8 @@ import { titleCase, relTime } from "./format";
 import { PREF, getPref } from "./storage";
 import { startProcess, endProcess, updateProcess } from "./processes";
 import { Toggle } from "./ui";
-import { MODELS } from "./constants";
+import { MODELS, VENDOR_BRAND, isHarnessRuntime } from "./constants";
+import { useDetectedClis } from "./hooks";
 import { CollapsibleSection } from "./collapsible";
 import {
   AUTONOMY_BLURB,
@@ -509,6 +510,15 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
   const autonomy = loop.autonomy ?? "ask";
   const history = (rt?.history ?? []).slice().reverse();
 
+  // Installed runtimes for the executor picker — only ones actually on the
+  // machine (plus the current selection, so a since-uninstalled executor still
+  // shows rather than silently reverting to the default).
+  const installedRuntimes = useDetectedClis().filter((c) => c.available);
+  const installedIds = installedRuntimes.map((c) => c.id);
+  const execModels = installedIds.filter((id) => !isHarnessRuntime(id));
+  const execHarnesses = installedIds.filter((id) => isHarnessRuntime(id));
+  const execMissing = loop.executor && loop.executor.trim() && !installedIds.includes(loop.executor) ? loop.executor : null;
+
   // Per-loop "Run now": run this one loop immediately, apply per its autonomy, and
   // show exactly what it did (actions + dispositions, tasks created, approvals).
   type RunResult = { ok: boolean; note: string; done: boolean; actions: { text: string; disposition: "task" | "approval" | "suggested" }[]; tasksCreated: string[]; pending: string[]; briefing?: string; error?: string };
@@ -557,7 +567,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
     const finish = () => { if (settled) return; settled = true; runSessionRef.current = null; resolve(); };
     (async () => {
       try {
-        const provider = getPref(PREF.memoryProvider, "claude");
+        const provider = (loop.executor && loop.executor.trim()) || getPref(PREF.memoryProvider, "claude");
         const model = (loop.model && loop.model.trim()) || getPref(PREF.distillModel, "claude-haiku-4-5");
         unline = await listen<{ session: string; data: unknown }>("loop_run:line", (e) => {
           if (e.payload.session !== session) return;
@@ -775,6 +785,20 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
               <option value="active">Active</option>
               <option value="paused">Paused</option>
               <option value="done">Done</option>
+            </select>
+            <select value={loop.executor ?? ""} onChange={(e) => onChange({ executor: e.target.value })} className="rounded-md border border-border bg-background px-2 py-1 text-xs" title="Which runtime runs this loop (default = the global loops provider in Settings). Harnesses run the loop as an agent.">
+              <option value="">Agent: default</option>
+              {execModels.length > 0 && (
+                <optgroup label="Models">
+                  {execModels.map((id) => <option key={id} value={id}>{VENDOR_BRAND[id]?.name ?? id}</option>)}
+                </optgroup>
+              )}
+              {execHarnesses.length > 0 && (
+                <optgroup label="Harnesses (agent)">
+                  {execHarnesses.map((id) => <option key={id} value={id}>{VENDOR_BRAND[id]?.name ?? id}</option>)}
+                </optgroup>
+              )}
+              {execMissing && <option value={execMissing}>{VENDOR_BRAND[execMissing]?.name ?? execMissing} (not installed)</option>}
             </select>
             <select value={loop.model ?? ""} onChange={(e) => onChange({ model: e.target.value })} className="rounded-md border border-border bg-background px-2 py-1 text-xs" title="Model this loop runs on (default = the global loops model in Settings)">
               <option value="">Model: default</option>

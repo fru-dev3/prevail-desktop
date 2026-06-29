@@ -14,7 +14,7 @@ import { Ghost } from "lucide-react";
 import { Toggle } from "./ui";
 import { COUNCIL_CHAIR_KEY, COUNCIL_MEMBERS_KEY, councilModelsFor, councilSlotKey, readCouncilChair, readCouncilMembers } from "./council";
 import { SettingsHeader, authLoginCmd } from "./sectionutil";
-import { cliVerifyLive, loadVerifyMap, saveVerifyMap, setCliVerify, useCliVerifyLive, verifyCliDefaultModel } from "./verify";
+import { cliVerifyLive, loadVerifyMap, recheckCli, saveVerifyMap, setCliVerify, useCliVerifyLive } from "./verify";
 import { ProviderMark } from "./marks";
 import { MasterDetail } from "./masterdetail";
 import { MemoryContextSection, TasksCrossDomainSection } from "./settings2";
@@ -976,7 +976,7 @@ export function AgentCard({
             })()}
           </div>
           <button
-            onClick={() => void verifyCliDefaultModel(cli.id)}
+            onClick={() => recheckCli(cli.id)}
             className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
           >
             Re-check
@@ -1156,7 +1156,7 @@ export function AgentCard({
                 </a>
               )}
               <button
-                onClick={() => void verifyCliDefaultModel(cli.id)}
+                onClick={() => recheckCli(cli.id)}
                 className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"
               >
                 Re-check
@@ -1195,14 +1195,23 @@ function RuntimeRow({ cli, active, vstatus, isDefault, onSelect }: {
   isDefault?: boolean;
   onSelect: () => void;
 }) {
-  const sub = !cli.available ? "not installed" : (cli.version ? cli.version.slice(0, 22) : "detected");
-  const badge = !cli.available ? "bg-surface-strong text-text-muted"
-    : vstatus === "ok" ? "bg-ok text-background"
-    : vstatus === "failed" ? "bg-warn text-background"
-    : vstatus === "verifying" ? "animate-pulse bg-text-muted text-background"
-    : "bg-surface-strong text-text-muted";
-  const glyph = !cli.available ? "" : vstatus === "ok" ? "✓" : vstatus === "failed" ? "✗" : vstatus === "verifying" ? "·" : "○";
-  const tip = !cli.available ? "not installed" : vstatus === "ok" ? "valid" : vstatus === "failed" ? "not valid" : vstatus === "verifying" ? "checking…" : "detected";
+  // Broken = on disk but won't run (detect_clis returned an error). Distinct
+  // from genuinely not-installed, so the row never disagrees with the detail
+  // panel's BROKEN / "won't run" status.
+  const broken = !cli.available && !!cli.error;
+  const sub = cli.available ? (cli.version ? cli.version.slice(0, 22) : "detected") : broken ? "won't run" : "not installed";
+  const badge = cli.available
+    ? (vstatus === "ok" ? "bg-ok text-background"
+      : vstatus === "failed" ? "bg-warn text-background"
+      : vstatus === "verifying" ? "animate-pulse bg-text-muted text-background"
+      : "bg-surface-strong text-text-muted")
+    : broken ? "bg-warn text-background" : "bg-surface-strong text-text-muted";
+  const glyph = cli.available
+    ? (vstatus === "ok" ? "✓" : vstatus === "failed" ? "✗" : vstatus === "verifying" ? "·" : "○")
+    : broken ? "✕" : "";
+  const tip = cli.available
+    ? (vstatus === "ok" ? "valid" : vstatus === "failed" ? "not valid" : vstatus === "verifying" ? "checking…" : "detected")
+    : broken ? "won't run" : "not installed";
   return (
     <button
       onClick={onSelect}
