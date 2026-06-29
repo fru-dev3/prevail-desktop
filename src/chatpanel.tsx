@@ -403,13 +403,23 @@ export function ChatPanel({
   }, [domain, vaultPath]);
   const rescanContextScore = useCallback(() => {
     if (!domain || !vaultPath) return;
+    // Idempotent: never launch a second audit while one is in flight (the audit
+    // just recomputes + rewrites the score, so re-running is otherwise harmless).
+    if (ctxScoreRescanning) return;
     setCtxScoreRescanning(true);
     setCtxScoreError(null);
-    invoke<ContextScore>("engine_score", { vault: vaultPath, domain, audit: true })
+    // Register a background process so the audit is visible from any screen and
+    // the user can navigate away and come back while it runs. The Tauri command
+    // is async (runs the engine off the main thread), so the UI never freezes.
+    const proc = `score-audit-${domain}-${Date.now()}`;
+    startProcess(proc, "audit", `Auditing ${titleCase(domain)} context`, domain);
+    invoke<ContextScore>("engine_score_audit", { vault: vaultPath, domain })
+      // Update the module-level cache even if this panel has since unmounted, so
+      // returning to the domain shows the fresh score.
       .then((s) => { setCtxScore(s); _scoreCache.set(`${vaultPath}:${domain}`, { at: Date.now(), score: s }); })
       .catch((e) => setCtxScoreError(String(e)))
-      .finally(() => setCtxScoreRescanning(false));
-  }, [domain, vaultPath]);
+      .finally(() => { setCtxScoreRescanning(false); endProcess(proc); });
+  }, [domain, vaultPath, ctxScoreRescanning]);
   // Aggregate "Life Readiness" - averaged across all domains. Loaded on
   // the no-domain landing. Re-fetched when a re-scan finishes so the
   // headline number stays roughly current.
