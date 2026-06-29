@@ -989,34 +989,33 @@ export function Sidebar({
           </button>
         </div>
       ) : (
-        <div data-tour="settings" className="flex items-stretch border-t border-border">
-          <button
-            onClick={() => setTab("chat")}
-            title="Work — your domains, board, automations, calendar & notes"
-            className={`flex flex-1 items-center justify-center gap-2 px-3 py-3 text-[13px] font-semibold tracking-wide transition-colors ${
-              tab !== "settings"
-                ? "bg-accent text-background"
-                : "bg-surface-warm text-text-secondary hover:bg-accent-soft hover:text-accent"
-            }`}
-          >
-            <Briefcase className="h-4 w-4 shrink-0" />
-            Work
-          </button>
-          <button
-            onClick={() => setTab("settings")}
-            title="Editor — models, connections & settings"
-            className={`flex flex-1 items-center justify-center gap-2 border-l border-border px-3 py-3 text-[13px] font-semibold tracking-wide transition-colors ${
-              tab === "settings"
-                ? "bg-accent text-background"
-                : "bg-surface-warm text-text-secondary hover:bg-accent-soft hover:text-accent"
-            }`}
-          >
-            <SettingsIcon className="h-4 w-4 shrink-0" />
-            Editor
-          </button>
+        <div data-tour="settings" className="flex items-center gap-2 border-t border-border px-3 py-2.5">
+          {/* Segmented pill: the active mode rides a raised inner pill. */}
+          <div className="flex flex-1 items-center rounded-full border border-border bg-surface-strong p-0.5">
+            <button
+              onClick={() => setTab("chat")}
+              title="Work — your domains, board, automations, calendar & notes"
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition-all ${
+                tab !== "settings" ? "bg-surface text-accent shadow-sm ring-1 ring-inset ring-border-subtle" : "text-text-secondary hover:text-text-primary"
+              }`}
+            >
+              <Briefcase className="h-4 w-4 shrink-0" />
+              Work
+            </button>
+            <button
+              onClick={() => setTab("settings")}
+              title="Editor — models, connections & settings"
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition-all ${
+                tab === "settings" ? "bg-surface text-accent shadow-sm ring-1 ring-inset ring-border-subtle" : "text-text-secondary hover:text-text-primary"
+              }`}
+            >
+              <SettingsIcon className="h-4 w-4 shrink-0" />
+              Editor
+            </button>
+          </div>
           <button
             onClick={() => { const cycle: Mode[] = ["light", "dark", "system"]; const i = cycle.indexOf(appearance.mode); appearance.setMode(cycle[(i + 1) % cycle.length]); }}
-            className="flex w-12 shrink-0 items-center justify-center border-l border-border bg-surface-warm text-text-muted transition-colors hover:bg-accent-soft hover:text-accent"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-surface-strong text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
             title={`Theme: ${appearance.mode}: click to cycle`}
           >
             {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
