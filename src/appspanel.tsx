@@ -267,7 +267,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
 
   const reload = useCallback(async (): Promise<EngineApp[]> => {
     try {
-      const list = await invoke<EngineApp[]>("engine_apps_list");
+      const list = await invoke<EngineApp[]>("engine_apps_list", { vault: vaultPath });
       const next = Array.isArray(list) ? list.map((x) => ({ ...x, title: appName(x.title) })) : [];
       setApps(next);
       // Default selection: keep the current one if it still exists, else the
@@ -839,12 +839,12 @@ function ConnectedGatewayDetail({ method, slug, title, vaultPath, logos, onBack 
   const [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
     try {
-      let list = await invoke<EngineApp[]>("engine_apps_list");
+      let list = await invoke<EngineApp[]>("engine_apps_list", { vault: vaultPath });
       let a = (list ?? []).find((x) => x.id === id);
       if (!a) {
         // Scaffold it as a vault app so the schedule persists + it's chattable.
         await invoke("engine_gateway_app_add", { provider: method, toolkit: slug, id, title }).catch(() => {});
-        list = await invoke<EngineApp[]>("engine_apps_list");
+        list = await invoke<EngineApp[]>("engine_apps_list", { vault: vaultPath });
         a = (list ?? []).find((x) => x.id === id);
       }
       setApp(a ? { ...a, title: appName(a.title) } : null);
