@@ -614,7 +614,7 @@ export default function App() {
         }
       }));
       // Forward the event channels the UI listens to → web clients.
-      const channels = ["chat:chunk", "chat:done", "engine-chat:line", "engine-chat:done", "engine-agent:line", "engine-agent:done", "benchmark:chunk", "benchmark:done", "ingestion:artifact", "ingestion:browser", "connector_learn:line", "connector_learn:done", "connector_run:line", "connector_run:done", "tg:message_in", "tg:message_out"];
+      const channels = ["chat:chunk", "chat:done", "engine-chat:line", "engine-chat:done", "engine-agent:line", "engine-agent:done", "engine-skill:line", "engine-skill:done", "benchmark:chunk", "benchmark:done", "ingestion:artifact", "ingestion:browser", "connector_learn:line", "connector_learn:done", "connector_run:line", "connector_run:done", "tg:message_in", "tg:message_out"];
       for (const ch of channels) {
         unlistens.push(await listen<unknown>(ch, (e) => { void invoke("webui_event", { event: ch, payload: e.payload }); }));
       }

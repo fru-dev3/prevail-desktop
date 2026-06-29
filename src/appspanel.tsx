@@ -4,12 +4,12 @@
 // by, when it last synced and when it syncs next, and which domains it feeds.
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, Boxes, Check, ChevronLeft, ChevronRight, Clock, Download, ExternalLink, FolderOpen, Globe, HelpCircle, Link2, Loader2, MessageSquare, Pencil, Play, Plug, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Star, Tag, Terminal, Trash2, X } from "lucide-react";
 import { MasterDetail } from "./masterdetail";
 import { ConnectorRunPanel, type ConnectorRunMode } from "./connectorrun";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { invoke } from "./bridge";
+import { invoke, listen } from "./bridge";
 import { appName, relTime, titleCase } from "./format";
 import { PREF, getPref, lsGet, lsSet } from "./storage";
 import { Toggle } from "./ui";
@@ -17,7 +17,7 @@ import { ConnectAppFlow } from "./appconnect";
 import { AppRowLogo } from "./panels3";
 import { GoogleWorkspacePanel } from "./googlepanel";
 import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
-import type { BrandLogo, CatalogApp, ConnectorCatalog, EngineApp } from "./types";
+import type { BrandLogo, CatalogApp, ChatEvent, ConnectorCatalog, EngineApp } from "./types";
 
 type AppStatus = "connected" | "authorized" | "attention" | "connecting" | "disconnected";
 
@@ -1910,17 +1910,30 @@ function catalogToApp(c: CatalogApp): EngineApp {
 // tab pattern: a pill row under the header, one panel shown at a time.
 type AppTab = "welcome" | "soul" | "skills" | "connections" | "chat";
 
-// A recorded/learned skill as the UI displays it. The skill MODEL (favorite /
-// fallback ordering, method preference) is owned by the cli repo; here we only
-// DISPLAY whatever the engine returns, tolerating fields that don't exist yet.
-type AppSkill = { id: string; runner: string; trigger: string; method?: string; favorite?: boolean; primary?: boolean };
+// A runnable skill as the UI displays it. The engine now returns the richer
+// contract shape (id/name/method/primary/source/trigger/summary) and includes
+// shipped STARTER packs even before connect; older fields (runner/favorite) are
+// kept optional for back-compat. We only DISPLAY what the engine returns.
+type AppSkill = {
+  id: string;
+  name?: string;
+  method?: "browser" | "mcp" | "api" | "other" | string;
+  primary?: boolean;
+  source?: "starter" | "learned";
+  trigger?: string;
+  summary?: string;
+  // Back-compat with the previous schema.
+  runner?: string;
+  favorite?: boolean;
+};
 
-// Method badge for a skill row: Browser / MCP / API, derived from the skill's
-// declared method when present, else inferred from its runner.
-function skillMethod(s: AppSkill): "Browser" | "MCP" | "API" {
+// Method badge for a skill row: Browser / MCP / API / Other, derived from the
+// skill's declared method when present, else inferred from its runner.
+function skillMethod(s: AppSkill): "Browser" | "MCP" | "API" | "Other" {
   const m = (s.method || s.runner || "").toLowerCase();
   if (m.includes("mcp")) return "MCP";
   if (m.includes("api") || m.includes("http") || m.includes("oauth")) return "API";
+  if (m === "other") return "Other";
   return "Browser";
 }
 
@@ -2120,22 +2133,16 @@ function richSoulFor(app: EngineApp): string {
   return `${name} holds ${cat.holds}. ${howClause(name, method)} Everything it pulls lands in your private vault, where your AI can ${cat.uses}.`;
 }
 
-// Shown in the Skills tab before any skill is learned, so the skill pack reads
-// as a clear, populated list (display only, no real skills yet).
-const PLACEHOLDER_SKILLS: AppSkill[] = [
-  { id: "fetch-recent-activity", runner: "browser", trigger: "weekly", method: "browser", primary: true },
-  { id: "export-account-summary", runner: "api", trigger: "monthly", method: "api" },
-];
-
-// One skill row in the Skills tab: brand-neutral icon, name, the method it runs
-// by, a primary/favorite indicator, and (for real skills) a Run control.
-function SkillRow({ s, label, method, primary, disabled, placeholder, onRun }: {
+// One skill row in the Skills tab: brand-neutral icon, name, where it came from
+// (starter / learned), the method it runs by, a primary/fallback indicator, and
+// a Run control.
+function SkillRow({ s, label, method, primary, disabled, running, onRun }: {
   s: AppSkill;
   label: string;
-  method: "Browser" | "MCP" | "API";
+  method: "Browser" | "MCP" | "API" | "Other";
   primary: boolean;
   disabled?: boolean;
-  placeholder?: boolean;
+  running?: boolean;
   onRun?: () => void;
 }) {
   return (
@@ -2146,18 +2153,111 @@ function SkillRow({ s, label, method, primary, disabled, placeholder, onRun }: {
           <span className="truncate text-sm font-medium text-text-primary">{label}</span>
           <Star className={`h-3 w-3 shrink-0 ${primary ? "fill-accent text-accent" : "text-text-muted/50"}`} aria-label={primary ? "Primary skill" : "Fallback skill"} />
         </div>
-        <div className="text-[11px] text-text-muted">{primary ? "Primary" : "Fallback"}{s.trigger ? ` · ${s.trigger}` : ""}</div>
+        <div className="text-[11px] text-text-muted">{s.source === "starter" ? "Starter" : "Learned"} · {primary ? "Primary" : "Fallback"}{s.trigger ? ` · ${s.trigger}` : ""}</div>
+        {s.summary && <div className="truncate text-[11px] text-text-muted/80">{s.summary}</div>}
       </div>
       <span className="inline-flex shrink-0 items-center rounded-full border border-border-subtle bg-surface-warm px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">{method}</span>
-      {placeholder ? (
-        <span className="hidden font-mono text-[10px] uppercase tracking-wider text-text-muted/60 sm:inline">example</span>
-      ) : (
-        <button onClick={onRun} disabled={disabled}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
-          <Play className="h-3 w-3" /> Run now
-        </button>
-      )}
+      <button onClick={onRun} disabled={disabled}
+        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+        {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />} {running ? "Running…" : "Run"}
+      </button>
     </li>
+  );
+}
+
+// Live runner for a single skill. Spawns engine_app_run_skill and renders the
+// streamed ChatEvent NDJSON (engine-skill:line / engine-skill:done), reusing the
+// same stream shape as chat / agent runs. A browser-method skill performs its
+// first-time login on the first run, so this doubles as the "Run setup" path.
+function SkillRunPanel({ appId, skill, label, vaultPath, onClose, onDone }: {
+  appId: string;
+  skill: string;
+  label: string;
+  vaultPath: string;
+  onClose: () => void;
+  onDone?: (ok: boolean) => void;
+}) {
+  const [out, setOut] = useState("");
+  const [stderr, setStderr] = useState("");
+  const [running, setRunning] = useState(true);
+  const [result, setResult] = useState<{ ok: boolean; message?: string } | null>(null);
+  const sessionRef = useRef<string>("");
+  const okRef = useRef<boolean | null>(null);
+  const unsubsRef = useRef<Array<() => void>>([]);
+  const logRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const session = `skillrun-${crypto.randomUUID()}`;
+      sessionRef.current = session;
+      const unLine = await listen<{ session: string; stream?: string; data: ChatEvent | string }>("engine-skill:line", (e) => {
+        const p = e.payload;
+        if (p.session !== session) return;
+        // stderr / non-JSON lines: keep them visible so failures surface honestly.
+        if (p.stream === "stderr" || typeof p.data === "string") {
+          const s = String(p.data);
+          if (s.trim()) setStderr((cur) => (cur + s + "\n").slice(-4000));
+          return;
+        }
+        const ev = p.data as ChatEvent;
+        switch (ev.type) {
+          case "delta": { const t = ev.text; if (t) setOut((cur) => (cur + t).slice(-8000)); break; }
+          case "assistant": { const t = ev.text; if (t) setOut((cur) => (cur.length >= t.length ? cur : t)); break; }
+          case "error": okRef.current = false; setResult({ ok: false, message: ev.error }); break;
+          case "done": if (ev.error) { okRef.current = false; setResult({ ok: false, message: ev.error }); } break;
+          default: break;
+        }
+      });
+      const unDone = await listen<{ session: string; code: number | null }>("engine-skill:done", (e) => {
+        if (e.payload.session !== session) return;
+        setRunning(false);
+        const ok = okRef.current ?? e.payload.code === 0;
+        setResult((r) => r ?? { ok });
+        onDone?.(ok);
+      });
+      unsubsRef.current = [unLine, unDone];
+      if (cancelled) { unLine(); unDone(); return; }
+      invoke("engine_app_run_skill", { session, vault: vaultPath, app: appId, skill }).catch((err) => {
+        okRef.current = false;
+        setResult({ ok: false, message: String(err).slice(0, 200) });
+        setRunning(false);
+      });
+    })();
+    return () => {
+      cancelled = true;
+      for (const u of unsubsRef.current) u();
+      if (sessionRef.current) void invoke("abort_sessions", { prefix: sessionRef.current }).catch(() => {});
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appId, skill]);
+  useEffect(() => { logRef.current?.scrollTo({ top: logRef.current.scrollHeight }); }, [out, stderr]);
+  const stop = async () => {
+    if (sessionRef.current) await invoke("abort_sessions", { prefix: sessionRef.current }).catch(() => {});
+    setRunning(false);
+  };
+  return (
+    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-border bg-surface p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
+          {running ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : result?.ok ? <Check className="h-4 w-4 text-ok" /> : <X className="h-4 w-4 text-danger" />}
+          Running {label}
+        </div>
+        <button onClick={running ? () => void stop() : onClose} className="rounded-md border border-border px-2 py-1 text-xs text-text-secondary hover:bg-surface-warm">{running ? "Stop" : "Close"}</button>
+      </div>
+      <div ref={logRef} className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md border border-border-subtle bg-surface-warm/40 p-2 font-mono text-[11px] leading-relaxed text-text-secondary">
+        {out
+          ? out
+          : running
+            ? <span className="inline-flex items-center gap-1.5 text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> starting the skill… a browser may open for first-time sign-in.</span>
+            : ""}
+        {stderr && <div className="mt-1 text-text-muted">{stderr}</div>}
+      </div>
+      {result && !running && (
+        <div className={`rounded-md px-3 py-2 text-sm ${result.ok ? "border border-ok/40 bg-ok/10 text-ok" : "border border-danger/40 bg-danger/10 text-danger"}`}>
+          {result.ok ? "Done." : `Failed: ${result.message || "see the log above."}`}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2218,6 +2318,19 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
       .catch(() => setSkills([]));
   }, [app.id]);
   useEffect(() => { loadSkills(); }, [loadSkills, app.lastSuccessTs]);
+  // Which skill is running inline (its streamed progress shows in the Skills tab).
+  const [runningSkill, setRunningSkill] = useState<string | null>(null);
+  // The skill Prevail runs by default. Starter packs ship runnable pre-connect,
+  // so this is set even for apps the user has not pressed Connect on (#19).
+  const primarySkill = useMemo(() => skills.find((s) => s.primary) ?? skills[0] ?? null, [skills]);
+  const hasRunnableSkills = skills.length > 0;
+  // "Run setup": run the primary skill (a browser skill signs you in on its
+  // first run), surfacing progress in the Skills tab. No separate Connect gate.
+  const runSetup = useCallback(() => {
+    if (!primarySkill) return;
+    setTab("skills");
+    setRunningSkill(primarySkill.id);
+  }, [primarySkill]);
   // Per-app soul: the same construct domains use (soul.md) — a markdown note
   // declaring WHY this app is in the harness, persisted to apps/<id>/soul.md and
   // read by the agent as standing context. Editable inline; saved to the file.
@@ -2501,8 +2614,28 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
             className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${isFav ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
             <Star className={`h-4 w-4 ${isFav ? "fill-accent" : ""}`} />
           </button>
+          {/* #19: when the app has runnable skills (starter packs ship ready),
+              the primary action is "Run setup" (runs the primary skill, which
+              handles first-time sign-in). Connect is demoted to a secondary,
+              optional control and never gates running skills. The status chip
+              next to the title reflects whether a run has succeeded. */}
+          {hasRunnableSkills && (
+            <button onClick={runSetup} disabled={!!runningSkill || !!learnMode}
+              title="Run the primary skill. A browser-based skill signs you in on its first run."
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-60">
+              {runningSkill ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Run setup
+            </button>
+          )}
           {notConnected ? (
-            <ConnectBtn label="Connect" />
+            hasRunnableSkills ? (
+              <button onClick={() => connect?.onConnect()} disabled={connect?.connecting}
+                title="Set up the underlying connection (optional: skills run without it)."
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-60">
+                {connect?.connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />} {connect?.connecting ? "Connecting…" : "Connect"}
+              </button>
+            ) : (
+              <ConnectBtn label="Connect" />
+            )
           ) : (
             <button onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }))} title="Open in chat"
               className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-background hover:bg-accent-hover">
@@ -2599,13 +2732,14 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
           </div>
         )}
 
-        {/* SKILLS - the app's skill pack: method badge + primary indicator, with
-            the Learn New Skill flow preserved. The skill MODEL is owned by the
-            cli repo; this only displays what the engine returns (or a placeholder). */}
+        {/* SKILLS (#17) - the app's REAL runnable skills, including shipped
+            starter packs. Each row shows its method badge + primary/fallback
+            indicator + a Run control that streams progress inline. "Learn New
+            Skill" is kept so the user can still teach their own. */}
         {tab === "skills" && (
           <div className="max-w-2xl">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Learned skills{skills.length > 0 && <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-muted">{skills.length}</span>}</div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Skills{skills.length > 0 && <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-muted">{skills.length}</span>}</div>
               {!learnMode && !composing && (
                 <button onClick={() => { setGoalText(""); setComposing(true); }}
                   className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10">
@@ -2613,7 +2747,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                 </button>
               )}
             </div>
-            <p className="mt-1.5 text-[12px] text-text-muted">Skills are actions Prevail learned to do for you on {app.title || app.id}: taught once, replayed automatically. Each runs by a method (Browser, MCP, or API); your primary skill is the one Prevail prefers.</p>
+            <p className="mt-1.5 text-[12px] text-text-muted">Actions Prevail can run for you on {app.title || app.id}. Starter skills ship ready to run; you can also teach your own. Each runs by a method (Browser, MCP, or API), and your primary skill is the one Prevail runs by default. Run a skill any time, no Connect step required.</p>
 
             {learnMode ? (
               <div className="mt-3">
@@ -2637,28 +2771,37 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                 </div>
                 <p className="text-[11px] text-text-muted">Your Chrome opens, log in once. I'll learn the steps and remember the folder and cadence from what you said.</p>
               </div>
-            ) : skills.length === 0 ? (
-              <div className="mt-3 space-y-2">
-                <div className="rounded-lg border border-dashed border-border bg-surface/40 px-4 py-4 text-center">
-                  <div className="text-[13px] text-text-secondary">No skills yet.</div>
-                  <div className="mt-0.5 text-[12px] text-text-muted">Click <span className="text-accent">Learn New Skill</span>, say what to fetch{notConnected ? ": I'll connect and learn it in one go." : <>: saved in <code className="rounded bg-surface-warm px-1 font-mono text-[11px]">vault/apps/{app.id}/skills/</code></>}</div>
-                </div>
-                {/* Placeholder examples so the skill pack reads clearly before the
-                    first skill is learned (display only). */}
-                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Examples</div>
-                <ul className="space-y-2 opacity-60">
-                  {PLACEHOLDER_SKILLS.map((s) => (
-                    <SkillRow key={s.id} s={s} label={humanizeSkill(s.id)} method={skillMethod(s)} primary={!!s.primary} disabled placeholder />
-                  ))}
-                </ul>
-              </div>
             ) : (
-              <ul className="mt-3 space-y-2">
-                {skills.map((s, i) => (
-                  <SkillRow key={s.id} s={s} label={humanizeSkill(s.id)} method={skillMethod(s)} primary={s.primary ?? s.favorite ?? i === 0}
-                    disabled={!!learnMode} onRun={() => setLearnMode("replay")} />
-                ))}
-              </ul>
+              <>
+                {/* Inline runner for the skill being run (streams progress). */}
+                {runningSkill && (() => {
+                  const rs = skills.find((s) => s.id === runningSkill);
+                  return (
+                    <SkillRunPanel
+                      appId={app.id}
+                      skill={runningSkill}
+                      label={rs ? (rs.name || humanizeSkill(rs.id)) : humanizeSkill(runningSkill)}
+                      vaultPath={vaultPath}
+                      onClose={() => setRunningSkill(null)}
+                      onDone={(ok) => { if (ok) { loadSkills(); void onReload(); } }}
+                    />
+                  );
+                })()}
+                {skills.length === 0 ? (
+                  <div className="mt-3 rounded-lg border border-dashed border-border bg-surface/40 px-4 py-4 text-center">
+                    <div className="text-[13px] text-text-secondary">No skills yet.</div>
+                    <div className="mt-0.5 text-[12px] text-text-muted">Click <span className="text-accent">Learn New Skill</span> and say what to fetch{notConnected ? "; I'll set it up and learn it in one go." : <>: saved in <code className="rounded bg-surface-warm px-1 font-mono text-[11px]">vault/apps/{app.id}/skills/</code></>}.</div>
+                  </div>
+                ) : (
+                  <ul className="mt-3 space-y-2">
+                    {skills.map((s, i) => (
+                      <SkillRow key={s.id} s={s} label={s.name || humanizeSkill(s.id)} method={skillMethod(s)} primary={s.primary ?? s.favorite ?? i === 0}
+                        disabled={!!learnMode || (!!runningSkill && runningSkill !== s.id)} running={runningSkill === s.id}
+                        onRun={() => setRunningSkill(s.id)} />
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </div>
         )}
@@ -2679,18 +2822,17 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                     <span className="font-mono text-text-muted/50">·····</span>
                     <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-accent-border bg-accent-soft text-accent"><Sparkles className="h-6 w-6" /></span>
                   </div>
-                  {notConnected ? (
-                    <p className="text-center text-[12px] leading-snug text-text-muted">Log in once in your own Chrome: the agent learns how to fetch your data, then replays it automatically.</p>
-                  ) : (
-                    <div className="flex flex-col items-center">
-                      <button onClick={importLogins} disabled={importing}
-                        title="Already signed into this site in Chrome? Import that login (quit Chrome first) so you skip signing in."
-                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
-                        {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} {importing ? "Importing…" : "Import login"}
-                      </button>
-                      {importMsg && <p className={`mt-1.5 text-center text-[11px] ${importMsg.startsWith("✓") ? "text-ok" : "text-danger"}`}>{importMsg}</p>}
-                    </div>
-                  )}
+                  {/* #20: trimmed copy, and "Import login" is reachable directly
+                      (no longer gated behind a connected state). */}
+                  <p className="text-center text-[12px] leading-snug text-text-muted">Log in once in Chrome; the agent learns to fetch your data, then replays it.</p>
+                  <div className="mt-3 flex flex-col items-center">
+                    <button onClick={importLogins} disabled={importing}
+                      title="Already signed into this site in Chrome? Import that login (quit Chrome first) to skip signing in."
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+                      {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} {importing ? "Importing…" : "Import login from browser"}
+                    </button>
+                    {importMsg && <p className={`mt-1.5 text-center text-[11px] ${importMsg.startsWith("✓") ? "text-ok" : "text-danger"}`}>{importMsg}</p>}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -2706,7 +2848,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                 <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Tag className="h-4 w-4 text-accent" /> Connected domains</div>
                 {!editDomains && !notConnected && <button onClick={openDomainEditor} title="Add or remove domains this app feeds" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
               </div>
-              <p className="mt-1.5 text-[12px] text-text-muted">The domains {app.title || app.id} feeds with its data. {notConnected ? "Editable once connected." : "Use the pencil to add or remove."}</p>
+              <p className="mt-1.5 text-[12px] text-text-muted">Domains {app.title || app.id} feeds.{notConnected ? "" : " Use the pencil to edit."}</p>
               <div className="mt-3">
                 {!editDomains ? (
                   <div className="flex flex-wrap gap-1.5">
