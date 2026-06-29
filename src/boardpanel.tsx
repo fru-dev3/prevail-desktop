@@ -4,14 +4,16 @@
 // Decision Inbox. Reads tasks_read_all; moves via tasks_set_status/tasks_set_owner.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bot, Briefcase, CalendarRange, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, CornerUpLeft, Filter, Flag, Inbox, LayoutGrid, List, Loader2, Play, Plus, RotateCcw, SlidersHorizontal, Snowflake, Trash2, User, X, Zap } from "lucide-react";
-import { invoke } from "./bridge";
+import { invoke, listen } from "./bridge";
+import type { UnlistenFn } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import { titleCase } from "./format";
-import { DOMAIN_PALETTE } from "./constants";
+import { DOMAIN_PALETTE, isHarnessRuntime } from "./constants";
 import { PREF, getPref } from "./storage";
 import { DecisionInbox } from "./decisioninbox";
 import { TaskDetailPanel } from "./taskdetail";
-import type { BoardTask } from "./types";
+import { HarnessPicker } from "./harnesspicker";
+import type { BoardTask, CliInfo } from "./types";
 
 // Stable per-domain color (hashed into the shared palette) so each domain reads
 // at a glance on the board. Returns the hex; callers tint bg + text from it.
@@ -87,8 +89,13 @@ const isOverdue = (t: BoardTask): boolean => {
   return t.due < today;
 };
 
-export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; initialDomain?: string }) {
+export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: string; initialDomain?: string; clis?: CliInfo[] }) {
   const [tasks, setTasks] = useState<BoardTask[]>([]);
+  // Installed harness agents available to run a task (Hermes/Pi/OpenCode/…).
+  const harnesses = useMemo(() => (clis ?? []).filter((c) => isHarnessRuntime(c.id) && c.available), [clis]);
+  // Which task's "Run with agent" picker is open, and which tasks are mid-run.
+  const [agentPickerFor, setAgentPickerFor] = useState<string | null>(null);
+  const [agentRunning, setAgentRunning] = useState<Set<string>>(new Set());
   const [ownerFilter, setOwnerFilter] = useState<"all" | "me" | "ai">("all");
   // When opened scoped to a domain (the in-domain Work tab), pre-filter to it.
   const [domainFilter, setDomainFilter] = useState<string>(initialDomain || "all");
@@ -273,6 +280,71 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
   };
   const setStatus = (t: BoardTask, status: string) =>
     t.id && t.status !== status && act(`s:${t.id}`, () => invoke("tasks_set_status", { vault: vaultPath, domain: t.domain, id: t.id, status }));
+
+  // Delegate a task to a harness agent: stream the run, then append the agent's
+  // output as a comment and move the task to Review (the result sink). Defaults
+  // to safe autonomy — the engine's broker gate guards consequential actions.
+  const runWithAgent = async (t: BoardTask, cli: string) => {
+    if (!t.id) return;
+    const taskId = t.id;
+    setAgentPickerFor(null);
+    setAgentRunning((s) => new Set(s).add(taskId));
+    const session = `agent-${taskId}-${Date.now()}`;
+    let result = "";
+    let unline: UnlistenFn | undefined;
+    let undone: UnlistenFn | undefined;
+    const cleanup = () => {
+      try { unline?.(); } catch { /* */ }
+      try { undone?.(); } catch { /* */ }
+      setAgentRunning((s) => { const n = new Set(s); n.delete(taskId); return n; });
+    };
+    try {
+      unline = await listen<{ session: string; data: { type?: string; text?: string; error?: string } }>("engine-agent:line", (e) => {
+        if (e.payload.session !== session) return;
+        const d = e.payload.data;
+        if (d?.type === "assistant" && d.text) result = d.text;
+        else if (d?.type === "error" && d.error) result = `⚠ ${d.error}`;
+      });
+      undone = await listen<{ session: string }>("engine-agent:done", async (e) => {
+        if (e.payload.session !== session) return;
+        try {
+          if (result.trim()) {
+            await invoke("task_detail_add_comment", { vault: vaultPath, domain: t.domain, id: taskId, text: result.trim(), author: cli });
+            if (t.status === "todo" || t.status === "doing") {
+              await invoke("tasks_set_status", { vault: vaultPath, domain: t.domain, id: taskId, status: "review" });
+            }
+          }
+        } catch (err) { console.error("agent result sink", err); }
+        cleanup();
+        window.dispatchEvent(new Event("prevail:tasks-changed"));
+      });
+      await invoke("engine_agent_run", { session, vault: vaultPath, domain: t.domain, goal: t.text, taskId, cli, autonomy: "safe" });
+    } catch (err) {
+      console.error("engine_agent_run", err);
+      cleanup();
+    }
+  };
+  // The per-task "Run with agent" control (shared by card + list views): a Zap
+  // button that opens the HarnessPicker. Only shown when a harness is installed.
+  const agentButton = (t: BoardTask) => {
+    if (harnesses.length === 0 || !t.id) return null;
+    const runningThis = agentRunning.has(t.id);
+    const open = agentPickerFor === t.id;
+    return (
+      <div className="relative shrink-0">
+        <button
+          onClick={() => setAgentPickerFor(open ? null : t.id!)}
+          disabled={runningThis}
+          title="Run this task with a harness agent (Hermes, Pi, OpenCode)"
+          className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-text-muted transition-colors hover:border-accent-border hover:text-accent disabled:opacity-50"
+        >
+          {runningThis ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+        </button>
+        {open && <HarnessPicker harnesses={harnesses} onPick={(cli) => runWithAgent(t, cli)} onClose={() => setAgentPickerFor(null)} />}
+      </div>
+    );
+  };
+
   // Hand to AI: also move todo→doing so it visibly lands in Doing and the steward
   // picks it up. Take back: just flip owner, leave the column where it is.
   const toggleOwner = (t: BoardTask) => {
@@ -416,6 +488,7 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
             className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none">
             {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
           </select>
+          {agentButton(t)}
           <button onClick={() => toggleOwner(t)} disabled={busy === `o:${t.id}`}
             title={ai ? "Take it back from the agent (hand to me)" : "Hand to the agent to run as a workflow"}
             className={`inline-flex items-center gap-1 rounded border px-1.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide transition-colors disabled:opacity-50 ${ai ? "border-border text-text-muted hover:border-accent-border hover:text-text-primary" : "border-accent-border text-accent hover:bg-accent hover:text-background"}`}>
@@ -459,6 +532,7 @@ export function BoardPanel({ vaultPath, initialDomain }: { vaultPath: string; in
           className="shrink-0 rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none">
           {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
         </select>
+        {agentButton(t)}
         <button onClick={() => toggleOwner(t)} disabled={busy === `o:${t.id}`}
           title={ai ? "Take it back from the agent (hand to me)" : "Hand to the agent to run as a workflow"}
           className={`inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide transition-colors disabled:opacity-50 ${ai ? "border-border text-text-muted hover:border-accent-border hover:text-text-primary" : "border-accent-border text-accent hover:bg-accent hover:text-background"}`}>

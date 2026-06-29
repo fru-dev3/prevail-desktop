@@ -5,7 +5,38 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES, PALETTES } from "./constants";
 import { LS, lsGet, lsSet } from "./storage";
-import type { Mode, Palette } from "./types";
+import type { CliInfo, Mode, Palette } from "./types";
+
+// Detected runtimes, shared across components without prop-drilling. detect_clis
+// runs ONCE process-wide (shared in-flight promise + cache), and re-runs when a
+// "prevail:rescan-clis" event fires (the Runtimes "Re-check" button). Lets the
+// loop executor picker and Settings provider dropdown list only installed CLIs.
+let _clisCache: CliInfo[] | null = null;
+let _clisInflight: Promise<CliInfo[]> | null = null;
+function loadClisOnce(): Promise<CliInfo[]> {
+  if (_clisCache) return Promise.resolve(_clisCache);
+  if (!_clisInflight) {
+    _clisInflight = invoke<CliInfo[]>("detect_clis")
+      .then((l) => { _clisCache = Array.isArray(l) ? l : []; return _clisCache; })
+      .catch(() => { _clisInflight = null; return [] as CliInfo[]; });
+  }
+  return _clisInflight;
+}
+export function useDetectedClis(): CliInfo[] {
+  const [clis, setClis] = useState<CliInfo[]>(_clisCache ?? []);
+  useEffect(() => {
+    let alive = true;
+    loadClisOnce().then((l) => { if (alive) setClis(l); });
+    const onRescan = () => {
+      _clisCache = null;
+      _clisInflight = null;
+      loadClisOnce().then((l) => { if (alive) setClis(l); });
+    };
+    window.addEventListener("prevail:rescan-clis", onRescan);
+    return () => { alive = false; window.removeEventListener("prevail:rescan-clis", onRescan); };
+  }, []);
+  return clis;
+}
 
 export function useAppearance() {
   const [mode, setMode] = useState<Mode>(() => {

@@ -151,7 +151,7 @@ export function LoopBoard({ vaultPath }: { vaultPath: string }) {
     const procId = `loop-${r.loop.id}-${Date.now()}`;
     startProcess(procId, "loop", `${titleCase(r.domain)} · ${r.loop.name}`, r.domain);
     try {
-      const provider = getPref(PREF.memoryProvider, "claude");
+      const provider = (r.loop.executor && r.loop.executor.trim()) || getPref(PREF.memoryProvider, "claude");
       const model = (r.loop.model && r.loop.model.trim()) || getPref(PREF.distillModel, "claude-haiku-4-5");
       await invoke("loop_run_now", { vault: vaultPath, domain: r.domain, loopId: r.loop.id, provider, model });
       window.dispatchEvent(new Event("prevail:loops-advanced"));
