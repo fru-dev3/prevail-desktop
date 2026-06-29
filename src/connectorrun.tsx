@@ -39,12 +39,16 @@ export function ConnectorRunPanel({
   appId,
   mode,
   goal,
+  url,
   onDone,
+  onClose,
 }: {
   appId: string;
   mode: ConnectorRunMode;
   goal?: string;
+  url?: string;
   onDone?: (ok: boolean) => void;
+  onClose?: () => void;
 }) {
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [running, setRunning] = useState(true);
@@ -96,8 +100,10 @@ export function ConnectorRunPanel({
       const args: Record<string, unknown> = { id: appId, session };
       if (mode === "learn") {
         if (goal) args.goal = goal;
+        if (url) args.url = url;
       } else {
         args.mode = mode === "relearn" ? "relearn" : "replay";
+        if (mode === "relearn" && url) args.url = url;
       }
       invoke(cmd, args).catch((err) => {
         okRef.current = false;
@@ -131,31 +137,33 @@ export function ConnectorRunPanel({
           {running ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : final?.ok ? <Check className="h-4 w-4 text-ok" /> : <X className="h-4 w-4 text-danger" />}
           {title} {appId}
         </div>
-        {running && (
+        {running ? (
           <button onClick={stop} className="rounded-md border border-border px-2 py-1 text-xs text-text-secondary hover:bg-surface-warm">
             Stop
+          </button>
+        ) : (
+          <button onClick={() => onClose?.()} className="rounded-md border border-border px-2 py-1 text-xs text-text-secondary hover:bg-surface-warm">
+            Close
           </button>
         )}
       </div>
 
-      {/* 2FA / login gate — the browser window is in front of the user. */}
+      {/* Sign-in / 2FA gate — surfaces the agent's actual ask + points at Chrome. */}
       {awaiting && (
         <div className="flex items-start gap-2 rounded-md border border-accent/40 bg-accent/10 px-3 py-2">
           <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
           <div className="text-sm text-text-primary">
-            Complete your <span className="font-medium">{awaiting === "twofa" ? "2FA" : awaiting}</span> in the browser window now, then the agent continues automatically.
+            {[...events].reverse().find((e) => e.phase === "await_user")?.message
+              || `Complete your ${awaiting === "twofa" ? "sign-in / 2FA" : awaiting} in the Chrome window, then the agent continues.`}
+            <div className="mt-0.5 text-xs text-text-muted">Look for the Chrome window that opened — sign in there, then come back.</div>
           </div>
         </div>
-      )}
-
-      {(mode === "learn" || mode === "relearn") && (
-        <div className="text-xs text-text-muted">A real browser window opened — log in there if prompted. Read-only: it never pays, transfers, or changes settings.</div>
       )}
 
       {/* Step timeline */}
       <div ref={logRef} className="max-h-64 overflow-y-auto rounded-md border border-border-subtle bg-surface-warm/40 p-2 font-mono text-[11px] leading-relaxed">
         {events.length === 0 ? (
-          <div className="text-text-muted">Starting…</div>
+          <div className="flex items-center gap-1.5 text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> launching the agent — your Chrome will open…</div>
         ) : (
           events.map((ev, i) => {
             const Icon = PHASE_ICON[ev.phase] ?? null;
@@ -169,12 +177,18 @@ export function ConnectorRunPanel({
                   {ev.phase === "blocked" && <span className="text-warning">blocked: {ev.reason}</span>}
                   {ev.phase === "await_user" && <span className="text-accent">waiting for you ({ev.reason})</span>}
                   {ev.phase === "user_resumed" && <span className="text-text-muted">resumed</span>}
-                  {ev.phase === "started" && <span className="text-text-muted">browser opening…</span>}
-                  {(ev.phase === "complete" || ev.phase === "error") && <span className={ev.ok === false || ev.phase === "error" ? "text-danger" : "text-ok"}>{ev.message}</span>}
+                  {ev.phase === "started" && <span className="text-text-muted">starting…</span>}
+                  {ev.phase === "browser_open" && <span className="text-text-muted">opening your Chrome…</span>}
+                  {ev.phase === "chromium_download" && <span className="text-text-muted">{ev.message ?? "preparing the browser…"}</span>}
+                  {ev.phase === "complete" && <span className="text-ok">{ev.message}</span>}
+                  {ev.phase === "error" && <span className="text-danger">{ev.message}</span>}
                 </span>
               </div>
             );
           })
+        )}
+        {running && events.length > 0 && !awaiting && (
+          <div className="mt-1 flex items-center gap-1.5 text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> agent is thinking… (each step takes a few seconds)</div>
         )}
       </div>
 
