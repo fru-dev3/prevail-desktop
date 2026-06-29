@@ -47,12 +47,20 @@ const DECISIONS: { id: Decision; label: string }[] = [
   { id: "never", label: "Never" },
 ];
 
+// Monthly spend cap: default to $50 (not "no cap"), with a slider that tops out
+// at a sensible $1,000. "No cap" remains reachable via an explicit toggle.
+const DEFAULT_CAP = 50;
+const CAP_MAX = 1000;
+const CAP_STEP = 10;
+
 // ── Action policy: a 3-way segmented control per class ───────────────────
 function PolicySegmented({ value, onChange, disabled }: { value: Decision; onChange: (d: Decision) => void; disabled?: boolean }) {
-  const tint: Record<Decision, string> = {
-    allow: "bg-ok/15 text-ok",
-    ask: "bg-warn/15 text-warn",
-    never: "bg-danger/15 text-danger",
+  // Selected = solid, semantically colored fill with contrasting text so the
+  // active choice reads at a glance. Allow = green, Ask = amber, Never = red.
+  const selected: Record<Decision, string> = {
+    allow: "bg-ok text-background shadow-sm",
+    ask: "bg-warn text-background shadow-sm",
+    never: "bg-danger text-background shadow-sm",
   };
   return (
     <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-background p-0.5">
@@ -62,8 +70,8 @@ function PolicySegmented({ value, onChange, disabled }: { value: Decision; onCha
           type="button"
           disabled={disabled}
           onClick={() => onChange(d.id)}
-          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
-            value === d.id ? `${tint[d.id]} shadow-sm` : "text-text-muted hover:text-text-secondary"
+          className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-50 ${
+            value === d.id ? selected[d.id] : "font-medium text-text-muted hover:text-text-secondary"
           }`}
         >
           {d.label}
@@ -297,7 +305,8 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
   const [busy, setBusy] = useState(false);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [running, setRunning] = useState<Playbook | null>(null);
-  const [capDraft, setCapDraft] = useState<string>("");
+  const [capDraft, setCapDraft] = useState<string>(String(DEFAULT_CAP));
+  const [noCap, setNoCap] = useState(false);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -312,9 +321,14 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
     void invoke<Playbook[]>("engine_list_playbooks").then((p) => setPlaybooks(Array.isArray(p) ? p : [])).catch(() => setPlaybooks([]));
   }, [loadStatus]);
 
-  // Keep the cap input in sync with the loaded status.
+  // Keep the cap controls in sync with the loaded status. A null cap means
+  // "no cap" is on; we still keep a sensible numeric draft ($50 default) so the
+  // slider and input have a value ready the moment the user turns the cap back on.
   useEffect(() => {
-    if (status) setCapDraft(status.monthlyFinancialCapUsd == null ? "" : String(status.monthlyFinancialCapUsd));
+    if (!status) return;
+    const cap = status.monthlyFinancialCapUsd;
+    setNoCap(cap == null);
+    setCapDraft(cap == null ? String(DEFAULT_CAP) : String(cap));
   }, [status?.monthlyFinancialCapUsd]);
 
   const mode: AutonomyMode = status?.state ?? "ask";
@@ -342,6 +356,27 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
       setErr(null);
     } catch (e) { setErr(`Couldn't set cap: ${String(e).slice(0, 160)}`); }
   }, []);
+
+  // Set a concrete dollar cap (clamped at 0) from the slider or the number input.
+  const commitCap = useCallback((raw: string) => {
+    const n = Math.max(0, Number(raw.replace(/[^0-9.]/g, "")) || 0);
+    setCapDraft(String(n));
+    setNoCap(false);
+    void saveCap(String(n));
+  }, [saveCap]);
+
+  // Toggle the "no cap" state. Turning it off restores the numeric draft (>= $50).
+  const toggleNoCap = useCallback((off: boolean) => {
+    if (off) {
+      setNoCap(true);
+      void saveCap("off");
+    } else {
+      const v = Number(capDraft.replace(/[^0-9.]/g, "")) || DEFAULT_CAP;
+      setNoCap(false);
+      setCapDraft(String(v));
+      void saveCap(String(v));
+    }
+  }, [capDraft, saveCap]);
 
   const setPolicy = useCallback(async (cls: PolicyClass, decision: Decision) => {
     const prev = status?.policy[cls];
@@ -378,7 +413,7 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
           <div className="min-w-0 flex-1">
             <div className="font-display text-lg font-bold tracking-tight text-text-primary">Autonomy</div>
             <div className="text-xs text-text-secondary">
-              {paused ? "Agents will not take any action on their own." : mode === "auto" ? "Agents run allowed actions on their own; the policy below still governs money, sends, and deletes." : "Agents propose actions and wait for your approval — nothing runs on its own."}
+              {paused ? "Agents will not take any action on their own." : mode === "auto" ? "Agents run allowed actions on their own; the policy below still governs money, sends, and deletes." : "Agents propose actions and wait for your approval. Nothing runs on its own."}
             </div>
           </div>
         </div>
@@ -389,9 +424,9 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
             { k: "auto", label: "Automatic", hint: "Run allowed" },
           ] as { k: AutonomyMode; label: string; hint: string }[]).map((m) => (
             <button key={m.k} onClick={() => void setMode(m.k)} disabled={busy || !status}
-              className={`flex flex-col items-center rounded-md px-2 py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${mode === m.k ? (m.k === "paused" ? "bg-danger/15 text-danger" : m.k === "auto" ? "bg-accent-soft text-accent" : "bg-surface-strong text-text-primary") : "text-text-muted hover:text-text-secondary"}`}>
+              className={`flex flex-col items-center rounded-md px-2 py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${mode === m.k ? (m.k === "paused" ? "bg-danger text-background shadow-sm" : m.k === "auto" ? "bg-accent text-background shadow-sm" : "bg-warn text-background shadow-sm") : "text-text-muted hover:text-text-secondary"}`}>
               {m.label}
-              <span className="mt-0.5 text-[10px] font-normal opacity-70">{m.hint}</span>
+              <span className="mt-0.5 text-[10px] font-normal opacity-80">{m.hint}</span>
             </button>
           ))}
         </div>
@@ -419,20 +454,61 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
         <p className="mt-2 text-xs text-text-muted">
           Destructive and credential changes default to Never; money and outbound messages to Ask.
         </p>
-        <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-warm text-text-muted"><DollarSign className="h-4 w-4" /></span>
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-text-primary">Monthly spend cap</div>
-            <div className="text-xs text-text-muted">An auto-approved financial action that would exceed this asks instead. Blank = no cap.</div>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-sm text-text-muted">$</span>
-            <input value={capDraft} onChange={(e) => setCapDraft(e.target.value)} onBlur={() => void saveCap(capDraft)}
-              onKeyDown={(e) => { if (e.key === "Enter") void saveCap(capDraft); }}
-              inputMode="decimal" placeholder="none" disabled={!status}
-              className="w-24 rounded-md border border-border bg-background px-2 py-1 text-sm text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
-          </div>
-        </div>
+        {(() => {
+          const sliderVal = Math.min(CAP_MAX, Math.max(0, Number(capDraft.replace(/[^0-9.]/g, "")) || 0));
+          return (
+            <div className="mt-3 rounded-xl border border-border bg-surface p-4">
+              <div className="flex items-start gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-warm text-text-muted"><DollarSign className="h-4 w-4" /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-text-primary">Monthly spend cap</div>
+                  <div className="text-xs text-text-muted">An auto-approved financial action that would push the month past this asks for approval instead.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleNoCap(!noCap)}
+                  disabled={!status}
+                  className={`shrink-0 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 ${noCap ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:text-text-secondary"}`}
+                >
+                  No cap
+                </button>
+              </div>
+
+              <div className={`mt-3 flex items-center gap-3 ${noCap ? "opacity-40" : ""}`}>
+                <input
+                  type="range"
+                  min={0}
+                  max={CAP_MAX}
+                  step={CAP_STEP}
+                  value={sliderVal}
+                  disabled={!status || noCap}
+                  onChange={(e) => setCapDraft(e.target.value)}
+                  onMouseUp={(e) => commitCap((e.target as HTMLInputElement).value)}
+                  onTouchEnd={(e) => commitCap((e.target as HTMLInputElement).value)}
+                  onKeyUp={(e) => commitCap((e.target as HTMLInputElement).value)}
+                  aria-label="Monthly spend cap"
+                  className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-surface-warm accent-accent disabled:cursor-not-allowed"
+                />
+                <div className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-background px-2 py-1 focus-within:border-accent-border">
+                  <span className="text-sm text-text-muted">$</span>
+                  <input
+                    value={noCap ? "" : capDraft}
+                    onChange={(e) => setCapDraft(e.target.value)}
+                    onBlur={() => commitCap(capDraft)}
+                    onKeyDown={(e) => { if (e.key === "Enter") commitCap(capDraft); }}
+                    inputMode="decimal"
+                    placeholder={noCap ? "off" : String(DEFAULT_CAP)}
+                    disabled={!status || noCap}
+                    className="w-16 bg-transparent text-right text-sm text-text-primary placeholder:text-text-muted/60 focus:outline-none disabled:cursor-not-allowed"
+                  />
+                </div>
+              </div>
+              <div className="mt-1.5 text-[11px] text-text-muted">
+                {noCap ? "No monthly limit. Each auto-approved spend still follows the policy above." : `Asks for approval above $${sliderVal} per month. Slider tops out at $${CAP_MAX}.`}
+              </div>
+            </div>
+          );
+        })()}
       </section>
 
       {/* Playbooks */}

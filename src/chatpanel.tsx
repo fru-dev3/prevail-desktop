@@ -1931,7 +1931,7 @@ export function ChatPanel({
                 Skills · enter to insert
               </div>
               {slashCandidates.length === 0 ? (
-                <div className="px-3 py-2 text-[11px] text-text-muted">No skills in this vault yet — add one in a domain's <span className="font-mono">_skills/</span> folder.</div>
+                <div className="px-3 py-2 text-[11px] text-text-muted">No skills in this vault yet. Add one in a domain's <span className="font-mono">_skills/</span> folder.</div>
               ) : slashCandidates.map((s, i) => (
                 <button
                   key={s.path}

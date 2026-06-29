@@ -28,7 +28,7 @@ export async function invoke<T = unknown>(cmd: string, args?: Record<string, unk
     headers: { "content-type": "application/json", authorization: token() },
     body: JSON.stringify({ cmd, args: args ?? {} }),
   });
-  if (res.status === 401) throw new Error("unauthorized — sign in again");
+  if (res.status === 401) throw new Error("unauthorized, sign in again");
   if (!res.ok) throw new Error(await res.text().catch(() => `HTTP ${res.status}`));
   const j = (await res.json()) as { data?: T; error?: string };
   if (j && j.error) throw new Error(j.error);

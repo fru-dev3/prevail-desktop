@@ -70,7 +70,7 @@ export function VaultEncryptPrompt({ vaultPath, onClose }: { vaultPath: string; 
           <>
             <p className="mt-2 text-sm text-text-muted">
               Encrypt your vault at rest with AES-256-GCM so it can't be read off disk without your
-              passcode. Recommended. You'll get a one-time recovery code — save it.
+              passcode. Recommended. You'll get a one-time recovery code, save it.
             </p>
             <div className="mt-4 flex flex-col gap-2">
               <input
@@ -98,7 +98,7 @@ export function VaultEncryptPrompt({ vaultPath, onClose }: { vaultPath: string; 
           </>
         ) : (
           <div className="mt-3 rounded-lg border border-accent-border bg-accent-soft p-3">
-            <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-accent">Recovery code — save this now</div>
+            <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-accent">Recovery code: save this now</div>
             <div className="mt-1 select-all font-mono text-base text-text-primary">{recovery}</div>
             <div className="mt-1 text-[11px] text-text-muted">
               If you forget your passcode, this is the ONLY other way to unlock your vault. It won't be shown again.

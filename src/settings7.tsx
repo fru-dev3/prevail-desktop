@@ -232,7 +232,7 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
         <div className="mt-4 border-t border-border-subtle pt-3">
           <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
             <Layers className="h-3 w-3 text-accent" /> Model catalog
-            {orLive.length > 0 && <span className="text-text-muted normal-case tracking-normal">· {orLive.length} live models — search to browse</span>}
+            {orLive.length > 0 && <span className="text-text-muted normal-case tracking-normal">· {orLive.length} live models, search to browse</span>}
           </div>
           <input
             value={orQuery}
@@ -433,7 +433,7 @@ export function ModelsSection({
       <SettingsHeader
         title="Runtimes"
         icon={Layers}
-        subtitle="A runtime is a model plus a way to run it — a local CLI, a direct vendor key, or an aggregator. The same model can run several ways, each with its own cost, speed, and privacy. Validated at launch with a real call; expand one to test individual models and set the default new chats open with."
+        subtitle="A runtime is a model plus a way to run it: a local CLI, a direct vendor key, or an aggregator. The same model can run several ways, each with its own cost, speed, and privacy. Validated at launch with a real call; expand one to test individual models and set the default new chats open with."
       />
       {/* Three collapsible groups. CLI runtimes open by default (the main list);
           per-runtime validity shows as a checkmark in the list itself, so the
