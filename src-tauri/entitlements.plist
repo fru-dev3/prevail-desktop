@@ -9,5 +9,7 @@
        full hardened-runtime memory protection (smaller blast radius if a
        memory-corruption bug is ever found). Verify the webview renders. -->
   <key>com.apple.security.cs.allow-jit</key><true/>
+  <!-- Microphone access for Quick Capture voice notes (hardened runtime). -->
+  <key>com.apple.security.device.audio-input</key><true/>
 </dict>
 </plist>
