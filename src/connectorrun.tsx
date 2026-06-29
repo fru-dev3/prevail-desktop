@@ -155,7 +155,7 @@ export function ConnectorRunPanel({
           <div className="text-sm text-text-primary">
             {[...events].reverse().find((e) => e.phase === "await_user")?.message
               || `Complete your ${awaiting === "twofa" ? "sign-in / 2FA" : awaiting} in the Chrome window, then the agent continues.`}
-            <div className="mt-0.5 text-xs text-text-muted">Look for the Chrome window that opened — sign in there, then come back.</div>
+            <div className="mt-0.5 text-xs text-text-muted">Look for the Chrome window that opened, sign in there, then come back.</div>
           </div>
         </div>
       )}
@@ -163,7 +163,7 @@ export function ConnectorRunPanel({
       {/* Step timeline */}
       <div ref={logRef} className="max-h-64 overflow-y-auto rounded-md border border-border-subtle bg-surface-warm/40 p-2 font-mono text-[11px] leading-relaxed">
         {events.length === 0 ? (
-          <div className="flex items-center gap-1.5 text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> launching the agent — your Chrome will open…</div>
+          <div className="flex items-center gap-1.5 text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> launching the agent, your Chrome will open…</div>
         ) : (
           events.map((ev, i) => {
             const Icon = PHASE_ICON[ev.phase] ?? null;
@@ -171,7 +171,7 @@ export function ConnectorRunPanel({
               <div key={i} className="flex items-start gap-1.5 text-text-secondary">
                 {Icon ? <Icon className="mt-0.5 h-3 w-3 shrink-0 text-text-muted" /> : <span className="w-3" />}
                 <span className="min-w-0 flex-1 break-words">
-                  {ev.phase === "step" && <span>{ev.action}{ev.target ? ` · ${ev.target}` : ""}{ev.thought ? <span className="text-text-muted"> — {ev.thought}</span> : ""}</span>}
+                  {ev.phase === "step" && <span>{ev.action}{ev.target ? ` · ${ev.target}` : ""}{ev.thought ? <span className="text-text-muted">: {ev.thought}</span> : ""}</span>}
                   {ev.phase === "nav" && <span className="text-text-muted">→ {ev.url}</span>}
                   {ev.phase === "download" && <span className="text-ok">downloaded {ev.name}</span>}
                   {ev.phase === "blocked" && <span className="text-warning">blocked: {ev.reason}</span>}

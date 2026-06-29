@@ -98,7 +98,7 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
     return (
       <button
         onClick={() => setOpen(true)}
-        title="Quick note — capture a thought by typing or voice"
+        title="Quick note: capture a thought by typing or voice"
         className="group fixed right-0 top-1/3 z-40 flex h-14 w-10 items-center justify-center rounded-l-2xl border border-r-0 border-border bg-surface/90 text-text-secondary shadow-lg backdrop-blur transition-all hover:w-11 hover:bg-accent hover:text-background"
       >
         <Mic className="h-[18px] w-[18px] transition-transform group-hover:scale-110" />
@@ -113,7 +113,7 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-background shadow-sm"><Mic className="h-4 w-4" /></span>
         <div className="flex min-w-0 flex-1 flex-col leading-tight">
           <span className="font-display text-sm font-bold text-text-primary">Quick note</span>
-          <span className="text-[10px] text-text-muted">Type or speak — saved to Notes</span>
+          <span className="text-[10px] text-text-muted">Type or speak, saved to Notes</span>
         </div>
         <button onClick={() => setOpen(false)} title="Collapse" className="rounded-md p-1 text-text-muted transition-colors hover:bg-surface-warm hover:text-text-primary"><X className="h-4 w-4" /></button>
       </div>
@@ -191,7 +191,7 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
         {/* Quiet footer hint */}
         <div className="flex items-center gap-1.5 border-t border-border-subtle pt-2.5 text-[10px] text-text-muted">
           <Sparkles className="h-3 w-3 text-accent/60" />
-          Saved to Notes — feeds your context over time.
+          Saved to Notes, feeds your context over time.
         </div>
       </div>
     </div>

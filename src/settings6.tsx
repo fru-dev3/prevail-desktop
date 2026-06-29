@@ -926,7 +926,7 @@ export function AgentCard({
         <div className="w-[64px] shrink-0 text-right font-mono text-[11px] text-text-secondary" title="Total spend on this runtime (local usage ledger)">
           {typeof cost === "number" && cost > 0
             ? `$${cost < 1 ? cost.toFixed(2) : cost < 100 ? cost.toFixed(1) : Math.round(cost)}`
-            : <span className="text-text-muted/50">—</span>}
+            : <span className="text-text-muted/50">–</span>}
         </div>
         {/* Version column. */}
         <div className="w-[116px] shrink-0 truncate text-right font-mono text-[10px] text-text-muted/80">
@@ -941,7 +941,7 @@ export function AgentCard({
           </button>
         ) : cli.available && !chattable ? (
           // Harness, installed: catalog-only (not a homepage chat runtime).
-          <span className="inline-flex w-[92px] shrink-0 items-center justify-center font-mono text-[10px] uppercase tracking-wider text-text-muted/60" title="Harness — set up here; not a chat runtime">
+          <span className="inline-flex w-[92px] shrink-0 items-center justify-center font-mono text-[10px] uppercase tracking-wider text-text-muted/60" title="Harness: set up here; not a chat runtime">
             Ready
           </span>
         ) : (
@@ -950,7 +950,7 @@ export function AgentCard({
             href={RUNTIME_META[cli.id]?.install ?? "#"}
             target="_blank"
             rel="noreferrer"
-            title={RUNTIME_META[cli.id]?.blurb ? `${RUNTIME_META[cli.id]?.blurb} — opens setup docs` : "Open setup docs"}
+            title={RUNTIME_META[cli.id]?.blurb ? `${RUNTIME_META[cli.id]?.blurb} (opens setup docs)` : "Open setup docs"}
             className="inline-flex w-[92px] shrink-0 items-center justify-center gap-1 rounded-md border border-border bg-background py-1.5 text-center font-mono text-[11px] uppercase tracking-wider text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
           >
             Set up <ArrowUpRight className="h-3 w-3" />
@@ -1088,7 +1088,7 @@ export function AgentCard({
             {RUNTIME_META[cli.id]?.blurb || `${cli.label} is a harness runtime.`}
           </div>
           <p className="text-xs leading-relaxed text-text-muted">
-            This is a <span className="font-semibold text-text-secondary">harness</span> — it wraps the{" "}
+            This is a <span className="font-semibold text-text-secondary">harness</span>: it wraps the{" "}
             <code className="text-accent">{RUNTIME_META[cli.id]?.protocol ?? "base"}</code> protocol and runs through your installed base CLI. It's installed and validated, so it's ready to use wherever harnesses are offered (it isn't a homepage chat runtime).
           </p>
           <div className="flex flex-wrap items-center gap-2 pt-0.5">
@@ -1108,7 +1108,7 @@ export function AgentCard({
         <div className="space-y-2.5 border-t border-border-subtle px-4 py-3">
           <div className="text-sm text-text-secondary">
             {cli.error
-              ? `${cli.label} is installed but won't run — its launcher is on disk but failed to start.`
+              ? `${cli.label} is installed but won't run: its launcher is on disk but failed to start.`
               : RUNTIME_META[cli.id]?.blurb || `${cli.label} isn't installed on this Mac yet.`}
           </div>
           {/* Broken install: show the actual failure so the user knows what to
@@ -1123,8 +1123,8 @@ export function AgentCard({
             <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">{cli.error ? `Reinstall ${cli.label}` : `Set up ${cli.label}`}</div>
             <p className="text-xs leading-relaxed text-text-secondary">
               {cli.error
-                ? `Reinstall ${cli.label} to repair the launcher. It runs on your own subscription — no key to paste here. Prevail auto-detects it; hit Re-check once it's fixed.`
-                : `Install ${cli.label} from its setup guide. It runs on your own subscription — no key to paste here. Prevail auto-detects it; hit Re-check once it's installed.`}
+                ? `Reinstall ${cli.label} to repair the launcher. It runs on your own subscription, no key to paste here. Prevail auto-detects it; hit Re-check once it's fixed.`
+                : `Install ${cli.label} from its setup guide. It runs on your own subscription, no key to paste here. Prevail auto-detects it; hit Re-check once it's installed.`}
             </p>
             {RUNTIME_META[cli.id]?.cmd && (
               <div className="flex items-center gap-2 rounded-md border border-border-subtle bg-surface-warm/60 px-2 py-1.5">

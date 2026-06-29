@@ -118,6 +118,9 @@ export const PREF = {
   // Home screen — show the proactive Briefing/recommendations panel. Off by
   // default so the landing stays minimal; the user opts in from General.
   showHomeBriefing: "prevail.pref.showHomeBriefing",       // "1" | "0" — default "0" (hidden)
+  // Quick Capture — the floating mic/note widget pinned to the right edge.
+  // Default "0" (hidden); the user opts in from General settings.
+  quickCaptureEnabled: "prevail.pref.quickCaptureEnabled", // "1" | "0" — default "0" (hidden)
   // Budget — a soft monthly USD cap the user sets, plus the running spend
   // estimate. Display-only until the engine exposes a budget status command.
   budgetMonthlyCapUsd: "prevail.pref.budgetMonthlyCapUsd", // decimal USD, "" = no cap

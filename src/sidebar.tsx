@@ -1,7 +1,7 @@
 // The domain/navigation Sidebar, extracted from App.tsx. Prop-driven (collapse
 // state, domains, active selection, and a set of callbacks); renders the live
 // gateway/MCP/benchmark status strips from shared modules.
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
 import { Activity, Archive, Briefcase, ChevronDown, ChevronLeft, ChevronRight, Clock, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Star, Sun, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
@@ -364,7 +364,7 @@ export function Sidebar({
   async function archiveDomain(name: string) {
     try {
       const ok = await tauriConfirm(
-        `Hide "${titleCase(name)}" from the active list? Nothing is deleted — restore it any time from the Archived section.`,
+        `Hide "${titleCase(name)}" from the active list? Nothing is deleted. Restore it any time from the Archived section.`,
         { title: "Archive domain", kind: "warning" },
       );
       if (!ok) return;
@@ -972,11 +972,11 @@ export function Sidebar({
           A solid edge-to-edge bar so it reads as the app's footer action. */}
       {collapsed ? (
         <div data-tour="settings" className="flex flex-col items-center gap-1 border-t border-border-subtle p-2">
-          <button onClick={() => setTab("chat")} title="Work — your domains, board, automations, calendar & notes"
+          <button onClick={() => setTab("chat")} title="Work: your domains, board, automations, calendar & notes"
             className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${tab !== "settings" ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}>
             <Briefcase className="h-4 w-4" />
           </button>
-          <button onClick={() => setTab("settings")} title="Editor — models, connections & settings"
+          <button onClick={() => setTab("settings")} title="Editor: models, connections & settings"
             className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${tab === "settings" ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}>
             <SettingsIcon className="h-4 w-4" />
           </button>
@@ -992,7 +992,7 @@ export function Sidebar({
           <div className="flex flex-1 items-center rounded-full border border-border bg-surface-strong p-0.5">
             <button
               onClick={() => setTab("chat")}
-              title="Work — your domains, board, automations, calendar & notes"
+              title="Work: your domains, board, automations, calendar & notes"
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition-all ${
                 tab !== "settings" ? "bg-surface text-accent shadow-sm ring-1 ring-inset ring-border-subtle" : "text-text-secondary hover:text-text-primary"
               }`}
@@ -1002,7 +1002,7 @@ export function Sidebar({
             </button>
             <button
               onClick={() => setTab("settings")}
-              title="Editor — models, connections & settings"
+              title="Editor: models, connections & settings"
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition-all ${
                 tab === "settings" ? "bg-surface text-accent shadow-sm ring-1 ring-inset ring-border-subtle" : "text-text-secondary hover:text-text-primary"
               }`}
@@ -1023,7 +1023,7 @@ export function Sidebar({
             href="https://github.com/fru-dev3/prevail-desktop/issues/new"
             target="_blank"
             rel="noreferrer"
-            title="Alpha — Prevail is an early research project, provided as-is with no warranty: use at your own risk. Click to send feedback or report a bug."
+            title="Alpha: Prevail is an early research project, provided as-is with no warranty: use at your own risk. Click to send feedback or report a bug."
             className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-accent transition-colors hover:bg-accent hover:text-background"
           >
             <span className="text-[7px] leading-none">◆</span> Alpha
@@ -1031,7 +1031,7 @@ export function Sidebar({
           <div className="flex-1" />
           <button
             onClick={() => { const cycle: Mode[] = ["light", "dark", "system"]; const i = cycle.indexOf(appearance.mode); appearance.setMode(cycle[(i + 1) % cycle.length]); }}
-            title={`Theme: ${appearance.mode} — click to cycle (light · dark · system)`}
+            title={`Theme: ${appearance.mode}, click to cycle (light · dark · system)`}
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
           >
             {appearance.mode === "dark" ? <Moon className="h-3.5 w-3.5" /> : appearance.mode === "system" ? <Monitor className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
@@ -1049,17 +1049,19 @@ export function Sidebar({
 // stays minimal until the user actually wants the detail.
 function FooterProcesses({ collapsed, setTab }: { collapsed: boolean; setTab: (t: TabId) => void }) {
   const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
   const procs = useProcesses();
   const runningBench = useBenchBatches().filter((b) => b.running);
   const count = procs.length + runningBench.length;
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
+        ref={btnRef}
+        onClick={() => setOpen((v) => !v)}
         title={count > 0
-          ? `${count} background process${count === 1 ? "" : "es"} running — click for details`
-          : "Background processes — scheduled benchmarks, backups & live activity"}
-        className={`relative flex ${collapsed ? "h-8 w-8" : "h-6 w-6"} shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-warm hover:text-accent`}
+          ? `${count} background process${count === 1 ? "" : "es"} running (click for details)`
+          : "Background processes: scheduled benchmarks, backups & live activity"}
+        className={`relative flex ${collapsed ? "h-8 w-8" : "h-6 w-6"} shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-warm hover:text-accent ${open ? "bg-surface-warm text-accent" : ""}`}
       >
         <Activity className={collapsed ? "h-4 w-4" : "h-3.5 w-3.5"} />
         {count > 0 && (
@@ -1068,53 +1070,101 @@ function FooterProcesses({ collapsed, setTab }: { collapsed: boolean; setTab: (t
           </span>
         )}
       </button>
-      {open && <ProcessesModal onClose={() => setOpen(false)} setTab={setTab} />}
+      {open && <ProcessesPopover anchorRef={btnRef} onClose={() => setOpen(false)} setTab={setTab} />}
     </>
   );
 }
 
-// The consolidated background-activity modal. Reuses the existing strip
-// components (they self-hide when inactive) so nothing about how a process,
-// benchmark, backup, or connection renders had to be reimplemented.
-function ProcessesModal({ onClose, setTab }: { onClose: () => void; setTab: (t: TabId) => void }) {
+// The consolidated background-activity popover. Anchored to the footer
+// Activity icon (bottom-left of the sidebar) and rises upward from it, so it
+// appears where the user clicked rather than centered on screen. Reuses the
+// existing strip components (they self-hide when inactive) so nothing about how
+// a process, benchmark, backup, or connection renders had to be reimplemented.
+function ProcessesPopover(
+  { anchorRef, onClose, setTab }:
+  { anchorRef: RefObject<HTMLButtonElement | null>; onClose: () => void; setTab: (t: TabId) => void },
+) {
   const procs = useProcesses();
   const runningBench = useBenchBatches().filter((b) => b.running);
   const benchSched = lsGet(BENCH_SCHED.enabled, "0") === "1";
   const backupOn = lsGet(BACKUP_CFG.enabled, "0") === "1";
   const empty = procs.length === 0 && runningBench.length === 0 && !benchSched && !backupOn;
+
+  // Anchor to the trigger: fixed positioning (so sidebar overflow never clips
+  // it), left-aligned to the icon, bottom sitting just above it so the card
+  // grows upward from the bottom-left footer corner.
+  const [pos, setPos] = useState<{ left: number; bottom: number } | null>(null);
+  const [shown, setShown] = useState(false);
   useEffect(() => {
+    const place = () => {
+      const r = anchorRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const left = Math.max(8, r.left);
+      const bottom = Math.max(8, window.innerHeight - r.top + 8);
+      setPos({ left, bottom });
+    };
+    place();
+    // Entrance feel: mount slightly offset/faded, then settle on next frame.
+    const raf = requestAnimationFrame(() => setShown(true));
+    window.addEventListener("resize", place);
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [anchorRef, onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    // Transparent click-away backdrop.
+    <div className="fixed inset-0 z-50" onClick={onClose}>
       <div
-        className="w-full max-w-sm overflow-hidden rounded-xl border border-border bg-surface shadow-2xl"
+        role="dialog"
+        aria-label="Background processes"
         onClick={(e) => e.stopPropagation()}
+        style={{
+          position: "fixed",
+          left: pos?.left ?? 8,
+          bottom: pos?.bottom ?? 8,
+          width: 320,
+          visibility: pos ? "visible" : "hidden",
+          transformOrigin: "bottom left",
+          transform: shown ? "translateY(0) scale(1)" : "translateY(6px) scale(0.98)",
+          opacity: shown ? 1 : 0,
+          transition: "opacity 140ms ease-out, transform 140ms ease-out",
+        }}
+        className="overflow-hidden rounded-xl border border-border bg-surface shadow-2xl ring-1 ring-black/5"
       >
-        <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+        <div className="flex items-center justify-between border-b border-border-subtle px-3.5 py-2.5">
           <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-secondary">
-            <Activity className="h-3.5 w-3.5 text-accent" /> Background processes
+            <span className="flex h-5 w-5 items-center justify-center rounded-md bg-accent/10">
+              <Activity className="h-3.5 w-3.5 text-accent" />
+            </span>
+            Background processes
           </span>
-          <button onClick={onClose} title="Close" className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary">
+          <button
+            onClick={onClose}
+            title="Close"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-text-primary"
+          >
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
-        <div className="max-h-[60vh] overflow-y-auto">
+        <div className="max-h-[min(60vh,420px)] overflow-y-auto p-1.5">
           {empty ? (
-            <p className="px-4 py-8 text-center text-xs leading-relaxed text-text-muted">
+            <p className="px-3 py-7 text-center text-xs leading-relaxed text-text-muted">
               Nothing running right now.<br />Scheduled benchmarks, automatic backups, and live activity (chats, council, loops) will appear here.
             </p>
           ) : (
-            <>
+            <div className="flex flex-col gap-0.5">
               <SidebarProcesses collapsed={false} setTab={setTab} />
               <SidebarBenchmarkRuns collapsed={false} />
               <SidebarBenchScheduled collapsed={false} />
               <SidebarBackupActive collapsed={false} />
               <SidebarGatewayLive collapsed={false} />
               <SidebarMcpLive collapsed={false} setTab={setTab} />
-            </>
+            </div>
           )}
         </div>
       </div>

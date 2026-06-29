@@ -85,7 +85,7 @@ export const RUNTIME_META: Record<string, { blurb: string; install: string; prot
   codex:       { blurb: "OpenAI's coding agent CLI.", install: "https://developers.openai.com/codex/cli", protocol: "codex", category: "cli", cmd: "npm install -g @openai/codex" },
   antigravity: { blurb: "Google's agentic CLI (agy).", install: "https://antigravity.google", protocol: "gemini", category: "cli", cmd: "curl -fsSL https://antigravity.google/cli/install.sh | bash" },
   // ── Local model runtimes (on-device, no subscription) ──
-  ollama:      { blurb: "Run open models locally with Ollama — private, offline, free.", install: "https://ollama.com/download", protocol: "openai", category: "cli", cmd: "brew install ollama" },
+  ollama:      { blurb: "Run open models locally with Ollama, private, offline, free.", install: "https://ollama.com/download", protocol: "openai", category: "cli", cmd: "brew install ollama" },
   lmstudio:    { blurb: "LM Studio: a local model server with a desktop GUI.", install: "https://lmstudio.ai", protocol: "openai", category: "cli", cmd: "brew install --cask lm-studio" },
   mlx:         { blurb: "Apple-silicon local inference via MLX.", install: "https://github.com/ml-explore/mlx", protocol: "openai", category: "cli", cmd: "pip install mlx-lm" },
   omlx:        { blurb: "Apple-silicon local inference via MLX (oMLX server).", install: "https://github.com/ml-explore/mlx", protocol: "openai", category: "cli", cmd: "pip install mlx-lm" },
