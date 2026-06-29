@@ -4,24 +4,9 @@
 // (no new engine command needed). Autosaves shortly after you stop typing.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileText, Plus, Search, Trash2 } from "lucide-react";
-import { invoke } from "./bridge";
 import { relTime } from "./format";
 import { SettingsHeader } from "./sectionutil";
-
-interface Note {
-  id: string;
-  title: string;
-  body: string;
-  updated: number; // unix ms
-}
-
-function notesPath(vaultPath: string): string {
-  return `${vaultPath.replace(/\/+$/, "")}/notes.json`;
-}
-function newId(): string {
-  // Vault-unique enough without Date.now()/random collisions mattering here.
-  return `n_${Date.now().toString(36)}_${Math.floor(performance.now() % 1e6).toString(36)}`;
-}
+import { loadNotes, newNoteId as newId, saveNotes, type Note } from "./notesstore";
 
 export function NotesPanel({ vaultPath }: { vaultPath: string }) {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -37,32 +22,41 @@ export function NotesPanel({ vaultPath }: { vaultPath: string }) {
     hydrating.current = true;
     setLoaded(false);
     (async () => {
-      try {
-        const raw = await invoke<string>("read_text_file", { path: notesPath(vaultPath) }).catch(() => "");
-        if (!alive) return;
-        const parsed = raw ? (JSON.parse(raw) as Note[]) : [];
-        const list = Array.isArray(parsed) ? parsed.filter((n) => n && n.id) : [];
-        list.sort((a, b) => b.updated - a.updated);
-        setNotes(list);
-        setSelectedId(list[0]?.id ?? null);
-      } catch {
-        setNotes([]);
-        setSelectedId(null);
-      } finally {
-        if (alive) { setLoaded(true); hydrating.current = false; }
-      }
+      const list = await loadNotes(vaultPath);
+      if (!alive) return;
+      setNotes(list);
+      setSelectedId(list[0]?.id ?? null);
+      setLoaded(true);
+      hydrating.current = false;
     })();
     return () => { alive = false; };
   }, [vaultPath]);
 
   // Autosave: debounce writes after notes change (skip the hydration write).
+  // saveNotes does NOT broadcast, so this never loops with the listener below.
   useEffect(() => {
     if (hydrating.current || !loaded) return;
-    const id = window.setTimeout(() => {
-      invoke("write_text_file", { path: notesPath(vaultPath), contents: JSON.stringify(notes, null, 2) }).catch((e) => console.error("notes save", e));
-    }, 600);
+    const id = window.setTimeout(() => { void saveNotes(vaultPath, notes).catch((e) => console.error("notes save", e)); }, 600);
     return () => window.clearTimeout(id);
   }, [notes, loaded, vaultPath]);
+
+  // Pick up notes added elsewhere (the Quick Capture ribbon) so they appear here
+  // AND so our autosave doesn't later overwrite the file without them. Preserve
+  // the in-memory selected note (it may have unsaved edits).
+  useEffect(() => {
+    const onChanged = () => {
+      if (hydrating.current) return;
+      void loadNotes(vaultPath).then((list) => {
+        setNotes((cur) => {
+          const sel = cur.find((n) => n.id === selectedId);
+          if (!sel) return list;
+          return list.some((n) => n.id === sel.id) ? list.map((n) => (n.id === sel.id ? sel : n)) : [sel, ...list];
+        });
+      });
+    };
+    window.addEventListener("prevail:notes-changed", onChanged);
+    return () => window.removeEventListener("prevail:notes-changed", onChanged);
+  }, [vaultPath, selectedId]);
 
   const selected = notes.find((n) => n.id === selectedId) ?? null;
 
