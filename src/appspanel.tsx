@@ -5,7 +5,7 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Boxes, Check, ChevronLeft, ChevronRight, Download, ExternalLink, FolderOpen, Globe, Link2, Loader2, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Star, Terminal, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Boxes, Check, ChevronLeft, ChevronRight, Clock, Download, ExternalLink, FolderOpen, Globe, HelpCircle, Link2, Loader2, MessageSquare, Pencil, Play, Plug, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Star, Tag, Terminal, Trash2, X } from "lucide-react";
 import { MasterDetail } from "./masterdetail";
 import { ConnectorRunPanel, type ConnectorRunMode } from "./connectorrun";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -90,10 +90,42 @@ function genericCredFields(app: EngineApp): CredField[] {
 
 // The credential spec for an app: the hand-tuned layout if one exists, else the
 // generic auth_env_vars-driven fields.
-function credFieldsFor(app: EngineApp): CredField[] | undefined {
+// Kept (exported) for the upcoming non-browser "Connection" card; the inline
+// credentials UI was removed in the AppDetail redesign.
+export function credFieldsFor(app: EngineApp): CredField[] | undefined {
   if (CREDS_FIELDS[app.id]) return CREDS_FIELDS[app.id];
   const generic = genericCredFields(app);
   return generic.length ? generic : undefined;
+}
+
+// The three connection LANES the user thinks in: an official CLI, a data
+// aggregator (Plaid), or a direct app connection (api / oauth / agentic browser).
+// Works for both catalog entries (pattern/via) and installed apps (integration).
+export type AppLane = "cli" | "aggregator" | "direct";
+function laneOf(a: { pattern?: string; via?: string; integration?: string; gateway?: unknown | null }): AppLane {
+  if ((a.via || "").toLowerCase() === "plaid" || (a as { gateway?: unknown }).gateway) return "aggregator";
+  const p = (a.pattern || a.integration || "").toLowerCase();
+  if (p.includes("cli")) return "cli";
+  return "direct"; // api / oauth / browser
+}
+export const LANE_FILTERS: { key: "all" | AppLane; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "cli", label: "CLI" },
+  { key: "aggregator", label: "Aggregators" },
+  { key: "direct", label: "Direct" },
+];
+
+// Google's many surfaces (Gmail, Calendar, Drive, YouTube, …) are all covered by
+// the single `gws`/`gam` CLI, so the catalog collapses them into one "Google"
+// entry. This is true for any Google-owned sub-service EXCEPT the unified entry.
+function isGoogleSubservice(a: { name?: string | null; iconSlug?: string | null; id?: string }): boolean {
+  const name = (a.name || a.id || "").trim();
+  if (!name || name.toLowerCase() === "google") return false; // keep the unified entry
+  const slug = (a.iconSlug || a.id || "").toLowerCase();
+  if (/^google/.test(slug) || /^youtube/.test(slug)) return true;
+  if (/^google[\s-]/i.test(name)) return true;
+  if (/^(gmail|youtube)\b/i.test(name)) return true;
+  return false;
 }
 
 // "MCP" / "API" / "Browser" / "CLI" / "Composio" from the engine's integration id.
@@ -199,6 +231,8 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   const toggleList = useCallback(() => setListCollapsed((v) => { const n = !v; try { localStorage.setItem("prevail.apps.listCollapsed", n ? "1" : "0"); } catch { /* ignore */ } return n; }), []);
   // The Composio managed-gateway pane (one OAuth fronts 1000+ apps for the agent).
   const [query, setQuery] = useState("");
+  // Lane filter: All / CLI / Aggregators (Plaid) / Direct.
+  const [lane, setLane] = useState<"all" | AppLane>("all");
   // Real brand marks for every connector (AllTrails, Booking.com, Garmin, …),
   // loaded once and shared by the list rows + the detail header via AppRowLogo so
   // logos render identically here, in the per-domain list, and in the connect flow.
@@ -281,6 +315,8 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         // Already installed: just open it. Anything else is a real failure.
         if (!/already exists/i.test(String(e))) throw e;
       }
+      // Wire the catalog-shipped soul into the new app's soul.md at add-time.
+      if (c.soul) { try { await invoke("engine_app_set_soul", { id, soul: c.soul }); } catch { /* soul is best-effort */ } }
       await reload();
       setCatalogPick(null); setConnecting(false);
       setSelected(id);
@@ -308,7 +344,14 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     const q = query.trim().toLowerCase();
     const match = (a: EngineApp) =>
       !q || (a.title || a.id).toLowerCase().includes(q) || methodLabel(a.integration).toLowerCase().includes(q);
-    const filtered = directApps.filter(match);
+    const filtered = directApps.filter((a) => {
+      if (!match(a)) return false;
+      if (lane !== "all" && laneOf(a) !== lane) return false;
+      // Collapse Google sub-services into the unified Google — but never hide one
+      // the user has actually connected.
+      if (appStatus(a) !== "connected" && isGoogleSubservice({ name: a.title, id: a.id })) return false;
+      return true;
+    });
     const bucketOf = (a: EngineApp): "connected" | "setup" | "off" => {
       const st = appStatus(a);
       if (st === "connected") return "connected";
@@ -323,7 +366,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     const by: Record<"connected" | "setup" | "off", EngineApp[]> = { connected: [], setup: [], off: [] };
     for (const a of filtered) by[bucketOf(a)].push(a);
     return order.map((g) => ({ ...g, apps: by[g.key] })).filter((g) => g.apps.length > 0);
-  }, [directApps, query]);
+  }, [directApps, query, lane]);
 
   // The catalog folded into the sidebar: every connector NOT already installed,
   // deduped against the installed apps (by normalized name / id / iconSlug) so a
@@ -342,6 +385,8 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       const keySlug = norm(c.iconSlug || "");
       if (!keyName) return false;
       if (installedKeys.has(keyName) || (keySlug && installedKeys.has(keySlug))) return false;
+      if (lane !== "all" && laneOf(c) !== lane) return false;
+      if (isGoogleSubservice(c)) return false; // collapsed into the unified "Google"
       return true;
     });
     // Dedupe duplicate catalog entries (the catalog can list the same app twice,
@@ -363,7 +408,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     const searching = q.length > 0;
     const shown = searching ? ranked : ranked.slice(0, CATALOG_CAP);
     return { shown, total: matched.length, searching };
-  }, [apps, catalog, query]);
+  }, [apps, catalog, query, lane]);
 
   const liveCount = directApps.filter((a) => appStatus(a) === "connected").length;
 
@@ -394,6 +439,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       const domains = c.domain ? [c.domain] : [];
       try { await invoke("engine_app_add", { vault: vaultPath, id, title: c.name, integration, domains }); }
       catch (e) { if (!/already exists/i.test(String(e))) console.error("scaffold on pin", e); }
+      if (c.soul) { try { await invoke("engine_app_set_soul", { id, soul: c.soul }); } catch { /* best-effort */ } }
       window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
     }
     toggleFavorite(key);
@@ -531,6 +577,14 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                 className="w-full rounded-lg border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
               />
             </div>
+            <div className="mb-2 flex items-center gap-1 rounded-lg border border-border-subtle bg-background p-0.5">
+              {LANE_FILTERS.map((f) => (
+                <button key={f.key} onClick={() => setLane(f.key)}
+                  className={`flex-1 rounded-md px-1.5 py-1 text-[11px] font-medium transition-colors ${lane === f.key ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-secondary"}`}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
             <button
               onClick={() => { setConnecting(true); setCatalogPick(null); }}
               className="mb-3 flex w-full items-center gap-2.5 rounded-lg border border-dashed border-accent-border bg-accent-soft/20 px-3 py-2 text-left transition-colors hover:bg-accent-soft/40"
@@ -650,12 +704,17 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                 {catalogConnectErr && (
                   <div className="mb-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{catalogConnectErr}</div>
                 )}
-                <CatalogDetail
+                <AppDetail
                   key={catalogPick.iconSlug || catalogPick.name}
-                  app={catalogPick}
+                  app={catalogToApp(catalogPick)}
+                  vaultPath={vaultPath}
                   logos={logos}
-                  onConnect={() => connectCatalogApp(catalogPick)}
-                  connecting={catalogConnecting}
+                  status={"disconnected"}
+                  busy={false}
+                  onSync={async () => {}}
+                  onSetEnabled={() => {}}
+                  onReload={reload}
+                  connect={{ onConnect: () => connectCatalogApp(catalogPick), connecting: catalogConnecting, soul: catalogPick.soul }}
                 />
               </>
             ) : directSelectedApp ? (
@@ -1656,7 +1715,8 @@ function catalogMethodLabel(m?: string): string {
   }
 }
 
-function CatalogDetail({ app, logos, onConnect, connecting }: {
+// Superseded by the unified AppDetail (Connect mode); kept exported for reference.
+export function CatalogDetail({ app, logos, onConnect, connecting }: {
   app: CatalogApp;
   logos: Record<string, BrandLogo>;
   onConnect: () => void;
@@ -1776,7 +1836,44 @@ function prettyHost(url: string): string {
 // collapsible AppCard - every flow (creds, MCP setup, OAuth/browser sign-in,
 // schedule, domains, config path, runs, enabled toggle, delete) is preserved,
 // just always-shown for the selected app instead of behind a chevron.
-function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, onReload, gatewayProvider }: {
+// The actual colorful Google Chrome logo (lucide's is a monochrome outline).
+function ChromeLogo({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#4caf50" d="M44,24c0,11.05-8.95,20-20,20S4,35.05,4,24S12.95,4,24,4S44,12.95,44,24z" />
+      <path fill="#ffc107" d="M24,4v16l8,4l-8.84,20C12.62,43.54,4,34.82,4,24C4,12.95,12.95,4,24,4z" />
+      <path fill="#ff3d00" d="M44,24c0-5.05-1.88-9.65-4.96-13.17L23,20l5,4l-3.16,20C35.05,43.54,44,34.82,44,24z" />
+      <path fill="#1565c0" d="M24,32c-4.42,0-8-3.58-8-8s3.58-8,8-8s8,3.58,8,8S28.42,32,24,32z" />
+      <path fill="#2196f3" d="M24,30c-3.31,0-6-2.69-6-6s2.69-6,6-6s6,2.69,6,6S27.31,30,24,30z" />
+    </svg>
+  );
+}
+
+// Synthesize a minimal EngineApp from a catalog entry so an un-added app renders
+// in the SAME AppDetail view (in Connect mode) — one detail view for everything.
+// Hand-off when a user starts "Learn New Skill" on an app that isn't added yet:
+// we implicitly connect (scaffold) it, which re-routes to the real AppDetail —
+// this carries the goal across that remount so learning starts automatically,
+// without a separate "Connect" step. Keyed by the derived app id (which
+// catalogToApp and connectCatalogApp compute identically).
+let pendingAutolearn: { id: string; goal: string } | null = null;
+
+function catalogToApp(c: CatalogApp): EngineApp {
+  return {
+    id: (c.iconSlug || c.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48),
+    title: c.name,
+    integration: c.via || c.pattern || "manual",
+    status: "available",
+    configured: false,
+    domains: c.domain ? [c.domain] : [],
+    lastSuccessTs: null,
+    lastError: null,
+    account: null,
+    refresh: null,
+  } as EngineApp;
+}
+
+function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, onReload, gatewayProvider, connect }: {
   app: EngineApp;
   vaultPath: string;
   logos: Record<string, BrandLogo>;
@@ -1785,6 +1882,10 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   onSync: () => Promise<SyncResult | void>;
   onSetEnabled: (v: boolean) => void;
   onReload: () => Promise<void> | void;
+  // Set when this is an un-added CATALOG app: the SAME detail view renders, but
+  // the primary action is Connect (not Sync), and connected-only bits are muted.
+  // This is what makes catalog + connected apps share one view.
+  connect?: { onConnect: () => void; connecting: boolean; soul?: string };
   // When set, this app is fronted by a managed gateway (Composio / Nango) rather
   // than connected directly. The per-method auth UI (Method picker + login /
   // credentials / MCP-setup) is meaningless for a gateway app, so it is hidden;
@@ -1793,7 +1894,6 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
 }) {
   const meta = STATUS_META[status];
   const enabled = app.enabled !== false;
-  const runs = app.runs ?? [];
   // Star = pin to the home sidebar. The one control, shared by every mode, that
   // decides what shows on the home screen (Direct, Composio, and Nango apps all
   // reach this same detail header). Keyed by the app's unique id (not its name)
@@ -1805,14 +1905,6 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   // Apps redesign: the actual data files this connector has loaded (so the user
   // can SEE what was pulled, and reveal it). Loaded for the selected app, and
   // reloaded after a successful sync (lastSuccessTs change).
-  const [dataFiles, setDataFiles] = useState<{ path: string; name: string; bytes: number; mtime: number }[]>([]);
-  useEffect(() => {
-    let alive = true;
-    invoke<{ path: string; name: string; bytes: number; mtime: number }[]>("app_data_files", { vault: vaultPath, appId: app.id })
-      .then((f) => { if (alive) setDataFiles(Array.isArray(f) ? f : []); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [app.id, vaultPath, app.lastSuccessTs]);
   // Agentic browser learn/replay + the skills it records. Available for ANY app:
   // the agent drives a real browser to learn how to fetch your data, records it
   // as a reusable skill (vault/apps/<id>/skills/), and replays it next time.
@@ -1826,6 +1918,41 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
       .catch(() => setSkills([]));
   }, [app.id]);
   useEffect(() => { loadSkills(); }, [loadSkills, app.lastSuccessTs]);
+  // Per-app soul: the same construct domains use (soul.md) — a markdown note
+  // declaring WHY this app is in the harness, persisted to apps/<id>/soul.md and
+  // read by the agent as standing context. Editable inline; saved to the file.
+  const [soulText, setSoulText] = useState("");
+  const [soulDraft, setSoulDraft] = useState("");
+  const [editSoul, setEditSoul] = useState(false);
+  const [soulBusy, setSoulBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    // Un-added catalog apps have no soul.md yet — fall back to the soul shipped
+    // in the catalog so the card is pre-filled before the user even connects.
+    const fallback = connect?.soul ?? "";
+    invoke<{ soul?: string }>("engine_app_get_soul", { id: app.id })
+      .then((r) => { if (live) setSoulText((typeof r?.soul === "string" && r.soul) ? r.soul : fallback); })
+      .catch(() => { if (live) setSoulText(fallback); });
+    return () => { live = false; };
+  }, [app.id, connect?.soul]);
+  // If we just implicitly connected this app to start a learn, pick the goal
+  // back up and open the learn flow straight away.
+  useEffect(() => {
+    if (pendingAutolearn && pendingAutolearn.id === app.id && !connect) {
+      setGoalText(pendingAutolearn.goal);
+      setComposing(false);
+      setLearnMode("learn");
+      pendingAutolearn = null;
+    }
+  }, [app.id, connect]);
+  const openSoulEditor = useCallback(() => { setSoulDraft(soulText); setEditSoul(true); }, [soulText]);
+  const saveSoul = useCallback(async () => {
+    setSoulBusy(true);
+    try {
+      const r = await invoke<{ ok?: boolean; soul?: string }>("engine_app_set_soul", { id: app.id, soul: soulDraft });
+      if (r?.ok !== false) { setSoulText(typeof r?.soul === "string" ? r.soul : soulDraft.trim()); setEditSoul(false); }
+    } catch { /* leave editor open on failure */ } finally { setSoulBusy(false); }
+  }, [app.id, soulDraft]);
   // After a successful learn, capture the FOLDER + FREQUENCY the user described
   // in plain English (e.g. "...file under Travel, check monthly") and apply them
   // — so the conversation sets the config, not separate forms.
@@ -1916,7 +2043,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
     }
     return { mode: "daily", n: 1 };
   };
-  const [editSched, setEditSched] = useState(false);
+  const [schedOpen, setSchedOpen] = useState(false); // compact schedule+sync popup
   const initialSched = parseSchedule(app.refresh);
   const [schedMode, setSchedMode] = useState<SchedMode>(initialSched.mode);
   const [schedN, setSchedN] = useState(initialSched.n);
@@ -1942,14 +2069,6 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
       default: return "off";
     }
   };
-  const openSchedEditor = () => {
-    const p = parseSchedule(app.refresh);
-    setSchedMode(p.mode === "off" ? "daily" : p.mode);
-    setSchedN(p.n);
-    setSchedAt(app.refresh?.at ?? "");
-    setSchedOn(app.refresh?.on ?? "");
-    setEditSched(true);
-  };
   const saveSchedule = async (clear?: boolean) => {
     setSchedBusy(true);
     try {
@@ -1962,11 +2081,20 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
         at: wantsAt && schedAt ? schedAt : null,
         on: wantsOn && schedOn ? schedOn : null,
       });
-      setEditSched(false);
       window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
       await onReload();
     } catch (e) { console.error("set schedule", e); }
     finally { setSchedBusy(false); }
+  };
+  // Open the compact schedule+sync popup, seeding the form from the current
+  // cadence (Schedule and Sync live here, away from Domains).
+  const openSchedModal = () => {
+    const p = parseSchedule(app.refresh);
+    setSchedMode(p.mode === "off" ? "daily" : p.mode);
+    setSchedN(p.n);
+    setSchedAt(app.refresh?.at ?? "");
+    setSchedOn(app.refresh?.on ?? "");
+    setSchedOpen(true);
   };
   // Apps redesign P1: generic credential entry, driven by the manifest's
   // auth_env_vars (credFieldsFor) instead of a PayPal hardcode. The user's only
@@ -1980,14 +2108,11 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   // in their manifest, so clicking failed with "connector has no oauth block".
   // "api"/"browser"/"manual"/"mcp" apps must never see this button.
   const integ = (app.integration || "").toLowerCase();
-  const isOAuth = integ === "oauth";
-  const isMcp = integ === "mcp";
   // Browser-method connectors authorize by opening a REAL browser the user logs
   // into (the browser equivalent of OAuth's "Sign in"). engine_app_browser_login
   // is a long-running Tauri command that opens the browser; when it returns we run
   // the same verify sync the other auth flows do.
   const isBrowser = integ === "browser" || integ === "playwright";
-  const credSpec = credFieldsFor(app);
   // Fully delete a connector (mirror of "Connect") so the user can remove a
   // duplicate / mistaken app and recreate it. Two-step confirm; the engine
   // refuses to delete bundled connectors.
@@ -2003,173 +2128,19 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
     } catch (e) { setDeleteErr(String(e).slice(0, 200)); }
     finally { setDeleting(false); }
   };
-  const needsCreds = (!!credSpec || isOAuth || isBrowser) && !isMcp;
   // The "learned lane": browser apps, un-configured manual apps, or anything that
   // already has a recorded skill. For these, the agentic Learn flow IS the setup —
   // so the legacy METHOD / RE-EVALUATE / WHAT-TO-PULL config is redundant and hidden.
   // Real API/OAuth/CLI/MCP apps still show it (the method genuinely matters there).
   const learnedLane = isBrowser || integ === "manual" || integ === "" || skills.length > 0;
-  const [credVals, setCredVals] = useState<Record<string, string>>({});
-  const [credBusy, setCredBusy] = useState(false);
-  const [credMsg, setCredMsg] = useState<string | null>(null);
-  const verifySync = async () => {
-    await invoke("engine_app_sync", { id: app.id, vault: vaultPath });
-    window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
-    await onReload();
-  };
-  const saveCreds = async () => {
-    if (!credSpec) return;
-    setCredBusy(true); setCredMsg("Saving + verifying by a real fetch…");
-    try {
-      for (const f of credSpec) {
-        if (f.kind === "toggle") {
-          await invoke("app_secret_set", { name: f.env, value: credVals[f.env] === "on" ? (f.on ?? "on") : (f.off ?? "off") });
-        } else if ((credVals[f.env] ?? "").trim()) {
-          await invoke("app_secret_set", { name: f.env, value: credVals[f.env].trim() });
-        }
-      }
-      await verifySync();
-      setCredVals((v) => { const n = { ...v }; for (const f of credSpec) if (f.kind === "secret") delete n[f.env]; return n; });
-      setCredMsg("Verified - pulled real data. (The card turns green once a sync succeeds.)");
-    } catch (e) { setCredMsg(`Failed: ${String(e).slice(0, 200)}`); }
-    finally { setCredBusy(false); }
-  };
-  const signIn = async () => {
-    setCredBusy(true); setCredMsg("Opening sign-in… complete it in your browser.");
-    try {
-      await invoke("engine_app_oauth", { id: app.id, vault: vaultPath });
-      await verifySync();
-      setCredMsg("Signed in - verified by a real fetch.");
-    } catch (e) {
-      const msg = String(e);
-      // Some apps are tagged "oauth" but ship no oauth block in their manifest,
-      // so the sign-in invoke fails. Don't leave a dead button: tell the user
-      // this app doesn't actually do OAuth and point them at changing the
-      // method (the Method picker above) to one it supports.
-      if (/no oauth block/i.test(msg)) {
-        setCredMsg("This app isn't set up for OAuth sign-in (no OAuth configured). Use the Method picker above to switch it to API, Browser, or another method it supports.");
-      } else {
-        setCredMsg(`Sign-in failed: ${msg.slice(0, 200)}`);
-      }
-    }
-    finally { setCredBusy(false); }
-  };
-  // Browser-method log in: opens a real browser window the user signs into, then
-  // closes. This is a long-running call - while it runs we show a clear "opening
-  // browser, log in then close it" busy state. On return we verify by a real fetch
-  // just like the OAuth and credential flows.
-  const browserLogin = async () => {
-    setCredBusy(true); setCredMsg("Opening a browser… log in there, then close the window. Prevail verifies by a real fetch.");
-    try {
-      await invoke("engine_app_browser_login", { id: app.id });
-      await verifySync();
-      setCredMsg("Logged in - verified by a real fetch.");
-    } catch (e) { setCredMsg(`Browser login failed: ${String(e).slice(0, 200)}`); }
-    finally { setCredBusy(false); }
-  };
-  // MCP guided setup (integration === "mcp"): show the server's install/run
-  // command, collect whatever env the server needs into the Keychain, then
-  // verify by a REAL tool call - engine_app_sync spawns the local MCP server and
-  // calls one tool; the fetch gate only turns the card green if it returns data.
-  const [mcpCopied, setMcpCopied] = useState(false);
-  const mcpCmd = (app.mcpSetup?.install || app.mcpSetup?.command || "").trim();
-  const copyMcp = async () => {
-    if (!mcpCmd) return;
-    try { await navigator.clipboard.writeText(mcpCmd); setMcpCopied(true); window.setTimeout(() => setMcpCopied(false), 1500); }
-    catch { /* clipboard blocked - the command is still visible to copy by hand */ }
-  };
-  const setupMcp = async () => {
-    setCredBusy(true); setCredMsg("Saving keys + verifying the MCP server by a real tool call…");
-    try {
-      for (const f of credSpec ?? []) {
-        if (f.kind === "toggle") {
-          await invoke("app_secret_set", { name: f.env, value: credVals[f.env] === "on" ? (f.on ?? "on") : (f.off ?? "off") });
-        } else if ((credVals[f.env] ?? "").trim()) {
-          await invoke("app_secret_set", { name: f.env, value: credVals[f.env].trim() });
-        }
-      }
-      await verifySync();
-      setCredVals((v) => { const n = { ...v }; for (const f of credSpec ?? []) if (f.kind === "secret") delete n[f.env]; return n; });
-      setCredMsg("Verified. The MCP server returned data. (Green once the sync succeeds.)");
-    } catch (e) { setCredMsg(`Couldn't verify: ${String(e).slice(0, 200)}`); }
-    finally { setCredBusy(false); }
-  };
-  // P4 - re-evaluate the connection method: maybe a better one exists now.
-  const [reEval, setReEval] = useState<string | null>(null);
-  const [reEvalBusy, setReEvalBusy] = useState(false);
-  // A2 - change the connection method by hand (MCP / API / OAuth / browser / manual).
-  const [methodBusy, setMethodBusy] = useState(false);
-  const changeMethod = async (integration: string) => {
-    if (!integration || integration === app.integration) return;
-    setMethodBusy(true);
-    try {
-      await invoke("engine_app_set_integration", { id: app.id, integration });
-      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
-      await onReload();
-    } catch (e) { console.error("set integration", e); }
-    finally { setMethodBusy(false); }
-  };
-  const reevaluate = async () => {
-    setReEvalBusy(true);
-    setReEval(null);
-    try {
-      const provider = getPref(PREF.memoryProvider, "claude");
-      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
-      const r = await invoke<{ ok: boolean; plan?: { integration?: string; why?: string }; error?: string }>(
-        "engine_app_connect", { name: app.title || app.id, goal: "", vault: vaultPath, provider, model, reevaluate: true, current: app.integration },
-      );
-      if (r.ok && r.plan) {
-        const m = methodLabel(r.plan.integration ?? "");
-        const same = (r.plan.integration ?? "").toLowerCase() === (app.integration ?? "").toLowerCase();
-        setReEval(same ? `Still best via ${m}.` : `Better now: ${m}${r.plan.why ? ` - ${r.plan.why}` : ""}`);
-      } else setReEval(r.error ?? "Could not re-evaluate.");
-    } catch (e) { setReEval(`Re-evaluate failed: ${e}`); }
-    finally { setReEvalBusy(false); }
-  };
-  // A short description if the manifest exposes one (the first connection's
-  // description). We never invent copy - if there's nothing, the line is omitted.
-  const description = (app.connections ?? []).map((c) => c.description).find((d) => !!d && d.trim()) ?? null;
-  // SYNC feedback: the bare onSync spinner never told the user what was happening.
-  // We wrap it with an inline status line ("Pulling fresh data…", then a short
-  // result) while still delegating the real work to the parent's onSync.
-  const connectorLabel = gatewayProvider ? titleCase(gatewayProvider) : "the connector";
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  // "What to pull": the user's instruction that steers each sync. Editable; saved
-  // to the manifest and injected into the gateway sync prompt.
-  const [editPull, setEditPull] = useState(false);
-  const [pullText, setPullText] = useState(app.pullInstructions ?? "");
-  const [pullBusy, setPullBusy] = useState(false);
-  useEffect(() => { setPullText(app.pullInstructions ?? ""); }, [app.id, app.pullInstructions]);
-  const savePull = async () => {
-    setPullBusy(true);
-    try {
-      await invoke("engine_app_set_pull_instructions", { id: app.id, instructions: pullText.trim() });
-      setEditPull(false);
-      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
-      await onReload();
-    } catch (e) { console.error("set pull instructions", e); }
-    finally { setPullBusy(false); }
-  };
-  // "What this can pull": on-demand discovery of the gateway toolkit's data types.
-  const [caps, setCaps] = useState<string | null>(null);
-  const [capsBusy, setCapsBusy] = useState(false);
-  const [capsErr, setCapsErr] = useState<string | null>(null);
-  const discoverCaps = async () => {
-    setCapsBusy(true); setCapsErr(null);
-    try {
-      const r = await invoke<{ ok: boolean; markdown?: string; error?: string }>("engine_app_gateway_capabilities", { id: app.id });
-      if (r.ok && r.markdown) setCaps(r.markdown);
-      else setCapsErr(r.error || "could not discover what this app can pull");
-    } catch (e) { setCapsErr(String(e).slice(0, 200)); }
-    finally { setCapsBusy(false); }
-  };
   const runSync = async () => {
     // Gateway syncs run a live agent turn that can take a minute or two, so say
     // so plainly - the old bare spinner read as a freeze.
     setSyncMsg(gatewayProvider
-      ? `Pulling fresh data via ${connectorLabel}… this runs a live fetch and can take up to a minute or two. You can keep working.`
-      : `Pulling fresh data via ${connectorLabel}…`);
-    const before = dataFiles.length;
+      ? `Pulling fresh data from ${app.title || app.id}… this runs a live fetch and can take a minute or two. You can keep working.`
+      : `Pulling fresh data from ${app.title || app.id}…`);
+    const before = 0;
     try {
       const r = await onSync();
       // Honest result: the engine reports ok=false (with a reason) when auth
@@ -2187,549 +2158,288 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
       setSyncMsg(`Sync failed: ${String(e).slice(0, 200)}`);
     }
   };
+  const humanizeSkill = (sid: string) => sid.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const domainsLine = (app.domains ?? []).map(titleCase).join(", ");
+  const card = "rounded-xl border border-border-subtle bg-background/50 p-5";
+  const notConnected = !!connect;
+  const ConnectBtn = ({ label }: { label: string }) => (
+    <button onClick={() => connect?.onConnect()} disabled={connect?.connecting}
+      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-60">
+      {connect?.connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} {connect?.connecting ? "Connecting…" : label}
+    </button>
+  );
   return (
-    <div className="overflow-hidden bg-surface">
-      {/* Enriched detail header: big brand mark, name, status pill, method,
-          optional description, and the "Open in chat" + Sync CTAs. */}
-      <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle px-5 py-4">
+    <div className="bg-surface pb-2">
+      {/* Header */}
+      <div className="flex flex-wrap items-start gap-4 px-6 pb-5 pt-5">
         <AppRowLogo app={app} logos={logos} size={52} fallback="letter" />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-base font-semibold text-text-primary">{app.title || app.id}</span>
-            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider ${meta.ring} ${meta.tint}`}>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="truncate text-2xl font-bold tracking-tight text-text-primary">{app.title || app.id}</h2>
+            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${meta.ring} ${meta.tint}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${meta.dot} ${status === "connecting" ? "animate-pulse" : ""}`} />
               {meta.label}
             </span>
-            {!gatewayProvider && <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>}
             {gatewayProvider && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent">
-                <Check className="h-2.5 w-2.5" /> Connected via {titleCase(gatewayProvider)}
+              <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
+                <Check className="h-2.5 w-2.5" /> via {titleCase(gatewayProvider)}
               </span>
             )}
+            {!gatewayProvider && !learnedLane && <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[10px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>}
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-text-muted">
-            {status === "connected" && <span>synced {app.lastSuccessTs ? relTime(app.lastSuccessTs) : "-"}</span>}
-            {status === "attention" && <span className="text-danger">{app.lastError ? app.lastError.slice(0, 60) : "needs re-auth"}</span>}
-            {status === "disconnected" && <span>not set up</span>}
-            {status === "connected" && <span>· {scheduleLabel(app.refresh)}</span>}
-            {status === "connected" && app.nextDueTs ? <span>· next {relTime(app.nextDueTs)}</span> : null}
-            {(app.domains ?? []).length > 0 && <span>· feeds {app.domains.map(titleCase).join(", ")}</span>}
-            <button onClick={() => void openUrl(appWebsite(app))}
-              title={`Open ${app.title || app.id}'s website in your browser`}
-              className="inline-flex items-center gap-1 text-text-muted hover:text-accent">
-              · Visit {app.title || app.id} <ExternalLink className="h-3 w-3" />
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-text-muted">
+            {domainsLine && <span className="inline-flex items-center gap-1"><Globe className="h-3.5 w-3.5" /> {domainsLine}</span>}
+            {domainsLine && <span>·</span>}
+            <button onClick={() => void openUrl(appWebsite(app))} className="inline-flex items-center gap-1 hover:text-accent">
+              Visit {app.title || app.id} <ExternalLink className="h-3 w-3" />
             </button>
           </div>
-          {/* SYNC feedback - a clear inline status while/after a manual sync. */}
-          {syncMsg && (
-            <div className={`mt-1.5 inline-flex items-center gap-1.5 text-[12px] ${syncMsg.startsWith("Sync failed") ? "text-danger" : "text-text-secondary"}`}>
-              {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3 text-ok" />} {syncMsg}
-            </div>
-          )}
-          {description && <p className="mt-1.5 max-w-prose text-[12px] text-text-secondary">{description}</p>}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {/* Star = show on the home screen. Same store the sidebar reads, so a
-              starred app (any mode) appears on home immediately. */}
-          <button
-            onClick={() => toggleFavorite(favKey)}
-            title={isFav ? "On your home screen - click to remove" : "Add to your home screen"}
-            aria-pressed={isFav}
-            className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${isFav ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}
-          >
-            <Star className={`h-3.5 w-3.5 ${isFav ? "fill-accent" : ""}`} /> {isFav ? "On home" : "Add to home"}
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button onClick={() => toggleFavorite(favKey)} title={isFav ? "On your home screen — click to remove" : "Add to your home screen"} aria-pressed={isFav}
+            className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${isFav ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
+            <Star className={`h-4 w-4 ${isFav ? "fill-accent" : ""}`} />
           </button>
-          {/* Open the app's own workspace (chat with its data) - the same view the
-              sidebar + per-domain facet open (prevail:open-app dispatch). */}
-          <button
-            onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }))}
-            title={`Open ${app.title || app.id} in chat`}
-            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover"
-          >
-            <ArrowUpRight className="h-3.5 w-3.5" /> Open in chat
-          </button>
+          {notConnected ? (
+            <ConnectBtn label="Connect" />
+          ) : (
+            <button onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }))} title="Open in chat"
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-background hover:bg-accent-hover">
+              <MessageSquare className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
-      <div className="space-y-3 px-5 py-4 text-[13px]">
-          {/* Browser sync — agentic learn + the skills it records. Works for ANY
-              app: the agent drives a real browser to learn how to fetch your data,
-              records it as a reusable skill, and replays it next time. */}
-          {!gatewayProvider && (
-            <div className="rounded-lg border border-border bg-background p-3">
-              {learnMode ? (
-                <ConnectorRunPanel
-                  appId={app.id}
-                  mode={learnMode}
-                  goal={goalText || undefined}
-                  url={appWebsite(app)}
+
+      {/* Even two-column grid — row 1: About | Browser Sync, row 2: Learned Skills | Schedule */}
+      <div className="grid grid-cols-1 items-stretch gap-4 px-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        {/* Soul (top-left) — same construct domains use */}
+        <div className={`${card} flex h-full flex-col`}>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Soul</h3>
+            {!editSoul && <button onClick={openSoulEditor} title="Edit soul" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
+          </div>
+          {editSoul ? (
+            <div className="mt-2 flex flex-1 flex-col">
+              <textarea autoFocus rows={4} value={soulDraft} onChange={(e) => setSoulDraft(e.target.value)}
+                placeholder={`Why ${app.title || app.id} is in your harness — what it feeds your world.`}
+                className="w-full flex-1 resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-relaxed text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
+              <div className="mt-2 flex items-center gap-2">
+                <button onClick={saveSoul} disabled={soulBusy} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{soulBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
+                <button onClick={() => setEditSoul(false)} className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">Cancel</button>
+                <span className="ml-auto font-mono text-[10px] text-text-muted/70">apps/{app.id}/soul.md</span>
+              </div>
+            </div>
+          ) : soulText.trim() ? (
+            <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-text-secondary">{soulText.trim()}</p>
+          ) : (
+            <button onClick={openSoulEditor} className="mt-2 flex flex-1 flex-col items-start justify-center rounded-lg border border-dashed border-border bg-surface/40 px-4 py-5 text-left hover:border-accent-border">
+              <span className="text-[13px] text-text-secondary">Give {app.title || app.id} a soul.</span>
+              <span className="mt-0.5 text-[12px] text-text-muted">Why it's in your harness — your AI reads this as standing context.</span>
+            </button>
+          )}
+        </div>
+
+        {/* Browser Sync (top-right) */}
+        {!gatewayProvider ? (
+          <div className={`${card} flex h-full flex-col`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Globe className="h-4 w-4 text-accent" /> Browser Sync</div>
+              <HelpCircle className="h-4 w-4 text-text-muted/70" />
+            </div>
+            <div className="flex flex-1 flex-col justify-center">
+              <div className="my-4 flex items-center justify-center gap-3">
+                <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-border-subtle bg-white"><ChromeLogo size={28} /></span>
+                <span className="font-mono text-text-muted/50">·····</span>
+                <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-accent-border bg-accent-soft text-accent"><Sparkles className="h-6 w-6" /></span>
+              </div>
+              {notConnected ? (
+                <p className="text-center text-[12px] leading-snug text-text-muted">Log in once in your own Chrome — the agent learns how to fetch your data, then replays it automatically.</p>
+              ) : (
+                <div className="flex flex-col items-center">
+                  <button onClick={importLogins} disabled={importing}
+                    title="Already signed into this site in Chrome? Import that login (quit Chrome first) so you skip signing in."
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+                    {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} {importing ? "Importing…" : "Import login"}
+                  </button>
+                  {importMsg && <p className={`mt-1.5 text-center text-[11px] ${importMsg.startsWith("✓") ? "text-ok" : "text-danger"}`}>{importMsg}</p>}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="hidden lg:block" />
+        )}
+
+        {/* Learned Skills (bottom-left) */}
+        <div className={`${card} h-full`}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Learned Skills{skills.length > 0 && <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-muted">{skills.length}</span>}</div>
+              {!learnMode && !composing && (
+                <button onClick={() => { setGoalText(""); setComposing(true); }}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10">
+                  <Plus className="h-3.5 w-3.5" /> Learn New Skill
+                </button>
+              )}
+            </div>
+            {!gatewayProvider && (
+              <p className="mt-1.5 text-[12px] text-text-muted">Skills are actions Prevail learned to do for you on {app.title || app.id} — taught once, replayed automatically.</p>
+            )}
+
+            {learnMode ? (
+              <div className="mt-3">
+                <ConnectorRunPanel appId={app.id} mode={learnMode} goal={goalText || undefined} url={appWebsite(app)}
                   onDone={(ok) => { void onReload(); loadSkills(); if (ok) { void applyLearnedConfig(goalText); setLearnMode(null); } }}
-                  onClose={() => setLearnMode(null)}
-                />
-              ) : composing ? (
-                // Conversational entry: describe what to fetch + where + how often,
-                // in plain English. The agent uses it as the goal AND we capture
-                // the folder + frequency from it (applyLearnedConfig) — no forms.
-                <div className="space-y-2">
-                  <div className="flex items-center gap-1.5 text-[13px] font-medium text-text-primary">
-                    <Sparkles className="h-4 w-4 text-accent" /> Tell me what to fetch
-                  </div>
-                  <textarea
-                    autoFocus
-                    rows={3}
-                    value={goalText}
-                    onChange={(e) => setGoalText(e.target.value)}
-                    placeholder={`e.g. "Download my booking confirmations, file them under Travel, and check monthly."`}
-                    className="w-full resize-none rounded-md border border-border bg-surface px-2.5 py-2 text-[13px] text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none"
-                  />
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => { setComposing(false); setLearnMode("learn"); }} disabled={!goalText.trim()}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-40">
-                      <Sparkles className="h-3.5 w-3.5" /> Start learning
+                  onClose={() => setLearnMode(null)} />
+              </div>
+            ) : composing ? (
+              <div className="mt-3 space-y-2 rounded-lg border border-border-subtle bg-surface p-3">
+                <div className="flex items-center gap-1.5 text-[13px] font-medium text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Tell me what to fetch</div>
+                <textarea autoFocus rows={3} value={goalText} onChange={(e) => setGoalText(e.target.value)}
+                  placeholder={'e.g. "Download my booking confirmations, file them under Travel, and check monthly."'}
+                  className="w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[13px] text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
+                <div className="flex items-center gap-2">
+                  <button onClick={() => {
+                    if (notConnected && connect) { pendingAutolearn = { id: app.id, goal: goalText }; connect.onConnect(); return; }
+                    setComposing(false); setLearnMode("learn");
+                  }} disabled={!goalText.trim() || (notConnected && connect?.connecting)}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-40">{notConnected && connect?.connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Start learning</button>
+                  <button onClick={() => setComposing(false)} className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary">Cancel</button>
+                </div>
+                <p className="text-[11px] text-text-muted">Your Chrome opens — log in once. I'll learn the steps + remember the folder and cadence from what you said.</p>
+              </div>
+            ) : skills.length === 0 ? (
+              <div className="mt-3 rounded-lg border border-dashed border-border bg-surface/40 px-4 py-6 text-center">
+                <div className="text-[13px] text-text-secondary">No skills yet.</div>
+                <div className="mt-0.5 text-[12px] text-text-muted">Click <span className="text-accent">Learn New Skill</span>, say what to fetch{notConnected ? " — I'll connect and learn it in one go." : <> — saved in <code className="rounded bg-surface-warm px-1 font-mono text-[11px]">vault/apps/{app.id}/skills/</code></>}</div>
+              </div>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {skills.map((s) => (
+                  <li key={s.id} className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-3 py-2.5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Sparkles className="h-4 w-4" /></span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-text-primary">{humanizeSkill(s.id)}</div>
+                      <div className="text-[11px] text-text-muted">{s.runner === "browser" ? "Browser skill" : s.runner}{s.trigger ? ` · ${s.trigger}` : ""}</div>
+                    </div>
+                    <span className="hidden items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-ok sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-ok" /> ready</span>
+                    <button onClick={() => setLearnMode("replay")} disabled={!!learnMode}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+                      <Play className="h-3 w-3" /> Run now
                     </button>
-                    <button onClick={() => setComposing(false)}
-                      className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary">Cancel</button>
-                  </div>
-                  <p className="text-[11px] text-text-muted">Your Chrome opens — log in once. I'll learn the steps and remember the folder + how often from what you said.</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+        </div>
+
+        {/* Schedule / Domains / Status (bottom-right) */}
+        <div className={`${card} h-full`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Tag className="h-4 w-4 text-accent" /> Domains fed</div>
+              {!editDomains && !notConnected && <button onClick={openDomainEditor} title="Edit domains" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
+            </div>
+            <div className="mt-3">
+              {!editDomains ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {(app.domains ?? []).length ? (app.domains).map((d) => (
+                    <button key={d} onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: d }))} className="rounded-full border border-border bg-surface px-2.5 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">{titleCase(d)}</button>
+                  )) : <span className="text-[12px] text-text-muted">none yet</span>}
                 </div>
               ) : (
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 text-[13px] font-medium text-text-primary">
-                      <Globe className="h-4 w-4 text-accent" /> Browser sync
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {skills.length > 0 && (
-                        <button onClick={() => setLearnMode("replay")}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-text-secondary hover:border-accent-border hover:text-accent">
-                          <RefreshCw className="h-3.5 w-3.5" /> Run
-                        </button>
-                      )}
-                      <button onClick={() => { setGoalText(""); setComposing(true); }}
-                        title="Describe what to fetch; a browser opens and the agent learns it"
-                        className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10">
-                        <Sparkles className="h-3.5 w-3.5" /> Learn
-                      </button>
-                    </div>
+                <div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(allDomains.length ? allDomains : [...domSel]).map((d) => { const on = domSel.has(d); return (
+                      <button key={d} onClick={() => setDomSel((cur) => { const n = new Set(cur); n.has(d) ? n.delete(d) : n.add(d); return n; })} className={`rounded-full border px-2.5 py-0.5 text-[11px] ${on ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-surface text-text-muted hover:text-text-secondary"}`}>{titleCase(d)}</button>
+                    ); })}
                   </div>
-                  <p className="text-[12px] text-text-muted">
-                    Tell it what to grab in plain English; your Chrome opens, you log in once, and the agent learns how to download it — then records a skill it replays automatically. Read-only: it never pays, transfers, or changes settings.
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button onClick={importLogins} disabled={importing}
-                      title="Already signed into this site in Chrome? Copy that login in so you skip signing in (quit Chrome first). Scoped to this site only — never your whole browser."
-                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
-                      {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} {importing ? "Importing…" : "Import my Chrome login"}
-                    </button>
-                    {importMsg && <span className={`text-[11px] ${importMsg.startsWith("✓") ? "text-ok" : "text-danger"}`}>{importMsg}</span>}
-                  </div>
-                  <div>
-                    <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Learned skills</div>
-                    {skills.length === 0 ? (
-                      <div className="text-[12px] text-text-muted">None yet — click <span className="text-text-secondary">Learn</span> to record one. Saved in <code className="rounded bg-surface-warm px-1 font-mono text-[11px]">vault/apps/{app.id}/skills/</code>.</div>
-                    ) : (
-                      <ul className="space-y-1">
-                        {skills.map((s) => (
-                          <li key={s.id} className="flex items-center gap-2 rounded-md border border-border-subtle bg-surface px-2.5 py-1.5 text-[12px]">
-                            <Sparkles className="h-3 w-3 shrink-0 text-accent" />
-                            <span className="font-medium text-text-primary">{s.id}</span>
-                            <span className="font-mono text-[10px] text-text-muted">{s.runner}{s.trigger ? ` · ${s.trigger}` : ""}</span>
-                            <button onClick={() => { setGoalText(""); setComposing(true); }} title="Re-record this flow"
-                              className="ml-auto font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-accent">re-learn</button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                  <div className="mt-2 flex items-center gap-2">
+                    <button onClick={saveDomains} disabled={domBusy} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{domBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
+                    <button onClick={() => setEditDomains(false)} className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">Cancel</button>
                   </div>
                 </div>
               )}
             </div>
-          )}
-          {app.account?.label && <Detail label="Account">{app.account.label}{app.account.address ? ` · ${app.account.address}` : ""}</Detail>}
-          {!gatewayProvider && !learnedLane && (<>
-          <Detail label="Method">
-            <span className="inline-flex flex-wrap items-center gap-2">
-              {/* A2 (Monday feedback): change the method by hand. */}
-              <select value={(app.integration || "manual").toLowerCase()} onChange={(e) => void changeMethod(e.target.value)} disabled={methodBusy}
-                title="Change how this app connects"
-                className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none disabled:opacity-50">
-                {["mcp", "api", "oauth", "browser", "manual"].map((m) => <option key={m} value={m}>{methodLabel(m)}</option>)}
-              </select>
-              {app.connections?.length ? <span className="text-text-muted">· {app.connections.map((c) => c.kind).join(", ")}</span> : null}
-              {methodBusy && <Loader2 className="h-3 w-3 animate-spin text-text-muted" />}
-              <button onClick={reevaluate} disabled={reEvalBusy}
-                title="Check whether a better way to connect this app exists now"
-                className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
-                {reEvalBusy ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <RefreshCw className="h-2.5 w-2.5" />} re-evaluate
-              </button>
-            </span>
-          </Detail>
-          {reEval && <div className="rounded-md border border-border-subtle bg-background px-3 py-1.5 text-xs text-text-secondary">{reEval}</div>}
-          {needsCreds && (
-            <Detail label={isOAuth ? "Sign in" : isBrowser ? "Log in" : "Credentials"}>
-              <div className="flex flex-col gap-1.5">
-                {isOAuth ? (
-                  <>
-                    <button onClick={signIn} disabled={credBusy}
-                      className="inline-flex w-fit items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-                      {credBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}{credBusy ? "Signing in…" : `Sign in to ${app.title || app.id}`}
-                    </button>
-                    <span className="text-[10px] text-text-muted/70">Opens your browser to authorize, then verifies by a real fetch. Token stored locally; used read-only.</span>
-                  </>
-                ) : isBrowser ? (
-                  <>
-                    {/* Browser-method equivalent of OAuth sign-in: open a real
-                        browser, log in, close it, then verify by a real fetch. */}
-                    <button onClick={browserLogin} disabled={credBusy}
-                      className="inline-flex w-fit items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-                      {credBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}{credBusy ? "Opening browser…" : `Log in to ${app.title || app.id}`}
-                    </button>
-                    <span className="text-[10px] text-text-muted/70">{credBusy ? "Opening a browser - log in there, then close the window." : "Opens a real browser. Log in, then close it; Prevail verifies by a real fetch. Session stored locally; used read-only."}</span>
-                    {/* Some browser apps ALSO take saved credentials (cookies/keys). */}
-                    {credSpec?.map((f) => f.kind === "toggle" ? (
-                      <label key={f.env} className="flex items-center gap-2 text-[11px] text-text-secondary">
-                        <input type="checkbox" checked={credVals[f.env] === "on"} onChange={(e) => setCredVals((v) => ({ ...v, [f.env]: e.target.checked ? "on" : "off" }))} className="h-3 w-3 accent-[var(--color-accent)]" />
-                        {f.label}
-                      </label>
-                    ) : (
-                      <input key={f.env} type="password" value={credVals[f.env] ?? ""} onChange={(e) => setCredVals((v) => ({ ...v, [f.env]: e.target.value }))} placeholder={f.label} autoComplete="off"
-                        className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
-                    ))}
-                    {credSpec && credSpec.length > 0 && (
-                      <button onClick={saveCreds} disabled={credBusy || !credSpec.some((f) => f.kind === "secret" && (credVals[f.env] ?? "").trim())}
-                        className="inline-flex w-fit items-center gap-1.5 rounded-md border border-border px-3 py-1 text-xs font-semibold text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
-                        {credBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}{credBusy ? "Verifying…" : "Save & verify"}
-                      </button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {credSpec!.map((f) => f.kind === "toggle" ? (
-                      <label key={f.env} className="flex items-center gap-2 text-[11px] text-text-secondary">
-                        <input type="checkbox" checked={credVals[f.env] === "on"} onChange={(e) => setCredVals((v) => ({ ...v, [f.env]: e.target.checked ? "on" : "off" }))} className="h-3 w-3 accent-[var(--color-accent)]" />
-                        {f.label}
-                      </label>
-                    ) : (
-                      <input key={f.env} type="password" value={credVals[f.env] ?? ""} onChange={(e) => setCredVals((v) => ({ ...v, [f.env]: e.target.value }))} placeholder={f.label} autoComplete="off"
-                        className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
-                    ))}
-                    <button onClick={saveCreds} disabled={credBusy || !credSpec!.some((f) => f.kind === "secret" && (credVals[f.env] ?? "").trim())}
-                      className="inline-flex w-fit items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-                      {credBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}{credBusy ? "Verifying…" : "Save & verify"}
-                    </button>
-                  </>
-                )}
-                {credMsg && <span className="text-[11px] text-text-muted">{credMsg}</span>}
-                {app.id === "paypal" && !isOAuth && <span className="text-[10px] text-text-muted/70">Create a REST app at developer.paypal.com with Transaction Search enabled. Stored in your Keychain; used read-only.</span>}
-              </div>
-            </Detail>
-          )}
-          {/* MCP guided setup: 1) stand up the local server, 2) paste any keys it
-              needs (Keychain), 3) verify by a real tool call. The card only goes
-              green when the server returns data (the engine's fetch gate). */}
-          {isMcp && (
-            <Detail label="MCP setup">
-              <div className="flex flex-col gap-2.5">
-                <div>
-                  <div className="font-mono text-[9px] uppercase tracking-wider text-accent">1 · Run the MCP server</div>
-                  {mcpCmd ? (
-                    <div className="mt-1 flex items-stretch gap-1.5">
-                      <code className="min-w-0 flex-1 overflow-x-auto whitespace-pre rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-text-secondary">{mcpCmd}</code>
-                      <button onClick={copyMcp} title="Copy command"
-                        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
-                        {mcpCopied ? <Check className="h-3 w-3 text-ok" /> : <Plug className="h-3 w-3" />} {mcpCopied ? "copied" : "copy"}
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-[11px] text-text-muted">Prevail spawns this connector's MCP server locally on demand. No install command needed.</p>
-                  )}
-                  <p className="mt-1 text-[10px] text-text-muted/70">Runs locally over stdio. Many servers (npx-based) install themselves on first run.</p>
-                </div>
-                {credSpec && credSpec.length > 0 && (
-                  <div>
-                    <div className="font-mono text-[9px] uppercase tracking-wider text-accent">2 · Keys the server needs</div>
-                    <div className="mt-1 flex flex-col gap-1.5">
-                      {credSpec.map((f) => f.kind === "toggle" ? (
-                        <label key={f.env} className="flex items-center gap-2 text-[11px] text-text-secondary">
-                          <input type="checkbox" checked={credVals[f.env] === "on"} onChange={(e) => setCredVals((v) => ({ ...v, [f.env]: e.target.checked ? "on" : "off" }))} className="h-3 w-3 accent-[var(--color-accent)]" />
-                          {f.label}
-                        </label>
-                      ) : (
-                        <input key={f.env} type="password" value={credVals[f.env] ?? ""} onChange={(e) => setCredVals((v) => ({ ...v, [f.env]: e.target.value }))} placeholder={f.label} autoComplete="off"
-                          className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <div className="font-mono text-[9px] uppercase tracking-wider text-accent">{credSpec && credSpec.length > 0 ? "3" : "2"} · Verify</div>
-                  <button onClick={setupMcp} disabled={credBusy}
-                    className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-                    {credBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}{credBusy ? "Verifying…" : "Verify connection"}
-                  </button>
-                  <p className="mt-1 text-[10px] text-text-muted/70">Spawns the server and calls one tool. The card turns green only if it returns real data.</p>
-                </div>
-                {credMsg && <span className="text-[11px] text-text-muted">{credMsg}</span>}
-              </div>
-            </Detail>
-          )}
-          </>)}
-          {/* APP-4 - schedule, now editable with engine-honored cadences. */}
-          <Detail label="Schedule">
-            {!editSched ? (
-              <span className="inline-flex flex-wrap items-center gap-1.5">
-                <span>{scheduleLabel(app.refresh)}</span>
-                <button onClick={openSchedEditor}
-                  className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
-                  <Pencil className="h-2.5 w-2.5" /> edit
-                </button>
-              </span>
-            ) : (
-              <div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <select value={schedMode} onChange={(e) => setSchedMode(e.target.value as SchedMode)}
-                    className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none">
-                    <option value="off">Off</option>
-                    <option value="hourly">Hourly</option>
-                    <option value="hours">Every N hours</option>
-                    <option value="days">Every N days</option>
-                    <option value="weeks">Every N weeks</option>
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                  </select>
-                  {(schedMode === "hours" || schedMode === "days" || schedMode === "weeks") && (
-                    <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
-                      every
-                      <input type="number"
-                        min={schedMode === "hours" ? 2 : 1}
-                        max={schedMode === "hours" ? 23 : schedMode === "days" ? 90 : 12}
-                        value={schedN}
-                        onChange={(e) => setSchedN(Number(e.target.value))}
-                        onBlur={() => setSchedN((n) => clampN(schedMode, n))}
-                        className="w-16 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
-                      {schedMode === "hours" ? "hours" : schedMode === "days" ? "days" : "weeks"}
-                    </span>
-                  )}
-                  {(schedMode === "daily" || schedMode === "weekly") && (
-                    <input type="time" value={schedAt} onChange={(e) => setSchedAt(e.target.value)}
-                      className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
-                  )}
-                  {schedMode === "weekly" && (
-                    <select value={schedOn} onChange={(e) => setSchedOn(e.target.value)}
-                      className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-accent-border focus:outline-none">
-                      <option value="">any day</option>
-                      {["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
-                    </select>
-                  )}
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <button onClick={() => saveSchedule(schedMode === "off")} disabled={schedBusy}
-                    className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-                    {schedBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save
-                  </button>
-                  <button onClick={() => setEditSched(false)} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">
-                    <X className="h-3 w-3" /> Cancel
-                  </button>
-                  {app.refresh && (
-                    <button onClick={() => saveSchedule(true)} disabled={schedBusy}
-                      className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:border-danger hover:text-danger disabled:opacity-50">
-                      Clear schedule
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </Detail>
-          {app.nextDueTs ? <Detail label="Next sync">{relTime(app.nextDueTs)}</Detail> : null}
-          {/* APP-5 - domains fed, now editable. */}
-          <Detail label="Domains fed">
-            {!editDomains ? (
-              <span className="inline-flex flex-wrap items-center gap-1.5">
-                {(app.domains ?? []).length ? (app.domains).map((d) => (
-                  <button key={d} onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: d }))}
-                    title={`Open the ${titleCase(d)} domain`}
-                    className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
-                    {titleCase(d)}
-                  </button>
-                )) : <span>none yet</span>}
-                <button onClick={openDomainEditor}
-                  className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
-                  <Pencil className="h-2.5 w-2.5" /> edit
-                </button>
-              </span>
-            ) : (
-              <div>
-                <div className="flex flex-wrap gap-1.5">
-                  {(allDomains.length ? allDomains : [...domSel]).map((d) => {
-                    const on = domSel.has(d);
-                    return (
-                      <button key={d} onClick={() => setDomSel((cur) => { const n = new Set(cur); n.has(d) ? n.delete(d) : n.add(d); return n; })}
-                        className={`rounded-full border px-2 py-0.5 text-[11px] ${on ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:border-accent-border"}`}>
-                        {on && <Check className="mr-1 inline h-2.5 w-2.5" />}{titleCase(d)}
-                      </button>
-                    );
-                  })}
-                  {allDomains.length === 0 && domSel.size === 0 && <span className="text-[11px] text-text-muted">loading domains…</span>}
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <button onClick={saveDomains} disabled={domBusy}
-                    className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-                    {domBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save
-                  </button>
-                  <button onClick={() => setEditDomains(false)} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">
-                    <X className="h-3 w-3" /> Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-          </Detail>
-          {/* WHAT TO PULL - legacy: redundant once the goal is described in Learn. */}
-          {!learnedLane && (
-          <Detail label="What to pull">
-            {editPull ? (
-              <div className="flex flex-col gap-1.5">
-                <textarea
-                  value={pullText}
-                  onChange={(e) => setPullText(e.target.value)}
-                  rows={3}
-                  placeholder={gatewayProvider
-                    ? `e.g. ${app.title}: pull my last-30-day stats and 10 most recent items with their key fields`
-                    : `e.g. what ${app.title} should fetch and focus on each sync`}
-                  className="w-full resize-y rounded-lg border border-border bg-background px-2.5 py-1.5 text-[12px] text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
-                />
-                <div className="flex items-center gap-1.5">
-                  <button onClick={savePull} disabled={pullBusy}
-                    className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-[11px] font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
-                    {pullBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save
-                  </button>
-                  <button onClick={() => { setEditPull(false); setPullText(app.pullInstructions ?? ""); }} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:text-text-primary">
-                    <X className="h-3 w-3" /> Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-start gap-2">
-                <span className={`min-w-0 flex-1 text-[12px] ${app.pullInstructions ? "text-text-secondary" : "text-text-muted"}`}>
-                  {app.pullInstructions || "Default: recent activity. Set a specific instruction so each sync pulls exactly what you want."}
-                </span>
-                <button onClick={() => setEditPull(true)} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
-                  <Pencil className="h-3 w-3" /> Edit
-                </button>
-              </div>
-            )}
-          </Detail>
-          )}
-          {/* WHAT THIS CAN PULL - on-demand discovery of the gateway's data types. */}
-          {gatewayProvider && (
-            <Detail label="What this can pull">
-              <div className="flex flex-col gap-1.5">
-                {caps ? (
-                  <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-background px-2.5 py-2 text-[11px] leading-relaxed text-text-secondary">{caps}</pre>
-                ) : (
-                  <span className="text-[12px] text-text-muted">Ask {connectorLabel} what data {app.title} can provide, so you know what to put in "What to pull".</span>
-                )}
-                <div className="flex items-center gap-2">
-                  <button onClick={discoverCaps} disabled={capsBusy}
-                    className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
-                    {capsBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Globe className="h-3 w-3" />} {capsBusy ? "Discovering… this runs a live query" : caps ? "Refresh" : "Discover what this can pull"}
-                  </button>
-                  {capsErr && <span className="text-[11px] text-danger">{capsErr}</span>}
-                </div>
-              </div>
-            </Detail>
-          )}
-          {dataFiles.length > 0 && (
-            <Detail label="Data loaded">
-              <div className="flex flex-col gap-1">
-                <span className="text-[11px] text-text-muted">
-                  {dataFiles.length} file{dataFiles.length === 1 ? "" : "s"}
-                  {(app.domains ?? []).length ? ` → feeding ${app.domains.map(titleCase).join(", ")}` : ""}
-                </span>
-                {dataFiles.slice(0, 5).map((f) => (
-                  <button key={f.path} onClick={() => void invoke("open_in_finder", { path: f.path }).catch(() => {})}
-                    title="Reveal in Finder"
-                    className="inline-flex w-fit items-center gap-1.5 font-mono text-[11px] text-text-secondary hover:text-accent">
-                    <FolderOpen className="h-3 w-3 shrink-0" /> {f.name}
-                  </button>
-                ))}
-                {dataFiles.length > 5 && <span className="text-[10px] text-text-muted/70">+{dataFiles.length - 5} more</span>}
-              </div>
-            </Detail>
-          )}
-          {app.lastError && (
-            <div className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {app.lastError}
-            </div>
-          )}
-          {runs.length > 0 && (
-            <div>
-              <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">Recent activity</div>
-              <ul className="space-y-0.5">
-                {[...runs].reverse().map((r, i) => (
-                  <li key={i} className="flex items-center gap-2 font-mono text-[11px]">
-                    <span className={r.ok ? "text-ok" : "text-danger"}>{r.ok ? "✓" : "✗"}</span>
-                    <span className="text-text-muted">{relTime(r.ts)}</span>
-                    <span className="min-w-0 flex-1 truncate text-text-secondary">{r.ok ? (r.summary || `${r.artifacts ?? 0} item(s)`) : (r.error || "failed")}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {/* Bottom action bar: scheduled-sync toggle on the left; an evenly
-              spaced icon-button group (Sync, Visit, Reveal, Delete) on the right.
-              Sync moved here from the top-right so the header stays uncluttered.
-              All existing handlers stay wired (onSync, open_in_finder, removeApp,
-              onSetEnabled). Delete keeps its inline two-step confirm. */}
-          <div className="mt-1 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-4">
-            <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-text-secondary">
-              <Toggle on={enabled} onChange={onSetEnabled} label={`${app.title} scheduled sync`} />
-              <span>Scheduled sync <span className="font-medium text-text-primary">{enabled ? "on" : "off"}</span></span>
-              {status === "connected" && <span className="inline-flex items-center gap-1 rounded-full bg-ok/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-ok"><Check className="h-2.5 w-2.5" /> working</span>}
-            </label>
-            {confirmDelete ? (
-              <span className="flex items-center gap-2">
-                <button onClick={removeApp} disabled={deleting}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-danger/50 bg-danger/10 px-2.5 py-1.5 text-[11px] text-danger hover:bg-danger/20 disabled:opacity-50">
-                  {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete {app.title} for good
-                </button>
-                <button onClick={() => { setConfirmDelete(false); setDeleteErr(null); }} className="text-[11px] text-text-muted hover:text-text-secondary">cancel</button>
-                {deleteErr && <span className="text-[11px] text-danger">{deleteErr}</span>}
-              </span>
-            ) : (
-              <div className="flex items-center gap-1.5">
-                {status !== "disconnected" && (
-                  <button onClick={() => void runSync()} disabled={busy}
-                    title="Pull fresh data into this app's folder now"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-50">
-                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} {busy ? "Syncing…" : "Sync now"}
-                  </button>
-                )}
-                <button onClick={() => void openUrl(appWebsite(app))}
-                  title={`Open ${app.title || app.id}'s website`}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent">
-                  <ExternalLink className="h-3.5 w-3.5" /> Visit
-                </button>
-                {app.path && (
-                  <button onClick={() => void invoke("open_in_finder", { path: app.path! }).catch(() => {})}
-                    title="Reveal this app's folder in Finder"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent">
-                    <FolderOpen className="h-3.5 w-3.5" /> Folder
-                  </button>
-                )}
-                <div className="mx-0.5 h-5 w-px bg-border-subtle" />
-                <button onClick={() => setConfirmDelete(true)}
-                  title="Remove this app entirely"
-                  className="inline-flex items-center justify-center rounded-md border border-transparent p-2 text-text-muted hover:bg-danger/10 hover:text-danger">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            )}
           </div>
       </div>
+
+      {/* Footer */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle px-6 py-4">
+        {notConnected ? (
+          <span className="inline-flex items-center gap-2.5 text-sm">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-border text-text-muted"><Plug className="h-4 w-4" /></span>
+            <span><span className="font-medium text-text-primary">Not connected yet.</span> <span className="text-text-muted">Connect to start feeding {app.title || app.id} into your vault.</span></span>
+          </span>
+        ) : syncMsg ? (
+          <span className={`inline-flex items-center gap-2 text-sm ${syncMsg.startsWith("Sync failed") ? "text-danger" : "text-text-secondary"}`}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4 text-ok" />} {syncMsg}
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-2.5 text-sm">
+            <span className={`flex h-7 w-7 items-center justify-center rounded-full border-2 ${status === "connected" ? "border-ok/50 text-ok" : "border-border text-text-muted"}`}><Check className="h-4 w-4" /></span>
+            <span><span className="font-medium text-text-primary">{status === "connected" ? "All set!" : "Almost there"}</span> <span className="text-text-muted">We'll keep your {app.title || app.id} data up to date.</span></span>
+          </span>
+        )}
+        {notConnected ? null : confirmDelete ? (
+          <span className="flex items-center gap-2">
+            <button onClick={removeApp} disabled={deleting} className="inline-flex items-center gap-1.5 rounded-md border border-danger/50 bg-danger/10 px-2.5 py-1.5 text-[11px] text-danger hover:bg-danger/20 disabled:opacity-50">{deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete {app.title} for good</button>
+            <button onClick={() => { setConfirmDelete(false); setDeleteErr(null); }} className="text-[11px] text-text-muted hover:text-text-secondary">cancel</button>
+            {deleteErr && <span className="text-[11px] text-danger">{deleteErr}</span>}
+          </span>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => void runSync()} disabled={busy} title="Sync now" className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} {busy ? "Syncing…" : "Sync"}</button>
+            <button onClick={openSchedModal} title={`Schedule & sync — ${scheduleLabel(app.refresh)}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent"><Clock className="h-3.5 w-3.5" /> Schedule{enabled && app.refresh ? <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-ok" /> : null}</button>
+            {app.path && <button onClick={() => void invoke("open_in_finder", { path: app.path! }).catch(() => {})} title="Open folder" className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-muted hover:border-accent-border hover:text-accent"><FolderOpen className="h-4 w-4" /></button>}
+            <button onClick={() => setConfirmDelete(true)} title="Remove this app entirely" className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-danger/10 hover:text-danger"><Trash2 className="h-4 w-4" /></button>
+          </div>
+        )}
+      </div>
+
+      {/* Compact Schedule & sync popup (kept apart from Domains) */}
+      {schedOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSchedOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-xs rounded-xl border border-border bg-background p-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Clock className="h-4 w-4 text-accent" /> Schedule &amp; sync</div>
+              <button onClick={() => setSchedOpen(false)} title="Close" className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:text-text-primary"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <select value={schedMode} onChange={(e) => setSchedMode(e.target.value as SchedMode)} className="rounded-md border border-border bg-surface px-2 py-1 text-xs focus:border-accent-border focus:outline-none">
+                <option value="off">Off</option><option value="hourly">Hourly</option><option value="hours">Every N hours</option><option value="days">Every N days</option><option value="weeks">Every N weeks</option><option value="daily">Daily</option><option value="weekly">Weekly</option>
+              </select>
+              {(schedMode === "hours" || schedMode === "days" || schedMode === "weeks") && (
+                <input type="number" min={schedMode === "hours" ? 2 : 1} max={schedMode === "hours" ? 23 : schedMode === "days" ? 90 : 12} value={schedN} onChange={(e) => setSchedN(Number(e.target.value))} onBlur={() => setSchedN((n) => clampN(schedMode, n))} className="w-16 rounded-md border border-border bg-surface px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
+              )}
+              {(schedMode === "daily" || schedMode === "weekly") && (
+                <input type="time" value={schedAt} onChange={(e) => setSchedAt(e.target.value)} className="rounded-md border border-border bg-surface px-2 py-1 text-xs focus:border-accent-border focus:outline-none" />
+              )}
+              {schedMode === "weekly" && (
+                <select value={schedOn} onChange={(e) => setSchedOn(e.target.value)} className="rounded-md border border-border bg-surface px-2 py-1 text-xs focus:border-accent-border focus:outline-none">
+                  <option value="">any day</option>{["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+                </select>
+              )}
+            </div>
+            <label className="mt-3 flex cursor-pointer items-center justify-between gap-2 border-t border-border-subtle pt-3">
+              <span className="text-[13px] text-text-secondary">Scheduled sync</span>
+              <Toggle on={enabled} onChange={onSetEnabled} label={`${app.title} scheduled sync`} />
+            </label>
+            <div className="mt-1.5 space-y-0.5 text-[11px] text-text-muted">
+              <div>Last run: {app.lastSuccessTs ? relTime(app.lastSuccessTs) : "never"}</div>
+              {app.nextDueTs ? <div>Next run: {relTime(app.nextDueTs)}</div> : null}
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <button onClick={async () => { await saveSchedule(schedMode === "off"); setSchedOpen(false); }} disabled={schedBusy} className="inline-flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{schedBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
+              <button onClick={() => setSchedOpen(false)} className="rounded-md border border-border px-3 py-1.5 text-xs text-text-muted hover:text-text-secondary">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function Detail({ label, children }: { label: string; children: React.ReactNode }) {
+export function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-3">
       <span className="w-24 shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">{label}</span>
