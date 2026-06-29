@@ -265,7 +265,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // chosen app in a small detail pane with a "Connect" CTA that opens the flow.
   const [catalogPick, setCatalogPick] = useState<CatalogApp | null>(null);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (): Promise<EngineApp[]> => {
     try {
       const list = await invoke<EngineApp[]>("engine_apps_list");
       const next = Array.isArray(list) ? list.map((x) => ({ ...x, title: appName(x.title) })) : [];
@@ -274,7 +274,8 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       // first DIRECT app (the shared `selected` drives the Direct pane; gateway
       // apps have their own mode + selection, so they must not become the default).
       setSelected((cur) => (cur && next.some((a) => a.id === cur) ? cur : (next.find((a) => !a.gateway)?.id ?? next[0]?.id ?? null)));
-    } catch { setApps([]); }
+      return next;
+    } catch { setApps([]); return []; }
   }, []);
   useEffect(() => {
     void reload();
@@ -328,9 +329,20 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       }
       // Wire the catalog-shipped soul into the new app's soul.md at add-time.
       if (c.soul) { try { await invoke("engine_app_set_soul", { id, soul: c.soul }); } catch { /* soul is best-effort */ } }
-      await reload();
-      setCatalogPick(null); setConnecting(false);
-      setSelected(id);
+      const after = await reload();
+      // Only focus the app if it actually persisted. A locked vault accepts the
+      // add call but writes nothing readable, so the app never appears in the
+      // list. Selecting that ghost id used to blank the whole pane; instead we
+      // keep the picked app in view and explain what to do.
+      const added = after.find((a) => a.id === id) ?? after.find((a) => appName(a.title).toLowerCase() === c.name.toLowerCase());
+      if (added) {
+        setCatalogPick(null); setConnecting(false);
+        setSelected(added.id);
+      } else {
+        setConnecting(false);
+        setCatalogConnectErr(`Couldn't add ${c.name}. If your vault is locked (see the status bar), unlock it first, then connect.`);
+        // Keep catalogPick set so the detail stays on this app rather than going blank.
+      }
     } catch (e) {
       setCatalogConnectErr(`Couldn't add ${c.name}: ${String(e).slice(0, 160)}`);
     } finally {
@@ -2278,7 +2290,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   busy: boolean;
   onSync: () => Promise<SyncResult | void>;
   onSetEnabled: (v: boolean) => void;
-  onReload: () => Promise<void> | void;
+  onReload: () => void | Promise<unknown>;
   // Set when this is an un-added CATALOG app: the SAME detail view renders, but
   // the primary action is Connect (not Sync), and connected-only bits are muted.
   // This is what makes catalog + connected apps share one view.
