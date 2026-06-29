@@ -7,7 +7,7 @@ outputs:
 ---
 # Training load balance
 
-Train for capability and a long runway — keep load in the zone that builds rather than breaks.
+Train for capability and a long runway, keep load in the zone that builds rather than breaks.
 
 1. **Read the load.** From the latest data/garmin-health-*.json, pull training load and any acute-versus-chronic or load-focus metric over the last few weeks.
 2. **Check the ramp.** Compare recent load against your baseline and flag a spike that outpaces what you've adapted to.
