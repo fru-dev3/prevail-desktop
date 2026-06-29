@@ -463,6 +463,7 @@ pub fn run() {
             engine::engine_app_set_soul,
             engine::engine_autonomy_status,
             engine::engine_autonomy_set,
+            engine::engine_autonomy_cap,
             engine::engine_autonomy_policy,
             engine::engine_list_playbooks,
             engine::engine_run_playbook_stream,
