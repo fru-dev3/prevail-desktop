@@ -89,6 +89,30 @@ const isOverdue = (t: BoardTask): boolean => {
   return t.due < today;
 };
 
+// Turn a raw harness failure into something actionable. External harnesses
+// (Hermes, Pi, OpenCode) bring their own model, so "validated" only means the
+// binary is installed and responds — it does NOT mean the harness is logged in
+// to a model provider. The most common runtime failure is exactly that missing
+// login, so we detect it and tell the user how to fix it instead of dumping
+// raw stderr. `cli` is the harness binary id (empty for the built-in Prevail
+// agent, which never hits this path).
+function humanizeAgentError(label: string, cli: string, raw: string): string {
+  const needsLogin = /no api key|not logged in|\/login|unauthor|no provider|missing .*api.?key|set .*api.?key/i.test(raw);
+  if (needsLogin && cli) {
+    return [
+      `${label} started but isn't signed in to a model provider yet, so it couldn't run.`,
+      "",
+      `${label} is a separate agent that runs on its own model, so it needs a one-time login in its own app. Open a terminal and run \`${cli}\`, then \`/login\`. Prevail confirmed ${label} is installed (that's the green check), but it can't sign in on ${label}'s behalf.`,
+      "",
+      `Once ${label} is logged in, run this task again. Or hand it to the built-in Prevail agent, which runs on your Prevail model and needs no separate login.`,
+      "",
+      "— original message —",
+      raw,
+    ].join("\n");
+  }
+  return `${label} couldn't finish:\n\n${raw}`;
+}
+
 export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: string; initialDomain?: string; clis?: CliInfo[] }) {
   const [tasks, setTasks] = useState<BoardTask[]>([]);
   // Installed harness agents available to run a task (Hermes/Pi/OpenCode/…).
@@ -295,6 +319,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
     setAgentRunning((s) => new Set(s).add(taskId));
     const session = `agent-${taskId}-${Date.now()}`;
     let result = "";
+    let errored = false;
     let unline: UnlistenFn | undefined;
     let undone: UnlistenFn | undefined;
     const cleanup = () => {
@@ -306,15 +331,18 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
       unline = await listen<{ session: string; data: { type?: string; text?: string; error?: string } }>("engine-agent:line", (e) => {
         if (e.payload.session !== session) return;
         const d = e.payload.data;
-        if (d?.type === "assistant" && d.text) result = d.text;
-        else if (d?.type === "error" && d.error) result = `⚠ ${d.error}`;
+        if (d?.type === "assistant" && d.text) { result = d.text; errored = false; }
+        else if (d?.type === "error" && d.error) { result = d.error; errored = true; }
       });
       undone = await listen<{ session: string }>("engine-agent:done", async (e) => {
         if (e.payload.session !== session) return;
         try {
-          if (result.trim()) {
-            await invoke("task_detail_add_comment", { vault: vaultPath, domain: t.domain, id: taskId, text: result.trim(), author: agentLabel });
-            if (t.status === "todo" || t.status === "doing") {
+          const text = errored ? humanizeAgentError(agentLabel, effectiveCli, result.trim()) : result.trim();
+          if (text) {
+            await invoke("task_detail_add_comment", { vault: vaultPath, domain: t.domain, id: taskId, text, author: agentLabel });
+            // Only advance to Review on a real result. A login/setup failure
+            // means the task was never actually worked, so leave its status.
+            if (!errored && (t.status === "todo" || t.status === "doing")) {
               await invoke("tasks_set_status", { vault: vaultPath, domain: t.domain, id: taskId, status: "review" });
             }
           }
