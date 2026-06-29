@@ -108,8 +108,12 @@ export function credFieldsFor(app: EngineApp): CredField[] | undefined {
 // effectively the only true aggregator in the catalog, a dedicated tab just
 // added a confusing, near-empty filter, so the lane was dropped. Plaid-backed
 // banks now classify as "direct" like any other directly-fetched app.
-export type AppLane = "cli" | "direct";
-function laneOf(a: { pattern?: string; via?: string; integration?: string; gateway?: unknown | null }): AppLane {
+export type AppLane = "cli" | "direct" | "mcp";
+function laneOf(a: { pattern?: string; via?: string; integration?: string; gateway?: unknown | null; connection_hint?: { method?: string } }): AppLane {
+  // MCP first: a catalog entry declares it via connection_hint.method, an
+  // installed app via its integration id ("mcp"). Check before cli/direct so an
+  // MCP server is never miscategorized as a generic Direct app.
+  if (a.connection_hint?.method === "mcp" || (a.integration || "").toLowerCase().includes("mcp")) return "mcp";
   const p = (a.pattern || a.integration || "").toLowerCase();
   if (p.includes("cli")) return "cli";
   return "direct"; // api / oauth / browser / plaid-backed
@@ -118,6 +122,7 @@ export const LANE_FILTERS: { key: "all" | AppLane; label: string }[] = [
   { key: "all", label: "All" },
   { key: "cli", label: "CLI" },
   { key: "direct", label: "Direct" },
+  { key: "mcp", label: "MCP" },
 ];
 
 // Google's many surfaces (Gmail, Calendar, Drive, YouTube, …) are all covered by
@@ -264,6 +269,26 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // for it. ConnectAppFlow doesn't take a typed-name prop, so we surface the
   // chosen app in a small detail pane with a "Connect" CTA that opens the flow.
   const [catalogPick, setCatalogPick] = useState<CatalogApp | null>(null);
+  // "Add custom MCP": a small modal that scaffolds any stdio MCP server the user
+  // names, passing its spawn command (and optional one-time install) to the
+  // engine the same way a catalog MCP entry does. The vault domain list backs
+  // the picker (same source the AppDetail domain editor uses: scan_vault).
+  const [mcpFormOpen, setMcpFormOpen] = useState(false);
+  const [mcpForm, setMcpForm] = useState({ name: "", command: "", install: "", domain: "" });
+  const [mcpFormBusy, setMcpFormBusy] = useState(false);
+  const [mcpFormErr, setMcpFormErr] = useState<string | null>(null);
+  const [vaultDomains, setVaultDomains] = useState<string[]>([]);
+  const openMcpForm = useCallback(async () => {
+    setMcpForm({ name: "", command: "", install: "", domain: "" });
+    setMcpFormErr(null);
+    setMcpFormOpen(true);
+    if (vaultDomains.length === 0) {
+      try {
+        const ds = await invoke<{ name: string }[]>("scan_vault", { path: vaultPath });
+        setVaultDomains((ds ?? []).map((d) => d.name.toLowerCase()).sort());
+      } catch { /* domains optional - the picker just stays empty */ }
+    }
+  }, [vaultDomains.length, vaultPath]);
 
   const reload = useCallback(async (): Promise<EngineApp[]> => {
     try {
@@ -321,8 +346,13 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       const id = (c.iconSlug || c.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
       const integration = hintToIntegration(c.connection_hint?.method || c.via);
       const domains = c.domain ? [c.domain] : [];
+      // For an MCP server, carry the stdio spawn command (and optional one-time
+      // install) down to the engine so the connector knows how to launch it.
+      const isMcp = c.connection_hint?.method === "mcp";
+      const mcpCommand = isMcp ? c.connection_hint?.command : undefined;
+      const mcpInstall = isMcp ? c.connection_hint?.install : undefined;
       try {
-        await invoke("engine_app_add", { vault: vaultPath, id, title: c.name, integration, domains });
+        await invoke("engine_app_add", { vault: vaultPath, id, title: c.name, integration, domains, mcpCommand, mcpInstall });
       } catch (e) {
         // Already installed: just open it. Anything else is a real failure.
         if (!/already exists/i.test(String(e))) throw e;
@@ -349,6 +379,42 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       setCatalogConnecting(false);
     }
   }, [reload, vaultPath]);
+
+  // Scaffold a custom MCP server from the modal: derive an id from the name,
+  // add it as an "mcp" integration carrying its spawn command, then reload and
+  // select it (mirrors connectCatalogApp's guarded selection so a locked vault
+  // that writes nothing never blanks the pane).
+  const addCustomMcp = useCallback(async () => {
+    const title = mcpForm.name.trim();
+    const command = mcpForm.command.trim();
+    const install = mcpForm.install.trim();
+    if (!title) { setMcpFormErr("Give the server a name."); return; }
+    if (!command) { setMcpFormErr("Enter the command Prevail should run to start the server."); return; }
+    setMcpFormBusy(true);
+    setMcpFormErr(null);
+    try {
+      const id = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "mcp-server";
+      const domains = mcpForm.domain ? [mcpForm.domain] : [];
+      try {
+        await invoke("engine_app_add", { vault: vaultPath, id, title, integration: "mcp", domains, mcpCommand: command, mcpInstall: install || undefined });
+      } catch (e) {
+        if (!/already exists/i.test(String(e))) throw e;
+      }
+      const after = await reload();
+      const added = after.find((a) => a.id === id) ?? after.find((a) => appName(a.title).toLowerCase() === title.toLowerCase());
+      if (added) {
+        setMcpFormOpen(false);
+        setCatalogPick(null); setConnecting(false);
+        setSelected(added.id);
+      } else {
+        setMcpFormErr(`Couldn't add ${title}. If your vault is locked (see the status bar), unlock it first, then try again.`);
+      }
+    } catch (e) {
+      setMcpFormErr(`Couldn't add ${title}: ${String(e).slice(0, 160)}`);
+    } finally {
+      setMcpFormBusy(false);
+    }
+  }, [mcpForm, reload, vaultPath]);
 
   // Direct mode shows ONLY directly-connected apps. Gateway apps (Composio /
   // Nango) live in their own modes and must never leak into the Direct list -
@@ -471,7 +537,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     // MY LIST must respect the active lane filter (fix #9): a pinned CLI app
     // should not surface while the "Direct" tab is selected, and vice-versa, so
     // the section never shows items that don't match the chosen category.
-    const laneOk = (x: { pattern?: string; via?: string; integration?: string }) => lane === "all" || laneOf(x) === lane;
+    const laneOk = (x: { pattern?: string; via?: string; integration?: string; connection_hint?: { method?: string } }) => lane === "all" || laneOf(x) === lane;
     const connected = directApps.filter((a) => (favs.has(favKeyOf(a.title || a.id)) || favs.has(favKeyOf(a.id))) && laneOk(a));
     const connectedKeys = new Set(connected.map((a) => favKeyOf(a.title || a.id)));
     const seen = new Set<string>();
@@ -615,6 +681,15 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                 </button>
               ))}
             </div>
+            {lane === "mcp" && (
+              <button
+                onClick={() => void openMcpForm()}
+                className="mb-2 flex w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-left transition-colors hover:border-accent-border hover:bg-accent-soft/20"
+              >
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-surface-strong text-accent"><Boxes className="h-3.5 w-3.5" /></span>
+                <span className="text-xs font-medium text-text-secondary">Add custom MCP</span>
+              </button>
+            )}
             <button
               onClick={() => { setConnecting(true); setCatalogPick(null); }}
               className="flex w-full items-center gap-2.5 rounded-lg border border-dashed border-accent-border bg-accent-soft/20 px-3 py-2 text-left transition-colors hover:bg-accent-soft/40"
@@ -784,6 +859,76 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         </div>
       )}
         </>
+      )}
+
+      {/* Add custom MCP: name + stdio command (+ optional one-time install) +
+          a domain to feed. Scaffolds an "mcp" app carrying the spawn command. */}
+      {mcpFormOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4" onClick={() => !mcpFormBusy && setMcpFormOpen(false)}>
+          <div className="w-full max-w-md overflow-hidden rounded-xl border border-border bg-surface shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-border-subtle px-5 py-3.5">
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-soft text-accent"><Boxes className="h-4 w-4" /></span>
+                <span className="text-sm font-semibold text-text-primary">Add a custom MCP server</span>
+              </div>
+              <button onClick={() => !mcpFormBusy && setMcpFormOpen(false)} className="flex h-6 w-6 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-strong hover:text-text-primary"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="space-y-3 px-5 py-4">
+              <p className="text-xs leading-relaxed text-text-muted">
+                Point Prevail at any stdio MCP server. Prevail launches it with the command below and the agent can use its tools.
+              </p>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-text-secondary">Name</span>
+                <input
+                  value={mcpForm.name}
+                  onChange={(e) => setMcpForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="GitHub MCP"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-text-secondary">Command</span>
+                <input
+                  value={mcpForm.command}
+                  onChange={(e) => setMcpForm((f) => ({ ...f, command: e.target.value }))}
+                  placeholder="npx -y @modelcontextprotocol/server-..."
+                  className="w-full rounded-lg border border-border bg-background px-3 py-1.5 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-text-secondary">Install command <span className="font-normal text-text-muted">(optional, one time)</span></span>
+                <input
+                  value={mcpForm.install}
+                  onChange={(e) => setMcpForm((f) => ({ ...f, install: e.target.value }))}
+                  placeholder="npm i -g some-mcp-server"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-1.5 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-text-secondary">Feeds domain <span className="font-normal text-text-muted">(optional)</span></span>
+                <select
+                  value={mcpForm.domain}
+                  onChange={(e) => setMcpForm((f) => ({ ...f, domain: e.target.value }))}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text-primary focus:border-accent-border focus:outline-none"
+                >
+                  <option value="">No specific domain</option>
+                  {vaultDomains.map((d) => (
+                    <option key={d} value={d}>{titleCase(d)}</option>
+                  ))}
+                </select>
+              </label>
+              {mcpFormErr && (
+                <div className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{mcpFormErr}</div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-5 py-3">
+              <button onClick={() => setMcpFormOpen(false)} disabled={mcpFormBusy} className="rounded-lg px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50">Cancel</button>
+              <button onClick={() => void addCustomMcp()} disabled={mcpFormBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-background transition-colors hover:bg-accent-hover disabled:opacity-50">
+                {mcpFormBusy ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Adding…</> : <><Plus className="h-3.5 w-3.5" /> Add server</>}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
