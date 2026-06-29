@@ -3,7 +3,7 @@
 // setup).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion";
-import { Activity, Archive, ArrowRight, Briefcase, Clock, Cloud, Folder, FolderLock, FolderOpen, Ghost, Heart, Home, KeyRound, Layers, Plus, Receipt, RefreshCw, Shield, ShieldCheck, Sparkles, TrendingUp, Users, Wallet, X, Zap } from "lucide-react";
+import { Activity, Archive, ArrowRight, Briefcase, Clock, Cloud, Folder, FolderLock, FolderOpen, Ghost, Globe, Heart, Home, KeyRound, Layers, Plus, Receipt, RefreshCw, Shield, ShieldCheck, Sparkles, TrendingUp, Users, Wallet, X, Zap } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { PREF, getPref } from "./storage";
@@ -12,6 +12,7 @@ import { relTime, titleCase } from "./format";
 import { appScheduleText } from "./helpers";
 import { AppCard, AppKV, FloatingChip } from "./widgets";
 import { domainIcon } from "./icons";
+import { ConnectorRunPanel, type ConnectorRunMode } from "./connectorrun";
 import { BrandMark } from "./brandmark";
 import type { AppRunHistory, Domain, EngineApp } from "./types";
 
@@ -101,6 +102,37 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
   }
   const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
   const autonomy = app.autonomy ?? "read-only";
+  // Browser-lane apps get the agentic learn/replay controls (live ConnectorRunPanel).
+  const isBrowser = (app.integration ?? "").includes("browser");
+  const [run, setRun] = useState<ConnectorRunMode | null>(null);
+  const browserCard = isBrowser ? (
+    <AppCard icon={Globe} label="Browser sync">
+      {run ? (
+        <ConnectorRunPanel
+          appId={app.id}
+          mode={run}
+          onDone={() => { setRun(null); loadRuns(); onChanged(); }}
+        />
+      ) : (
+        <div className="space-y-2">
+          <p className="text-[12px] text-text-muted">
+            A real browser opens; you log in once (and do 2FA). The agent learns the steps and records them, then later syncs replay fast with no AI.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setRun("learn")} className="inline-flex items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent/10">
+              <Sparkles className="h-3 w-3" /> Connect &amp; learn
+            </button>
+            <button onClick={() => setRun("replay")} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">
+              <RefreshCw className="h-3 w-3" /> Sync now (replay)
+            </button>
+            <button onClick={() => setRun("relearn")} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">
+              Re-learn
+            </button>
+          </div>
+        </div>
+      )}
+    </AppCard>
+  ) : null;
 
   const domainEditor = (
     <AppCard icon={Layers} label="Domains this app refreshes" action={savingDoms ? <span className="font-mono text-[9px] text-text-muted/60">saving…</span> : undefined}>
@@ -260,6 +292,7 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
 
       {appTab === "runs" && (
         <>
+          {browserCard}
           <AppCard icon={RefreshCw} label="Last run" action={
             <button onClick={sync} disabled={busy === "sync"} className="inline-flex items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent/10 disabled:opacity-50"><RefreshCw className={`h-3 w-3 ${busy === "sync" ? "animate-spin" : ""}`} />{busy === "sync" ? "syncing…" : "sync now"}</button>
           }>
