@@ -28,7 +28,10 @@ TRIPLE="$(rustc -Vv | sed -n 's/host: //p')"
 EXT=""
 case "$TRIPLE" in *windows*) EXT=".exe" ;; esac
 echo "prepare-sidecar: building prevail engine for $TRIPLE"
-( cd "$CLI" && bun build --compile --outfile="dist/prevail$EXT" src/index.tsx )
+# --external chromium-bidi: playwright-core has a dead chromium-bidi require that
+# bun's --compile can't resolve; the engine never uses BiDi (CDP only), so we
+# exclude it. Must match the cli's own build scripts.
+( cd "$CLI" && bun build --compile --external chromium-bidi --outfile="dist/prevail$EXT" src/index.tsx )
 
 mkdir -p "$HERE/src-tauri/binaries"
 cp "$CLI/dist/prevail$EXT" "$HERE/src-tauri/binaries/prevail-$TRIPLE$EXT"
