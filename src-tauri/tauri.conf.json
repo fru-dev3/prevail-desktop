@@ -58,7 +58,8 @@
       "resources/connectors/catalog.json",
       "resources/connectors/logos.json",
       "resources/connectors/cli_providers.json",
-      "resources/sample-vault/**/*"
+      "resources/sample-vault/**/*",
+      "resources/skill-packs/**/*"
     ],
     "macOS": {
       "minimumSystemVersion": "13.0",

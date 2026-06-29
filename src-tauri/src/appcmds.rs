@@ -125,7 +125,7 @@ pub(crate) fn bootstrap_vault() -> Option<String> {
 // Create a new domain folder under the vault root. Writes a minimal
 // state.md skeleton so scan_vault picks it up immediately.
 #[tauri::command]
-pub(crate) fn create_domain(vault: String, name: String) -> Result<Domain, String> {
+pub(crate) fn create_domain(app: tauri::AppHandle, vault: String, name: String) -> Result<Domain, String> {
     let slug: String = name
         .trim()
         .to_lowercase()
@@ -164,12 +164,46 @@ pub(crate) fn create_domain(vault: String, name: String) -> Result<Domain, Strin
     );
     let state_path = domain_dir.join("state.md");
     crate::vaultio::write_atomic(&state_path, &stub).map_err(|e| format!("write state.md failed: {e}"))?;
+    // Seed the bundled default skills for this domain (when a pack exists) so a
+    // new domain arrives with high-quality skills out of the box, not empty.
+    seed_domain_skills(&app, &slug, &domain_dir);
     Ok(Domain {
         name: slug,
         path: domain_dir.to_string_lossy().to_string(),
         has_state: true,
         state_preview: Some(stub.chars().take(120).collect()),
     })
+}
+
+// Copy the bundled default skill pack for `slug` (resources/skill-packs/domains/
+// <slug>/_skills) into the new domain's _skills/. Best-effort and never clobbers
+// a user's skill; a missing pack is a no-op.
+fn seed_domain_skills(app: &tauri::AppHandle, slug: &str, domain_dir: &Path) {
+    use tauri::Manager;
+    let Ok(base) = app
+        .path()
+        .resolve("resources/skill-packs", tauri::path::BaseDirectory::Resource)
+    else {
+        return;
+    };
+    let src = base.join("domains").join(slug).join("_skills");
+    if src.is_dir() {
+        let _ = copy_dir_no_clobber(&src, &domain_dir.join("_skills"));
+    }
+}
+
+fn copy_dir_no_clobber(src: &Path, dest: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dest)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let to = dest.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_no_clobber(&entry.path(), &to)?;
+        } else if !to.exists() {
+            fs::copy(entry.path(), &to)?;
+        }
+    }
+    Ok(())
 }
 
 // Open/reveal a path in the OS default file manager (Finder on macOS).

@@ -11,6 +11,7 @@ import { BoardPanel } from "./boardpanel";
 import { AppsPanel } from "./appspanel";
 import { RecommendationsPanel } from "./recommendationspanel";
 import { SystemActivity } from "./activitypanel";
+import { AutonomyPanel } from "./autonomypanel";
 import { LoopBoard } from "./loopboard";
 import { SparkPanel } from "./spark";
 import { OmegaSection } from "./omega";
@@ -49,7 +50,7 @@ export function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "council" | "gateway" | "mcp" | "integrations" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "loopboard" | "spark" | "hooks" | "profiles";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "autonomy" | "council" | "gateway" | "mcp" | "integrations" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "loopboard" | "spark" | "hooks" | "profiles";
   // Editor lands on General. The operational surfaces (Work board / Insights /
   // Spark) moved to Work mode, so Editor opens on a config page. A specific
   // jumpTo (e.g. "connectors") still wins.
@@ -165,6 +166,7 @@ export function SettingsPanel({
               columns. Bottom bleed lets the panel fill down. */}
           {section === "connectors" && <div className="-mb-10 pl-2"><AppsPanel vaultPath={vaultPath} /></div>}
           {section === "safety" && <SafetySection vaultPath={vaultPath} />}
+          {section === "autonomy" && <AutonomyPanel vaultPath={vaultPath} />}
           {section === "gateway" && <><GatewaySection /><GatewayLogsCard vaultPath={vaultPath} /></>}
           {section === "mcp" && <IntegrationsPanel vaultPath={vaultPath} clis={clis} />}
           {section === "hooks" && <HooksSection vaultPath={vaultPath} />}
