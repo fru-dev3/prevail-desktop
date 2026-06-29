@@ -6,6 +6,8 @@ import { titleCase } from "./format";
 import type { CliInfo, Domain, DomainTab, EngineApp, TabId, ThreadMeta } from "./types";
 import { BUNKER_LS, LS, PREF, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet } from "./storage";
 import { track } from "./telemetry";
+import { ensureDefaultProfile } from "./profiles";
+import { QuickCapture } from "./quickcapture";
 import { BridgeStatusChips, DemoRibbon, ResizeHandle } from "./widgets";
 import { useProcesses } from "./processes";
 import { OnboardingModal } from "./panels3";
@@ -17,6 +19,7 @@ import { AppFacetPanel, BunkerRibbon, VaultWizard } from "./shell";
 const ChatPanel = lazy(() => import("./chatpanel").then((m) => ({ default: m.ChatPanel })));
 const CouncilPanel = lazy(() => import("./councilpanel").then((m) => ({ default: m.CouncilPanel })));
 const SettingsPanel = lazy(() => import("./settingspanel").then((m) => ({ default: m.SettingsPanel })));
+const WorkPanel = lazy(() => import("./workpanel").then((m) => ({ default: m.WorkPanel })));
 const BenchmarkPanel = lazy(() => import("./benchpanel").then((m) => ({ default: m.BenchmarkPanel })));
 import { Sidebar } from "./sidebar";
 import { useAppearance, useFrameworkLens } from "./hooks";
@@ -224,6 +227,36 @@ export default function App() {
       } catch { /* engine not ready */ } finally { setVaultStatusChecked(true); }
     })();
   }, [vaultPath]);
+  // Profiles (2026 redesign): on first run, adopt the current vault as a default
+  // "Personal" profile so existing users keep working with zero setup. Idempotent.
+  useEffect(() => {
+    if (isBrowser() || !vaultPath) return;
+    ensureDefaultProfile(vaultPath);
+  }, [vaultPath]);
+  // Switch profile = swap the active vault. Each profile has its own vault, so
+  // this re-points the whole app (domains, threads, loops, notes) at it and
+  // re-locks (encrypted vaults re-gate via the LockScreen). The vaultPath effect
+  // propagates the change to the engine/config. The passcode gate (if any) was
+  // already cleared by the switcher before this event fired.
+  useEffect(() => {
+    const onSwitch = (e: Event) => {
+      const vp = (e as CustomEvent<{ vaultPath?: string; profileId?: string }>).detail?.vaultPath;
+      if (!vp || vp === vaultPath) return;
+      setSelectedApp(null);
+      setAppView(false);
+      setSelectedDomain(null);
+      setActiveThreadPath(null);
+      setChatViewNonce((n) => n + 1);
+      setUnlocked(false);
+      setVaultStatusChecked(false);
+      setVaultPath(vp);
+      lsSet(LS.vault, vp);
+      setTab("chat");
+      window.dispatchEvent(new Event("prevail:domains-changed"));
+    };
+    window.addEventListener("prevail:switch-profile", onSwitch as EventListener);
+    return () => window.removeEventListener("prevail:switch-profile", onSwitch as EventListener);
+  }, [vaultPath]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   // App view - clicking an app in the sidebar opens it in the canvas: a detail
@@ -332,6 +365,47 @@ export default function App() {
   // Bumped on every thread pick so the chat panel returns to the chat view even
   // when the same thread is re-clicked (e.g. to escape the Preferences view).
   const [chatViewNonce, setChatViewNonce] = useState(0);
+  // "Today" rail (2026 redesign): the 5 most-recently-touched threads from
+  // across ALL domains whose last activity is in the local day. list_threads is
+  // per-domain, so we fan out over General + every real domain and merge
+  // client-side — no engine change needed for Phase 1.
+  const [todayThreads, setTodayThreads] = useState<ThreadMeta[]>([]);
+  const refreshTodayThreads = useCallback(async () => {
+    if (!vaultPath) { setTodayThreads([]); return; }
+    try {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const cutoff = Math.floor(startOfDay.getTime() / 1000); // ThreadMeta.updated is unix seconds
+      // General (null scope) + every real domain. Skip internal "_"-prefixed
+      // pseudo-domains (app thread spaces) — the rail lists real conversations.
+      const scopes: (string | null)[] = [null, ...domains.map((d) => d.name).filter((n) => !n.startsWith("_"))];
+      const lists = await Promise.all(
+        scopes.map((s) => invoke<ThreadMeta[]>("list_threads", { vault: vaultPath, domain: s }).catch(() => [] as ThreadMeta[])),
+      );
+      const merged = lists
+        .flat()
+        .filter((t) => t.updated >= cutoff)
+        .sort((a, b) => b.updated - a.updated)
+        .slice(0, 5);
+      setTodayThreads(merged);
+    } catch (e) {
+      console.error("today threads", e);
+    }
+  }, [vaultPath, domains]);
+  // Recompute on vault/domain change AND whenever the active scope's threads
+  // change (a proxy for "a thread was just saved/renamed/deleted"), so the rail
+  // stays live without an engine event.
+  useEffect(() => { void refreshTodayThreads(); }, [refreshTodayThreads, threads]);
+  // Open a Today-rail thread: jump to its domain (or General) and load it.
+  const openTodayThread = useCallback((m: ThreadMeta) => {
+    setSelectedApp(null);
+    setAppView(false);
+    setSelectedDomain(m.domain ?? "");
+    setActiveThreadPath(m.path);
+    setChatViewNonce((n) => n + 1);
+    setDomainTab("chat");
+    setTab("chat");
+  }, []);
   // Per-domain import counts shown as a tiny badge in the sidebar.
   // Refreshed when ingestion:artifact fires (any tier writes a file)
   // or when the domain list changes.
@@ -900,14 +974,39 @@ export default function App() {
     setSettingsJump((j) => ({ section, n: (j?.n ?? 0) + 1 }));
     setTab("settings");
   };
+  // Work mode jump — the operational sections (Work board / Insights / Spark)
+  // moved out of Settings into Work mode, so deep-links to them route here.
+  const [workJump, setWorkJump] = useState<{ section: string; n: number } | null>(null);
+  // Sections that now live in Work mode rather than the Editor (Settings).
+  // "loopboard" is the legacy Settings id for the LoopBoard — now "Automations"
+  // in Work mode; kept here so old deep-links still route correctly (WorkPanel
+  // normalizes the alias).
+  const WORK_SECTIONS = ["tasks", "recommendations", "spark", "automations", "calendar", "notes", "loopboard"];
+  const openWorkAt = (section: string) => {
+    setWorkJump((j) => ({ section, n: (j?.n ?? 0) + 1 }));
+    setTab("work");
+  };
+  // Route a section name to whichever mode now owns it.
+  const openSectionAt = (section: string) => {
+    if (WORK_SECTIONS.includes(section)) openWorkAt(section);
+    else openSettingsAt(section);
+  };
   // Window-event form of the same jump, for module-scope UI (sidebar
   // indicators) that has no prop line to the App.
   useEffect(() => {
     const onOpen = (e: Event) => {
       const s = (e as CustomEvent<string>).detail;
-      if (s) openSettingsAt(s);
+      if (s) openSectionAt(s);
     };
     window.addEventListener("prevail:open-settings", onOpen as EventListener);
+    // The shared sidebar's Work surfaces dispatch this. Route through openWorkAt
+    // so the section reaches WorkPanel via jumpTo even when it's mounting fresh
+    // (a plain event would fire before its listener attaches).
+    const onWorkSection = (e: Event) => {
+      const s = (e as CustomEvent<string>).detail;
+      if (s) openWorkAt(s);
+    };
+    window.addEventListener("prevail:work-section", onWorkSection as EventListener);
     // Jump straight to a domain (from the Recommendations "Open" action or the
     // Loop Board). "" = General (a real domain now), so accept any string.
     const onOpenDomain = (e: Event) => {
@@ -936,6 +1035,7 @@ export default function App() {
     window.addEventListener("prevail:tasks-changed", bump);
     return () => {
       window.removeEventListener("prevail:open-settings", onOpen as EventListener);
+      window.removeEventListener("prevail:work-section", onWorkSection as EventListener);
       window.removeEventListener("prevail:open-domain", onOpenDomain as EventListener);
       window.removeEventListener("prevail:domain-tab", onDomainTabEvt as EventListener);
       window.removeEventListener("prevail:new-chat", onNewChat);
@@ -1208,39 +1308,98 @@ export default function App() {
   if (!isBrowser() && (lockSet || vaultEncrypted) && !unlocked) return <LockScreen vault={vaultPath} encrypted={vaultEncrypted} onUnlock={() => setUnlocked(true)} />;
   if (!vaultPath) return <VaultWizard onPick={pickVault} onLoadSample={loadSample} />;
 
+  // The left Sidebar is shared across every mode (chat, Work, Editor) so the
+  // Work/Editor toggle + profile switcher are always present and switching
+  // between modes is one click — no "Back to app" needed.
+  const sidebarEl = (
+    <Sidebar
+      collapsed={sidebarCollapsed}
+      setCollapsed={setSidebarCollapsed}
+      vaultPath={vaultPath}
+      domains={domains}
+      vaultError={vaultError}
+      selectedDomain={selectedDomain}
+      setSelectedDomain={(name) => { setSelectedApp(null); setAppView(false); setSelectedDomain(name); }}
+      activeAppId={appView && selectedApp ? selectedApp.id : null}
+      openInFinder={openInFinder}
+      tab={tab}
+      setTab={setTab}
+      onDomainCreated={(d) => {
+        setDomains((cur) => [...cur, d].sort((a, b) => a.name.localeCompare(b.name)));
+        setSelectedApp(null); setAppView(false);
+        setSelectedDomain(d.name);
+      }}
+      appearance={appearance}
+      runningDomains={runningDomains}
+      finishedDomains={finishedDomainSet}
+      domainStats={domainStats}
+      railWidth={domainRailWidth}
+      onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
+      onDomainsChanged={() => void refreshDomains()}
+      onOpenApp={openApp}
+      todayThreads={todayThreads}
+      onOpenThread={openTodayThread}
+    />
+  );
+
+  // Editor mode — configuration. Renders inside the shared shell (sidebar stays
+  // put) so the Work/Editor toggle is always visible; no "Back to app" button.
   if (tab === "settings") {
     return (
       <div className="relative flex h-screen flex-col bg-background text-text-primary">
-        <Suspense fallback={<PanelLoading />}>
-        <SettingsPanel
-          appearance={appearance}
-          vaultPath={vaultPath}
-          clis={clis}
-          onRefreshClis={refreshClis}
-          bunkerEnabled={bunkerEnabled}
-          onBunkerChange={applyBunker}
-          onSetupDomains={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
-          onVaultMoved={(p) => {
-            setVaultPath(p);
-            lsSet(LS.vault, p);
-            void invoke("remember_vault", { path: p }).catch(() => {});
-            setSelectedDomain(null);
-            // Force every panel that listens for domain changes (sidebar, stats,
-            // threads, …) to re-scan the NEW vault instead of showing stale data.
-            window.dispatchEvent(new Event("prevail:domains-changed"));
-          }}
-          onBack={() => setTab("chat")}
-          jumpTo={settingsJump}
-          onStartChatWith={(cliId, modelId) => {
-            lsSet(LS.defaultChatCli, cliId);
-            if (modelId) lsSet(`prevail.model.${cliId}`, modelId);
-            setSelectedDomain("");
-            setTab("chat");
-          }}
-        />
-        </Suspense>
+        <div className="flex min-h-0 flex-1">
+          {sidebarEl}
+          <Suspense fallback={<PanelLoading />}>
+          <SettingsPanel
+            appearance={appearance}
+            vaultPath={vaultPath}
+            clis={clis}
+            onRefreshClis={refreshClis}
+            bunkerEnabled={bunkerEnabled}
+            onBunkerChange={applyBunker}
+            onSetupDomains={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
+            onVaultMoved={(p) => {
+              setVaultPath(p);
+              lsSet(LS.vault, p);
+              void invoke("remember_vault", { path: p }).catch(() => {});
+              setSelectedDomain(null);
+              // Force every panel that listens for domain changes (sidebar, stats,
+              // threads, …) to re-scan the NEW vault instead of showing stale data.
+              window.dispatchEvent(new Event("prevail:domains-changed"));
+            }}
+            jumpTo={settingsJump}
+            onStartChatWith={(cliId, modelId) => {
+              lsSet(LS.defaultChatCli, cliId);
+              if (modelId) lsSet(`prevail.model.${cliId}`, modelId);
+              setSelectedDomain("");
+              setTab("chat");
+            }}
+          />
+          </Suspense>
+        </div>
         <BunkerRibbon enabled={bunkerEnabled} />
         <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
+        <BridgeStatusChips />
+        <QuickCapture vaultPath={vaultPath} />
+      </div>
+    );
+  }
+
+  // Work mode — the operational hub (board / automations / calendar / notes).
+  // Same shared shell as Editor; the sidebar toggle moves between the two.
+  if (tab === "work") {
+    return (
+      <div className="relative flex h-screen flex-col bg-background text-text-primary">
+        <div className="flex min-h-0 flex-1">
+          {sidebarEl}
+          <Suspense fallback={<PanelLoading />}>
+            <WorkPanel vaultPath={vaultPath} clis={clis} jumpTo={workJump} />
+          </Suspense>
+        </div>
+        <BunkerRibbon enabled={bunkerEnabled} />
+        <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
+        <BridgeStatusChips />
+        <QuickCapture vaultPath={vaultPath} />
       </div>
     );
   }
@@ -1272,32 +1431,7 @@ export default function App() {
         </div>
       )}
       <div className="flex min-h-0 flex-1">
-        <Sidebar
-          collapsed={sidebarCollapsed}
-          setCollapsed={setSidebarCollapsed}
-          vaultPath={vaultPath}
-          domains={domains}
-          vaultError={vaultError}
-          selectedDomain={selectedDomain}
-          setSelectedDomain={(name) => { setSelectedApp(null); setAppView(false); setSelectedDomain(name); }}
-          activeAppId={appView && selectedApp ? selectedApp.id : null}
-          openInFinder={openInFinder}
-          tab={tab}
-          setTab={setTab}
-          onDomainCreated={(d) => {
-            setDomains((cur) => [...cur, d].sort((a, b) => a.name.localeCompare(b.name)));
-            setSelectedApp(null); setAppView(false);
-            setSelectedDomain(d.name);
-          }}
-          appearance={appearance}
-          runningDomains={runningDomains}
-          finishedDomains={finishedDomainSet}
-          domainStats={domainStats}
-          railWidth={domainRailWidth}
-          onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
-          onDomainsChanged={() => void refreshDomains()}
-          onOpenApp={openApp}
-        />
+        {sidebarEl}
         {!sidebarCollapsed && (
           <ResizeHandle
             ariaLabel="Resize domain rail"
@@ -1722,6 +1856,7 @@ export default function App() {
           onApplied={() => void refreshDomains()}
         />
       )}
+      <QuickCapture vaultPath={vaultPath} />
     </div>
   );
 }
