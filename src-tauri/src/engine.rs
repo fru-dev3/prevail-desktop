@@ -128,6 +128,27 @@ pub(crate) fn playwright_browsers_path() -> Option<String> {
     )
 }
 
+/// Where the bundled engine finds the default skill packs (domains/<d>/_skills,
+/// apps/<id>/skills) it seeds into new domains/apps. Shipped as a Tauri resource;
+/// injected as PREVAIL_SKILL_PACKS_DIR on every engine spawn so the sidecar in the
+/// packaged app can locate it. Returned ONLY when the dir actually exists — in dev
+/// there is no bundled resource, and the sidecar finds skill-packs by repo
+/// adjacency instead, so we must not point it at a missing path.
+pub(crate) fn skill_packs_path() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    for c in [
+        dir.join("../Resources/skill-packs"), // macOS .app bundle (Contents/Resources)
+        dir.join("skill-packs"),              // windows/linux: beside the exe
+        dir.join("resources/skill-packs"),    // dev resource layout
+    ] {
+        if c.exists() {
+            return Some(c.to_string_lossy().to_string());
+        }
+    }
+    None
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Generic helpers
 
@@ -163,6 +184,9 @@ pub fn run_engine_raw(args: &[&str]) -> Result<String, String> {
     }
     if let Some(p) = playwright_browsers_path() {
         cmd.env("PLAYWRIGHT_BROWSERS_PATH", p);
+    }
+    if let Some(p) = skill_packs_path() {
+        cmd.env("PREVAIL_SKILL_PACKS_DIR", p);
     }
     let out = cmd.output().map_err(|e| format!("spawn {bin} failed: {e}"))?;
     if !out.status.success() {
@@ -210,6 +234,9 @@ pub fn run_engine_json(args: &[&str]) -> Result<serde_json::Value, String> {
     }
     if let Some(p) = playwright_browsers_path() {
         cmd.env("PLAYWRIGHT_BROWSERS_PATH", p);
+    }
+    if let Some(p) = skill_packs_path() {
+        cmd.env("PREVAIL_SKILL_PACKS_DIR", p);
     }
     let out = cmd.output().map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
@@ -270,6 +297,9 @@ pub fn run_engine_json_stdin(
     }
     if let Some(p) = playwright_browsers_path() {
         cmd.env("PLAYWRIGHT_BROWSERS_PATH", p);
+    }
+    if let Some(p) = skill_packs_path() {
+        cmd.env("PREVAIL_SKILL_PACKS_DIR", p);
     }
     let mut child = cmd.spawn().map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
@@ -355,6 +385,9 @@ pub async fn run_engine_stream(
     }
     if let Some(p) = playwright_browsers_path() {
         scmd.env("PLAYWRIGHT_BROWSERS_PATH", p);
+    }
+    if let Some(p) = skill_packs_path() {
+        scmd.env("PREVAIL_SKILL_PACKS_DIR", p);
     }
     let mut child = scmd.spawn().map_err(|e| format!("spawn {bin} failed: {e}"))?;
 
@@ -531,6 +564,9 @@ pub async fn run_engine_stream_stdin(
     }
     if let Some(p) = playwright_browsers_path() {
         cmd.env("PLAYWRIGHT_BROWSERS_PATH", p);
+    }
+    if let Some(p) = skill_packs_path() {
+        cmd.env("PREVAIL_SKILL_PACKS_DIR", p);
     }
     let mut child = cmd
         .spawn()
@@ -1129,6 +1165,47 @@ pub fn engine_app_get_soul(id: String) -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub fn engine_app_set_soul(id: String, soul: String) -> Result<serde_json::Value, String> {
     run_engine_json(&["connectors", "set", &id, "soul", &soul, "--json"])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Autonomy controls (the global brake) + playbooks (the orchestrator).
+
+/// Global autonomy state + per-action-class policy. Returns
+/// { state: "active"|"paused", policy: {...}, monthlyFinancialCapUsd }.
+#[tauri::command]
+pub fn engine_autonomy_status() -> Result<serde_json::Value, String> {
+    run_engine_json(&["autonomy", "status", "--json"])
+}
+
+/// One-tap pause/resume of ALL autonomous action. `state` is "pause" | "resume".
+#[tauri::command]
+pub fn engine_autonomy_set(state: String) -> Result<serde_json::Value, String> {
+    let s = if state == "pause" { "pause" } else { "resume" };
+    run_engine_json(&["autonomy", s, "--json"])
+}
+
+/// Set the pre-emptive policy for an action class: allow | ask | never.
+#[tauri::command]
+pub fn engine_autonomy_policy(class: String, decision: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["autonomy", "policy", &class, &decision, "--json"])
+}
+
+/// List available playbooks: [{ id, name, goal }].
+#[tauri::command]
+pub fn engine_list_playbooks() -> Result<serde_json::Value, String> {
+    run_engine_json(&["playbooks", "--json"])
+}
+
+/// Run a playbook, streaming step progress as `playbook_run:line` /
+/// `playbook_run:done` events the desktop renders as a live timeline.
+#[tauri::command]
+pub async fn engine_run_playbook_stream(
+    app: tauri::AppHandle,
+    id: String,
+    session: String,
+) -> Result<(), String> {
+    let args = vec!["run-playbook".to_string(), id, "--stream".to_string()];
+    run_engine_stream(app, session, args, "playbook_run").await
 }
 
 /// Discover what data a gateway app CAN provide (one agent turn over the

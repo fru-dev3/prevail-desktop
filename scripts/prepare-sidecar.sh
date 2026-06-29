@@ -36,3 +36,12 @@ echo "prepare-sidecar: building prevail engine for $TRIPLE"
 mkdir -p "$HERE/src-tauri/binaries"
 cp "$CLI/dist/prevail$EXT" "$HERE/src-tauri/binaries/prevail-$TRIPLE$EXT"
 echo "prepare-sidecar: sidecar ready -> src-tauri/binaries/prevail-$TRIPLE$EXT ($(du -h "$HERE/src-tauri/binaries/prevail-$TRIPLE$EXT" | cut -f1))"
+
+# Stage the default skill packs as a bundled resource. The engine seeds these
+# into new domains/apps on creation; in the packaged app the sidecar finds them
+# via PREVAIL_SKILL_PACKS_DIR (engine::skill_packs_path → Contents/Resources).
+if [ -d "$CLI/skill-packs" ]; then
+  rm -rf "$HERE/src-tauri/resources/skill-packs"
+  cp -R "$CLI/skill-packs" "$HERE/src-tauri/resources/skill-packs"
+  echo "prepare-sidecar: skill-packs staged -> src-tauri/resources/skill-packs"
+fi
