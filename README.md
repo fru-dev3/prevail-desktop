@@ -46,6 +46,14 @@ Prefer to click? **[⤓ Download the `.dmg`](https://github.com/fru-dev3/prevail
 - **Council.** Fan one question to multiple models in parallel; a chair model synthesizes a single verdict.
 - **Private by default.** Zero telemetry unless you explicitly opt in. Secrets live in the macOS Keychain.
 
+## What's new
+
+- **Agents, not just models.** Validated **harness runtimes** (Hermes · Pi · OpenCode · OpenClaw) can now *run work*, not just chat. Each harness is invoked with its own real headless/agent flags (e.g. Hermes `-z --safe-mode`), and every run is gated by the autonomy broker — safe (read-and-propose) by default, full agency only when you opt in.
+  - **Run with agent** — on any Work-board task, hand it to a harness agent; it streams progress, then drops its result back as a comment and moves the task to Review.
+  - **Loops on an agent** — give any automation a per-loop *executor* so a recurring loop runs through the agent of your choice.
+- **Smarter runtime detection** — *Re-check* now actually re-detects (a repaired install recovers without a restart), and the Runtimes list tells **"won't run" (broken)** apart from **"not installed."**
+- **Calmer sidebar** — the benchmark/backup/process strips collapse into one **Processes** icon + modal; the Work/Editor switch goes full-width and the footer slims to Alpha + a tiny theme toggle.
+
 ## Key features
 
 - **Demo-first** — launches into a pre-populated sample household (11 domains, realistic data). Explore freely, then switch to your own vault in one click.
