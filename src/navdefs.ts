@@ -53,7 +53,7 @@ export const EDITOR_NAV: NavGroup[] = [
     { id: "privacy", label: "Privacy", icon: ShieldCheck },
     { id: "safety", label: "Safety", icon: Shield },
   ]},
-  { heading: "App", items: [
+  { heading: "Settings", items: [
     { id: "profiles", label: "Profiles", icon: UserRound },
     { id: "workspace", label: "Context", icon: Database },
     { id: "general", label: "General", icon: SettingsIcon },
