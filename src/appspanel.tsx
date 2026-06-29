@@ -5,8 +5,9 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Boxes, Cable, Check, ChevronLeft, ChevronRight, Download, ExternalLink, FolderOpen, Globe, Info, Link2, Loader2, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Star, Terminal, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Boxes, Check, ChevronLeft, ChevronRight, Download, ExternalLink, FolderOpen, Globe, Link2, Loader2, Pencil, Plug, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Star, Terminal, Trash2, X } from "lucide-react";
 import { MasterDetail } from "./masterdetail";
+import { ConnectorRunPanel, type ConnectorRunMode } from "./connectorrun";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "./bridge";
 import { appName, relTime, titleCase } from "./format";
@@ -177,22 +178,6 @@ export function startAppsScheduler(vault: string) {
 // starring an app (Direct, Composio, or Nango) is what pins it to the home
 // screen. The store + hooks live in that module so both surfaces read one set.
 
-// One-paragraph explainer per connection track, shown in the tab-bar info
-// popover (replaces the always-on description card that ate the top of the page).
-const MODE_INFO: Record<"direct" | "composio" | "nango", { label: string; blurb: string }> = {
-  direct: {
-    label: "Direct",
-    blurb: "Prevail connects each app itself - MCP, an official API, a one-time sign-in, or a guided browser login - and keeps its data in your vault. The source of truth is the app's own folder.",
-  },
-  composio: {
-    label: "Composio",
-    blurb: "One managed gateway. A single Composio sign-in fronts 1000+ apps for the agent: browse the catalog, connect any app via a Composio auth link, and Prevail uses it through the Composio MCP endpoint. Connections live in Composio, not your vault.",
-  },
-  nango: {
-    label: "Nango",
-    blurb: "Connect apps through a Nango gateway you control. One integration layer brokers OAuth for many providers, and Prevail's agent uses those connections through Nango.",
-  },
-};
 
 export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   const [apps, setApps] = useState<EngineApp[] | null>(null);
@@ -201,22 +186,12 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // are still loading or none exist; otherwise the selected app id.
   const [selected, setSelected] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
-  // Top-level track: "direct" (Prevail connects each app itself) vs "composio"
-  // (one managed gateway). Two parallel, never-mixed tracks; persisted.
-  const [appsMode, setAppsModeState] = useState<"direct" | "composio" | "nango">(() => {
-    try { const m = localStorage.getItem("prevail.apps.mode"); return m === "composio" || m === "nango" ? m : "direct"; } catch { return "direct"; }
-  });
-  const setAppsMode = useCallback((m: "direct" | "composio" | "nango") => {
-    setAppsModeState(m);
-    try { localStorage.setItem("prevail.apps.mode", m); } catch { /* ignore */ }
-  }, []);
-  // Each track's one-paragraph explainer now lives in a popover off the tabs
-  // (toggled here), not an always-on card - keeps the top compact.
-  const [infoOpen, setInfoOpen] = useState(false);
-  // Gateway setup (Composio / Nango) is folded into the tab row: clicking the
-  // active gateway tab toggles its config dropdown, so only the tabs show by
-  // default - never a second always-on setup row.
-  const [gatewayOpen, setGatewayOpen] = useState(false);
+  // Connection track. Prevail connects each app ITSELF (direct: CLI / API /
+  // agentic browser) — the local, no-SaaS-lock-in path. The managed-gateway
+  // tracks (Composio / Nango) are retired from the UI; we always run direct.
+  // appsMode is kept (the gateway render branches reference it) but is constant.
+  const [appsMode] = useState<"direct" | "composio" | "nango">("direct");
+  const [gatewayOpen] = useState(false);
   // The app list attaches to the detail as one panel and collapses to a thin
   // rail (expand chevron) so the detail can take the full width, like the home
   // sidebar / thread list. Persisted.
@@ -468,58 +443,6 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
             Services that feed your vault. Connect each one once - mail, calendar, repos, docs, payments, and more - and it's available to any domain's context, no duplicates.
           </p>
         </div>
-      </div>
-
-      {/* Track tabs + an info popover (the per-track explainer lives here now,
-          not in an always-on card). Direct vs Composio vs Nango: parallel tracks. */}
-      <div className="relative mb-4 flex items-center gap-2">
-        <div className="inline-flex rounded-lg border border-border bg-surface p-1">
-          {([["direct", "Direct", Plug], ["composio", "Composio", Boxes], ["nango", "Nango", Cable]] as const).map(([m, label, Icon]) => {
-            const isGateway = m === "composio" || m === "nango";
-            const active = appsMode === m;
-            return (
-              <button
-                key={m}
-                onClick={() => {
-                  // Click the active gateway tab to toggle its config dropdown;
-                  // otherwise switch tracks (and collapse the dropdown).
-                  if (active && isGateway) setGatewayOpen((o) => !o);
-                  else { setAppsMode(m); setGatewayOpen(false); }
-                }}
-                className={`inline-flex items-center gap-1.5 rounded-md px-5 py-1.5 text-sm font-semibold transition-colors ${active ? "bg-accent text-background" : "text-text-secondary hover:text-text-primary"}`}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-                {active && isGateway && <ChevronRight className={`h-3.5 w-3.5 transition-transform ${gatewayOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />}
-              </button>
-            );
-          })}
-        </div>
-        <button
-          onClick={() => setInfoOpen((v) => !v)}
-          title={`What is ${MODE_INFO[appsMode].label}?`}
-          className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${infoOpen ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}
-        >
-          <Info className="h-4 w-4" />
-        </button>
-        {infoOpen && (
-          <>
-            {/* click-away backdrop */}
-            <div className="fixed inset-0 z-40" onClick={() => setInfoOpen(false)} />
-            <div className="absolute left-0 top-full z-50 mt-2 w-[min(28rem,90vw)] rounded-xl border border-border bg-surface p-4 shadow-lg">
-              <div className="flex items-start gap-2">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-background">
-                  {appsMode === "direct" ? <Plug className="h-4 w-4" /> : appsMode === "composio" ? <Boxes className="h-4 w-4" /> : <Cable className="h-4 w-4" />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-text-primary">{MODE_INFO[appsMode].label}</div>
-                  <p className="mt-1 text-xs leading-relaxed text-text-secondary">{MODE_INFO[appsMode].blurb}</p>
-                </div>
-                <button onClick={() => setInfoOpen(false)} className="shrink-0 rounded p-0.5 text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
-              </div>
-            </div>
-          </>
-        )}
       </div>
 
       {/* Connect happens INSIDE the right detail pane (see below) so the app's
@@ -1890,6 +1813,61 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
       .catch(() => {});
     return () => { alive = false; };
   }, [app.id, vaultPath, app.lastSuccessTs]);
+  // Agentic browser learn/replay + the skills it records. Available for ANY app:
+  // the agent drives a real browser to learn how to fetch your data, records it
+  // as a reusable skill (vault/apps/<id>/skills/), and replays it next time.
+  const [learnMode, setLearnMode] = useState<ConnectorRunMode | null>(null);
+  const [composing, setComposing] = useState(false);
+  const [goalText, setGoalText] = useState("");
+  const [skills, setSkills] = useState<{ id: string; runner: string; trigger: string }[]>([]);
+  const loadSkills = useCallback(() => {
+    invoke<{ id: string; runner: string; trigger: string }[]>("engine_app_skills", { id: app.id })
+      .then((s) => setSkills(Array.isArray(s) ? s : []))
+      .catch(() => setSkills([]));
+  }, [app.id]);
+  useEffect(() => { loadSkills(); }, [loadSkills, app.lastSuccessTs]);
+  // After a successful learn, capture the FOLDER + FREQUENCY the user described
+  // in plain English (e.g. "...file under Travel, check monthly") and apply them
+  // — so the conversation sets the config, not separate forms.
+  const applyLearnedConfig = useCallback(async (goal: string) => {
+    const text = (goal || "").toLowerCase();
+    if (!text.trim()) return;
+    const freq: Array<[RegExp, string]> = [
+      [/\b(hourly|every hour)\b/, "hourly"],
+      [/\b(daily|every day|each day)\b/, "daily"],
+      [/\b(weekly|every week|each week)\b/, "weekly"],
+      [/\b(monthly|every month|each month)\b/, "30d"],
+    ];
+    for (const [re, every] of freq) {
+      if (re.test(text)) { try { await invoke("engine_app_set_schedule", { id: app.id, every, at: null, on: null }); } catch { /* best effort */ } break; }
+    }
+    try {
+      const ds = await invoke<{ name: string }[]>("scan_vault", { path: vaultPath });
+      const names = (ds ?? []).map((d) => d.name.toLowerCase());
+      const hit = names.find((n) => new RegExp(`\\b${n.replace(/[^a-z0-9]/g, "")}\\b`).test(text.replace(/[^a-z0-9 ]/g, "")));
+      const have = (app.domains ?? []).map((d) => d.toLowerCase());
+      if (hit && !have.includes(hit)) {
+        await invoke("engine_app_set_domains", { id: app.id, domains: [...(app.domains ?? []), hit] });
+      }
+    } catch { /* domains optional */ }
+    window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+    await onReload();
+  }, [app.id, app.domains, vaultPath, onReload]);
+  // Optional one-time convenience: copy the user's EXISTING Chrome login for this
+  // site into the connector's isolated profile (Chrome must be quit), so they
+  // skip even the one sign-in. Scoped to this site only.
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const importLogins = useCallback(async () => {
+    setImporting(true); setImportMsg(null);
+    let host = "";
+    try { host = new URL(appWebsite(app)).hostname; } catch { /* derive in CLI */ }
+    try {
+      const r = await invoke<{ ok: boolean; message?: string; imported?: number }>("engine_connector_import_login", { id: app.id, host });
+      setImportMsg(r.ok ? `✓ ${r.message ?? "imported"}` : `✗ ${r.message ?? "failed"}`);
+    } catch (e) { setImportMsg(`✗ ${String(e).slice(0, 160)}`); }
+    finally { setImporting(false); }
+  }, [app.id, app]);
   // APP-5 - edit which domains this app feeds (engine_app_set_domains). The
   // vault's domain list is fetched lazily when the editor opens.
   const [editDomains, setEditDomains] = useState(false);
@@ -2026,6 +2004,11 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
     finally { setDeleting(false); }
   };
   const needsCreds = (!!credSpec || isOAuth || isBrowser) && !isMcp;
+  // The "learned lane": browser apps, un-configured manual apps, or anything that
+  // already has a recorded skill. For these, the agentic Learn flow IS the setup —
+  // so the legacy METHOD / RE-EVALUATE / WHAT-TO-PULL config is redundant and hidden.
+  // Real API/OAuth/CLI/MCP apps still show it (the method genuinely matters there).
+  const learnedLane = isBrowser || integ === "manual" || integ === "" || skills.length > 0;
   const [credVals, setCredVals] = useState<Record<string, string>>({});
   const [credBusy, setCredBusy] = useState(false);
   const [credMsg, setCredMsg] = useState<string | null>(null);
@@ -2268,8 +2251,101 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
         </div>
       </div>
       <div className="space-y-3 px-5 py-4 text-[13px]">
+          {/* Browser sync — agentic learn + the skills it records. Works for ANY
+              app: the agent drives a real browser to learn how to fetch your data,
+              records it as a reusable skill, and replays it next time. */}
+          {!gatewayProvider && (
+            <div className="rounded-lg border border-border bg-background p-3">
+              {learnMode ? (
+                <ConnectorRunPanel
+                  appId={app.id}
+                  mode={learnMode}
+                  goal={goalText || undefined}
+                  url={appWebsite(app)}
+                  onDone={(ok) => { void onReload(); loadSkills(); if (ok) { void applyLearnedConfig(goalText); setLearnMode(null); } }}
+                  onClose={() => setLearnMode(null)}
+                />
+              ) : composing ? (
+                // Conversational entry: describe what to fetch + where + how often,
+                // in plain English. The agent uses it as the goal AND we capture
+                // the folder + frequency from it (applyLearnedConfig) — no forms.
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-[13px] font-medium text-text-primary">
+                    <Sparkles className="h-4 w-4 text-accent" /> Tell me what to fetch
+                  </div>
+                  <textarea
+                    autoFocus
+                    rows={3}
+                    value={goalText}
+                    onChange={(e) => setGoalText(e.target.value)}
+                    placeholder={`e.g. "Download my booking confirmations, file them under Travel, and check monthly."`}
+                    className="w-full resize-none rounded-md border border-border bg-surface px-2.5 py-2 text-[13px] text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => { setComposing(false); setLearnMode("learn"); }} disabled={!goalText.trim()}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-40">
+                      <Sparkles className="h-3.5 w-3.5" /> Start learning
+                    </button>
+                    <button onClick={() => setComposing(false)}
+                      className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary">Cancel</button>
+                  </div>
+                  <p className="text-[11px] text-text-muted">Your Chrome opens — log in once. I'll learn the steps and remember the folder + how often from what you said.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-[13px] font-medium text-text-primary">
+                      <Globe className="h-4 w-4 text-accent" /> Browser sync
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {skills.length > 0 && (
+                        <button onClick={() => setLearnMode("replay")}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-text-secondary hover:border-accent-border hover:text-accent">
+                          <RefreshCw className="h-3.5 w-3.5" /> Run
+                        </button>
+                      )}
+                      <button onClick={() => { setGoalText(""); setComposing(true); }}
+                        title="Describe what to fetch; a browser opens and the agent learns it"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10">
+                        <Sparkles className="h-3.5 w-3.5" /> Learn
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[12px] text-text-muted">
+                    Tell it what to grab in plain English; your Chrome opens, you log in once, and the agent learns how to download it — then records a skill it replays automatically. Read-only: it never pays, transfers, or changes settings.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button onClick={importLogins} disabled={importing}
+                      title="Already signed into this site in Chrome? Copy that login in so you skip signing in (quit Chrome first). Scoped to this site only — never your whole browser."
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+                      {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} {importing ? "Importing…" : "Import my Chrome login"}
+                    </button>
+                    {importMsg && <span className={`text-[11px] ${importMsg.startsWith("✓") ? "text-ok" : "text-danger"}`}>{importMsg}</span>}
+                  </div>
+                  <div>
+                    <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Learned skills</div>
+                    {skills.length === 0 ? (
+                      <div className="text-[12px] text-text-muted">None yet — click <span className="text-text-secondary">Learn</span> to record one. Saved in <code className="rounded bg-surface-warm px-1 font-mono text-[11px]">vault/apps/{app.id}/skills/</code>.</div>
+                    ) : (
+                      <ul className="space-y-1">
+                        {skills.map((s) => (
+                          <li key={s.id} className="flex items-center gap-2 rounded-md border border-border-subtle bg-surface px-2.5 py-1.5 text-[12px]">
+                            <Sparkles className="h-3 w-3 shrink-0 text-accent" />
+                            <span className="font-medium text-text-primary">{s.id}</span>
+                            <span className="font-mono text-[10px] text-text-muted">{s.runner}{s.trigger ? ` · ${s.trigger}` : ""}</span>
+                            <button onClick={() => { setGoalText(""); setComposing(true); }} title="Re-record this flow"
+                              className="ml-auto font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-accent">re-learn</button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {app.account?.label && <Detail label="Account">{app.account.label}{app.account.address ? ` · ${app.account.address}` : ""}</Detail>}
-          {!gatewayProvider && (<>
+          {!gatewayProvider && !learnedLane && (<>
           <Detail label="Method">
             <span className="inline-flex flex-wrap items-center gap-2">
               {/* A2 (Monday feedback): change the method by hand. */}
@@ -2506,7 +2582,8 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
               </div>
             )}
           </Detail>
-          {/* WHAT TO PULL - the user's instruction that steers each sync. */}
+          {/* WHAT TO PULL - legacy: redundant once the goal is described in Learn. */}
+          {!learnedLane && (
           <Detail label="What to pull">
             {editPull ? (
               <div className="flex flex-col gap-1.5">
@@ -2540,6 +2617,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
               </div>
             )}
           </Detail>
+          )}
           {/* WHAT THIS CAN PULL - on-demand discovery of the gateway's data types. */}
           {gatewayProvider && (
             <Detail label="What this can pull">
@@ -2601,50 +2679,47 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
               Sync moved here from the top-right so the header stays uncluttered.
               All existing handlers stay wired (onSync, open_in_finder, removeApp,
               onSetEnabled). Delete keeps its inline two-step confirm. */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-3">
-            <span className="flex items-center gap-2 text-xs text-text-secondary">
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-4">
+            <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-text-secondary">
               <Toggle on={enabled} onChange={onSetEnabled} label={`${app.title} scheduled sync`} />
-              {enabled ? "Scheduled sync on" : "Scheduled sync off"}
-              {status === "connected" && <span className="ml-1 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-ok"><Check className="h-3 w-3" /> working</span>}
-            </span>
+              <span>Scheduled sync <span className="font-medium text-text-primary">{enabled ? "on" : "off"}</span></span>
+              {status === "connected" && <span className="inline-flex items-center gap-1 rounded-full bg-ok/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-ok"><Check className="h-2.5 w-2.5" /> working</span>}
+            </label>
             {confirmDelete ? (
               <span className="flex items-center gap-2">
                 <button onClick={removeApp} disabled={deleting}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-danger/50 bg-danger/10 px-2.5 py-1 text-[11px] text-danger hover:bg-danger/20 disabled:opacity-50">
+                  className="inline-flex items-center gap-1.5 rounded-md border border-danger/50 bg-danger/10 px-2.5 py-1.5 text-[11px] text-danger hover:bg-danger/20 disabled:opacity-50">
                   {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete {app.title} for good
                 </button>
                 <button onClick={() => { setConfirmDelete(false); setDeleteErr(null); }} className="text-[11px] text-text-muted hover:text-text-secondary">cancel</button>
                 {deleteErr && <span className="text-[11px] text-danger">{deleteErr}</span>}
               </span>
             ) : (
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 {status !== "disconnected" && (
                   <button onClick={() => void runSync()} disabled={busy}
                     title="Pull fresh data into this app's folder now"
-                    className="inline-flex flex-col items-center gap-0.5 rounded-md px-2.5 py-1 text-text-muted hover:bg-surface-warm/60 hover:text-accent disabled:opacity-50">
-                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                    <span className="font-mono text-[9px] uppercase tracking-wider">{busy ? "syncing" : "sync"}</span>
+                    className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-50">
+                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} {busy ? "Syncing…" : "Sync now"}
                   </button>
                 )}
                 <button onClick={() => void openUrl(appWebsite(app))}
-                  title={`Open ${app.title || app.id}'s website in your browser`}
-                  className="inline-flex flex-col items-center gap-0.5 rounded-md px-2.5 py-1 text-text-muted hover:bg-surface-warm/60 hover:text-accent">
-                  <ExternalLink className="h-4 w-4" />
-                  <span className="font-mono text-[9px] uppercase tracking-wider">visit</span>
+                  title={`Open ${app.title || app.id}'s website`}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent">
+                  <ExternalLink className="h-3.5 w-3.5" /> Visit
                 </button>
                 {app.path && (
                   <button onClick={() => void invoke("open_in_finder", { path: app.path! }).catch(() => {})}
                     title="Reveal this app's folder in Finder"
-                    className="inline-flex flex-col items-center gap-0.5 rounded-md px-2.5 py-1 text-text-muted hover:bg-surface-warm/60 hover:text-accent">
-                    <FolderOpen className="h-4 w-4" />
-                    <span className="font-mono text-[9px] uppercase tracking-wider">folder</span>
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent">
+                    <FolderOpen className="h-3.5 w-3.5" /> Folder
                   </button>
                 )}
+                <div className="mx-0.5 h-5 w-px bg-border-subtle" />
                 <button onClick={() => setConfirmDelete(true)}
                   title="Remove this app entirely"
-                  className="inline-flex flex-col items-center gap-0.5 rounded-md px-2.5 py-1 text-text-muted hover:bg-danger/10 hover:text-danger">
+                  className="inline-flex items-center justify-center rounded-md border border-transparent p-2 text-text-muted hover:bg-danger/10 hover:text-danger">
                   <Trash2 className="h-4 w-4" />
-                  <span className="font-mono text-[9px] uppercase tracking-wider">delete</span>
                 </button>
               </div>
             )}

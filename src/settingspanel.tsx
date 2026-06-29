@@ -393,7 +393,7 @@ export function SettingsPanel({
           {/* Apps bleeds past the page's left padding so its panel attaches
               flush to the settings nav (no page-background gap), like the home
               columns. Bottom bleed lets the panel fill down. */}
-          {section === "connectors" && <div className="-ml-8 -mb-10"><AppsPanel vaultPath={vaultPath} /></div>}
+          {section === "connectors" && <div className="-mb-10 pl-2"><AppsPanel vaultPath={vaultPath} /></div>}
           {section === "safety" && <SafetySection vaultPath={vaultPath} />}
           {section === "gateway" && <><GatewaySection /><GatewayLogsCard vaultPath={vaultPath} /></>}
           {section === "mcp" && <IntegrationsPanel vaultPath={vaultPath} clis={clis} />}

@@ -2047,6 +2047,7 @@ pub async fn engine_connector_learn_stream(
     id: String,
     session: String,
     goal: Option<String>,
+    url: Option<String>,
 ) -> Result<(), String> {
     let mut args = vec![
         "connectors".to_string(),
@@ -2058,6 +2059,12 @@ pub async fn engine_connector_learn_stream(
         if !g.trim().is_empty() {
             args.push("--goal".to_string());
             args.push(g);
+        }
+    }
+    if let Some(u) = url {
+        if !u.trim().is_empty() {
+            args.push("--url".to_string());
+            args.push(u);
         }
     }
     run_engine_stream(app, session, args, "connector_learn").await
@@ -2073,15 +2080,41 @@ pub async fn engine_connector_run_stream(
     id: String,
     session: String,
     mode: String,
+    url: Option<String>,
 ) -> Result<(), String> {
     let sub = if mode == "relearn" { "browser-learn" } else { "browser-replay" };
-    let args = vec![
+    let mut args = vec![
         "connectors".to_string(),
         sub.to_string(),
         id,
         "--stream".to_string(),
     ];
+    if mode == "relearn" {
+        if let Some(u) = url {
+            if !u.trim().is_empty() {
+                args.push("--url".to_string());
+                args.push(u);
+            }
+        }
+    }
     run_engine_stream(app, session, args, "connector_run").await
+}
+
+/// One-time convenience: copy the user's EXISTING Chrome login cookies for this
+/// app's site into the connector's dedicated profile (Chrome must be quit).
+/// Scoped to the site host only — never the whole browser. Returns the CLI's
+/// JSON result ({ ok, imported, message }).
+#[tauri::command]
+pub fn engine_connector_import_login(id: String, host: Option<String>) -> Result<serde_json::Value, String> {
+    let mut args: Vec<String> = vec!["connectors".into(), "import-login".into(), id];
+    if let Some(h) = host {
+        if !h.trim().is_empty() {
+            args.push("--host".into());
+            args.push(h);
+        }
+    }
+    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_engine_json(&refs)
 }
 
 /// One historical context-score sample for a domain.
