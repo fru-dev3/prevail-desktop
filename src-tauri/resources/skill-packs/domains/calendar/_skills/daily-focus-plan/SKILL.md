@@ -11,7 +11,7 @@ source: seed
 Run first thing, before the inbox sets the agenda.
 
 1. **The one thing.** From _state.md and today's open tasks, name the single outcome that makes today a win if nothing else happens. One, not a list.
-2. **Give it a home.** Find the real block on data/calendar.ics where it fits — ideally the morning peak — and protect it from meetings.
+2. **Give it a home.** Find the real block on data/calendar.ics where it fits (ideally the morning peak) and protect it from meetings.
 3. **Sequence the rest.** Slot the few remaining must-dos around the fixed meetings. Batch the shallow work into one window instead of scattering it.
 4. **Cut honestly.** Name what will not happen today so it is a decision, not a 5pm surprise. Push it to a real day, not "later".
 

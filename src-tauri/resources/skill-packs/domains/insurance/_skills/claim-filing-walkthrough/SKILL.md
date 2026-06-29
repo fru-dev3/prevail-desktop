@@ -2,7 +2,7 @@
 id: claim-filing-walkthrough
 runner: llm
 trigger: on-demand
-description: File a claim properly — evidence first, timeline discipline, and what not to say.
+description: File a claim properly, evidence first, timeline discipline, and what not to say.
 source: seed
 ---
 
