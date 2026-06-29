@@ -15,14 +15,15 @@ import {
 import { invoke, listen } from "./bridge";
 import { relTime, titleCase } from "./format";
 import { SettingsHeader } from "./sectionutil";
-import { Toggle } from "./ui";
 
 // ── Types ─────────────────────────────────────────────────────────────
 type PolicyClass = "read" | "reversible" | "external_send" | "financial" | "irreversible" | "credential" | "unknown";
 type Decision = "allow" | "ask" | "never";
 
+type AutonomyMode = "paused" | "ask" | "auto";
+
 interface AutonomyStatus {
-  state: "active" | "paused";
+  state: AutonomyMode;
   policy: Record<PolicyClass, Decision>;
   monthlyFinancialCapUsd: number | null;
 }
@@ -296,6 +297,7 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
   const [busy, setBusy] = useState(false);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [running, setRunning] = useState<Playbook | null>(null);
+  const [capDraft, setCapDraft] = useState<string>("");
 
   const loadStatus = useCallback(async () => {
     try {
@@ -310,21 +312,36 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
     void invoke<Playbook[]>("engine_list_playbooks").then((p) => setPlaybooks(Array.isArray(p) ? p : [])).catch(() => setPlaybooks([]));
   }, [loadStatus]);
 
-  const paused = status?.state === "paused";
+  // Keep the cap input in sync with the loaded status.
+  useEffect(() => {
+    if (status) setCapDraft(status.monthlyFinancialCapUsd == null ? "" : String(status.monthlyFinancialCapUsd));
+  }, [status?.monthlyFinancialCapUsd]);
 
-  const toggleBrake = useCallback(async (active: boolean) => {
+  const mode: AutonomyMode = status?.state ?? "ask";
+  const paused = mode === "paused";
+
+  const setMode = useCallback(async (next: AutonomyMode) => {
     setBusy(true);
-    // Optimistic flip so the big switch feels instant; reconcile from the result.
-    setStatus((s) => (s ? { ...s, state: active ? "active" : "paused" } : s));
+    const prev = status?.state;
+    setStatus((s) => (s ? { ...s, state: next } : s)); // optimistic
     try {
-      const r = await invoke<{ ok: boolean; state: string }>("engine_autonomy_set", { state: active ? "resume" : "pause" });
-      if (r?.state) setStatus((s) => (s ? { ...s, state: r.state === "paused" ? "paused" : "active" } : s));
+      const r = await invoke<{ ok: boolean; state: string }>("engine_autonomy_set", { state: next });
+      if (r?.state) setStatus((s) => (s ? { ...s, state: r.state as AutonomyMode } : s));
       setErr(null);
     } catch (e) {
       setErr(`Couldn't change autonomy: ${String(e).slice(0, 160)}`);
-      await loadStatus();
+      if (prev) setStatus((s) => (s ? { ...s, state: prev } : s));
     } finally { setBusy(false); }
-  }, [loadStatus]);
+  }, [status]);
+
+  const saveCap = useCallback(async (raw: string) => {
+    const cap = raw.trim() === "" || raw.trim().toLowerCase() === "off" ? "off" : String(Number(raw.replace(/[^0-9.]/g, "")) || 0);
+    try {
+      const r = await invoke<{ monthlyFinancialCapUsd: number | null }>("engine_autonomy_cap", { cap });
+      setStatus((s) => (s ? { ...s, monthlyFinancialCapUsd: r?.monthlyFinancialCapUsd ?? null } : s));
+      setErr(null);
+    } catch (e) { setErr(`Couldn't set cap: ${String(e).slice(0, 160)}`); }
+  }, []);
 
   const setPolicy = useCallback(async (cls: PolicyClass, decision: Decision) => {
     const prev = status?.policy[cls];
@@ -352,27 +369,32 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
         </div>
       )}
 
-      {/* Global brake */}
-      <section className={`rounded-xl border p-4 ${paused ? "border-danger/40 bg-danger/5" : "border-accent-border bg-accent-soft/15"}`}>
-        <div className="flex items-center gap-3">
-          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${paused ? "bg-danger/10 text-danger" : "bg-accent-soft text-accent"}`}>
-            {paused ? <Pause className="h-5 w-5" /> : <Zap className="h-5 w-5" />}
+      {/* Global brake — one master mode */}
+      <section className={`rounded-xl border p-4 ${paused ? "border-danger/40 bg-danger/5" : mode === "auto" ? "border-accent-border bg-accent-soft/15" : "border-border bg-surface"}`}>
+        <div className="mb-3 flex items-center gap-3">
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${paused ? "bg-danger/10 text-danger" : mode === "auto" ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
+            {paused ? <Pause className="h-5 w-5" /> : mode === "auto" ? <Zap className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="font-display text-lg font-bold tracking-tight text-text-primary">
-              Autonomy: {paused ? "Paused" : "Active"}
-            </div>
+            <div className="font-display text-lg font-bold tracking-tight text-text-primary">Autonomy</div>
             <div className="text-xs text-text-secondary">
-              {paused ? "Agents will not take any action on their own." : "Agents act on their own within the policy below."}
+              {paused ? "Agents will not take any action on their own." : mode === "auto" ? "Agents run allowed actions on their own; the policy below still governs money, sends, and deletes." : "Agents propose actions and wait for your approval — nothing runs on its own."}
             </div>
           </div>
-          <Toggle on={!paused} onChange={(v) => void toggleBrake(v)} disabled={busy || !status} label="Autonomy" />
         </div>
-        {paused && (
-          <div className="mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm font-medium text-danger">
-            All autonomous action is paused.
-          </div>
-        )}
+        <div className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-background p-0.5">
+          {([
+            { k: "paused", label: "Paused", hint: "Kill switch" },
+            { k: "ask", label: "Ask first", hint: "Approve each" },
+            { k: "auto", label: "Automatic", hint: "Run allowed" },
+          ] as { k: AutonomyMode; label: string; hint: string }[]).map((m) => (
+            <button key={m.k} onClick={() => void setMode(m.k)} disabled={busy || !status}
+              className={`flex flex-col items-center rounded-md px-2 py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${mode === m.k ? (m.k === "paused" ? "bg-danger/15 text-danger" : m.k === "auto" ? "bg-accent-soft text-accent" : "bg-surface-strong text-text-primary") : "text-text-muted hover:text-text-secondary"}`}>
+              {m.label}
+              <span className="mt-0.5 text-[10px] font-normal opacity-70">{m.hint}</span>
+            </button>
+          ))}
+        </div>
       </section>
 
       {/* Action policy */}
@@ -396,10 +418,21 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
         </div>
         <p className="mt-2 text-xs text-text-muted">
           Destructive and credential changes default to Never; money and outbound messages to Ask.
-          {typeof status?.monthlyFinancialCapUsd === "number" && (
-            <> Monthly spend cap: <span className="font-mono text-text-secondary">${status.monthlyFinancialCapUsd}</span>.</>
-          )}
         </p>
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-warm text-text-muted"><DollarSign className="h-4 w-4" /></span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-text-primary">Monthly spend cap</div>
+            <div className="text-xs text-text-muted">An auto-approved financial action that would exceed this asks instead. Blank = no cap.</div>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-sm text-text-muted">$</span>
+            <input value={capDraft} onChange={(e) => setCapDraft(e.target.value)} onBlur={() => void saveCap(capDraft)}
+              onKeyDown={(e) => { if (e.key === "Enter") void saveCap(capDraft); }}
+              inputMode="decimal" placeholder="none" disabled={!status}
+              className="w-24 rounded-md border border-border bg-background px-2 py-1 text-sm text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
+          </div>
+        </div>
       </section>
 
       {/* Playbooks */}

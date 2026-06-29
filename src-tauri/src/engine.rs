@@ -1177,11 +1177,18 @@ pub fn engine_autonomy_status() -> Result<serde_json::Value, String> {
     run_engine_json(&["autonomy", "status", "--json"])
 }
 
-/// One-tap pause/resume of ALL autonomous action. `state` is "pause" | "resume".
+/// Set the master autonomy mode: "paused" (kill switch) | "ask" (propose, you
+/// approve) | "auto" (run allow-policy actions unattended). Legacy "pause"/
+/// "resume" are accepted by the engine too.
 #[tauri::command]
 pub fn engine_autonomy_set(state: String) -> Result<serde_json::Value, String> {
-    let s = if state == "pause" { "pause" } else { "resume" };
-    run_engine_json(&["autonomy", s, "--json"])
+    run_engine_json(&["autonomy", &state, "--json"])
+}
+
+/// Set (or clear, with "off") the monthly financial spend cap in USD.
+#[tauri::command]
+pub fn engine_autonomy_cap(cap: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["autonomy", "cap", &cap, "--json"])
 }
 
 /// Set the pre-emptive policy for an action class: allow | ask | never.
