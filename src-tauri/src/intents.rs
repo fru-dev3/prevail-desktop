@@ -157,7 +157,15 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-fn build_intents_prompt(activity: &str) -> String {
+fn build_intents_prompt(activity: &str, existing_domains: &[String]) -> String {
+    // The user's existing domains, so the distiller REUSES them instead of
+    // coining a new granular label for every cluster (which fragments the vault
+    // into dozens of overlapping domains). Domains must stay broad/encompassing.
+    let domains_line = if existing_domains.is_empty() {
+        "(none yet)".to_string()
+    } else {
+        existing_domains.join(", ")
+    };
     format!(
         "You are Prevail's intent analyst. Below is a chronological log of the user's \
 prompts. Each line is `[domain via surface] prompt` (or just `[surface] prompt`). \
@@ -168,8 +176,14 @@ them - the real goals the user is pursuing - by clustering related prompts \
 across sessions, domains, and surfaces. Lift each cluster up a level of abstraction: e.g. \
 prompts comparing car models map to the intent \"Evaluating a vehicle purchase\" \
 with underlying need \"transportation\", not \"asked about Toyota vs Honda\".\n\n\
+The user's EXISTING DOMAINS are: {domains_line}.\n\
+DOMAIN RULES (critical - the user manages these by hand and does NOT want domain sprawl):\n\
+- For the \"domains\" field, STRONGLY PREFER an existing domain from the list above. Reuse beats creating.\n\
+- A domain is a BROAD, encompassing area of life or work (e.g. \"career\", \"health\", \"finance\", a major project), NOT a sub-topic, skill, tool, or facet. Things like \"software architecture\", \"product design\", \"ui/ux\", \"integration\", \"ai/agent systems\" are all FACETS of one project or domain - map them to that single existing domain, never to separate new domains.\n\
+- Only use a domain name NOT in the list when the intent genuinely fits NO existing domain AND is itself a broad new life/work area worth tracking on its own. This should be rare. When in doubt, reuse the closest existing domain.\n\
+- Do not output two domain names that are facets of the same thing. Collapse them.\n\n\
 Return ONLY a JSON array (no prose, no markdown fences). Each element:\n\
-{{\n  \"title\": short intent name,\n  \"goal\": one sentence - what they are really trying to achieve,\n  \"underlying_need\": the deeper need behind it,\n  \"domains\": [domains it spans],\n  \"sources\": [the distinct surfaces these prompts came from, e.g. \"claude\", \"codex\", \"prevail\"],\n  \"status\": \"active\" | \"dormant\" | \"resolved\",\n  \"confidence\": 0.0-1.0,\n  \"open_questions\": [the next things to figure out],\n  \"evidence\": [2-4 short quoted snippets from the prompts that support this],\n  \"recommendations\": [concrete next actions Prevail could take or suggest]\n}}\n\n\
+{{\n  \"title\": short intent name,\n  \"goal\": one sentence - what they are really trying to achieve,\n  \"underlying_need\": the deeper need behind it,\n  \"domains\": [domains it spans - prefer existing ones],\n  \"sources\": [the distinct surfaces these prompts came from, e.g. \"claude\", \"codex\", \"prevail\"],\n  \"status\": \"active\" | \"dormant\" | \"resolved\",\n  \"confidence\": 0.0-1.0,\n  \"open_questions\": [the next things to figure out],\n  \"evidence\": [2-4 short quoted snippets from the prompts that support this],\n  \"recommendations\": [concrete next actions Prevail could take or suggest]\n}}\n\n\
 Produce 3-8 intents, most important first. Be specific and genuinely useful; \
 never invent facts not supported by the prompts. For \"sources\", list ONLY surfaces \
 that actually appear in this intent's prompts; never invent one.\n\n\
@@ -322,7 +336,8 @@ pub(crate) async fn distill_intents_core(
         return Err("No prompt text to analyze.".into());
     }
     let ideal = crate::ideal_state_preamble(std::path::Path::new(vault));
-    let prompt = format!("{ideal}{}", build_intents_prompt(&activity));
+    let existing_domains = crate::vault::list_domain_names(vault);
+    let prompt = format!("{ideal}{}", build_intents_prompt(&activity, &existing_domains));
 
     crate::bunker::guard_cli(provider)?;
     let model_opt = if model.is_empty() { None } else { Some(model) };
