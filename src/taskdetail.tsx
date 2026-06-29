@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Bot, Flag, MessageSquarePlus, Sparkles, User, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase, relTime } from "./format";
+import { VENDOR_BRAND } from "./constants";
 import type { BoardTask } from "./types";
 
 type Detail = { description?: string; comments?: { ts: number; text: string; author?: string }[] };
@@ -74,8 +75,10 @@ export function TaskDetailPanel({ task, vaultPath, onClose, onChanged }: {
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
-      <div className="fixed right-0 top-0 z-50 flex h-full w-[440px] max-w-[92vw] flex-col border-l border-border bg-surface shadow-2xl">
+      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      {/* Floating side drawer: anchored to the right but inset on all sides so it
+          reads as a compact card, not a full-height slab covering the screen. */}
+      <div className="fixed right-3 top-3 bottom-3 z-50 flex w-[400px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
         {/* Header */}
         <div className="flex items-start gap-2 border-b border-border-subtle px-4 py-3">
           <span title={task.owner === "ai" ? "AI" : "Me"} className={`mt-0.5 shrink-0 ${task.owner === "ai" ? "text-accent" : "text-text-muted"}`}>
@@ -146,8 +149,20 @@ export function TaskDetailPanel({ task, vaultPath, onClose, onChanged }: {
               {comments.map((c, i) => (
                 <div key={i} className="rounded-lg border border-border-subtle bg-background px-3 py-2">
                   <div className="mb-0.5 flex items-center gap-2 font-mono text-[9px] uppercase tracking-wider text-text-muted">
-                    {c.author === "ai" ? <Bot className="h-3 w-3 text-accent" /> : <User className="h-3 w-3" />}
-                    {c.author === "ai" ? "AI" : "You"} · {relTime(c.ts)}
+                    {(() => {
+                      // author is "me"/"you" (the user), "ai" (generic), or an
+                      // agent id like "pi"/"hermes"/"opencode"/"Prevail" when a
+                      // task was handed to an agent. Show who actually wrote it.
+                      const a = c.author;
+                      const isUser = !a || a === "me" || a === "you";
+                      const label = isUser ? "You" : a === "ai" ? "AI" : (VENDOR_BRAND[a]?.name ?? a);
+                      return (
+                        <>
+                          {isUser ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3 text-accent" />}
+                          {label} · {relTime(c.ts)}
+                        </>
+                      );
+                    })()}
                   </div>
                   <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-text-secondary">{c.text}</div>
                 </div>
