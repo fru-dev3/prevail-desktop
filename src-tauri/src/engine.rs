@@ -1097,16 +1097,26 @@ pub fn engine_app_add(
     title: String,
     integration: String,
     domains: Vec<String>,
+    mcp_command: Option<String>,
+    mcp_install: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let doms = domains.join(",");
     // Pass --vault explicitly: `connectors add` resolves the vault from this
     // flag first, so the scaffold lands in the real vault even if the engine's
     // PREVAIL_VAULT_ROOT env wasn't set for this call (which otherwise made it
     // fall back to a bogus default path and fail with EROFS).
-    run_engine_json(&[
-        "connectors", "add", "--id", &id, "--title", &title,
-        "--integration", &integration, "--domains", &doms, "--vault", &vault, "--json",
-    ])
+    let mut args: Vec<String> = vec![
+        "connectors".into(), "add".into(), "--id".into(), id, "--title".into(), title,
+        "--integration".into(), integration, "--domains".into(), doms,
+        "--vault".into(), vault,
+    ];
+    // MCP servers carry their stdio spawn command (and optional one-time install)
+    // so the connector knows how to launch the server. Only forwarded when set.
+    if let Some(c) = mcp_command { if !c.trim().is_empty() { args.push("--mcp-command".into()); args.push(c); } }
+    if let Some(i) = mcp_install { if !i.trim().is_empty() { args.push("--mcp-install".into()); args.push(i); } }
+    args.push("--json".into());
+    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_engine_json(&refs)
 }
 
 /// Scaffold a GATEWAY app (Composio / Nango) for a toolkit pick. Unlike
