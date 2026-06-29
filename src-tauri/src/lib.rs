@@ -20,6 +20,7 @@ mod children;
 mod clis;
 mod distill;
 mod gateway_log;
+mod hooks;
 mod intent_daemon;
 mod domain;
 mod intents;
@@ -384,6 +385,9 @@ pub fn run() {
             tasks::tasks_read,
             tasks::tasks_set,
             tasks::tasks_add,
+            hooks::hooks_read,
+            hooks::hooks_write,
+            hooks::hooks_run,
             tasks::tasks_read_all,
             tasks::work_count,
             tasks::tasks_set_status,

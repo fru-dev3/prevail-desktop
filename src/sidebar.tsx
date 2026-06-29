@@ -3,20 +3,22 @@
 // gateway/MCP/benchmark status strips from shared modules.
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
-import { Archive, ChevronDown, ChevronLeft, ChevronRight, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Star, Sun } from "lucide-react";
+import { Archive, Briefcase, ChevronDown, ChevronLeft, ChevronRight, Clock, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Star, Sun } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { STATUS_TINT } from "./constants";
-import { appName, scoreColor, titleCase } from "./format";
+import { appName, relTime, scoreColor, titleCase } from "./format";
 import { lsGet, lsSet } from "./storage";
 import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
 import { SidebarGatewayLive, SidebarMcpLive } from "./panels";
+import { ProfileSwitcher } from "./profileswitcher";
+import { EDITOR_NAV, WORK_NAV } from "./navdefs";
 import { domainIcon } from "./icons";
 import { useAppearance } from "./hooks";
 import { SidebarBackupActive, SidebarBenchmarkRuns, SidebarBenchScheduled, SidebarProcesses } from "./cards";
 import { BrandMark } from "./brandmark";
 import { AppRowLogo } from "./panels3";
-import type { BrandLogo, Domain, EngineApp, LifeReadiness, Mode, TabId } from "./types";
+import type { BrandLogo, Domain, EngineApp, LifeReadiness, Mode, TabId, ThreadMeta } from "./types";
 
 export function Sidebar({
   collapsed,
@@ -39,6 +41,8 @@ export function Sidebar({
   onOpenOnboarding,
   onDomainsChanged,
   onOpenApp,
+  todayThreads,
+  onOpenThread,
 }: {
   collapsed: boolean;
   setCollapsed: (v: boolean | ((cur: boolean) => boolean)) => void;
@@ -60,6 +64,8 @@ export function Sidebar({
   onOpenOnboarding: () => void;
   onDomainsChanged: () => void;
   onOpenApp: (app: EngineApp) => void;
+  todayThreads: ThreadMeta[];
+  onOpenThread: (m: ThreadMeta) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -133,6 +139,35 @@ export function Sidebar({
   // Domains top-level collapse.
   const [domainsOpen, setDomainsOpen] = useState<boolean>(() => lsGet("prevail.sidebar.domainsOpen") !== "0");
   useEffect(() => { lsSet("prevail.sidebar.domainsOpen", domainsOpen ? "1" : "0"); }, [domainsOpen]);
+
+  // "Today" section collapse (2026 redesign) — shows today's most recent
+  // conversations across all domains. Persisted like the other groups.
+  const [todayOpen, setTodayOpen] = useState<boolean>(() => lsGet("prevail.sidebar.todayOpen") !== "0");
+  useEffect(() => { lsSet("prevail.sidebar.todayOpen", todayOpen ? "1" : "0"); }, [todayOpen]);
+  // "Work" surfaces group — collapsible like Domains. Persisted.
+  const [workOpen, setWorkOpen] = useState<boolean>(() => lsGet("prevail.sidebar.workOpen") !== "0");
+  useEffect(() => { lsSet("prevail.sidebar.workOpen", workOpen ? "1" : "0"); }, [workOpen]);
+
+  // Mode-aware nav (2026 redesign): the single left bar shows Work surfaces or
+  // Editor sections depending on the active mode, rather than a second column.
+  // Track which section is active for highlighting, kept in sync with the events
+  // the content panels listen to.
+  const [editorActive, setEditorActive] = useState("general");
+  const [workActive, setWorkActive] = useState("tasks");
+  useEffect(() => {
+    const onEd = (e: Event) => { const d = (e as CustomEvent<string>).detail || "general"; setEditorActive(d.split(":")[0]); };
+    const onWk = (e: Event) => { const d = (e as CustomEvent<string>).detail || "tasks"; setWorkActive(d); };
+    window.addEventListener("prevail:settings-section", onEd as EventListener);
+    window.addEventListener("prevail:work-section", onWk as EventListener);
+    return () => {
+      window.removeEventListener("prevail:settings-section", onEd as EventListener);
+      window.removeEventListener("prevail:work-section", onWk as EventListener);
+    };
+  }, []);
+  // App owns the actual mode switch + section jump (reliable even when the
+  // content panel isn't mounted yet); we just reflect the choice + announce it.
+  const selectEditor = (id: string) => { setEditorActive(id); window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: id })); };
+  const selectWork = (id: string) => { setWorkActive(id); window.dispatchEvent(new CustomEvent("prevail:work-section", { detail: id })); };
 
   // Archived domains - fetched from the engine. Shown in a collapsible
   // group at the bottom of the rail, each with a Restore action.
@@ -378,8 +413,87 @@ export function Sidebar({
         )}
       </div>
 
+      {/* Profile switcher — pinned at the top under the logo (workspace-context
+          convention: Notion/Linear), keeping the bottom uncluttered. */}
+      <ProfileSwitcher collapsed={collapsed} />
+
       {/* Domain list (icon rail when collapsed, full list when expanded) */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        {/* EDITOR MODE: the single left bar becomes the configuration nav (no
+            second column). Selecting an item drives the content panel via event. */}
+        {tab === "settings" && (
+          <div className={`pt-2 ${collapsed ? "px-1.5" : "px-2"}`}>
+            {EDITOR_NAV.map((group) => (
+              <div key={group.heading} className="mb-1.5">
+                {!collapsed && (
+                  <div className="mb-0.5 mt-2 px-3 font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted/70">{group.heading}</div>
+                )}
+                {group.items.map((it) => {
+                  const Icon = it.icon;
+                  const active = editorActive === it.id;
+                  return (
+                    <button
+                      key={it.id}
+                      onClick={() => selectEditor(it.id)}
+                      title={collapsed ? it.label : undefined}
+                      className={`flex w-full items-center rounded-md py-1.5 text-left text-sm transition-colors ${collapsed ? "justify-center px-0" : "gap-3 px-3"} ${
+                        active ? "bg-accent font-semibold text-background shadow-sm" : "text-text-secondary hover:bg-surface-strong hover:text-text-primary"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {!collapsed && <span className="flex-1">{it.label}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* WORK MODE (everything that isn't Editor): Today + Work surfaces +
+            Domains + Apps, all in this one bar. */}
+        {tab !== "settings" && (<>
+        {/* Today - the most recent conversations across every domain whose last
+            activity is in the local day (top 5). Hidden when the rail is
+            collapsed to keep the icon rail clean. */}
+        {!collapsed && (
+          <div className="px-2 pt-2">
+            <button
+              onClick={() => setTodayOpen((v) => !v)}
+              className="group/h flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
+            >
+              <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${todayOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+              <Clock className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+              <span>Today</span>
+              {todayThreads.length > 0 && (
+                <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{todayThreads.length}</span>
+              )}
+            </button>
+            {todayOpen && (todayThreads.length === 0 ? (
+              <p className="px-4 py-1.5 text-[11px] leading-relaxed text-text-muted">No conversations yet today.</p>
+            ) : (
+              <ul className="space-y-0.5">
+                {todayThreads.map((t) => (
+                  <li key={t.path}>
+                    <button
+                      onClick={() => onOpenThread(t)}
+                      title={`${t.title} · ${t.domain ? titleCase(t.domain) : "General"} · ${relTime(t.updated * 1000)}`}
+                      className="group flex w-full items-center gap-2 rounded-md py-1.5 pl-6 pr-2 text-left transition-colors hover:bg-surface-warm"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                      <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                        <span className="truncate text-[13px] text-text-secondary group-hover:text-text-primary">{t.title}</span>
+                        <span className="truncate text-[10px] text-text-muted">
+                          {t.domain ? titleCase(t.domain) : "General"} · {relTime(t.updated * 1000)}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ))}
+          </div>
+        )}
         {/* General - the home for chats not tied to any domain. Selecting it
             unbinds the chat from domain context; its threads live in the vault
             root _threads/. New threads are created via the threads rail's +. */}
@@ -387,18 +501,18 @@ export function Sidebar({
           <button
             onClick={() => {
               setSelectedDomain("");
-              if (tab === "settings") setTab("chat");
+              if (tab === "work") setTab("chat");
             }}
             title="General: chats not tied to any domain"
             className={
               collapsed
                 ? `flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
-                    selectedDomain === "" && tab !== "settings"
+                    selectedDomain === "" && tab !== "work"
                       ? "bg-accent-soft text-accent"
                       : "text-text-muted hover:bg-surface-warm hover:text-text-primary"
                   }`
                 : `flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
-                    selectedDomain === "" && tab !== "settings"
+                    selectedDomain === "" && tab !== "work"
                       ? "bg-accent-soft text-accent"
                       : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
                   }`
@@ -408,6 +522,43 @@ export function Sidebar({
             {!collapsed && "General"}
           </button>
         </div>
+
+        {/* Work surfaces — board, automations, calendar, notes — in the main bar
+            (no second column). Collapsible + indented, mirroring Domains. */}
+        {!collapsed && (
+          <button
+            onClick={() => setWorkOpen((v) => !v)}
+            className="group/h mt-2 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted hover:text-text-secondary transition-colors"
+          >
+            <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${workOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+            <Briefcase className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+            <span>Work</span>
+            <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{WORK_NAV.flatMap((g) => g.items).length}</span>
+          </button>
+        )}
+        {(collapsed || workOpen) && (
+          <ul className={`space-y-0.5 ${collapsed ? "px-1.5 py-1" : "px-2"}`}>
+            {WORK_NAV.flatMap((g) => g.items).map((it) => {
+              const Icon = it.icon;
+              const active = tab === "work" && workActive === it.id;
+              return (
+                <li key={it.id}>
+                  <button
+                    onClick={() => selectWork(it.id)}
+                    title={collapsed ? it.label : undefined}
+                    className={`flex w-full items-center rounded-md py-1.5 text-left text-sm transition-colors ${collapsed ? "justify-center px-0" : "gap-2.5 pl-6 pr-2"} ${
+                      active ? "bg-accent-soft font-semibold text-accent ring-1 ring-inset ring-accent-border/60" : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {!collapsed && <span className="flex-1 truncate">{it.label}</span>}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
         {!collapsed && (
           <button
             data-tour="domains"
@@ -440,7 +591,7 @@ export function Sidebar({
         {/* "Set up domains" moved to Settings → Vault to declutter the sidebar. */}
         <ul className={`space-y-0.5 ${collapsed ? "px-1.5 py-2" : "px-2"}`}>
           {sortedDomains.map((d, i) => {
-            const active = d.name === selectedDomain && tab !== "settings";
+            const active = d.name === selectedDomain && tab !== "work";
             const Icon = domainIcon(d.name);
             const isPinned = pinned.has(d.name);
             const isFirstPinned = !collapsed && isPinned && (i === 0 || !pinned.has(sortedDomains[i - 1].name));
@@ -471,7 +622,7 @@ export function Sidebar({
                   <button
                     onClick={() => {
                       setSelectedDomain(d.name);
-                      if (tab === "settings") setTab("chat");
+                      if (tab === "work") setTab("chat");
                     }}
                     title={titleCase(d.name)}
                     className={`flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
@@ -553,7 +704,7 @@ export function Sidebar({
                   }}
                   onClick={() => {
                     setSelectedDomain(d.name);
-                    if (tab === "settings") setTab("chat");
+                    if (tab === "work") setTab("chat");
                   }}
                   title="Click to enter · drag to chat as context (plain: state · ⇧ full · ⌥ entire folder)"
                   className={`flex flex-1 cursor-grab items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors active:cursor-grabbing ${
@@ -689,6 +840,44 @@ export function Sidebar({
           </div>
         )}
 
+        {/* Archived domains - collapsible, grouped right under Domains (it's a
+            domains concept). Hidden from the active list; restore re-scans. */}
+        {!collapsed && domainsOpen && archived.length > 0 && (
+          <div className="mt-2 px-2">
+            <button
+              onClick={() => setArchivedOpen((v) => !v)}
+              className="flex w-full items-center gap-1.5 rounded px-1 py-1 pl-4 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-text-secondary"
+            >
+              {archivedOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              <Archive className="h-3 w-3" />
+              Archived
+              <span className="ml-auto rounded-full bg-surface-strong px-1.5 text-[9px] text-text-muted">{archived.length}</span>
+            </button>
+            {archivedOpen && (
+              <ul className="mt-1 space-y-0.5">
+                {archived.map((name) => (
+                  <li
+                    key={name}
+                    className="group flex items-center gap-2 rounded-md px-2 py-1 pl-6 text-text-muted"
+                  >
+                    <Archive className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                    <span className="min-w-0 flex-1 truncate text-xs">{titleCase(name)}</span>
+                    <button
+                      onClick={() => restoreDomain(name)}
+                      disabled={restoring === name}
+                      title={`Restore ${titleCase(name)}`}
+                      className="flex shrink-0 items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted opacity-0 hover:border-accent-border hover:text-accent group-hover:opacity-100 disabled:opacity-100"
+                    >
+                      {restoring === name ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                      restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         {/* Apps - peer to Domains. Always shown so it stays first-class even
             with nothing connected yet. Favorites expand by default; the full
             list stays collapsed so a long catalog never floods the rail. */}
@@ -736,43 +925,7 @@ export function Sidebar({
           </div>
         )}
 
-        {/* Archived domains - collapsible. Hidden from the active list;
-            restore brings them back into the vault scan. */}
-        {!collapsed && domainsOpen && archived.length > 0 && (
-          <div className="mt-3 px-2">
-            <button
-              onClick={() => setArchivedOpen((v) => !v)}
-              className="flex w-full items-center gap-1.5 rounded px-1 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-text-secondary"
-            >
-              {archivedOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              <Archive className="h-3 w-3" />
-              Archived
-              <span className="ml-auto rounded-full bg-surface-strong px-1.5 text-[9px] text-text-muted">{archived.length}</span>
-            </button>
-            {archivedOpen && (
-              <ul className="mt-1 space-y-0.5">
-                {archived.map((name) => (
-                  <li
-                    key={name}
-                    className="group flex items-center gap-2 rounded-md px-2 py-1 text-text-muted"
-                  >
-                    <Archive className="h-3.5 w-3.5 shrink-0 opacity-60" />
-                    <span className="min-w-0 flex-1 truncate text-xs">{titleCase(name)}</span>
-                    <button
-                      onClick={() => restoreDomain(name)}
-                      disabled={restoring === name}
-                      title={`Restore ${titleCase(name)}`}
-                      className="flex shrink-0 items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted opacity-0 hover:border-accent-border hover:text-accent group-hover:opacity-100 disabled:opacity-100"
-                    >
-                      {restoring === name ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                      restore
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+        </>)}
       </div>
 
       {/* App-wide readiness - the aggregate of every domain's score. */}
@@ -816,12 +969,17 @@ export function Sidebar({
       <SidebarBenchScheduled collapsed={collapsed} />
       <SidebarBackupActive collapsed={collapsed} />
 
-      {/* Settings + theme - a full-width ribbon pinned to the bottom: a solid
-          edge-to-edge bar so it reads as the app's footer action, distinct from the
-          muted status lines (MCP / Backups) above. */}
+      {/* Work / Editor + theme - a full-width ribbon pinned to the bottom. The
+          2026 redesign splits the old single "Settings" button into the two
+          modes (Cursor-style): Work (operational hub) and Editor (configuration).
+          A solid edge-to-edge bar so it reads as the app's footer action. */}
       {collapsed ? (
         <div data-tour="settings" className="flex flex-col items-center gap-1 border-t border-border-subtle p-2">
-          <button onClick={() => setTab("settings")} title="Settings"
+          <button onClick={() => setTab("chat")} title="Work — your domains, board, automations, calendar & notes"
+            className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${tab !== "settings" ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}>
+            <Briefcase className="h-4 w-4" />
+          </button>
+          <button onClick={() => setTab("settings")} title="Editor — models, connections & settings"
             className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${tab === "settings" ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}>
             <SettingsIcon className="h-4 w-4" />
           </button>
@@ -831,22 +989,33 @@ export function Sidebar({
           </button>
         </div>
       ) : (
-        <div data-tour="settings" className="flex items-stretch border-t border-border">
-          <button
-            onClick={() => setTab("settings")}
-            title="Settings"
-            className={`flex flex-1 items-center gap-2.5 px-4 py-3 text-left text-[13px] font-semibold tracking-wide transition-colors ${
-              tab === "settings"
-                ? "bg-accent text-background"
-                : "bg-surface-warm text-text-secondary hover:bg-accent-soft hover:text-accent"
-            }`}
-          >
-            <SettingsIcon className="h-4 w-4 shrink-0" />
-            Settings
-          </button>
+        <div data-tour="settings" className="flex items-center gap-2 border-t border-border px-3 py-2.5">
+          {/* Segmented pill: the active mode rides a raised inner pill. */}
+          <div className="flex flex-1 items-center rounded-full border border-border bg-surface-strong p-0.5">
+            <button
+              onClick={() => setTab("chat")}
+              title="Work — your domains, board, automations, calendar & notes"
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition-all ${
+                tab !== "settings" ? "bg-surface text-accent shadow-sm ring-1 ring-inset ring-border-subtle" : "text-text-secondary hover:text-text-primary"
+              }`}
+            >
+              <Briefcase className="h-4 w-4 shrink-0" />
+              Work
+            </button>
+            <button
+              onClick={() => setTab("settings")}
+              title="Editor — models, connections & settings"
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition-all ${
+                tab === "settings" ? "bg-surface text-accent shadow-sm ring-1 ring-inset ring-border-subtle" : "text-text-secondary hover:text-text-primary"
+              }`}
+            >
+              <SettingsIcon className="h-4 w-4 shrink-0" />
+              Editor
+            </button>
+          </div>
           <button
             onClick={() => { const cycle: Mode[] = ["light", "dark", "system"]; const i = cycle.indexOf(appearance.mode); appearance.setMode(cycle[(i + 1) % cycle.length]); }}
-            className={`flex w-12 shrink-0 items-center justify-center border-l border-border transition-colors ${tab === "settings" ? "bg-accent text-background hover:bg-accent-hover" : "bg-surface-warm text-text-muted hover:bg-accent-soft hover:text-accent"}`}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-surface-strong text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
             title={`Theme: ${appearance.mode}: click to cycle`}
           >
             {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}

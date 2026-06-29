@@ -63,6 +63,9 @@ const UI_PREFS_EXCLUDE_PREFIX = [
   // Credentials must never replicate off-device through the synced prefs blob
   // (O13): the WebUI login is a remote control-plane password.
   "prevail.pref.webuiPass", "prevail.pref.webuiUser",
+  // The profile registry is machine-local: it maps profiles to device-specific
+  // vault paths and holds passcode hashes (a credential). Never replicate it.
+  "prevail.profiles",
 ];
 export function isSyncablePrefKey(k: string): boolean {
   if (!k.startsWith("prevail.")) return false;
