@@ -5,7 +5,7 @@
 // hook, mirroring the benchBatches pattern.
 import { useEffect, useState } from "react";
 
-export type ProcKind = "chat" | "council" | "benchmark" | "loop";
+export type ProcKind = "chat" | "council" | "benchmark" | "loop" | "audit";
 export type Proc = { id: string; kind: ProcKind; label: string; domain?: string | null; startedAt: number };
 
 const procs = new Map<string, Proc>();

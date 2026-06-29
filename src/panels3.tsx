@@ -572,6 +572,27 @@ export function ContextScorePanel({
   }, [vaultPath, score?.domain, score?.computed_at]);
   const delta = history.length >= 2 ? history[history.length - 1] - history[0] : null;
 
+  // Live elapsed seconds while an audit runs, so the progress chip visibly ticks
+  // (proof it is working) even though the heavy LLM work runs off the main thread
+  // and the rest of the page stays interactive.
+  const [auditElapsed, setAuditElapsed] = useState(0);
+  useEffect(() => {
+    if (!rescanning) { setAuditElapsed(0); return; }
+    const t0 = Date.now();
+    const iv = setInterval(() => setAuditElapsed(Math.floor((Date.now() - t0) / 1000)), 500);
+    return () => clearInterval(iv);
+  }, [rescanning]);
+  // Clicking a readiness stat tile in the hero scrolls to (and briefly flashes)
+  // its full row in the Structural readiness section below.
+  const [flashDim, setFlashDim] = useState<string | null>(null);
+  const scrollToDim = (key: string) => {
+    const el = document.getElementById(`dim-${key}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setFlashDim(key);
+    window.setTimeout(() => setFlashDim((cur) => (cur === key ? null : cur)), 1200);
+  };
+
   if (loading && !score) {
     return <div className="text-sm text-text-muted">computing context score…</div>;
   }
@@ -604,8 +625,9 @@ export function ContextScorePanel({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Big score + re-scan */}
-      <div className="flex items-center gap-5 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+      {/* Big score + re-scan, with an at-a-glance readiness dashboard on the
+          right so the hero is a full row of useful, clickable signal. */}
+      <div className="flex flex-wrap items-center gap-5 rounded-2xl border border-border bg-surface p-5 shadow-sm">
         <div
           className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-4"
           style={{ borderColor: color }}
@@ -635,14 +657,46 @@ export function ContextScorePanel({
             <div className="mt-2 text-[11px] text-text-muted">Climbs automatically as apps sync, memory builds, and you add context.</div>
           )}
           <div className="mt-3">
-            <button
-              onClick={onRescan}
-              disabled={rescanning}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:bg-accent-soft hover:text-accent disabled:opacity-50"
-            >
-              {rescanning ? "Re-scanning…" : "Re-scan (audit)"}
-            </button>
+            {rescanning ? (
+              // Non-blocking progress: the audit runs off-thread and as a tracked
+              // background process, so the page stays usable and the user can
+              // navigate away and return. The ticking timer proves it is alive.
+              <div className="inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-accent">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Auditing… {auditElapsed}s · runs in the background, keep working
+              </div>
+            ) : (
+              <button
+                onClick={onRescan}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:bg-accent-soft hover:text-accent"
+              >
+                <RefreshCw className="h-3 w-3" /> Re-scan (audit)
+              </button>
+            )}
           </div>
+        </div>
+
+        {/* Readiness dashboard: the six dimensions as compact, clickable stat
+            tiles. Fills the otherwise-empty right side and jumps to the detail
+            row below on click. Hidden on the narrowest screens. */}
+        <div className="hidden shrink-0 grid-cols-3 gap-2 sm:grid" style={{ width: 312 }}>
+          {SCORE_DIMENSIONS.map(({ key, label }) => {
+            const dim = score.breakdown[key];
+            return (
+              <button
+                key={key}
+                onClick={() => scrollToDim(key)}
+                title={dim.detail || `${label}: ${dim.score}`}
+                className="group flex flex-col items-start rounded-lg border border-border-subtle bg-background px-2.5 py-1.5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm"
+              >
+                <span className="font-mono text-[8.5px] uppercase tracking-wider text-text-muted">{label}</span>
+                <span className="font-mono text-base font-semibold leading-tight" style={{ color: scoreColor(dim.score) }}>{dim.score}</span>
+                <span className="mt-1 block h-1 w-full overflow-hidden rounded-full bg-surface-strong">
+                  <span className="block h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, dim.score))}%`, backgroundColor: scoreColor(dim.score) }} />
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -721,7 +775,11 @@ export function ContextScorePanel({
           {SCORE_DIMENSIONS.map(({ key, label }) => {
             const dim = score.breakdown[key];
             return (
-              <div key={key}>
+              <div
+                key={key}
+                id={`dim-${key}`}
+                className={`scroll-mt-24 rounded-md p-1 transition-shadow ${flashDim === key ? "bg-accent-soft/40 ring-2 ring-accent-border" : ""}`}
+              >
                 <div className="mb-1 flex items-center justify-between">
                   <span className="text-sm font-medium text-text-primary">{label}</span>
                   <span className="font-mono text-xs" style={{ color: scoreColor(dim.score) }}>

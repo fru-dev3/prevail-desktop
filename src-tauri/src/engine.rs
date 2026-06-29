@@ -2072,6 +2072,25 @@ pub fn engine_score(
         .map_err(|e| format!("failed to decode ContextScore: {e}"))
 }
 
+/// Async audit re-scan. Same result as `engine_score(audit=true)`, but runs the
+/// blocking engine subprocess on a blocking thread instead of the main thread,
+/// so the LLM audit (which can take many seconds) never freezes the UI. The
+/// audit just recomputes and rewrites the score, so it is idempotent: running it
+/// repeatedly has no cumulative effect beyond a fresh score.
+#[tauri::command]
+pub async fn engine_score_audit(
+    vault: String,
+    domain: String,
+) -> Result<ContextScore, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let value = run_engine_json(&["--vault", &vault, "score", &domain, "--audit"])?;
+        serde_json::from_value::<ContextScore>(value)
+            .map_err(|e| format!("failed to decode ContextScore: {e}"))
+    })
+    .await
+    .map_err(|e| format!("score audit task failed: {e}"))?
+}
+
 /// `prevail --vault <vault> manifest get <domain> --json`
 /// Returns a fully typed DomainManifest.
 #[tauri::command]
