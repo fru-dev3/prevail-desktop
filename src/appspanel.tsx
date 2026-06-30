@@ -799,8 +799,9 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
           )}
 
           {/* RIGHT - the connect flow, the selected connector's config, or a
-              catalog app's detail. Flush inside the panel (no own card). */}
-          <div className="min-w-0 flex-1 overflow-y-auto bg-surface">
+              catalog app's detail. A small gutter (desktop) keeps the detail
+              from butting against the list column's divider. */}
+          <div className="min-w-0 flex-1 overflow-y-auto bg-surface lg:p-3">
             {connecting ? (
               <ConnectAppFlow
                 vaultPath={vaultPath}
