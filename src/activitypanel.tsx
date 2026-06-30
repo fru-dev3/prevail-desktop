@@ -268,7 +268,7 @@ export function SystemActivity({ vaultPath }: { vaultPath: string }) {
               const open = expandedId === id;
               return (
                 <li key={id} className="relative pb-3.5 last:pb-0">
-                  <span className={`absolute -left-[21px] top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-surface ring-2 ring-surface ${e.status === "error" ? "text-danger" : m.tint}`}>
+                  <span className={`absolute -left-[21px] top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-surface ring-2 ring-surface ${e.status === "error" ? "text-err" : m.tint}`}>
                     <Icon className="h-3 w-3" />
                   </span>
                   <button type="button" aria-expanded={open}
@@ -280,7 +280,7 @@ export function SystemActivity({ vaultPath }: { vaultPath: string }) {
                         <span className={m.tint}>{m.label}</span>
                         {e.domain && <span className="rounded bg-surface-warm px-1.5 py-0.5 text-text-secondary">{titleCase(e.domain)}</span>}
                         <span>{relTime(e.ts)}</span>
-                        {e.status === "error" && <span className="text-danger">failed</span>}
+                        {e.status === "error" && <span className="text-err">failed</span>}
                         {e.status === "pending" && <span className="text-warn">needs setup</span>}
                       </div>
                       <div className="mt-0.5 text-[13px] leading-snug text-text-primary">{e.title}</div>

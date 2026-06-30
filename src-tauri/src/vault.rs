@@ -219,6 +219,7 @@ pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
         "AGENTS-operating.md",
         "PREVAIL.md",
         "calendar-external.json",
+        "notes.json",
     ];
     for name in BUILD_SUPPORT {
         move_root_entry(&root, name, &build_dir, &mut moved)?;
@@ -551,6 +552,7 @@ mod tests {
         fs::write(vault.join("ideal-state.md"), "# ideal").unwrap();
         fs::write(vault.join("profile.md"), "# profile").unwrap();
         fs::write(vault.join("AGENTS-operating.md"), "# agents").unwrap();
+        fs::write(vault.join("notes.json"), "[]").unwrap();
         // General loose content.
         fs::write(vault.join("_intents.jsonl"), "{\"kind\":\"intent\"}\n").unwrap();
         fs::write(vault.join("_state.md"), "# general state").unwrap();
@@ -583,6 +585,7 @@ mod tests {
         assert!(vault.join("build").join("ideal-state.md").exists());
         assert!(vault.join("build").join("profile.md").exists());
         assert!(vault.join("build").join("AGENTS-operating.md").exists());
+        assert!(vault.join("build").join("notes.json").exists());
         assert!(vault.join("data").join("domains").join("general").join("_intents.jsonl").exists());
         assert!(vault.join("data").join("domains").join("general").join("_threads").join("t.json").exists());
 

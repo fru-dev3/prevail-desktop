@@ -155,7 +155,7 @@ export function TelemetrySettings() {
           </button>
           {log.length > 0 && (
             <button onClick={() => { clearTelemetryLog(); force((n) => n + 1); }}
-              className="rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-danger hover:text-danger">
+              className="rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-err hover:text-err">
               Clear log
             </button>
           )}
@@ -428,7 +428,7 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
   const capNum = parseFloat(budgetCap);
   const hasCap = Number.isFinite(capNum) && capNum > 0;
   const pct = hasCap ? Math.min(100, Math.round((budgetSpent / capNum) * 100)) : 0;
-  const meterColor = pct >= 90 ? "var(--color-danger, #d24b4b)" : pct >= 70 ? "var(--color-warn, #c98a2b)" : "var(--color-ok, #2e9e5b)";
+  const meterColor = pct >= 90 ? "var(--color-err, #d24b4b)" : pct >= 70 ? "var(--color-warn, #c98a2b)" : "var(--color-ok, #2e9e5b)";
 
   const Row = ({
     title, desc, control,

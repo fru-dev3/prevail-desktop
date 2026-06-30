@@ -6,7 +6,7 @@
 export function scoreColor(score: number): string {
   if (score >= 75) return "var(--color-ok, #2e9e5b)";
   if (score >= 50) return "var(--color-warn, #c98a2b)";
-  return "var(--color-danger, #d24b4b)";
+  return "var(--color-err, #d24b4b)";
 }
 
 // Human freshness from a count of seconds.

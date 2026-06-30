@@ -198,7 +198,7 @@ export function SidebarBenchmarkRuns({ collapsed }: { collapsed: boolean }) {
               <button
                 onClick={() => void cancelBenchBatch(b.id)}
                 title="Cancel this benchmark run"
-                className="shrink-0 rounded px-1 font-mono text-[10px] text-text-muted hover:bg-surface-strong hover:text-danger"
+                className="shrink-0 rounded px-1 font-mono text-[10px] text-text-muted hover:bg-surface-strong hover:text-err"
               >
                 ✗
               </button>

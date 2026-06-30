@@ -65,7 +65,7 @@ export function ContextMeter({
   const frac = Math.max(0, Math.min(1, used / Math.max(1, windowTokens)));
   const pct = Math.round(frac * 100);
   // Calm under 70%, amber 70-90% (getting heavy), red past 90% (degrading).
-  const tone = frac >= 0.9 ? "var(--color-danger)" : frac >= 0.7 ? "var(--color-warn)" : "var(--color-accent)";
+  const tone = frac >= 0.9 ? "var(--color-err)" : frac >= 0.7 ? "var(--color-warn)" : "var(--color-accent)";
   const r = 7, c = 2 * Math.PI * r;
 
   return (

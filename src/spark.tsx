@@ -257,7 +257,7 @@ function SparkCard({ s, onSave, onDismiss, saved, vaultPath }: {
           </button>
         )}
         {onDismiss && (
-          <button onClick={onDismiss} title="Dismiss" className="rounded p-1 text-text-muted hover:text-danger"><X className="h-3.5 w-3.5" /></button>
+          <button onClick={onDismiss} title="Dismiss" className="rounded p-1 text-text-muted hover:text-err"><X className="h-3.5 w-3.5" /></button>
         )}
       </div>
       <div className="px-5 py-4">

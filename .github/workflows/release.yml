@@ -42,6 +42,14 @@ jobs:
       - name: Install engine deps
         run: cd engine && bun install
 
+      # Browser automation needs a REAL on-disk playwright-core shipped next to
+      # the sidecar (prepare-sidecar.sh stages it into resources/node_modules and
+      # playwright-resolve.ts loads it at runtime relative to the executable). The
+      # compiled binary's in-binary copy is unusable, so this dependency must be
+      # present here or the build would ship a broken "browser unavailable" app.
+      - name: Verify engine playwright-core present
+        run: test -f engine/node_modules/playwright-core/package.json || (echo "playwright-core missing from engine deps" && exit 1)
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -134,6 +142,12 @@ jobs:
           bun-version: latest
       - name: Install engine deps
         run: cd engine && bun install
+
+      # See the macOS job: a real on-disk playwright-core must be available to
+      # stage next to the sidecar, or browser automation breaks in the build.
+      - name: Verify engine playwright-core present
+        shell: bash
+        run: test -f engine/node_modules/playwright-core/package.json || (echo "playwright-core missing from engine deps" && exit 1)
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable

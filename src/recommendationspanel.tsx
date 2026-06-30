@@ -85,7 +85,7 @@ function impactOf(r: Rec): { label: string; cls: string } {
   const m = `${r.title} ${r.detail}`.match(/(\d{1,3})\s*\/\s*100/);
   if (m) {
     const s = Number(m[1]);
-    if (s < 50) return { label: "High impact", cls: "bg-danger/10 text-danger" };
+    if (s < 50) return { label: "High impact", cls: "bg-err/10 text-err" };
     if (s < 70) return { label: "Medium impact", cls: "bg-warn/10 text-warn" };
     return { label: "Low impact", cls: "bg-surface-warm text-text-muted" };
   }
@@ -321,7 +321,7 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
                             {isDismissed ? (
                               <button onClick={() => restoreRec(r.id)} title="Restore" className="rounded p-1.5 text-text-muted hover:text-accent"><ArrowRight className="h-3.5 w-3.5 rotate-180" /></button>
                             ) : (
-                              <button onClick={() => dismissRec(r.id)} title="Dismiss" className="rounded p-1.5 text-text-muted hover:text-danger"><X className="h-3.5 w-3.5" /></button>
+                              <button onClick={() => dismissRec(r.id)} title="Dismiss" className="rounded p-1.5 text-text-muted hover:text-err"><X className="h-3.5 w-3.5" /></button>
                             )}
                           </div>
                         </div>

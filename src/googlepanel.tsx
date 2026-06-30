@@ -283,11 +283,11 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
                       {confirmRemove === p.configDir ? (
                         <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
                           Remove?
-                          <button onClick={() => void removeProfile(p.configDir)} disabled={busy !== null} className="rounded px-1.5 py-0.5 font-medium text-danger hover:bg-danger/10 disabled:opacity-50">Yes</button>
+                          <button onClick={() => void removeProfile(p.configDir)} disabled={busy !== null} className="rounded px-1.5 py-0.5 font-medium text-err hover:bg-err/10 disabled:opacity-50">Yes</button>
                           <button onClick={() => setConfirmRemove(null)} className="rounded px-1.5 py-0.5 hover:bg-surface-warm">No</button>
                         </span>
                       ) : (
-                        <button onClick={() => setConfirmRemove(p.configDir)} disabled={busy !== null || authing} title="Remove this account and start fresh" className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-50">
+                        <button onClick={() => setConfirmRemove(p.configDir)} disabled={busy !== null || authing} title="Remove this account and start fresh" className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-err/10 hover:text-err disabled:opacity-50">
                           {busy === p.configDir ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                         </button>
                       )}

@@ -210,7 +210,7 @@ export function OnboardingModal({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
           {error && (
-            <div className="mb-4 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+            <div className="mb-4 rounded-md border border-err/40 bg-err/10 px-3 py-2 text-sm text-err">
               {error}
             </div>
           )}
@@ -730,7 +730,7 @@ export function ContextScorePanel({
               const dotColor =
                 tone === "ok" ? "var(--color-ok, #2e9e5b)"
                 : tone === "warn" ? "var(--color-warn, #c98a2b)"
-                : tone === "danger" ? "var(--color-danger, #d24b4b)"
+                : tone === "danger" ? "var(--color-err, #d24b4b)"
                 : "var(--color-text-muted, #888)";
               return (
                 <div
@@ -808,7 +808,7 @@ export function ContextScorePanel({
                 sev === "critical" ? "danger" : sev === "warn" ? "warn" : "ok";
               const dot =
                 tone === "danger"
-                  ? "var(--color-danger, #d24b4b)"
+                  ? "var(--color-err, #d24b4b)"
                   : tone === "warn"
                   ? "var(--color-warn, #c98a2b)"
                   : "var(--color-text-muted, #888)";

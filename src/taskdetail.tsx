@@ -137,7 +137,7 @@ export function TaskDetailPanel({ task, vaultPath, onClose, onChanged }: {
             </label>
             <button onClick={cyclePriority} disabled={busy} className="flex items-center justify-between rounded-md border border-border bg-background px-2 py-1.5 text-left">
               <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Priority</span>
-              <span className={`inline-flex items-center gap-1 text-xs ${task.priority === "critical" ? "text-danger" : task.priority === "high" ? "text-warn" : "text-text-muted"}`}>
+              <span className={`inline-flex items-center gap-1 text-xs ${task.priority === "critical" ? "text-err" : task.priority === "high" ? "text-warn" : "text-text-muted"}`}>
                 <Flag className="h-3 w-3" fill={task.priority ? "currentColor" : "none"} /> {task.priority ?? "normal"}
               </span>
             </button>

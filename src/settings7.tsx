@@ -375,7 +375,7 @@ function DirectProviderRow({ id, label, hint, onActivated }: {
         </button>
         {configured && (
           <button onClick={remove} disabled={busy}
-            className="rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-danger hover:text-danger disabled:opacity-50">
+            className="rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-err hover:text-err disabled:opacity-50">
             remove
           </button>
         )}

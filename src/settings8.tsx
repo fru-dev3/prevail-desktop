@@ -3,20 +3,8 @@
 // card).
 import { useEffect, useState } from "react";
 import { confirm as tauriConfirm, open } from "@tauri-apps/plugin-dialog";
-import { Archive, Briefcase, Check, ChevronRight, Database, DatabaseBackup, Download, ExternalLink, Folder, FolderCog, FolderOpen, FolderTree, GraduationCap, Home, Loader2, Monitor, Moon, Package, RotateCw, ShieldCheck, Sparkles, Sun, TrendingUp, Users } from "lucide-react";
+import { Archive, ChevronRight, Database, DatabaseBackup, ExternalLink, Folder, FolderCog, FolderOpen, FolderTree, Loader2, Monitor, Moon, RotateCw, ShieldCheck, Sparkles, Sun } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-
-// Pick a glyph for a starter pack from its name, so the list reads visually.
-function packIcon(name: string): LucideIcon {
-  const n = name.toLowerCase();
-  if (n.includes("business")) return Briefcase;
-  if (n.includes("family")) return Users;
-  if (n.includes("student")) return GraduationCap;
-  if (n.includes("income") || n.includes("wealth") || n.includes("invest")) return TrendingUp;
-  if (n.includes("home") || n.includes("household")) return Home;
-  if (n.includes("general")) return Sparkles;
-  return Package;
-}
 import { invoke } from "./bridge";
 import { PALETTES } from "./constants";
 import { formatFreshness } from "./format";
@@ -103,12 +91,9 @@ export function AppearanceSection({ appearance }: { appearance: ReturnType<typeo
 // Council config - its own first-class section. You pick the EXACT models on the
 // default panel (per-provider, multiple models allowed) and which one chairs.
 
-export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, headerless, view }: { vaultPath: string; onVaultMoved?: (path: string) => void; onSetupDomains?: () => void; headerless?: boolean; view?: "cards" | "packs" }) {
+export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, headerless }: { vaultPath: string; onVaultMoved?: (path: string) => void; onSetupDomains?: () => void; headerless?: boolean }) {
   const [appMode, setAppMode] = useState<"demo" | "production" | null>(null);
   const [switchingMode, setSwitchingMode] = useState(false);
-  const [packs, setPacks] = useState<{ file: string; name: string; version: string; description: string | null; domains: string[] }[]>([]);
-  const [importingPack, setImportingPack] = useState<string | null>(null);
-  const [importedPacks, setImportedPacks] = useState<Set<string>>(new Set());
   const [note, setNote] = useState<string | null>(null);
   // B2-16: per-vault backup toggle on the active card. Backup snapshots the
   // ACTIVE vault, so this reflects/controls BACKUP_CFG.enabled.
@@ -236,7 +221,6 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
     const loadMode = () =>
       invoke<{ mode: "demo" | "production" }>("engine_appmode_get").then((m) => setAppMode(m.mode)).catch(() => {});
     loadMode();
-    invoke<typeof packs>("engine_pack_list").then(setPacks).catch(() => {});
     window.addEventListener("prevail:appmode", loadMode);
     return () => window.removeEventListener("prevail:appmode", loadMode);
   }, []);
@@ -250,7 +234,7 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
   }, [appMode, vaultPath]);
 
   // Point the app at a chosen folder as the production vault. `runOnboarding`
-  // is false when a starter pack already populated it - the pack IS the start.
+  // controls whether an empty vault triggers the domain setup flow.
   async function enterProduction(picked: string, runOnboarding: boolean) {
     // Snapshot before clearing the demo sandbox (a pre-event backup).
     await backupVaultNow(vaultPath);
@@ -336,72 +320,18 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
       setSwitchingMode(false);
     }
   }
-  async function importPack(p: { name: string; domains: string[] }) {
-    // In demo mode, importing is an intent to keep something - trigger vault setup first,
-    // then import the pack into the new vault once it's ready.
-    if (appMode === "demo") {
-      const ok = await tauriConfirm(
-        `Starter packs are saved to your own vault. You're in demo: set up your vault now and "${p.name}" will be imported there.`,
-        { title: "Set up your own vault first", kind: "info", okLabel: "Set up my vault", cancelLabel: "Keep exploring" },
-      );
-      if (!ok) return;
-      const picked = await open({ directory: true, multiple: false, title: "Choose a folder for your own vault" });
-      if (!picked || typeof picked !== "string") return;
-      setSwitchingMode(true);
-      setImportingPack(p.name);
-      setNote(null);
-      try {
-        // The pack populates the vault, so skip domain onboarding entirely.
-        await enterProduction(picked, false);
-        const r = await invoke<{ created: string[]; skipped: string[] }>("engine_pack_import", { vault: picked, pack: p.name, overwrite: false });
-        const parts: string[] = [];
-        if (r.created.length) parts.push(`added ${r.created.join(", ")}`);
-        if (r.skipped.length) parts.push(`kept ${r.skipped.join(", ")}`);
-        setImportedPacks((s) => new Set(s).add(p.name));
-        setNote(`Vault set up and ${p.name} imported: ${parts.join(" · ") || "no new domains"}.`);
-        window.dispatchEvent(new Event("prevail:domains-changed"));
-      } catch (e) {
-        setNote(`Could not set up vault: ${String(e)}`);
-      } finally {
-        setSwitchingMode(false);
-        setImportingPack(null);
-      }
-      return;
-    }
-    // Production mode - import directly into the current vault.
-    setImportingPack(p.name);
-    setNote(null);
-    try {
-      const r = await invoke<{ created: string[]; skipped: string[] }>("engine_pack_import", { vault: vaultPath, pack: p.name, overwrite: false });
-      const parts: string[] = [];
-      if (r.created.length) parts.push(`added ${r.created.join(", ")}`);
-      if (r.skipped.length) parts.push(`kept ${r.skipped.join(", ")}`);
-      setImportedPacks((s) => new Set(s).add(p.name));
-      setNote(`Imported ${p.name}: ${parts.join(" · ") || "no new domains"}. Find them in your sidebar.`);
-      window.dispatchEvent(new Event("prevail:domains-changed"));
-    } catch (e) {
-      setNote(`Import failed: ${String(e)}`);
-    } finally {
-      setImportingPack(null);
-    }
-  }
   const isDemo = appMode === "demo";
   return (
     <>
-      {/* DEMO-1 / IA-1: "Demo Mode" was a misnomer (it hosts starter packs that
-          populate the REAL vault). Renamed "Sandbox" - the throwaway exploration
-          space - with starter packs framed as production setup. */}
-      {!headerless && view !== "cards" && (
+      {/* "Sandbox" - the throwaway exploration space. Your vault vs the demo
+          vault as MUTUALLY-EXCLUSIVE toggles. */}
+      {!headerless && (
         <SettingsHeader
           icon={Sparkles}
           title="Sandbox"
-          subtitle="Explore Prevail with throwaway sample data, then set up your own vault when you're ready. Starter packs below populate your real vault."
+          subtitle="Explore Prevail with throwaway sample data, then set up your own vault when you're ready."
         />
       )}
-      {/* B2-15: with view="packs" the cards are hidden (they live in the Vault
-          section); view="cards" hides packs. Default renders both (back-compat).
-          W1: Your Vault vs Demo Vault as MUTUALLY-EXCLUSIVE toggles. */}
-      {view !== "packs" && (<>
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className={`rounded-xl border p-4 transition-all ${!isDemo ? "border-2 border-warn bg-warn/10 shadow-sm" : "border border-border bg-surface opacity-55"}`}>
           {/* Header: shield + title + Active, toggle hard-right. */}
@@ -461,69 +391,10 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
         </div>
       </div>
       {switchingMode && <div className="mb-4 text-xs text-text-muted">Switching…</div>}
-      </>)}
-      {view !== "cards" && packs.length > 0 && (
-        <div className="mt-4">
-          {/* Suppress this inner header when rendered as the Workspace "Starter
-              packs" section (view==="packs") — the WorkspaceSubLabel already
-              titles it, so showing both read as a duplicate. */}
-          {view !== "packs" && (
-            <>
-              <div className="mb-2 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">
-                <Sparkles className="h-3.5 w-3.5" /> Starter packs
-              </div>
-              <p className="mb-3 text-xs text-text-muted">
-                Import a ready-made set of domains for your situation. Import one at a time; existing domains are always kept, never overwritten.
-              </p>
-            </>
-          )}
-          {/* Visible result right where you're looking, not just a footer. */}
-          {note && (
-            <div className="mb-3 flex items-start gap-2 rounded-lg border border-accent-border bg-accent-soft px-3 py-2 text-xs text-text-primary">
-              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
-              <span>{note}</span>
-            </div>
-          )}
-          <div className="flex flex-col gap-2">
-            {packs.map((p) => {
-              const imported = importedPacks.has(p.name);
-              const busy = importingPack === p.name;
-              return (
-                <div key={p.file} className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${imported ? "border-accent-border bg-accent-soft" : "border-border bg-surface"}`}>
-                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${imported ? "bg-accent text-background" : "bg-surface-warm text-text-secondary"}`}>
-                    {(() => { const PI = packIcon(p.name); return <PI className="h-4 w-4" />; })()}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-                      {p.name}
-                      {imported && <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-background"><Check className="h-3 w-3" /> Imported</span>}
-                    </div>
-                    {p.description && <div className="mt-0.5 text-xs text-text-muted">{p.description}</div>}
-                    <div className="mt-1 font-mono text-[10px] text-text-secondary">{p.domains.join(" · ")}</div>
-                  </div>
-                  <button
-                    onClick={() => importPack(p)}
-                    disabled={importingPack !== null || imported}
-                    className={`shrink-0 inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm disabled:opacity-50 ${imported ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background hover:bg-surface-warm"}`}
-                  >
-                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : imported ? <Check className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" />}
-                    {busy ? "Importing…" : imported ? "Imported" : "Import"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      {/* Footer so the page closes cleanly instead of ending abruptly. */}
-      {view !== "cards" && (
-        <div className="mt-6 flex items-center gap-2 border-t border-border-subtle pt-4 text-xs text-text-muted">
-          <Sparkles className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-          <span>
-            {isDemo
-              ? "You're in the sandbox. Importing a pack sets up your own vault and moves you out of the sandbox: or use the button above to set up your vault first."
-              : "You're in your own vault. Import a starter pack any time to add ready-made domains."}
-          </span>
+      {/* Switch feedback (set by switchToProduction / switchToDemo). */}
+      {note && (
+        <div className="flex items-start gap-2 rounded-lg border border-accent-border bg-accent-soft px-3 py-2 text-xs text-text-primary">
+          <span>{note}</span>
         </div>
       )}
     </>
@@ -826,9 +697,9 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
 }
 
 // IA-1: "Workspace" is the single umbrella area covering where data lives (vault,
-// domains, backups) and how you set it up (starter packs) + the throwaway
-// Sandbox. Replaces the separate "Vault" and "Demo Mode" nav entries, composing
-// the (headerless) Vault + Sandbox sections under one header with sub-labels.
+// domains, backups) + the throwaway Sandbox. Replaces the separate "Vault" and
+// "Demo Mode" nav entries, composing the (headerless) Vault + Sandbox sections
+// under one header with sub-labels.
 function WorkspaceSubLabel({ icon: Icon, label, desc }: { icon: LucideIcon; label: string; desc: string }) {
   return (
     <div className="mb-2 mt-1 flex items-center gap-2 px-1">
@@ -842,17 +713,12 @@ function WorkspaceSubLabel({ icon: Icon, label, desc }: { icon: LucideIcon; labe
 export function WorkspaceSection({ vaultPath, onSetupDomains, onVaultMoved }: { vaultPath: string; onSetupDomains?: () => void; onVaultMoved?: (path: string) => void }) {
   return (
     <>
-      <SettingsHeader icon={FolderTree} title="Workspace" subtitle="Where your data lives and how you set it up: your vault, backups, and starter packs." />
+      <SettingsHeader icon={FolderTree} title="Workspace" subtitle="Where your data lives and how you set it up: your vault, the demo vault, and backups." />
       {/* ONE Vault section = the Your/Demo vault cards (inline change+open icons and
           a per-vault backup toggle), plus a copy-safe filename normalizer. */}
-      <div className="mb-7">
-        <WorkspaceSubLabel icon={FolderOpen} label="Vault" desc="your vault · demo vault · backups" />
-        <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} headerless view="cards" />
-      </div>
-      {/* Starter packs as its own section. */}
       <div>
-        <WorkspaceSubLabel icon={Sparkles} label="Starter packs" desc="ready-made domains for your situation" />
-        <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} headerless view="packs" />
+        <WorkspaceSubLabel icon={FolderOpen} label="Vault" desc="your vault · demo vault · backups" />
+        <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} headerless />
       </div>
     </>
   );

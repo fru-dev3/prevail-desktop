@@ -510,8 +510,6 @@ pub fn run() {
             engine::engine_production_init,
             engine::engine_appmode_mark_demo,
             engine::engine_discover_models,
-            engine::engine_pack_list,
-            engine::engine_pack_import,
             engine::engine_lock_status,
             engine::engine_lock_set,
             engine::engine_lock_verify,
