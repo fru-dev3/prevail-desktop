@@ -19,6 +19,7 @@ import { CollapsibleSection } from "./collapsible";
 import { GeneralSection, IdealStateSection, SafetySection } from "./settings4";
 import { AboutSection, GatewayLogsCard, GatewaySection } from "./settings5";
 import { IntegrationsPanel } from "./integrationspanel";
+import { PromptCapturePanel } from "./promptcapturepanel";
 import { CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6";
 import { ModelsSection } from "./settings7";
 import { AppearanceSection, WorkspaceSection } from "./settings8";
@@ -50,7 +51,7 @@ export function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "autonomy" | "council" | "gateway" | "mcp" | "integrations" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "loopboard" | "spark" | "hooks" | "profiles";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "autonomy" | "council" | "gateway" | "mcp" | "prompt-capture" | "integrations" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "loopboard" | "spark" | "hooks" | "profiles";
   // Editor lands on General. The operational surfaces (Work board / Insights /
   // Spark) moved to Work mode, so Editor opens on a config page. A specific
   // jumpTo (e.g. "connectors") still wins.
@@ -169,6 +170,7 @@ export function SettingsPanel({
           {section === "autonomy" && <AutonomyPanel vaultPath={vaultPath} />}
           {section === "gateway" && <><GatewaySection /><GatewayLogsCard vaultPath={vaultPath} /></>}
           {section === "mcp" && <IntegrationsPanel vaultPath={vaultPath} clis={clis} />}
+          {section === "prompt-capture" && <PromptCapturePanel vaultPath={vaultPath} />}
           {section === "hooks" && <HooksSection vaultPath={vaultPath} />}
           {section === "profiles" && <ProfilesSection />}
           {section === "remote" && <RemoteSection />}

@@ -620,7 +620,7 @@ export function BenchQuestions({
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save
           </button>
           {editing !== "new" && (
-            <button onClick={() => remove(draft)} className="inline-flex items-center gap-1.5 rounded-lg border border-danger/40 px-3 py-2 text-sm text-danger hover:bg-danger/10">
+            <button onClick={() => remove(draft)} className="inline-flex items-center gap-1.5 rounded-lg border border-err/40 px-3 py-2 text-sm text-err hover:bg-err/10">
               <Trash2 className="h-3.5 w-3.5" /> Delete
             </button>
           )}
@@ -955,7 +955,7 @@ export function BenchRunConfig({
             <div className="mt-6 flex justify-center">
               <button
                 onClick={onCancel}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3.5 py-1.5 font-mono text-[11px] text-text-secondary transition-colors hover:border-danger hover:text-danger"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3.5 py-1.5 font-mono text-[11px] text-text-secondary transition-colors hover:border-err hover:text-err"
               >
                 <X className="h-3.5 w-3.5" /> Cancel run
               </button>
@@ -984,7 +984,7 @@ export function BenchRunConfig({
                       {j.status === "queued" ? "queued" : `${j.done}/${j.total}`}
                     </span>
                     <span className={`w-16 text-right font-mono text-[10px] uppercase tracking-wider ${
-                      j.status === "error" ? "text-danger" : j.status === "cancelled" ? "text-text-muted" : j.status === "done" ? "text-ok" : "text-accent"
+                      j.status === "error" ? "text-err" : j.status === "cancelled" ? "text-text-muted" : j.status === "done" ? "text-ok" : "text-accent"
                     }`}>
                       {j.status === "error" ? "error" : j.status === "cancelled" ? "cancelled" : j.status === "done" ? "done" : j.status === "scoring" ? "scoring" : j.status === "running" ? `${pct}%` : "queued"}
                     </span>
@@ -992,12 +992,12 @@ export function BenchRunConfig({
                   <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-warm">
                     <div
                       className={`h-full rounded-full transition-all duration-500 ${
-                        j.status === "error" ? "bg-danger/60" : j.status === "cancelled" ? "bg-surface-strong" : j.status === "scoring" || j.status === "done" ? "bg-ok" : "bg-accent"
+                        j.status === "error" ? "bg-err/60" : j.status === "cancelled" ? "bg-surface-strong" : j.status === "scoring" || j.status === "done" ? "bg-ok" : "bg-accent"
                       } ${j.status === "scoring" ? "animate-pulse" : ""}`}
                       style={{ width: `${j.status === "done" || j.status === "scoring" ? 100 : pct}%` }}
                     />
                   </div>
-                  {j.note && <div className="mt-1.5 font-mono text-[10px] text-danger">{j.note}</div>}
+                  {j.note && <div className="mt-1.5 font-mono text-[10px] text-err">{j.note}</div>}
                 </button>
                 {expanded && j.qids.length > 0 && (
                   <div className="max-h-64 overflow-y-auto border-t border-border-subtle bg-background/40 px-4 py-2">
@@ -1010,7 +1010,7 @@ export function BenchRunConfig({
                           <span className="w-4 shrink-0 text-center">
                             {info ? (
                               failed
-                                ? <AlertTriangle className="h-3 w-3 text-danger" />
+                                ? <AlertTriangle className="h-3 w-3 text-err" />
                                 : <Check className="h-3 w-3 text-ok" strokeWidth={3} />
                             ) : isCur ? (
                               <Loader2 className="h-3 w-3 animate-spin text-accent" />
@@ -1022,7 +1022,7 @@ export function BenchRunConfig({
                             {q}
                           </span>
                           {info && !failed && <span className="max-w-[200px] truncate font-mono text-[9px] text-text-muted">{info}</span>}
-                          {failed && <span className="max-w-[260px] truncate font-mono text-[9px] text-danger" title={info}>{info}</span>}
+                          {failed && <span className="max-w-[260px] truncate font-mono text-[9px] text-err" title={info}>{info}</span>}
                         </div>
                       );
                     })}
@@ -1245,7 +1245,7 @@ export function BenchRunConfig({
                   <CalendarClock className="h-3 w-3" /> {isScheduled ? "Scheduled" : "Schedule"}
                 </button>
                 <button onClick={() => { loadSuite(s); setSuiteName(s.name); setSavingSuite(true); }} title="Edit: load this council's models into the editor above, adjust the selection, then Save to update it" className="text-text-muted/60 hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>
-                <button onClick={() => { if (isScheduled) setScheduledSuiteId(null); deleteSuite(s.id); }} title="Delete suite" className="text-text-muted/50 hover:text-danger"><Trash2 className="h-3.5 w-3.5" /></button>
+                <button onClick={() => { if (isScheduled) setScheduledSuiteId(null); deleteSuite(s.id); }} title="Delete suite" className="text-text-muted/50 hover:text-err"><Trash2 className="h-3.5 w-3.5" /></button>
               </div>
             );
           })}

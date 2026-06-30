@@ -59,7 +59,8 @@
       "resources/connectors/logos.json",
       "resources/connectors/cli_providers.json",
       "resources/sample-vault/**/*",
-      "resources/skill-packs/**/*"
+      "resources/skill-packs/**/*",
+      "resources/node_modules/playwright-core/**/*"
     ],
     "macOS": {
       "minimumSystemVersion": "13.0",

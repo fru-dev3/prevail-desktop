@@ -5,12 +5,12 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
-import { Check, FolderOpen, Lock, Pencil, Plus, Sparkles, Trash2, UserRound, X } from "lucide-react";
+import { ArrowLeftRight, Check, FolderOpen, Layers, Lock, Pencil, Pin, Plus, Sparkles, Star, Trash2, UserRound, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
 import {
-  getActiveId, hashPasscode, imageFileToDataUrl, loadProfiles, newProfileId, PROFILE_COLORS,
-  removeProfile, setActiveId, upsertProfile, verifyPasscode, type Profile,
+  getActiveId, getDefaultId, hashPasscode, imageFileToDataUrl, loadProfiles, newProfileId, PROFILE_COLORS,
+  removeProfile, setActiveId, setDefaultId, upsertProfile, verifyPasscode, type Profile,
 } from "./profiles";
 
 type Draft = { id: string; label: string; email: string; vaultPath: string; passcode: string; color: string; image?: string; hadPass: boolean };
@@ -34,18 +34,47 @@ function Avatar({ p, size }: { p: { label: string; email?: string; color?: strin
 export function ProfilesSection() {
   const [profiles, setProfiles] = useState<Profile[]>(() => loadProfiles());
   const [activeId, setActive] = useState<string | null>(() => getActiveId());
+  const [defaultId, setDefault] = useState<string | null>(() => getDefaultId());
   const [draft, setDraft] = useState<Draft | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [gateId, setGateId] = useState<string | null>(null);
   const [gateCode, setGateCode] = useState("");
   const [gateErr, setGateErr] = useState<string | null>(null);
+  // Best-effort domain count per profile vault, filled lazily from disk. A vault
+  // that can't be scanned (path gone, not yet created) simply stays absent.
+  const [counts, setCounts] = useState<Record<string, number>>({});
 
-  const refresh = () => { setProfiles(loadProfiles()); setActive(getActiveId()); };
+  const refresh = () => { setProfiles(loadProfiles()); setActive(getActiveId()); setDefault(getDefaultId()); };
   useEffect(() => {
     const f = () => refresh();
     window.addEventListener("prevail:profiles-changed", f);
     return () => window.removeEventListener("prevail:profiles-changed", f);
   }, []);
+  // Fetch domain counts for each profile's vault so the cards can show how much
+  // lives in each. Runs on the profile list changing; failures are ignored.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const next: Record<string, number> = {};
+      for (const p of profiles) {
+        try {
+          const ds = await invoke<{ name: string }[]>("scan_vault", { path: p.vaultPath });
+          if (Array.isArray(ds)) next[p.id] = ds.length;
+        } catch { /* vault not scannable yet — leave its count unset */ }
+      }
+      if (!cancelled) setCounts(next);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles.map((p) => `${p.id}:${p.vaultPath}`).join("|")]);
+
+  // Make a profile the default/startup one. Distinct from switching: it does not
+  // change the active session, only which profile is preferred on a fresh boot.
+  const makeDefault = (p: Profile) => {
+    setDefaultId(p.id);
+    setDefault(p.id);
+    window.dispatchEvent(new CustomEvent("prevail:profiles-changed"));
+  };
 
   const startAdd = () => { setErr(null); setDraft(blankDraft(profiles.length)); };
   const startEdit = (p: Profile) => {
@@ -145,7 +174,7 @@ export function ProfilesSection() {
       <SettingsHeader
         title="Profiles"
         icon={UserRound}
-        subtitle="Separate, fully-isolated identities, each with its own vault, context, domains, and history. Switch profiles to switch everything. An optional passcode gates a profile before you can open it."
+        subtitle="Separate, fully-isolated identities, each with its own vault, context, domains, and history. Switch profiles to switch everything. Pin a default to choose which one opens on startup. An optional passcode gates a profile before you can open it."
         right={
           !draft ? (
             <button onClick={startAdd} className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover">
@@ -223,41 +252,108 @@ export function ProfilesSection() {
         </div>
       )}
 
-      {/* Profile list */}
+      {/* Profile list — rich, full-width cards. The active one is ringed in accent;
+          every card lifts + brightens on hover so the target is obvious. */}
       {!draft && err && <div className="mb-3 text-xs text-err">{err}</div>}
-      <ul className="grid max-w-xl grid-cols-1 gap-2">
-        {profiles.map((p) => (
-          <li key={p.id} className={`rounded-lg border bg-surface p-3 ${p.id === activeId ? "border-accent-border" : "border-border-subtle"}`}>
-            <div className="flex items-center gap-3">
-              <Avatar p={p} size={40} />
-              <div className="flex min-w-0 flex-1 flex-col leading-tight">
-                <span className="flex items-center gap-1.5 truncate text-sm font-semibold text-text-primary">
-                  {p.label}
-                  {p.passHash && <Lock className="h-3 w-3 text-text-muted" />}
-                  {p.id === activeId && <span className="rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent">Active</span>}
-                </span>
-                {p.email && <span className="truncate text-[11px] text-text-muted">{p.email}</span>}
-                <span className="truncate font-mono text-[10px] text-text-muted/80" title={p.vaultPath}>{p.vaultPath}</span>
+      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {profiles.map((p) => {
+          const isActive = p.id === activeId;
+          const isDefault = p.id === defaultId;
+          const count = counts[p.id];
+          return (
+            <li
+              key={p.id}
+              className={`group relative flex flex-col rounded-xl border p-4 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg ${
+                isActive
+                  ? "border-2 border-accent bg-accent-soft shadow-sm ring-1 ring-accent/40"
+                  : "border border-border-subtle bg-surface hover:border-accent-border hover:bg-surface-warm"
+              }`}
+            >
+              {/* Identity: avatar + name + email + status badges */}
+              <div className="flex items-start gap-3">
+                <div className="relative shrink-0">
+                  <Avatar p={p} size={52} />
+                  {isActive && (
+                    <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-surface bg-accent">
+                      <Check className="h-2.5 w-2.5 text-background" />
+                    </span>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate text-base font-semibold text-text-primary" title={p.label}>{p.label}</span>
+                    {p.passHash && <Lock className="h-3.5 w-3.5 shrink-0 text-text-muted" />}
+                  </div>
+                  {p.email && <span className="block truncate text-xs text-text-muted">{p.email}</span>}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                    {isActive && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-background">Active</span>
+                    )}
+                    {isDefault && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-warn/15 px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-warn">
+                        <Star className="h-2.5 w-2.5 fill-current" /> Default
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-1">
-                {p.id !== activeId && (
-                  <button onClick={() => onSwitchClick(p)} className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent" title="Switch to this profile">
-                    <Check className="h-3.5 w-3.5" /> Switch
+
+              {/* Meta: vault path + domain count */}
+              <div className="mt-3 space-y-1.5 rounded-lg border border-border-subtle bg-background px-2.5 py-2">
+                <div className="flex items-center gap-1.5">
+                  <FolderOpen className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                  <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-text-secondary" title={p.vaultPath}>{p.vaultPath}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Layers className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                  <span className="text-[11px] text-text-muted">
+                    {count === undefined ? "domains —" : `${count} domain${count === 1 ? "" : "s"}`}
+                  </span>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="mt-3 flex items-center gap-1.5">
+                {!isActive && (
+                  <button onClick={() => onSwitchClick(p)} className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-accent-border hover:text-accent" title="Switch to this profile">
+                    <ArrowLeftRight className="h-3.5 w-3.5" /> Switch
                   </button>
                 )}
-                <button onClick={() => startEdit(p)} className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-text-primary" title="Edit"><Pencil className="h-3.5 w-3.5" /></button>
-                <button onClick={() => void remove(p)} className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-err/10 hover:text-err" title="Remove"><Trash2 className="h-3.5 w-3.5" /></button>
+                {isActive && (
+                  <span className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-accent">
+                    <Check className="h-3.5 w-3.5" /> In use
+                  </span>
+                )}
+                <button
+                  onClick={() => makeDefault(p)}
+                  disabled={isDefault}
+                  className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    isDefault
+                      ? "cursor-default border-transparent text-text-muted"
+                      : "border-border bg-background text-text-secondary hover:border-warn hover:text-warn"
+                  }`}
+                  title={isDefault ? "This profile opens on startup" : "Open this profile on startup"}
+                >
+                  {isDefault ? <Star className="h-3.5 w-3.5 fill-current" /> : <Pin className="h-3.5 w-3.5" />}
+                  {isDefault ? "Default" : "Set default"}
+                </button>
+                <div className="ml-auto flex items-center gap-1">
+                  <button onClick={() => startEdit(p)} className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-text-primary" title="Edit"><Pencil className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => void remove(p)} className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-err/10 hover:text-err" title="Remove"><Trash2 className="h-3.5 w-3.5" /></button>
+                </div>
               </div>
-            </div>
-            {gateId === p.id && (
-              <div className="mt-2 flex items-center gap-2 border-t border-border-subtle pt-2">
-                <input autoFocus type="password" value={gateCode} onChange={(e) => { setGateCode(e.target.value); setGateErr(null); }} onKeyDown={(e) => { if (e.key === "Enter") void doSwitch(p, gateCode); if (e.key === "Escape") setGateId(null); }} placeholder="Passcode" className="flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm focus:border-accent-border focus:outline-none" />
-                <button onClick={() => void doSwitch(p, gateCode)} className="rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover">Unlock & switch</button>
-                {gateErr && <span className="text-[10px] text-err">{gateErr}</span>}
-              </div>
-            )}
-          </li>
-        ))}
+
+              {/* Inline passcode gate (gated profiles) */}
+              {gateId === p.id && (
+                <div className="mt-3 flex items-center gap-2 border-t border-border-subtle pt-3">
+                  <input autoFocus type="password" value={gateCode} onChange={(e) => { setGateCode(e.target.value); setGateErr(null); }} onKeyDown={(e) => { if (e.key === "Enter") void doSwitch(p, gateCode); if (e.key === "Escape") setGateId(null); }} placeholder="Passcode" className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm focus:border-accent-border focus:outline-none" />
+                  <button onClick={() => void doSwitch(p, gateCode)} className="shrink-0 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover">Unlock & switch</button>
+                  {gateErr && <span className="shrink-0 text-[10px] text-err">{gateErr}</span>}
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </>
   );

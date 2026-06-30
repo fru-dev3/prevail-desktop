@@ -53,6 +53,11 @@ export function imageFileToDataUrl(file: File, size = 128): Promise<string> {
 
 const KEY = "prevail.profiles";
 const ACTIVE_KEY = "prevail.profiles.activeId";
+// The DEFAULT (startup) profile — distinct from the currently-active one. When
+// no profile is active yet (a fresh boot, or the active id went stale),
+// ensureDefaultProfile prefers this one. It is a soft preference: an already
+// resolved active session is not forced back to the default mid-run.
+const DEFAULT_KEY = "prevail.profiles.defaultId";
 
 // Distinct avatar tints, assigned round-robin as profiles are created.
 export const PROFILE_COLORS = ["#C4A35A", "#3CD8FF", "#7C8CF8", "#6FCF97", "#EB7BC0", "#F2994A"];
@@ -77,6 +82,15 @@ export function getActiveId(): string | null {
 
 export function setActiveId(id: string): void {
   lsSet(ACTIVE_KEY, id);
+}
+
+// The default/startup profile id (the one preferred when nothing is active yet).
+export function getDefaultId(): string | null {
+  return lsGet(DEFAULT_KEY) || null;
+}
+
+export function setDefaultId(id: string): void {
+  lsSet(DEFAULT_KEY, id);
 }
 
 export function getActiveProfile(): Profile | null {
@@ -105,6 +119,8 @@ export function removeProfile(id: string): Profile[] {
     if (list[0]) setActiveId(list[0].id);
     else lsSet(ACTIVE_KEY, "");
   }
+  // Don't leave a dangling default pointing at a removed profile.
+  if (getDefaultId() === id) lsSet(DEFAULT_KEY, list[0]?.id ?? "");
   return list;
 }
 
@@ -122,8 +138,13 @@ export function ensureDefaultProfile(currentVaultPath: string | null): Profile |
   }
   let active = getActiveProfile();
   if (!active) {
-    // Stale/missing active id — adopt the profile matching the current vault, else the first.
-    active = (currentVaultPath && list.find((p) => p.vaultPath === currentVaultPath)) || list[0];
+    // Stale/missing active id — prefer the chosen default, then the profile
+    // matching the current vault, then the first.
+    const defId = getDefaultId();
+    active =
+      (defId && list.find((p) => p.id === defId)) ||
+      (currentVaultPath && list.find((p) => p.vaultPath === currentVaultPath)) ||
+      list[0];
     setActiveId(active.id);
   }
   return active;

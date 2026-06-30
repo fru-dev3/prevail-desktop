@@ -49,7 +49,7 @@ const STATUS_META: Record<AppStatus, { glyph: string; label: string; tint: strin
   connected:    { glyph: "●", label: "Connected",       tint: "text-ok",         ring: "border-ok/40",     dot: "bg-ok" },
   authorized:   { glyph: "◌", label: "Authorized · verifying", tint: "text-warn", ring: "border-warn/40",  dot: "bg-warn/70" },
   connecting:   { glyph: "◐", label: "Connecting",      tint: "text-warn",       ring: "border-warn/40",   dot: "bg-warn" },
-  attention:    { glyph: "▲", label: "Needs attention", tint: "text-danger",     ring: "border-danger/40", dot: "bg-danger" },
+  attention:    { glyph: "▲", label: "Needs attention", tint: "text-err",     ring: "border-err/40", dot: "bg-err" },
   disconnected: { glyph: "○", label: "Not connected",   tint: "text-text-muted", ring: "border-border",    dot: "bg-text-muted/40" },
 };
 
@@ -852,7 +852,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
               // always reflects the just-clicked item synchronously.
               <>
                 {catalogConnectErr && (
-                  <div className="mb-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{catalogConnectErr}</div>
+                  <div className="mb-3 rounded-lg border border-err/40 bg-err/10 px-3 py-2 text-xs text-err">{catalogConnectErr}</div>
                 )}
                 <AppDetail
                   key={catalogPick.iconSlug || catalogPick.name}
@@ -952,7 +952,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                 </select>
               </label>
               {mcpFormErr && (
-                <div className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{mcpFormErr}</div>
+                <div className="rounded-lg border border-err/40 bg-err/10 px-3 py-2 text-xs text-err">{mcpFormErr}</div>
               )}
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-5 py-3">
@@ -1298,7 +1298,7 @@ function ComposioMode({ vaultPath, expanded }: { vaultPath: string; expanded: bo
         <div className="flex items-start gap-4 px-5 py-4">
         <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          {composioMethod === "mcp" && verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-danger">Invalid key</span>}
+          {composioMethod === "mcp" && verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-err/40 bg-err/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-err">Invalid key</span>}
           {/* Connect via: CLI (default) or MCP. Small segmented control. */}
           <div className="ml-auto inline-flex rounded-md border border-border bg-background p-0.5">
             {([["cli", "CLI", Terminal], ["mcp", "MCP", Boxes]] as const).map(([m, label, Icon]) => (
@@ -1369,13 +1369,13 @@ function ComposioMode({ vaultPath, expanded }: { vaultPath: string; expanded: bo
         ) : showForm ? (
           <div className="mt-3 max-w-xl space-y-2">
             <p className="text-[11px] leading-relaxed text-text-secondary">Paste your <span className="font-mono text-text-primary">X-CONSUMER-API-KEY</span> from <button onClick={() => void openUrl("https://connect.composio.dev")} className="text-accent hover:underline">connect.composio.dev</button> (starts with <span className="font-mono">ck_</span>). Stored in your Mac's Keychain.</p>
-            {verified === false && <p className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger">That key did not authenticate to Composio. Enter a valid X-CONSUMER-API-KEY.</p>}
+            {verified === false && <p className="rounded-md border border-err/40 bg-err/10 px-2 py-1 text-[11px] text-err">That key did not authenticate to Composio. Enter a valid X-CONSUMER-API-KEY.</p>}
             <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="ck_…" onKeyDown={(e) => { if (e.key === "Enter" && keyInput.trim()) void save(); }}
               className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-text-primary outline-none focus:border-accent-border" />
             <div className="flex flex-wrap items-center gap-1.5">
               <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy === "save" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Save key</button>
               {(editingKey || (configured && verified === false)) && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border">Cancel</button>}
-              {configured && <button onClick={removeKey} disabled={busy !== null} className="text-[11px] text-text-muted hover:text-danger hover:underline">Remove key</button>}
+              {configured && <button onClick={removeKey} disabled={busy !== null} className="text-[11px] text-text-muted hover:text-err hover:underline">Remove key</button>}
             </div>
             {verifyMsg && verified !== false && <p className="text-[11px] text-text-secondary">{verifyMsg}</p>}
           </div>
@@ -1386,7 +1386,7 @@ function ComposioMode({ vaultPath, expanded }: { vaultPath: string; expanded: bo
             <span className="font-semibold text-accent">Key valid.</span>
             <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Re-verify</button>
             <button onClick={() => setEditingKey(true)} className="text-[10px] hover:text-accent hover:underline">Change key</button>
-            <button onClick={removeKey} disabled={busy !== null} className="text-[10px] hover:text-danger hover:underline">Remove key</button>
+            <button onClick={removeKey} disabled={busy !== null} className="text-[10px] hover:text-err hover:underline">Remove key</button>
             <button onClick={() => void openUrl("https://dashboard.composio.dev")} className="inline-flex items-center gap-1 text-[10px] text-accent hover:underline">Dashboard <ExternalLink className="h-2.5 w-2.5" /></button>
           </div>
         )}
@@ -1573,13 +1573,13 @@ function NangoMode({ vaultPath, expanded }: { vaultPath: string; expanded: boole
         {showForm ? (
           <div className="mt-3 max-w-xl space-y-2">
             <p className="text-[11px] leading-relaxed text-text-secondary">Copy your <span className="font-mono text-text-primary">Secret Key</span> from <button onClick={() => void openUrl("https://app.nango.dev/dev/getting-started")} className="text-accent hover:underline">app.nango.dev</button> (Environment Settings). Stored in your Mac's Keychain.</p>
-            {verified === false && <p className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger">That key did not authenticate to Nango. Enter a valid secret key.</p>}
+            {verified === false && <p className="rounded-md border border-err/40 bg-err/10 px-2 py-1 text-[11px] text-err">That key did not authenticate to Nango. Enter a valid secret key.</p>}
             <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} type="password" placeholder="nango secret key…" onKeyDown={(e) => { if (e.key === "Enter" && keyInput.trim()) void save(); }}
               className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-text-primary outline-none focus:border-accent-border" />
             <div className="flex flex-wrap items-center gap-1.5">
               <button onClick={save} disabled={busy !== null || !keyInput.trim()} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy === "save" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Save key</button>
               {(editingKey || (configured && verified === false)) && <button onClick={() => { setEditingKey(false); setKeyInput(""); }} className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border">Cancel</button>}
-              {configured && <button onClick={removeKey} disabled={busy !== null} className="text-[11px] text-text-muted hover:text-danger hover:underline">Remove key</button>}
+              {configured && <button onClick={removeKey} disabled={busy !== null} className="text-[11px] text-text-muted hover:text-err hover:underline">Remove key</button>}
             </div>
             {verifyMsg && verified !== false && <p className="text-[11px] text-text-secondary">{verifyMsg}</p>}
           </div>
@@ -1590,7 +1590,7 @@ function NangoMode({ vaultPath, expanded }: { vaultPath: string; expanded: boole
             <span className="font-semibold text-accent">Key valid.</span>
             <button onClick={verify} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "verify" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Re-verify</button>
             <button onClick={() => setEditingKey(true)} className="text-[10px] hover:text-accent hover:underline">Change key</button>
-            <button onClick={removeKey} disabled={busy !== null} className="text-[10px] hover:text-danger hover:underline">Remove key</button>
+            <button onClick={removeKey} disabled={busy !== null} className="text-[10px] hover:text-err hover:underline">Remove key</button>
             <button onClick={() => void openUrl("https://app.nango.dev")} className="inline-flex items-center gap-1 text-[10px] text-accent hover:underline">Dashboard <ExternalLink className="h-2.5 w-2.5" /></button>
           </div>
         )}
@@ -2433,7 +2433,7 @@ function SkillRunPanel({ appId, skill, label, vaultPath, onClose, onDone }: {
     <div className="mt-3 flex flex-col gap-3 rounded-lg border border-border bg-surface p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
-          {running ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : result?.ok ? <Check className="h-4 w-4 text-ok" /> : <X className="h-4 w-4 text-danger" />}
+          {running ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : result?.ok ? <Check className="h-4 w-4 text-ok" /> : <X className="h-4 w-4 text-err" />}
           Running {label}
         </div>
         <button onClick={running ? () => void stop() : onClose} className="rounded-md border border-border px-2 py-1 text-xs text-text-secondary hover:bg-surface-warm">{running ? "Stop" : "Close"}</button>
@@ -2447,7 +2447,7 @@ function SkillRunPanel({ appId, skill, label, vaultPath, onClose, onDone }: {
         {stderr && <div className="mt-1 text-text-muted">{stderr}</div>}
       </div>
       {result && !running && (
-        <div className={`rounded-md px-3 py-2 text-sm ${result.ok ? "border border-ok/40 bg-ok/10 text-ok" : "border border-danger/40 bg-danger/10 text-danger"}`}>
+        <div className={`rounded-md px-3 py-2 text-sm ${result.ok ? "border border-ok/40 bg-ok/10 text-ok" : "border border-err/40 bg-err/10 text-err"}`}>
           {result.ok ? "Done." : `Failed: ${result.message || "see the log above."}`}
         </div>
       )}
@@ -3025,7 +3025,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                       className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
                       {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} {importing ? "Importing…" : "Import login from browser"}
                     </button>
-                    {importMsg && <p className={`mt-1.5 text-center text-[11px] ${importMsg.startsWith("✓") ? "text-ok" : "text-danger"}`}>{importMsg}</p>}
+                    {importMsg && <p className={`mt-1.5 text-center text-[11px] ${importMsg.startsWith("✓") ? "text-ok" : "text-err"}`}>{importMsg}</p>}
                   </div>
                 </div>
               </div>
@@ -3077,7 +3077,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
             <span><span className="font-medium text-text-primary">Not connected yet.</span> <span className="text-text-muted">Connect to start feeding {app.title || app.id} into your vault.</span></span>
           </span>
         ) : syncMsg ? (
-          <span className={`inline-flex items-center gap-2 text-sm ${syncMsg.startsWith("Sync failed") ? "text-danger" : "text-text-secondary"}`}>
+          <span className={`inline-flex items-center gap-2 text-sm ${syncMsg.startsWith("Sync failed") ? "text-err" : "text-text-secondary"}`}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4 text-ok" />} {syncMsg}
           </span>
         ) : (
@@ -3088,16 +3088,16 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
         )}
         {notConnected ? null : confirmDelete ? (
           <span className="flex items-center gap-2">
-            <button onClick={removeApp} disabled={deleting} className="inline-flex items-center gap-1.5 rounded-md border border-danger/50 bg-danger/10 px-2.5 py-1.5 text-[11px] text-danger hover:bg-danger/20 disabled:opacity-50">{deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete {app.title} for good</button>
+            <button onClick={removeApp} disabled={deleting} className="inline-flex items-center gap-1.5 rounded-md border border-err/50 bg-err/10 px-2.5 py-1.5 text-[11px] text-err hover:bg-err/20 disabled:opacity-50">{deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete {app.title} for good</button>
             <button onClick={() => { setConfirmDelete(false); setDeleteErr(null); }} className="text-[11px] text-text-muted hover:text-text-secondary">cancel</button>
-            {deleteErr && <span className="text-[11px] text-danger">{deleteErr}</span>}
+            {deleteErr && <span className="text-[11px] text-err">{deleteErr}</span>}
           </span>
         ) : (
           <div className="flex items-center gap-1.5">
             <button onClick={() => void runSync()} disabled={busy} title="Sync now" className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} {busy ? "Syncing…" : "Sync"}</button>
             <button onClick={openSchedModal} title={`Schedule & sync: ${scheduleLabel(app.refresh)}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent"><Clock className="h-3.5 w-3.5" /> Schedule{enabled && app.refresh ? <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-ok" /> : null}</button>
             {app.path && <button onClick={() => void invoke("open_in_finder", { path: app.path! }).catch(() => {})} title="Open folder" className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-muted hover:border-accent-border hover:text-accent"><FolderOpen className="h-4 w-4" /></button>}
-            <button onClick={() => setConfirmDelete(true)} title="Remove this app entirely" className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-danger/10 hover:text-danger"><Trash2 className="h-4 w-4" /></button>
+            <button onClick={() => setConfirmDelete(true)} title="Remove this app entirely" className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-err/10 hover:text-err"><Trash2 className="h-4 w-4" /></button>
           </div>
         )}
       </div>

@@ -267,7 +267,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
             <button
               onClick={stopAll}
               title="Stop the whole run: the loop running now is stopped and no further loops start."
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-danger/40 bg-danger/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-danger hover:bg-danger/20"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-err/40 bg-err/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-err hover:bg-err/20"
             >
               <X className="h-3.5 w-3.5" /> Stop run
             </button>
@@ -731,7 +731,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
           )}
           {/* Run-now result: exactly what this pass did. */}
           {!running && result && (
-            <div className={`rounded-lg border px-3 py-2.5 ${result.ok ? "border-accent-border bg-accent-soft/30" : "border-danger/40 bg-danger/10"}`}>
+            <div className={`rounded-lg border px-3 py-2.5 ${result.ok ? "border-accent-border bg-accent-soft/30" : "border-err/40 bg-err/10"}`}>
               {result.ok ? (
                 <>
                   <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-accent">{result.briefing ? <Mail className="h-3 w-3" /> : <Play className="h-3 w-3" />} {result.briefing ? "Briefing ready" : "Ran just now"}</div>
@@ -752,7 +752,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
                   ) : <div className="text-[12px] text-text-muted">No new actions this pass. The gap looks handled.</div>}
                   {!result.briefing && <div className="mt-2 font-mono text-[10px] text-text-muted">{result.tasksCreated.length} task{result.tasksCreated.length === 1 ? "" : "s"} filed · {result.pending.length} awaiting approval</div>}
                 </>
-              ) : <div className="text-[12px] text-danger">Run failed: {result.error}</div>}
+              ) : <div className="text-[12px] text-err">Run failed: {result.error}</div>}
             </div>
           )}
           {/* Controls */}
@@ -761,7 +761,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
               {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} {running ? "Running…" : "Run now"}
             </button>
             {running && (
-              <button onClick={stopRun} title="Stop this loop's run" className="inline-flex items-center gap-1.5 rounded-md border border-danger/40 bg-danger/10 px-2.5 py-1 text-xs font-semibold text-danger hover:bg-danger/20">
+              <button onClick={stopRun} title="Stop this loop's run" className="inline-flex items-center gap-1.5 rounded-md border border-err/40 bg-err/10 px-2.5 py-1 text-xs font-semibold text-err hover:bg-err/20">
                 <X className="h-3.5 w-3.5" /> Stop
               </button>
             )}

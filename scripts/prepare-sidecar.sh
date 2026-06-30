@@ -45,3 +45,25 @@ if [ -d "$CLI/skill-packs" ]; then
   cp -R "$CLI/skill-packs" "$HERE/src-tauri/resources/skill-packs"
   echo "prepare-sidecar: skill-packs staged -> src-tauri/resources/skill-packs"
 fi
+
+# Stage playwright-core ON DISK next to the bundled engine. The compiled sidecar
+# CANNOT use its in-binary copy of playwright-core: at runtime playwright's
+# internals resolve their package.json/browser registry relative to the CI BUILD
+# path (".../engine/node_modules/playwright-core"), which does not exist on the
+# user's machine — so a browser skill fails with "Cannot find module .../$bunfs/".
+# The fix: ship a REAL playwright-core folder as a Tauri resource. It lands in
+# Contents/Resources/node_modules/playwright-core, and the engine's
+# src/playwright-resolve.ts resolves it at runtime relative to process.execPath
+# (Contents/MacOS/<sidecar> -> ../Resources/node_modules/playwright-core), NOT a
+# path baked at compile time. playwright-core has no runtime npm deps, so the
+# single package directory is self-contained (it bundles its own lib/).
+PW_SRC="$CLI/node_modules/playwright-core"
+if [ -d "$PW_SRC" ]; then
+  rm -rf "$HERE/src-tauri/resources/node_modules/playwright-core"
+  mkdir -p "$HERE/src-tauri/resources/node_modules"
+  cp -R "$PW_SRC" "$HERE/src-tauri/resources/node_modules/playwright-core"
+  echo "prepare-sidecar: playwright-core staged -> src-tauri/resources/node_modules/playwright-core ($(du -sh "$HERE/src-tauri/resources/node_modules/playwright-core" | cut -f1))"
+else
+  echo "prepare-sidecar: ERROR: playwright-core not found at $PW_SRC — browser automation will be unavailable in this build. Run 'bun install' in the engine repo." >&2
+  exit 1
+fi

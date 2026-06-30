@@ -1,36 +1,18 @@
-// Integrations - wiring Prevail into every AI CLI. A top-level page:
+// MCP - register your vault as an MCP server in each AI CLI, one click.
 //
-//   1. MCP ACCESS  - register your vault as an MCP server in each CLI, one click.
-//   2. PROMPT CAPTURE - record the prompts you type in each CLI into the vault.
+// Prompt capture used to live here too; it now has its own nav item
+// (Editor → Context & Memory → Prompt capture, src/promptcapturepanel.tsx) so
+// this page is just the MCP server config.
 //
-// Heavy lifting lives in the prevail engine (`prevail capture …`, `prevail mcp
-// install …`), reached through async Tauri commands that never block the UI.
+// Heavy lifting lives in the prevail engine (`prevail mcp install …`), reached
+// through async Tauri commands that never block the UI.
 import { useCallback, useEffect, useState } from "react";
-import { Check, Download, FolderOpen, FolderSearch, History, Loader2, Plug, RefreshCw, Zap } from "lucide-react";
+import { Check, Download, Loader2, Plug, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { SettingsHeader } from "./sectionutil";
-import { Toggle } from "./ui";
 import { McpSection } from "./settings5";
 import type { CliInfo } from "./types";
 
-type Harness = {
-  tool: string;
-  method: "push" | "sync";
-  present: boolean;
-  wired: boolean;
-  enabled?: boolean;
-  target?: string;
-  source?: string;
-  detail?: string;
-};
-type Stream = { tool: string; path: string; count: number };
-type CaptureStatus = {
-  meta?: string;
-  streams?: Stream[];
-  agent?: { plistPresent: boolean; loaded: boolean; supported: boolean; plist: string };
-  harnesses?: Harness[];
-};
-type SyncSource = { tool: string; found: number; written: number; skipped: number };
 type McpClient = { client: string; present: boolean; registered: boolean; error?: string };
 
 const MCP_CLIENT_ORDER = ["claude", "codex", "gemini", "antigravity", "cursor"];
@@ -47,23 +29,11 @@ const LABELS: Record<string, string> = {
 };
 
 export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliInfo[] }) {
-  const [status, setStatus] = useState<CaptureStatus | null>(null);
   const [mcpClients, setMcpClients] = useState<McpClient[]>([]);
-  const [busy, setBusy] = useState<"" | "install" | "sync">("");
-  const [note, setNote] = useState<string | null>(null);
-  const [togglingTool, setTogglingTool] = useState("");
   const [mcpBusy, setMcpBusy] = useState(false);
   const [mcpBusyClient, setMcpBusyClient] = useState("");
   const [mcpMsg, setMcpMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [mcpTab, setMcpTab] = useState<"oneclick" | "manual">("oneclick");
-
-  const loadCapture = useCallback(async () => {
-    try {
-      setStatus(await invoke<CaptureStatus>("capture_status", { vault: vaultPath }));
-    } catch (e) {
-      setNote(`Could not read capture status: ${String(e).slice(0, 140)}`);
-    }
-  }, [vaultPath]);
 
   const loadMcp = useCallback(async () => {
     try {
@@ -75,52 +45,8 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
   }, []);
 
   useEffect(() => {
-    void loadCapture();
     void loadMcp();
-  }, [loadCapture, loadMcp]);
-
-  async function runInstall() {
-    setBusy("install");
-    setNote(null);
-    try {
-      await invoke("capture_install", { vault: vaultPath });
-      setNote("Capture turned on. Claude Code now logs live; other tools are read automatically from their chat history.");
-      await loadCapture();
-    } catch (e) {
-      setNote(`Install failed: ${String(e).slice(0, 140)}`);
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function runSync() {
-    setBusy("sync");
-    setNote(null);
-    try {
-      const r = await invoke<{ sources?: SyncSource[] }>("capture_sync", { vault: vaultPath });
-      const wrote = (r.sources ?? []).reduce((n, s) => n + (s.written ?? 0), 0);
-      setNote(wrote > 0 ? `Synced ${wrote} new prompt${wrote === 1 ? "" : "s"} from your CLI transcripts.` : "Already up to date - nothing new to sync.");
-      await loadCapture();
-    } catch (e) {
-      setNote(`Sync failed: ${String(e).slice(0, 140)}`);
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function toggleCapture(tool: string, on: boolean) {
-    setTogglingTool(tool);
-    setNote(null);
-    try {
-      await invoke("capture_set_enabled", { vault: vaultPath, tool, on });
-      setNote(`${LABELS[tool] ?? tool} capture turned ${on ? "on" : "off"}.`);
-      await loadCapture();
-    } catch (e) {
-      setNote(`Could not change ${LABELS[tool] ?? tool}: ${String(e).slice(0, 120)}`);
-    } finally {
-      setTogglingTool("");
-    }
-  }
+  }, [loadMcp]);
 
   async function installClientMcp(client: string) {
     setMcpBusyClient(client);
@@ -164,29 +90,14 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
     }
   }
 
-  const streamCount = (tool: string) => status?.streams?.find((s) => s.tool === tool)?.count ?? 0;
-  const totalCaptured = (status?.streams ?? []).reduce((n, s) => n + s.count, 0);
-  const harnesses = status?.harnesses ?? [];
-
-  async function reveal(path?: string) {
-    if (!path) return;
-    try {
-      await invoke("open_in_finder", { path });
-    } catch {
-      /* best effort */
-    }
-  }
-  const openFolder = () => reveal(status?.meta);
-  const openFile = (tool: string) => reveal(status?.streams?.find((s) => s.tool === tool)?.path);
-
   return (
     <div className="w-full space-y-4">
       {/* Page header - same SettingsHeader treatment as every other page:
           left icon badge + ghosted far-right icon flourish. */}
       <SettingsHeader
-        title="Integrations"
+        title="MCP"
         icon={Plug}
-        subtitle="Connect Prevail to the AI tools you already use, and capture every prompt you write across them into your vault."
+        subtitle="Register Prevail as an MCP server in the AI tools you already use, so they can call into your vault."
       />
 
       {/* USE PREVAIL FROM YOUR TOOLS (MCP) - one-click OR manual, tabbed ------ */}
@@ -267,114 +178,6 @@ export function IntegrationsPanel({ vaultPath }: { vaultPath: string; clis: CliI
         </div>
           </>
         )}
-      </div>
-
-      {/* PROMPT CAPTURE - record prompts from each CLI into the vault --------- */}
-      <div className="rounded-lg border border-border bg-surface p-5">
-        <div className="flex items-stretch gap-5">
-          <div className="min-w-0 flex-1">
-            <h2 className="mb-1 text-xl font-semibold text-text-primary">Prompt capture</h2>
-            <div className="text-sm text-text-secondary">
-              Every prompt you submit, saved to <code className="text-accent">_meta/prompts/&lt;tool&gt;.jsonl</code> and distilled into your intents. <span className="inline-flex items-center gap-1"><Zap className="h-3 w-3 text-ai" /> = captured live as you type, <History className="h-3 w-3" /> = read from a tool's saved chats.</span>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                onClick={runInstall}
-                disabled={busy !== ""}
-                className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
-              >
-                {busy === "install" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-                {busy === "install" ? "Installing…" : "Install capture"}
-              </button>
-              <button
-                onClick={runSync}
-                disabled={busy !== ""}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50"
-              >
-                {busy === "sync" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                {busy === "sync" ? "Syncing…" : "Sync now"}
-              </button>
-              <button
-                onClick={openFolder}
-                disabled={!status?.meta}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50"
-              >
-                <FolderOpen className="h-3 w-3" /> Open folder
-              </button>
-              {note && <span className="text-[11px] text-text-secondary">{note}</span>}
-            </div>
-          </div>
-
-          <div className="flex shrink-0 flex-col items-center justify-center border-l border-border-subtle pl-6 text-center">
-            <span className="font-mono text-5xl font-bold leading-none tabular-nums tracking-tight text-accent">{totalCaptured.toLocaleString()}</span>
-            <span className="mt-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">prompts captured</span>
-          </div>
-        </div>
-
-        <div className="mt-4 overflow-hidden rounded-md border border-border-subtle">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-surface-warm/60 text-[10px] uppercase tracking-wider text-text-muted">
-              <tr>
-                <th className="px-3 py-2 font-medium">Harness</th>
-                <th className="px-3 py-2 text-center font-medium">How</th>
-                <th className="px-3 py-2 text-right font-medium">Captured</th>
-                <th className="px-3 py-2 text-right font-medium">Capture</th>
-              </tr>
-            </thead>
-            <tbody>
-              {harnesses.map((h) => (
-                <tr key={h.tool} className="border-t border-border-subtle">
-                  <td className="px-3 py-2">
-                    <span className="group inline-flex items-center gap-1.5">
-                      <span className={`inline-block h-1.5 w-1.5 rounded-full ${h.present ? "bg-ok" : "bg-border"}`} />
-                      {LABELS[h.tool] ?? h.tool}
-                      {h.source && (
-                        <button
-                          onClick={() => reveal(h.source)}
-                          title={`Show where this is captured from:\n${h.source}`}
-                          className="text-text-muted opacity-0 transition-opacity hover:text-accent group-hover:opacity-100"
-                        >
-                          <FolderSearch className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <span
-                      className="inline-flex"
-                      title={h.method === "push" ? "Captured live, the moment you send a prompt" : "Read from this tool's saved chat files"}
-                    >
-                      {h.method === "push" ? <Zap className="h-4 w-4 text-ai" /> : <History className="h-4 w-4 text-text-muted" />}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-text-secondary">
-                    {streamCount(h.tool) > 0 ? (
-                      <button onClick={() => openFile(h.tool)} className="underline-offset-2 hover:text-accent hover:underline" title="Open this file">
-                        {streamCount(h.tool).toLocaleString()}
-                      </button>
-                    ) : (
-                      <span className="text-text-muted">0</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex justify-end">
-                      <Toggle
-                        on={h.enabled !== false}
-                        onChange={(v) => toggleCapture(h.tool, v)}
-                        disabled={togglingTool !== ""}
-                        label={`Capture ${LABELS[h.tool] ?? h.tool}`}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {harnesses.length === 0 && (
-                <tr><td colSpan={4} className="px-3 py-3 text-center text-text-muted">Run "Install capture" to wire up your CLIs.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
       </div>
     </div>
   );

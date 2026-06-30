@@ -134,7 +134,7 @@ export function ConnectorRunPanel({
     <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
-          {running ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : final?.ok ? <Check className="h-4 w-4 text-ok" /> : <X className="h-4 w-4 text-danger" />}
+          {running ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : final?.ok ? <Check className="h-4 w-4 text-ok" /> : <X className="h-4 w-4 text-err" />}
           {title} {appId}
         </div>
         {running ? (
@@ -181,7 +181,7 @@ export function ConnectorRunPanel({
                   {ev.phase === "browser_open" && <span className="text-text-muted">opening your Chrome…</span>}
                   {ev.phase === "chromium_download" && <span className="text-text-muted">{ev.message ?? "preparing the browser…"}</span>}
                   {ev.phase === "complete" && <span className="text-ok">{ev.message}</span>}
-                  {ev.phase === "error" && <span className="text-danger">{ev.message}</span>}
+                  {ev.phase === "error" && <span className="text-err">{ev.message}</span>}
                 </span>
               </div>
             );
@@ -199,7 +199,7 @@ export function ConnectorRunPanel({
       )}
 
       {final && !running && (
-        <div className={`rounded-md px-3 py-2 text-sm ${final.ok ? "border border-ok/40 bg-ok/10 text-ok" : "border border-danger/40 bg-danger/10 text-danger"}`}>
+        <div className={`rounded-md px-3 py-2 text-sm ${final.ok ? "border border-ok/40 bg-ok/10 text-ok" : "border border-err/40 bg-err/10 text-err"}`}>
           {final.ok ? "✓ " : "✗ "}
           {final.message || (final.ok ? "Done" : "Failed")}
         </div>
