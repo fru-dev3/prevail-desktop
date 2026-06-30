@@ -422,6 +422,7 @@ pub fn run() {
             appcmds::move_to_applications,
             appcmds::create_domain,
             domain::domain_context,
+            domain::app_context,
             domain::domain_tree,
             domain::read_domain_prompts,
             domain::scan_skills,
