@@ -143,7 +143,10 @@ pub(crate) fn create_domain(app: tauri::AppHandle, vault: String, name: String) 
     if !root.exists() {
         return Err(format!("vault not found: {vault}"));
     }
-    let domain_dir = root.join(&slug);
+    // Canonical home for a new domain: data/domains/<slug> on a migrated vault,
+    // the vault root on a legacy flat vault (resolve_domain_base handles both and
+    // preserves any existing domain in place).
+    let domain_dir = crate::paths::resolve_domain_base(&vault, &slug);
     if domain_dir.exists() {
         return Err(format!("domain '{slug}' already exists"));
     }

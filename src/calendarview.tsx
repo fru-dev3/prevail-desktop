@@ -123,7 +123,11 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
       }
       // Google (external) → synced by the app-sync into calendar-external.json.
       try {
-        const raw = await invoke<string>("read_text_file", { path: `${vaultPath.replace(/\/+$/, "")}/calendar-external.json` }).catch(() => "");
+        const base = vaultPath.replace(/\/+$/, "");
+        // The engine writes this into build/ now; fall back to the legacy root
+        // location so existing flat vaults still load their external events.
+        let raw = await invoke<string>("read_text_file", { path: `${base}/build/calendar-external.json` }).catch(() => "");
+        if (!raw) raw = await invoke<string>("read_text_file", { path: `${base}/calendar-external.json` }).catch(() => "");
         const ext = raw ? (JSON.parse(raw) as ExternalEvent[]) : [];
         if (Array.isArray(ext)) {
           for (const e of ext) {
