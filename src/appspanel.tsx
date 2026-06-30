@@ -5,7 +5,7 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, Boxes, Check, ChevronLeft, ChevronRight, Clock, Download, ExternalLink, FolderOpen, Globe, HelpCircle, Link2, Loader2, MessageSquare, MoreVertical, Pencil, Play, Plug, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Star, Tag, Terminal, Trash2, X, Zap } from "lucide-react";
+import { Activity, ArrowUpRight, Boxes, Check, ChevronLeft, ChevronRight, Clock, Download, ExternalLink, FileText, FolderOpen, Globe, HelpCircle, Link2, Loader2, MessageSquare, MoreVertical, Pencil, Play, Plug, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Star, Tag, Terminal, Trash2, X, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { MasterDetail } from "./masterdetail";
 import { ConnectorRunPanel, type ConnectorRunMode } from "./connectorrun";
@@ -18,7 +18,7 @@ import { ConnectAppFlow } from "./appconnect";
 import { AppRowLogo } from "./panels3";
 import { GoogleWorkspacePanel } from "./googlepanel";
 import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
-import type { BrandLogo, CatalogApp, CatalogSkill, ChatEvent, ConnectorCatalog, EngineApp } from "./types";
+import type { BrandLogo, CatalogApp, CatalogSkill, ChatEvent, ConnectorCatalog, DomainContextBundle, EngineApp } from "./types";
 
 type AppStatus = "connected" | "authorized" | "attention" | "connecting" | "disconnected";
 
@@ -2274,7 +2274,7 @@ function catalogToApp(c: CatalogApp): EngineApp {
 
 // The detail pane is a TABBED interface (fix #7), mirroring the chat-experience
 // tab pattern: a pill row under the header, one panel shown at a time.
-type AppTab = "welcome" | "soul" | "skills" | "connections" | "chat";
+type AppTab = "welcome" | "soul" | "journal" | "skills" | "connections" | "chat";
 
 // A runnable skill as the UI displays it. The engine now returns the richer
 // contract shape (id/name/method/primary/source/trigger/summary) and includes
@@ -2634,6 +2634,89 @@ function welcomeText(app: EngineApp, notConnected: boolean): string {
     return `Connecting ${name} lets Prevail pull your data from ${name} into your private vault on this Mac. You connect once; Prevail confirms the best method, drives any sign-in for you, then keeps the data in sync. Once connected, it is available as context to any domain you point it at, with no copies leaving your machine unless you say so.`;
   }
   return `${name} is connected and feeding your vault. Prevail keeps its data in sync on the schedule you set, and that data is available as context to the domains it feeds. Use the tabs below to give it a soul, see the skills Prevail has learned on it, manage which domains it feeds, or open a chat scoped to ${name}.`;
+}
+
+// App/domain parity: the Journal tab. An app is a domain with a little more, so a
+// connected app keeps the SAME context bundle a domain does - state, decisions,
+// journal, and recent activity logs - written under vault/data/apps/<id>/. This
+// reads that bundle via the `app_context` command (mirrors `domain_context`) and
+// renders it self-contained, the way domainpanels shows a domain's context. Empty
+// fields are normal for a freshly-connected app: the record builds as it syncs.
+function AppContextView({ vaultPath, appId, appTitle, card }: { vaultPath: string; appId: string; appTitle: string; card: string }) {
+  const [ctx, setCtx] = useState<DomainContextBundle | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    setErr(null);
+    invoke<DomainContextBundle>("app_context", { vault: vaultPath, appId })
+      .then((c) => { if (live) { setCtx(c); setLoading(false); } })
+      .catch((e) => { if (live) { setErr(String(e)); setLoading(false); } });
+    return () => { live = false; };
+  }, [vaultPath, appId]);
+
+  if (loading) {
+    return <div className="flex items-center gap-2 text-sm text-text-muted"><Loader2 className="h-4 w-4 animate-spin" /> Loading {appTitle} journal…</div>;
+  }
+  if (err) {
+    return <div className="rounded-lg border border-err/40 bg-err/10 px-3 py-2 text-xs text-err">Couldn't load this app's journal: {err}</div>;
+  }
+  const c = ctx;
+  const isEmpty = !c || (!c.state && !c.decisions && !c.journal && c.recent_logs.length === 0);
+  if (isEmpty) {
+    return (
+      <div className="max-w-2xl">
+        <div className="rounded-xl border border-dashed border-border bg-surface/40 px-4 py-8 text-center">
+          <Activity className="mx-auto h-7 w-7 text-text-muted opacity-50" />
+          <p className="mt-3 text-sm text-text-secondary">No journal yet - this builds as the app syncs and you work with it.</p>
+          <p className="mt-1 text-xs text-text-muted">State, decisions, and activity for {appTitle} are kept under vault/data/apps/{appId}/, just like a domain.</p>
+        </div>
+      </div>
+    );
+  }
+  const block = "max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border-subtle bg-background px-3 py-2.5 text-[12px] leading-relaxed text-text-secondary";
+  return (
+    <div className="max-w-2xl space-y-4">
+      {c!.state && (
+        <div className={card}>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><FileText className="h-4 w-4 text-accent" /> State</h3>
+          <p className="mt-1 text-[12px] text-text-muted">Snapshot of where things stand now.</p>
+          <pre className={`mt-2 ${block}`}>{c!.state}</pre>
+        </div>
+      )}
+      {c!.journal && (
+        <div className={card}>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Activity className="h-4 w-4 text-accent" /> Journal</h3>
+          <p className="mt-1 text-[12px] text-text-muted">The running record this app keeps; the rest is distilled from it.</p>
+          <pre className={`mt-2 ${block}`}>{c!.journal}</pre>
+        </div>
+      )}
+      {c!.decisions && (
+        <div className={card}>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Check className="h-4 w-4 text-accent" /> Decisions</h3>
+          <p className="mt-1 text-[12px] text-text-muted">What was decided and why.</p>
+          <pre className={`mt-2 ${block}`}>{c!.decisions}</pre>
+        </div>
+      )}
+      {c!.recent_logs.length > 0 && (
+        <div className={card}>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Clock className="h-4 w-4 text-accent" /> Recent activity</h3>
+          <ul className="mt-2 space-y-1.5">
+            {c!.recent_logs.map((l) => (
+              <li key={l.path} className="rounded-lg border border-border-subtle bg-background px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-mono text-[11px] text-text-secondary">{l.name}</span>
+                  <span className="shrink-0 font-mono text-[10px] text-text-muted">{relTime(l.mtime_secs * 1000)}</span>
+                </div>
+                {l.preview && <div className="mt-0.5 truncate text-[11px] text-text-muted">{l.preview}</div>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, onReload, gatewayProvider, connect }: {
@@ -3029,6 +3112,10 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
           {([
             { id: "welcome", label: "Welcome", icon: Plug },
             { id: "soul", label: "Soul", icon: Sparkles },
+            // App/domain parity: a connected app keeps a journal + state + decisions
+            // just like a domain. Catalog (not-yet-added) apps have no data dir, so
+            // the tab only appears once the app exists in the vault.
+            ...(!notConnected ? [{ id: "journal" as const, label: "Journal", icon: Activity }] : []),
             { id: "skills", label: "Skills", icon: Boxes },
             { id: "connections", label: "Connections", icon: Link2 },
             ...(!notConnected ? [{ id: "chat" as const, label: "Chat", icon: MessageSquare }] : []),
@@ -3124,6 +3211,13 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
               <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">{richSoulFor(app)}</p>
             </div>
           </div>
+        )}
+
+        {/* JOURNAL - app/domain parity. The same rich context a domain exposes:
+            state snapshot, distilled decisions, the running journal, and recent
+            activity logs. Builds up as the app syncs and you work with it. */}
+        {tab === "journal" && !notConnected && (
+          <AppContextView vaultPath={vaultPath} appId={app.id} appTitle={app.title || app.id} card={card} />
         )}
 
         {/* SKILLS (#17) - the app's REAL runnable skills, including shipped

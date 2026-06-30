@@ -51,6 +51,24 @@ pub const GOOGLE_SERVICES: &[&str] = &[
     "chat", "meet", "forms", "keep", "classroom",
 ];
 
+// EXPLICIT OAuth scopes requested at login. gws's `-s/--services` flag only
+// LIMITS THE SCOPE PICKER (per `gws auth login --help`) - it does NOT request
+// those scopes, so using it alone granted only the default basic profile scopes
+// (openid/userinfo/people), which is why Gmail/Calendar/Drive calls failed with
+// "needs scope" / "not authenticated". `--scopes` requests these deterministically.
+// Reads are instant; writes (send/modify/delete) are gated by the approval broker.
+const GWS_SCOPES: &str = "openid,\
+https://www.googleapis.com/auth/userinfo.email,\
+https://www.googleapis.com/auth/userinfo.profile,\
+https://www.googleapis.com/auth/gmail.modify,\
+https://www.googleapis.com/auth/gmail.send,\
+https://www.googleapis.com/auth/calendar,\
+https://www.googleapis.com/auth/drive,\
+https://www.googleapis.com/auth/documents,\
+https://www.googleapis.com/auth/spreadsheets,\
+https://www.googleapis.com/auth/tasks,\
+https://www.googleapis.com/auth/contacts";
+
 fn gws_path() -> String {
     let (base, _u, _l) = crate::build_cli_env();
     base
@@ -310,7 +328,7 @@ pub async fn google_profile_login(label: String, config_dir: Option<String>) -> 
         ensure_oauth_client(Path::new(&dir))?;
         // Request the read+send scopes the connector needs across the ecosystem.
         let out = Command::new(&bin)
-            .args(["auth", "login", "-s", "gmail,calendar,drive,docs,sheets,tasks,people"])
+            .args(["auth", "login", "--scopes", GWS_SCOPES])
             .env("PATH", gws_path())
             .env("GOOGLE_WORKSPACE_CLI_CONFIG_DIR", &dir)
             .stdin(std::process::Stdio::null())
@@ -810,7 +828,7 @@ pub async fn google_auth_login_stream(
     emit_line(&app, LINE, &session, "Starting Google sign-in. Your browser will open to approve access.");
 
     let mut scmd = tokio::process::Command::new(&bin);
-    scmd.args(["auth", "login", "-s", "gmail,calendar,drive,docs,sheets,tasks,people"])
+    scmd.args(["auth", "login", "--scopes", GWS_SCOPES])
         .env_clear()
         .envs(crate::scrubbed_env_pairs())
         .env("PATH", &path)

@@ -141,7 +141,7 @@ const SERVICES = ["Gmail", "Calendar", "Drive", "Docs", "Sheets", "Tasks", "Peop
 const STATUS_META: Record<Profile["status"], { label: string; tint: string; dot: string }> = {
   connected:   { label: "Connected",          tint: "text-ok",         dot: "bg-ok" },
   expired:     { label: "Token expired",       tint: "text-warn",       dot: "bg-warn" },
-  needs_scope: { label: "Needs Gmail access",  tint: "text-warn",       dot: "bg-warn" },
+  needs_scope: { label: "Re-authorize to grant access",  tint: "text-warn",       dot: "bg-warn" },
   unknown:     { label: "Not verified",        tint: "text-text-muted", dot: "bg-text-muted/50" },
 };
 
