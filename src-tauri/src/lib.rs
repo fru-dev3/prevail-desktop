@@ -534,6 +534,7 @@ pub fn run() {
             engine::engine_vault_decrypt,
             engine::engine_score,
             engine::engine_score_audit,
+            engine::engine_calendar_pull,
             engine::engine_manifest_get,
             engine::engine_score_all,
             engine::engine_score_stream,

@@ -2091,6 +2091,20 @@ pub async fn engine_score_audit(
     .map_err(|e| format!("score audit task failed: {e}"))?
 }
 
+/// Pull Google Calendar events (READ-ONLY) into the vault's plaintext
+/// `calendar-external.json`, which the Calendar view reads. Runs the engine off
+/// the main thread so the network round-trip never freezes the UI. Always
+/// returns parseable JSON: `{ ok, count, reason? }` - `ok:false` with a reason
+/// when Google is not connected, instead of failing. Stage A (one-way) only.
+#[tauri::command]
+pub async fn engine_calendar_pull(vault: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_engine_json(&["--vault", &vault, "calendar", "pull-google"])
+    })
+    .await
+    .map_err(|e| format!("calendar pull task failed: {e}"))?
+}
+
 /// `prevail --vault <vault> manifest get <domain> --json`
 /// Returns a fully typed DomainManifest.
 #[tauri::command]
