@@ -323,7 +323,14 @@ pub(crate) fn scrubbed_env_pairs() -> Vec<(String, String)> {
 /// highest-precedence context everywhere. Mirrors the engine's framing in
 /// prevail-cli `cli-bridge.ts::buildConstitutionPreamble`.
 pub(crate) fn ideal_state_preamble(vault: &Path) -> String {
-    let raw = read_to_string_retry(vault.join("ideal-state.md")).unwrap_or_default();
+    // The constitution follows the file into build/ once a vault is migrated; on
+    // a legacy (flat) vault build_root() == the vault root so this still resolves.
+    let vault_str = vault.to_string_lossy();
+    let mut raw = read_to_string_retry(crate::paths::build_root(&vault_str).join("ideal-state.md")).unwrap_or_default();
+    if raw.trim().is_empty() {
+        // Root fallback so existing flat vaults keep working.
+        raw = read_to_string_retry(vault.join("ideal-state.md")).unwrap_or_default();
+    }
     let raw = raw.trim();
     if raw.is_empty() {
         return String::new();

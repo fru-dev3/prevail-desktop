@@ -67,7 +67,10 @@ pub(crate) fn resolve_domain(cfg: &BridgeConfig, text: &str) -> Option<String> {
 /// thread list. Crypto-aware via vault_append_line.
 pub(crate) fn record_exchange(cfg: &BridgeConfig, domain: &str, user_text: &str, reply: &str) {
     let Some(vault) = cfg.vault.as_deref().filter(|v| !v.is_empty()) else { return };
-    let dir = std::path::Path::new(vault).join(domain);
+    // Resolve the domain dir the data-aware way so writes land in
+    // data/domains/<domain> on a migrated vault (and the vault root on a legacy
+    // flat vault), matching where the rest of the stack reads the domain.
+    let dir = crate::paths::domain_dir_pub(vault, domain);
     if !dir.exists() {
         return;
     }
