@@ -18,7 +18,7 @@ import { ConnectAppFlow } from "./appconnect";
 import { AppRowLogo } from "./panels3";
 import { GoogleWorkspacePanel } from "./googlepanel";
 import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
-import type { BrandLogo, CatalogApp, ChatEvent, ConnectorCatalog, EngineApp } from "./types";
+import type { BrandLogo, CatalogApp, CatalogSkill, ChatEvent, ConnectorCatalog, EngineApp } from "./types";
 
 type AppStatus = "connected" | "authorized" | "attention" | "connecting" | "disconnected";
 
@@ -878,6 +878,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
               <ConnectAppFlow
                 vaultPath={vaultPath}
                 presetName={catalogPick?.name}
+                presetGoal={catalogPick?.note || catalogPick?.soul}
                 onDone={async () => { setConnecting(false); setCatalogPick(null); await reload(); }}
                 onCancel={() => setConnecting(false)}
               />
@@ -903,7 +904,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                   onSync={async () => {}}
                   onSetEnabled={() => {}}
                   onReload={reload}
-                  connect={{ onConnect: () => connectCatalogApp(catalogPick), connecting: catalogConnecting, soul: catalogPick.soul }}
+                  connect={{ onConnect: () => connectCatalogApp(catalogPick), connecting: catalogConnecting, soul: catalogPick.soul, skills: catalogPick.skills, onResearch: () => setConnecting(true) }}
                 />
               </>
             ) : selected === "google" ? (
@@ -2647,7 +2648,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   // Set when this is an un-added CATALOG app: the SAME detail view renders, but
   // the primary action is Connect (not Sync), and connected-only bits are muted.
   // This is what makes catalog + connected apps share one view.
-  connect?: { onConnect: () => void; connecting: boolean; soul?: string };
+  connect?: { onConnect: () => void; connecting: boolean; soul?: string; skills?: CatalogSkill[]; onResearch?: () => void };
   // When set, this app is fronted by a managed gateway (Composio / Nango) rather
   // than connected directly. The per-method auth UI (Method picker + login /
   // credentials / MCP-setup) is meaningless for a gateway app, so it is hidden;
@@ -2999,8 +3000,19 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
             </button>
           )}
           {notConnected ? (
-            // No skills yet: the only thing to do is add the app to your vault.
-            hasRunnableSkills ? null : <ConnectBtn label="Add to my apps" />
+            // #52: the transparent agentic path - Prevail researches the best way
+            // to connect (MCP / API / CLI / browser), recommends it with a reason,
+            // and sets it up after you confirm. Shown alongside the quick add.
+            <>
+              {connect?.onResearch && (
+                <button onClick={() => connect.onResearch!()} disabled={connect?.connecting}
+                  title="Prevail researches MCP, an official API, a local CLI, or a guided browser login, recommends the best one with a reason, then sets it up after you confirm."
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-2 text-sm font-semibold text-accent hover:bg-accent/10 disabled:opacity-60">
+                  <Search className="h-4 w-4" /> Find the best way
+                </button>
+              )}
+              {hasRunnableSkills ? null : <ConnectBtn label="Add to my apps" />}
+            </>
           ) : (
             <button onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }))} title="Open in chat"
               className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-background hover:bg-accent-hover">
@@ -3057,6 +3069,23 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                 {domainsLine && <CatalogField label="Feeds domains">{domainsLine}</CatalogField>}
               </dl>
             </div>
+            {/* What it can do - the curated skills this connector gives the agent,
+                shown before connecting so the value is clear up front. Comes from
+                the catalog (connect.skills); once added, the Skills tab shows the
+                real runnable skills. */}
+            {connect?.skills && connect.skills.length > 0 && (
+              <div className={card}>
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Zap className="h-4 w-4 text-accent" /> What it can do</h3>
+                <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {connect.skills.map((s) => (
+                    <li key={s.id} className="rounded-lg border border-border-subtle bg-background px-3 py-2">
+                      <div className="text-[13px] font-medium text-text-primary">{s.title}</div>
+                      <div className="mt-0.5 text-[12px] leading-relaxed text-text-secondary">{s.description}</div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 
