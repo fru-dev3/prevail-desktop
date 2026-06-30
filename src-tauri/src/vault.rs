@@ -3,7 +3,7 @@
 // read_dir_retry) and NON_DOMAIN_DIRS stay in lib.rs (used everywhere);
 // this module is just the Domain shape + the scan command. Extracted from lib.rs.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
@@ -63,35 +63,94 @@ fn meaningful_preview(md: &str) -> Option<String> {
     }
 }
 
-/// Migrate a legacy vault (domains directly under the root) to the v3 layout
-/// where `domains/` and `apps/` are siblings inside the vault. SAFE by design
-/// (Hard Rule: never lose user data):
-///   * only moves dirs that are clearly a domain (soul.md / _state.md / state.md),
-///   * uses fs::rename (a move, never a copy+delete),
-///   * SKIPS any name that already exists under domains/ (never overwrites),
-///   * idempotent: a vault already in v3 (no legacy domains) is a no-op.
-/// Returns the number of domains moved. Always ensures domains/ + apps/ exist.
+/// Move a single ROOT entry (file OR dir) named `name` into `dest_dir`, by an
+/// fs::rename (a MOVE, never copy+delete). SAFE: if `src` is absent it is a
+/// no-op; if `dest` already exists it is SKIPPED (never overwrites) and the
+/// source is left in place. Creates `dest_dir` only when there is something to
+/// move into it. Bumps `*moved` on a successful move. Used by the canonical
+/// layout convergence to relocate build-support, config and General-bucket
+/// content without ever risking user data.
+fn move_root_entry(root: &Path, name: &str, dest_dir: &Path, moved: &mut u64) -> Result<(), String> {
+    let src = root.join(name);
+    if !src.exists() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(dest_dir).map_err(|e| format!("mkdir {}: {e}", dest_dir.display()))?;
+    let dest = dest_dir.join(name);
+    if dest.exists() {
+        return Ok(()); // never overwrite — leave the source in place
+    }
+    match std::fs::rename(&src, &dest) {
+        Ok(()) => {
+            *moved += 1;
+            Ok(())
+        }
+        Err(e) => Err(format!("move {name} into {}: {e}", dest_dir.display())),
+    }
+}
+
+/// Converge ANY vault to the STRICT canonical layout on load: the vault ROOT
+/// holds ONLY `build/` and `data/` (plus hidden `.`-prefixed markers). `data/`
+/// holds `domains/` + `apps/`; `build/` holds all support + config. This both
+/// scaffolds a brand-new/empty vault and auto-converts a flat/legacy one.
+///
+/// SAFE by design (Hard Rule: never lose user data):
+///   * every relocation is an fs::rename (a MOVE, never a copy+delete),
+///   * an existing destination is SKIPPED (never overwritten); the source stays,
+///   * the ONLY removal is an emptied legacy v3 container (root/domains,
+///     root/apps) AFTER its children moved, and only when it is then empty,
+///   * idempotent: a vault already canonical is effectively a no-op.
+///
+/// Convergence steps:
+///   1. scaffold data/domains, data/apps, data/domains/general, build/, and the
+///      `data/.prevail-data-layout` marker (so an empty vault starts canonical),
+///   2. legacy root domains (a dir with soul.md / _state.md / state.md) -> data/domains/<name>,
+///   3. v3 containers root/domains + root/apps -> their children into data/, then drop the emptied container,
+///   4. global build-support + config files/dirs -> build/,
+///   5. General-bucket loose content -> data/domains/general/,
+///   6. catch-all: any remaining loose ROOT *file* (non-hidden, unhandled) -> build/.
+/// Returns the number of entries moved.
 #[tauri::command]
 pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
     let root = PathBuf::from(&path);
     if !root.is_dir() {
         return Err(format!("vault path does not exist: {}", path));
     }
-    // Canonical layout: apps + domains live ONLY under data/. Create those (not
-    // root-level), so loading a vault never re-seeds stray root domains/ + apps/.
+    // (1) Canonical scaffold: apps + domains live ONLY under data/; build/ holds
+    // support + config. Create them (not root-level) so loading never re-seeds a
+    // stray root domains/ + apps/, and an empty/new vault still starts canonical.
     let data = root.join("data");
     let domains_root = data.join("domains");
+    let apps_root = data.join("apps");
+    let build_dir = root.join("build");
+    let general_dir = domains_root.join("general");
     std::fs::create_dir_all(&domains_root).map_err(|e| format!("mkdir data/domains: {e}"))?;
-    std::fs::create_dir_all(data.join("apps")).map_err(|e| format!("mkdir data/apps: {e}"))?;
+    std::fs::create_dir_all(&apps_root).map_err(|e| format!("mkdir data/apps: {e}"))?;
+    std::fs::create_dir_all(&general_dir).map_err(|e| format!("mkdir data/domains/general: {e}"))?;
+    std::fs::create_dir_all(&build_dir).map_err(|e| format!("mkdir build: {e}"))?;
+    // Marker so a brand-new vault is recognizably canonical even with nothing to
+    // move. Hidden (`.`-prefixed) so it never counts as root content.
+    let marker = data.join(".prevail-data-layout");
+    if !marker.exists() {
+        let _ = std::fs::write(&marker, "v4\n");
+    }
 
     let mut moved = 0u64;
+
+    // (2) Legacy root domains -> data/domains/<name>. Only dirs that are clearly
+    // a domain (soul.md / _state.md / state.md), skip-conflict.
     let entries = match read_dir_retry(&root) {
         Ok(e) => e,
         Err(e) => return Err(e.to_string()),
     };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') || name.starts_with('_') || NON_DOMAIN_DIRS.contains(&name.as_str()) {
+        if name.starts_with('.')
+            || name.starts_with('_')
+            || name == "data"
+            || name == "build"
+            || NON_DOMAIN_DIRS.contains(&name.as_str())
+        {
             continue;
         }
         let src = entry.path();
@@ -107,13 +166,113 @@ pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
         }
         let dest = domains_root.join(&name);
         if dest.exists() {
-            continue; // never overwrite an existing v3 domain
+            continue; // never overwrite an existing canonical domain
         }
         match std::fs::rename(&src, &dest) {
             Ok(()) => moved += 1,
             Err(e) => return Err(format!("move {name} into domains/: {e}")),
         }
     }
+
+    // (3) v3 containers: move each child dir of root/domains + root/apps into the
+    // canonical data/ home (skip-conflict), then remove the container if emptied.
+    for (container_name, dest_parent) in [("domains", &domains_root), ("apps", &apps_root)] {
+        let container = root.join(container_name);
+        if !container.is_dir() {
+            continue;
+        }
+        if let Ok(es) = read_dir_retry(&container) {
+            for entry in es.flatten() {
+                let cname = entry.file_name().to_string_lossy().to_string();
+                if cname.starts_with('.') {
+                    continue;
+                }
+                let csrc = entry.path();
+                if !csrc.is_dir() {
+                    continue; // only move child domain/app dirs
+                }
+                let cdest = dest_parent.join(&cname);
+                if cdest.exists() {
+                    continue; // never overwrite
+                }
+                match std::fs::rename(&csrc, &cdest) {
+                    Ok(()) => moved += 1,
+                    Err(e) => return Err(format!("move {container_name}/{cname} into data/: {e}")),
+                }
+            }
+        }
+        // Remove the container ONLY if it is now empty (no user content lost).
+        if let Ok(mut rd) = read_dir_retry(&container) {
+            if rd.next().is_none() {
+                let _ = std::fs::remove_dir(&container);
+            }
+        }
+    }
+
+    // (4) Global build-support + config -> build/ (move root entry, file OR dir).
+    const BUILD_SUPPORT: &[&str] = &[
+        "_meta",
+        "benchmark",
+        "ideal-state.md",
+        "profile.md",
+        "omega.md",
+        "AGENTS-operating.md",
+        "PREVAIL.md",
+        "calendar-external.json",
+    ];
+    for name in BUILD_SUPPORT {
+        move_root_entry(&root, name, &build_dir, &mut moved)?;
+    }
+
+    // (5) General-bucket content -> data/domains/general/. On a flat vault the
+    // General domain IS the vault root, so these loose root entries are its
+    // content. Only moved when at the VAULT ROOT.
+    const GENERAL_CONTENT: &[&str] = &[
+        "_intents.jsonl",
+        "_decisions.jsonl",
+        "_surface.json",
+        "_threads",
+        "_log",
+        "_skills",
+        "_state.md",
+        "_memory.md",
+        "_skillgen.json",
+        "_taskgen.json",
+        "_tasks.md",
+        "_tasks.jsonl",
+        "_loops.json",
+        "_loops_runtime.json",
+        "open-loops.md",
+        "goals.md",
+        "config.md",
+        "MEMORY.md",
+        "soul.md",
+        "QUICKSTART.md",
+        "PROMPTS.md",
+    ];
+    for name in GENERAL_CONTENT {
+        move_root_entry(&root, name, &general_dir, &mut moved)?;
+    }
+
+    // (6) Catch-all for cleanliness: any REMAINING loose FILE (not a directory)
+    // at the root that is not hidden and not already handled -> build/. Unknown
+    // DIRECTORIES are deliberately left in place rather than risk misplacing them.
+    let entries = match read_dir_retry(&root) {
+        Ok(e) => e,
+        Err(e) => return Err(e.to_string()),
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') || name == "data" || name == "build" {
+            continue;
+        }
+        let src = entry.path();
+        if src.is_dir() {
+            continue; // never catch-all an unrecognized directory
+        }
+        move_root_entry(&root, name.as_str(), &build_dir, &mut moved)?;
+    }
+
     Ok(moved)
 }
 
@@ -345,6 +504,90 @@ mod tests {
 
         // Idempotent: a second run moves nothing new.
         assert_eq!(vault_migrate_layout(vs).unwrap(), 0);
+
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn vault_migrate_layout_converges_flat_vault_to_canonical_no_loss() {
+        // Recursively count NON-HIDDEN files (the migration adds a hidden
+        // `.prevail-data-layout` marker which is not user content).
+        fn count_files(dir: &std::path::Path) -> u64 {
+            let mut n = 0u64;
+            if let Ok(rd) = fs::read_dir(dir) {
+                for e in rd.flatten() {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    if name.starts_with('.') {
+                        continue;
+                    }
+                    let p = e.path();
+                    if p.is_dir() {
+                        n += count_files(&p);
+                    } else {
+                        n += 1;
+                    }
+                }
+            }
+            n
+        }
+
+        let vault = std::env::temp_dir().join(format!("prevail-migrate-flat-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&vault);
+        let vs = vault.to_string_lossy().to_string();
+
+        // Two flat domain dirs (each: soul.md + _state.md + data/x.json).
+        for d in ["health", "career"] {
+            let dom = vault.join(d);
+            fs::create_dir_all(dom.join("data")).unwrap();
+            fs::write(dom.join("soul.md"), "# soul").unwrap();
+            fs::write(dom.join("_state.md"), "# state").unwrap();
+            fs::write(dom.join("data").join("x.json"), "{}").unwrap();
+        }
+        // Root build-support.
+        fs::create_dir_all(vault.join("_meta")).unwrap();
+        fs::write(vault.join("_meta").join("usage.jsonl"), "{}\n").unwrap();
+        fs::create_dir_all(vault.join("benchmark").join("questions")).unwrap();
+        fs::write(vault.join("benchmark").join("questions").join("q.json"), "{}").unwrap();
+        fs::write(vault.join("ideal-state.md"), "# ideal").unwrap();
+        fs::write(vault.join("profile.md"), "# profile").unwrap();
+        fs::write(vault.join("AGENTS-operating.md"), "# agents").unwrap();
+        // General loose content.
+        fs::write(vault.join("_intents.jsonl"), "{\"kind\":\"intent\"}\n").unwrap();
+        fs::write(vault.join("_state.md"), "# general state").unwrap();
+        fs::create_dir_all(vault.join("_threads")).unwrap();
+        fs::write(vault.join("_threads").join("t.json"), "{}").unwrap();
+
+        let before = count_files(&vault);
+        let moved = vault_migrate_layout(vs.clone()).unwrap();
+        assert!(moved > 0, "a flat vault must move entries, got {moved}");
+
+        // (a) nothing lost — recursive non-hidden file count is preserved.
+        let after = count_files(&vault);
+        assert_eq!(after, before, "file count changed: before={before} after={after}");
+
+        // (b) the root's non-hidden entries are exactly {build, data}.
+        let mut root_entries: Vec<String> = fs::read_dir(&vault)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| !n.starts_with('.'))
+            .collect();
+        root_entries.sort();
+        assert_eq!(root_entries, vec!["build".to_string(), "data".to_string()], "root must contain only build/ + data/");
+
+        // (c) domains, build-support, and general content landed canonically.
+        assert!(vault.join("data").join("domains").join("health").join("data").join("x.json").exists());
+        assert!(vault.join("data").join("domains").join("career").join("data").join("x.json").exists());
+        assert!(vault.join("build").join("_meta").join("usage.jsonl").exists());
+        assert!(vault.join("build").join("benchmark").join("questions").join("q.json").exists());
+        assert!(vault.join("build").join("ideal-state.md").exists());
+        assert!(vault.join("build").join("profile.md").exists());
+        assert!(vault.join("build").join("AGENTS-operating.md").exists());
+        assert!(vault.join("data").join("domains").join("general").join("_intents.jsonl").exists());
+        assert!(vault.join("data").join("domains").join("general").join("_threads").join("t.json").exists());
+
+        // Idempotent: a second run is a no-op.
+        assert_eq!(vault_migrate_layout(vs).unwrap(), 0, "second run must move nothing");
 
         let _ = fs::remove_dir_all(&vault);
     }
