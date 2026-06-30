@@ -224,7 +224,12 @@ export function ChatPanel({
   useEffect(() => {
     const onSeed = (e: Event) => {
       const text = (e as CustomEvent<string>).detail;
-      if (typeof text === "string" && text) { setInput(text); setDomainTab("chat"); }
+      if (typeof text === "string" && text) {
+        setInput(text); setDomainTab("chat");
+        // Handled live, so drop any pending copy meant for the mount fallback,
+        // otherwise the same seed re-applies on a later chat mount.
+        try { localStorage.removeItem("prevail.compose.pending"); } catch { /* ignore */ }
+      }
     };
     window.addEventListener("prevail:compose-seed", onSeed as EventListener);
     // Pending seed from a view that wasn't mounted when it fired (e.g. Spark in
