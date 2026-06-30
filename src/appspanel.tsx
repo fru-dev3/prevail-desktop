@@ -5,7 +5,7 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowUpRight, Boxes, Check, ChevronLeft, ChevronRight, Clock, Download, ExternalLink, FileText, FolderOpen, Globe, HelpCircle, Link2, Loader2, MessageSquare, MoreVertical, Pencil, Play, Plug, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Star, Tag, Terminal, Trash2, X, Zap } from "lucide-react";
+import { Activity, ArrowUpRight, Boxes, Check, ChevronLeft, ChevronRight, Clock, Download, ExternalLink, FileText, FolderOpen, Globe, HelpCircle, Layers, Link2, Loader2, MessageSquare, MoreVertical, Pencil, Play, Plug, Plus, RefreshCw, Repeat, Search, Settings, ShieldCheck, Sparkles, Star, Tag, Terminal, Trash2, X, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { MasterDetail } from "./masterdetail";
 import { ConnectorRunPanel, type ConnectorRunMode } from "./connectorrun";
@@ -18,7 +18,8 @@ import { ConnectAppFlow } from "./appconnect";
 import { AppRowLogo } from "./panels3";
 import { GoogleWorkspacePanel } from "./googlepanel";
 import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
-import type { BrandLogo, CatalogApp, CatalogSkill, ChatEvent, ConnectorCatalog, DomainContextBundle, EngineApp } from "./types";
+import { AppFacetPanel } from "./shell";
+import type { BrandLogo, CatalogApp, CatalogSkill, ChatEvent, ConnectorCatalog, Domain, DomainContextBundle, EngineApp } from "./types";
 
 type AppStatus = "connected" | "authorized" | "attention" | "connecting" | "disconnected";
 
@@ -2343,7 +2344,10 @@ function catalogToApp(c: CatalogApp): EngineApp {
 
 // The detail pane is a TABBED interface (fix #7), mirroring the chat-experience
 // tab pattern: a pill row under the header, one panel shown at a time.
-type AppTab = "welcome" | "soul" | "journal" | "skills" | "connections" | "chat";
+// Unified tab set. The first group (welcome..chat) is the rich connector surface;
+// the second group (runs/settings/domains/loops) are the operational facets ported
+// from AppFacetPanel so this is the SINGLE canonical app-detail component.
+export type AppTab = "welcome" | "soul" | "journal" | "skills" | "connections" | "chat" | "runs" | "settings" | "domains" | "loops";
 
 // A runnable skill as the UI displays it. The engine now returns the richer
 // contract shape (id/name/method/primary/source/trigger/summary) and includes
@@ -2788,7 +2792,7 @@ function AppContextView({ vaultPath, appId, appTitle, card }: { vaultPath: strin
   );
 }
 
-function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, onReload, gatewayProvider, connect }: {
+export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, onReload, gatewayProvider, connect, embedded }: {
   app: EngineApp;
   vaultPath: string;
   logos: Record<string, BrandLogo>;
@@ -2797,6 +2801,10 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   onSync: () => Promise<SyncResult | void>;
   onSetEnabled: (v: boolean) => void;
   onReload: () => void | Promise<unknown>;
+  // When true, the rich identity header is suppressed because the host (App.tsx's
+  // full-page app view) already renders its own AppHeaderBar above this. The tab
+  // bar, bodies, and footer still render, so this stays the one canonical surface.
+  embedded?: boolean;
   // Set when this is an un-added CATALOG app: the SAME detail view renders, but
   // the primary action is Connect (not Sync), and connected-only bits are muted.
   // This is what makes catalog + connected apps share one view.
@@ -2836,6 +2844,15 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
       .catch(() => setSkills([]));
   }, [app.id]);
   useEffect(() => { loadSkills(); }, [loadSkills, app.lastSuccessTs]);
+  // Full vault domain list for the operational facets (Domains editor). Only the
+  // connected surface uses these tabs, so skip the scan for un-added catalog apps.
+  const [vaultDomains, setVaultDomains] = useState<Domain[]>([]);
+  useEffect(() => {
+    if (connect) return;
+    invoke<Domain[]>("scan_vault", { path: vaultPath })
+      .then((d) => setVaultDomains(Array.isArray(d) ? d : []))
+      .catch(() => setVaultDomains([]));
+  }, [vaultPath, connect, app.domains]);
   // Which skill is running inline (its streamed progress shows in the Skills tab).
   const [runningSkill, setRunningSkill] = useState<string | null>(null);
   // The skill Prevail runs by default. Starter packs ship runnable pre-connect,
@@ -3109,7 +3126,8 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   );
   return (
     <div className="bg-surface pb-2">
-      {/* Header */}
+      {/* Header - suppressed when embedded (the host renders its own identity bar). */}
+      {!embedded && (
       <div className="flex flex-wrap items-start gap-4 px-6 pb-5 pt-5">
         <AppRowLogo app={app} logos={logos} size={52} fallback="letter" />
         <div className="min-w-0 flex-1">
@@ -3173,6 +3191,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
           )}
         </div>
       </div>
+      )}
 
       {/* Tabbed detail (fix #7), mirroring the chat-experience tab pattern: a
           pill row, one panel shown at a time. */}
@@ -3187,6 +3206,14 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
             ...(!notConnected ? [{ id: "journal" as const, label: "Journal", icon: Activity }] : []),
             { id: "skills", label: "Skills", icon: Boxes },
             { id: "connections", label: "Connections", icon: Link2 },
+            // Operational facets (ported from AppFacetPanel). Only meaningful once
+            // the app exists in the vault, so they ride the same !notConnected gate.
+            ...(!notConnected ? [
+              { id: "runs" as const, label: "Runs", icon: RefreshCw },
+              { id: "loops" as const, label: "Loops", icon: Repeat },
+              { id: "settings" as const, label: "Settings", icon: Settings },
+              { id: "domains" as const, label: "Domains", icon: Layers },
+            ] : []),
             ...(!notConnected ? [{ id: "chat" as const, label: "Chat", icon: MessageSquare }] : []),
           ] as { id: AppTab; label: string; icon: typeof Plug }[]).map((t) => {
             const Icon = t.icon;
@@ -3429,6 +3456,20 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
               </div>
             </div>
           </div>
+        )}
+
+        {/* OPERATIONAL FACETS - Runs / Settings / Domains / Loops. Ported from
+            AppFacetPanel by rendering it directly (its handlers + JSX are reused
+            unchanged), so this stays the single canonical app-detail surface. */}
+        {!notConnected && (tab === "runs" || tab === "settings" || tab === "domains" || tab === "loops") && (
+          <AppFacetPanel
+            app={app}
+            vaultPath={vaultPath}
+            domains={vaultDomains}
+            appTab={tab}
+            onOpenDomain={(d) => window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: d }))}
+            onChanged={() => { void onReload(); }}
+          />
         )}
       </div>
 

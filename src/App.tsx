@@ -11,7 +11,7 @@ import { QuickCapture } from "./quickcapture";
 import { BridgeStatusChips, DemoRibbon, ResizeHandle } from "./widgets";
 import { useProcesses } from "./processes";
 import { OnboardingModal } from "./panels3";
-import { AppFacetPanel, BunkerRibbon, VaultWizard } from "./shell";
+import { BunkerRibbon, VaultWizard } from "./shell";
 // Heavy surfaces are code-split: each loads its own chunk on first use instead of
 // inflating the initial bundle (and the live memory footprint). SettingsPanel
 // alone transitively pulls in every settings section, so deferring it is the
@@ -28,7 +28,7 @@ import { autoVerifyClis } from "./verify";
 import { startBenchScheduler } from "./bench";
 import { bumpBackupChangeCount, startBackupScheduler } from "./backup";
 import { startLoopsScheduler, readLoops, ensureBriefingLoop, ensureModelScoutLoop } from "./loops";
-import { startAppsScheduler } from "./appspanel";
+import { startAppsScheduler, AppDetail, appStatus } from "./appspanel";
 import { startOmegaScheduler } from "./omega";
 import { OnboardingTour } from "./onboarding";
 import { VaultEncryptPrompt, vaultEncryptOffered } from "./vault-encrypt-prompt";
@@ -135,7 +135,6 @@ import {
   
   
   ShieldCheck,
-  RefreshCw,
   Repeat,
   Power,
 } from "lucide-react";
@@ -268,7 +267,11 @@ export default function App() {
   // Which facet of the open app the canvas shows. "chat" = the app's own
   // conversation; the rest are app sub-views (mirror of DomainTab, but for an
   // app's own concerns - never the grounding domain's).
-  type AppTab = "chat" | "runs" | "settings" | "domains" | "loops";
+  // "chat" = the app's own conversation; "detail" = the unified AppDetail surface
+  // (Welcome / Soul / Skills / Connections / Runs / Settings / Domains / Loops),
+  // which owns its own tab navigation. This used to fan out to per-facet keys, but
+  // AppDetail now exposes every facet itself, so the host only toggles the mode.
+  type AppTab = "chat" | "detail";
   const [appTab, setAppTab] = useState<AppTab>("chat");
   // Thread scope - WHERE conversations are stored/listed. An open app gets its
   // OWN thread space (`_app-<id>`) that's INDEPENDENT of any domain, so you can
@@ -325,6 +328,37 @@ export default function App() {
       window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
     } catch (e) { console.error("set app enabled", e); }
     finally { setTogglingEnabled(false); }
+  }, [selectedApp]);
+  // Props the unified AppDetail needs in the full-page app view. Re-fetch the open
+  // app record after a mutation so status / schedule / domains stay current without
+  // re-opening (which would reset the conversation). These mirror what the Apps
+  // panel passes its AppDetail, so the two surfaces behave identically.
+  const [appSyncBusy, setAppSyncBusy] = useState(false);
+  const reloadSelectedApp = useCallback(async () => {
+    if (!selectedApp) return;
+    const id = selectedApp.id;
+    try {
+      const list = await invoke<EngineApp[]>("engine_apps_list");
+      const fresh = (list ?? []).find((a) => a.id === id);
+      if (fresh) setSelectedApp(fresh);
+    } catch { /* keep the stale record on failure */ }
+  }, [selectedApp]);
+  const onAppSync = useCallback(async (): Promise<{ ok: boolean; error?: string; artifacts?: number }> => {
+    if (!selectedApp) return { ok: false, error: "no app open" };
+    setAppSyncBusy(true);
+    try {
+      const r = await invoke<{ ok: boolean; error?: string; artifacts?: number }>("engine_app_sync", { id: selectedApp.id, vault: vaultPath });
+      await reloadSelectedApp();
+      return r ?? { ok: true };
+    } catch (e) { return { ok: false, error: String(e).slice(0, 200) }; }
+    finally { setAppSyncBusy(false); }
+  }, [selectedApp, vaultPath, reloadSelectedApp]);
+  const onAppSetEnabled = useCallback(async (v: boolean) => {
+    if (!selectedApp) return;
+    try {
+      await invoke("engine_app_set_enabled", { id: selectedApp.id, enabled: v });
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+    } catch (e) { console.error("set app enabled", e); }
   }, [selectedApp]);
   // The domain Apps strip lives deep in the tree; let it open an app via a
   // window event instead of threading a callback through every layer.
@@ -1573,29 +1607,25 @@ export default function App() {
               {onApp ? (
                 // An open app shows ITS OWN facets, independent of the domain it
                 // grounds in (the isolation shipped in 0.7.24). Chat is the app's
-                // conversation; Runs / Settings / Domains are the AppFacetPanel
-                // views. The grounding domain's own Insights/Usage/Preferences no
-                // longer leak in here.
+                // conversation; Details opens the unified AppDetail surface. The
+                // grounding domain's own Insights/Usage/Preferences no longer leak
+                // in here.
                 <>
-                  {([
-                    { key: "runs", label: "Runs", Icon: RefreshCw, title: "Last sync, schedule, and run history" },
-                    { key: "loops", label: "Loops", Icon: Repeat, title: "Standing loops (automations) for this app, like a domain's" },
-                    { key: "settings", label: "Settings", Icon: SettingsIcon, title: "Connection, autonomy, schedule, and skills" },
-                    { key: "domains", label: "Domains", Icon: Layers, title: "Domains this app refreshes" },
-                  ] as const).map(({ key, label, Icon, title }) => (
-                    <button
-                      key={key}
-                      onClick={() => { setTab("chat"); setAppTab(key); }}
-                      title={title}
-                      className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
-                        tab === "chat" && appTab === key
-                          ? "bg-accent text-background shadow-sm"
-                          : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" /> {label}
-                    </button>
-                  ))}
+                  {/* One entry into the unified AppDetail surface. It exposes every
+                      facet itself (Welcome / Soul / Skills / Connections / Runs /
+                      Settings / Domains / Loops) via its own tab bar, so the host no
+                      longer needs a tab per facet. Chat is the left-hand tab. */}
+                  <button
+                    onClick={() => { setTab("chat"); setAppTab("detail"); }}
+                    title="App details: connection, skills, runs, schedule, domains, and loops"
+                    className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                      tab === "chat" && appTab === "detail"
+                        ? "bg-accent text-background shadow-sm"
+                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <Layers className="h-4 w-4" /> Details
+                  </button>
                   <button
                     onClick={toggleAppEnabled}
                     disabled={togglingEnabled}
@@ -1748,8 +1778,9 @@ export default function App() {
 
           {/* App view: a slim, always-visible identity bar above the canvas.
               Full-width chrome (not inside the chat scroll) so ChatPanel's own
-              layout is untouched. The rich detail lives in the AppFacetPanel
-              facets (Runs / Settings / Domains), reached via the top-bar chips. */}
+              layout is untouched. The rich detail lives in the unified AppDetail
+              surface (embedded, so it suppresses its own header), reached via the
+              Details tab in the top bar. */}
           {appView && selectedApp && (
             <AppHeaderBar
               app={selectedApp}
@@ -1761,13 +1792,20 @@ export default function App() {
           <div className="min-h-0 flex-1 overflow-y-auto">
             <Suspense fallback={<PanelLoading />}>
             {tab === "chat" && onApp && selectedApp && appTab !== "chat" ? (
-              <AppFacetPanel
+              // Unified canonical app-detail surface, the SAME component the Apps
+              // panel renders. `embedded` suppresses its own identity header since
+              // AppHeaderBar already sits above; it brings every facet itself.
+              <AppDetail
+                key={selectedApp.id}
                 app={selectedApp}
                 vaultPath={vaultPath}
-                domains={domains}
-                appTab={appTab}
-                onOpenDomain={openDomain}
-                onChanged={() => { void refreshThreads(); }}
+                logos={{}}
+                status={appStatus(selectedApp)}
+                busy={appSyncBusy}
+                onSync={onAppSync}
+                onSetEnabled={onAppSetEnabled}
+                onReload={reloadSelectedApp}
+                embedded
               />
             ) : tab === "chat" && (
               <ChatPanel
