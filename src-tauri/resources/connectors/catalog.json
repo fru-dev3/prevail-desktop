@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "note": "Prevail connector catalog. Sourced from the real connector directories of Claude/ChatGPT/Gemini (June 2026) plus preserved household-name life essentials. Each app: connector pattern (api/oauth/cli/browser)→ingestion tier; sources[]=which assistants list it (verified connector); tier 1=core default view; obscure=niche long-tail (de-emphasized). | Curated to a ~150 life-OS set (tier 1); the long tail is re-tiered to 2 and reachable via search / show-all. See docs/APPS-AREA-RESEARCH.md. | Curated to a ~150 life-OS set (tier 1); the long tail is re-tiered to 2 and reachable via search / show-all. See docs/APPS-AREA-RESEARCH.md.",
+  "note": "Prevail connector catalog. Sourced from the real connector directories of Claude/ChatGPT/Gemini (June 2026) plus preserved household-name life essentials. Each app: connector pattern (api/oauth/cli/browser)\u2192ingestion tier; sources[]=which assistants list it (verified connector); tier 1=core default view; obscure=niche long-tail (de-emphasized). | Curated to a ~150 life-OS set (tier 1); the long tail is re-tiered to 2 and reachable via search / show-all. See docs/APPS-AREA-RESEARCH.md. | Curated to a ~150 life-OS set (tier 1); the long tail is re-tiered to 2 and reachable via search / show-all. See docs/APPS-AREA-RESEARCH.md.",
   "patterns": {
     "api": {
       "tier": "tier_a_mcp",
@@ -62,6 +62,140 @@
     "dev"
   ],
   "apps": [
+    {
+      "name": "Composio",
+      "domain": "productivity",
+      "tags": [
+        "gateway",
+        "mcp",
+        "integrations",
+        "aggregator"
+      ],
+      "pattern": "api",
+      "verified": true,
+      "tier": 1,
+      "curated": true,
+      "iconSlug": "composio",
+      "connection_hint": {
+        "method": "mcp",
+        "privacy": "vendor-cloud",
+        "readOnly": false,
+        "note": "Connect once with your Composio key; unlocks Composio's full app catalog."
+      },
+      "obscure": false,
+      "soul": "One connection that unlocks all of Composio's integrations.",
+      "skills": [
+        {
+          "id": "connect-integration",
+          "title": "Connect an integration",
+          "description": "Authorize any app in Composio's catalog through the one gateway connection."
+        },
+        {
+          "id": "list-integrations",
+          "title": "List integrations",
+          "description": "Browse the apps Composio can front for the agent."
+        },
+        {
+          "id": "pull-data",
+          "title": "Pull data",
+          "description": "Read records from any connected Composio integration."
+        },
+        {
+          "id": "run-action",
+          "title": "Run an action",
+          "description": "Trigger an action on any connected Composio integration."
+        }
+      ]
+    },
+    {
+      "name": "Nango",
+      "domain": "productivity",
+      "tags": [
+        "gateway",
+        "integrations",
+        "api",
+        "aggregator"
+      ],
+      "pattern": "api",
+      "verified": true,
+      "tier": 1,
+      "curated": true,
+      "connection_hint": {
+        "method": "api",
+        "privacy": "vendor-cloud",
+        "readOnly": false,
+        "note": "Connect once with your Nango project secret key; fronts every integration you configured in Nango."
+      },
+      "obscure": false,
+      "soul": "One connection that unlocks all of Nango's integrations.",
+      "skills": [
+        {
+          "id": "connect-integration",
+          "title": "Connect an integration",
+          "description": "Authorize one of your configured Nango integrations through the gateway."
+        },
+        {
+          "id": "list-integrations",
+          "title": "List integrations",
+          "description": "Browse the integrations configured in your Nango project."
+        },
+        {
+          "id": "pull-data",
+          "title": "Pull data",
+          "description": "Read the records Nango syncs from a connected integration."
+        },
+        {
+          "id": "run-action",
+          "title": "Run an action",
+          "description": "Trigger an action on a connected Nango integration."
+        }
+      ]
+    },
+    {
+      "name": "Zapier",
+      "domain": "productivity",
+      "tags": [
+        "gateway",
+        "mcp",
+        "automation",
+        "aggregator"
+      ],
+      "pattern": "api",
+      "verified": true,
+      "tier": 1,
+      "curated": true,
+      "iconSlug": "zapier",
+      "connection_hint": {
+        "method": "mcp",
+        "privacy": "vendor-cloud",
+        "readOnly": false,
+        "note": "Paste your Zapier MCP server URL from mcp.zapier.com; unlocks your Zapier actions across thousands of apps."
+      },
+      "obscure": false,
+      "soul": "One connection that unlocks all of Zapier's integrations.",
+      "skills": [
+        {
+          "id": "connect-actions",
+          "title": "Connect your actions",
+          "description": "Point Prevail at your Zapier MCP server to reach the actions you set up there."
+        },
+        {
+          "id": "list-actions",
+          "title": "List actions",
+          "description": "See the Zapier actions available to the agent."
+        },
+        {
+          "id": "run-action",
+          "title": "Run an action",
+          "description": "Trigger a Zapier action across thousands of connected apps."
+        },
+        {
+          "id": "pull-data",
+          "title": "Pull data",
+          "description": "Read data back from a Zapier action's result."
+        }
+      ]
+    },
     {
       "name": "Filesystem (MCP)",
       "domain": "files",
@@ -6654,17 +6788,6 @@
       "obscure": true
     },
     {
-      "name": "Zapier",
-      "domain": "dev",
-      "pattern": "api",
-      "sources": [
-        "claude"
-      ],
-      "verified": true,
-      "tier": 2,
-      "iconSlug": "zapier"
-    },
-    {
       "name": "Zoho CRM",
       "domain": "dev",
       "pattern": "api",
@@ -9005,7 +9128,7 @@
       ]
     },
     {
-      "name": "Znajdź Przetargi",
+      "name": "Znajd\u017a Przetargi",
       "domain": "government",
       "pattern": "api",
       "sources": [
@@ -13091,7 +13214,7 @@
       "obscure": true
     },
     {
-      "name": "Cinemô",
+      "name": "Cinem\u00f4",
       "domain": "media",
       "pattern": "api",
       "sources": [
@@ -19077,7 +19200,7 @@
       "obscure": true
     },
     {
-      "name": "Yapay Zeka'nın Boyner'i",
+      "name": "Yapay Zeka'n\u0131n Boyner'i",
       "domain": "shopping",
       "pattern": "api",
       "sources": [
@@ -19110,7 +19233,7 @@
       "obscure": true
     },
     {
-      "name": "아모레몰 AMORE MALL",
+      "name": "\uc544\ubaa8\ub808\ubab0 AMORE MALL",
       "domain": "shopping",
       "pattern": "api",
       "sources": [
@@ -20230,7 +20353,7 @@
       "obscure": true
     },
     {
-      "name": "Barceló Hotel Group",
+      "name": "Barcel\u00f3 Hotel Group",
       "domain": "travel",
       "pattern": "api",
       "sources": [
@@ -21792,7 +21915,7 @@
       "obscure": true
     },
     {
-      "name": "AccuWeather®",
+      "name": "AccuWeather\u00ae",
       "domain": "utilities",
       "pattern": "api",
       "sources": [
@@ -23803,5 +23926,5 @@
       "obscure": false
     }
   ],
-  "curatedCount": 213
+  "curatedCount": 216
 }

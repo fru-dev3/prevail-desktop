@@ -260,6 +260,18 @@ export function startAppsScheduler(vault: string) {
 // starring an app (Direct, Composio, or Nango) is what pins it to the home
 // screen. The store + hooks live in that module so both surfaces read one set.
 
+// The three aggregator/gateway connectors are single catalog entries that, when
+// picked, route to their own gateway flow rather than the generic Connect path:
+// Composio / Nango open the existing managed-gateway panes (one key fronts all
+// of that gateway's integrations), and Zapier opens the "Add custom MCP" modal
+// prefilled for the Zapier MCP server (the user pastes their mcp.zapier.com URL).
+function gatewayAppKind(c: { name?: string | null; iconSlug?: string | null }): "composio" | "nango" | "zapier" | null {
+  const k = (c.iconSlug || c.name || "").trim().toLowerCase();
+  if (k === "composio") return "composio";
+  if (k === "nango") return "nango";
+  if (k === "zapier") return "zapier";
+  return null;
+}
 
 export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   const [apps, setApps] = useState<EngineApp[] | null>(null);
@@ -309,6 +321,10 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // for it. ConnectAppFlow doesn't take a typed-name prop, so we surface the
   // chosen app in a small detail pane with a "Connect" CTA that opens the flow.
   const [catalogPick, setCatalogPick] = useState<CatalogApp | null>(null);
+  // When a gateway connector (Composio / Nango) is picked, its managed-gateway
+  // pane takes over the right detail (one key fronts all that gateway's apps).
+  // Selecting any other row clears this so the normal detail returns.
+  const [gatewayPane, setGatewayPane] = useState<"composio" | "nango" | null>(null);
   // "Add custom MCP": a small modal that scaffolds any stdio MCP server the user
   // names, passing its spawn command (and optional one-time install) to the
   // engine the same way a catalog MCP entry does. The vault domain list backs
@@ -329,6 +345,44 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       } catch { /* domains optional - the picker just stays empty */ }
     }
   }, [vaultDomains.length, vaultPath]);
+
+  // Zapier connects through its hosted MCP server (mcp.zapier.com), not a stdio
+  // binary, so we reuse the "Add custom MCP" modal prefilled to bridge that
+  // remote endpoint via mcp-remote. The user pastes their own Zapier MCP URL
+  // (which carries their key) in place of the placeholder, then adds the server.
+  const openZapierMcpForm = useCallback(async () => {
+    setMcpForm({
+      name: "Zapier",
+      command: "npx -y mcp-remote https://mcp.zapier.com/api/mcp/s/YOUR_KEY/mcp",
+      install: "",
+      domain: "",
+    });
+    setMcpFormErr(null);
+    setMcpFormOpen(true);
+    if (vaultDomains.length === 0) {
+      try {
+        const ds = await invoke<{ name: string }[]>("scan_vault", { path: vaultPath });
+        setVaultDomains((ds ?? []).map((d) => d.name.toLowerCase()).sort());
+      } catch { /* domains optional */ }
+    }
+  }, [vaultDomains.length, vaultPath]);
+
+  // Pick a catalog app: gateway connectors route to their own flow, everything
+  // else opens the standard connect detail. Used by every catalog row so the
+  // routing is identical wherever a catalog entry is shown.
+  const selectCatalogApp = useCallback((c: CatalogApp) => {
+    const kind = gatewayAppKind(c);
+    if (kind === "composio" || kind === "nango") {
+      setGatewayPane(kind); setCatalogPick(null); setSelected(null); setConnecting(false);
+      return;
+    }
+    if (kind === "zapier") {
+      setGatewayPane(null); setCatalogPick(null); setConnecting(false);
+      void openZapierMcpForm();
+      return;
+    }
+    setGatewayPane(null); setCatalogPick(c); setConnecting(false);
+  }, [openZapierMcpForm]);
 
   const reload = useCallback(async (): Promise<EngineApp[]> => {
     try {
@@ -621,6 +675,13 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // happens to be the shared `selected` (e.g. just-scaffolded) must not render
   // here without its gateway chrome - it belongs to its own mode.
   const directSelectedApp = selectedApp && !selectedApp.gateway ? selectedApp : null;
+  // A catalog row reads as active when its detail/flow is what's currently open:
+  // a gateway connector follows the gateway pane, anything else the catalog pick.
+  const catalogRowActive = useCallback((c: CatalogApp) => {
+    const kind = gatewayAppKind(c);
+    if (kind === "composio" || kind === "nango") return gatewayPane === kind;
+    return catalogPick?.name === c.name;
+  }, [gatewayPane, catalogPick]);
 
   return (
     <>
@@ -706,7 +767,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                 {directApps.map((a) => (
                   <button
                     key={a.id}
-                    onClick={() => { setSelected(a.id); setCatalogPick(null); }}
+                    onClick={() => { setSelected(a.id); setCatalogPick(null); setGatewayPane(null); }}
                     title={a.title || a.id}
                     className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${selected === a.id && !catalogPick ? "ring-2 ring-accent" : "hover:bg-surface-strong"}`}
                   >
@@ -757,7 +818,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
               </button>
             )}
             <button
-              onClick={() => { setConnecting(true); setCatalogPick(null); }}
+              onClick={() => { setConnecting(true); setCatalogPick(null); setGatewayPane(null); }}
               className="flex w-full items-center gap-2.5 rounded-lg border border-dashed border-accent-border bg-accent-soft/20 px-3 py-2 text-left transition-colors hover:bg-accent-soft/40"
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-background"><Plus className="h-3.5 w-3.5" /></span>
@@ -789,7 +850,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                           logos={logos}
                           status={appStatus(a)}
                           active={selected === a.id && !catalogPick}
-                          onSelect={() => { setSelected(a.id); setCatalogPick(null); }}
+                          onSelect={() => { setSelected(a.id); setCatalogPick(null); setGatewayPane(null); }}
                           isFav
                           onToggleFav={() => void favApp(a)}
                         />
@@ -799,8 +860,8 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                           key={`pin-${c.iconSlug || c.name}`}
                           app={c}
                           logos={logos}
-                          active={catalogPick?.name === c.name}
-                          onSelect={() => { setCatalogPick(c); setConnecting(false); }}
+                          active={catalogRowActive(c)}
+                          onSelect={() => selectCatalogApp(c)}
                           isFav
                           onToggleFav={() => toggleFavorite(favKeyOf(c.name))}
                         />
@@ -817,7 +878,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                           logos={logos}
                           status={appStatus(a)}
                           active={selected === a.id && !catalogPick}
-                          onSelect={() => { setSelected(a.id); setCatalogPick(null); }}
+                          onSelect={() => { setSelected(a.id); setCatalogPick(null); setGatewayPane(null); }}
                           isFav={favs.has(favKeyOf(a.title || a.id)) || favs.has(favKeyOf(a.id))}
                           onToggleFav={() => void favApp(a)}
                         />
@@ -843,10 +904,10 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                           key={c.iconSlug || c.name}
                           app={c}
                           logos={logos}
-                          active={isGoogle ? selected === "google" && !catalogPick : catalogPick?.name === c.name}
+                          active={isGoogle ? selected === "google" && !catalogPick && !gatewayPane : catalogRowActive(c)}
                           onSelect={isGoogle
-                            ? () => { setSelected("google"); setCatalogPick(null); setConnecting(false); }
-                            : () => { setCatalogPick(c); setConnecting(false); }}
+                            ? () => { setSelected("google"); setCatalogPick(null); setGatewayPane(null); setConnecting(false); }
+                            : () => selectCatalogApp(c)}
                           isFav={favs.has(favKeyOf(c.name))}
                           onToggleFav={isGoogle ? () => void favApp({ id: "google", title: "Google" }) : () => void favCatalogApp(c)}
                         />
@@ -882,6 +943,14 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                 onDone={async () => { setConnecting(false); setCatalogPick(null); await reload(); }}
                 onCancel={() => setConnecting(false)}
               />
+            ) : gatewayPane === "composio" ? (
+              // Composio: one key fronts all of Composio's integrations. Reuses
+              // the existing managed-gateway pane (key -> browse -> connect).
+              <ComposioMode vaultPath={vaultPath} expanded />
+            ) : gatewayPane === "nango" ? (
+              // Nango: one project secret key fronts your configured Nango
+              // integrations. Reuses the existing Nango gateway pane.
+              <NangoMode vaultPath={vaultPath} expanded />
             ) : catalogPick ? (
               // Fix #14/#3: a catalog pick must win over a stale `selected ===
               // "google"`. Selecting any catalog app sets catalogPick but leaves
