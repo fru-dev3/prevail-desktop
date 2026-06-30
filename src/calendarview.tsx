@@ -6,10 +6,11 @@
 // Data sources (all read from data that already exists — no fake events):
 //   • loops  → per-domain _loops.json (next run = lastRunTs + cadence)
 //   • tasks  → tasks_read_all (by due date)
-//   • google → <vault>/calendar-external.json, the integration contract the
-//              app-sync writes: [{ id, title, date: "YYYY-MM-DD", domain?, url? }].
-//              Two-way sync is handled by the app-sync; "Sync now" fires
-//              prevail:sync-calendar for it to pick up, then reloads.
+//   • google → <vault>/calendar-external.json: [{ id, title, date:
+//              "YYYY-MM-DD", domain?, url? }]. Stage A is a READ-ONLY pull -
+//              "Sync" calls engine_calendar_pull, which fetches Google events
+//              and writes this file, then we reload. Push back to Google
+//              (true two-way) is Stage B and not implemented yet.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bot, CalendarDays, Check, ChevronLeft, ChevronRight, ExternalLink, MessageSquare, Plus, RefreshCw, Repeat, Trash2, X } from "lucide-react";
 import { invoke } from "./bridge";
@@ -75,6 +76,9 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
   const [loading, setLoading] = useState(true);
   const [sources, setSources] = useState({ loop: true, task: true, google: true });
   const [syncing, setSyncing] = useState(false);
+  // Honest, visible outcome of the last Google pull so Sync is never a silent
+  // spinner: "Pulled N events", "not connected yet", or a failure reason.
+  const [syncMsg, setSyncMsg] = useState<string>("");
 
   // New-event composer.
   const [composeDay, setComposeDay] = useState<string | null>(null);
@@ -269,21 +273,25 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
 
   const syncGoogle = async () => {
     setSyncing(true);
+    setSyncMsg("");
     try {
-      // Syncing rides on the Google Workspace CLI. If it isn't set up, take the
-      // user to its setup in Apps instead of silently doing nothing.
-      const status = await invoke<{ installed?: boolean }>("google_cli_status").catch(() => ({ installed: false }));
-      if (!status?.installed) {
-        window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }));
-        // Let the Apps panel mount, then select the Google Workspace connector.
-        setTimeout(() => window.dispatchEvent(new CustomEvent("prevail:app-open", { detail: "google" })), 300);
-        return;
+      // Stage A: a READ-ONLY pull. The engine fetches Google Calendar events and
+      // writes the normalized calendar-external.json that load() reads below. It
+      // always returns { ok, count, reason? } so we report the real outcome
+      // instead of spinning silently. (Push back to Google is Stage B.)
+      type PullRes = { ok?: boolean; count?: number; reason?: string };
+      const res: PullRes = await invoke<PullRes>("engine_calendar_pull", { vault: vaultPath })
+        .catch((e): PullRes => ({ ok: false, reason: String(e) }));
+      if (res?.ok) {
+        const n = res.count ?? 0;
+        setSyncMsg(n ? `Pulled ${n} event${n === 1 ? "" : "s"} from Google` : "Google connected, no upcoming events");
+        await load();
+      } else {
+        // The engine returns a clear, gws-specific reason (not installed / not
+        // authenticated / API error), so surface it verbatim - the user then
+        // knows exactly what to do (e.g. run gws auth login).
+        setSyncMsg(res?.reason || "Google Calendar sync is not available yet");
       }
-      // Set up → hand off to the app-sync (it owns the Google Calendar two-way
-      // sync, using the gws CLI), then re-read whatever it wrote.
-      window.dispatchEvent(new CustomEvent("prevail:sync-calendar"));
-      await new Promise((r) => setTimeout(r, 600));
-      await load();
     } finally { setSyncing(false); }
   };
 
@@ -503,7 +511,8 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
           <Source id="loop" label="Loops" color="color-mix(in srgb, var(--color-ai, #3CD8FF) 40%, transparent)" />
           <Source id="task" label="Tasks" color="var(--color-accent, #0d7a6e)" />
           <Source id="google" label="Google" color="#a855f7" />
-          <button onClick={() => void syncGoogle()} disabled={syncing} title="Sync with Google Calendar. Uses the Google Workspace CLI (takes you to set it up if it isn't yet)" className="ml-1 flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:bg-surface-warm hover:text-text-primary disabled:opacity-50">
+          {syncMsg && <span className="ml-1 max-w-[220px] truncate font-mono text-[10px] text-text-muted" title={syncMsg}>{syncMsg}</span>}
+          <button onClick={() => void syncGoogle()} disabled={syncing} title="Pull your Google Calendar events into Prevail (read-only). Requires the Google Workspace CLI (gws) to be installed and authenticated." className="ml-1 flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:bg-surface-warm hover:text-text-primary disabled:opacity-50">
             <RefreshCw className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing…" : "Sync"}
           </button>
         </div>
