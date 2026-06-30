@@ -4,6 +4,20 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.2.106] — 2026-06-30 · apps + sidebar + Google redesign, Arena 8-view redesign, curated default catalog
+
+### Added
+- **Curated default app catalog**: the union of the curated launch lists is now the default set (213 of 1495 apps), each with a description, a skills list ("What it can do"), a domain grouping, and an honest connection method; plus 31 new connectors including the aggregators (Plaid, Flexpa, Terra, Canopy Connect, Argyle, Arcadia, Smartcar).
+- **Transparent agentic connect**: catalog apps offer "Find the best way" which researches MCP / API / CLI / browser, recommends one with a reason, auto-verifies, and connects after you confirm.
+- **Arena redesign**: all 8 views rebuilt (left rail nav, leaderboard hero, heatmap matrix, chart compare, history, run, questions, scout, schedule).
+- **Google panel**: Setup / Skills / Soul / Connections tabs, real multicolor service logos, clear multi-account display; multi-account OAuth reuses the default client.
+
+### Fixed
+- Apps panel: minimal rows with details on hover + a kebab, labeled status dots, no duplicate pinned apps, stronger hover/active contrast, Google shows as CLI, graceful scroll end, full-width Skills, clarified Connect, corrected `vault/data/apps` paths.
+- Sidebar apps now match domains (selected state, kebab, favorite-as-pin) and disabled apps read as off.
+- Disabled apps are fully inert (no sync, no agent tools, no loops). Manual-drop apps say "nothing to verify" instead of a dead-end check. Autonomy policy "Never" is no longer invisible. Browser skills work in packaged builds (playwright-core shipped beside the app).
+- Profiles page redesign; Starter packs removed; Prompt capture moved to its own section; notes.json now lives in build/.
+
 ## [0.8.2] — 2026-06-14 · self-learning, proactive recommendations, apps that connect themselves, and a much faster engine
 
 ### Added
