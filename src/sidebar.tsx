@@ -239,6 +239,33 @@ export function Sidebar({
   useEffect(() => { invoke<ConnectorCatalog>("ingestion_connector_catalog").then((c) => setAppCatalog(c?.apps ?? [])).catch(() => {}); }, []);
   const [appsOpen, setAppsOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsOpen") !== "0");
   useEffect(() => { lsSet("prevail.sidebar.appsOpen", appsOpen ? "1" : "0"); }, [appsOpen]);
+  // Pinned apps - the exact parallel of pinned domains, so a favorite app can be
+  // promoted to a "Pinned" group at the top of the Apps section. Keyed by the
+  // app's favorite key (favKeyOf of title/id, or the catalog name) so it lines up
+  // with how the star (favorites) keys each row. Persisted as a comma-separated
+  // list, mirroring PIN_KEY for domains.
+  const PINNED_APPS_KEY = "prevail.desktop.pinnedApps";
+  const [pinnedApps, setPinnedApps] = useState<Set<string>>(() => {
+    try {
+      const raw = lsGet(PINNED_APPS_KEY);
+      return new Set(raw ? raw.split(",").filter(Boolean) : []);
+    } catch { return new Set(); }
+  });
+  const toggleAppPin = (key: string) => {
+    setPinnedApps((cur) => {
+      const next = new Set(cur);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      lsSet(PINNED_APPS_KEY, Array.from(next).join(","));
+      return next;
+    });
+  };
+  // Apps "Pinned" vs "All" group collapse - mirrors pinnedOpen/allOpen for
+  // domains so the two sections behave identically. Persisted across restarts.
+  const [appsPinnedOpen, setAppsPinnedOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsPinnedOpen") !== "0");
+  const [appsAllOpen, setAppsAllOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsAllOpen") !== "0");
+  useEffect(() => { lsSet("prevail.sidebar.appsPinnedOpen", appsPinnedOpen ? "1" : "0"); }, [appsPinnedOpen]);
+  useEffect(() => { lsSet("prevail.sidebar.appsAllOpen", appsAllOpen ? "1" : "0"); }, [appsAllOpen]);
   useEffect(() => {
     let alive = true;
     const pull = () => { invoke<EngineApp[]>("engine_apps_list", { vault: vaultPath }).then((a) => { if (alive) setSidebarApps((a ?? []).map((x) => ({ ...x, title: appName(x.title) }))); }).catch(() => {}); };
@@ -276,6 +303,19 @@ export function Sidebar({
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [appCatalog, favs, favoritedSidebarApps]);
   const pinnedAppCount = favoritedSidebarApps.length + favoritedCatalogApps.length;
+  // Split both favorited lists into pinned vs the rest so pinned apps - across
+  // connected and not-yet-connected rows alike - rise to a "Pinned" group at the
+  // top, exactly like pinned domains. The existing per-list name sort is kept
+  // within each group.
+  const appBuckets = useMemo(() => {
+    const isPinnedApp = (key: string) => pinnedApps.has(key);
+    const pinnedSidebar = favoritedSidebarApps.filter((a) => isPinnedApp(favKeyOf(a.title || a.id)));
+    const restSidebar = favoritedSidebarApps.filter((a) => !isPinnedApp(favKeyOf(a.title || a.id)));
+    const pinnedCatalog = favoritedCatalogApps.filter((c) => isPinnedApp(favKeyOf(c.name)));
+    const restCatalog = favoritedCatalogApps.filter((c) => !isPinnedApp(favKeyOf(c.name)));
+    return { pinnedSidebar, restSidebar, pinnedCatalog, restCatalog };
+  }, [favoritedSidebarApps, favoritedCatalogApps, pinnedApps]);
+  const hasPinnedApps = appBuckets.pinnedSidebar.length + appBuckets.pinnedCatalog.length > 0;
   // The same app can be connected via Direct creds, Composio, or Nango (e.g.
   // two "Notion" rows). Surface which one each row is so identical titles are
   // distinguishable. The gateway provider is derived from the id prefix
@@ -300,6 +340,10 @@ export function Sidebar({
     // styling, a grey status dot, and a small "Off" badge. Absent/true = enabled.
     const disabled = app.enabled === false;
     const method = appMethod(app);
+    // Pin key matches the favorite key the star writes (title preferred, id
+    // fallback) so pinning lines up with whichever key favorited the row.
+    const appPinKey = favKeyOf(app.title || app.id);
+    const isAppPinned = pinnedApps.has(appPinKey);
     return (
       <li key={app.id} className="group flex items-center gap-1 pl-6">
         <button
@@ -394,6 +438,14 @@ export function Sidebar({
           </button>
           {appMenuOpen === app.id && (
             <div className="absolute right-0 top-7 z-50 w-44 rounded-md border border-border bg-surface p-0.5 shadow-xl">
+              {/* Pin to top - the app equivalent of pinning a domain. Promotes
+                  this row into the "Pinned" group above; does NOT unfavorite. */}
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleAppPin(appPinKey); setAppMenuOpen(null); }}
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+              >
+                <Pin className={`h-3 w-3 shrink-0 ${isAppPinned ? "fill-accent text-accent" : ""}`} /> {isAppPinned ? "Unpin" : "Pin to top"}
+              </button>
               <button
                 onClick={(e) => { e.stopPropagation(); setAppMenuOpen(null); onOpenApp(app); }}
                 className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
@@ -431,11 +483,28 @@ export function Sidebar({
     );
   };
 
+  // "Pinned" / "All" group header inside the Apps section - the visual + collapse
+  // twin of the domain group headers (renderGroupHeader above).
+  const renderAppGroupHeader = (label: "Pinned" | "All", open: boolean, set: (v: boolean) => void, count: number) => (
+    <li key={`app-${label}-header`} className="mt-1 first:mt-0">
+      <button
+        onClick={() => set(!open)}
+        title={`${open ? "Collapse" : "Expand"} ${label}`}
+        className="group/h flex w-full items-center gap-1.5 rounded-md py-1.5 pl-4 pr-2 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
+      >
+        <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
+        <span>{label}</span>
+        <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{count}</span>
+      </button>
+    </li>
+  );
+
   // A starred app the user has not connected yet. It still pins here (a star
   // pins), shown muted with a "Not connected" hint. Clicking opens the Apps
   // panel to finish connecting it; the star removes it from the rail.
   const renderCatalogFavRow = (c: CatalogApp) => {
     const k = favKeyOf(c.name);
+    const isAppPinned = pinnedApps.has(k);
     return (
       <li key={`cat-${k}`} className="group flex items-center gap-1 pl-6">
         <button
@@ -465,6 +534,13 @@ export function Sidebar({
           </button>
           {appMenuOpen === `cat-${k}` && (
             <div className="absolute right-0 top-7 z-50 w-44 rounded-md border border-border bg-surface p-0.5 shadow-xl">
+              {/* Pin to top - same affordance as connected app rows and domains. */}
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleAppPin(k); setAppMenuOpen(null); }}
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+              >
+                <Pin className={`h-3 w-3 shrink-0 ${isAppPinned ? "fill-accent text-accent" : ""}`} /> {isAppPinned ? "Unpin" : "Pin to top"}
+              </button>
               <button
                 onClick={(e) => { e.stopPropagation(); setAppMenuOpen(null); window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" })); }}
                 className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
@@ -1039,9 +1115,24 @@ export function Sidebar({
               <ul className="mt-0.5 space-y-0.5 px-2">
                 {/* The home screen = starred apps only (any mode). Connected apps
                     first, then starred-but-not-yet-connected catalog apps. The
-                    star on a row removes it from home; the Apps panel adds new ones. */}
-                {favoritedSidebarApps.map(renderAppRow)}
-                {favoritedCatalogApps.map(renderCatalogFavRow)}
+                    star on a row removes it from home; the Apps panel adds new ones.
+                    When any app is pinned, split into a "Pinned" group above an
+                    "All" group - the exact parallel of the Domains section. */}
+                {hasPinnedApps ? (
+                  <>
+                    {renderAppGroupHeader("Pinned", appsPinnedOpen, setAppsPinnedOpen, appBuckets.pinnedSidebar.length + appBuckets.pinnedCatalog.length)}
+                    {appsPinnedOpen && appBuckets.pinnedSidebar.map(renderAppRow)}
+                    {appsPinnedOpen && appBuckets.pinnedCatalog.map(renderCatalogFavRow)}
+                    {renderAppGroupHeader("All", appsAllOpen, setAppsAllOpen, appBuckets.restSidebar.length + appBuckets.restCatalog.length)}
+                    {appsAllOpen && appBuckets.restSidebar.map(renderAppRow)}
+                    {appsAllOpen && appBuckets.restCatalog.map(renderCatalogFavRow)}
+                  </>
+                ) : (
+                  <>
+                    {favoritedSidebarApps.map(renderAppRow)}
+                    {favoritedCatalogApps.map(renderCatalogFavRow)}
+                  </>
+                )}
                 {/* Add another app. */}
                 <li className="mt-0.5">
                   <button

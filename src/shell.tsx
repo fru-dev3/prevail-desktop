@@ -13,6 +13,7 @@ import { appScheduleText } from "./helpers";
 import { AppCard, AppKV, FloatingChip } from "./widgets";
 import { domainIcon } from "./icons";
 import { ConnectorRunPanel, type ConnectorRunMode } from "./connectorrun";
+import { LoopsPanel } from "./loopspanel";
 import { BrandMark } from "./brandmark";
 import type { AppRunHistory, Domain, EngineApp } from "./types";
 
@@ -51,7 +52,7 @@ function humanizeProbe(integration: string, raw: string): string {
   return r || "tested";
 }
 
-export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, onChanged }: { app: EngineApp; vaultPath: string; domains: Domain[]; appTab: "runs" | "settings" | "domains"; onOpenDomain: (d: string) => void; onChanged: () => void }) {
+export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, onChanged }: { app: EngineApp; vaultPath: string; domains: Domain[]; appTab: "runs" | "settings" | "domains" | "loops"; onOpenDomain: (d: string) => void; onChanged: () => void }) {
   const [skills, setSkills] = useState<{ id: string; runner: string; trigger: string }[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -316,6 +317,18 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
         </>
       )}
 
+      {appTab === "loops" && (
+        // App/domain parity: an app gets the SAME standing-loops surface a domain
+        // has, scoped to data/apps/<id>/_loops.json. isApp hides the domain-only
+        // ideal-state + skips the domain built-in loop seeding.
+        app.path ? (
+          <LoopsPanel domain={app.id} vaultPath={vaultPath} domainPath={app.path} isApp />
+        ) : (
+          <div className="rounded-lg border border-border-subtle bg-background px-4 py-6 text-[13px] leading-relaxed text-text-muted">
+            Loops become available once this app is added to your vault. Add it, then create standing loops here, just like a domain.
+          </div>
+        )
+      )}
       {appTab === "runs" && (
         <>
           {browserCard}

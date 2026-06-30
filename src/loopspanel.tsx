@@ -58,7 +58,7 @@ const RUN_PHASES: { key: string; label: string }[] = [
   { key: "apply", label: "Apply" },
 ];
 
-export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; vaultPath: string; domainPath: string }) {
+export function LoopsPanel({ domain, vaultPath, domainPath, isApp = false }: { domain: string; vaultPath: string; domainPath: string; isApp?: boolean }) {
   const [doc, setDoc] = useState<LoopsDoc | null>(null);
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
@@ -75,8 +75,11 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
   // editor on this page.
   const [ideal, setIdeal] = useState<string>("");
   useEffect(() => {
+    // Apps have no domain ideal-state.md; their "why" is the soul. Skip the
+    // domain-only read so the panel works cleanly for an app.
+    if (isApp) { setIdeal(""); return; }
     invoke<string>("read_domain_ideal", { vault: vaultPath, domain }).then((s) => setIdeal(s || "")).catch(() => setIdeal(""));
-  }, [vaultPath, domain]);
+  }, [vaultPath, domain, isApp]);
   // Keep the engine mirror in sync (read-only): if the domain ideal differs from
   // the loops doc's desiredState, write it through once loaded.
   useEffect(() => {
@@ -90,6 +93,10 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
     // missing (and persist once), so it's present in the panel and the runner.
     readLoops(domainPath).then((d) => {
       if (!alive) return;
+      // Apps start with a clean loops list (the user adds app-appropriate loops
+      // like "Inbox Zero"); the domain built-ins (Briefing / Model Scout) are
+      // domain-flavored, so don't seed them into an app.
+      if (isApp) { setDoc(d); return; }
       const { doc: withBrief, added: addedB } = ensureBriefingLoop(d, domain);
       // General also gets the built-in Model Scout (web-searches models for the Arena).
       const { doc: withScout, added: addedS } = ensureModelScoutLoop(withBrief, domain);
@@ -100,12 +107,12 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
     // The background loop runner advances loops + queues approvals; refresh when
     // it reports a pass so new actions/proposals appear without a manual reload.
     const onAdvanced = () => {
-      readLoops(domainPath).then((d) => { if (alive) setDoc(ensureModelScoutLoop(ensureBriefingLoop(d, domain).doc, domain).doc); });
+      readLoops(domainPath).then((d) => { if (alive) setDoc(isApp ? d : ensureModelScoutLoop(ensureBriefingLoop(d, domain).doc, domain).doc); });
       readLoopsRuntime(domainPath).then((rt) => { if (alive) setRuntime(rt); });
     };
     window.addEventListener("prevail:loops-advanced", onAdvanced);
     return () => { alive = false; window.removeEventListener("prevail:loops-advanced", onAdvanced); };
-  }, [domainPath, domain]);
+  }, [domainPath, domain, isApp]);
 
   // Pending approvals across all of this domain's loops (the steps a loop is
   // ASKING the user to OK before it acts).
