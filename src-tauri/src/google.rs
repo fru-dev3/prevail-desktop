@@ -144,6 +144,78 @@ fn list_profile_dirs() -> Vec<PathBuf> {
     out
 }
 
+// The OAuth client material gws reads per config dir. `gws auth status` reports
+// this exact path as its `client_config`, and when it is absent in a profile dir
+// `gws auth login` fails ("No OAuth client configured"). The default profile
+// ships/owns a client; a freshly created labeled profile dir has none of its own,
+// so a SECOND Google account cannot authenticate. We fix that by seeding the new
+// profile dir with the default profile's client BEFORE its `gws auth login`.
+//
+// NOTE: this file lives under the gws config dir (~/.config/gws*), never inside
+// the synced vault, so reusing it copies no OAuth secret into the vault.
+const GWS_CLIENT_FILE: &str = "client_secret.json";
+
+/// The default profile's gws config dir (~/.config/gws).
+fn default_profile_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_default();
+    PathBuf::from(&home).join(".config").join("gws")
+}
+
+/// Locate an existing gws OAuth client (`client_secret.json`) to seed a new
+/// profile with. Prefers the default profile's client; if that is missing, falls
+/// back to the first OTHER profile dir that has one (excluding `exclude`, the dir
+/// we are about to seed). Returns None when no profile on this machine has a
+/// client yet, so callers can fail honestly instead of launching a doomed login.
+fn find_oauth_client_source(exclude: &Path) -> Option<PathBuf> {
+    let default = default_profile_dir().join(GWS_CLIENT_FILE);
+    if default.exists() {
+        return Some(default);
+    }
+    for dir in list_profile_dirs() {
+        if dir == exclude {
+            continue;
+        }
+        let cand = dir.join(GWS_CLIENT_FILE);
+        if cand.exists() {
+            return Some(cand);
+        }
+    }
+    None
+}
+
+/// Ensure `dir` has an OAuth client before `gws auth login` runs there.
+///
+/// - The DEFAULT profile uses gws's own built-in/provisioned client, so it is
+///   left untouched (gws materializes its client there itself).
+/// - A profile that already has its own `client_secret.json` is left untouched.
+/// - A NEW labeled profile that lacks one is seeded by copying the default
+///   profile's `client_secret.json` in, so the new account can complete OAuth
+///   against the same registered client. Google's consent screen still prompts
+///   `select_account`, so each profile authorizes its own distinct account; only
+///   the client material is copied, never `credentials.enc` / `token_cache.json`,
+///   which are per-account tokens.
+///
+/// Returns Ok(true) when it actually copied a client (so callers can log it),
+/// Ok(false) when nothing needed doing, and Err with a clear message when a new
+/// profile needs a client but none can be found.
+fn ensure_oauth_client(dir: &Path) -> Result<bool, String> {
+    // The default profile owns/provisions its own client; never touch it.
+    if dir == default_profile_dir().as_path() {
+        return Ok(false);
+    }
+    let target = dir.join(GWS_CLIENT_FILE);
+    if target.exists() {
+        return Ok(false); // this profile already has its own client
+    }
+    let src = find_oauth_client_source(dir).ok_or_else(|| {
+        "Could not find an existing Google OAuth client to reuse for the new account. Connect your first Google account before adding another.".to_string()
+    })?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("create profile dir: {e}"))?;
+    std::fs::copy(&src, &target)
+        .map_err(|e| format!("copy OAuth client to new profile: {e}"))?;
+    Ok(true)
+}
+
 // Probe one profile's live Gmail auth so the UI shows an honest state, not a
 // hopeful "connected". A quick getProfile is the cheapest authoritative check.
 fn probe_profile(bin: &str, dir: &Path) -> (String, Option<String>) {
@@ -231,6 +303,11 @@ pub async fn google_profile_login(label: String, config_dir: Option<String>) -> 
         };
         let bin = resolve_gws_bin().ok_or_else(|| "Google Workspace CLI (gws) not found".to_string())?;
         let _ = std::fs::create_dir_all(&dir);
+        // Seed a NEW profile with the default profile's OAuth client so the new
+        // account can actually complete OAuth (gws has no per-login client flag;
+        // it reads client_secret.json from the config dir). Honest error if the
+        // default client can't be located.
+        ensure_oauth_client(Path::new(&dir))?;
         // Request the read+send scopes the connector needs across the ecosystem.
         let out = Command::new(&bin)
             .args(["auth", "login", "-s", "gmail,calendar,drive,docs,sheets,tasks,people"])
@@ -714,6 +791,20 @@ pub async fn google_auth_login_stream(
         }
     };
     let _ = std::fs::create_dir_all(&dir);
+
+    // Seed a NEW labeled profile with the default profile's OAuth client before
+    // login (gws reads client_secret.json from the config dir and has no flag to
+    // point a login at an existing client). Without this, a second account fails
+    // with "No OAuth client configured". The default profile is left untouched.
+    match ensure_oauth_client(Path::new(&dir)) {
+        Ok(true) => emit_line(&app, LINE, &session, "Reusing your existing Google OAuth client for this account."),
+        Ok(false) => {}
+        Err(e) => {
+            emit_line(&app, LINE, &session, &format!("Cannot start sign-in: {e}"));
+            emit_done(&app, DONE, &session, false, None);
+            return Ok(());
+        }
+    }
 
     let (path, user, logname) = crate::build_cli_env();
     emit_line(&app, LINE, &session, "Starting Google sign-in. Your browser will open to approve access.");
