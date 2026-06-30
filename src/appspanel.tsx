@@ -5,7 +5,7 @@
 // Connecting a new app is a single goal sentence (the Connection Agent figures
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, Boxes, Check, ChevronLeft, ChevronRight, Clock, Download, ExternalLink, FolderOpen, Globe, HelpCircle, Link2, Loader2, MessageSquare, Pencil, Play, Plug, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Star, Tag, Terminal, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Boxes, Check, ChevronLeft, ChevronRight, Clock, Download, ExternalLink, FolderOpen, Globe, HelpCircle, Link2, Loader2, MessageSquare, MoreVertical, Pencil, Play, Plug, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Star, Tag, Terminal, Trash2, X, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { MasterDetail } from "./masterdetail";
 import { ConnectorRunPanel, type ConnectorRunMode } from "./connectorrun";
@@ -155,8 +155,15 @@ function methodLabel(integration: string): string {
 // technically do more than one; we deliberately collapse to the favored/active
 // one rather than surface a confusing multi-badge.
 export type AppMethod = "cli" | "browser" | "api" | "mcp" | "manual";
-export function methodOf(a: { pattern?: string; via?: string; integration?: string; connection_hint?: { method?: string } }): AppMethod {
+export function methodOf(a: { id?: string; name?: string; title?: string; iconSlug?: string; pattern?: string; via?: string; integration?: string; connection_hint?: { method?: string } }): AppMethod {
   const s = `${(a.connection_hint?.method || "")} ${(a.integration || a.pattern || a.via || "")}`.toLowerCase();
+  // #45: Google connects through the gws CLI - one connection fronts the whole
+  // Workspace (Gmail, Calendar, Drive, …). The unified entry is id/title/name
+  // "google"; a stale manual scaffold may carry integration "manual", and the
+  // manifest also marks it google_workspace. Classify any of those as CLI so the
+  // row/detail never mislabels Google as "Manual".
+  const ident = (a.id || a.title || a.name || "").trim().toLowerCase();
+  if (ident === "google" || s.includes("google_workspace") || /\bgws\b/.test(s)) return "cli";
   if (s.includes("mcp") || s.includes("composio")) return "mcp";
   if (s.includes("browser") || s.includes("playwright")) return "browser";
   if (s.includes("cli")) return "cli";
@@ -458,7 +465,28 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // unified `gws` entry (see catalog.json). Selecting it opens the multi-profile
   // panel, and scaffolding (on favorite or "Connect for the agent") turns it
   // into a real vault app that then shows in this list like any installed app.
-  const directApps = useMemo(() => (apps ?? []).filter((a) => !a.gateway), [apps]);
+  // Favorites ("my list") drive both the home sidebar and the de-dup below, so the
+  // store is read here (hoisted above the list memos) - a pinned app is shown once,
+  // in My list, and excluded from the status groups / catalog below (#39).
+  const favs = useFavorites();
+  const isPinnedApp = useCallback(
+    (a: { id?: string; title?: string | null; name?: string }) =>
+      favs.has(favKeyOf(a.title || a.name || a.id || "")) || favs.has(favKeyOf(a.id || "")),
+    [favs],
+  );
+  const directApps = useMemo(() => {
+    const all = (apps ?? []).filter((a) => !a.gateway);
+    // #45: collapse any duplicate ids (e.g. a stale manual "google" alongside the
+    // gws one) to a single entry, preferring the one with a real method over a
+    // manual stale dup so Google always reads as its CLI connection.
+    const byId = new Map<string, EngineApp>();
+    for (const a of all) {
+      const prev = byId.get(a.id);
+      if (!prev) { byId.set(a.id, a); continue; }
+      byId.set(a.id, methodOf(prev) === "manual" ? a : prev);
+    }
+    return [...byId.values()];
+  }, [apps]);
   // Filter by the search box (name or method), then group into Connected vs
   // Setup (authorizing / connecting / needs attention) vs Not connected so the
   // left list reads top-to-bottom like Claude Desktop / ChatGPT connectors.
@@ -469,6 +497,9 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     const filtered = directApps.filter((a) => {
       if (!match(a)) return false;
       if (lane !== "all" && laneOf(a) !== lane) return false;
+      // #39: a pinned app already shows in "My list" above - never repeat it in the
+      // status groups below.
+      if (isPinnedApp(a)) return false;
       // Collapse Google sub-services into the unified Google — but never hide one
       // the user has actually connected.
       if (appStatus(a) !== "connected" && isGoogleSubservice({ name: a.title, id: a.id })) return false;
@@ -488,7 +519,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     const by: Record<"connected" | "setup" | "off", EngineApp[]> = { connected: [], setup: [], off: [] };
     for (const a of filtered) by[bucketOf(a)].push(a);
     return order.map((g) => ({ ...g, apps: by[g.key] })).filter((g) => g.apps.length > 0);
-  }, [directApps, query, lane]);
+  }, [directApps, query, lane, isPinnedApp]);
 
   // The catalog folded into the sidebar: every connector NOT already installed,
   // deduped against the installed apps (by normalized name / id / iconSlug) so a
@@ -509,6 +540,8 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       if (installedKeys.has(keyName) || (keySlug && installedKeys.has(keySlug))) return false;
       if (lane !== "all" && laneOf(c) !== lane) return false;
       if (isGoogleSubservice(c)) return false; // collapsed into the unified "Google"
+      // #39: a pinned catalog app already shows in "My list" above; don't repeat it.
+      if (isPinnedApp({ name: c.name })) return false;
       return true;
     });
     // Dedupe duplicate catalog entries (the catalog can list the same app twice,
@@ -530,14 +563,14 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     const searching = q.length > 0;
     const shown = searching ? ranked : ranked.slice(0, CATALOG_CAP);
     return { shown, total: matched.length, searching };
-  }, [apps, catalog, query, lane]);
+  }, [apps, catalog, query, lane, isPinnedApp]);
 
   const liveCount = directApps.filter((a) => appStatus(a) === "connected").length;
 
   // "My list" - the user's pinned apps, connected or catalog, surfaced at the top
   // of the sidebar for quick access. A pinned catalog app and its installed self
   // share a normalized key, so once connected it shows from the connected side.
-  const favs = useFavorites();
+  // (`favs` is read above, hoisted so the list memos can de-dup against it.)
   // Favorite an app; for Google, scaffold it to disk first so pinning it puts a
   // real app on the home screen (the sidebar lists vault apps).
   const favApp = useCallback(async (a: { id: string; title?: string | null }) => {
@@ -734,8 +767,9 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
               <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{liveCount} of {directApps.length} live</div>
             )}
             </div>
-            {/* Only this region scrolls. */}
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+            {/* Only this region scrolls. #47: extra bottom padding + a faint end
+                marker so the list ends gracefully instead of cutting off mid-row. */}
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3 pb-10">
               {groups.length === 0 && catalogView.shown.length === 0 ? (
                 <div className="px-1 text-xs text-text-muted">No apps match "{query}".</div>
               ) : (
@@ -824,6 +858,11 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                         </div>
                       )}
                     </section>
+                  )}
+                  {/* #47: a quiet end-of-list marker so the scroll resolves instead
+                      of stopping abruptly. */}
+                  {(groups.length > 0 || catalogView.shown.length > 0) && (
+                    <div aria-hidden className="select-none pt-1 text-center font-mono text-[9px] tracking-[0.4em] text-text-muted/30">· · ·</div>
                   )}
                 </>
               )}
@@ -1836,17 +1875,97 @@ function GatewayConnectDetail({ title, sub, logoId, logos, method, connecting, o
   );
 }
 
-// One row in the left connectors list: brand logo, name, method, and a small
-// status dot. Selecting it opens the detail pane on the right.
-function PinButton({ isFav, onToggle }: { isFav: boolean; onToggle: () => void }) {
+// The minimal connector row (#46 / #40 / #38). At rest a row is just the brand
+// logo + name + a tiny status dot - no always-on colored method pills. The method
+// and category are revealed on HOVER (a quiet line under the name) and repeated,
+// with the row's actions, inside a kebab menu on the right. Active rows get a
+// strong, distinct highlight: accent-soft fill + a thick left accent bar + ring.
+const ROW_BASE = "group relative flex items-center gap-1 rounded-lg border-l-[3px] pr-1.5 transition-colors";
+function rowCls(active: boolean): string {
+  return `${ROW_BASE} ${active
+    ? "border-l-accent bg-accent-soft shadow-sm ring-1 ring-accent-border"
+    : "border-l-transparent ring-1 ring-transparent hover:border-l-border hover:bg-surface-strong hover:ring-border-subtle"}`;
+}
+
+type KebabAction = { icon: LucideIcon; label: string; onClick: () => void };
+// The per-row "details + actions" menu (lucide MoreVertical). Opens a small popover
+// positioned with `fixed` (so the scrolling list never clips it) that shows the
+// status, the method, and the category, then the row's actions. The trigger appears
+// on hover and stays while the menu is open or when `visible` (e.g. a pinned row).
+function RowKebab({ method, category, statusLabel, statusDot, actions, visible }: {
+  method: string;
+  category?: string;
+  statusLabel: string;
+  statusDot: string;
+  actions: KebabAction[];
+  visible?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const close = useCallback(() => { setOpen(false); setPos(null); }, []);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { const t = e.target as Element | null; if (!t?.closest?.("[data-rowkebab]")) close(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
+  }, [open, close]);
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (open) { close(); return; }
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: Math.round(r.bottom + 4), left: Math.round(Math.max(8, r.right - 224)) });
+    setOpen(true);
+  };
   return (
-    <button
-      onClick={(e) => { e.stopPropagation(); onToggle(); }}
-      title={isFav ? "Unpin from your list" : "Pin to your list"}
-      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors hover:text-accent ${isFav ? "text-accent" : "text-text-muted opacity-0 group-hover:opacity-100"}`}
-    >
-      <Star className={`h-3.5 w-3.5 ${isFav ? "fill-accent" : ""}`} />
-    </button>
+    <div data-rowkebab className="shrink-0">
+      <button
+        ref={btnRef}
+        onClick={toggle}
+        title="Details and actions"
+        aria-label="Details and actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-surface-strong hover:text-accent ${open || visible ? "text-text-secondary opacity-100" : "text-text-muted opacity-0 group-hover:opacity-100"}`}
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      {open && pos && (
+        <div role="menu" onClick={(e) => e.stopPropagation()} style={{ top: pos.top, left: pos.left }}
+          className="fixed z-50 w-56 overflow-hidden rounded-lg border border-border bg-surface shadow-xl">
+          <div className="border-b border-border-subtle px-3 py-2">
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className={`h-2 w-2 shrink-0 rounded-full ${statusDot}`} />
+              <span className="font-medium text-text-secondary">{statusLabel}</span>
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+              <span className="rounded border border-border-subtle bg-surface-warm px-1.5 py-0.5">{method}</span>
+              {category && <span className="max-w-[7rem] truncate rounded border border-border-subtle bg-surface-warm px-1.5 py-0.5">{category}</span>}
+            </div>
+          </div>
+          <div className="py-1">
+            {actions.map((a, i) => { const Icon = a.icon; return (
+              <button key={i} role="menuitem" onClick={() => { a.onClick(); close(); }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-secondary transition-colors hover:bg-surface-warm hover:text-text-primary">
+                <Icon className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{a.label}</span>
+              </button>
+            ); })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The quiet hover-revealed "method · category" line. Reserves its height so the
+// row never reflows when it fades in; stays visible while the row is active.
+function RowMeta({ method, category, active }: { method: string; category?: string; active: boolean }) {
+  return (
+    <span className={`mt-0.5 block h-3 truncate font-mono text-[9px] uppercase tracking-wider text-text-muted transition-opacity group-hover:opacity-100 ${active ? "opacity-100" : "opacity-0"}`}>
+      {method}{category ? ` · ${category}` : ""}
+    </span>
   );
 }
 
@@ -1860,17 +1979,31 @@ function ConnectorRow({ app, logos, status, active, onSelect, isFav, onToggleFav
   onToggleFav: () => void;
 }) {
   const meta = STATUS_META[status];
+  const method = METHOD_META[methodOf(app)].label;
+  const category = (app.domains ?? [])[0] ? titleCase((app.domains)[0]) : "";
   return (
-    <div className={`group flex items-center gap-1 rounded-lg border-l-2 pr-2.5 transition-colors ${active ? "border-l-accent bg-accent-soft shadow-sm ring-1 ring-accent-border" : "border-l-transparent ring-1 ring-transparent hover:bg-surface-warm"}`}>
-      <button onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left">
+    <div className={rowCls(active)}>
+      <button onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pl-2.5 text-left">
         <AppRowLogo app={app} logos={logos} size={28} fallback="letter" />
         <span className="min-w-0 flex-1">
           <span className={`block truncate text-sm font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{app.title || app.id}</span>
-          <span className="mt-0.5 flex"><MethodBadge method={methodOf(app)} /></span>
+          <RowMeta method={method} category={category} active={active} />
         </span>
-        <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot} ${status === "connecting" ? "animate-pulse" : ""}`} title={meta.label} />
       </button>
-      <PinButton isFav={isFav} onToggle={onToggleFav} />
+      <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot} ${status === "connecting" ? "animate-pulse" : ""}`} title={meta.label} />
+      <RowKebab
+        method={method}
+        category={category}
+        statusLabel={meta.label}
+        statusDot={meta.dot}
+        visible={isFav}
+        actions={[
+          { icon: ArrowUpRight, label: "Open", onClick: onSelect },
+          { icon: ExternalLink, label: `Visit ${app.title || app.id}`, onClick: () => void openUrl(appWebsite(app)) },
+          ...(app.path ? [{ icon: FolderOpen, label: "Open in Finder", onClick: () => void invoke("open_in_finder", { path: app.path! }).catch(() => {}) }] : []),
+          { icon: Star, label: isFav ? "Unpin from My list" : "Pin to My list", onClick: onToggleFav },
+        ]}
+      />
     </div>
   );
 }
@@ -1880,6 +2013,14 @@ function ConnectorRow({ app, logos, status, active, onSelect, isFav, onToggleFav
 // falls back to a letter mark, which is the requested behavior.
 function catalogLogoApp(c: CatalogApp): { title?: string; id?: string } {
   return { title: c.name, id: c.iconSlug || c.name };
+}
+
+// Best-effort website for a catalog (not-yet-installed) app, for the row's "Visit"
+// action: the catalog domain when present, else a www.<slug>.com guess.
+function catalogWebsite(c: CatalogApp): string {
+  if (c.domain) return /^https?:\/\//.test(c.domain) ? c.domain : `https://${c.domain}`;
+  const slug = (c.iconSlug || c.name).toLowerCase().replace(/[^a-z0-9]/g, "") || "app";
+  return `https://www.${slug}.com`;
 }
 
 // One row in the "Available to add" catalog section: brand logo (or letter
@@ -1893,20 +2034,31 @@ function CatalogRow({ app, logos, active, onSelect, isFav, onToggleFav }: {
   isFav: boolean;
   onToggleFav: () => void;
 }) {
-  const sub = app.domain || (app.tags && app.tags[0]) || "catalog";
+  const meta = STATUS_META.disconnected;
+  const method = METHOD_META[methodOf(app)].label;
+  const category = titleCase(app.domain || (app.tags && app.tags[0]) || "");
   return (
-    <div className={`group flex items-center gap-1 rounded-lg border-l-2 pr-2.5 transition-colors ${active ? "border-l-accent bg-accent-soft shadow-sm ring-1 ring-accent-border" : "border-l-transparent ring-1 ring-transparent hover:bg-surface-warm"}`}>
-      <button onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left">
+    <div className={rowCls(active)}>
+      <button onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pl-2.5 text-left">
         <AppRowLogo app={catalogLogoApp(app)} logos={logos} size={28} fallback="letter" />
         <span className="min-w-0 flex-1">
           <span className={`block truncate text-sm font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{app.name}</span>
-          <span className="mt-0.5 flex items-center gap-1.5">
-            <MethodBadge method={methodOf(app)} />
-            <span className="truncate font-mono text-[9px] uppercase tracking-wider text-text-muted">{titleCase(sub)}</span>
-          </span>
+          <RowMeta method={method} category={category} active={active} />
         </span>
       </button>
-      <PinButton isFav={isFav} onToggle={onToggleFav} />
+      <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} title={meta.label} />
+      <RowKebab
+        method={method}
+        category={category}
+        statusLabel={meta.label}
+        statusDot={meta.dot}
+        visible={isFav}
+        actions={[
+          { icon: ArrowUpRight, label: "Open", onClick: onSelect },
+          { icon: ExternalLink, label: `Visit ${app.name}`, onClick: () => void openUrl(catalogWebsite(app)) },
+          { icon: Star, label: isFav ? "Unpin from My list" : "Pin to My list", onClick: onToggleFav },
+        ]}
+      />
     </div>
   );
 }
@@ -1954,6 +2106,8 @@ export function CatalogDetail({ app, logos, onConnect, connecting }: {
   const method = hint?.method || app.via || "";
   const sources = (app.sources ?? []).filter((s) => /^https?:\/\//.test(s));
   const desc = note || `Connect ${app.name} to start feeding your domains real data. Prevail picks the best way to connect (MCP, an official API, a one-time sign-in, or a guided browser login), saves the connection, then keeps it in sync.`;
+  const soul = (app.soul || "").trim();
+  const skills = app.skills ?? [];
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-surface">
       {/* Rich header: brand mark, name + trust + method, and the primary actions
@@ -2040,6 +2194,23 @@ export function CatalogDetail({ app, logos, onConnect, connecting }: {
           </div>
         )}
       </div>
+
+      {/* What it can do - the skills this connector gives the agent. Comes from
+          the curated catalog so the user sees the value before connecting. */}
+      {skills.length > 0 && (
+        <div className="border-t border-border-subtle px-5 py-4">
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">What it can do</div>
+          {soul && <p className="mb-3 max-w-prose text-[12px] italic leading-relaxed text-text-muted">{soul}</p>}
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {skills.map((s) => (
+              <li key={s.id} className="rounded-lg border border-border-subtle bg-background px-3 py-2">
+                <div className="flex items-center gap-1.5 text-[13px] font-medium text-text-primary"><Zap className="h-3 w-3 text-accent" /> {s.title}</div>
+                <div className="mt-0.5 text-[12px] leading-relaxed text-text-secondary">{s.description}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -2498,7 +2669,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   // reloaded after a successful sync (lastSuccessTs change).
   // Agentic browser learn/replay + the skills it records. Available for ANY app:
   // the agent drives a real browser to learn how to fetch your data, records it
-  // as a reusable skill (vault/apps/<id>/skills/), and replays it next time.
+  // as a reusable skill (vault/data/apps/<id>/skills/), and replays it next time.
   const [learnMode, setLearnMode] = useState<ConnectorRunMode | null>(null);
   const [composing, setComposing] = useState(false);
   const [goalText, setGoalText] = useState("");
@@ -2526,7 +2697,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
     setRunningSkill(primarySkill.id);
   }, [primarySkill]);
   // Per-app soul: the same construct domains use (soul.md) — a markdown note
-  // declaring WHY this app is in the harness, persisted to apps/<id>/soul.md and
+  // declaring WHY this app is in the harness, persisted to vault/data/apps/<id>/soul.md and
   // read by the agent as standing context. Editable inline; saved to the file.
   const [soulText, setSoulText] = useState("");
   const [soulDraft, setSoulDraft] = useState("");
@@ -2770,10 +2941,17 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   const domainsLine = (app.domains ?? []).map(titleCase).join(", ");
   const card = "rounded-xl border border-border-subtle bg-background/50 p-5";
   const notConnected = !!connect;
+  // #49: the old "Connect" button was confusing - skills run without it, and the
+  // Skills tab itself says "no Connect step required". Its one real job is to
+  // scaffold the catalog app into your vault (so you can configure it / teach
+  // skills), so it's labeled for that purpose and only shown when the app has no
+  // runnable skills yet. When starter skills exist, the scaffold happens quietly
+  // (Run setup / Learn a skill add the app on first run) and the button is dropped.
   const ConnectBtn = ({ label }: { label: string }) => (
     <button onClick={() => connect?.onConnect()} disabled={connect?.connecting}
+      title="Add this app to your vault so you can teach it skills and set its schedule. Skills can run without this."
       className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-60">
-      {connect?.connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} {connect?.connecting ? "Connecting…" : label}
+      {connect?.connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} {connect?.connecting ? "Adding…" : label}
     </button>
   );
   return (
@@ -2808,11 +2986,11 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
             className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${isFav ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
             <Star className={`h-4 w-4 ${isFav ? "fill-accent" : ""}`} />
           </button>
-          {/* #19: when the app has runnable skills (starter packs ship ready),
-              the primary action is "Run setup" (runs the primary skill, which
-              handles first-time sign-in). Connect is demoted to a secondary,
-              optional control and never gates running skills. The status chip
-              next to the title reflects whether a run has succeeded. */}
+          {/* #19/#49: when the app has runnable skills (starter packs ship ready),
+              the ONE primary action is "Run setup" (runs the primary skill, which
+              handles any first-time sign-in). There is no separate Connect button -
+              skills run without it and the scaffold happens quietly on first run.
+              The status chip next to the title reflects whether a run has succeeded. */}
           {hasRunnableSkills && (
             <button onClick={runSetup} disabled={!!runningSkill || !!learnMode}
               title="Run the primary skill. A browser-based skill signs you in on its first run."
@@ -2821,15 +2999,8 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
             </button>
           )}
           {notConnected ? (
-            hasRunnableSkills ? (
-              <button onClick={() => connect?.onConnect()} disabled={connect?.connecting}
-                title="Set up the underlying connection (optional: skills run without it)."
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-60">
-                {connect?.connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />} {connect?.connecting ? "Connecting…" : "Connect"}
-              </button>
-            ) : (
-              <ConnectBtn label="Connect" />
-            )
+            // No skills yet: the only thing to do is add the app to your vault.
+            hasRunnableSkills ? null : <ConnectBtn label="Add to my apps" />
           ) : (
             <button onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }))} title="Open in chat"
               className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-background hover:bg-accent-hover">
@@ -2905,7 +3076,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                   <div className="mt-2 flex items-center gap-2">
                     <button onClick={saveSoul} disabled={soulBusy} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{soulBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
                     <button onClick={() => setEditSoul(false)} className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">Cancel</button>
-                    <span className="ml-auto font-mono text-[10px] text-text-muted/70">apps/{app.id}/soul.md</span>
+                    <span className="ml-auto font-mono text-[10px] text-text-muted/70">vault/data/apps/{app.id}/soul.md</span>
                   </div>
                 </div>
               ) : soulText.trim() ? (
@@ -2931,7 +3102,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
             indicator + a Run control that streams progress inline. "Learn New
             Skill" is kept so the user can still teach their own. */}
         {tab === "skills" && (
-          <div className="max-w-2xl">
+          <div className="w-full">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Skills{skills.length > 0 && <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-muted">{skills.length}</span>}</div>
               {!learnMode && !composing && (
@@ -2984,7 +3155,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                 {skills.length === 0 ? (
                   <div className="mt-3 rounded-lg border border-dashed border-border bg-surface/40 px-4 py-4 text-center">
                     <div className="text-[13px] text-text-secondary">No skills yet.</div>
-                    <div className="mt-0.5 text-[12px] text-text-muted">Click <span className="text-accent">Learn New Skill</span> and say what to fetch{notConnected ? "; I'll set it up and learn it in one go." : <>: saved in <code className="rounded bg-surface-warm px-1 font-mono text-[11px]">vault/apps/{app.id}/skills/</code></>}.</div>
+                    <div className="mt-0.5 text-[12px] text-text-muted">Click <span className="text-accent">Learn New Skill</span> and say what to fetch{notConnected ? "; I'll set it up and learn it in one go." : <>: saved in <code className="rounded bg-surface-warm px-1 font-mono text-[11px]">vault/data/apps/{app.id}/skills/</code></>}.</div>
                   </div>
                 ) : (
                   <ul className="mt-3 space-y-2">
@@ -3074,7 +3245,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
         {notConnected ? (
           <span className="inline-flex items-center gap-2.5 text-sm">
             <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-border text-text-muted"><Plug className="h-4 w-4" /></span>
-            <span><span className="font-medium text-text-primary">Not connected yet.</span> <span className="text-text-muted">Connect to start feeding {app.title || app.id} into your vault.</span></span>
+            <span><span className="font-medium text-text-primary">Not added yet.</span> <span className="text-text-muted">Run a skill, or add {app.title || app.id} to your apps to start feeding your vault.</span></span>
           </span>
         ) : syncMsg ? (
           <span className={`inline-flex items-center gap-2 text-sm ${syncMsg.startsWith("Sync failed") ? "text-err" : "text-text-secondary"}`}>

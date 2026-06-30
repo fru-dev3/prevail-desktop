@@ -3,7 +3,7 @@
 // gateway/MCP/benchmark status strips from shared modules.
 import { Fragment, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
-import { Activity, Archive, Briefcase, ChevronDown, ChevronLeft, ChevronRight, Clock, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Star, Sun, X } from "lucide-react";
+import { Activity, Archive, Briefcase, ChevronDown, ChevronLeft, ChevronRight, Clock, ExternalLink, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, PowerOff, RotateCcw, Settings as SettingsIcon, Sparkles, StarOff, Sun, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { STATUS_TINT } from "./constants";
@@ -22,6 +22,14 @@ import { BACKUP_CFG } from "./backup";
 import { BrandMark } from "./brandmark";
 import { AppRowLogo } from "./panels3";
 import type { BrandLogo, CatalogApp, ConnectorCatalog, Domain, EngineApp, LifeReadiness, Mode, TabId, ThreadMeta } from "./types";
+
+// Shared "selected row" treatment for every selectable nav row in the sidebar
+// (General, Work, Domains, Apps). A solid accent fill reads as a clear,
+// high-contrast selected state rather than a faint tint, and keeps the active
+// item looking identical no matter which section it lives in.
+const SEL_ROW = "bg-accent text-background font-semibold shadow-sm";
+// Collapsed icon-rail version (icon only, no label so no font-weight needed).
+const SEL_ICON = "bg-accent text-background shadow-sm";
 
 export function Sidebar({
   collapsed,
@@ -189,6 +197,19 @@ export function Sidebar({
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [menuOpen]);
+  // Which app row's kebab (⋮) menu is open. Keyed by app id (connected rows) or
+  // `cat-<favKey>` (starred-but-not-connected catalog rows); mirrors the domain
+  // kebab so the Apps section gets the same hover-revealed action menu.
+  const [appMenuOpen, setAppMenuOpen] = useState<string | null>(null);
+  useEffect(() => {
+    if (!appMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || !t.closest("[data-app-menu]")) setAppMenuOpen(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [appMenuOpen]);
   const refreshArchived = useCallback(async () => {
     if (!vaultPath) return;
     try {
@@ -274,6 +295,10 @@ export function Sidebar({
   const renderAppRow = (app: EngineApp) => {
     const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
     const active = activeAppId === app.id;
+    // A disabled app (its skill/connector has enabled === false) won't be run by
+    // the sync daemon. Surface that here so it reads as off at a glance: muted
+    // styling, a grey status dot, and a small "Off" badge. Absent/true = enabled.
+    const disabled = app.enabled === false;
     const method = appMethod(app);
     return (
       <li key={app.id} className="group flex items-center gap-1 pl-6">
@@ -322,49 +347,86 @@ export function Sidebar({
           onClick={() => onOpenApp(app)}
           className={`flex flex-1 cursor-grab items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors active:cursor-grabbing ${
             active
-              ? "bg-accent-soft font-semibold text-accent ring-1 ring-inset ring-accent-border/60"
-              : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+              ? SEL_ROW
+              : disabled
+                ? "text-text-muted hover:bg-surface-warm"
+                : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
           }`}
-          title={`Click to open ${app.title} (${method.label}) · drag into chat to attach as context${app.domains.length ? " · refreshes " + app.domains.map(titleCase).join(", ") : ""}`}
+          title={`${disabled ? `${app.title} is turned off and won't sync · ` : ""}Click to open ${app.title} (${method.label}) · drag into chat to attach as context${app.domains.length ? " · refreshes " + app.domains.map(titleCase).join(", ") : ""}`}
         >
           {/* Brand mark + a tiny status dot anchored to it so connection state
               stays visible. Gateway apps key the logo off the toolkit so e.g.
               "composio-notion" still resolves the Notion mark. */}
-          <span className="relative shrink-0">
+          <span className={`relative shrink-0 ${disabled && !active ? "opacity-50" : ""}`}>
             <AppRowLogo app={{ title: app.title, id: method.toolkit }} logos={appLogos} size={18} fallback="letter" />
             <span
               className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-surface-strong"
-              style={{ backgroundColor: tint }}
+              style={{ backgroundColor: disabled ? "#9aa0a6" : tint }}
             />
           </span>
           <span className="flex min-w-0 flex-1 flex-col leading-tight">
-            <span className="truncate text-sm">{app.title}</span>
-            <span className="truncate text-[10px] text-text-muted">{method.label}</span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-sm">{app.title}</span>
+              {disabled && (
+                <span
+                  className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0 font-mono text-[8px] uppercase tracking-wider ${active ? "bg-background/20 text-background" : "bg-surface-warm text-text-muted"}`}
+                  title="This app is turned off and won't be synced"
+                >
+                  <PowerOff className="h-2.5 w-2.5" /> Off
+                </span>
+              )}
+            </span>
+            <span className={`truncate text-[10px] ${active ? "text-background/80" : "text-text-muted"}`}>{disabled ? "Off · " + method.label : method.label}</span>
           </span>
         </button>
-        <button
-          onClick={() => {
-            // Remove whichever key(s) pinned this app - id-keyed (AppDetail star)
-            // or name-keyed (Direct list star). Only delete present keys so this
-            // never accidentally re-adds.
-            const idK = favKeyOf(app.id), titleK = favKeyOf(app.title);
-            if (favs.has(idK)) toggleFavorite(idK);
-            if (titleK !== idK && favs.has(titleK)) toggleFavorite(titleK);
-          }}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-accent opacity-0 hover:bg-surface-warm group-hover:opacity-100"
-          title="Remove from home screen"
-        >
-          <Star className="h-3 w-3 fill-accent" />
-        </button>
-        {app.path && (
+        {/* Row actions collapsed into a kebab (⋮), matching the domain rows: a
+            hover-revealed menu with open / open-in-Finder / remove-from-sidebar
+            (the app equivalent of unpinning a domain). */}
+        <div className="relative shrink-0" data-app-menu>
           <button
-            onClick={() => openInFinder(app.path ?? null)}
-            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${active ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-            title={`Open ${app.title} folder in Finder`}
+            onClick={(e) => { e.stopPropagation(); setAppMenuOpen((cur) => (cur === app.id ? null : app.id)); }}
+            className={`flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${
+              active || appMenuOpen === app.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            }`}
+            title="App actions"
           >
-            <Folder className="h-3.5 w-3.5" />
+            <MoreVertical className="h-4 w-4" />
           </button>
-        )}
+          {appMenuOpen === app.id && (
+            <div className="absolute right-0 top-7 z-50 w-44 rounded-md border border-border bg-surface p-0.5 shadow-xl">
+              <button
+                onClick={(e) => { e.stopPropagation(); setAppMenuOpen(null); onOpenApp(app); }}
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+              >
+                <ExternalLink className="h-3 w-3 shrink-0" /> Open
+              </button>
+              {app.path && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setAppMenuOpen(null); openInFinder(app.path ?? null); }}
+                  className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+                >
+                  <Folder className="h-3 w-3 shrink-0" /> Open in Finder
+                </button>
+              )}
+              <div className="my-0.5 h-px bg-border-subtle" />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAppMenuOpen(null);
+                  // Remove whichever key(s) pinned this app - id-keyed (AppDetail
+                  // star) or name-keyed (Direct list star). Only delete present
+                  // keys so this never accidentally re-adds.
+                  const idK = favKeyOf(app.id), titleK = favKeyOf(app.title);
+                  if (favs.has(idK)) toggleFavorite(idK);
+                  if (titleK !== idK && favs.has(titleK)) toggleFavorite(titleK);
+                }}
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+              >
+                <StarOff className="h-3 w-3 shrink-0" /> Remove from sidebar
+              </button>
+            </div>
+          )}
+        </div>
       </li>
     );
   };
@@ -390,13 +452,35 @@ export function Sidebar({
             <span className="truncate text-[10px] text-text-muted">Not connected</span>
           </span>
         </button>
-        <button
-          onClick={() => { if (favs.has(k)) toggleFavorite(k); }}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-accent opacity-0 hover:bg-surface-warm group-hover:opacity-100"
-          title="Remove from home screen"
-        >
-          <Star className="h-3 w-3 fill-accent" />
-        </button>
+        {/* Same kebab affordance as connected app rows: connect or remove. */}
+        <div className="relative shrink-0" data-app-menu>
+          <button
+            onClick={(e) => { e.stopPropagation(); setAppMenuOpen((cur) => (cur === `cat-${k}` ? null : `cat-${k}`)); }}
+            className={`flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${
+              appMenuOpen === `cat-${k}` ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            }`}
+            title="App actions"
+          >
+            <MoreVertical className="h-4 w-4" />
+          </button>
+          {appMenuOpen === `cat-${k}` && (
+            <div className="absolute right-0 top-7 z-50 w-44 rounded-md border border-border bg-surface p-0.5 shadow-xl">
+              <button
+                onClick={(e) => { e.stopPropagation(); setAppMenuOpen(null); window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" })); }}
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+              >
+                <ExternalLink className="h-3 w-3 shrink-0" /> Connect
+              </button>
+              <div className="my-0.5 h-px bg-border-subtle" />
+              <button
+                onClick={(e) => { e.stopPropagation(); setAppMenuOpen(null); if (favs.has(k)) toggleFavorite(k); }}
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+              >
+                <StarOff className="h-3 w-3 shrink-0" /> Remove from sidebar
+              </button>
+            </div>
+          )}
+        </div>
       </li>
     );
   };
@@ -567,12 +651,12 @@ export function Sidebar({
               collapsed
                 ? `flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
                     selectedDomain === "" && tab !== "work"
-                      ? "bg-accent-soft text-accent"
+                      ? SEL_ICON
                       : "text-text-muted hover:bg-surface-warm hover:text-text-primary"
                   }`
                 : `flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
                     selectedDomain === "" && tab !== "work"
-                      ? "bg-accent-soft text-accent"
+                      ? SEL_ROW
                       : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
                   }`
             }
@@ -606,7 +690,7 @@ export function Sidebar({
                     onClick={() => selectWork(it.id)}
                     title={collapsed ? it.label : undefined}
                     className={`flex w-full items-center rounded-md py-1.5 text-left text-sm transition-colors ${collapsed ? "justify-center px-0" : "gap-2.5 pl-6 pr-2"} ${
-                      active ? "bg-accent-soft font-semibold text-accent ring-1 ring-inset ring-accent-border/60" : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+                      active ? SEL_ROW : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
                     }`}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
@@ -686,7 +770,7 @@ export function Sidebar({
                     title={titleCase(d.name)}
                     className={`flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
                       active
-                        ? "bg-accent-soft text-accent"
+                        ? SEL_ICON
                         : "text-text-muted hover:bg-surface-warm hover:text-text-primary"
                     }`}
                   >
@@ -694,7 +778,7 @@ export function Sidebar({
                       // NAV-1: no per-domain icon → a circular badge (not a bare
                       // glyph) so the collapsed rail signals "content behind here".
                       <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
-                        active ? "bg-accent text-background" : "bg-surface-warm text-text-secondary ring-1 ring-border"
+                        active ? "bg-background/20 text-background" : "bg-surface-warm text-text-secondary ring-1 ring-border"
                       }`}>
                         {titleCase(d.name).charAt(0)}
                       </span>
@@ -768,19 +852,19 @@ export function Sidebar({
                   title="Click to enter · drag to chat as context (plain: state · ⇧ full · ⌥ entire folder)"
                   className={`flex flex-1 cursor-grab items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors active:cursor-grabbing ${
                     active
-                      ? "bg-accent-soft text-accent font-semibold ring-1 ring-inset ring-accent-border/60"
+                      ? SEL_ROW
                       : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
                   }`}
                 >
                   {Icon ? (
-                    <Icon className={`h-4 w-4 ${active ? "text-accent" : "text-text-muted"}`} />
+                    <Icon className={`h-4 w-4 ${active ? "text-background" : "text-text-muted"}`} />
                   ) : (
-                    <span className={active ? "text-accent" : "text-text-muted"}>◆</span>
+                    <span className={active ? "text-background" : "text-text-muted"}>◆</span>
                   )}
                   <span className="flex-1 truncate">{titleCase(d.name)}</span>
                   {(domainStats[d.name] ?? 0) > 0 && (
                     <span
-                      className="shrink-0 rounded-full bg-surface-warm px-1.5 py-0 font-mono text-[9px] text-text-muted"
+                      className={`shrink-0 rounded-full px-1.5 py-0 font-mono text-[9px] ${active ? "bg-background/20 text-background" : "bg-surface-warm text-text-muted"}`}
                       title={`${domainStats[d.name]} imports`}
                     >
                       {domainStats[d.name]}
