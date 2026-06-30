@@ -13,11 +13,12 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   AlertTriangle, Boxes, Check, Loader2, Plus, RefreshCw, ExternalLink, Download, Link2,
-  Eye, ShieldCheck, Trash2, Sparkles, Pencil, Play, X, Globe,
+  Eye, ShieldCheck, Trash2, Sparkles, Pencil, Play, X, Globe, MessageSquare, Star,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke, listen } from "./bridge";
+import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
 import { AppRowLogo } from "./panels3";
 import { ConnectorRunPanel, type ConnectorRunMode } from "./connectorrun";
 import type { BrandLogo, ChatEvent } from "./types";
@@ -144,7 +145,7 @@ const STATUS_META: Record<Profile["status"], { label: string; tint: string; dot:
   unknown:     { label: "Not verified",        tint: "text-text-muted", dot: "bg-text-muted/50" },
 };
 
-type GoogleTab = "setup" | "skills" | "soul" | "connections";
+type GoogleTab = "setup" | "skills" | "soul" | "connections" | "chat";
 
 export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; logos?: Record<string, BrandLogo> }) {
   const [cli, setCli] = useState<CliStatus | null>(null);
@@ -157,6 +158,16 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const scaffoldedRef = useRef(false);
   const [tab, setTab] = useState<GoogleTab>("setup");
+
+  // Favorites + chat, identical to the generic AppDetail: the star pins Google
+  // to the home sidebar (keyed by app id "google"), and opening the Google chat
+  // reuses the same "prevail:open-app" navigation any other app fires.
+  const favs = useFavorites();
+  const favKey = favKeyOf(GOOGLE_APP_ID);
+  const isFav = favs.has(favKey);
+  const openGoogleChat = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: { id: GOOGLE_APP_ID, title: "Google Workspace", domains: [] } }));
+  }, []);
 
   // One-click setup streaming state.
   const [installLog, setInstallLog] = useState<string[]>([]);
@@ -322,6 +333,7 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
     { id: "skills", label: "Skills", icon: Boxes },
     { id: "soul", label: "Soul", icon: Sparkles },
     { id: "connections", label: "Connections", icon: Globe },
+    { id: "chat", label: "Chat", icon: MessageSquare },
   ];
 
   return (
@@ -343,9 +355,19 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
           </div>
           <p className="mt-0.5 text-[12px] leading-snug text-text-secondary">One connection for Gmail, Calendar, Drive, Docs, Sheets and Tasks, across every Google account.</p>
         </div>
-        <button onClick={() => void reload()} disabled={loading} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-surface/70 px-2 py-1 text-[11px] text-text-secondary backdrop-blur hover:border-accent-border hover:text-accent disabled:opacity-50">
-          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Refresh
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button onClick={() => toggleFavorite(favKey)} title={isFav ? "On your home screen, click to remove" : "Add to your home screen"} aria-pressed={isFav}
+            className={`flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${isFav ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
+            <Star className={`h-4 w-4 ${isFav ? "fill-accent" : ""}`} />
+          </button>
+          <button onClick={() => void reload()} disabled={loading} className="inline-flex items-center gap-1 rounded-md border border-border bg-surface/70 px-2 py-1 text-[11px] text-text-secondary backdrop-blur hover:border-accent-border hover:text-accent disabled:opacity-50">
+            {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Refresh
+          </button>
+          <button onClick={openGoogleChat} title="Open in chat"
+            className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-background hover:bg-accent-hover">
+            <MessageSquare className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Tab bar - Google gets the same Setup / Skills / Soul / Connections
@@ -356,7 +378,12 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
             const Icon = t.icon;
             const active = tab === t.id;
             return (
-              <button key={t.id} onClick={() => setTab(t.id)}
+              <button key={t.id} onClick={() => {
+                  // Chat reuses the existing app-chat navigation (the same event
+                  // the header chat button fires) instead of rendering inline.
+                  if (t.id === "chat") { openGoogleChat(); return; }
+                  setTab(t.id);
+                }}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${active ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-text-secondary"}`}>
                 <Icon className="h-3.5 w-3.5" />
                 {t.label}

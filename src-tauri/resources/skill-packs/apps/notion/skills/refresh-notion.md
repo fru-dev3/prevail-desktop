@@ -1,7 +1,10 @@
 ---
 id: refresh-notion
 runner: llm
-trigger: refresh
+# Demoted to on-demand: this is now a pack fallback for the refresh-notion
+# capability. The browser favorite (and api variant) lead; this still runs if
+# they are blocked or fail, writing the same data/ files the analysis skills read.
+trigger: on-demand
 outputs:
   - { path: data/notion-pages-${date}.json, kind: replace }
   - { path: data/notion-tasks-${date}.json, kind: replace }
