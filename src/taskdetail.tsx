@@ -64,10 +64,33 @@ export function TaskDetailPanel({ task, vaultPath, onClose, onChanged }: {
 
   const cyclePriority = () => patchTask({ priority: task.priority === "critical" ? null : task.priority === "high" ? "critical" : "high" });
 
-  // Open this task's domain chat seeded with the task as context.
+  // Open this task's domain chat seeded with the FULL task context, so the
+  // conversation continues with everything the task already carries: its
+  // status/meta, description, and the discussion (comments) so far. A done task
+  // is fine - we just frame it as a follow-up.
   const discuss = () => {
+    const meta = [
+      `Status: ${titleCase(task.status)}`,
+      task.due ? `Due ${task.due}` : null,
+      task.priority ? `Priority ${task.priority}` : null,
+      `Owner ${task.owner === "ai" ? "AI" : "Me"}`,
+    ].filter(Boolean).join(" · ");
+    const cmts = detail.comments ?? [];
+    const history = cmts.length
+      ? "\n\nDiscussion so far:\n" + cmts.map((c) => {
+          const a = c.author;
+          const who = !a || a === "me" || a === "you" ? "Me" : a === "ai" ? "AI" : (VENDOR_BRAND[a]?.name ?? a);
+          return `- ${who}: ${c.text}`;
+        }).join("\n")
+      : "";
+    const seed = `Let's discuss this task from my ${titleCase(task.domain)} board.\n\nTask: "${task.text}"\n${meta}${desc ? `\n\nDescription:\n${desc}` : ""}${history}\n\nWhere should we take it from here?`;
+    // Persist so the seed survives navigating from the Work board to the (then-
+    // mounting) chat panel; ChatPanel reads pending seeds on mount. Without this
+    // the live event can fire before the chat is listening and the composer ends
+    // up blank - which is the bug this fixes.
+    try { localStorage.setItem("prevail.compose.pending", seed); } catch { /* ignore */ }
     window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: task.domain }));
-    window.dispatchEvent(new CustomEvent("prevail:compose-seed", { detail: `Help me with this task: "${task.text}"${desc ? `\n\nDetails: ${desc}` : ""}` }));
+    window.dispatchEvent(new CustomEvent("prevail:compose-seed", { detail: seed }));
     onClose();
   };
 
