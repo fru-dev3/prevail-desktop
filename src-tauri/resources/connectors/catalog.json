@@ -15490,19 +15490,6 @@
       "soul": "The stories you actually read, pulling your news in so your AI knows what's on your mind and what's shaping how you see the world."
     },
     {
-      "name": "Apple News+",
-      "domain": "news",
-      "pattern": "browser",
-      "sources": [],
-      "verified": false,
-      "tier": 1,
-      "note": "paid Apple News tier",
-      "iconSlug": "applenews",
-      "obscure": false,
-      "curated": false,
-      "soul": "The stories you actually read, pulling your news in so your AI knows what's on your mind and what's shaping how you see the world."
-    },
-    {
       "name": "Dow Jones Factiva",
       "domain": "news",
       "pattern": "api",
