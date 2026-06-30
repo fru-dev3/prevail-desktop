@@ -902,12 +902,12 @@ export function AgentCard({
             const v = cli.available ? cliVerifyLive.get(cli.id) : undefined;
             const chip = !cli.available
               ? cli.error
-                ? { cls: "border-danger/40 bg-danger/10 text-danger", label: "Broken", Icon: X, spin: false }
+                ? { cls: "border-err/40 bg-err/10 text-err", label: "Broken", Icon: X, spin: false }
                 : { cls: "border-border bg-surface-warm text-text-muted", label: "Not installed", Icon: null, spin: false }
               : v?.status === "ok"
                 ? { cls: "border-ok/40 bg-ok/10 text-ok", label: "Valid", Icon: Check, spin: false }
                 : v?.status === "failed"
-                  ? { cls: "border-danger/40 bg-danger/10 text-danger", label: "Not valid", Icon: X, spin: false }
+                  ? { cls: "border-err/40 bg-err/10 text-err", label: "Not valid", Icon: X, spin: false }
                   : v?.status === "verifying"
                     ? { cls: "border-warn/40 bg-warn/10 text-warn", label: "Checking", Icon: Loader2, spin: true }
                     : { cls: "border-border bg-background text-text-muted", label: "Detected", Icon: null, spin: false };
@@ -1114,8 +1114,8 @@ export function AgentCard({
           {/* Broken install: show the actual failure so the user knows what to
               fix (the most common cause is a wrapper pointing at a removed env). */}
           {cli.error && (
-            <div className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger/5 px-2.5 py-2">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" />
+            <div className="flex items-start gap-2 rounded-md border border-err/30 bg-err/5 px-2.5 py-2">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-err" />
               <code className="min-w-0 flex-1 break-all font-mono text-[10px] leading-relaxed text-text-secondary">{cli.error}</code>
             </div>
           )}

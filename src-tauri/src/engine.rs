@@ -1989,27 +1989,6 @@ pub fn engine_discover_models(provider: String) -> Result<serde_json::Value, Str
     run_engine_json(&["models", &provider])
 }
 
-/// `prevail pack list` — the bundled persona packs.
-#[tauri::command]
-pub fn engine_pack_list() -> Result<serde_json::Value, String> {
-    run_engine_json(&["pack", "list"])
-}
-
-/// `prevail --vault <vault> pack import <pack> [--overwrite]` — materialize a
-/// bundled (or file) pack's starter domains into the vault.
-#[tauri::command]
-pub fn engine_pack_import(
-    vault: String,
-    pack: String,
-    overwrite: bool,
-) -> Result<serde_json::Value, String> {
-    let mut args: Vec<&str> = vec!["--vault", &vault, "pack", "import", &pack];
-    if overwrite {
-        args.push("--overwrite");
-    }
-    run_engine_json(&args)
-}
-
 /// `prevail --vault <vault> vault embed --from <vault> --json`
 /// Non-destructively copy the active vault into the app-owned location
 /// (~/.prevail/vault) and repoint config there. Returns the engine's

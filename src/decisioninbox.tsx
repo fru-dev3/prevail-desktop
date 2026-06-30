@@ -188,7 +188,7 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
               <button onClick={() => gwsApprove(g)} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover">
                 <Play className="h-3 w-3" /> Approve &amp; run
               </button>
-              <button onClick={() => gwsDismiss(g)} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:!text-danger">
+              <button onClick={() => gwsDismiss(g)} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:!text-err">
                 <X className="h-3 w-3" /> Dismiss
               </button>
             </>
@@ -236,7 +236,7 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
                 ? <button onClick={() => unsnooze(it)} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary"><Clock className="h-3 w-3" /> Unsnooze</button>
                 : <button onClick={() => snooze(it)} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary"><Clock className="h-3 w-3" /> Snooze</button>}
               {it.source === "loop" && (
-                <button onClick={() => dismiss(it)} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:!text-danger"><X className="h-3 w-3" /> Dismiss</button>
+                <button onClick={() => dismiss(it)} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:!text-err"><X className="h-3 w-3" /> Dismiss</button>
               )}
             </>
           )}

@@ -1,6 +1,6 @@
 // Notes / logs (Work mode → Notes). Phase 3 of the 2026 redesign: a place to
 // brain-dump ideas and search them. Persisted as a single JSON document at
-// <vault>/notes.json via the generic read_text_file / write_text_file commands
+// <vault>/build/notes.json via the generic read_text_file / write_text_file commands
 // (no new engine command needed). Autosaves shortly after you stop typing.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileText, Plus, Search, Trash2 } from "lucide-react";
@@ -92,7 +92,7 @@ export function NotesPanel({ vaultPath }: { vaultPath: string }) {
       <SettingsHeader
         title="Notes"
         icon={FileText}
-        subtitle="Quick brain-dumps, ideas, and logs, searchable, saved to your vault. Everything here lives in notes.json inside your vault folder."
+        subtitle="Quick brain-dumps, ideas, and logs, searchable, saved to your vault. Everything here lives in build/notes.json inside your vault folder."
         right={
           <button onClick={createNote} className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover">
             <Plus className="h-4 w-4" /> New note

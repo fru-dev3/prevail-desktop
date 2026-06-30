@@ -50,7 +50,7 @@ export function GatewayLogsCard({ vaultPath }: { vaultPath: string }) {
         <div className="border-t border-border-subtle p-3">
           <div className="mb-2 flex items-center gap-2">
             <button onClick={load} className="rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">Refresh</button>
-            <button onClick={() => { invoke("gateway_log_clear", { vault: vaultPath }).then(load).catch(() => {}); }} className="rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-danger hover:text-danger">Clear</button>
+            <button onClick={() => { invoke("gateway_log_clear", { vault: vaultPath }).then(load).catch(() => {}); }} className="rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-err hover:text-err">Clear</button>
           </div>
           {lines.length === 0
             ? <div className="px-1 py-2 text-xs text-text-muted">No gateway activity logged yet. Start a bridge (Telegram, etc.) and events appear here, kept across restarts.</div>
@@ -501,7 +501,7 @@ export function WebhookCard() {
       {running && bridge && (
         <div className="mt-2 font-mono text-[10px] text-text-muted">in {bridge.inbound_count ?? 0} · out {bridge.outbound_count ?? 0}{bridge.last_error ? ` · err: ${bridge.last_error.slice(0, 50)}` : ""}</div>
       )}
-      {status.msg && <div className={`mt-2 text-xs ${status.kind === "err" ? "text-danger" : status.kind === "ok" ? "text-ok" : "text-text-muted"}`}>{status.msg}</div>}
+      {status.msg && <div className={`mt-2 text-xs ${status.kind === "err" ? "text-err" : status.kind === "ok" ? "text-ok" : "text-text-muted"}`}>{status.msg}</div>}
     </div>
   );
 }
@@ -607,7 +607,7 @@ export function NativeBridgeCard({ platform, label, icon, mono, urlLabel, urlPla
       {running && bridge && (
         <div className="mt-2 font-mono text-[10px] text-text-muted">in {bridge.inbound_count ?? 0} · out {bridge.outbound_count ?? 0}{bridge.last_error ? ` · err: ${bridge.last_error.slice(0, 50)}` : ""}</div>
       )}
-      {status.msg && <div className={`mt-2 text-xs ${status.kind === "err" ? "text-danger" : "text-text-muted"}`}>{status.msg}</div>}
+      {status.msg && <div className={`mt-2 text-xs ${status.kind === "err" ? "text-err" : "text-text-muted"}`}>{status.msg}</div>}
     </div>
   );
 }
@@ -628,7 +628,7 @@ function useBridgeCli(key: string) {
 function BridgeFooter({ bridge, status }: { bridge: TgBridgeStatus | null; status: { kind: string; msg: string } }) {
   return (<>
     {bridge?.running && <div className="mt-2 font-mono text-[10px] text-text-muted">in {bridge.inbound_count ?? 0} · out {bridge.outbound_count ?? 0}{bridge.last_error ? ` · err: ${bridge.last_error.slice(0, 50)}` : ""}</div>}
-    {status.msg && <div className={`mt-2 text-xs ${status.kind === "err" ? "text-danger" : "text-text-muted"}`}>{status.msg}</div>}
+    {status.msg && <div className={`mt-2 text-xs ${status.kind === "err" ? "text-err" : "text-text-muted"}`}>{status.msg}</div>}
   </>);
 }
 function CliSelect({ cli, setCli, routable, disabled }: { cli: string; setCli: (v: string) => void; routable: CliInfo[]; disabled: boolean }) {

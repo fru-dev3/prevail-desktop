@@ -58,9 +58,9 @@ function PolicySegmented({ value, onChange, disabled }: { value: Decision; onCha
   // Selected = solid, semantically colored fill with contrasting text so the
   // active choice reads at a glance. Allow = green, Ask = amber, Never = red.
   const selected: Record<Decision, string> = {
-    allow: "bg-ok text-background shadow-sm",
-    ask: "bg-warn text-background shadow-sm",
-    never: "bg-danger text-background shadow-sm",
+    allow: "bg-ok text-background shadow-sm hover:bg-ok/90",
+    ask: "bg-warn text-background shadow-sm hover:bg-warn/90",
+    never: "bg-err text-background shadow-sm hover:bg-err/90",
   };
   return (
     <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-background p-0.5">
@@ -100,7 +100,7 @@ function decisionBadge(decision?: string): { label: string; cls: string } | null
   const d = decision.toLowerCase();
   if (d === "auto" || d === "allow") return { label: "auto", cls: "border-ok/40 bg-ok/10 text-ok" };
   if (d === "ask") return { label: "ask", cls: "border-warn/40 bg-warn/10 text-warn" };
-  if (d === "block" || d === "never" || d === "blocked") return { label: "block", cls: "border-danger/40 bg-danger/10 text-danger" };
+  if (d === "block" || d === "never" || d === "blocked") return { label: "block", cls: "border-err/40 bg-err/10 text-err" };
   return { label: d, cls: "border-border bg-surface-warm text-text-secondary" };
 }
 
@@ -181,11 +181,11 @@ function PlaybookRun({ playbook, onClose }: { playbook: Playbook; onClose: () =>
     <div className="mt-2 flex flex-col gap-3 rounded-lg border border-border bg-surface p-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
-          {running ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : final?.ok ? <Check className="h-4 w-4 text-ok" /> : <X className="h-4 w-4 text-danger" />}
+          {running ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : final?.ok ? <Check className="h-4 w-4 text-ok" /> : <X className="h-4 w-4 text-err" />}
           Running · {playbook.name}
         </div>
         {running ? (
-          <button onClick={stop} className="inline-flex items-center gap-1.5 rounded-md border border-danger/40 bg-danger/10 px-2.5 py-1 text-xs font-medium text-danger transition-colors hover:bg-danger/20">
+          <button onClick={stop} className="inline-flex items-center gap-1.5 rounded-md border border-err/40 bg-err/10 px-2.5 py-1 text-xs font-medium text-err transition-colors hover:bg-err/20">
             <Square className="h-3 w-3" /> Stop
           </button>
         ) : (
@@ -204,7 +204,7 @@ function PlaybookRun({ playbook, onClose }: { playbook: Playbook; onClose: () =>
             return (
               <div key={s.index} className="flex items-start gap-2 py-0.5">
                 <span className="mt-0.5 w-4 shrink-0 text-center">
-                  {!s.done ? <Loader2 className="inline h-3 w-3 animate-spin text-text-muted" /> : s.ok === false ? <X className="inline h-3 w-3 text-danger" /> : <Check className="inline h-3 w-3 text-ok" />}
+                  {!s.done ? <Loader2 className="inline h-3 w-3 animate-spin text-text-muted" /> : s.ok === false ? <X className="inline h-3 w-3 text-err" /> : <Check className="inline h-3 w-3 text-ok" />}
                 </span>
                 <span className="min-w-0 flex-1 break-words text-text-secondary">
                   <span className="text-text-primary">{s.label}</span>
@@ -218,7 +218,7 @@ function PlaybookRun({ playbook, onClose }: { playbook: Playbook; onClose: () =>
       </div>
 
       {final && !running && (
-        <div className={`rounded-md px-3 py-2 text-sm ${final.ok ? "border border-ok/40 bg-ok/10 text-ok" : "border border-danger/40 bg-danger/10 text-danger"}`}>
+        <div className={`rounded-md px-3 py-2 text-sm ${final.ok ? "border border-ok/40 bg-ok/10 text-ok" : "border border-err/40 bg-err/10 text-err"}`}>
           {final.ok ? "✓ " : "✗ "}{final.message || (final.ok ? "Done" : "Stopped")}
         </div>
       )}
@@ -277,14 +277,14 @@ function RecentActivity({ vaultPath }: { vaultPath: string }) {
             const err = e.status === "error";
             return (
               <li key={`${e.ts}-${i}`} className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 ${pb ? "border-accent-border bg-accent-soft/15" : "border-border-subtle bg-surface"}`}>
-                <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${err ? "bg-danger/10 text-danger" : pb ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
+                <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${err ? "bg-err/10 text-err" : pb ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
                   {pb ? <BookText className="h-3 w-3" /> : <Activity className="h-3 w-3" />}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-text-muted">
                     {e.type && <span className={pb ? "text-accent" : ""}>{titleCase(e.type.replace(/_/g, " "))}</span>}
                     <span>{relTime(e.ts)}</span>
-                    {err && <span className="text-danger">failed</span>}
+                    {err && <span className="text-err">failed</span>}
                   </div>
                   <div className="mt-0.5 text-[13px] leading-snug text-text-primary">{e.title}</div>
                   {e.detail && <div className="mt-0.5 text-[12px] leading-relaxed text-text-muted">{e.detail}</div>}
@@ -399,15 +399,15 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
       />
 
       {err && (
-        <div className="flex items-start gap-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+        <div className="flex items-start gap-2 rounded-lg border border-err/40 bg-err/10 px-3 py-2 text-sm text-err">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{err}
         </div>
       )}
 
       {/* Global brake — one master mode */}
-      <section className={`rounded-xl border p-4 ${paused ? "border-danger/40 bg-danger/5" : mode === "auto" ? "border-accent-border bg-accent-soft/15" : "border-border bg-surface"}`}>
+      <section className={`rounded-xl border p-4 ${paused ? "border-err/40 bg-err/5" : mode === "auto" ? "border-accent-border bg-accent-soft/15" : "border-border bg-surface"}`}>
         <div className="mb-3 flex items-center gap-3">
-          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${paused ? "bg-danger/10 text-danger" : mode === "auto" ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${paused ? "bg-err/10 text-err" : mode === "auto" ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
             {paused ? <Pause className="h-5 w-5" /> : mode === "auto" ? <Zap className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}
           </span>
           <div className="min-w-0 flex-1">
@@ -424,7 +424,7 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
             { k: "auto", label: "Automatic", hint: "Run allowed" },
           ] as { k: AutonomyMode; label: string; hint: string }[]).map((m) => (
             <button key={m.k} onClick={() => void setMode(m.k)} disabled={busy || !status}
-              className={`flex flex-col items-center rounded-md px-2 py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${mode === m.k ? (m.k === "paused" ? "bg-danger text-background shadow-sm" : m.k === "auto" ? "bg-accent text-background shadow-sm" : "bg-warn text-background shadow-sm") : "text-text-muted hover:text-text-secondary"}`}>
+              className={`flex flex-col items-center rounded-md px-2 py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${mode === m.k ? (m.k === "paused" ? "bg-err text-background shadow-sm" : m.k === "auto" ? "bg-accent text-background shadow-sm" : "bg-warn text-background shadow-sm") : "text-text-muted hover:text-text-secondary"}`}>
               {m.label}
               <span className="mt-0.5 text-[10px] font-normal opacity-80">{m.hint}</span>
             </button>
