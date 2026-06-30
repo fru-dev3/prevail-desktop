@@ -1,7 +1,10 @@
 ---
 id: refresh-slack
 runner: llm
-trigger: refresh
+# Demoted to on-demand: this is now a pack fallback for the refresh-slack
+# capability. The browser favorite (and api variant) lead; this still runs if
+# they are blocked or fail, writing the same data/ files the analysis skills read.
+trigger: on-demand
 outputs:
   - { path: data/slack-messages-${date}.json, kind: replace }
   - { path: data/slack-mentions-${date}.json, kind: replace }

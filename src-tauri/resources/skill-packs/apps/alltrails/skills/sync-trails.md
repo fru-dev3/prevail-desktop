@@ -1,7 +1,10 @@
 ---
 id: sync-trails
 runner: llm
-trigger: refresh
+# Demoted to on-demand: this is now a pack fallback for the sync-trails
+# capability. The browser favorite (and MCP variant) lead; this still runs if
+# they are blocked or fail, writing the same data/ file the analysis skills read.
+trigger: on-demand
 outputs:
   - { path: data/alltrails-trails-${date}.json, kind: replace }
 ---

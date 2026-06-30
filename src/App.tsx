@@ -268,7 +268,7 @@ export default function App() {
   // Which facet of the open app the canvas shows. "chat" = the app's own
   // conversation; the rest are app sub-views (mirror of DomainTab, but for an
   // app's own concerns - never the grounding domain's).
-  type AppTab = "chat" | "runs" | "settings" | "domains";
+  type AppTab = "chat" | "runs" | "settings" | "domains" | "loops";
   const [appTab, setAppTab] = useState<AppTab>("chat");
   // Thread scope - WHERE conversations are stored/listed. An open app gets its
   // OWN thread space (`_app-<id>`) that's INDEPENDENT of any domain, so you can
@@ -1579,6 +1579,7 @@ export default function App() {
                 <>
                   {([
                     { key: "runs", label: "Runs", Icon: RefreshCw, title: "Last sync, schedule, and run history" },
+                    { key: "loops", label: "Loops", Icon: Repeat, title: "Standing loops (automations) for this app, like a domain's" },
                     { key: "settings", label: "Settings", Icon: SettingsIcon, title: "Connection, autonomy, schedule, and skills" },
                     { key: "domains", label: "Domains", Icon: Layers, title: "Domains this app refreshes" },
                   ] as const).map(({ key, label, Icon, title }) => (
