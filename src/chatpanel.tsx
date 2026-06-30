@@ -1572,21 +1572,45 @@ export function ChatPanel({
   const attachAppAsContext = useCallback(async (id: string) => {
     if (!id) return;
     try {
-      const all = await invoke<EngineApp[]>("engine_apps_list");
+      const all = await invoke<EngineApp[]>("engine_apps_list", { vault: vaultPath });
       const app = all.find((a) => a.id === id);
       if (!app) return;
-      const body = [
+      const head = [
         `# App: ${app.title}${app.account?.label ? ` (${app.account.label})` : ""}`,
         `Connector: ${app.integration} · status: ${app.status}`,
         app.domains.length
-          ? `Feeds these domains (data lands in vault/<domain>/): ${app.domains.map(titleCase).join(", ")}`
+          ? `Feeds these domains: ${app.domains.map(titleCase).join(", ")}`
           : "Not bound to any domain yet.",
         app.refresh?.every ? `Syncs every ${app.refresh.every}.` : "Manual sync only.",
         `Last synced ${relTime(app.lastSuccessTs)}.`,
       ].join("\n");
-      injectContext(body, `app: ${app.title}`);
+      // Attach the app's LOCAL saved data from the vault, not a live browse. For
+      // browser-automation (and every other) connector, what the agent can chat
+      // about is whatever the sync captured into the vault - we read the most
+      // recent saved files here, within a budget, and never touch the live app.
+      let dataBlock = "";
+      try {
+        const files = await invoke<{ path: string; name: string; bytes: number }[]>("app_data_files", { vault: vaultPath, appId: id });
+        const TEXT = /\.(md|txt|json|ndjson|csv|tsv|ya?ml|log)$/i;
+        const textFiles = (files ?? []).filter((f) => TEXT.test(f.name)).slice(0, 6);
+        const BUDGET = 8000;
+        let used = 0;
+        const chunks: string[] = [];
+        for (const f of textFiles) {
+          if (used >= BUDGET) break;
+          const raw = await invoke<string>("read_text_file", { path: f.path }).catch(() => "");
+          if (!raw.trim()) continue;
+          const slice = raw.slice(0, Math.min(2500, BUDGET - used));
+          used += slice.length;
+          chunks.push(`### ${f.name}\n${slice}${raw.length > slice.length ? "\n…(truncated)" : ""}`);
+        }
+        dataBlock = chunks.length
+          ? `\n\nSaved local data (read from your vault, not a live browse):\n${chunks.join("\n\n")}`
+          : `\n\nNo local data is saved for this app yet. I read what its sync has captured into your vault - I do not browse the app live - so connect or sync it to pull data in.`;
+      } catch { /* data read is best-effort; the identity card still attaches */ }
+      injectContext(head + dataBlock, `app: ${app.title}`);
     } catch (err) { console.error("attach app", err); setAttachErr(`Couldn't attach app: ${err}`); }
-  }, [injectContext]);
+  }, [injectContext, vaultPath]);
   // Test/drag hooks - exposed on window so the sidebar's manual drag (WebKit's
   // HTML5 DnD is unreliable in WKWebView) can attach a domain or app on drop.
   // Call window.__prevailAttach('tax') / __prevailAttachApp('gmail') in DevTools.
