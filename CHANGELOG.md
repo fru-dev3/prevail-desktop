@@ -4,6 +4,18 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.2.107] — 2026-06-30 · app/domain parity, unified app detail, gateways, Google auth fix
+
+### Added
+- **App/domain parity**: apps now have a **Loops** tab and a **Journal/Context** tab (state, journal, decisions, activity) via a new `app_context` command, plus a verified `soul.md` file, mirroring domains.
+- **Unified app detail**: the two drifted app-detail surfaces are merged into one canonical view exposing every tab (Welcome/Soul/Journal/Skills/Connections/Runs/Loops/Settings/Domains/Chat), so an app looks the same wherever you open it. Covered by a new headless render test.
+- **Gateways**: Composio, Nango, and Zapier as single connect-once aggregator apps (Composio/Zapier via MCP, Nango via key) that unlock all of each gateway's integrations.
+- **Sidebar app pinning** (pin-to-top, like domains) and a **Google Chat tab + favorite star**.
+
+### Fixed
+- **Google authentication**: sign-in now requests explicit Gmail/Calendar/Drive/Docs/Sheets/Tasks scopes (the prior `-s` flag only limited the scope picker, so only basic profile access was granted). Clearer "re-authorize to grant access" state and honest scope messaging.
+- **Catalog de-duplication**: zero duplicate app names (1496 apps, 216 curated).
+
 ## [0.2.106] — 2026-06-30 · apps + sidebar + Google redesign, Arena 8-view redesign, curated default catalog
 
 ### Added
