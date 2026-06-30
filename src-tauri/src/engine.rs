@@ -2712,6 +2712,50 @@ pub async fn engine_app_run_skill(
     run_engine_stream(handle, session, args, "engine-skill").await
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Google Workspace (gws) write approvals. Reads run automatically inside
+// chat and need no UI. WRITES are queued by the CLI to
+// <vault>/_meta/pending_gws.json as [{ id, domain, summary, args, ts }] and
+// must wait for the user to approve them under "Needs you". The approve path
+// reuses the existing token spine: loop_request_approval mints a single-use
+// token bound to (domain, summary), and authorize_action verifies it here so
+// a gws write only ever runs with a valid, single-use approval.
+
+/// List the queued gws write actions awaiting approval.
+/// `prevail --vault <vault> gws pending-list --json` -> the pending array.
+#[tauri::command]
+pub async fn engine_gws_pending_list(vault: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_engine_json(&["--vault", &vault, "gws", "pending-list"])
+    })
+    .await
+    .map_err(|e| format!("gws pending-list task failed: {e}"))?
+}
+
+/// Execute ONE user-approved gws write for real. Requires a valid single-use
+/// `approval` token bound to this exact (domain, summary) — minted by
+/// loop_request_approval — so a UI bug or injected invoke can't drive a gws
+/// write without real approval. Mirrors loop_execute_action's single
+/// authorization checkpoint, then runs the exact stored command by id.
+/// Returns the engine's `{ ok, output?, error? }`.
+#[tauri::command]
+pub async fn engine_gws_approve(
+    vault: String,
+    id: String,
+    domain: String,
+    summary: String,
+    approval: String,
+) -> Result<serde_json::Value, String> {
+    // Single authorization checkpoint: the broker verifies the approval token is
+    // valid, single-use, and bound to this exact (domain, summary). Do NOT weaken.
+    crate::broker::authorize_action(&domain, &summary, &approval)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        run_engine_json(&["--vault", &vault, "gws", "run", "--id", &id])
+    })
+    .await
+    .map_err(|e| format!("gws run task failed: {e}"))?
+}
+
 #[cfg(test)]
 mod vault_key_state_tests {
     use super::*;
