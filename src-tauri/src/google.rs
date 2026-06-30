@@ -159,7 +159,15 @@ fn probe_profile(bin: &str, dir: &Path) -> (String, Option<String>) {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+    // gws prints diagnostics (e.g. "Using keyring backend: keyring") alongside
+    // the JSON, so the combined stream is NOT valid JSON on its own. Slice out
+    // the JSON object before parsing, otherwise a genuinely connected account
+    // fails to parse and reads as "unknown" / "Not verified".
+    let json_slice = match (text.find('{'), text.rfind('}')) {
+        (Some(a), Some(b)) if b > a => &text[a..=b],
+        _ => text.as_str(),
+    };
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_slice) {
         if let Some(email) = v.get("emailAddress").and_then(|e| e.as_str()) {
             return ("connected".into(), Some(email.to_string()));
         }
@@ -240,6 +248,26 @@ pub async fn google_profile_login(label: String, config_dir: Option<String>) -> 
     })
     .await
     .map_err(|e| format!("join: {e}"))?
+}
+
+/// Remove a Google profile by deleting its gws config dir, so the user can clear
+/// a stuck or half-set-up account and start fresh. Guarded: the directory must
+/// live under ~/.config AND be a gws / gws-* profile dir, never anything else.
+#[tauri::command]
+pub fn google_profile_remove(config_dir: String) -> Result<serde_json::Value, String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let base = PathBuf::from(&home).join(".config");
+    let canon = PathBuf::from(&config_dir).canonicalize().map_err(|e| format!("resolve dir: {e}"))?;
+    let base_canon = base.canonicalize().unwrap_or(base);
+    if !canon.starts_with(&base_canon) {
+        return Err("refusing to remove a directory outside ~/.config".into());
+    }
+    let name = canon.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    if !(name == "gws" || name.starts_with("gws-")) {
+        return Err("not a Google Workspace profile directory".into());
+    }
+    std::fs::remove_dir_all(&canon).map_err(|e| format!("remove profile: {e}"))?;
+    Ok(serde_json::json!({ "ok": true }))
 }
 
 /// Scaffold the Google connector as a first-class vault app (data/apps/google)
@@ -652,6 +680,7 @@ pub async fn google_auth_login_stream(
     app: tauri::AppHandle,
     session: String,
     config_dir: Option<String>,
+    label: Option<String>,
 ) -> Result<(), String> {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
@@ -670,9 +699,20 @@ pub async fn google_auth_login_stream(
     };
 
     let home = std::env::var("HOME").unwrap_or_default();
-    let dir = config_dir
-        .filter(|d| !d.trim().is_empty())
-        .unwrap_or_else(|| format!("{home}/.config/gws"));
+    // An explicit config_dir wins (re-authorizing an existing profile). Otherwise
+    // derive the dir from the label for a NEW named profile (same scheme as
+    // google_profile_login), falling back to the default profile.
+    let dir = match config_dir.filter(|d| !d.trim().is_empty()) {
+        Some(d) => d,
+        None => {
+            let safe: String = label.unwrap_or_default().trim().to_lowercase().chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+                .collect();
+            let safe = safe.trim_matches('-').to_string();
+            if safe.is_empty() || safe == "default" { format!("{home}/.config/gws") }
+            else { format!("{home}/.config/gws-{safe}") }
+        }
+    };
     let _ = std::fs::create_dir_all(&dir);
 
     let (path, user, logname) = crate::build_cli_env();

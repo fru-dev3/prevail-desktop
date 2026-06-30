@@ -478,6 +478,7 @@ pub fn run() {
             google::google_cli_status,
             google::google_profiles,
             google::google_profile_login,
+            google::google_profile_remove,
             google::google_scaffold,
             google::google_cli_install_stream,
             google::google_auth_login_stream,

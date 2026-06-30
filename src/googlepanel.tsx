@@ -9,7 +9,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   AlertTriangle, Check, Loader2, Plus, RefreshCw, ExternalLink, Download, Link2,
-  Mail, CalendarDays, HardDrive, FileText, Sheet, ListTodo, Users, Eye, ShieldCheck, Sparkles,
+  Mail, CalendarDays, HardDrive, FileText, Sheet, ListTodo, Users, Eye, ShieldCheck, Trash2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -47,6 +47,8 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
   const [msg, setMsg] = useState<string | null>(null);
   const [newLabel, setNewLabel] = useState("");
   const [adding, setAdding] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const scaffoldedRef = useRef(false);
 
   // One-click setup streaming state.
   const [installLog, setInstallLog] = useState<string[]>([]);
@@ -61,33 +63,35 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
     try {
       const s = await invoke<CliStatus>("google_cli_status");
       setCli(s);
-      if (s.installed) setProfiles(await invoke<Profile[]>("google_profiles"));
+      if (s.installed) {
+        const ps = await invoke<Profile[]>("google_profiles");
+        setProfiles(ps);
+        // Once at least one account is connected, make sure the agent-facing
+        // connector exists (idempotent). Done automatically so there is no
+        // separate "connect for the agent" step for the user to puzzle over.
+        if (ps.some((p) => p.status === "connected") && !scaffoldedRef.current) {
+          scaffoldedRef.current = true;
+          invoke("google_scaffold", { vault: vaultPath })
+            .then(() => window.dispatchEvent(new CustomEvent("prevail:apps-changed")))
+            .catch(() => { scaffoldedRef.current = false; });
+        }
+      }
     } catch (e) { console.error("google status", e); }
     finally { setLoading(false); }
-  }, []);
+  }, [vaultPath]);
   useEffect(() => { void reload(); }, [reload]);
 
-  const authorize = async (label: string, configDir: string | null) => {
-    setBusy(configDir ?? `new:${label}`); setMsg("Opening your browser to sign in to Google. Pick the account, grant access, then come back.");
+  // Remove a Google account (delete its gws config dir) so the user can clear a
+  // stuck/half-set-up account and start fresh. Re-scaffolds afterward.
+  const removeProfile = async (configDir: string) => {
+    setBusy(configDir); setMsg(null);
     try {
-      await invoke("google_profile_login", { label, configDir });
-      setMsg("Signed in. Re-checking profiles…");
+      await invoke("google_profile_remove", { configDir });
       await reload();
-      // Keep the connector SKILL in sync with the live profiles.
       await invoke("google_scaffold", { vault: vaultPath }).catch(() => {});
-      setMsg(null);
-    } catch (e) { setMsg(`Sign-in failed: ${String(e).slice(0, 200)}`); }
-    finally { setBusy(null); }
-  };
-
-  const connect = async () => {
-    setBusy("scaffold"); setMsg(null);
-    try {
-      const r = await invoke<{ ok: boolean; profiles: number }>("google_scaffold", { vault: vaultPath });
       window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
-      setMsg(r.ok ? `Connected. Your agent can now use Google across ${r.profiles} profile${r.profiles === 1 ? "" : "s"} (chat + the Inbox-Zero loop).` : "Could not connect.");
-    } catch (e) { setMsg(`Connect failed: ${String(e).slice(0, 200)}`); }
-    finally { setBusy(null); }
+    } catch (e) { setMsg(`Could not remove that account: ${String(e).slice(0, 200)}`); }
+    finally { setBusy(null); setConfirmRemove(null); }
   };
 
   // Step 1: install the CLI, streaming live progress.
@@ -120,8 +124,11 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
     }
   };
 
-  // Step 2: browser OAuth, streaming live status incl. the auth URL.
-  const runConnect = async (configDir: string | null) => {
+  // Step 2: browser OAuth, streaming live status incl. the auth URL. `label`
+  // names a NEW account; omit it (configDir given) to re-authorize an existing
+  // one. The same streamed flow powers Connect, Re-authorize, and Add account,
+  // so none of them is ever a silent spinner.
+  const runConnect = async (configDir: string | null, label?: string) => {
     if (authing) return;
     setAuthing(true); setAuthLog([]); setAuthUrl(null); setMsg(null);
     const session = `gws-auth-${crypto.randomUUID()}`;
@@ -141,16 +148,17 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
           if (e.payload.session !== session) return;
           resolve();
         });
-        invoke("google_auth_login_stream", { session, configDir }).catch((err) => {
+        invoke("google_auth_login_stream", { session, configDir, label: label ?? null }).catch((err) => {
           setAuthLog((cur) => [...cur, `Sign-in failed: ${String(err).slice(0, 200)}`]);
           resolve();
         });
       });
     } finally {
       unLine(); unDone();
+      scaffoldedRef.current = false; // re-scaffold against the new profile set
       await reload();
-      // Keep the connector SKILL in sync with the live profiles.
       await invoke("google_scaffold", { vault: vaultPath }).catch(() => {});
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
       setAuthing(false);
     }
   };
@@ -272,22 +280,51 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
                           {rowBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />} Re-authorize
                         </button>
                       )}
+                      {confirmRemove === p.configDir ? (
+                        <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
+                          Remove?
+                          <button onClick={() => void removeProfile(p.configDir)} disabled={busy !== null} className="rounded px-1.5 py-0.5 font-medium text-danger hover:bg-danger/10 disabled:opacity-50">Yes</button>
+                          <button onClick={() => setConfirmRemove(null)} className="rounded px-1.5 py-0.5 hover:bg-surface-warm">No</button>
+                        </span>
+                      ) : (
+                        <button onClick={() => setConfirmRemove(p.configDir)} disabled={busy !== null || authing} title="Remove this account and start fresh" className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-50">
+                          {busy === p.configDir ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        </button>
+                      )}
                     </div>
                   );
                 })}
 
                 {adding ? (
-                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                    <input autoFocus value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="account name (e.g. work, personal)"
-                      className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-text-primary focus:border-accent-border focus:outline-none" />
-                    <button onClick={() => { const l = newLabel.trim(); if (l) { setAdding(false); setNewLabel(""); void authorize(l, null); } }} disabled={!newLabel.trim() || busy !== null}
-                      className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50"><ExternalLink className="h-3.5 w-3.5" /> Sign in</button>
-                    <button onClick={() => { setAdding(false); setNewLabel(""); }} className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:text-text-primary">Cancel</button>
+                  <div className="pt-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input autoFocus value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="a name for this account (e.g. work, personal)"
+                        className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-text-primary focus:border-accent-border focus:outline-none" />
+                      <button onClick={() => { const l = newLabel.trim(); if (l) { setAdding(false); setNewLabel(""); void runConnect(null, l); } }} disabled={!newLabel.trim() || authing || busy !== null}
+                        className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50"><ExternalLink className="h-3.5 w-3.5" /> Sign in</button>
+                      <button onClick={() => { setAdding(false); setNewLabel(""); }} className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:text-text-primary">Cancel</button>
+                    </div>
+                    <p className="mt-1.5 text-[11px] leading-snug text-text-muted">A separate Google account opens its own browser sign-in. Some accounts need extra Google setup the first time; if sign-in does not finish, the log will say what is needed and your main account keeps working.</p>
                   </div>
                 ) : (
-                  <button onClick={() => setAdding(true)} disabled={busy !== null} className="inline-flex items-center gap-1 rounded-md border border-dashed border-accent-border px-2.5 py-1.5 text-xs text-accent hover:bg-accent-soft/40 disabled:opacity-50">
+                  <button onClick={() => setAdding(true)} disabled={authing || busy !== null} className="inline-flex items-center gap-1 rounded-md border border-dashed border-accent-border px-2.5 py-1.5 text-xs text-accent hover:bg-accent-soft/40 disabled:opacity-50">
                     <Plus className="h-3.5 w-3.5" /> Add another Google account
                   </button>
+                )}
+
+                {/* Live sign-in log for Re-authorize / Add account once already
+                    set up (the Step 2 card is gone by then), so these never spin
+                    silently and any error (e.g. an account needing extra setup)
+                    is visible. */}
+                {authing && setupStep === 3 && (
+                  <div className="pt-1">
+                    {authUrl && (
+                      <button onClick={() => void openUrl(authUrl)} className="mb-1 inline-flex items-center gap-1 text-[11px] text-accent hover:underline">
+                        <ExternalLink className="h-3 w-3" /> Browser did not open? Click here
+                      </button>
+                    )}
+                    <StreamLog lines={authLog} busy={authing} idle="Opening Google sign-in…" />
+                  </div>
                 )}
               </div>
             )}
@@ -322,15 +359,6 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
               </div>
             )}
 
-            {/* Make it usable by the agent. */}
-            {cli?.installed && (
-              <div className="flex flex-wrap items-center gap-2.5 border-t border-border-subtle pt-3.5">
-                <button onClick={() => void connect()} disabled={busy !== null} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-xs font-semibold text-background shadow-sm hover:bg-accent-hover disabled:opacity-50">
-                  {busy === "scaffold" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Connect for the agent
-                </button>
-                <span className="max-w-prose text-[11px] leading-snug text-text-muted">Adds the Google connector and a skill so chat and the Inbox-Zero loop fan out across your accounts.</span>
-              </div>
-            )}
           </>
         )}
         {msg && <div className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-[12px] text-text-secondary">{msg}</div>}
