@@ -6,6 +6,7 @@
 // out the method) - not a wall of forms. See docs/APPS-REDESIGN.md.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, Boxes, Check, ChevronLeft, ChevronRight, Clock, Download, ExternalLink, FolderOpen, Globe, HelpCircle, Link2, Loader2, MessageSquare, Pencil, Play, Plug, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Star, Tag, Terminal, Trash2, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { MasterDetail } from "./masterdetail";
 import { ConnectorRunPanel, type ConnectorRunMode } from "./connectorrun";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -147,6 +148,38 @@ function methodLabel(integration: string): string {
   if (m.includes("cli")) return "CLI";
   if (m.includes("api") || m.includes("http") || m.includes("oauth")) return "API";
   return integration || "-";
+}
+
+// The ONE primary connection method an app uses, so every app reads at a glance
+// as exactly one of: CLI, Browser, API, MCP, or Manual. A few connectors could
+// technically do more than one; we deliberately collapse to the favored/active
+// one rather than surface a confusing multi-badge.
+export type AppMethod = "cli" | "browser" | "api" | "mcp" | "manual";
+export function methodOf(a: { pattern?: string; via?: string; integration?: string; connection_hint?: { method?: string } }): AppMethod {
+  const s = `${(a.connection_hint?.method || "")} ${(a.integration || a.pattern || a.via || "")}`.toLowerCase();
+  if (s.includes("mcp") || s.includes("composio")) return "mcp";
+  if (s.includes("browser") || s.includes("playwright")) return "browser";
+  if (s.includes("cli")) return "cli";
+  if (s.includes("api") || s.includes("http") || s.includes("oauth")) return "api";
+  return "manual";
+}
+// Icon + tinted color per method, so the method is recognizable by shape AND
+// hue, not just text. Manual stays neutral (it is the "nothing automated" case).
+const METHOD_META: Record<AppMethod, { label: string; Icon: LucideIcon; cls: string }> = {
+  cli:     { label: "CLI",     Icon: Terminal, cls: "border-violet-400/30 bg-violet-500/10 text-violet-600 dark:text-violet-300" },
+  browser: { label: "Browser", Icon: Globe,    cls: "border-sky-400/30 bg-sky-500/10 text-sky-600 dark:text-sky-300" },
+  api:     { label: "API",     Icon: Plug,     cls: "border-teal-400/30 bg-teal-500/10 text-teal-600 dark:text-teal-300" },
+  mcp:     { label: "MCP",     Icon: Boxes,    cls: "border-fuchsia-400/30 bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-300" },
+  manual:  { label: "Manual",  Icon: Pencil,   cls: "border-border-subtle bg-surface-warm text-text-muted" },
+};
+function MethodBadge({ method, className = "" }: { method: AppMethod; className?: string }) {
+  const m = METHOD_META[method];
+  const Icon = m.Icon;
+  return (
+    <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-[9px] font-medium uppercase tracking-wider ${m.cls} ${className}`}>
+      <Icon className="h-2.5 w-2.5" /> {m.label}
+    </span>
+  );
 }
 
 function scheduleLabel(r: EngineApp["refresh"]): string {
@@ -1833,7 +1866,7 @@ function ConnectorRow({ app, logos, status, active, onSelect, isFav, onToggleFav
         <AppRowLogo app={app} logos={logos} size={28} fallback="letter" />
         <span className="min-w-0 flex-1">
           <span className={`block truncate text-sm font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{app.title || app.id}</span>
-          <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>
+          <span className="mt-0.5 flex"><MethodBadge method={methodOf(app)} /></span>
         </span>
         <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot} ${status === "connecting" ? "animate-pulse" : ""}`} title={meta.label} />
       </button>
@@ -1867,7 +1900,10 @@ function CatalogRow({ app, logos, active, onSelect, isFav, onToggleFav }: {
         <AppRowLogo app={catalogLogoApp(app)} logos={logos} size={28} fallback="letter" />
         <span className="min-w-0 flex-1">
           <span className={`block truncate text-sm font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{app.name}</span>
-          <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{titleCase(sub)}</span>
+          <span className="mt-0.5 flex items-center gap-1.5">
+            <MethodBadge method={methodOf(app)} />
+            <span className="truncate font-mono text-[9px] uppercase tracking-wider text-text-muted">{titleCase(sub)}</span>
+          </span>
         </span>
       </button>
       <PinButton isFav={isFav} onToggle={onToggleFav} />
@@ -2752,12 +2788,12 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
               <span className={`h-1.5 w-1.5 rounded-full ${meta.dot} ${status === "connecting" ? "animate-pulse" : ""}`} />
               {meta.label}
             </span>
+            <MethodBadge method={methodOf(app)} className="text-[10px]" />
             {gatewayProvider && (
               <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
                 <Check className="h-2.5 w-2.5" /> via {titleCase(gatewayProvider)}
               </span>
             )}
-            {!gatewayProvider && !learnedLane && <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[10px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>}
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-text-muted">
             {domainsLine && <span className="inline-flex items-center gap-1"><Globe className="h-3.5 w-3.5" /> {domainsLine}</span>}
