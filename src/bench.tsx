@@ -116,6 +116,133 @@ export function benchWaitDone(b: BenchBatch, session: string, phase: string, tim
   });
 }
 
+// ── AI question-suggestion registry ─────────────────────────────────────────
+// "Suggest with AI" (question drafting) is a long-running engine call that must
+// outlive the Questions panel. Mirroring benchBatches, this module-scope store
+// is the single source of truth for every in-flight (and finished) suggest job,
+// so navigating away from Arena and back never drops one. Panels subscribe via
+// useQuestionSuggest(); startQuestionSuggest() runs the engine call from module
+// scope with module-scope event listeners, so nothing is tied to a component.
+
+export type QSuggestJob = {
+  id: string;
+  vault: string;
+  domain: string;
+  status: "running" | "done" | "error";
+  added?: number;
+  error?: string;
+  tail?: string;
+  startedTs: number;
+};
+
+// Keyed by vault + "|" + domain: "all domains" runs one job per domain, and
+// re-starting a domain replaces its prior (finished) job in place.
+const qSuggestJobs = new Map<string, QSuggestJob>();
+
+function qSuggestKey(vault: string, domain: string) {
+  return `${vault}|${domain.toLowerCase()}`;
+}
+
+function qSuggestNotify() {
+  window.dispatchEvent(new Event("prevail:qsuggest-changed"));
+}
+
+// Subscribe hook: re-renders on prevail:qsuggest-changed and returns the current
+// jobs. Mirrors useBenchBatches (which re-renders through benchSubs); here the
+// window event is the notification channel so any mounted panel stays in sync.
+export function useQuestionSuggest(): QSuggestJob[] {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const f = () => force((n) => n + 1);
+    window.addEventListener("prevail:qsuggest-changed", f);
+    return () => window.removeEventListener("prevail:qsuggest-changed", f);
+  }, []);
+  return Array.from(qSuggestJobs.values());
+}
+
+// MODULE-SCOPE runner: draft `count` questions for ONE domain via the engine's
+// `benchmark_suggest`. Everything (invoke + streaming listeners + recount) lives
+// here, not in a component, so an unmount of the Questions panel cannot drop it.
+// Guards against double-starting the same vault+domain while one is running.
+export async function startQuestionSuggest({
+  vault, domain, count, cli, model,
+}: {
+  vault: string;
+  domain: string;
+  count: number;
+  cli: string;
+  model?: string | null;
+}): Promise<void> {
+  const target = domain.toLowerCase();
+  const key = qSuggestKey(vault, target);
+  const existing = qSuggestJobs.get(key);
+  if (existing && existing.status === "running") return; // already in flight
+
+  // Count from disk, not stale React state, so the "added" delta is honest.
+  let before = 0;
+  try {
+    const pre = await invoke<BenchQuestion[]>("benchmark_questions", { vault });
+    before = (pre ?? []).filter((q) => q.domain === target).length;
+  } catch { /* fall back to before = 0; exit code still drives success */ }
+
+  const session = `bench-suggest-${target}-${Date.now()}`;
+  const job: QSuggestJob = { id: session, vault, domain: target, status: "running", startedTs: Date.now() };
+  qSuggestJobs.set(key, job);
+  qSuggestNotify();
+
+  // Module-scope streaming + completion listeners (not component-scoped).
+  let output = "";
+  let chunkUn: UnlistenFn | null = null;
+  listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
+    if (e.payload.session === session) {
+      output = (output + e.payload.data).slice(-2000);
+      job.tail = output.trim().split("\n").filter(Boolean).slice(-2).join(" / ");
+      qSuggestNotify();
+    }
+  }).then((u) => { chunkUn = u; });
+
+  const done = new Promise<number | null>((resolve) => {
+    let un: UnlistenFn | null = null;
+    listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
+      if (e.payload.session === session && e.payload.phase === "suggest") { un?.(); resolve(e.payload.code); }
+    }).then((u) => { un = u; });
+  });
+
+  try {
+    await invoke("benchmark_suggest", {
+      args: { session_id: session, vault, domain: target, count, cli, model: model || null },
+    });
+    const code = await done;
+    (chunkUn as UnlistenFn | null)?.();
+    // Let the engine flush new questions to disk before recounting.
+    await new Promise((r) => setTimeout(r, 150));
+    let added = 0;
+    try {
+      const fresh = await invoke<BenchQuestion[]>("benchmark_questions", { vault });
+      added = (fresh ?? []).filter((q) => q.domain === target).length - before;
+    } catch { /* counting is best-effort; exit code still drives success */ }
+    if (code === 0 || code === null) {
+      job.status = "done";
+      job.added = added > 0 ? added : 0;
+    } else {
+      // Surface WHY it failed: the engine prints a reason on the last line;
+      // fall back to a plain-English guess when it's empty.
+      const reason = (output.trim().split("\n").filter(Boolean).pop() || "").trim()
+        || "the drafting model returned nothing usable (check the model is installed and signed in)";
+      job.status = "error";
+      job.error = reason;
+    }
+  } catch (e) {
+    (chunkUn as UnlistenFn | null)?.();
+    job.status = "error";
+    job.error = String(e);
+  }
+  qSuggestNotify();
+  // Tell any mounted questions panel to reload its list, whether or not the user
+  // is currently looking at it, so completed drafts appear on return.
+  window.dispatchEvent(new Event("prevail:questions-changed"));
+}
+
 // ── Scheduled benchmark runs ────────────────────────────────────────────────
 // Re-runs the most recent batch (same models, same scope) on a cadence so
 // model drift shows up in History without manual runs. Checked every 30
