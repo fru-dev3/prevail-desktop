@@ -3,11 +3,11 @@
 // run registry + executor live in ./bench; this is the presentation layer.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm, open, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
-import { Activity, AlertTriangle, Archive, Award, Bookmark, BrainCircuit, CalendarClock, Check, ChevronLeft, ChevronRight, Circle, Coins, Crown, DollarSign, Download, ExternalLink, FileText, Gauge, Layers, LineChart, Loader2, MessagesSquare, Pencil, Play, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X, Zap } from "lucide-react";
+import { Activity, AlertTriangle, Archive, Award, Bookmark, BrainCircuit, CalendarClock, Check, ChevronLeft, ChevronRight, Circle, Coins, Crown, DollarSign, Download, ExternalLink, FileText, Gauge, Layers, LineChart, Loader2, MessagesSquare, Pencil, Play, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Swords, Target, Trash2, TrendingUp, Upload, X, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke, listen } from "./bridge";
-import { MODELS, MODEL_SEP } from "./constants";
+import { MODELS, MODEL_SEP, VENDOR_BRAND } from "./constants";
 import { relTime, scoreColor, titleCase } from "./format";
 import { isLocalCli } from "./helpers";
 import { curatedFor, modelLabel, modelsFor, parseRunLabel } from "./helpers2";
@@ -1300,8 +1300,7 @@ export function BenchRunConfig({
   // The Run title + breadcrumb now live in the Arena page header. The primary
   // "Run" action moved into the final "Review & Run" step of the wizard below.
   // Council is retired from this page, so the selection is always the multi-model
-  // head-to-head list.
-  const selModelLabels = Array.from(selModels).map((k) => { const [cli, model] = k.split(MODEL_SEP); const ml = MODELS[cli]?.find((m) => m.id === model)?.label ?? model; return `${titleCase(cli)} · ${ml}`; });
+  // head-to-head list (rendered as an arena matchup in the review step).
 
   // ── The Run page as a left-to-right STEP WIZARD ────────────────────────────
   // Instead of a wall of stacked collapsibles, the run is a 3-step flow you move
@@ -1831,47 +1830,152 @@ export function BenchRunConfig({
           questions) folded in, with the primary Run action. Everything reflects
           the live selection. When a run is in progress the whole config is
           replaced by the running-jobs view above, so this step is the launch pad. */}
-      {effectiveStep === "review" && (
-        <div className="mx-auto max-w-2xl space-y-4">
-          <div className="rounded-2xl border border-border bg-surface p-5">
-            <div className="mb-2.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Run summary</div>
-            <div className="flex items-center justify-between">
-              <div className="text-[12px] font-semibold text-text-primary">Models ({selModels.size})</div>
-              <button onClick={() => setActiveStep("models")} className="font-mono text-[10px] text-text-muted hover:text-accent">Edit</button>
+      {effectiveStep === "review" && (() => {
+        // ── ARENA MATCHUP · Review & Run ──────────────────────────────────
+        // The selected models become "contenders" in a head-to-head arena:
+        // logo forward, model label + provider + a short descriptor, and a live
+        // validity dot from providerStatus. The layout adapts to the count
+        // (solo challenger / literal 1-v-1 with a VS divider / a lineup grid),
+        // with the run params rendered as a scoreboard strip and the same Run
+        // CTA + disabled logic as before.
+        type Contender = {
+          key: string; cli: string; modelId: string; vendor: string;
+          label: string; provider: string; blurb?: string; status: ProviderStatus;
+        };
+        const contenders: Contender[] = selModelArr.map((k) => {
+          const [cli, modelId] = k.split(MODEL_SEP);
+          return {
+            key: k, cli, modelId, vendor: cli,
+            label: modelLabel(cli, modelId),
+            provider: BENCH_CLI_OPTIONS.find((c) => c.id === cli)?.label ?? VENDOR_BRAND[cli]?.name ?? titleCase(cli),
+            blurb: MODELS[cli]?.find((m) => m.id === modelId)?.blurb,
+            status: providerStatus(cli).status,
+          };
+        });
+        const n = contenders.length;
+        const domainScopeLabel = scope.size === 0
+          ? "All domains"
+          : scope.size === 1
+          ? `Arena: ${titleCase(Array.from(scope)[0])}`
+          : `${scope.size} domains`;
+        const domainCount = scope.size === 0 ? allDomains.length : scope.size;
+
+        // Live validity dot for a contender: ok / verifying / failed / unavailable.
+        const StatusDot = ({ status }: { status: ProviderStatus }) => {
+          if (status === "ok") return <span className="inline-flex items-center gap-1 font-mono text-[10px] text-ok"><Check className="h-3 w-3" strokeWidth={3} /> ready</span>;
+          if (status === "verifying") return <span className="inline-flex items-center gap-1 font-mono text-[10px] text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> verifying</span>;
+          if (status === "failed") return <span className="inline-flex items-center gap-1 font-mono text-[10px] text-err"><AlertTriangle className="h-3 w-3" /> failed</span>;
+          return <span className="inline-flex items-center gap-1 font-mono text-[10px] text-warn"><Circle className="h-2.5 w-2.5 fill-current" /> offline</span>;
+        };
+
+        // One contender card. `hero` enlarges the logo/type for the 1 and 2 layouts.
+        const ContenderCard = ({ c, hero = false }: { c: Contender; hero?: boolean }) => (
+          <div className={`flex min-w-0 flex-col items-center rounded-2xl border border-border bg-surface-warm/50 text-center ${hero ? "gap-2.5 p-5" : "gap-2 p-4"}`}>
+            <ProviderMark vendor={c.vendor} size={hero ? 52 : 40} />
+            <div className="min-w-0">
+              <div className={`truncate font-semibold text-text-primary ${hero ? "text-[15px]" : "text-[13px]"}`}>{c.label}</div>
+              <div className="truncate font-mono text-[10px] uppercase tracking-wider text-text-muted">{c.provider}</div>
             </div>
-            <div className="mt-1 space-y-1">
-              {selModelLabels.length === 0
-                ? <div className="rounded-lg border border-dashed border-border px-2 py-1.5 text-[11px] text-text-muted">No models selected yet. Go back to the Models step.</div>
-                : selModelLabels.slice(0, 8).map((l, i) => (
-                  <div key={i} className="truncate rounded-lg bg-surface-warm/60 px-2 py-1 font-mono text-[11px] text-text-secondary">{l}</div>
-                ))}
-              {selModelLabels.length > 8 && <div className="px-2 font-mono text-[10px] text-text-muted">+{selModelLabels.length - 8} more</div>}
+            {c.blurb && <div className="line-clamp-2 font-mono text-[10px] leading-relaxed text-text-secondary">{c.blurb}</div>}
+            <StatusDot status={c.status} />
+          </div>
+        );
+
+        return (
+        <div className="mx-auto max-w-4xl space-y-4">
+          <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+            {/* Scoreboard strip: the match header. Reads like a chart, not a line. */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle bg-surface-strong/40 px-5 py-3">
+              <div className="inline-flex items-center gap-2">
+                <Swords className="h-4 w-4 text-accent" />
+                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Arena matchup</span>
+              </div>
+              <div className="flex items-center gap-5">
+                <button onClick={() => setActiveStep("models")} className="flex flex-col items-end leading-none hover:opacity-80" title="Edit models">
+                  <span className="font-mono text-lg font-semibold text-text-primary">{n}</span>
+                  <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{n === 1 ? "contender" : "contenders"}</span>
+                </button>
+                <div className="h-7 w-px bg-border-subtle" />
+                {domainsStepShown ? (
+                  <button onClick={() => setActiveStep("domains")} className="flex flex-col items-end leading-none hover:opacity-80" title="Edit domains">
+                    <span className="truncate font-mono text-sm font-semibold text-accent">{domainScopeLabel}</span>
+                    <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{domainCount} domain{domainCount === 1 ? "" : "s"}</span>
+                  </button>
+                ) : (
+                  <div className="flex flex-col items-end leading-none">
+                    <span className="truncate font-mono text-sm font-semibold text-accent">{domainScopeLabel}</span>
+                    <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{domainCount} domain{domainCount === 1 ? "" : "s"}</span>
+                  </div>
+                )}
+                <div className="h-7 w-px bg-border-subtle" />
+                <div className="flex flex-col items-end leading-none">
+                  <span className="font-mono text-lg font-semibold text-text-primary">{questionCount}</span>
+                  <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">round{questionCount === 1 ? "" : "s"}</span>
+                </div>
+              </div>
             </div>
-            <div className="mb-1 mt-3 flex items-center justify-between">
-              <div className="text-[12px] font-semibold text-text-primary">Domains ({scope.size === 0 ? allDomains.length : scope.size})</div>
-              {domainsStepShown && <button onClick={() => setActiveStep("domains")} className="font-mono text-[10px] text-text-muted hover:text-accent">Edit</button>}
+
+            {/* The arena floor: contenders laid out by count. */}
+            <div className="p-5">
+              {n === 0 ? (
+                <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-[12px] text-text-muted">
+                  No contenders yet. <button onClick={() => setActiveStep("models")} className="text-accent hover:underline">Go back to Models</button> to enter the arena.
+                </div>
+              ) : n === 1 ? (
+                // Solo challenger facing the field.
+                <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[1fr_auto_1fr]">
+                  <ContenderCard c={contenders[0]} hero />
+                  <div className="flex flex-col items-center gap-1 text-text-muted">
+                    <Swords className="h-6 w-6 text-accent" />
+                    <span className="font-mono text-[9px] uppercase tracking-wider">vs</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border bg-surface-warm/30 p-5 text-center">
+                    <Target className="h-9 w-9 text-text-secondary" />
+                    <div className="text-[13px] font-semibold text-text-primary">The question set</div>
+                    <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{domainScopeLabel}</div>
+                    <div className="font-mono text-[10px] text-text-secondary">{questionCount} question{questionCount === 1 ? "" : "s"}</div>
+                  </div>
+                </div>
+              ) : n === 2 ? (
+                // Literal head-to-head: A · VS · B.
+                <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[1fr_auto_1fr]">
+                  <ContenderCard c={contenders[0]} hero />
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full border border-accent-border bg-accent-soft font-display text-sm font-bold text-accent">VS</span>
+                    <Swords className="h-4 w-4 text-text-muted" />
+                  </div>
+                  <ContenderCard c={contenders[1]} hero />
+                </div>
+              ) : (
+                // Lineup / bracket row: fill the width, cap the visible tiles.
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {contenders.slice(0, 8).map((c) => <ContenderCard key={c.key} c={c} />)}
+                  {n > 8 && (
+                    <div className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-border bg-surface-warm/30 p-4 text-center">
+                      <span className="font-display text-xl font-bold text-accent">+{n - 8}</span>
+                      <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">more</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="flex flex-wrap gap-1">
-              {scope.size === 0
-                ? <span className="rounded-md bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">All domains</span>
-                : Array.from(scope).map((d) => <span key={d} className="rounded-md bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">{titleCase(d)}</span>)}
+
+            {/* Start CTA: same onRun, same disabled logic, same states. */}
+            <div className="border-t border-border-subtle px-5 pb-5 pt-4">
+              <button
+                onClick={onRun}
+                disabled={running || questionCount === 0 || selCount === 0}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
+              >
+                {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                {running ? "Running…" : `Run ${selCount} model${selCount === 1 ? "" : "s"}`}
+              </button>
+              <p className="mt-2 text-center font-mono text-[10px] leading-relaxed text-text-muted">Different CLIs enter the arena in parallel · auto-scored. Review results in History.</p>
             </div>
-            <div className="mt-3 flex items-center justify-between border-t border-border-subtle pt-3">
-              <span className="font-mono text-[11px] text-text-muted">Total questions</span>
-              <span className="font-mono text-sm font-semibold text-text-primary">{questionCount}</span>
-            </div>
-            <button
-              onClick={onRun}
-              disabled={running || questionCount === 0 || selCount === 0}
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
-            >
-              {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              {running ? "Running…" : `Run ${selCount} model${selCount === 1 ? "" : "s"}`}
-            </button>
-            <p className="mt-2 text-center font-mono text-[10px] leading-relaxed text-text-muted">Different CLIs run in parallel · auto-scored. Review results in History.</p>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
