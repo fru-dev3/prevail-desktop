@@ -2,7 +2,7 @@
 // benchmark progress strip, the framework/lens cycle row, and the Settings
 // scheduled-benchmark card.
 import { useEffect, useState } from "react";
-import { Activity, Archive, CalendarClock, Loader2, RotateCw, SlidersHorizontal } from "lucide-react";
+import { Activity, Archive, CalendarClock, Loader2, RotateCw, SlidersHorizontal, X } from "lucide-react";
 import { useProcesses } from "./processes";
 import { Toggle } from "./ui";
 import { BACKUP_CFG } from "./backup";
@@ -51,17 +51,17 @@ export function SidebarProcesses({ collapsed, setTab }: { collapsed: boolean; se
     );
   }
   return (
-    <div className="border-t border-border-subtle">
-      <div className="flex items-center gap-2 px-3 py-1.5">
-        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-accent" />
-        <span className="flex-1 font-mono text-[10px] uppercase tracking-wide text-accent">{n} process{n === 1 ? "" : "es"} running</span>
-        <Activity className="h-3 w-3 shrink-0 text-text-muted" />
+    <div className="rounded-xl border border-border-subtle bg-surface-warm/40 p-2.5">
+      <div className="mb-1.5 flex items-center gap-2 px-0.5">
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-accent" />
+        <span className="flex-1 text-[13px] font-medium text-text-primary">{n} process{n === 1 ? "" : "es"} running</span>
+        <Activity className="h-3.5 w-3.5 shrink-0 text-text-muted" />
       </div>
-      <div className="pb-1">
+      <div className="flex flex-col gap-0.5">
         {procs.slice(0, 4).map((p) => (
-          <button key={p.id} onClick={() => jump(p)} title="Jump to this process" className="flex w-full items-center gap-2 px-3 py-1 text-left hover:bg-surface-warm">
+          <button key={p.id} onClick={() => jump(p)} title="Jump to this process" className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-background">
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-            <span className="flex-1 truncate font-mono text-[10px] text-text-secondary">{p.label}</span>
+            <span className="flex-1 truncate text-[12px] text-text-secondary group-hover:text-text-primary">{p.label}</span>
           </button>
         ))}
       </div>
@@ -90,10 +90,15 @@ export function SidebarBenchScheduled({ collapsed }: { collapsed: boolean }) {
     );
   }
   return (
-    <button onClick={open} title={title} className="flex w-full items-center gap-2 border-t border-border-subtle px-3 py-2 text-left hover:bg-surface-warm">
+    <button onClick={open} title={title} className="group flex w-full items-center gap-2.5 rounded-xl border border-border-subtle bg-surface-warm/40 px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-surface-warm">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
+        <CalendarClock className="h-3.5 w-3.5" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col leading-tight">
+        <span className="truncate text-[13px] font-medium text-text-primary">Benchmark scheduled</span>
+        <span className="truncate font-mono text-[10px] text-text-muted">{benchFreqLabel(freq)}</span>
+      </span>
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-      <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-text-secondary">Benchmark · {benchFreqLabel(freq)}</span>
-      <CalendarClock className="h-3 w-3 shrink-0 text-text-muted" />
     </button>
   );
 }
@@ -122,10 +127,15 @@ export function SidebarBackupActive({ collapsed }: { collapsed: boolean }) {
     );
   }
   return (
-    <button onClick={open} title={title} className="flex w-full items-center gap-2 border-t border-border-subtle px-3 py-2 text-left hover:bg-surface-warm">
+    <button onClick={open} title={title} className="group flex w-full items-center gap-2.5 rounded-xl border border-border-subtle bg-surface-warm/40 px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-surface-warm">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-ok/12 text-ok">
+        <Archive className="h-3.5 w-3.5" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col leading-tight">
+        <span className="truncate text-[13px] font-medium text-text-primary">Automatic backups</span>
+        <span className="truncate font-mono text-[10px] text-text-muted">{label}</span>
+      </span>
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
-      <span className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-text-secondary">Backups · {label}</span>
-      <Archive className="h-3 w-3 shrink-0 text-text-muted" />
     </button>
   );
 }
@@ -174,40 +184,50 @@ export function SidebarBenchmarkRuns({ collapsed }: { collapsed: boolean }) {
     );
   }
   return (
-    <div className="border-t border-border-subtle">
+    <div className="flex flex-col gap-1.5">
       {runningBatches.map((b) => {
         const done = b.jobs.reduce(
           (a, j) => a + (j.status === "done" || j.status === "scoring" ? j.total : j.done),
           0,
         );
         const total = b.jobs.reduce((a, j) => a + j.total, 0);
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
         return (
-          <div key={b.id} className="px-3 py-2">
+          <div key={b.id} className="rounded-xl border border-border-subtle bg-surface-warm/40 px-3 py-2.5">
             <div className="flex items-center gap-2">
-              <span className="relative flex h-1.5 w-1.5 shrink-0">
+              <span className="relative flex h-2 w-2 shrink-0">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
               </span>
               <span
-                className="flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-accent"
+                className="flex-1 truncate text-[13px] font-medium text-text-primary"
                 title={b.label}
               >
                 {b.scopeLabel}
               </span>
-              <span className="font-mono text-[10px] text-text-muted">{done}/{total}</span>
               <button
                 onClick={() => void cancelBenchBatch(b.id)}
                 title="Cancel this benchmark run"
-                className="shrink-0 rounded px-1 font-mono text-[10px] text-text-muted hover:bg-surface-strong hover:text-err"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-strong hover:text-err"
               >
-                ✗
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
-            <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-surface-strong">
-              <div
-                className="h-full rounded-full bg-accent transition-all duration-500"
-                style={{ width: total > 0 ? `${Math.round((done / total) * 100)}%` : "0%" }}
-              />
+            <div className="mt-2 flex items-center gap-2">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border-subtle">
+                <div
+                  className="h-full rounded-full bg-accent transition-all duration-500 ease-out"
+                  style={{ width: `${pct}%` }}
+                >
+                  <div className="h-full w-full animate-pulse rounded-full bg-accent/40" />
+                </div>
+              </div>
+              <span className="shrink-0 font-mono text-[10px] tabular-nums text-text-muted">
+                {done}/{total}
+              </span>
+              <span className="shrink-0 font-mono text-[10px] font-semibold tabular-nums text-accent">
+                {pct}%
+              </span>
             </div>
           </div>
         );
