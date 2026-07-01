@@ -3,7 +3,7 @@
 // run registry + executor live in ./bench; this is the presentation layer.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm, open, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
-import { Activity, AlertTriangle, Archive, Award, Bookmark, BrainCircuit, CalendarClock, Check, ChevronRight, Circle, Coins, Crown, DollarSign, Download, ExternalLink, FileText, Gauge, Layers, LineChart, Loader2, MessagesSquare, Pencil, Play, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X, Zap } from "lucide-react";
+import { Activity, AlertTriangle, Archive, Award, Bookmark, BrainCircuit, CalendarClock, Check, ChevronLeft, ChevronRight, Circle, Coins, Crown, DollarSign, Download, ExternalLink, FileText, Gauge, Layers, LineChart, Loader2, MessagesSquare, Pencil, Play, Plus, RotateCw, Scale, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload, X, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke, listen } from "./bridge";
@@ -15,14 +15,14 @@ import { BenchScheduleCard } from "./cards";
 import { isBunkerOn, lsGet, lsSet } from "./storage";
 import { BenchCrumbs, Field, ScoreBar } from "./panels";
 import { Sparkline } from "./ui";
-import { ArenaBars, ArenaHeader, ArenaInsight, ArenaMetric, ArenaStatCard, heatBg } from "./arena/arenaui";
+import { ArenaBars, ArenaHeader, ArenaInsight, ArenaMetric, ArenaRightRail, ArenaStatCard, heatBg } from "./arena/arenaui";
 import { CollapsibleSection } from "./collapsible";
 import { domainIcon } from "./icons";
 import { BENCH_CLI_OPTIONS, BENCH_SCHED, benchBatches, benchFreqLabel, benchNotify, cancelBenchBatch, executeBenchBatch, useBenchBatches } from "./bench";
 import { deleteSuite, saveSuite, useSuites } from "./bench-presets";
 import type { BenchSuite } from "./bench-presets";
 import { ProviderMark } from "./marks";
-import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Domain, MatrixRow, RunDetail } from "./types";
+import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Domain, EngineApp, MatrixRow, RunDetail } from "./types";
 import type { UnlistenFn } from "./bridge";
 
 // --- Model Scout suggestions ---------------------------------------------------
@@ -403,7 +403,7 @@ function MatrixInsights({ matrix, allDomains }: { matrix: MatrixRow[]; allDomain
   if (!insights.overall) return null;
   const maxGap = Math.max(0.0001, ...insights.byGap.map((g) => g.gap));
   return (
-    <aside className="w-full shrink-0 space-y-3 xl:w-72">
+    <ArenaRightRail>
       <div className="rounded-2xl border border-border bg-surface p-4">
         <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Strongest overall</div>
         <div className="mt-1.5 flex items-center gap-2">
@@ -450,7 +450,7 @@ function MatrixInsights({ matrix, allDomains }: { matrix: MatrixRow[]; allDomain
           <p className="mt-2 text-[11px] leading-relaxed text-text-muted">A wide gap means model choice matters a lot in that domain; a narrow gap means most models perform similarly.</p>
         </div>
       )}
-    </aside>
+    </ArenaRightRail>
   );
 }
 
@@ -930,7 +930,7 @@ export function BenchRunConfig({
   // user can tweak then run or re-save. Distinct from the Run button.
   const loadSuite = (s: BenchSuite) => { setMode(s.mode); applyModels(s.models); applyScope(s.domains); };
   const commitSuite = () => {
-    // A Council is a named group of MODELS (reusable in the Arena + Chat council),
+    // A Preset is a named group of MODELS (reusable across Arena runs),
     // so we save models only - the domain scope is chosen per-run.
     if (saveSuite({ name: suiteName, mode, models: selModelArr, domains: [] })) {
       setSuiteName(""); setSavingSuite(false);
@@ -1306,7 +1306,7 @@ export function BenchRunConfig({
 
       {/* Suites - a named (models + domains + mode) you can re-run as a unit or
           drop onto the background schedule. Built from the current selection. */}
-      <CollapsibleSection icon={Bookmark} title="Councils" summary={suites.length ? `${suites.length} saved` : "save a reusable model group"} storageKey="prevail.bench.sec.suites" defaultOpen>
+      <CollapsibleSection icon={Bookmark} title="Presets" summary={suites.length ? `${suites.length} saved` : "save a reusable model group"} storageKey="prevail.bench.sec.suites" defaultOpen>
         <div className="space-y-2">
           {suites.map((s) => {
             const isScheduled = scheduledSuiteId === s.id;
@@ -1327,7 +1327,7 @@ export function BenchRunConfig({
                 <button onClick={() => scheduleSuite(s)} title="Run this suite on the background schedule" className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] ${isScheduled ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}>
                   <CalendarClock className="h-3 w-3" /> {isScheduled ? "Scheduled" : "Schedule"}
                 </button>
-                <button onClick={() => { loadSuite(s); setSuiteName(s.name); setSavingSuite(true); }} title="Edit: load this council's models into the editor above, adjust the selection, then Save to update it" className="text-text-muted/60 hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>
+                <button onClick={() => { loadSuite(s); setSuiteName(s.name); setSavingSuite(true); }} title="Edit: load this preset's models into the editor above, adjust the selection, then Save to update it" className="text-text-muted/60 hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>
                 <button onClick={() => { if (isScheduled) setScheduledSuiteId(null); deleteSuite(s.id); }} title="Delete suite" className="text-text-muted/50 hover:text-err"><Trash2 className="h-3.5 w-3.5" /></button>
               </div>
             );
@@ -1345,7 +1345,7 @@ export function BenchRunConfig({
             </div>
           ) : (
             <button onClick={() => setSavingSuite(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-accent-border hover:text-accent">
-              <Plus className="h-3.5 w-3.5" /> Save selected models as a council
+              <Plus className="h-3.5 w-3.5" /> Save selected models as a preset
             </button>
           )}
         </div>
@@ -1354,7 +1354,7 @@ export function BenchRunConfig({
         </div>
         {/* Run summary rail: the configured benchmark at a glance, with the
             primary Run action (mockup 7). All values reflect the live selection. */}
-        <aside className="w-full shrink-0 space-y-3 lg:w-72">
+        <ArenaRightRail>
           <div className="rounded-2xl border border-border bg-surface p-4">
             <div className="mb-2.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Run summary</div>
             <div className="text-[12px] font-semibold text-text-primary">Models ({mode === "council" ? 1 : selModels.size})</div>
@@ -1386,7 +1386,7 @@ export function BenchRunConfig({
             </button>
             <p className="mt-2 text-center font-mono text-[10px] leading-relaxed text-text-muted">Different CLIs run in parallel · auto-scored. Review results in History.</p>
           </div>
-        </aside>
+        </ArenaRightRail>
       </div>
     </div>
   );
@@ -1424,7 +1424,7 @@ function LeaderboardRail({ rows }: { rows: BoardRow[] }) {
 
   if (!stats) return null;
   return (
-    <aside className="w-full shrink-0 space-y-3 xl:w-72">
+    <ArenaRightRail>
       <ArenaStatCard icon={TrendingUp} label="Average arena score" value={stats.avg.toFixed(2)} unit="/10" sub={`across ${stats.n} ranked model${stats.n === 1 ? "" : "s"}`} series={stats.avgSeries} />
       {stats.fastest && <ArenaStatCard icon={Gauge} label="Fastest model (avg)" value={fmtLatency(stats.fastest.latestRun?.ms_avg)} badge="Fastest" badgeTone="ok" sub={stats.fastest.parsed.model} />}
       {stats.cheapest && <ArenaStatCard icon={Coins} label="Lowest cost / run" value={fmtCost(stats.cheapest.latestRun?.cost_usd_est, stats.cheapest.latestRun?.cost_basis)} badge="Lowest" badgeTone="ok" sub={stats.cheapest.parsed.model} />}
@@ -1441,7 +1441,7 @@ function LeaderboardRail({ rows }: { rows: BoardRow[] }) {
           {stats.cheapest && <ArenaInsight icon={Coins} tone="ok">{stats.cheapest.parsed.model} is the most economical at {fmtCost(stats.cheapest.latestRun?.cost_usd_est, stats.cheapest.latestRun?.cost_basis)} per run.</ArenaInsight>}
         </div>
       </div>
-    </aside>
+    </ArenaRightRail>
   );
 }
 
@@ -2267,9 +2267,9 @@ function ChartRail({ models, onPick }: { models: ChartModel[]; onPick: (key: str
   const scored = models.filter((m) => m.best != null && (m.best ?? 0) > 0);
   if (scored.length === 0) {
     return (
-      <aside className="w-full shrink-0 xl:w-72">
+      <ArenaRightRail>
         <div className="rounded-2xl border border-border bg-surface p-4 text-[12px] text-text-muted">No scored models yet. Run a benchmark to compare intelligence, cost, and speed here.</div>
-      </aside>
+      </ArenaRightRail>
     );
   }
   const costOf = (m: ChartModel) => (m.latestRun?.cost_basis === "local" ? 0 : m.latestRun?.cost_usd_est ?? null);
@@ -2280,7 +2280,7 @@ function ChartRail({ models, onPick }: { models: ChartModel[]; onPick: (key: str
   const withMs = scored.filter((m) => m.latestRun?.ms_avg != null && (m.latestRun?.ms_avg ?? 0) > 0);
   const fastest = withMs.length ? withMs.reduce((a, b) => ((a.latestRun!.ms_avg as number) <= (b.latestRun!.ms_avg as number) ? a : b)) : null;
   return (
-    <aside className="w-full shrink-0 space-y-3 xl:w-72">
+    <ArenaRightRail>
       <div className="rounded-2xl border border-border bg-surface p-4">
         <div className="mb-2 flex items-center justify-between">
           <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Compare</span>
@@ -2312,7 +2312,7 @@ function ChartRail({ models, onPick }: { models: ChartModel[]; onPick: (key: str
           {fastest && <ArenaMetric icon={Gauge} tone="ok" label="Fastest" value={fmtLatency(fastest.latestRun?.ms_avg)} hint={fastest.parsed.model} />}
         </div>
       </div>
-    </aside>
+    </ArenaRightRail>
   );
 }
 
@@ -2342,6 +2342,10 @@ export function BenchmarkPanel({
   );
   // Domain filter shared by Leaderboard + History, shown in the same bar.
   const [domainFilter, setDomainFilter] = useState<string>(initialDomain ? initialDomain.toLowerCase() : "all");
+  // Whether the left section-nav rail is collapsed to an icon-only strip. Choice
+  // persists so the Arena reopens the way the user left it.
+  const [navCollapsed, setNavCollapsed] = useState<boolean>(() => lsGet("prevail.arena.navCollapsed", "0") === "1");
+  useEffect(() => { lsSet("prevail.arena.navCollapsed", navCollapsed ? "1" : "0"); }, [navCollapsed]);
   // Set when a batch just finished: the Leaderboard shows a "batch finished"
   // banner linking to it in History (answer first, filing one click away).
   const [finishedBatch, setFinishedBatch] = useState<string | null>(null);
@@ -2353,6 +2357,10 @@ export function BenchmarkPanel({
   const [err, setErr] = useState<string | null>(null);
 
   const [vaultDomains, setVaultDomains] = useState<string[]>([]);
+  // Connected apps (Google, Meta, ...). Loaded only so we can EXCLUDE them from
+  // the Arena domain list - apps are not benchmarkable domains and were leaking
+  // in via question/matrix keys (e.g. "App Google", "Meta").
+  const [apps, setApps] = useState<EngineApp[]>([]);
   const refresh = useCallback(() => {
     invoke<BenchmarkRun[]>("benchmark_runs", { vault: vaultPath }).then(setRuns).catch((e) => setErr(String(e)));
     invoke<MatrixRow[]>("benchmark_matrix", { vault: vaultPath }).then(setMatrix).catch(() => {});
@@ -2360,6 +2368,7 @@ export function BenchmarkPanel({
     invoke<Domain[]>("scan_vault", { path: vaultPath })
       .then((ds) => setVaultDomains(ds.map((d) => d.name)))
       .catch(() => {});
+    invoke<EngineApp[]>("engine_apps_list").then(setApps).catch(() => {});
   }, [vaultPath]);
   useEffect(() => { refresh(); }, [refresh]);
   // Auto-refresh: re-read runs whenever the window regains focus or the tab
@@ -2385,13 +2394,27 @@ export function BenchmarkPanel({
     return m;
   }, [questions]);
   const allDomains = useMemo(() => {
-    const vault = [...vaultDomains].sort();
+    // Normalized app keys: strip everything but a-z0-9. A leading "app" is also
+    // stripped so a domain like "App Google" ("appgoogle") matches an app whose
+    // id/title normalizes to "google".
+    const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const stripApp = (n: string) => n.replace(/^app/, "");
+    const appKeys = new Set<string>();
+    for (const a of apps) {
+      appKeys.add(norm(a.id));
+      appKeys.add(norm(a.title));
+    }
+    const isApp = (d: string) => {
+      const n = norm(d);
+      return appKeys.has(n) || appKeys.has(stripApp(n));
+    };
+    const vault = [...vaultDomains].sort().filter((d) => !isApp(d));
     const extra = new Set<string>();
     for (const q of questions) extra.add(q.domain);
     for (const m of matrix) for (const d of Object.keys(m.per_domain)) extra.add(d);
     for (const v of vault) extra.delete(v);
-    return [...vault, ...Array.from(extra).sort()];
-  }, [vaultDomains, questions, matrix]);
+    return [...vault, ...Array.from(extra).sort().filter((d) => !isApp(d))];
+  }, [vaultDomains, questions, matrix, apps]);
 
   // ── Run config ──────────────────────────────────────────────────
   const [mode, setMode] = useState<"single" | "council">("single");
@@ -2608,31 +2631,42 @@ export function BenchmarkPanel({
   const showDomains = !initialDomain && allDomains.length > 0 && (view === "board" || view === "history");
   return (
     <div className="flex h-full">
-      {/* Left section-nav rail (mockups' navigation), with a DOMAINS filter. */}
-      <nav className="flex w-52 shrink-0 flex-col border-r border-border-subtle bg-surface-warm/30">
-        <div className="flex items-center gap-2 px-4 py-4">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent font-display text-sm font-bold text-background">A</span>
-          <span className="font-display text-base font-bold tracking-tight text-text-primary">Arena</span>
-          {initialDomain && <span className="ml-auto rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] text-accent" title={`Scoped to ${titleCase(initialDomain)}`}>{titleCase(initialDomain)}</span>}
+      {/* Left section-nav rail (mockups' navigation), with a DOMAINS filter.
+          Collapsible to an icon-only strip; the choice persists in localStorage. */}
+      <nav className={`flex shrink-0 flex-col border-r border-border-subtle bg-surface-warm/30 transition-all ${navCollapsed ? "w-12" : "w-52"}`}>
+        <div className={`flex items-center gap-2 py-4 ${navCollapsed ? "flex-col px-2" : "px-4"}`}>
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent font-display text-sm font-bold text-background">A</span>
+          {!navCollapsed && <span className="font-display text-base font-bold tracking-tight text-text-primary">Arena</span>}
+          {!navCollapsed && initialDomain && <span className="ml-auto rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] text-accent" title={`Scoped to ${titleCase(initialDomain)}`}>{titleCase(initialDomain)}</span>}
+          <button
+            onClick={() => setNavCollapsed((c) => !c)}
+            title={navCollapsed ? "Expand navigation" : "Collapse navigation"}
+            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-warm hover:text-text-primary ${navCollapsed ? "" : "ml-auto"}`}
+          >
+            {navCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+        <div className={`min-h-0 flex-1 overflow-y-auto pb-3 ${navCollapsed ? "px-1.5" : "px-2"}`}>
           <div className="space-y-0.5">
             {NAV.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 onClick={() => setView(id)}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors ${
+                title={navCollapsed ? label : undefined}
+                className={`flex w-full items-center rounded-lg text-left text-[13px] transition-colors ${
+                  navCollapsed ? "justify-center px-0 py-2" : "gap-2.5 px-2.5 py-1.5"
+                } ${
                   view === id
                     ? "bg-surface font-semibold text-accent shadow-sm ring-1 ring-black/5"
                     : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
                 }`}
               >
                 <Icon className="h-4 w-4 shrink-0" />
-                <span className="truncate">{label}</span>
+                {!navCollapsed && <span className="truncate">{label}</span>}
               </button>
             ))}
           </div>
-          {showDomains && (
+          {!navCollapsed && showDomains && (
             <div className="mt-5">
               <div className="px-2.5 pb-1.5 font-mono text-[9px] uppercase tracking-[0.14em] text-text-muted/60">Domains</div>
               <div className="space-y-0.5">
