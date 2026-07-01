@@ -1526,7 +1526,7 @@ export function BenchRunConfig({
                   <button
                     onClick={() => { applyModels([]); applyScope([]); setActiveStep("models"); }}
                     title="Clear the selected models and domains to start a fresh run"
-                    className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted transition-colors hover:border-accent-border hover:text-accent"
+                    className="inline-flex items-center gap-1 rounded-md border border-warn/50 bg-warn/10 px-2.5 py-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-warn transition-colors hover:bg-warn hover:text-background"
                   >
                     <RotateCw className="h-3 w-3" /> Clear
                   </button>
@@ -1623,7 +1623,7 @@ export function BenchRunConfig({
                 <button
                   onClick={() => applyScope([])}
                   title="Clear the selected domains (defaults back to all domains)"
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted transition-colors hover:border-accent-border hover:text-accent"
+                  className="inline-flex items-center gap-1 rounded-md border border-warn/50 bg-warn/10 px-2.5 py-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-warn transition-colors hover:bg-warn hover:text-background"
                 >
                   <RotateCw className="h-3 w-3" /> Clear
                 </button>
