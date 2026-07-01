@@ -1596,7 +1596,8 @@ export function BenchRunConfig({
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     onClick={() => scope.forEach((d) => toggleScope(d))}
-                    className={`rounded-md border px-2.5 py-1 font-mono text-[11px] transition-all ${scope.size === 0 ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:-translate-y-0.5 hover:border-accent-border hover:bg-accent-soft hover:text-accent hover:shadow-sm"}`}
+                    title="Reset to all domains"
+                    className="rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] text-text-muted transition-all hover:-translate-y-0.5 hover:border-accent-border hover:bg-accent-soft hover:text-accent hover:shadow-sm"
                   >
                     All
                   </button>
