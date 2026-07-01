@@ -1,6 +1,6 @@
 // Components extracted from App.tsx.
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
+import { confirm as tauriConfirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { Archive, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Cpu, Download, Folder, Lightbulb, Loader2, LucideIcon, Mail, MessagesSquare, PenLine, Pencil, Plus, Shield, Sparkles, Wrench, X } from "lucide-react";
 import { siWhatsapp } from "simple-icons";
 import { PrevailLogo } from "./PrevailLogo";
@@ -936,27 +936,117 @@ export function DomainAppsStrip({ domain }: { domain: string }) {
   );
 }
 
+// A skill drafted or imported as a full SKILL.md carries a frontmatter block and
+// a "# Title" heading; skill_create re-adds both when it saves. Peel them back to
+// the inner prompt body (and lift the title, if we don't already have a name) so
+// the editor shows a clean prompt and saving never double-wraps the frontmatter.
+function splitSkillMd(raw: string): { title: string; body: string } {
+  let text = (raw ?? "").trim();
+  let title = "";
+  const fm = text.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
+  if (fm) {
+    // Lift a `description:` as a fallback title source only if the heading is missing.
+    text = text.slice(fm[0].length).trim();
+  }
+  const heading = text.match(/^#\s+(.+?)\s*\n+/);
+  if (heading) {
+    title = heading[1]!.trim();
+    text = text.slice(heading[0].length).trim();
+  }
+  return { title, body: text };
+}
+
+type SkillIdea = { name: string; describe: string };
+type SkillMode = "describe" | "write";
+
 export function NewSkillForm({ vaultPath, domain, seed, onCreated }: { vaultPath: string; domain: string; seed?: string | null; onCreated: () => void }) {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<SkillMode>("describe");
   const [name, setName] = useState("");
+  const [describe, setDescribe] = useState("");
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
+  const [drafting, setDrafting] = useState(false);
   const [err, setErr] = useState("");
-  // Open + pre-fill when a "Save as skill" seed arrives from the composer.
+  // Proactive suggestions: name + one-line ideas, on demand. Never auto-created.
+  const [ideas, setIdeas] = useState<SkillIdea[] | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  // Open + pre-fill when a "Save as skill" seed arrives from the composer. A
+  // seed is a ready prompt body, so jump straight to the write-it-yourself path.
   useEffect(() => {
-    if (seed != null) { setOpen(true); setBody(seed); }
+    if (seed != null) { setOpen(true); setMode("write"); setBody(seed); }
   }, [seed]);
+
+  function reset() {
+    setName(""); setDescribe(""); setBody(""); setErr(""); setIdeas(null); setMode("describe");
+  }
+
+  // Path 1: draft a complete, valid skill from a plain-language description,
+  // grounded in the domain's context. Fills the body editor for review, then the
+  // existing Save writes it via skill_create.
+  async function draftWithAI() {
+    setErr("");
+    if (!name.trim() || !describe.trim()) { setErr("Give the skill a name and describe what it should do."); return; }
+    setDrafting(true);
+    try {
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      const md = await invoke<string>("engine_skill_draft", { vault: vaultPath, domain, name: name.trim(), describe: describe.trim(), provider, model });
+      const { title, body: inner } = splitSkillMd(md);
+      if (title && !name.trim()) setName(title);
+      setBody(inner || md.trim());
+      setMode("write"); // hand off to the review/edit + Save editor
+    } catch (e) { setErr(String(e)); }
+    finally { setDrafting(false); }
+  }
+
+  // Import an existing skill file: read it, peel the frontmatter/heading, and
+  // load the prompt into the editor for review (reuses read_file + the native
+  // open dialog, same pattern as the bench importer).
+  async function importSkill() {
+    setErr("");
+    try {
+      const picked = await openFileDialog({ filters: [{ name: "Skill", extensions: ["md", "markdown", "txt"] }], multiple: false });
+      const path = typeof picked === "string" ? picked : null;
+      if (!path) return;
+      const raw = await invoke<string>("read_file", { path });
+      const { title, body: inner } = splitSkillMd(raw);
+      if (title) setName(title);
+      setBody(inner || raw.trim());
+      setMode("write");
+    } catch (e) { setErr(`Import failed: ${e}`); }
+  }
+
+  // Path 3 (suggest, never auto-create): ask the model for a few skill ideas for
+  // this domain. Clicking one seeds the describe path so the user can draft it.
+  async function suggest() {
+    setErr(""); setSuggesting(true);
+    try {
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      const res = await invoke<{ ok: boolean; ideas?: SkillIdea[]; error?: string }>("engine_skill_ideas", { vault: vaultPath, domain, provider, model });
+      if (res?.ok) setIdeas(res.ideas ?? []);
+      else setErr(res?.error || "Could not suggest skills right now.");
+    } catch (e) { setErr(String(e)); }
+    finally { setSuggesting(false); }
+  }
+
+  function useIdea(idea: SkillIdea) {
+    setName(idea.name); setDescribe(idea.describe); setMode("describe"); setIdeas(null);
+  }
+
   async function create() {
     setErr("");
     if (!name.trim() || !body.trim()) { setErr("Give the skill a name and a body."); return; }
     setSaving(true);
     try {
       await invoke("skill_create", { vault: vaultPath, domain, name: name.trim(), body: body.trim() });
-      setName(""); setBody(""); setOpen(false);
+      reset(); setOpen(false);
       onCreated();
     } catch (e) { setErr(String(e)); }
     finally { setSaving(false); }
   }
+
   if (!open) {
     return (
       <div className="mb-3 flex w-full items-center justify-between">
@@ -967,28 +1057,103 @@ export function NewSkillForm({ vaultPath, domain, seed, onCreated }: { vaultPath
       </div>
     );
   }
+
+  const tabBtn = (m: SkillMode, label: string, Icon: LucideIcon) => (
+    <button
+      onClick={() => setMode(m)}
+      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
+        mode === m ? "border border-accent-border bg-accent-soft text-accent" : "border border-transparent text-text-muted hover:text-text-secondary"
+      }`}
+    >
+      <Icon className="h-3 w-3" /> {label}
+    </button>
+  );
+
   return (
     <div className="mb-3 w-full rounded-xl border border-accent-border bg-surface p-4">
-      <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">New skill · {titleCase(domain)}</div>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">New skill · {titleCase(domain)}</div>
+        <div className="flex items-center gap-1">
+          {tabBtn("describe", "Describe it", Sparkles)}
+          {tabBtn("write", "Write it yourself", PenLine)}
+        </div>
+      </div>
+
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="Skill name (e.g. Weekly review)"
         className="mb-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-accent-border focus:outline-none"
       />
-      <textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        rows={5}
-        placeholder="What should this skill do? Write it as a prompt the model will follow."
-        className="mb-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-accent-border focus:outline-none"
-      />
-      {err && <div className="mb-2 text-xs text-warn">{err}</div>}
-      <div className="flex items-center gap-2">
-        <button onClick={create} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Create skill
-        </button>
-        <button onClick={() => setOpen(false)} className="rounded-md border border-border px-3 py-1.5 text-sm text-text-muted hover:bg-surface-warm">Cancel</button>
+
+      {mode === "describe" ? (
+        <>
+          <textarea
+            value={describe}
+            onChange={(e) => setDescribe(e.target.value)}
+            rows={4}
+            placeholder="Describe what you want this skill to do. Prevail drafts it in the right format, grounded in this domain, for you to review."
+            className="mb-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-accent-border focus:outline-none"
+          />
+          {err && <div className="mb-2 text-xs text-warn">{err}</div>}
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={draftWithAI} disabled={drafting} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
+              {drafting ? <><Loader2 className="h-4 w-4 animate-spin" /> Drafting…</> : <><Sparkles className="h-4 w-4" /> Create with AI</>}
+            </button>
+            <button onClick={importSkill} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-warm">
+              <Download className="h-4 w-4" /> Import
+            </button>
+            <button onClick={() => { reset(); setOpen(false); }} className="rounded-md border border-border px-3 py-1.5 text-sm text-text-muted hover:bg-surface-warm">Cancel</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={7}
+            placeholder="What should this skill do? Write it as a prompt the model will follow."
+            className="mb-2 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-[13px] focus:border-accent-border focus:outline-none"
+          />
+          {err && <div className="mb-2 text-xs text-warn">{err}</div>}
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={create} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save skill
+            </button>
+            <button onClick={importSkill} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-warm">
+              <Download className="h-4 w-4" /> Import
+            </button>
+            <button onClick={() => { reset(); setOpen(false); }} className="rounded-md border border-border px-3 py-1.5 text-sm text-text-muted hover:bg-surface-warm">Cancel</button>
+          </div>
+        </>
+      )}
+
+      {/* Proactive suggestions: ideas only, turned into a draft on click. Never auto-created. */}
+      <div className="mt-3 border-t border-border-subtle pt-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-text-muted">Not sure what to add? Prevail can suggest skills for this domain.</span>
+          <button onClick={suggest} disabled={suggesting} className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:bg-accent-soft hover:text-accent disabled:opacity-40">
+            {suggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Lightbulb className="h-3 w-3" />} Suggest skills
+          </button>
+        </div>
+        {ideas != null && (
+          <div className="mt-2 space-y-1.5">
+            {ideas.length === 0 && <p className="text-xs text-text-muted">No suggestions right now. Add more to this domain and try again.</p>}
+            {ideas.map((idea, i) => (
+              <button
+                key={i}
+                onClick={() => useIdea(idea)}
+                className="flex w-full items-start gap-2 rounded-md border border-border-subtle bg-background px-3 py-2 text-left transition-colors hover:border-accent-border hover:bg-accent-soft"
+              >
+                <Plus className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
+                <span className="min-w-0">
+                  <span className="block text-sm text-text-primary">{idea.name}</span>
+                  <span className="block text-xs text-text-muted">{idea.describe}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
