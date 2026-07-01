@@ -846,6 +846,49 @@ export function BenchQuestions({
 }
 
 
+// ── AI preset suggestion: a module-scope job so a curation run survives leaving
+// the Presets tab (or the Arena) and coming back. The invoke keeps running even
+// if the component unmounts; the result lands here and any mounted view syncs
+// via the event. Never blocks the UI thread.
+type PresetSuggestState = { busy: boolean; presets: CanonicalPreset[] | null; error: string | null };
+let presetSuggest: PresetSuggestState = { busy: false, presets: null, error: null };
+const PRESET_SUGGEST_EVENT = "prevail:preset-suggest";
+function setPresetSuggest(next: Partial<PresetSuggestState>) {
+  presetSuggest = { ...presetSuggest, ...next };
+  window.dispatchEvent(new Event(PRESET_SUGGEST_EVENT));
+}
+function usePresetSuggest(): PresetSuggestState {
+  const [s, setS] = useState(presetSuggest);
+  useEffect(() => {
+    const sync = () => setS(presetSuggest);
+    window.addEventListener(PRESET_SUGGEST_EVENT, sync);
+    return () => window.removeEventListener(PRESET_SUGGEST_EVENT, sync);
+  }, []);
+  return s;
+}
+// Fire-and-forget curation. Guarded so a second click while busy is a no-op.
+// `known` grounds the returned keys against the live model universe.
+async function startPresetSuggest(modelsJson: string, known: Set<string>, provider: string, model: string) {
+  if (presetSuggest.busy) return;
+  setPresetSuggest({ busy: true, error: null });
+  try {
+    const res = await invoke<{ ok: boolean; presets?: CanonicalPreset[]; error?: string }>(
+      "engine_bench_preset_suggest",
+      { modelsJson, provider, model },
+    );
+    if (res?.ok) {
+      const cleaned = (res.presets ?? [])
+        .map((p) => ({ ...p, models: (p.models ?? []).filter((k) => known.has(k)) }))
+        .filter((p) => p.models.length >= 2);
+      setPresetSuggest({ busy: false, presets: cleaned, error: cleaned.length ? null : "The model did not return any usable presets. Try again." });
+    } else {
+      setPresetSuggest({ busy: false, error: res?.error || "Could not suggest presets right now." });
+    }
+  } catch (e) {
+    setPresetSuggest({ busy: false, error: String(e) });
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // SETTINGS PANEL - vault, theme, defaults, about
 
@@ -1004,35 +1047,34 @@ export function BenchRunConfig({
   // Canonical local presets — resolve live, always work offline, AI-free.
   const canonPresets = useMemo(() => canonicalPresets(availableModels), [availableModels]);
 
-  // ── AI presets — an AI-maintained library over the live model list ───────────
-  const [aiPresets, setAiPresets] = useState<CanonicalPreset[] | null>(null);
-  const [aiBusy, setAiBusy] = useState(false);
-  const [aiErr, setAiErr] = useState<string | null>(null);
-  const suggestAiPresets = useCallback(async () => {
-    if (availableModelsForAi.length === 0) { setAiErr("No runnable models to build presets from. Install or authorize a runtime first."); return; }
-    setAiBusy(true); setAiErr(null);
-    try {
-      const provider = getPref(PREF.memoryProvider, "claude");
-      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
-      const res = await invoke<{ ok: boolean; presets?: CanonicalPreset[]; error?: string }>(
-        "engine_bench_preset_suggest",
-        { modelsJson: JSON.stringify(availableModelsForAi), provider, model },
-      );
-      if (res?.ok) {
-        // Second-line defense: ground the returned keys against the live universe
-        // in the UI too, so a stale/foreign key can never be applied or run.
-        const known = new Set(availableModels.map((m) => m.key));
-        const cleaned = (res.presets ?? [])
-          .map((p) => ({ ...p, models: (p.models ?? []).filter((k) => known.has(k)) }))
-          .filter((p) => p.models.length >= 2);
-        setAiPresets(cleaned);
-        if (cleaned.length === 0) setAiErr("The model did not return any usable presets. Try again.");
-      } else {
-        setAiErr(res?.error || "Could not suggest presets right now.");
-      }
-    } catch (e) { setAiErr(String(e)); }
-    finally { setAiBusy(false); }
+  // ── AI presets — an AI-maintained library over the live model list. The run
+  // itself lives in a module-scope job (above) so it keeps going and its result
+  // survives if you leave the Presets tab / Arena while it thinks. ─────────────
+  const { busy: aiBusy, presets: aiPresetsRaw, error: aiErr } = usePresetSuggest();
+  const suggestAiPresets = useCallback(() => {
+    if (availableModelsForAi.length === 0) { setPresetSuggest({ error: "No runnable models to build presets from. Install or authorize a runtime first." }); return; }
+    const provider = getPref(PREF.memoryProvider, "claude");
+    const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+    void startPresetSuggest(JSON.stringify(availableModelsForAi), new Set(availableModels.map((m) => m.key)), provider, model);
   }, [availableModels, availableModelsForAi]);
+  // Dedupe the AI suggestions so nothing repeats: drop any AI preset that matches
+  // a canonical one (by name or exact model set) or an earlier AI one. Keeps the
+  // library thorough without showing the same combination twice.
+  const aiPresets = useMemo(() => {
+    if (!aiPresetsRaw) return null;
+    const sig = (models: string[]) => [...models].map((m) => m.toLowerCase()).sort().join("|");
+    const takenSigs = new Set(canonPresets.map((c) => sig(c.models)));
+    const takenNames = new Set(canonPresets.map((c) => c.name.trim().toLowerCase()));
+    const out: CanonicalPreset[] = [];
+    for (const p of aiPresetsRaw) {
+      const s = sig(p.models);
+      const n = p.name.trim().toLowerCase();
+      if (takenSigs.has(s) || takenNames.has(n)) continue;
+      takenSigs.add(s); takenNames.add(n);
+      out.push(p);
+    }
+    return out;
+  }, [aiPresetsRaw, canonPresets]);
 
   // Load a suite into the editor (apply its selection) WITHOUT running - so the
   // user can tweak then run or re-save. Distinct from the Run button.
@@ -1604,13 +1646,18 @@ export function BenchRunConfig({
               })}
             </div>
           );
-          const PresetCard = ({ p, tone }: { p: CanonicalPreset; tone: "canonical" | "ai" }) => (
+          const PresetCard = ({ p, tone }: { p: CanonicalPreset; tone: "canonical" | "ai" }) => {
+            // Reflect whether this preset is already in the saved library, so the
+            // Save button actually changes state when you click it.
+            const saved = suites.some((s) => s.name.trim().toLowerCase() === p.name.trim().toLowerCase());
+            return (
             <div className={`rounded-lg border px-3 py-2 ${tone === "ai" ? "border-accent-border/60 bg-accent-soft/20" : "border-border-subtle bg-surface"}`}>
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     {tone === "ai" && <Sparkles className="h-3 w-3 shrink-0 text-accent" aria-hidden />}
                     <span className="truncate text-[13px] font-medium text-text-primary">{p.name}</span>
+                    {saved && <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] text-accent"><Check className="h-2.5 w-2.5" strokeWidth={3} /> saved</span>}
                     <span className="ml-auto shrink-0 font-mono text-[10px] text-text-muted">{p.models.length} model{p.models.length === 1 ? "" : "s"}</span>
                   </div>
                   {p.rationale && <div className="mt-0.5 text-[11px] leading-snug text-text-muted">{p.rationale}</div>}
@@ -1624,12 +1671,17 @@ export function BenchRunConfig({
                 <button onClick={() => applyPreset(p)} title="Drop these models onto the Run panel to tweak" className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
                   Apply
                 </button>
-                <button onClick={() => savePreset(p)} title="Save this preset into your library" className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
-                  <Bookmark className="h-3 w-3" /> Save
+                <button
+                  onClick={() => savePreset(p)}
+                  title={saved ? "Already in your library. Click to update it with the current models." : "Save this preset into your library"}
+                  className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] transition-colors ${saved ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}
+                >
+                  {saved ? <><Check className="h-3 w-3" strokeWidth={3} /> Saved</> : <><Bookmark className="h-3 w-3" /> Save</>}
                 </button>
               </div>
             </div>
-          );
+            );
+          };
           return (
             <div className="space-y-4">
               {/* Canonical, always-present. */}
