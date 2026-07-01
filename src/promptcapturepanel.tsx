@@ -121,7 +121,7 @@ export function PromptCapturePanel({ vaultPath }: { vaultPath: string }) {
   return (
     <div className="w-full space-y-4">
       <SettingsHeader
-        title="Prompt capture"
+        title="Prompts"
         icon={Inbox}
         subtitle="Record every prompt you write across your AI CLIs into your vault, then distill them into your intents."
       />
