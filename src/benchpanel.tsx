@@ -1491,7 +1491,7 @@ function LeaderboardRail({ rows }: { rows: BoardRow[] }) {
 }
 
 export function BenchResults({
-  view, domainFilter, runs, matrix, allDomains, vaultPath, initialModel, currentDomain, onChanged, onRerun, onRerunBatch,
+  view, domainFilter, runs, matrix, allDomains, vaultPath, initialModel, currentDomain, onChanged, onRerun, onRerunBatch, onContinueBatch,
   finishedBatch, onViewBatch, onDismissBanner, onCrumbHome, onClearDomain,
 }: {
   view: "board" | "history" | "matrix" | "frontier";
@@ -1505,6 +1505,7 @@ export function BenchResults({
   onChanged: () => void;
   onRerun: (run: BenchmarkRun) => void;
   onRerunBatch: (runs: BenchmarkRun[]) => void;
+  onContinueBatch: (runs: BenchmarkRun[]) => void;
   finishedBatch?: string | null;
   onViewBatch?: () => void;
   onDismissBanner?: () => void;
@@ -2069,13 +2070,25 @@ export function BenchResults({
                 <span className={`min-w-0 truncate font-mono text-[12px] ${group.isBatch ? "text-text-secondary" : "font-semibold text-text-primary"}`}>{group.label}</span>
                 <span className="font-mono text-[10px] text-text-muted">{group.runs.length} model{group.runs.length === 1 ? "" : "s"}</span>
                 {unscored > 0 && <span className="rounded bg-warn/10 px-1.5 py-0 font-mono text-[9px] text-warn">{unscored} unscored</span>}
+                {group.isBatch && unscored > 0 && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.preventDefault(); onContinueBatch(group.runs); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onContinueBatch(group.runs); } }}
+                    title="Continue this batch: resume where it left off. Skips questions already answered, runs only what's missing, then scores. No tokens re-burned on finished work."
+                    className="ml-auto inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-accent-border bg-accent/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent/20"
+                  >
+                    <RotateCw className="h-3 w-3" /> continue
+                  </span>
+                )}
                 <span
                   role="button"
                   tabIndex={0}
                   onClick={(e) => { e.preventDefault(); onRerunBatch(group.runs); }}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onRerunBatch(group.runs); } }}
                   title="Rerun this whole batch: every model in it, same domains, fresh runs"
-                  className="ml-auto inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                  className={`${group.isBatch && unscored > 0 ? "" : "ml-auto "}inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent`}
                 >
                   <RotateCw className="h-3 w-3" /> rerun batch
                 </span>
@@ -2627,6 +2640,35 @@ export function BenchmarkPanel({
     void executeBenchBatch(vaultPath, [built.job], built.council, r.domains.join(","));
   }
 
+  // CONTINUE a whole BATCH: pick up where an interrupted batch left off.
+  // Re-launches every model in the batch under the ORIGINAL batch id, so the
+  // engine resumes into the existing run directories - it skips the questions
+  // each model already answered and runs only the missing/errored ones, then
+  // re-scores. No questions are regenerated, no completed answers re-run, no
+  // tokens re-burned on finished work. This is the "come back and finish it"
+  // path for a big batch.
+  async function continueBatch(batchRuns: BenchmarkRun[]) {
+    const batchId = batchRuns.find((r) => r.batch_id)?.batch_id;
+    if (!batchId) { setErr("Can't continue: this group predates batch tracking. Use rerun instead."); return; }
+    const builds = batchRuns
+      .map((r, i) => ({ r, built: jobFromRun(r, `continue-${Date.now()}-${i}`) }))
+      .filter((x): x is { r: BenchmarkRun; built: NonNullable<ReturnType<typeof jobFromRun>> } => x.built !== null);
+    if (builds.length === 0) { setErr("Can't continue this batch: no recognizable runs."); return; }
+    const seen = new Set<string>();
+    const jobs = builds.filter(({ built }) => {
+      const k = `${built.job.cli}::${built.job.model}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    const council = jobs.some(({ built }) => built.council);
+    setView("run");
+    const scope = Array.from(new Set(batchRuns.flatMap((r) => r.domains))).join(",");
+    // Pass the original batch id: executeBenchBatch reuses it, so the engine
+    // resumes the existing run dirs rather than minting fresh ones.
+    void executeBenchBatch(vaultPath, jobs.map(({ built }) => built.job), council, scope, batchId);
+  }
+
   // Rerun a whole BATCH: every model that ran together, together again.
   async function rerunBatch(batchRuns: BenchmarkRun[]) {
     const builds = batchRuns
@@ -2815,6 +2857,7 @@ export function BenchmarkPanel({
             initialModel={initialModel} currentDomain={initialDomain} onChanged={refresh}
             onRerun={(r) => void rerunRun(r)}
             onRerunBatch={(rs) => void rerunBatch(rs)}
+            onContinueBatch={(rs) => void continueBatch(rs)}
             finishedBatch={finishedBatch}
             onViewBatch={() => { setView("history"); setFinishedBatch(null); }}
             onDismissBanner={() => setFinishedBatch(null)}
