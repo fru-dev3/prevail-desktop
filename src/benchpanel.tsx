@@ -1520,7 +1520,18 @@ export function BenchRunConfig({
           {/* Advance affordance: once a model is selected, move right. */}
           {nextStep && (
             <div className="flex items-center justify-between border-t border-border-subtle pt-4">
-              <span className="font-mono text-[11px] text-text-muted">{selModels.size} model{selModels.size === 1 ? "" : "s"} selected</span>
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-[11px] text-text-muted">{selModels.size} model{selModels.size === 1 ? "" : "s"} selected</span>
+                {(selModels.size > 0 || scope.size > 0) && (
+                  <button
+                    onClick={() => { applyModels([]); applyScope([]); setActiveStep("models"); }}
+                    title="Clear the selected models and domains to start a fresh run"
+                    className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted transition-colors hover:border-accent-border hover:text-accent"
+                  >
+                    <RotateCw className="h-3 w-3" /> Clear
+                  </button>
+                )}
+              </div>
               <button
                 onClick={() => setActiveStep(nextStep.id)}
                 disabled={!modelsDone}
