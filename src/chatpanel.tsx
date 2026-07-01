@@ -1918,7 +1918,7 @@ export function ChatPanel({
               What should we work on?
             </h2>
             <p className="mt-3 max-w-none whitespace-nowrap text-center text-sm text-text-muted">
-              Your private AI that learns you and gets sharper every time you use it.
+              An AI that learns you, gets sharper, and surfaces what you'd have missed.
             </p>
             {lifeReadiness && lifeReadiness.life_readiness !== null && (
               <div
