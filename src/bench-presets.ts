@@ -108,3 +108,75 @@ function useStore<T>(read: () => T[]): T[] {
 }
 export function useBundles(): ModelBundle[] { return useStore(listBundles); }
 export function useSuites(): BenchSuite[] { return useStore(listSuites); }
+
+// ── Canonical LOCAL presets ──────────────────────────────────────────────────
+// A few named presets that RESOLVE over the current model universe with no AI
+// and no network, so they always work offline and auto-update as models appear
+// or disappear. The Arena passes in the live model list it already enumerated;
+// each preset is just a filter over it. These sit above the AI suggestions as
+// always-present one-tap rows, and can be Applied / Run / Saved like any preset.
+//
+// `AvailablePresetModel` is the desktop's enumerated model, shaped to what these
+// filters need. `provider` is the cli id (used for one-per-provider grouping);
+// `local` marks open-weight / locally hosted runtimes (harness, ollama, lmstudio,
+// mlx); `validated` marks a runtime that verified end-to-end.
+export type AvailablePresetModel = {
+  key: string;        // "cli::model"
+  provider: string;   // cli id
+  local: boolean;
+  validated: boolean;
+};
+
+export type CanonicalPreset = { name: string; rationale: string; models: string[] };
+
+export function canonicalPresets(available: AvailablePresetModel[]): CanonicalPreset[] {
+  const out: CanonicalPreset[] = [];
+  const cap = (models: string[]): string[] => models.slice(0, 6); // keep presets tight
+
+  const validated = available.filter((m) => m.validated);
+  if (validated.length >= 2) {
+    out.push({
+      name: "All validated",
+      rationale: "Every model whose runtime is verified and ready to run.",
+      models: cap(validated.map((m) => m.key)),
+    });
+  }
+
+  const local = available.filter((m) => m.local);
+  if (local.length >= 1) {
+    out.push({
+      name: "Local / open models",
+      rationale: "Open-weight and locally hosted models. Runs fully offline.",
+      models: cap(local.map((m) => m.key)),
+    });
+  }
+
+  const cloud = available.filter((m) => !m.local);
+  if (cloud.length >= 2) {
+    out.push({
+      name: "Cloud only",
+      rationale: "The hosted frontier providers, head to head.",
+      models: cap(cloud.map((m) => m.key)),
+    });
+  }
+
+  // One per provider: the first enumerated (flagship / curated-first) model of
+  // each detected provider. Order follows the order models were passed in.
+  const seenProvider = new Set<string>();
+  const onePer: string[] = [];
+  for (const m of available) {
+    if (seenProvider.has(m.provider)) continue;
+    seenProvider.add(m.provider);
+    onePer.push(m.key);
+  }
+  if (onePer.length >= 2) {
+    out.push({
+      name: "One per provider",
+      rationale: "A single representative model from each detected provider.",
+      models: cap(onePer),
+    });
+  }
+
+  // Never surface an empty or single-model preset (a benchmark needs >= 2).
+  return out.filter((p) => p.models.length >= 2);
+}

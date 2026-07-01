@@ -12,15 +12,15 @@ import { scoreColor, titleCase } from "./format";
 import { isLocalCli } from "./helpers";
 import { curatedFor, modelLabel, modelsFor, parseRunLabel } from "./helpers2";
 import { BenchScheduleCard } from "./cards";
-import { isBunkerOn, lsGet, lsSet } from "./storage";
+import { PREF, getPref, isBunkerOn, lsGet, lsSet } from "./storage";
 import { BenchCrumbs, Field, ScoreBar } from "./panels";
 import { Sparkline } from "./ui";
 import { ArenaBars, ArenaHeader, ArenaInsight, ArenaMetric, ArenaRightRail, ArenaStatCard, heatBg } from "./arena/arenaui";
 import { CollapsibleSection } from "./collapsible";
 import { domainIcon } from "./icons";
 import { BENCH_CLI_OPTIONS, BENCH_SCHED, benchBatches, benchFreqLabel, benchNotify, cancelBenchBatch, executeBenchBatch, startQuestionSuggest, useBenchBatches, useQuestionSuggest } from "./bench";
-import { deleteSuite, saveSuite, useSuites } from "./bench-presets";
-import type { BenchSuite } from "./bench-presets";
+import { canonicalPresets, deleteSuite, saveSuite, useSuites } from "./bench-presets";
+import type { AvailablePresetModel, BenchSuite, CanonicalPreset } from "./bench-presets";
 import { ProviderMark } from "./marks";
 import { autoVerifyClis, useCliVerifyLive } from "./verify";
 import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, CliInfo, Domain, EngineApp, MatrixRow, RunDetail } from "./types";
@@ -945,6 +945,93 @@ export function BenchRunConfig({
   const [savingSuite, setSavingSuite] = useState(false);
   const [scheduledSuiteId, setScheduledSuiteId] = useState<string | null>(null);
   const selModelArr = Array.from(selModels);
+
+  // ── The AVAILABLE MODEL UNIVERSE (shared by canonical + AI presets) ──────────
+  // Enumerate every runnable model the Arena knows about right now, shaped for
+  // the preset engines: cli::model key, human label, provider, local-vs-cloud,
+  // and whether the runtime verified. We list each provider's CURATED set (the
+  // flagship-first defaults), not the full 300+ catalog, so a preset draws from
+  // sensible, nameable models. Under Bunker Mode only local providers appear, so
+  // both canonical and AI presets stay offline-valid. This resolves live off
+  // `clis` + `verify`, so the library re-derives as runtimes come and go.
+  const availableModels = useMemo<AvailablePresetModel[]>(() => {
+    const rows: AvailablePresetModel[] = [];
+    for (const c of BENCH_CLI_OPTIONS) {
+      if (isBunkerOn() && !isLocalCli(c.id)) continue;
+      const ps = providerStatus(c.id);
+      // Skip providers that are not installed at all: a preset over a model that
+      // cannot possibly run is noise. Verifying / ok both count as present.
+      if (ps.status === "unavailable") continue;
+      const curated = curatedFor(c.id);
+      const models = (curated.length ? curated : modelsFor(c.id)).slice(0, 8);
+      for (const m of models) {
+        rows.push({
+          key: `${c.id}${MODEL_SEP}${m.id}`,
+          provider: c.id,
+          local: isLocalCli(c.id),
+          validated: ps.status === "ok",
+        });
+      }
+    }
+    return rows;
+    // providerStatus closes over clis + verify; re-run when either changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clis, verify]);
+
+  // A richer per-model view the AI prompt uses (adds the human label + a coarse
+  // tier hint drawn from curated ordering: the first curated model per provider
+  // is treated as that provider's flagship). Kept separate from the canonical
+  // shape so canonicalPresets stays lean.
+  const availableModelsForAi = useMemo(() => {
+    const flagshipByProvider = new Set<string>();
+    return availableModels.map((m) => {
+      const [cli, modelId] = m.key.split(MODEL_SEP);
+      const isFirstOfProvider = !flagshipByProvider.has(cli!);
+      if (isFirstOfProvider) flagshipByProvider.add(cli!);
+      return {
+        key: m.key,
+        label: modelLabel(cli!, modelId!) || modelId,
+        provider: m.provider,
+        validated: m.validated,
+        local: m.local,
+        tier: isFirstOfProvider ? "flagship" : undefined,
+      };
+    });
+  }, [availableModels]);
+
+  // Canonical local presets — resolve live, always work offline, AI-free.
+  const canonPresets = useMemo(() => canonicalPresets(availableModels), [availableModels]);
+
+  // ── AI presets — an AI-maintained library over the live model list ───────────
+  const [aiPresets, setAiPresets] = useState<CanonicalPreset[] | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiErr, setAiErr] = useState<string | null>(null);
+  const suggestAiPresets = useCallback(async () => {
+    if (availableModelsForAi.length === 0) { setAiErr("No runnable models to build presets from. Install or authorize a runtime first."); return; }
+    setAiBusy(true); setAiErr(null);
+    try {
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      const res = await invoke<{ ok: boolean; presets?: CanonicalPreset[]; error?: string }>(
+        "engine_bench_preset_suggest",
+        { modelsJson: JSON.stringify(availableModelsForAi), provider, model },
+      );
+      if (res?.ok) {
+        // Second-line defense: ground the returned keys against the live universe
+        // in the UI too, so a stale/foreign key can never be applied or run.
+        const known = new Set(availableModels.map((m) => m.key));
+        const cleaned = (res.presets ?? [])
+          .map((p) => ({ ...p, models: (p.models ?? []).filter((k) => known.has(k)) }))
+          .filter((p) => p.models.length >= 2);
+        setAiPresets(cleaned);
+        if (cleaned.length === 0) setAiErr("The model did not return any usable presets. Try again.");
+      } else {
+        setAiErr(res?.error || "Could not suggest presets right now.");
+      }
+    } catch (e) { setAiErr(String(e)); }
+    finally { setAiBusy(false); }
+  }, [availableModels, availableModelsForAi]);
+
   // Load a suite into the editor (apply its selection) WITHOUT running - so the
   // user can tweak then run or re-save. Distinct from the Run button.
   const loadSuite = (s: BenchSuite) => { setMode(s.mode); applyModels(s.models); applyScope(s.domains); };
@@ -955,6 +1042,15 @@ export function BenchRunConfig({
       setSuiteName(""); setSavingSuite(false);
     }
   };
+  // ── Actions shared by canonical + AI preset cards ────────────────────────────
+  // A preset here is any { name, rationale, models } (canonical or AI): Apply
+  // drops its models onto the live Run selection; Run fires it as a single-mode
+  // benchmark over all domains; Save persists it into the saved-suites library so
+  // it becomes a durable user snapshot alongside the manual ones.
+  const applyPreset = (p: CanonicalPreset) => { setMode("single"); applyModels(p.models); };
+  const runPreset = (p: CanonicalPreset) => onRunSuite({ mode: "single", models: p.models, domains: [] });
+  const savePreset = (p: CanonicalPreset) => saveSuite({ name: p.name, mode: "single", models: p.models, domains: [] });
+
   // Put a suite on the existing background scheduler by writing the "custom" scope
   // it already understands (models + domains). No new scheduler needed.
   const scheduleSuite = (s: BenchSuite) => {
@@ -1351,8 +1447,94 @@ export function BenchRunConfig({
 
       {/* Suites - a named (models + domains + mode) you can re-run as a unit or
           drop onto the background schedule. Built from the current selection. */}
-      <CollapsibleSection icon={Bookmark} title="Presets" summary={suites.length ? `${suites.length} saved` : "save a reusable model group"} storageKey="prevail.bench.sec.suites" defaultOpen>
-        <div className="space-y-2">
+      <CollapsibleSection icon={Bookmark} title="Presets" summary={suites.length ? `${suites.length} saved` : "AI-suggested + reusable model groups"} storageKey="prevail.bench.sec.suites" defaultOpen>
+        {/* A preset is a first-class Arena object: a named model group you test in
+            one tap. Three tiers, top to bottom: always-on CANONICAL presets that
+            resolve live over the model universe; an AI-maintained LIBRARY the model
+            re-derives on demand; and your own SAVED snapshots. Apply drops a preset
+            onto the Run panel, Run fires it now, Save persists it. */}
+        {(() => {
+          // Compact model chips with a runtime validity tick, reused by every
+          // preset card. modelLabel gives the human name; providerStatus gives the
+          // live runnability of that model's provider.
+          const PresetChips = ({ models }: { models: string[] }) => (
+            <div className="flex flex-wrap gap-1">
+              {models.map((k) => {
+                const [cli, modelId] = k.split(MODEL_SEP);
+                const ps = providerStatus(cli!);
+                const label = modelLabel(cli!, modelId!) || modelId;
+                return (
+                  <span key={k} title={ps.runnable ? `${label} is ready to run` : `${label} runtime is not ready`} className="inline-flex items-center gap-1 rounded-md border border-border-subtle bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
+                    {ps.runnable
+                      ? <Check className="h-2.5 w-2.5 text-ok" strokeWidth={3} aria-hidden />
+                      : <span className={`h-1.5 w-1.5 rounded-full ${ps.status === "failed" ? "bg-err" : "bg-warn"}`} aria-hidden />}
+                    {label}
+                  </span>
+                );
+              })}
+            </div>
+          );
+          const PresetCard = ({ p, tone }: { p: CanonicalPreset; tone: "canonical" | "ai" }) => (
+            <div className={`rounded-lg border px-3 py-2 ${tone === "ai" ? "border-accent-border/60 bg-accent-soft/20" : "border-border-subtle bg-surface"}`}>
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    {tone === "ai" && <Sparkles className="h-3 w-3 shrink-0 text-accent" aria-hidden />}
+                    <span className="truncate text-[13px] font-medium text-text-primary">{p.name}</span>
+                    <span className="ml-auto shrink-0 font-mono text-[10px] text-text-muted">{p.models.length} model{p.models.length === 1 ? "" : "s"}</span>
+                  </div>
+                  {p.rationale && <div className="mt-0.5 text-[11px] leading-snug text-text-muted">{p.rationale}</div>}
+                  <div className="mt-1.5"><PresetChips models={p.models} /></div>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-1.5">
+                <button onClick={() => runPreset(p)} disabled={running} title="Run this preset now" className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
+                  <Play className="h-3 w-3" /> Run
+                </button>
+                <button onClick={() => applyPreset(p)} title="Drop these models onto the Run panel to tweak" className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
+                  Apply
+                </button>
+                <button onClick={() => savePreset(p)} title="Save this preset into your library" className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
+                  <Bookmark className="h-3 w-3" /> Save
+                </button>
+              </div>
+            </div>
+          );
+          return (
+            <div className="space-y-4">
+              {/* Canonical, always-present. */}
+              {canonPresets.length > 0 && (
+                <div className="space-y-2">
+                  <div className="font-mono text-[10px] uppercase tracking-wide text-text-muted">Canonical · resolves live</div>
+                  {canonPresets.map((p) => <PresetCard key={`canon-${p.name}`} p={p} tone="canonical" />)}
+                </div>
+              )}
+
+              {/* AI-maintained library. */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="font-mono text-[10px] uppercase tracking-wide text-text-muted">AI presets · maintained by AI</div>
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <button onClick={suggestAiPresets} disabled={aiBusy || availableModelsForAi.length === 0} title="Ask AI to curate a library of presets over your current models" className="inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[11px] text-accent hover:bg-accent-soft/70 disabled:opacity-40">
+                      {aiBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} {aiPresets ? "Refresh" : "Suggest presets"}
+                    </button>
+                  </div>
+                </div>
+                {aiBusy && <div className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface px-3 py-2 font-mono text-[11px] text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> Curating presets over {availableModelsForAi.length} model{availableModelsForAi.length === 1 ? "" : "s"}…</div>}
+                {aiErr && !aiBusy && <div className="flex items-center gap-2 rounded-lg border border-err/40 bg-surface px-3 py-2 text-[11px] text-err"><AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {aiErr}</div>}
+                {!aiBusy && aiPresets && aiPresets.map((p) => <PresetCard key={`ai-${p.name}`} p={p} tone="ai" />)}
+                {!aiBusy && !aiErr && !aiPresets && (
+                  <div className="rounded-lg border border-dashed border-border px-3 py-2 font-mono text-[11px] text-text-muted">
+                    AI can suggest presets like Top Frontier, Second-in-class, or Open source over your {availableModelsForAi.length} runnable model{availableModelsForAi.length === 1 ? "" : "s"}.
+                  </div>
+                )}
+              </div>
+
+              {/* Your saved snapshots (unchanged manual library). */}
+              <div className="space-y-2">
+                {(canonPresets.length > 0 || aiPresets) && suites.length > 0 && (
+                  <div className="font-mono text-[10px] uppercase tracking-wide text-text-muted">Saved by you</div>
+                )}
           {suites.map((s) => {
             const isScheduled = scheduledSuiteId === s.id;
             return (
@@ -1393,7 +1575,10 @@ export function BenchRunConfig({
               <Plus className="h-3.5 w-3.5" /> Save selected models as a preset
             </button>
           )}
-        </div>
+              </div>
+            </div>
+          );
+        })()}
       </CollapsibleSection>
 
         </div>
