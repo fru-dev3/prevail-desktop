@@ -1533,26 +1533,32 @@ pub fn model_suggestions_read(vault: String) -> Result<serde_json::Value, String
     }
 }
 
-/// Force a Model Scout pass now (web search). Blocks until the CLI finishes, then
-/// returns the refreshed suggestions. `known` is a comma-joined list of models
-/// already in the benchmark, so the scout proposes only NEW ones.
+/// Force a Model Scout pass now (web search). The CLI scan (web search + model
+/// call) is slow, so it runs on a blocking thread via spawn_blocking: the command
+/// is async and never blocks the main/UI thread, so the app stays responsive while
+/// it scans. `known` is a comma-joined list of models already in the benchmark, so
+/// the scout proposes only NEW ones.
 #[tauri::command]
-pub fn model_scout_run(
+pub async fn model_scout_run(
     vault: String,
     known: Option<String>,
     cli: Option<String>,
     model: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let mut args: Vec<String> = vec![
-        "scout-models".into(),
-        "--vault".into(), vault,
-        "--json".into(),
-    ];
-    if let Some(k) = known.filter(|s| !s.is_empty()) { args.push("--known".into()); args.push(k); }
-    if let Some(c) = cli.filter(|s| !s.is_empty()) { args.push("--cli".into()); args.push(c); }
-    if let Some(m) = model.filter(|s| !s.is_empty()) { args.push("--model".into()); args.push(m); }
-    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    run_engine_json(&refs)
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut args: Vec<String> = vec![
+            "scout-models".into(),
+            "--vault".into(), vault,
+            "--json".into(),
+        ];
+        if let Some(k) = known.filter(|s| !s.is_empty()) { args.push("--known".into()); args.push(k); }
+        if let Some(c) = cli.filter(|s| !s.is_empty()) { args.push("--cli".into()); args.push(c); }
+        if let Some(m) = model.filter(|s| !s.is_empty()) { args.push("--model".into()); args.push(m); }
+        let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        run_engine_json(&refs)
+    })
+    .await
+    .map_err(|e| format!("model scout task failed: {e}"))?
 }
 
 /// Run one autonomous-sync pass over every DUE app (the in-app scheduler calls
