@@ -63,29 +63,126 @@ fn meaningful_preview(md: &str) -> Option<String> {
     }
 }
 
-/// Move a single ROOT entry (file OR dir) named `name` into `dest_dir`, by an
-/// fs::rename (a MOVE, never copy+delete). SAFE: if `src` is absent it is a
-/// no-op; if `dest` already exists it is SKIPPED (never overwrites) and the
-/// source is left in place. Creates `dest_dir` only when there is something to
-/// move into it. Bumps `*moved` on a successful move. Used by the canonical
-/// layout convergence to relocate build-support, config and General-bucket
-/// content without ever risking user data.
-fn move_root_entry(root: &Path, name: &str, dest_dir: &Path, moved: &mut u64) -> Result<(), String> {
+/// Move a single ROOT entry (file OR dir) named `name` into `dest_dir` by an
+/// fs::rename (a MOVE, never copy+delete). SAFE by design (Hard Rule: never lose
+/// user data): if `src` is absent it is a no-op; if `dest` does NOT exist the
+/// source is moved in; if `dest` ALREADY exists it is MERGED via `merge_dir_into`
+/// (unique children move to canonical, genuine conflicts are preserved under
+/// `archive_dir`, never overwritten and never deleted), then the emptied source
+/// is removed. Two plain FILES that clash (same name) means `src` is archived.
+/// Creates `dest_dir` only when there is something to move into it. Bumps
+/// `*moved` for each entry relocated. Used by the canonical layout convergence to
+/// relocate build-support, config and General-bucket content strictly.
+fn move_root_entry(
+    root: &Path,
+    name: &str,
+    dest_dir: &Path,
+    archive_dir: &Path,
+    moved: &mut u64,
+) -> Result<(), String> {
     let src = root.join(name);
     if !src.exists() {
         return Ok(());
     }
     std::fs::create_dir_all(dest_dir).map_err(|e| format!("mkdir {}: {e}", dest_dir.display()))?;
     let dest = dest_dir.join(name);
-    if dest.exists() {
-        return Ok(()); // never overwrite — leave the source in place
+    if !dest.exists() {
+        // No conflict — a straight MOVE into the canonical home.
+        return match std::fs::rename(&src, &dest) {
+            Ok(()) => {
+                *moved += 1;
+                Ok(())
+            }
+            Err(e) => Err(format!("move {name} into {}: {e}", dest_dir.display())),
+        };
     }
-    match std::fs::rename(&src, &dest) {
+    // Conflict. Both dirs -> deep-merge (unique children land canonical, conflicts
+    // archived), then drop the emptied source. A file-vs-anything clash -> archive
+    // the source so nothing is lost, and the canonical copy is left untouched.
+    if src.is_dir() && dest.is_dir() {
+        merge_dir_into(&src, &dest, &archive_dir.join(name), moved)?;
+        remove_if_empty(&src);
+        Ok(())
+    } else {
+        archive_entry(&src, &archive_dir.join(name), moved)
+    }
+}
+
+/// Move `src` to `archive_dest` (both a MOVE), first ensuring the archive parent
+/// exists and never colliding: if `archive_dest` is taken, a numeric suffix is
+/// appended. A conflicting entry is PRESERVED here, never deleted. Bumps `*moved`.
+fn archive_entry(src: &Path, archive_dest: &Path, moved: &mut u64) -> Result<(), String> {
+    if let Some(parent) = archive_dest.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("mkdir archive {}: {e}", parent.display()))?;
+    }
+    let mut target = archive_dest.to_path_buf();
+    let mut n = 1u32;
+    while target.exists() {
+        let base = archive_dest.to_string_lossy().to_string();
+        target = PathBuf::from(format!("{base}.{n}"));
+        n += 1;
+    }
+    match std::fs::rename(src, &target) {
         Ok(()) => {
             *moved += 1;
             Ok(())
         }
-        Err(e) => Err(format!("move {name} into {}: {e}", dest_dir.display())),
+        Err(e) => Err(format!("archive {} -> {}: {e}", src.display(), target.display())),
+    }
+}
+
+/// Deep MERGE every entry under `src_dir` into `dest_dir`, recursively:
+///   * a child whose same relative path does NOT exist under `dest_dir` is MOVED
+///     in (fs::rename — no copy, no loss),
+///   * a child that DOES exist and both sides are directories -> recurse,
+///   * a genuine leaf conflict (both exist, at least one is a file) -> the SRC
+///     copy is MOVED into `archive_dir` (preserved, never deleted, never
+///     overwriting the canonical copy).
+/// After merging, empty subdirectories of `src_dir` are removed. `src_dir` itself
+/// is NOT removed here (the caller decides, via `remove_if_empty`). Idempotent on
+/// an already-merged tree. Bumps `*moved` per relocated entry.
+fn merge_dir_into(
+    src_dir: &Path,
+    dest_dir: &Path,
+    archive_dir: &Path,
+    moved: &mut u64,
+) -> Result<(), String> {
+    std::fs::create_dir_all(dest_dir).map_err(|e| format!("mkdir {}: {e}", dest_dir.display()))?;
+    let entries = match read_dir_retry(src_dir) {
+        Ok(e) => e,
+        Err(e) => return Err(format!("read {}: {e}", src_dir.display())),
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let child_src = entry.path();
+        let child_dest = dest_dir.join(&name);
+        if !child_dest.exists() {
+            // Unique path — MOVE it straight into the canonical tree.
+            std::fs::rename(&child_src, &child_dest)
+                .map_err(|e| format!("merge {} -> {}: {e}", child_src.display(), child_dest.display()))?;
+            *moved += 1;
+            continue;
+        }
+        if child_src.is_dir() && child_dest.is_dir() {
+            // Both directories — recurse so unique descendants still land canonical.
+            merge_dir_into(&child_src, &child_dest, &archive_dir.join(&name), moved)?;
+            remove_if_empty(&child_src);
+        } else {
+            // Genuine conflict (a file on at least one side) — PRESERVE src copy.
+            archive_entry(&child_src, &archive_dir.join(&name), moved)?;
+        }
+    }
+    Ok(())
+}
+
+/// Remove `dir` ONLY if it exists and is now empty. NEVER removes a non-empty
+/// directory (Hard Rule: never lose user data). Silent on any error.
+fn remove_if_empty(dir: &Path) {
+    if let Ok(mut rd) = read_dir_retry(dir) {
+        if rd.next().is_none() {
+            let _ = std::fs::remove_dir(dir);
+        }
     }
 }
 
@@ -101,15 +198,23 @@ fn move_root_entry(root: &Path, name: &str, dest_dir: &Path, moved: &mut u64) ->
 ///     root/apps) AFTER its children moved, and only when it is then empty,
 ///   * idempotent: a vault already canonical is effectively a no-op.
 ///
-/// Convergence steps:
+/// Convergence steps (STRICT — the root ends up holding ONLY build/ + data/):
 ///   1. scaffold data/domains, data/apps, data/domains/general, build/, and the
 ///      `data/.prevail-data-layout` marker (so an empty vault starts canonical),
 ///   2. legacy root domains (a dir with soul.md / _state.md / state.md) -> data/domains/<name>,
-///   3. v3 containers root/domains + root/apps -> their children into data/, then drop the emptied container,
-///   4. global build-support + config files/dirs -> build/,
-///   5. General-bucket loose content -> data/domains/general/,
-///   6. catch-all: any remaining loose ROOT *file* (non-hidden, unhandled) -> build/.
-/// Returns the number of entries moved.
+///      MERGING into an existing canonical domain (conflicts -> build/_archive) so
+///      the root dir always goes away and no file is ever lost,
+///   3. v3 containers root/domains + root/apps -> their children into data/ (merge),
+///      then drop the emptied container,
+///   4. root apps: a `_app-<id>` dir (or a `_`-prefixed dir that is clearly an app:
+///      has manifest.json or a skills/ subdir) -> data/apps/<id> (merge),
+///   5. global build-support + config files/dirs -> build/ (merge on conflict),
+///   6. General-bucket loose content -> data/domains/general/ (merge on conflict),
+///   7. catch-all: any remaining loose ROOT *file* (non-hidden, unhandled) -> build/.
+/// Conflicts are MERGED: a unique file lands canonical; a genuine same-path clash
+/// is preserved under build/_archive (never overwritten, never deleted). Every
+/// relocation is an fs::rename (a MOVE). Idempotent on an already-canonical vault
+/// (returns 0). Returns the number of entries moved.
 #[tauri::command]
 pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
     let root = PathBuf::from(&path);
@@ -124,6 +229,8 @@ pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
     let apps_root = data.join("apps");
     let build_dir = root.join("build");
     let general_dir = domains_root.join("general");
+    // Conflicts are preserved here (never deleted, never overwriting canonical).
+    let archive_dir = build_dir.join("_archive");
     std::fs::create_dir_all(&domains_root).map_err(|e| format!("mkdir data/domains: {e}"))?;
     std::fs::create_dir_all(&apps_root).map_err(|e| format!("mkdir data/apps: {e}"))?;
     std::fs::create_dir_all(&general_dir).map_err(|e| format!("mkdir data/domains/general: {e}"))?;
@@ -165,12 +272,17 @@ pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
             continue;
         }
         let dest = domains_root.join(&name);
-        if dest.exists() {
-            continue; // never overwrite an existing canonical domain
-        }
-        match std::fs::rename(&src, &dest) {
-            Ok(()) => moved += 1,
-            Err(e) => return Err(format!("move {name} into domains/: {e}")),
+        if !dest.exists() {
+            match std::fs::rename(&src, &dest) {
+                Ok(()) => moved += 1,
+                Err(e) => return Err(format!("move {name} into domains/: {e}")),
+            }
+        } else {
+            // Canonical domain of the same name already exists — MERGE the root
+            // copy into it (unique files land canonical, conflicts -> _archive),
+            // then drop the emptied root dir. The root domain always goes away.
+            merge_dir_into(&src, &dest, &archive_dir.join("domains").join(&name), &mut moved)?;
+            remove_if_empty(&src);
         }
     }
 
@@ -192,12 +304,21 @@ pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
                     continue; // only move child domain/app dirs
                 }
                 let cdest = dest_parent.join(&cname);
-                if cdest.exists() {
-                    continue; // never overwrite
-                }
-                match std::fs::rename(&csrc, &cdest) {
-                    Ok(()) => moved += 1,
-                    Err(e) => return Err(format!("move {container_name}/{cname} into data/: {e}")),
+                if !cdest.exists() {
+                    match std::fs::rename(&csrc, &cdest) {
+                        Ok(()) => moved += 1,
+                        Err(e) => return Err(format!("move {container_name}/{cname} into data/: {e}")),
+                    }
+                } else {
+                    // Same-named canonical entry — MERGE (conflicts -> _archive),
+                    // then drop the emptied source child.
+                    merge_dir_into(
+                        &csrc,
+                        &cdest,
+                        &archive_dir.join(container_name).join(&cname),
+                        &mut moved,
+                    )?;
+                    remove_if_empty(&csrc);
                 }
             }
         }
@@ -209,7 +330,53 @@ pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
         }
     }
 
-    // (4) Global build-support + config -> build/ (move root entry, file OR dir).
+    // (4) Root apps: a `_app-<id>` dir (or any `_`-prefixed root dir that is
+    // clearly an app: has manifest.json or a skills/ subdir) -> data/apps/<id>.
+    // The id is derived by stripping a leading `_app-`, else the leading `_`.
+    // MERGE on conflict (conflicts -> _archive), then drop the emptied root dir,
+    // so a stray `_app-google` never survives at the root.
+    {
+        let entries = match read_dir_retry(&root) {
+            Ok(e) => e,
+            Err(e) => return Err(e.to_string()),
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            // Only underscore-prefixed dirs, never dotfiles or build/data.
+            if !name.starts_with('_') || name == "data" || name == "build" {
+                continue;
+            }
+            let src = entry.path();
+            if !src.is_dir() {
+                continue;
+            }
+            let looks_like_app = name.starts_with("_app-")
+                || src.join("manifest.json").exists()
+                || src.join("skills").is_dir();
+            if !looks_like_app {
+                continue; // leave other `_`-dirs to the General/build-support steps
+            }
+            let id = name
+                .strip_prefix("_app-")
+                .unwrap_or_else(|| name.strip_prefix('_').unwrap_or(&name))
+                .to_string();
+            if id.is_empty() {
+                continue;
+            }
+            let dest = apps_root.join(&id);
+            if !dest.exists() {
+                match std::fs::rename(&src, &dest) {
+                    Ok(()) => moved += 1,
+                    Err(e) => return Err(format!("move {name} into data/apps/: {e}")),
+                }
+            } else {
+                merge_dir_into(&src, &dest, &archive_dir.join("apps").join(&id), &mut moved)?;
+                remove_if_empty(&src);
+            }
+        }
+    }
+
+    // (5) Global build-support + config -> build/ (move root entry, file OR dir).
     const BUILD_SUPPORT: &[&str] = &[
         "_meta",
         "benchmark",
@@ -222,10 +389,10 @@ pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
         "notes.json",
     ];
     for name in BUILD_SUPPORT {
-        move_root_entry(&root, name, &build_dir, &mut moved)?;
+        move_root_entry(&root, name, &build_dir, &archive_dir, &mut moved)?;
     }
 
-    // (5) General-bucket content -> data/domains/general/. On a flat vault the
+    // (6) General-bucket content -> data/domains/general/. On a flat vault the
     // General domain IS the vault root, so these loose root entries are its
     // content. Only moved when at the VAULT ROOT.
     const GENERAL_CONTENT: &[&str] = &[
@@ -252,10 +419,10 @@ pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
         "PROMPTS.md",
     ];
     for name in GENERAL_CONTENT {
-        move_root_entry(&root, name, &general_dir, &mut moved)?;
+        move_root_entry(&root, name, &general_dir, &archive_dir, &mut moved)?;
     }
 
-    // (6) Catch-all for cleanliness: any REMAINING loose FILE (not a directory)
+    // (7) Catch-all for cleanliness: any REMAINING loose FILE (not a directory)
     // at the root that is not hidden and not already handled -> build/. Unknown
     // DIRECTORIES are deliberately left in place rather than risk misplacing them.
     let entries = match read_dir_retry(&root) {
@@ -271,7 +438,7 @@ pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
         if src.is_dir() {
             continue; // never catch-all an unrecognized directory
         }
-        move_root_entry(&root, name.as_str(), &build_dir, &mut moved)?;
+        move_root_entry(&root, name.as_str(), &build_dir, &archive_dir, &mut moved)?;
     }
 
     Ok(moved)
@@ -466,7 +633,7 @@ mod tests {
     }
 
     #[test]
-    fn vault_migrate_layout_moves_domains_preserves_data_skips_conflicts() {
+    fn vault_migrate_layout_merges_root_domain_preserves_canonical() {
         let vault = std::env::temp_dir().join(format!("prevail-migrate-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&vault);
         let vs = vault.to_string_lossy().to_string();
@@ -479,32 +646,121 @@ mod tests {
         // A non-domain dir at the root must NOT be moved.
         fs::create_dir_all(vault.join("random")).unwrap();
         fs::write(vault.join("random").join("note.txt"), "x").unwrap();
-        // A pre-existing canonical (data/) domain that clashes by name must NOT be overwritten.
+        // A pre-existing canonical (data/) domain that clashes by name must NOT be
+        // overwritten — the CANONICAL copy is authoritative.
         let v4_wealth = vault.join("data").join("domains").join("wealth");
         fs::create_dir_all(&v4_wealth).unwrap();
         fs::write(v4_wealth.join("_state.md"), "KEEP ME").unwrap();
-        // A legacy domain with the same name as the canonical one — should be skipped.
+        // A legacy root domain of the same name, with a CONFLICTING _state.md AND a
+        // UNIQUE file. Merge: the unique file lands canonical, the conflict is
+        // archived (never overwriting canonical), and the root dir goes away.
         let legacy_wealth = vault.join("wealth");
         fs::create_dir_all(&legacy_wealth).unwrap();
         fs::write(legacy_wealth.join("_state.md"), "legacy").unwrap();
+        fs::write(legacy_wealth.join("unique.md"), "only-at-root").unwrap();
 
         let moved = vault_migrate_layout(vs.clone()).unwrap();
-        assert_eq!(moved, 1, "only 'health' should move");
+        // health move (1) + wealth/unique.md merged in (1) + wealth/_state.md archived (1).
+        assert_eq!(moved, 3, "health + unique merge + conflict archive");
 
         // health moved into data/domains/, data intact.
         assert!(vault.join("data").join("domains").join("health").join("_intents.jsonl").exists());
         assert!(!vault.join("health").exists());
         // non-domain left in place.
         assert!(vault.join("random").join("note.txt").exists());
-        // canonical wealth untouched; legacy wealth left in place (conflict skipped).
+        // canonical wealth UNTOUCHED; the root copy was merged and removed.
         assert_eq!(fs::read_to_string(v4_wealth.join("_state.md")).unwrap(), "KEEP ME");
-        assert!(vault.join("wealth").exists());
+        assert!(!vault.join("wealth").exists(), "root wealth must be gone after merge");
+        // the unique root file landed canonical.
+        assert_eq!(
+            fs::read_to_string(v4_wealth.join("unique.md")).unwrap(),
+            "only-at-root"
+        );
+        // the conflicting _state.md was preserved under build/_archive (not lost).
+        let archived = vault.join("build").join("_archive").join("domains").join("wealth").join("_state.md");
+        assert_eq!(fs::read_to_string(&archived).unwrap(), "legacy", "conflict preserved in archive");
         // apps/ + domains/ now exist under data/ (not the root).
         assert!(vault.join("data").join("apps").is_dir());
         assert!(vault.join("data").join("domains").is_dir());
+        // root holds ONLY build + data (+ the intentional non-domain 'random').
+        // 'random' has no state markers so it is left in place by design.
 
         // Idempotent: a second run moves nothing new.
         assert_eq!(vault_migrate_layout(vs).unwrap(), 0);
+
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn vault_migrate_layout_strict_root_only_build_data_conflicts_archived() {
+        // The strict-cleanliness regression: a vault with a root domain that ALSO
+        // exists under data/domains (conflict), a `_app-google` root app dir, and a
+        // root `_meta` that conflicts with build/_meta. After migration the ROOT
+        // must contain ONLY build + data, unique files land canonical, and every
+        // conflicting file is preserved under build/_archive (nothing lost).
+        let vault = std::env::temp_dir().join(format!("prevail-migrate-strict-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&vault);
+        let vs = vault.to_string_lossy().to_string();
+
+        // Canonical domain already present.
+        let v4_health = vault.join("data").join("domains").join("health");
+        fs::create_dir_all(&v4_health).unwrap();
+        fs::write(v4_health.join("_state.md"), "CANON").unwrap();
+        // Root domain of the same name: conflicting _state.md + a unique ledger.
+        let root_health = vault.join("health");
+        fs::create_dir_all(&root_health).unwrap();
+        fs::write(root_health.join("_state.md"), "ROOT").unwrap();
+        fs::write(root_health.join("_intents.jsonl"), "{}\n").unwrap();
+
+        // A `_app-google` root app dir (has manifest.json + skills/).
+        let app = vault.join("_app-google");
+        fs::create_dir_all(app.join("skills")).unwrap();
+        fs::write(app.join("manifest.json"), "{\"id\":\"google\"}").unwrap();
+        fs::write(app.join("skills").join("gmail.md"), "# gmail").unwrap();
+
+        // A root `_meta` that conflicts with an existing build/_meta on one file
+        // and adds a unique one.
+        let build_meta = vault.join("build").join("_meta");
+        fs::create_dir_all(&build_meta).unwrap();
+        fs::write(build_meta.join("usage.jsonl"), "CANON\n").unwrap();
+        let root_meta = vault.join("_meta");
+        fs::create_dir_all(&root_meta).unwrap();
+        fs::write(root_meta.join("usage.jsonl"), "ROOT\n").unwrap(); // conflict
+        fs::write(root_meta.join("extra.jsonl"), "unique\n").unwrap(); // unique
+
+        let moved = vault_migrate_layout(vs.clone()).unwrap();
+        assert!(moved > 0, "a dirty vault must move entries, got {moved}");
+
+        // (a) ROOT contains ONLY build + data (nothing else).
+        let mut root_entries: Vec<String> = fs::read_dir(&vault)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| !n.starts_with('.'))
+            .collect();
+        root_entries.sort();
+        assert_eq!(
+            root_entries,
+            vec!["build".to_string(), "data".to_string()],
+            "root must contain ONLY build + data, got {root_entries:?}"
+        );
+
+        // (b) unique files landed canonical.
+        assert!(v4_health.join("_intents.jsonl").exists(), "unique root-domain file merged");
+        assert_eq!(fs::read_to_string(v4_health.join("_state.md")).unwrap(), "CANON", "canonical domain state untouched");
+        assert!(vault.join("data").join("apps").join("google").join("manifest.json").exists(), "app moved to data/apps/google");
+        assert!(vault.join("data").join("apps").join("google").join("skills").join("gmail.md").exists());
+        assert_eq!(fs::read_to_string(build_meta.join("usage.jsonl")).unwrap(), "CANON\n", "canonical _meta untouched");
+        assert!(build_meta.join("extra.jsonl").exists(), "unique _meta file merged");
+
+        // (c) conflicting files preserved under build/_archive (nothing lost).
+        let arch_state = vault.join("build").join("_archive").join("domains").join("health").join("_state.md");
+        assert_eq!(fs::read_to_string(&arch_state).unwrap(), "ROOT", "domain conflict archived");
+        let arch_meta = vault.join("build").join("_archive").join("_meta").join("usage.jsonl");
+        assert_eq!(fs::read_to_string(&arch_meta).unwrap(), "ROOT\n", "_meta conflict archived");
+
+        // (d) idempotent — a second run is a no-op.
+        assert_eq!(vault_migrate_layout(vs).unwrap(), 0, "second run must move nothing");
 
         let _ = fs::remove_dir_all(&vault);
     }
