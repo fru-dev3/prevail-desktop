@@ -1617,7 +1617,18 @@ export function BenchRunConfig({
         })()}
         {nextStep && (
           <div className="flex items-center justify-between border-t border-border-subtle pt-4">
-            <span className="font-mono text-[11px] text-text-muted">{scope.size === 0 ? "All domains" : `${scope.size} domain${scope.size === 1 ? "" : "s"}`} · {questionCount} question{questionCount === 1 ? "" : "s"}</span>
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-[11px] text-text-muted">{scope.size === 0 ? "All domains (default)" : `${scope.size} domain${scope.size === 1 ? "" : "s"}`} · {questionCount} question{questionCount === 1 ? "" : "s"}</span>
+              {scope.size > 0 && (
+                <button
+                  onClick={() => applyScope([])}
+                  title="Clear the selected domains (defaults back to all domains)"
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted transition-colors hover:border-accent-border hover:text-accent"
+                >
+                  <RotateCw className="h-3 w-3" /> Clear
+                </button>
+              )}
+            </div>
             <button
               onClick={() => setActiveStep(nextStep.id)}
               className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover"
