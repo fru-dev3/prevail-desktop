@@ -3,7 +3,7 @@
 // shared chatviews + domainpanels.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ArrowUpRight, BookOpen, Check, FileText, Folder, Ghost, Layers, PanelRightOpen, Paperclip, Plus, Scale, Sparkles } from "lucide-react";
+import { Activity, ArrowUpRight, BookOpen, Boxes, Briefcase, Check, FileText, Folder, Ghost, Home, Layers, Lightbulb, Loader2, MessageSquare, PanelRightOpen, Paperclip, Pencil, Plug, Plus, Repeat, Scale, Settings as SettingsIcon, Sparkles } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
 import { MODELS, isHarnessRuntime } from "./constants";
@@ -374,6 +374,32 @@ export function ChatPanel({
       .then(setDomainCtx)
       .catch(() => {});
   }, [domain, vaultPath]);
+  // Domain "Soul": this domain's own Ideal State (its target), layered under the
+  // global ideal state. Surfaced as a dedicated Soul tab in the domain detail
+  // shell, reusing the same read_domain_ideal / write_domain_ideal contract that
+  // DomainPrefsPanel uses so edits stay consistent everywhere.
+  const [domainSoul, setDomainSoul] = useState<string>("");
+  const [soulDraft, setSoulDraft] = useState<string>("");
+  const [editSoul, setEditSoul] = useState(false);
+  const [soulSaving, setSoulSaving] = useState(false);
+  useEffect(() => {
+    if (!vaultPath) { setDomainSoul(""); return; }
+    let mounted = true;
+    invoke<string>("read_domain_ideal", { vault: vaultPath, domain: domain || "general" })
+      .then((s) => { if (mounted) setDomainSoul(s || ""); })
+      .catch(() => { if (mounted) setDomainSoul(""); });
+    setEditSoul(false);
+    return () => { mounted = false; };
+  }, [domain, vaultPath]);
+  const saveDomainSoul = useCallback(async () => {
+    setSoulSaving(true);
+    try {
+      await invoke("write_domain_ideal", { vault: vaultPath, domain: domain || "general", body: soulDraft });
+      setDomainSoul(soulDraft);
+      setEditSoul(false);
+    } catch (e) { console.error("write domain soul", e); }
+    finally { setSoulSaving(false); }
+  }, [vaultPath, domain, soulDraft]);
   // I7: "Save as skill" - the composer dispatches this with the typed prompt;
   // we jump to the Skills tab and pre-fill the new-skill form.
   const [newSkillSeed, setNewSkillSeed] = useState<string | null>(null);
@@ -1681,6 +1707,77 @@ export function ChatPanel({
       try { delete w.__prevailAttach; delete w.__prevailAttachApp; } catch {}
     };
   }, []);
+
+  // Domain detail shell (mirrors AppDetail): a header + horizontal pill tab bar,
+  // one panel shown at a time. Active when a real domain is open and we're not on
+  // the plain conversation ("chat"). The tab bodies below reuse the SAME existing
+  // domain components (LoopsPanel, BoardPanel, InsightsPanel, the context bundle,
+  // DomainPrefsPanel, DomainAppsTab) - this only reorganizes their presentation.
+  const inDomainDetail = !!domain && !isApp && domainTab !== "chat";
+  // The unified domain tab set. Domain-appropriate: it drops the app-only facets
+  // (Connections, Runs, catalog Domains-mapping) and keeps the domain-unique views
+  // (Insights, Work). Usage is folded into the Insights tab as a section.
+  const DOMAIN_TABS: { id: DomainTab; label: string; icon: typeof Home; count?: number }[] = [
+    { id: "welcome", label: "Welcome", icon: Home },
+    { id: "soul", label: "Soul", icon: Sparkles },
+    { id: "journal", label: "Journal", icon: BookOpen },
+    { id: "skills", label: "Skills", icon: Boxes, count: domainCtx?.skills.length || undefined },
+    { id: "loops", label: "Loops", icon: Repeat },
+    { id: "work", label: "Work", icon: Briefcase },
+    { id: "insights", label: "Insights", icon: Lightbulb },
+    ...(domain ? [{ id: "apps" as const, label: "Apps", icon: Plug }] : []),
+    { id: "prefs", label: "Settings", icon: SettingsIcon },
+    { id: "chat", label: "Chat", icon: MessageSquare },
+  ];
+  // The context bundle exposes the raw journal/state/decisions/logs; the Journal
+  // tab surfaces them. `context`/`state`/`decisions`/`logs` remain valid domainTab
+  // values (reached from the context drawer) and fall through to their own bodies.
+  const detailHeader = inDomainDetail && (
+    <>
+      <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle bg-surface px-6 pb-4 pt-4">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+          {(() => { const I = domainIcon(domain!); return I ? <I className="h-6 w-6" /> : <span className="text-lg">◆</span>; })()}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="truncate text-2xl font-bold tracking-tight text-text-primary">{titleCase(domain!)}</h2>
+            <ContextScoreBadge score={ctxScore} onClick={() => setDomainTab("insights")} />
+          </div>
+          <div className="mt-1.5 truncate text-[13px] text-text-muted">{domainBlurb(domain!)}</div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            onClick={() => setDomainTab("chat")}
+            title="Back to the conversation"
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-background hover:bg-accent-hover"
+          >
+            <MessageSquare className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+      <div className="border-b border-border-subtle bg-surface px-6">
+        <div className="flex flex-wrap items-center gap-1 py-2.5">
+          {DOMAIN_TABS.map((t) => {
+            const Icon = t.icon;
+            const active = domainTab === t.id
+              || (t.id === "journal" && (domainTab === "state" || domainTab === "decisions" || domainTab === "logs" || domainTab === "context"));
+            return (
+              <button
+                key={t.id}
+                onClick={() => setDomainTab(t.id)}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${active ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-text-secondary"}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {t.label}
+                {t.count !== undefined && <span className={`rounded-full px-1.5 py-px font-mono text-[9px] ${active ? "bg-background/20 text-background" : "bg-surface-warm text-text-muted"}`}>{t.count}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <div
       className="flex h-full"
@@ -1719,7 +1816,7 @@ export function ChatPanel({
           archive moved up to the top tab bar; the score badge opens the
           context view. When no domain is active there's no header at all -
           the empty state owns the canvas. */}
-      {domain && !isApp && (
+      {inDomainDetail ? detailHeader : domain && !isApp && (
         <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-4 py-2">
           {(() => {
             const I = domainIcon(domain);
@@ -1730,7 +1827,7 @@ export function ChatPanel({
           <div className="ml-auto shrink-0">
             <ContextScoreBadge
               score={ctxScore}
-              onClick={() => setDomainTab(domainTab === "context" ? "chat" : "context")}
+              onClick={() => setDomainTab("welcome")}
             />
           </div>
         </div>
@@ -1819,6 +1916,61 @@ export function ChatPanel({
         )}
         {domainTab !== "chat" && (
           <div className="w-full px-6 py-6">
+            {/* WELCOME - a short overview of the domain: what it is + key stats,
+                mirroring AppDetail's Welcome. */}
+            {domainTab === "welcome" && (
+              <div className="max-w-2xl space-y-4">
+                <div className="rounded-xl border border-border-subtle bg-background/50 p-5">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Home className="h-4 w-4 text-accent" /> {titleCase(domain!)}</h3>
+                  <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">{domainBlurb(domain!)}</p>
+                  <dl className="mt-4 grid grid-cols-2 gap-x-8 gap-y-2 sm:grid-cols-3">
+                    <div><dt className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Context score</dt><dd className="text-[13px] text-text-primary">{ctxScore?.score != null ? `${ctxScore.score} / 100` : "not scored"}</dd></div>
+                    <div><dt className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Skills</dt><dd className="text-[13px] text-text-primary">{domainCtx?.skills.length ?? 0}</dd></div>
+                    <div><dt className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Recent sessions</dt><dd className="text-[13px] text-text-primary">{domainCtx?.recent_logs.length ?? 0}</dd></div>
+                  </dl>
+                </div>
+                <div className="rounded-xl border border-border-subtle bg-background/50 p-5">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Quick moves</h3>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button onClick={() => setDomainTab("soul")} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"><Sparkles className="h-3.5 w-3.5" /> Set the soul</button>
+                    <button onClick={() => setDomainTab("loops")} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"><Repeat className="h-3.5 w-3.5" /> Loops</button>
+                    <button onClick={() => setDomainTab("work")} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"><Briefcase className="h-3.5 w-3.5" /> Work board</button>
+                    <button onClick={() => setDomainTab("insights")} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"><Lightbulb className="h-3.5 w-3.5" /> Insights</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* SOUL - this domain's own Ideal State (its target), reusing the same
+                read_domain_ideal / write_domain_ideal contract as DomainPrefsPanel. */}
+            {domainTab === "soul" && (
+              <div className="max-w-2xl space-y-4">
+                <div className="rounded-xl border border-border-subtle bg-background/50 p-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Soul</h3>
+                    {!editSoul && <button onClick={() => { setSoulDraft(domainSoul); setEditSoul(true); }} title="Edit soul" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
+                  </div>
+                  <p className="mt-1.5 text-[12px] text-text-muted">This domain's ideal state: the target your AI steers toward. It layers under your global ideal state and is injected into every turn in {titleCase(domain!)}.</p>
+                  {editSoul ? (
+                    <div className="mt-3 flex flex-col">
+                      <textarea autoFocus rows={7} value={soulDraft} onChange={(e) => setSoulDraft(e.target.value)}
+                        placeholder={`What a thriving ${titleCase(domain!)} looks like for you.`}
+                        className="w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-relaxed text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
+                      <div className="mt-2 flex items-center gap-2">
+                        <button onClick={saveDomainSoul} disabled={soulSaving} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{soulSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
+                        <button onClick={() => setEditSoul(false)} className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">Cancel</button>
+                      </div>
+                    </div>
+                  ) : domainSoul.trim() ? (
+                    <div className="mt-3"><Markdown source={domainSoul} compact /></div>
+                  ) : (
+                    <button onClick={() => { setSoulDraft(""); setEditSoul(true); }} className="mt-3 flex flex-col items-start justify-center rounded-lg border border-dashed border-border bg-surface/40 px-4 py-5 text-left hover:border-accent-border">
+                      <span className="text-[13px] text-text-secondary">Give {titleCase(domain!)} a soul.</span>
+                      <span className="mt-0.5 text-[12px] text-text-muted">Describe its ideal state; your AI reads this as standing direction.</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             {domain && domainTab === "context" && (
               <ContextScorePanel
                 score={ctxScore}
@@ -1830,11 +1982,18 @@ export function ChatPanel({
               />
             )}
             {domainTab === "insights" && (
-              <InsightsPanel
-                vaultPath={vaultPath}
-                domain={domain ?? ""}
-                onSeed={(t) => { setInput(t); setDomainTab("chat"); }}
-              />
+              <div className="space-y-8">
+                <InsightsPanel
+                  vaultPath={vaultPath}
+                  domain={domain ?? ""}
+                  onSeed={(t) => { setInput(t); setDomainTab("chat"); }}
+                />
+                {/* Usage folded into Insights: queries, tokens, and cost for this domain. */}
+                <div>
+                  <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary"><Activity className="h-3.5 w-3.5 text-accent" /> Usage</div>
+                  <UsageDashboard vault={vaultPath} domain={domain ?? null} nonce={chatViewNonce} />
+                </div>
+              </div>
             )}
             {domainTab === "usage" && (
               <UsageDashboard vault={vaultPath} domain={domain ?? null} nonce={chatViewNonce} />
@@ -1848,10 +2007,56 @@ export function ChatPanel({
             {domainTab === "work" && (
               <BoardPanel vaultPath={vaultPath} initialDomain={domain || "general"} />
             )}
-            {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && domainTab !== "insights" && domainTab !== "usage" && domainTab !== "apps" && domainTab !== "loops" && <div className="text-sm text-text-muted">loading…</div>}
+            {!domainCtx && (domainTab === "journal" || domainTab === "state" || domainTab === "decisions" || domainTab === "logs" || domainTab === "skills") && <div className="text-sm text-text-muted">loading…</div>}
             {domainCtx && domainTab === "state" && (domainCtx.state ? <Markdown source={domainCtx.state} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">state.md</code> in this domain.</div>)}
             {domainCtx && domainTab === "decisions" && (domainCtx.decisions ? <Markdown source={domainCtx.decisions} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">decisions.md</code> yet.</div>)}
-            {domainCtx && domainTab === "journal" && (domainCtx.journal ? <Markdown source={domainCtx.journal} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no journal entries yet.</div>)}
+            {/* JOURNAL - the domain's running context: journal + state snapshot +
+                distilled decisions + recent session logs, reusing the same context
+                bundle the context drawer reads. */}
+            {domainCtx && domainTab === "journal" && (
+              <div className="space-y-6">
+                <div>
+                  <div className="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary"><BookOpen className="h-3.5 w-3.5 text-accent" /> Journal</div>
+                  {domainCtx.journal ? <Markdown source={domainCtx.journal} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no journal entries yet.</div>}
+                </div>
+                {domainCtx.state && (
+                  <div>
+                    <div className="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary"><Layers className="h-3.5 w-3.5 text-accent" /> State</div>
+                    <Markdown source={domainCtx.state} compact />
+                  </div>
+                )}
+                {domainCtx.decisions && (
+                  <div>
+                    <div className="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary"><Scale className="h-3.5 w-3.5 text-accent" /> Decisions</div>
+                    <Markdown source={domainCtx.decisions} compact />
+                  </div>
+                )}
+                {domainCtx.recent_logs.length > 0 && (
+                  <div>
+                    <div className="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary"><FileText className="h-3.5 w-3.5 text-accent" /> Recent sessions</div>
+                    <ul className="flex flex-col gap-2">
+                      {domainCtx.recent_logs.map((l) => (
+                        <li key={l.path}>
+                          <button
+                            onClick={async () => {
+                              try {
+                                const body = await invoke<string>("read_file", { path: l.path });
+                                injectContext(body, l.name);
+                                setDomainTab("chat");
+                              } catch (e) { console.error(e); }
+                            }}
+                            className="block w-full rounded-xl border border-border bg-surface px-4 py-3 text-left shadow-sm hover:-translate-y-px hover:border-accent-border hover:shadow-md"
+                          >
+                            <div className="font-mono text-sm text-text-primary">{l.name}</div>
+                            {l.preview && <div className="mt-1 line-clamp-2 text-xs text-text-muted">{l.preview}</div>}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
             {domainCtx && domainTab === "logs" && (
               domainCtx.recent_logs.length === 0
                 ? <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no past sessions.</div>
