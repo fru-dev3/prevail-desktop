@@ -1322,6 +1322,10 @@ function ProcessesPopover(
   const benchSched = lsGet(BENCH_SCHED.enabled, "0") === "1";
   const backupOn = lsGet(BACKUP_CFG.enabled, "0") === "1";
   const empty = procs.length === 0 && runningBench.length === 0 && !benchSched && !backupOn;
+  // A small live count of the actively running work (processes + benchmark
+  // runs) for the header badge. Scheduled/armed items are not counted here since
+  // they are waiting, not running.
+  const runningCount = procs.length + runningBench.length;
 
   // Anchor to the trigger: fixed positioning (so sidebar overflow never clips
   // it), left-aligned to the icon, bottom sitting just above it so the card
@@ -1367,30 +1371,47 @@ function ProcessesPopover(
           opacity: shown ? 1 : 0,
           transition: "opacity 140ms ease-out, transform 140ms ease-out",
         }}
-        className="overflow-hidden rounded-xl border border-border bg-surface shadow-2xl ring-1 ring-black/5"
+        className="overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl ring-1 ring-black/5"
       >
-        <div className="flex items-center justify-between border-b border-border-subtle px-3.5 py-2.5">
-          <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-secondary">
-            <span className="flex h-5 w-5 items-center justify-center rounded-md bg-accent/10">
-              <Activity className="h-3.5 w-3.5 text-accent" />
+        <div className="flex items-center justify-between border-b border-border-subtle/70 px-4 pb-3 pt-3.5">
+          <span className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-soft text-accent">
+              <Activity className="h-4 w-4" />
             </span>
-            Background processes
+            <span className="flex flex-col leading-tight">
+              <span className="text-[13px] font-semibold text-text-primary">Background work</span>
+              <span className="text-[10px] text-text-muted">Live and scheduled activity</span>
+            </span>
           </span>
-          <button
-            onClick={onClose}
-            title="Close"
-            className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-warm hover:text-text-primary"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+          <span className="flex items-center gap-1.5">
+            {runningCount > 0 && (
+              <span className="flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold text-accent">
+                <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+                {runningCount} live
+              </span>
+            )}
+            <button
+              onClick={onClose}
+              title="Close"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-warm hover:text-text-primary"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </span>
         </div>
-        <div className="max-h-[min(60vh,420px)] overflow-y-auto p-1.5">
+        <div className="max-h-[min(60vh,420px)] overflow-y-auto p-2">
           {empty ? (
-            <p className="px-3 py-7 text-center text-xs leading-relaxed text-text-muted">
-              Nothing running right now.<br />Scheduled benchmarks, automatic backups, and live activity (chats, council, loops) will appear here.
-            </p>
+            <div className="flex flex-col items-center gap-2.5 px-4 py-9 text-center">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-warm text-text-muted">
+                <Activity className="h-5 w-5" />
+              </span>
+              <span className="text-[13px] font-medium text-text-secondary">All quiet</span>
+              <span className="max-w-[220px] text-[11px] leading-relaxed text-text-muted">
+                Scheduled benchmarks, automatic backups, and live activity like chats, council, and loops will show up here.
+              </span>
+            </div>
           ) : (
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col gap-1.5">
               <SidebarProcesses collapsed={false} setTab={setTab} />
               <SidebarBenchmarkRuns collapsed={false} />
               <SidebarBenchScheduled collapsed={false} />
