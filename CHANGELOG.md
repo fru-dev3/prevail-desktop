@@ -4,6 +4,19 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.2.108] — 2026-06-30 · Ideal State + AI draft, consistent app layouts, Arena upgrades, curated apps
+
+### Added
+- **Ideal State** (renamed from "Soul") across app, Google, and domain detail, with a "Draft with AI" tool that researches the app/domain and drafts it (consistent whether drafted from the detail tab or from chat, since both write the same file). New two-column layout fills the space with a "what a good ideal state covers" guide.
+- **Domain detail** now uses the same tabbed layout as apps (Welcome / Ideal State / Journal / Skills / Loops / Work / Insights / Apps / Settings / Chat).
+- **Arena**: collapsible left nav + right insights rails, per-model validity indicators (know what will run before starting), "Councils" renamed to "Presets".
+
+### Fixed
+- **Apps**: the default "Available to add" list now shows only the curated set (~216), with search revealing the full catalog; Zapier now connects inline in the right pane instead of a popup.
+- **Google**: an authenticated account now shows Connected + email (via `gws auth status`) even if Gmail scope is limited, instead of a false "re-authorize".
+- **Models**: the picker shows actual model names (Opus 4.8, Sonnet 5, Haiku 4.5), no "latest" abstraction.
+- **Arena**: the domains filter shows real domains only (no apps).
+
 ## [0.2.107] — 2026-06-30 · app/domain parity, unified app detail, gateways, Google auth fix
 
 ### Added
