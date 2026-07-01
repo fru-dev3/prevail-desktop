@@ -52,10 +52,14 @@ pub(crate) fn runtime_path(vault: &str, name: &str) -> PathBuf {
     PathBuf::from(vault).join(name)
 }
 
-// Resolve a domain's base directory. Resolution order (newest wins, all readable
-// for zero-migration compatibility): v4 <vault>/data/domains/<d>, then v3
-// <vault>/domains/<d>, then legacy <vault>/<d>. New domains default to the v4
-// home under the effective content root. Mirrors the engine's resolveDomainDir.
+// Resolve a domain's base directory. Resolution order (newest wins):
+// v4 <vault>/data/domains/<d>, then v3 <vault>/domains/<d>, else the canonical v4
+// home for a brand-new domain. The legacy <vault>/<d> ROOT branch is intentionally
+// GONE: the on-load migrator (vault_migrate_layout) merges any root domain into
+// data/domains/<d> BEFORE domains are resolved, so data/domains is the source of
+// truth. Never resolving to the root means the engine never WRITES a domain back
+// to the vault root (which is what left root-level domain folders behind).
+// Mirrors the engine's resolveDomainDir.
 pub(crate) fn resolve_domain_base(vault: &str, d: &str) -> PathBuf {
     let v4 = data_root(vault).join("domains").join(d);
     if v4.exists() {
@@ -65,13 +69,8 @@ pub(crate) fn resolve_domain_base(vault: &str, d: &str) -> PathBuf {
     if v3.exists() {
         return v3;
     }
-    // Preserve an existing legacy domain in place (never orphan its data by
-    // pointing at a fresh path).
-    let legacy = PathBuf::from(vault).join(d);
-    if legacy.exists() {
-        return legacy;
-    }
-    // Brand-new domains default to the canonical home under the content root.
+    // Brand-new domains (and post-migration domains) default to the canonical
+    // home under the content root. Never the legacy vault root.
     v4
 }
 
