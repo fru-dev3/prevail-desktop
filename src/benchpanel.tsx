@@ -3306,7 +3306,11 @@ export function BenchmarkPanel({
       <div className="flex min-w-0 flex-1 flex-col">
         {err && <div className="mx-8 mt-3 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{err}</div>}
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="px-8 pt-6">
+          {/* Sticky header: stays pinned so the Arena title, model logos, and
+              actions remain visible while scrolling a long presets/questions list.
+              Translucent + blur so content scrolls cleanly underneath regardless
+              of theme background. */}
+          <div className="sticky top-0 z-20 border-b border-border-subtle bg-background/85 px-8 pb-2 pt-6 backdrop-blur-md">
             <ArenaHeader
               title={HEAD[view].title}
               subtitle={HEAD[view].subtitle}
