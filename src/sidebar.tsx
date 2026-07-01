@@ -87,7 +87,10 @@ export function Sidebar({
   // Group collapse - Pinned vs All. Persisted so collapsing survives
   // app restarts.
   const [pinnedOpen, setPinnedOpen] = useState<boolean>(() => lsGet("prevail.sidebar.pinnedOpen") !== "0");
-  const [allOpen, setAllOpen] = useState<boolean>(() => lsGet("prevail.sidebar.allOpen") !== "0");
+  // "All" collapsed by default so Domains opens just one level (Pinned + the
+  // All header with its count), keeping the rail compact rather than listing
+  // every domain. The header stays visible when collapsed, so nothing is lost.
+  const [allOpen, setAllOpen] = useState<boolean>(() => lsGet("prevail.sidebar.allOpen") === "1");
   useEffect(() => { lsSet("prevail.sidebar.pinnedOpen", pinnedOpen ? "1" : "0"); }, [pinnedOpen]);
   useEffect(() => { lsSet("prevail.sidebar.allOpen", allOpen ? "1" : "0"); }, [allOpen]);
   const togglePin = (name: string) => {
@@ -255,7 +258,7 @@ export function Sidebar({
   // Apps "Pinned" vs "All" group collapse - mirrors pinnedOpen/allOpen for
   // domains so the two sections behave identically. Persisted across restarts.
   const [appsPinnedOpen, setAppsPinnedOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsPinnedOpen") !== "0");
-  const [appsAllOpen, setAppsAllOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsAllOpen") !== "0");
+  const [appsAllOpen, setAppsAllOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsAllOpen") === "1");
   useEffect(() => { lsSet("prevail.sidebar.appsPinnedOpen", appsPinnedOpen ? "1" : "0"); }, [appsPinnedOpen]);
   useEffect(() => { lsSet("prevail.sidebar.appsAllOpen", appsAllOpen ? "1" : "0"); }, [appsAllOpen]);
   useEffect(() => {
@@ -584,10 +587,17 @@ export function Sidebar({
     }
   }
 
+  // Mode-aware sidebar wash: Work mode gets a faint accent (teal) glow at the
+  // top, Editor mode a warmer neutral wash, so the whole rail visibly reads as
+  // one mode or the other beyond just the footer toggle.
+  const editorMode = tab === "settings";
+  const modeWash = editorMode
+    ? "linear-gradient(180deg, color-mix(in srgb, var(--color-surface-warm) 70%, var(--color-surface-strong)) 0%, var(--color-surface-strong) 240px)"
+    : "linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 9%, var(--color-surface-strong)) 0%, var(--color-surface-strong) 240px)";
   return (
     <aside
       className="flex shrink-0 flex-col border-r border-border-subtle bg-surface-strong"
-      style={{ width: collapsed ? 56 : railWidth }}
+      style={{ width: collapsed ? 56 : railWidth, backgroundImage: modeWash }}
     >
       {/* The Prevail mark on its own row, full width, with the sidebar toggle on
           the far right. The macOS traffic lights are handled by the full-width
@@ -729,16 +739,25 @@ export function Sidebar({
         )}
 
         {!collapsed && (
-          <button
-            data-tour="domains"
-            onClick={() => setDomainsOpen((v) => !v)}
-            className="group/h mt-2 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted hover:text-text-secondary transition-colors"
-          >
-            <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${domainsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
-            <Layers className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-            <span>Domains</span>
-            <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{domains.length}</span>
-          </button>
+          <div data-tour="domains" className="group/h mt-2 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted">
+            <button
+              onClick={() => setDomainsOpen((v) => !v)}
+              className="flex flex-1 items-center gap-1.5 text-left transition-colors hover:text-text-secondary"
+            >
+              <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${domainsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+              <Layers className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+              <span>Domains</span>
+            </button>
+            {/* Add affordance: revealed on hover so the rail stays clean. */}
+            <button
+              onClick={() => { setDomainsOpen(true); setAdding(true); }}
+              title="New domain"
+              className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-text-muted opacity-0 transition hover:bg-surface-warm hover:text-accent focus:opacity-100 group-hover/h:opacity-100"
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+            </button>
+            <span className="font-mono text-[10px] tabular-nums text-text-muted/70">{domains.length}</span>
+          </div>
         )}
         {vaultError && !collapsed && domainsOpen && (
           <div className="mx-2 my-2 rounded border border-warn/40 bg-warn/10 p-2 text-xs text-warn">{vaultError}</div>
@@ -952,19 +971,11 @@ export function Sidebar({
           })}
         </ul>
 
-        {/* Add domain */}
-        {!collapsed && domainsOpen && (
+        {/* Add domain — triggered by the hover "+" on the Domains header above;
+            only the inline create form renders here (no persistent button). */}
+        {!collapsed && domainsOpen && adding && (
           <div className="mt-2 px-2">
-            {!adding && (
-              <button
-                onClick={() => setAdding(true)}
-                className="flex w-full items-center gap-2 rounded-md border border-dashed border-border px-2.5 py-1.5 text-left text-xs text-text-muted hover:border-accent-border hover:bg-surface-warm hover:text-accent"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                new domain
-              </button>
-            )}
-            {adding && (
+            {(
               <div className="rounded-md border border-border bg-background p-2">
                 <input
                   autoFocus
@@ -1052,15 +1063,25 @@ export function Sidebar({
             list stays collapsed so a long catalog never floods the rail. */}
         {!collapsed && (
           <div className="mt-3">
-            <button
-              onClick={() => setAppsOpen((v) => !v)}
-              className="group/h flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
-            >
-              <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${appsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
-              <Plug className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-              <span>Apps</span>
-              <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{pinnedAppCount}</span>
-            </button>
+            <div className="group/h flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted">
+              <button
+                onClick={() => setAppsOpen((v) => !v)}
+                className="flex flex-1 items-center gap-1.5 text-left transition-colors hover:text-text-secondary"
+              >
+                <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${appsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+                <Plug className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+                <span>Apps</span>
+              </button>
+              {/* Add affordance: revealed on hover so the rail stays clean. */}
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
+                title="Add an app"
+                className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-text-muted opacity-0 transition hover:bg-surface-warm hover:text-accent focus:opacity-100 group-hover/h:opacity-100"
+              >
+                <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+              </button>
+              <span className="font-mono text-[10px] tabular-nums text-text-muted/70">{pinnedAppCount}</span>
+            </div>
             {appsOpen && (pinnedAppCount > 0 ? (
               <ul className="mt-0.5 space-y-0.5 px-2">
                 {/* The home screen = starred apps only (any mode). Connected apps
@@ -1083,29 +1104,10 @@ export function Sidebar({
                     {favoritedCatalogApps.map(renderCatalogFavRow)}
                   </>
                 )}
-                {/* Add another app. */}
-                <li className="mt-0.5">
-                  <button
-                    onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
-                    className="flex w-full items-center gap-2 rounded-md py-1.5 pl-6 pr-2 text-left text-xs text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
-                    title="Browse and connect apps"
-                  >
-                    <Plus className="h-3.5 w-3.5 shrink-0" />
-                    add an app
-                  </button>
-                </li>
               </ul>
             ) : (
               <div className="px-2">
-                <p className="mt-0.5 px-4 py-1.5 text-[11px] leading-relaxed text-text-muted">Star an app in Apps to pin it here.</p>
-                <button
-                  onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
-                  className="mt-0.5 flex w-full items-center gap-2 rounded-md py-1.5 pl-4 pr-2 text-left text-xs text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
-                  title="Browse and connect apps"
-                >
-                  <Plus className="h-3.5 w-3.5 shrink-0" />
-                  add an app
-                </button>
+                <p className="mt-0.5 px-4 py-1.5 text-[11px] leading-relaxed text-text-muted">Star an app in Apps to pin it here, or hover this header and hit +.</p>
               </div>
             ))}
           </div>
@@ -1170,30 +1172,36 @@ export function Sidebar({
           <FooterProcesses collapsed setTab={setTab} />
         </div>
       ) : (
-        <div data-tour="settings" className="flex items-center gap-2 border-t border-border px-3 py-2.5">
-          {/* Segmented pill: the active mode rides a raised inner pill. */}
-          <div className="flex flex-1 items-center rounded-full border border-border bg-surface-strong p-0.5">
-            <button
-              onClick={() => setTab("chat")}
-              title="Work: your domains, board, automations, calendar & notes"
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition-all ${
-                tab !== "settings" ? "bg-surface text-accent shadow-sm ring-1 ring-inset ring-border-subtle" : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              <Briefcase className="h-4 w-4 shrink-0" />
-              Work
-            </button>
-            <button
-              onClick={() => setTab("settings")}
-              title="Editor: models, connections & settings"
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition-all ${
-                tab === "settings" ? "bg-surface text-accent shadow-sm ring-1 ring-inset ring-border-subtle" : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              <SettingsIcon className="h-4 w-4 shrink-0" />
-              Editor
-            </button>
-          </div>
+        // Full-width, edge-to-edge mode switch. Two equal halves span the whole
+        // rail; the active mode is filled (accent for Work, warm for Editor)
+        // with a bold top indicator bar, so the current mode is unmistakable.
+        <div data-tour="settings" className="grid shrink-0 grid-cols-2 border-t border-border">
+          <button
+            onClick={() => setTab("chat")}
+            title="Work: your domains, board, automations, calendar & notes"
+            className={`relative flex items-center justify-center gap-2 py-3 text-[13px] font-semibold transition-colors ${
+              tab !== "settings"
+                ? "bg-accent-soft text-accent"
+                : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+            }`}
+          >
+            {tab !== "settings" && <span className="absolute inset-x-0 top-0 h-0.5 bg-accent" />}
+            <Briefcase className="h-4 w-4 shrink-0" />
+            Work
+          </button>
+          <button
+            onClick={() => setTab("settings")}
+            title="Editor: models, connections & settings"
+            className={`relative flex items-center justify-center gap-2 py-3 text-[13px] font-semibold transition-colors ${
+              tab === "settings"
+                ? "bg-surface-warm text-text-primary"
+                : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+            }`}
+          >
+            {tab === "settings" && <span className="absolute inset-x-0 top-0 h-0.5 bg-text-secondary" />}
+            <SettingsIcon className="h-4 w-4 shrink-0" />
+            Editor
+          </button>
         </div>
       )}
       {!collapsed && (
