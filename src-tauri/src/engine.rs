@@ -1315,6 +1315,44 @@ pub fn engine_skill_ideas(
     Ok(v)
 }
 
+/// AI-curate a LIBRARY of Arena presets over the model universe the desktop
+/// enumerated. Shells the sidecar `bench preset-suggest --json`, passing the
+/// available-model list (each: { key: "cli::model", label, provider, validated,
+/// local, tier }) on STDIN so a large list never blows the argv limit. The
+/// sidecar grounds every returned key against that list, so a hallucinated model
+/// can never reach the UI. Mirrors `engine_skill_ideas`: never writes anything;
+/// the desktop renders the returned presets as cards the user can Apply / Run /
+/// Save. Bunker-mode aware in the CLI. Returns { ok, presets: [{ name, rationale,
+/// models }] } so the UI can render without a second call.
+#[tauri::command]
+pub fn engine_bench_preset_suggest(
+    models_json: String,
+    provider: String,
+    model: String,
+) -> Result<serde_json::Value, String> {
+    let mut args: Vec<&str> = vec!["bench", "preset-suggest"];
+    if !provider.trim().is_empty() {
+        args.push("--cli");
+        args.push(&provider);
+    }
+    if !model.trim().is_empty() {
+        args.push("--model");
+        args.push(&model);
+    }
+    // The available-model list rides on stdin (see run_engine_json_stdin); the
+    // sidecar reads it when --models-json is absent. run_engine_json_stdin
+    // appends --json, so the sidecar emits { ok, presets } | { ok:false, error }.
+    let v = run_engine_json_stdin(&args, &models_json)?;
+    if v.get("ok").and_then(|b| b.as_bool()) == Some(false) {
+        return Err(v
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("preset suggest failed")
+            .to_string());
+    }
+    Ok(v)
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Autonomy controls (the global brake) + playbooks (the orchestrator).
 
