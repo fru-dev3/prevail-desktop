@@ -21,7 +21,20 @@ export type BenchSuite = {
   models: string[];   // cli::model keys; empty when mode === "council"
   domains: string[];  // lowercase domain slugs; empty = all domains
   createdAt: number;
+  // Where this saved preset came from, so the UI can distinguish and filter
+  // "presets I built myself" from "AI suggestions I chose to keep":
+  //   • "manual"    — hand-built by the user (Save selected models as a preset)
+  //   • "ai"        — saved from an AI-suggested preset card
+  //   • "canonical" — saved from a built-in canonical template card
+  // Optional for back-compat: suites saved before this field existed have no
+  // origin and are treated as "manual" everywhere (they were user-curated).
+  origin?: "manual" | "ai" | "canonical";
 };
+
+// Back-compat helper: treat an origin-less suite as "manual" everywhere.
+export function suiteOrigin(s: BenchSuite): "manual" | "ai" | "canonical" {
+  return s.origin ?? "manual";
+}
 
 const BUNDLES_KEY = "prevail.bench.bundles";
 const SUITES_KEY = "prevail.bench.suites";
@@ -83,10 +96,14 @@ export function saveSuite(s: Omit<BenchSuite, "id" | "createdAt">): BenchSuite |
     existing.mode = s.mode;
     existing.models = [...s.models];
     existing.domains = [...s.domains];
+    // Re-save preserves the ORIGIN this preset was first saved with (updating a
+    // saved preset does not change who it belongs to). Only fall back to the
+    // incoming origin if the existing entry never had one (legacy migration).
+    existing.origin = existing.origin ?? s.origin ?? "manual";
     writeArr(SUITES_KEY, all);
     return existing;
   }
-  const suite: BenchSuite = { id: newId("ste"), name: nm, mode: s.mode, models: [...s.models], domains: [...s.domains], createdAt: Date.now() };
+  const suite: BenchSuite = { id: newId("ste"), name: nm, mode: s.mode, models: [...s.models], domains: [...s.domains], createdAt: Date.now(), origin: s.origin ?? "manual" };
   writeArr(SUITES_KEY, [...all, suite]);
   return suite;
 }
