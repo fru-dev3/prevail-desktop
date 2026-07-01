@@ -30,7 +30,7 @@ export const WORK_NAV: NavGroup[] = [
 // Editor mode — configuration.
 export const EDITOR_NAV: NavGroup[] = [
   { heading: "Intelligence", items: [
-    { id: "models", label: "Runtimes", icon: Layers },
+    { id: "models", label: "Models", icon: Layers },
     { id: "council", label: "Council", icon: Scale },
     { id: "frameworks", label: "Frameworks", icon: Lightbulb },
     { id: "skills", label: "Skills", icon: Sparkles },

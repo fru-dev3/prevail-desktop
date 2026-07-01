@@ -408,47 +408,6 @@ export default function App() {
   // Bumped on every thread pick so the chat panel returns to the chat view even
   // when the same thread is re-clicked (e.g. to escape the Preferences view).
   const [chatViewNonce, setChatViewNonce] = useState(0);
-  // "Today" rail (2026 redesign): the 5 most-recently-touched threads from
-  // across ALL domains whose last activity is in the local day. list_threads is
-  // per-domain, so we fan out over General + every real domain and merge
-  // client-side — no engine change needed for Phase 1.
-  const [todayThreads, setTodayThreads] = useState<ThreadMeta[]>([]);
-  const refreshTodayThreads = useCallback(async () => {
-    if (!vaultPath) { setTodayThreads([]); return; }
-    try {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      const cutoff = Math.floor(startOfDay.getTime() / 1000); // ThreadMeta.updated is unix seconds
-      // General (null scope) + every real domain. Skip internal "_"-prefixed
-      // pseudo-domains (app thread spaces) — the rail lists real conversations.
-      const scopes: (string | null)[] = [null, ...domains.map((d) => d.name).filter((n) => !n.startsWith("_"))];
-      const lists = await Promise.all(
-        scopes.map((s) => invoke<ThreadMeta[]>("list_threads", { vault: vaultPath, domain: s }).catch(() => [] as ThreadMeta[])),
-      );
-      const merged = lists
-        .flat()
-        .filter((t) => t.updated >= cutoff)
-        .sort((a, b) => b.updated - a.updated)
-        .slice(0, 5);
-      setTodayThreads(merged);
-    } catch (e) {
-      console.error("today threads", e);
-    }
-  }, [vaultPath, domains]);
-  // Recompute on vault/domain change AND whenever the active scope's threads
-  // change (a proxy for "a thread was just saved/renamed/deleted"), so the rail
-  // stays live without an engine event.
-  useEffect(() => { void refreshTodayThreads(); }, [refreshTodayThreads, threads]);
-  // Open a Today-rail thread: jump to its domain (or General) and load it.
-  const openTodayThread = useCallback((m: ThreadMeta) => {
-    setSelectedApp(null);
-    setAppView(false);
-    setSelectedDomain(m.domain ?? "");
-    setActiveThreadPath(m.path);
-    setChatViewNonce((n) => n + 1);
-    setDomainTab("chat");
-    setTab("chat");
-  }, []);
   // Per-domain import counts shown as a tiny badge in the sidebar.
   // Refreshed when ingestion:artifact fires (any tier writes a file)
   // or when the domain list changes.
@@ -1388,8 +1347,6 @@ export default function App() {
       onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
       onDomainsChanged={() => void refreshDomains()}
       onOpenApp={openApp}
-      todayThreads={todayThreads}
-      onOpenThread={openTodayThread}
     />
   );
 
