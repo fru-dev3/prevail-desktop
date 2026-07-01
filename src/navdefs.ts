@@ -39,7 +39,7 @@ export const EDITOR_NAV: NavGroup[] = [
   { heading: "Context & Memory", items: [
     { id: "ideal-state", label: "Ideals", icon: Compass },
     { id: "intents", label: "Intents", icon: Lightbulb },
-    { id: "prompt-capture", label: "Prompt capture", icon: Inbox },
+    { id: "prompt-capture", label: "Prompts", icon: Inbox },
     { id: "daemons", label: "Daemons", icon: Zap },
     { id: "activity", label: "Activity", icon: Activity },
   ]},
