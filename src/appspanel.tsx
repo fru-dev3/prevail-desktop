@@ -325,7 +325,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // When a gateway connector (Composio / Nango) is picked, its managed-gateway
   // pane takes over the right detail (one key fronts all that gateway's apps).
   // Selecting any other row clears this so the normal detail returns.
-  const [gatewayPane, setGatewayPane] = useState<"composio" | "nango" | null>(null);
+  const [gatewayPane, setGatewayPane] = useState<"composio" | "nango" | "zapier" | null>(null);
   // "Add custom MCP": a small modal that scaffolds any stdio MCP server the user
   // names, passing its spawn command (and optional one-time install) to the
   // engine the same way a catalog MCP entry does. The vault domain list backs
@@ -348,10 +348,11 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   }, [vaultDomains.length, vaultPath]);
 
   // Zapier connects through its hosted MCP server (mcp.zapier.com), not a stdio
-  // binary, so we reuse the "Add custom MCP" modal prefilled to bridge that
+  // binary. It renders as a normal right-pane detail (NOT a modal popup) like
+  // every other app - we just prefill the MCP server fields, bridged to the
   // remote endpoint via mcp-remote. The user pastes their own Zapier MCP URL
   // (which carries their key) in place of the placeholder, then adds the server.
-  const openZapierMcpForm = useCallback(async () => {
+  const prefillZapierForm = useCallback(async () => {
     setMcpForm({
       name: "Zapier",
       command: "npx -y mcp-remote https://mcp.zapier.com/api/mcp/s/YOUR_KEY/mcp",
@@ -359,7 +360,6 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       domain: "",
     });
     setMcpFormErr(null);
-    setMcpFormOpen(true);
     if (vaultDomains.length === 0) {
       try {
         const ds = await invoke<{ name: string }[]>("scan_vault", { path: vaultPath });
@@ -378,12 +378,13 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       return;
     }
     if (kind === "zapier") {
-      setGatewayPane(null); setCatalogPick(null); setConnecting(false);
-      void openZapierMcpForm();
+      setCatalogPick(null); setSelected(null); setConnecting(false);
+      void prefillZapierForm();
+      setGatewayPane("zapier");
       return;
     }
     setGatewayPane(null); setCatalogPick(c); setConnecting(false);
-  }, [openZapierMcpForm]);
+  }, [prefillZapierForm]);
 
   const reload = useCallback(async (): Promise<EngineApp[]> => {
     try {
@@ -498,7 +499,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       const after = await reload();
       const added = after.find((a) => a.id === id) ?? after.find((a) => appName(a.title).toLowerCase() === title.toLowerCase());
       if (added) {
-        setMcpFormOpen(false);
+        setMcpFormOpen(false); setGatewayPane(null);
         setCatalogPick(null); setConnecting(false);
         setSelected(added.id);
       } else {
@@ -510,6 +511,58 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       setMcpFormBusy(false);
     }
   }, [mcpForm, reload, vaultPath]);
+
+  // The MCP server fields, shared by the "Add custom MCP" modal AND the inline
+  // Zapier detail pane so both look and behave identically (no separate popup UI).
+  // A fragment; each caller wraps it in a padded space-y-3 container with its own
+  // intro line.
+  const mcpFieldsBody = (
+    <>
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-text-secondary">Name</span>
+        <input
+          value={mcpForm.name}
+          onChange={(e) => setMcpForm((f) => ({ ...f, name: e.target.value }))}
+          placeholder="GitHub MCP"
+          className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-text-secondary">Command</span>
+        <input
+          value={mcpForm.command}
+          onChange={(e) => setMcpForm((f) => ({ ...f, command: e.target.value }))}
+          placeholder="npx -y @modelcontextprotocol/server-..."
+          className="w-full rounded-lg border border-border bg-background px-3 py-1.5 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-text-secondary">Install command <span className="font-normal text-text-muted">(optional, one time)</span></span>
+        <input
+          value={mcpForm.install}
+          onChange={(e) => setMcpForm((f) => ({ ...f, install: e.target.value }))}
+          placeholder="npm i -g some-mcp-server"
+          className="w-full rounded-lg border border-border bg-background px-3 py-1.5 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-text-secondary">Feeds domain <span className="font-normal text-text-muted">(optional)</span></span>
+        <select
+          value={mcpForm.domain}
+          onChange={(e) => setMcpForm((f) => ({ ...f, domain: e.target.value }))}
+          className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text-primary focus:border-accent-border focus:outline-none"
+        >
+          <option value="">No specific domain</option>
+          {vaultDomains.map((d) => (
+            <option key={d} value={d}>{titleCase(d)}</option>
+          ))}
+        </select>
+      </label>
+      {mcpFormErr && (
+        <div className="rounded-lg border border-err/40 bg-err/10 px-3 py-2 text-xs text-err">{mcpFormErr}</div>
+      )}
+    </>
+  );
 
   // Direct mode shows ONLY directly-connected apps. Gateway apps (Composio /
   // Nango) live in their own modes and must never leak into the Direct list -
@@ -680,7 +733,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // a gateway connector follows the gateway pane, anything else the catalog pick.
   const catalogRowActive = useCallback((c: CatalogApp) => {
     const kind = gatewayAppKind(c);
-    if (kind === "composio" || kind === "nango") return gatewayPane === kind;
+    if (kind === "composio" || kind === "nango" || kind === "zapier") return gatewayPane === kind;
     return catalogPick?.name === c.name;
   }, [gatewayPane, catalogPick]);
 
@@ -952,6 +1005,31 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
               // Nango: one project secret key fronts your configured Nango
               // integrations. Reuses the existing Nango gateway pane.
               <NangoMode vaultPath={vaultPath} expanded />
+            ) : gatewayPane === "zapier" ? (
+              // Zapier connects via its hosted MCP server. Rendered INLINE in the
+              // right pane like every other app (no popup) - same MCP fields as the
+              // "Add custom MCP" modal, prefilled for mcp.zapier.com.
+              <div className="overflow-hidden rounded-xl border border-border bg-surface">
+                <div className="flex items-center gap-3 border-b border-border-subtle px-5 py-4">
+                  <AppRowLogo app={{ title: "Zapier", id: "zapier" }} logos={logos} size={44} fallback="letter" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-lg font-semibold text-text-primary">Zapier</div>
+                    <div className="text-[12px] text-text-muted">Connect once through the Zapier MCP server to reach all your Zaps and actions.</div>
+                  </div>
+                </div>
+                <div className="space-y-3 px-5 py-4">
+                  <p className="text-xs leading-relaxed text-text-muted">
+                    Paste your Zapier MCP server URL from mcp.zapier.com (it carries your key) in place of the placeholder below, then add the server.
+                  </p>
+                  {mcpFieldsBody}
+                </div>
+                <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-5 py-3">
+                  <button onClick={() => setGatewayPane(null)} disabled={mcpFormBusy} className="rounded-lg px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50">Cancel</button>
+                  <button onClick={() => void addCustomMcp()} disabled={mcpFormBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-background transition-colors hover:bg-accent-hover disabled:opacity-50">
+                    {mcpFormBusy ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Adding…</> : <><Plus className="h-3.5 w-3.5" /> Add server</>}
+                  </button>
+                </div>
+              </div>
             ) : catalogPick ? (
               // Fix #14/#3: a catalog pick must win over a stale `selected ===
               // "google"`. Selecting any catalog app sets catalogPick but leaves
@@ -1021,49 +1099,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
               <p className="text-xs leading-relaxed text-text-muted">
                 Point Prevail at any stdio MCP server. Prevail launches it with the command below and the agent can use its tools.
               </p>
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-text-secondary">Name</span>
-                <input
-                  value={mcpForm.name}
-                  onChange={(e) => setMcpForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="GitHub MCP"
-                  className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-text-secondary">Command</span>
-                <input
-                  value={mcpForm.command}
-                  onChange={(e) => setMcpForm((f) => ({ ...f, command: e.target.value }))}
-                  placeholder="npx -y @modelcontextprotocol/server-..."
-                  className="w-full rounded-lg border border-border bg-background px-3 py-1.5 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-text-secondary">Install command <span className="font-normal text-text-muted">(optional, one time)</span></span>
-                <input
-                  value={mcpForm.install}
-                  onChange={(e) => setMcpForm((f) => ({ ...f, install: e.target.value }))}
-                  placeholder="npm i -g some-mcp-server"
-                  className="w-full rounded-lg border border-border bg-background px-3 py-1.5 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-text-secondary">Feeds domain <span className="font-normal text-text-muted">(optional)</span></span>
-                <select
-                  value={mcpForm.domain}
-                  onChange={(e) => setMcpForm((f) => ({ ...f, domain: e.target.value }))}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text-primary focus:border-accent-border focus:outline-none"
-                >
-                  <option value="">No specific domain</option>
-                  {vaultDomains.map((d) => (
-                    <option key={d} value={d}>{titleCase(d)}</option>
-                  ))}
-                </select>
-              </label>
-              {mcpFormErr && (
-                <div className="rounded-lg border border-err/40 bg-err/10 px-3 py-2 text-xs text-err">{mcpFormErr}</div>
-              )}
+              {mcpFieldsBody}
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-5 py-3">
               <button onClick={() => setMcpFormOpen(false)} disabled={mcpFormBusy} className="rounded-lg px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50">Cancel</button>
