@@ -3390,7 +3390,7 @@ export function BenchmarkPanel({
     { id: "history", label: "History", icon: Activity },
     { id: "matrix", label: "Model × domain", icon: Layers },
     { id: "questions", label: "Questions", icon: FileText },
-    { id: "scout", label: "Scout", icon: BrainCircuit },
+    { id: "scout", label: "Model Scout", icon: BrainCircuit },
     { id: "schedule", label: "Schedule", icon: CalendarClock },
   ];
   const HEAD: Record<typeof view, { title: string; subtitle: string }> = {
@@ -3400,7 +3400,7 @@ export function BenchmarkPanel({
     history: { title: "History", subtitle: "Review and analyze past benchmark runs and model performance." },
     matrix: { title: "Model × domain", subtitle: "Compare model performance across domains to spot strengths, weaknesses, and opportunities." },
     questions: { title: "Questions", subtitle: "Curate, evaluate, and manage your benchmark question bank." },
-    scout: { title: "Scout", subtitle: "Discover and evaluate the best models for your use cases." },
+    scout: { title: "Model Scout", subtitle: "Discover and evaluate the best models for your use cases." },
     schedule: { title: "Schedule", subtitle: "Plan and automate benchmark runs with confidence." },
   };
   const showDomains = !initialDomain && allDomains.length > 0 && (view === "board" || view === "history");
