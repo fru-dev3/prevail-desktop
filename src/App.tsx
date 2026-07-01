@@ -99,7 +99,6 @@ import {
   
   Scale,
   
-  Settings as SettingsIcon,
   Swords,
 
   
@@ -122,13 +121,9 @@ import {
   
   
   
-  Activity,
-
   Layers,
 
-  Lightbulb,
   Inbox,
-  Briefcase,
   Plug,
   ChevronsRight,
   ChevronsLeft,
@@ -1618,75 +1613,26 @@ export default function App() {
                   )}
                   {/* A single Details entry into the unified domain-detail surface,
                       mirroring how the app view now uses one Details entry + its own
-                      tab bar. It opens the tabbed shell (Welcome / Soul / Journal /
-                      Skills / Loops / Work / Insights / Apps / Settings) rendered by
-                      ChatPanel; every former facet button now lives as a tab there.
-                      The Work badge (overdue/due) rides along so it stays visible.
-                      General (no selected domain) has no detail identity, so it keeps
-                      the flat facet buttons below. */}
-                  {selectedDomain ? (
-                    <button
-                      onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab !== "chat" ? "chat" : "welcome"); }}
-                      title="Domain details: soul, journal, skills, loops, work, insights, apps, and settings"
-                      className={`relative flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
-                        tab === "chat" && domainTab !== "chat"
-                          ? "bg-accent text-background shadow-sm"
-                          : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                      }`}
-                    >
-                      <Layers className="h-4 w-4" /> Details
-                      {(dueAlert.open > 0 || recCount > 0 || loopCount > 0) && (
-                        <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ai px-1.5 font-mono text-[10px] font-bold leading-none text-white">{cap9(dueAlert.open + recCount + loopCount)}</span>
-                      )}
-                    </button>
-                  ) : (
-                    // General workspace: flat facets (no domain identity to anchor a
-                    // tabbed detail shell), unchanged.
-                    <>
-                      <button
-                        onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "work" ? "chat" : "work"); }}
-                        title="Work: your tasks, in-panel"
-                        className={`relative flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
-                          tab === "chat" && domainTab === "work" ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                        }`}
-                      >
-                        <Briefcase className="h-3.5 w-3.5" /> Work
-                        {dueAlert.open > 0 && (
-                          <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ai px-1.5 font-mono text-[10px] font-bold leading-none text-white">{cap9(dueAlert.open)}</span>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => { setTab("chat"); setDomainTab("insights"); }}
-                        title="Insights: what to work on, your tasks, and recent intents"
-                        className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
-                          tab === "chat" && domainTab === "insights" ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                        }`}
-                      >
-                        <Lightbulb className="h-3.5 w-3.5" /> Insights
-                        {recCount > 0 && (
-                          <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ai px-1.5 font-mono text-[10px] font-bold leading-none text-white">{cap9(recCount)}</span>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "usage" ? "chat" : "usage"); }}
-                        title="Usage: queries, tokens, and cost across everything"
-                        className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
-                          tab === "chat" && domainTab === "usage" ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                        }`}
-                      >
-                        <Activity className="h-3.5 w-3.5" /> Usage
-                      </button>
-                      <button
-                        onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "prefs" ? "chat" : "prefs"); }}
-                        title="General preferences"
-                        className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
-                          tab === "chat" && domainTab === "prefs" ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                        }`}
-                      >
-                        <SettingsIcon className="h-3.5 w-3.5" /> Preferences
-                      </button>
-                    </>
-                  )}
+                      tab bar. It opens the tabbed shell (Welcome / Ideal State /
+                      Journal / Skills / Loops / Work / Insights / Apps / Settings /
+                      Chat) rendered by ChatPanel; every former facet button now lives
+                      as a tab there. The Work badge (overdue/due) rides along so it
+                      stays visible. General is a first-class domain too, so it uses
+                      the exact same Details button and tabbed shell. */}
+                  <button
+                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab !== "chat" ? "chat" : "welcome"); }}
+                    title="Details: ideal state, journal, skills, loops, work, insights, apps, and settings"
+                    className={`relative flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                      tab === "chat" && domainTab !== "chat"
+                        ? "bg-accent text-background shadow-sm"
+                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <Layers className="h-4 w-4" /> Details
+                    {(dueAlert.open > 0 || recCount > 0 || loopCount > 0) && (
+                      <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ai px-1.5 font-mono text-[10px] font-bold leading-none text-white">{cap9(dueAlert.open + recCount + loopCount)}</span>
+                    )}
+                  </button>
                   <button
                     onClick={() => setTab("benchmark")}
                     title="Arena: score models head-to-head on your questions"
