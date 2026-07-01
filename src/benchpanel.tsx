@@ -18,7 +18,7 @@ import { Sparkline } from "./ui";
 import { ArenaBars, ArenaHeader, ArenaInsight, ArenaMetric, ArenaRightRail, ArenaStatCard, heatBg } from "./arena/arenaui";
 import { CollapsibleSection } from "./collapsible";
 import { domainIcon } from "./icons";
-import { BENCH_CLI_OPTIONS, BENCH_SCHED, benchBatches, benchFreqLabel, benchNotify, cancelBenchBatch, executeBenchBatch, useBenchBatches } from "./bench";
+import { BENCH_CLI_OPTIONS, BENCH_SCHED, benchBatches, benchFreqLabel, benchNotify, cancelBenchBatch, executeBenchBatch, startQuestionSuggest, useBenchBatches, useQuestionSuggest } from "./bench";
 import { deleteSuite, saveSuite, useSuites } from "./bench-presets";
 import type { BenchSuite } from "./bench-presets";
 import { ProviderMark } from "./marks";
@@ -471,7 +471,10 @@ export function BenchQuestions({
   const [draft, setDraft] = useState<BenchQuestion>(blank);
   const [saving, setSaving] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
-  const [suggesting, setSuggesting] = useState(false);
+  // AI question suggestion runs in a MODULE-SCOPE registry (see startQuestionSuggest
+  // in ./bench) so it survives navigation away from Arena and back, and panel
+  // remounts. We only subscribe here; the job state is the source of truth.
+  const qJobs = useQuestionSuggest();
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestDomain, setSuggestDomain] = useState<string>(initialDomain?.toLowerCase() ?? "");
   const [suggestCount, setSuggestCount] = useState(3);
@@ -481,6 +484,28 @@ export function BenchQuestions({
     const [cli, models] = Object.entries(MODELS).find(([c, ms]) => isLocalCli(c) && ms.length > 0) ?? [];
     return cli && models ? `${cli}${MODEL_SEP}${models[0].id}` : `claude${MODEL_SEP}opus`;
   });
+
+  // Which domains the current suggest selection targets (for job matching).
+  const suggestTargets = useMemo(() => {
+    const d = suggestDomain.trim().toLowerCase();
+    if (!d) return [] as string[];
+    return d === "all" ? allDomains.map((x) => x.toLowerCase()) : [d];
+  }, [suggestDomain, allDomains]);
+  // Derive the button/label state from the module-scope jobs, so "Drafting…"
+  // stays correct even after the panel remounts mid-run.
+  const relevantJobs = qJobs.filter((j) => j.vault === vaultPath && suggestTargets.includes(j.domain));
+  const suggesting = relevantJobs.some((j) => j.status === "running");
+  // Any running suggest job for this vault (across domains) - shown as a small
+  // "still running in the background" note independent of the current selection.
+  const runningJobs = qJobs.filter((j) => j.vault === vaultPath && j.status === "running");
+
+  // When a background suggest finishes, reload the question list so completed
+  // drafts appear whether or not the user was on this page while it ran.
+  useEffect(() => {
+    const onChangedEvt = () => onChanged();
+    window.addEventListener("prevail:questions-changed", onChangedEvt);
+    return () => window.removeEventListener("prevail:questions-changed", onChangedEvt);
+  }, [onChanged]);
 
   const inFilter = filter === "all" ? questions : questions.filter((q) => q.domain === filter);
   // AI drafts float to the top so a fresh "Suggest with AI" run is immediately
@@ -529,95 +554,28 @@ export function BenchQuestions({
   }
 
   // AI-draft questions from each domain's own context, via the engine's
-  // `bench suggest`. Drafts land in the list for review/editing.
-  // Generate `count` draft questions for ONE domain. Resolves to the exit code
-  // plus the net new question count for that domain (so "all domains" can verify
-  // every domain actually got drafts, not just an overall total).
-  async function suggestForDomain(target: string, cli: string, model: string): Promise<{ code: number | null; added: number; tail: string }> {
-    // Count from disk, not React state - the in-memory `questions` can be stale,
-    // which produced false "0/N" warnings even when drafts landed.
-    let before = questions.filter((q) => q.domain === target).length;
-    try {
-      const pre = await invoke<BenchQuestion[]>("benchmark_questions", { vault: vaultPath });
-      before = (pre ?? []).filter((q) => q.domain === target).length;
-    } catch { /* fall back to in-memory count */ }
-    const session = `bench-suggest-${target}-${Date.now()}`;
-    let output = "";
-    let chunkUn: UnlistenFn | null = null;
-    listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
-      if (e.payload.session === session) output = (output + e.payload.data).slice(-2000);
-    }).then((u) => { chunkUn = u; });
-    const done = new Promise<number | null>((resolve) => {
-      let un: UnlistenFn | null = null;
-      listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
-        if (e.payload.session === session && e.payload.phase === "suggest") { un?.(); resolve(e.payload.code); }
-      }).then((u) => { un = u; });
-    });
-    await invoke("benchmark_suggest", {
-      args: { session_id: session, vault: vaultPath, domain: target, count: suggestCount, cli, model: model || null },
-    });
-    const code = await done;
-    (chunkUn as UnlistenFn | null)?.();
-    // Let the engine flush the new questions to disk before recounting.
-    await new Promise((r) => setTimeout(r, 150));
-    let added = 0;
-    try {
-      const fresh = await invoke<BenchQuestion[]>("benchmark_questions", { vault: vaultPath });
-      added = (fresh ?? []).filter((q) => q.domain === target).length - before;
-    } catch { /* counting is best-effort; exit code still drives success */ }
-    return { code, added, tail: output.trim().split("\n").filter(Boolean).slice(-2).join(" / ") };
-  }
-
-  async function suggestWithAi() {
+  // `bench suggest`. Fire-and-forget into the MODULE-SCOPE registry so the run
+  // survives navigation away and back; startQuestionSuggest streams, recounts,
+  // and dispatches prevail:questions-changed on completion (which reloads the
+  // list here). We do NOT await it - the button label follows the job status.
+  function suggestWithAi() {
     const domain = suggestDomain.trim().toLowerCase();
     if (!domain) return;
     const [cli, model] = suggestModel.split(MODEL_SEP);
-    setSuggesting(true);
     setInfo(null);
-    try {
-      // "all domains" must hit EVERY domain with its own request for `count`,
-      // not a single call that the engine spreads thin - that left some domains
-      // empty. Loop per domain (the path that works for a single domain) and
-      // verify each one actually received drafts.
-      const targets = domain === "all" ? allDomains.map((d) => d.toLowerCase()) : [domain];
-      const short: string[] = [];
-      const failed: { domain: string; reason: string }[] = [];
-      for (const t of targets) {
-        const { code, added, tail } = await suggestForDomain(t, cli, model);
-        if (!(code === 0 || code === null)) {
-          // S3: surface WHY it failed. The engine prints a reason on the last line
-          // ("nothing to draft from", "LLM call failed", "could not parse…"); fall
-          // back to a plain-English guess from the exit context if it's empty.
-          const reason = (tail || "").split("/").pop()?.trim()
-            || "the drafting model returned nothing usable (check the model is installed and signed in)";
-          failed.push({ domain: t, reason });
-        }
-        // Only warn "under target" with POSITIVE evidence of a short draft.
-        // added <= 0 means the count read raced (or every draft deduped) - the
-        // exit code already says success, so don't surface a false "0/N".
-        else if (added > 0 && added < suggestCount) short.push(`${titleCase(t)} (${added}/${suggestCount})`);
-      }
-      onChanged();
-      if (failed.length === 0 && short.length === 0) {
-        setInfo(
-          domain === "all"
-            ? `Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} for each of ${targets.length} domains. Review the ground truth before trusting scores.`
-            : `Drafted ${suggestCount} question${suggestCount === 1 ? "" : "s"} for ${titleCase(domain)}. Review the ground truth before trusting scores.`,
-        );
-        setSuggestOpen(false);
-      } else if (failed.length > 0) {
-        // Lead with the concrete reason for the (usually single) failed domain.
-        const f = failed[0];
-        const more = failed.length > 1 ? ` (and ${failed.length - 1} more)` : "";
-        setInfo(`Couldn't draft ${titleCase(f.domain)}${more}: ${f.reason}. Fix that, then re-run.`);
-      } else {
-        setInfo(`Drafted, but under target: ${short.join(", ")}. Re-run to fill the gaps.`);
-      }
-    } catch (e) {
-      setInfo(`Suggest failed: ${e}`);
-    } finally {
-      setSuggesting(false);
+    // "all domains" must hit EVERY domain with its own request for `count`, not a
+    // single call the engine spreads thin - that left some domains empty. Loop
+    // per domain (the path that works for a single domain), one job each.
+    const targets = domain === "all" ? allDomains.map((d) => d.toLowerCase()) : [domain];
+    for (const t of targets) {
+      void startQuestionSuggest({ vault: vaultPath, domain: t, count: suggestCount, cli, model });
     }
+    setInfo(
+      domain === "all"
+        ? `Drafting ${suggestCount} question${suggestCount === 1 ? "" : "s"} for each of ${targets.length} domains in the background. You can navigate away; results appear here when ready.`
+        : `Drafting ${suggestCount} question${suggestCount === 1 ? "" : "s"} for ${titleCase(domain)} in the background. You can navigate away; results appear here when ready.`,
+    );
+    setSuggestOpen(false);
   }
 
   const openEditor = (q: BenchQuestion | "new") => {
@@ -789,6 +747,32 @@ export function BenchQuestions({
           <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" /> {info}
         </div>
       )}
+      {/* Background suggest jobs: surface running + finished state from the
+          module-scope registry, so it's visible on return even after remount. */}
+      {runningJobs.length > 0 && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-accent-border bg-accent-soft/30 px-3 py-2 text-xs text-text-secondary">
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-accent" />
+          Drafting in the background: {runningJobs.map((j) => titleCase(j.domain)).join(", ")}. You can leave this page; results appear here when ready.
+        </div>
+      )}
+      {qJobs
+        .filter((j) => j.vault === vaultPath && j.status === "error")
+        .map((j) => (
+          <div key={j.id} className="mb-4 flex items-center gap-2 rounded-lg border border-warn/40 bg-surface px-3 py-2 text-xs text-text-secondary">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warn" />
+            Couldn't draft {titleCase(j.domain)}: {j.error}. Fix that, then re-run.
+          </div>
+        ))}
+      {(() => {
+        const doneJobs = qJobs.filter((j) => j.vault === vaultPath && j.status === "done" && (j.added ?? 0) > 0);
+        if (doneJobs.length === 0) return null;
+        return (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-ok/40 bg-surface px-3 py-2 text-xs text-text-secondary">
+            <Check className="h-3.5 w-3.5 shrink-0 text-ok" />
+            Drafted {doneJobs.map((j) => `${j.added} for ${titleCase(j.domain)}`).join(", ")}. Review the ground truth before trusting scores.
+          </div>
+        );
+      })()}
       {shown.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
           No questions{filter !== "all" ? ` in ${titleCase(filter)}` : ""} yet. Hit <span className="text-accent">New question</span>, <span className="text-accent">Suggest with AI</span>, or <span className="text-accent">Import</span> to add some.
