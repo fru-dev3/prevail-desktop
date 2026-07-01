@@ -8,18 +8,17 @@ import type { LucideIcon } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke, listen } from "./bridge";
 import { MODELS, MODEL_SEP } from "./constants";
-import { scoreColor, titleCase } from "./format";
+import { relTime, scoreColor, titleCase } from "./format";
 import { isLocalCli } from "./helpers";
 import { curatedFor, modelLabel, modelsFor, parseRunLabel } from "./helpers2";
-import { BenchScheduleCard } from "./cards";
 import { PREF, getPref, isBunkerOn, lsGet, lsSet } from "./storage";
 import { BenchCrumbs, Field, ScoreBar } from "./panels";
-import { Sparkline } from "./ui";
+import { Sparkline, Toggle } from "./ui";
 import { ArenaBars, ArenaHeader, ArenaInsight, ArenaMetric, ArenaRightRail, ArenaStatCard, heatBg } from "./arena/arenaui";
 import { domainIcon } from "./icons";
-import { BENCH_CLI_OPTIONS, BENCH_SCHED, benchBatches, benchFreqLabel, benchNotify, cancelBenchBatch, executeBenchBatch, startQuestionSuggest, useBenchBatches, useQuestionSuggest } from "./bench";
-import { canonicalPresets, deleteSuite, saveSuite, useSuites } from "./bench-presets";
-import type { AvailablePresetModel, BenchSuite, CanonicalPreset } from "./bench-presets";
+import { BENCH_CLI_OPTIONS, benchBatches, benchFreqLabel, benchFreqMs, benchNotify, cancelBenchBatch, executeBenchBatch, runBenchModels, startQuestionSuggest, useBenchBatches, useQuestionSuggest } from "./bench";
+import { canonicalPresets, deleteSuite, saveSuite, useSuites, useSchedules, upsertSchedule, updateSchedule, removeSchedule, presetScheduleId } from "./bench-presets";
+import type { AvailablePresetModel, BenchSchedule, BenchSuite, CanonicalPreset } from "./bench-presets";
 import { ProviderMark } from "./marks";
 import { autoVerifyClis, useCliVerifyLive } from "./verify";
 import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, CliInfo, Domain, EngineApp, MatrixRow, RunDetail } from "./types";
@@ -991,7 +990,13 @@ export function BenchRunConfig({
   const suites = useSuites();
   const [suiteName, setSuiteName] = useState("");
   const [savingSuite, setSavingSuite] = useState(false);
-  const [scheduledSuiteId, setScheduledSuiteId] = useState<string | null>(null);
+  // Live list of schedule entries (many, each its own cadence). The card and the
+  // Schedule page both read from this one source of truth.
+  const schedules = useSchedules();
+  // Which preset card currently has its cadence picker open (keyed by schedule id).
+  const [cadencePickerFor, setCadencePickerFor] = useState<string | null>(null);
+  // Source filter for the unified preset list: All / Canonical / AI / Saved.
+  const [presetFilter, setPresetFilter] = useState<"all" | "canonical" | "ai" | "saved">("all");
   const selModelArr = Array.from(selModels);
 
   // ── The AVAILABLE MODEL UNIVERSE (shared by canonical + AI presets) ──────────
@@ -1098,32 +1103,27 @@ export function BenchRunConfig({
   const runPreset = (p: CanonicalPreset) => onRunSuite({ mode: "single", models: p.models, domains: [] });
   const savePreset = (p: CanonicalPreset) => saveSuite({ name: p.name, mode: "single", models: p.models, domains: [] });
 
-  // Put a suite on the existing background scheduler by writing the "custom" scope
-  // it already understands (models + domains). No new scheduler needed.
-  const scheduleSuite = (s: BenchSuite) => {
-    lsSet(BENCH_SCHED.scopeMode, "custom");
-    lsSet(BENCH_SCHED.scopeModels, s.models.join(","));
-    lsSet(BENCH_SCHED.scopeDomains, s.domains.join(","));
-    lsSet(BENCH_SCHED.enabled, "1");
-    if (!lsGet(BENCH_SCHED.freq, "")) lsSet(BENCH_SCHED.freq, "weekly");
-    setScheduledSuiteId(s.id);
-    // The sidebar / home schedule indicators sync on this event.
+  // ── Scheduling (multiple entries, each its own cadence) ──────────────────────
+  // Schedule a preset by name+models onto its OWN list entry with the chosen
+  // cadence. Keyed by presetScheduleId(name) so scheduling the same preset again
+  // updates that entry instead of piling up duplicates.
+  const schedulePreset = (name: string, models: string[], domains: string[], freq: BenchSchedule["freq"]) => {
+    upsertSchedule({ id: presetScheduleId(name), name, models, domains, freq, enabled: true });
+    setCadencePickerFor(null);
     window.dispatchEvent(new Event("prevail:bench-sched"));
   };
+  const unschedulePreset = (name: string) => {
+    removeSchedule(presetScheduleId(name));
+    setCadencePickerFor(null);
+    window.dispatchEvent(new Event("prevail:bench-sched"));
+  };
+  // The existing schedule entry for a preset (by name), if any.
+  const scheduleFor = (name: string): BenchSchedule | undefined =>
+    schedules.find((s) => s.id === presetScheduleId(name));
   const suiteScopeLabel = (s: BenchSuite) =>
     s.domains.length === 0 ? "all domains"
     : s.domains.length <= 2 ? s.domains.map(titleCase).join(", ")
     : `${s.domains.length} domains`;
-  const schedFreq = benchFreqLabel(lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
-  // Reflect an already-scheduled suite across remounts: if the custom schedule's
-  // models+domains match a saved suite, mark it scheduled.
-  useEffect(() => {
-    if (lsGet(BENCH_SCHED.enabled, "0") !== "1" || lsGet(BENCH_SCHED.scopeMode, "latest") !== "custom") { setScheduledSuiteId(null); return; }
-    const m = lsGet(BENCH_SCHED.scopeModels, "").split(",").filter(Boolean).sort().join(",");
-    const d = lsGet(BENCH_SCHED.scopeDomains, "").split(",").filter(Boolean).sort().join(",");
-    const hit = suites.find((s) => [...s.models].sort().join(",") === m && [...s.domains].sort().join(",") === d);
-    setScheduledSuiteId(hit ? hit.id : null);
-  }, [suites]);
 
   // While a benchmark is in flight (or just finished with errors), the page
   // IS the progress: the config disappears and each model gets a live
@@ -1659,118 +1659,156 @@ export function BenchRunConfig({
               })}
             </div>
           );
-          const PresetCard = ({ p, tone }: { p: CanonicalPreset; tone: "canonical" | "ai" }) => {
-            // Reflect whether this preset is already in the saved library, so the
-            // Save button actually changes state when you click it.
-            const saved = suites.some((s) => s.name.trim().toLowerCase() === p.name.trim().toLowerCase());
+          // ── Unified preset model. Canonical, AI, and Saved presets all become
+          // one shape so a SINGLE card renders every source identically. `suite`
+          // is set only for saved presets (the ones you can Edit / Delete). ──────
+          type Source = "canonical" | "ai" | "saved";
+          type UnifiedPreset = { source: Source; name: string; rationale?: string; models: string[]; domains: string[]; suite?: BenchSuite };
+          const unified: UnifiedPreset[] = [
+            ...canonPresets.map((p): UnifiedPreset => ({ source: "canonical", name: p.name, rationale: p.rationale, models: p.models, domains: [] })),
+            ...(aiPresets ?? []).map((p): UnifiedPreset => ({ source: "ai", name: p.name, rationale: p.rationale, models: p.models, domains: [] })),
+            ...suites.map((s): UnifiedPreset => ({ source: "saved", name: s.name, models: s.models, domains: s.domains, suite: s })),
+          ];
+          const filtered = presetFilter === "all" ? unified : unified.filter((u) => u.source === presetFilter);
+          const SOURCE_META: Record<Source, { label: string; badge: string }> = {
+            canonical: { label: "Canonical", badge: "border-border-subtle bg-surface-warm text-text-secondary" },
+            ai: { label: "AI", badge: "border-accent-border bg-accent-soft text-accent" },
+            saved: { label: "Saved", badge: "border-ok/40 bg-ok/10 text-ok" },
+          };
+          const CADENCES: BenchSchedule["freq"][] = ["daily", "weekly", "monthly"];
+
+          const PresetCard = ({ p }: { p: UnifiedPreset }) => {
+            // Whether this preset already lives in the saved library, so Save/Saved
+            // reflects state honestly across every source.
+            const saved = p.source === "saved" || suites.some((s) => s.name.trim().toLowerCase() === p.name.trim().toLowerCase());
+            const sched = scheduleFor(p.name);
+            const pickerOpen = cadencePickerFor === presetScheduleId(p.name);
+            const meta = SOURCE_META[p.source];
+            const doRun = () => p.suite ? onRunSuite(p.suite) : runPreset({ name: p.name, rationale: p.rationale ?? "", models: p.models });
+            const doApply = () => p.suite ? loadSuite(p.suite) : applyPreset({ name: p.name, rationale: p.rationale ?? "", models: p.models });
             return (
-            <div className={`rounded-lg border px-3 py-2 ${tone === "ai" ? "border-accent-border/60 bg-accent-soft/20" : "border-border-subtle bg-surface"}`}>
+            <div className={`rounded-lg border px-3 py-2 ${p.source === "ai" ? "border-accent-border/60 bg-accent-soft/20" : "border-border-subtle bg-surface"}`}>
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    {tone === "ai" && <Sparkles className="h-3 w-3 shrink-0 text-accent" aria-hidden />}
+                    <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider ${meta.badge}`}>
+                      {p.source === "ai" && <Sparkles className="h-2.5 w-2.5" aria-hidden />}{meta.label}
+                    </span>
                     <span className="truncate text-[13px] font-medium text-text-primary">{p.name}</span>
-                    {saved && <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] text-accent"><Check className="h-2.5 w-2.5" strokeWidth={3} /> saved</span>}
-                    <span className="ml-auto shrink-0 font-mono text-[10px] text-text-muted">{p.models.length} model{p.models.length === 1 ? "" : "s"}</span>
+                    {sched && <span title={`Scheduled ${benchFreqLabel(sched.freq)}`} className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] text-accent"><CalendarClock className="h-2.5 w-2.5" /> {benchFreqLabel(sched.freq)}</span>}
+                    <span className="ml-auto shrink-0 font-mono text-[10px] text-text-muted">{p.models.length} model{p.models.length === 1 ? "" : "s"}{p.domains.length ? ` · ${suiteScopeLabel(p.suite!)}` : ""}</span>
                   </div>
                   {p.rationale && <div className="mt-0.5 text-[11px] leading-snug text-text-muted">{p.rationale}</div>}
                   <div className="mt-1.5"><PresetChips models={p.models} /></div>
                 </div>
               </div>
-              <div className="mt-2 flex items-center gap-1.5">
-                <button onClick={() => runPreset(p)} disabled={running} title="Run this preset now" className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <button onClick={doRun} disabled={running} title="Run this preset now" className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
                   <Play className="h-3 w-3" /> Run
                 </button>
-                <button onClick={() => applyPreset(p)} title="Drop these models onto the Run panel to tweak" className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
+                <button onClick={doApply} title="Drop these models onto the Run panel to tweak" className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
                   Apply
                 </button>
                 <button
-                  onClick={() => savePreset(p)}
-                  title={saved ? "Already in your library. Click to update it with the current models." : "Save this preset into your library"}
+                  onClick={() => { if (p.source === "saved" && p.suite) { loadSuite(p.suite); setSuiteName(p.suite.name); setSavingSuite(true); } else { savePreset({ name: p.name, rationale: p.rationale ?? "", models: p.models }); } }}
+                  title={saved ? (p.source === "saved" ? "Update this saved preset with the models in the editor" : "Already in your library. Click to update it with the current models.") : "Save this preset into your library"}
                   className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] transition-colors ${saved ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}
                 >
-                  {saved ? <><Check className="h-3 w-3" strokeWidth={3} /> Saved</> : <><Bookmark className="h-3 w-3" /> Save</>}
+                  {saved ? <><Check className="h-3 w-3" strokeWidth={3} /> {p.source === "saved" ? "Update" : "Saved"}</> : <><Bookmark className="h-3 w-3" /> Save</>}
                 </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setCadencePickerFor(pickerOpen ? null : presetScheduleId(p.name))}
+                    title={sched ? "Change cadence or unschedule" : "Schedule this preset on its own cadence"}
+                    className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] transition-colors ${sched ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}
+                  >
+                    <CalendarClock className="h-3 w-3" /> {sched ? `Scheduled · ${benchFreqLabel(sched.freq)}` : "Schedule"}
+                  </button>
+                  {pickerOpen && (
+                    <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-border bg-surface p-1 shadow-lg">
+                      <div className="px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Run on a cadence</div>
+                      {CADENCES.map((f) => (
+                        <button key={f} onClick={() => schedulePreset(p.name, p.models, p.domains, f)}
+                          className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-left font-mono text-[11px] hover:bg-surface-warm ${sched?.freq === f ? "text-accent" : "text-text-secondary"}`}>
+                          {f}{sched?.freq === f && <Check className="h-3 w-3" strokeWidth={3} />}
+                        </button>
+                      ))}
+                      {sched && (
+                        <button onClick={() => unschedulePreset(p.name)} className="mt-1 flex w-full items-center gap-1.5 rounded-md border-t border-border-subtle px-2 py-1 text-left font-mono text-[11px] text-text-muted hover:text-err">
+                          <Trash2 className="h-3 w-3" /> Unschedule
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {p.source === "saved" && p.suite && (
+                  <>
+                    <button onClick={() => { loadSuite(p.suite!); setSuiteName(p.suite!.name); setSavingSuite(true); }} title="Edit: load this preset's models into the editor above, adjust, then Save to update it" className="ml-auto text-text-muted/60 hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>
+                    <button onClick={() => { if (sched) removeSchedule(sched.id); deleteSuite(p.suite!.id); }} title="Delete this saved preset" className="text-text-muted/50 hover:text-err"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </>
+                )}
               </div>
             </div>
             );
           };
+
+          const FILTERS: Array<{ id: typeof presetFilter; label: string; count: number }> = [
+            { id: "all", label: "All", count: unified.length },
+            { id: "canonical", label: "Canonical", count: canonPresets.length },
+            { id: "ai", label: "AI", count: aiPresets?.length ?? 0 },
+            { id: "saved", label: "Saved", count: suites.length },
+          ];
           return (
-            <div className="space-y-4">
-              {/* Canonical, always-present. */}
-              {canonPresets.length > 0 && (
-                <div className="space-y-2">
-                  <div className="font-mono text-[10px] uppercase tracking-wide text-text-muted">Canonical · resolves live</div>
-                  {canonPresets.map((p) => <PresetCard key={`canon-${p.name}`} p={p} tone="canonical" />)}
-                </div>
-              )}
-
-              {/* AI-maintained library. */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="font-mono text-[10px] uppercase tracking-wide text-text-muted">AI presets · maintained by AI</div>
-                  <div className="ml-auto flex items-center gap-1.5">
-                    <button onClick={suggestAiPresets} disabled={aiBusy || availableModelsForAi.length === 0} title="Ask AI to curate a library of presets over your current models" className="inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[11px] text-accent hover:bg-accent-soft/70 disabled:opacity-40">
-                      {aiBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} {aiPresets ? "Refresh" : "Suggest presets"}
+            <div className="space-y-3">
+              {/* Filter + AI-suggest control. One list, filtered by source. */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-lg border border-border bg-background p-0.5">
+                  {FILTERS.map((f) => (
+                    <button key={f.id} onClick={() => setPresetFilter(f.id)}
+                      className={`rounded-md px-2.5 py-1 font-mono text-[11px] transition-colors ${presetFilter === f.id ? "bg-accent text-background shadow-sm" : "text-text-secondary hover:bg-surface-warm"}`}>
+                      {f.label}<span className="ml-1 opacity-60">{f.count}</span>
                     </button>
-                  </div>
+                  ))}
                 </div>
-                {aiBusy && <div className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface px-3 py-2 font-mono text-[11px] text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> Curating presets over {availableModelsForAi.length} model{availableModelsForAi.length === 1 ? "" : "s"}…</div>}
-                {aiErr && !aiBusy && <div className="flex items-center gap-2 rounded-lg border border-err/40 bg-surface px-3 py-2 text-[11px] text-err"><AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {aiErr}</div>}
-                {!aiBusy && aiPresets && aiPresets.map((p) => <PresetCard key={`ai-${p.name}`} p={p} tone="ai" />)}
-                {!aiBusy && !aiErr && !aiPresets && (
+                <button onClick={suggestAiPresets} disabled={aiBusy || availableModelsForAi.length === 0} title="Ask AI to curate a library of presets over your current models" className="ml-auto inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[11px] text-accent hover:bg-accent-soft/70 disabled:opacity-40">
+                  {aiBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} {aiPresets ? "Refresh AI" : "Suggest presets"}
+                </button>
+              </div>
+
+              {aiBusy && <div className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface px-3 py-2 font-mono text-[11px] text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> Curating presets over {availableModelsForAi.length} model{availableModelsForAi.length === 1 ? "" : "s"}…</div>}
+              {aiErr && !aiBusy && <div className="flex items-center gap-2 rounded-lg border border-err/40 bg-surface px-3 py-2 text-[11px] text-err"><AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {aiErr}</div>}
+
+              {/* The unified, filtered list. */}
+              <div className="space-y-2">
+                {filtered.map((p) => <PresetCard key={`${p.source}-${p.name}`} p={p} />)}
+                {filtered.length === 0 && (
                   <div className="rounded-lg border border-dashed border-border px-3 py-2 font-mono text-[11px] text-text-muted">
-                    AI can suggest presets like Top Frontier, Second-in-class, or Open source over your {availableModelsForAi.length} runnable model{availableModelsForAi.length === 1 ? "" : "s"}.
+                    {presetFilter === "ai" && !aiPresets
+                      ? `AI can suggest presets like Top Frontier, Second-in-class, or Open source over your ${availableModelsForAi.length} runnable model${availableModelsForAi.length === 1 ? "" : "s"}.`
+                      : presetFilter === "saved"
+                      ? "No saved presets yet. Save any preset, or select models below and save them as one."
+                      : "No presets to show for this filter."}
                   </div>
                 )}
               </div>
 
-              {/* Your saved snapshots (unchanged manual library). */}
-              <div className="space-y-2">
-                {(canonPresets.length > 0 || aiPresets) && suites.length > 0 && (
-                  <div className="font-mono text-[10px] uppercase tracking-wide text-text-muted">Saved by you</div>
-                )}
-          {suites.map((s) => {
-            const isScheduled = scheduledSuiteId === s.id;
-            return (
-              <div key={s.id} className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-3 py-2">
-                <button onClick={() => loadSuite(s)} title="Load into the editor to tweak (does not run)" className="min-w-0 flex-1 text-left">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-[13px] font-normal text-text-secondary hover:text-accent">{s.name}</span>
-                    {isScheduled && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] text-accent"><CalendarClock className="h-2.5 w-2.5" /> {schedFreq}</span>}
-                  </div>
-                  <div className="mt-0.5 font-mono text-[10px] text-text-muted">
-                    {s.models.length} model{s.models.length === 1 ? "" : "s"}{s.domains.length ? ` · ${suiteScopeLabel(s)}` : ""}
-                  </div>
+              {/* Save the current selection as a new preset. */}
+              {savingSuite ? (
+                <div className="flex items-center gap-2 rounded-lg border border-accent-border bg-accent-soft/30 px-3 py-2">
+                  <input
+                    autoFocus value={suiteName} onChange={(e) => setSuiteName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") commitSuite(); if (e.key === "Escape") { setSavingSuite(false); setSuiteName(""); } }}
+                    placeholder="preset name (e.g. Frontier x Finance)" className="flex-1 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] outline-none focus:border-accent-border"
+                  />
+                  <span className="font-mono text-[10px] text-text-muted">{selModels.size} model{selModels.size === 1 ? "" : "s"}</span>
+                  <button onClick={commitSuite} disabled={!suiteName.trim() || selModels.size === 0} className="rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background disabled:opacity-40">{suites.some((x) => x.name.toLowerCase() === suiteName.trim().toLowerCase()) ? "Update" : "Save"}</button>
+                  <button onClick={() => { setSavingSuite(false); setSuiteName(""); }} className="text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              ) : (
+                <button onClick={() => setSavingSuite(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-accent-border hover:text-accent">
+                  <Plus className="h-3.5 w-3.5" /> Save selected models as a preset
                 </button>
-                <button onClick={() => onRunSuite(s)} disabled={running} title="Run this suite now" className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
-                  <Play className="h-3 w-3" /> Run
-                </button>
-                <button onClick={() => scheduleSuite(s)} title="Run this suite on the background schedule" className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] ${isScheduled ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}>
-                  <CalendarClock className="h-3 w-3" /> {isScheduled ? "Scheduled" : "Schedule"}
-                </button>
-                <button onClick={() => { loadSuite(s); setSuiteName(s.name); setSavingSuite(true); }} title="Edit: load this preset's models into the editor above, adjust the selection, then Save to update it" className="text-text-muted/60 hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>
-                <button onClick={() => { if (isScheduled) setScheduledSuiteId(null); deleteSuite(s.id); }} title="Delete suite" className="text-text-muted/50 hover:text-err"><Trash2 className="h-3.5 w-3.5" /></button>
-              </div>
-            );
-          })}
-          {savingSuite ? (
-            <div className="flex items-center gap-2 rounded-lg border border-accent-border bg-accent-soft/30 px-3 py-2">
-              <input
-                autoFocus value={suiteName} onChange={(e) => setSuiteName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") commitSuite(); if (e.key === "Escape") { setSavingSuite(false); setSuiteName(""); } }}
-                placeholder="suite name (e.g. Frontier x Finance)" className="flex-1 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] outline-none focus:border-accent-border"
-              />
-              <span className="font-mono text-[10px] text-text-muted">{selModels.size} model{selModels.size === 1 ? "" : "s"}</span>
-              <button onClick={commitSuite} disabled={!suiteName.trim() || selModels.size === 0} className="rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] text-background disabled:opacity-40">{suites.some((x) => x.name.toLowerCase() === suiteName.trim().toLowerCase()) ? "Update" : "Save"}</button>
-              <button onClick={() => { setSavingSuite(false); setSuiteName(""); }} className="text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
-            </div>
-          ) : (
-            <button onClick={() => setSavingSuite(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-accent-border hover:text-accent">
-              <Plus className="h-3.5 w-3.5" /> Save selected models as a preset
-            </button>
-          )}
-              </div>
+              )}
             </div>
           );
         })()}
@@ -2763,6 +2801,97 @@ function ChartRail({ models, onPick }: { models: ChartModel[]; onPick: (key: str
   );
 }
 
+// Compact future-time label for a NEXT RUN timestamp ("in 3h", "in 2d", or a
+// short date when it's further out). Mirrors relTime's brevity for the past.
+function nextRunRel(ts: number): string {
+  const s = Math.floor((ts - Date.now()) / 1000);
+  if (s <= 0) return "due now";
+  if (s < 3600) return `in ${Math.max(1, Math.floor(s / 60))}m`;
+  if (s < 86400) return `in ${Math.floor(s / 3600)}h`;
+  if (s < 7 * 86400) return `in ${Math.floor(s / 86400)}d`;
+  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+// ── The SCHEDULE PAGE ─────────────────────────────────────────────────────────
+// Every scheduled entry as a row: name, model count (+ domain scope), cadence,
+// last run, NEXT run, an enable/disable toggle, Run now, and Remove. The schedule
+// list (prevail.bench.schedules) is the source of truth. NOTE: the scheduler is a
+// client tick that only fires while the app is open, so "next run" is the earliest
+// time a run becomes due, not a guaranteed wall-clock fire.
+function BenchSchedulePage({ vault }: { vault: string }) {
+  const schedules = useSchedules();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const runNow = async (s: BenchSchedule) => {
+    setBusy(s.id); setMsg(null);
+    try {
+      const ok = await runBenchModels(vault, s.models, s.domains);
+      if (ok) {
+        updateSchedule(s.id, { lastRun: Date.now() });
+        window.dispatchEvent(new Event("prevail:bench-sched"));
+        setMsg(`Started "${s.name}" now: watch progress in the sidebar and on the leaderboard.`);
+      } else {
+        setMsg(`Nothing runnable in "${s.name}" right now (its models may not be installed, or Bunker Mode filtered them out).`);
+      }
+    } catch (e) {
+      setMsg(`Couldn't start "${s.name}": ${e}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const scopeLabel = (s: BenchSchedule) =>
+    s.domains.length === 0 ? "all domains"
+    : s.domains.length <= 2 ? s.domains.map(titleCase).join(", ")
+    : `${s.domains.length} domains`;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <CalendarClock className="h-4 w-4 text-accent" />
+        <span className="text-sm font-semibold text-text-primary">Scheduled runs</span>
+        <span className="font-mono text-[10px] text-text-muted">{schedules.length} scheduled</span>
+      </div>
+      <div className="text-xs text-text-secondary">
+        Each preset runs on its own cadence so drift shows up on the leaderboard and in History without manual runs. Runs fire while the app is open, so next run is the earliest a run becomes due.
+      </div>
+      {msg && <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2 font-mono text-[11px] text-text-secondary">{msg}</div>}
+      {schedules.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center">
+          <CalendarClock className="mx-auto h-6 w-6 text-text-muted/50" />
+          <div className="mt-2 text-sm font-medium text-text-primary">Nothing scheduled yet</div>
+          <div className="mt-1 font-mono text-[11px] text-text-muted">Open Presets and click Schedule on any preset to run it daily, weekly, or monthly.</div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {schedules.map((s) => {
+            const next = s.lastRun ? s.lastRun + benchFreqMs(s.freq) : Date.now();
+            return (
+              <div key={s.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border-subtle bg-surface px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-[13px] font-medium text-text-primary">{s.name}</span>
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] text-accent"><CalendarClock className="h-2.5 w-2.5" /> {benchFreqLabel(s.freq)}</span>
+                    {!s.enabled && <span className="shrink-0 rounded-full border border-border-subtle bg-surface-warm px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted">paused</span>}
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[10px] text-text-muted">
+                    <span>{s.models.length} model{s.models.length === 1 ? "" : "s"} · {scopeLabel(s)}</span>
+                    <span>last run {relTime(s.lastRun || null)}</span>
+                    <span className={s.enabled ? "text-accent" : ""}>next run {s.enabled ? nextRunRel(next) : "paused"}</span>
+                  </div>
+                </div>
+                <Toggle on={s.enabled} onChange={(v) => { updateSchedule(s.id, { enabled: v }); window.dispatchEvent(new Event("prevail:bench-sched")); }} label={`Enable ${s.name}`} />
+                <button onClick={() => void runNow(s)} disabled={busy === s.id} title="Run this schedule now" className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-40">
+                  {busy === s.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />} Run now
+                </button>
+                <button onClick={() => { removeSchedule(s.id); window.dispatchEvent(new Event("prevail:bench-sched")); }} title="Remove this schedule" className="text-text-muted/50 hover:text-err"><Trash2 className="h-3.5 w-3.5" /></button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Model × domain pivot - rows are runs (models), columns are domains, cells
 // are judge averages. Best cell per column is highlighted so "which model
 // wins which domain" reads at a glance.
@@ -2787,6 +2916,8 @@ export function BenchmarkPanel({
   const [view, setView] = useState<"run" | "board" | "history" | "matrix" | "frontier" | "questions" | "scout" | "schedule">(
     initialModel ? "board" : initialDomain ? "run" : "board",
   );
+  // Live schedule list (for the footer's scheduled-runs indicator).
+  const schedules = useSchedules();
   // Domain filter shared by Leaderboard + History, shown in the same bar.
   const [domainFilter, setDomainFilter] = useState<string>(initialDomain ? initialDomain.toLowerCase() : "all");
   // Whether the left section-nav rail is collapsed to an icon-only strip. Choice
@@ -3216,7 +3347,7 @@ export function BenchmarkPanel({
         )}
         {view === "schedule" && (
           <div className="px-8 pb-6">
-            <BenchScheduleCard vault={vaultPath} />
+            <BenchSchedulePage vault={vaultPath} />
           </div>
         )}
         {(view === "board" || view === "history" || view === "matrix" || view === "frontier") && (
@@ -3251,14 +3382,14 @@ export function BenchmarkPanel({
         const lastDate = runs.reduce((a, r) => (r.date > a ? r.date : a), "");
         const leader = [...runs].filter((r) => r.judge_avg != null).sort((a, b) => (b.judge_avg ?? -1) - (a.judge_avg ?? -1))[0];
         const leaderModel = leader ? parseRunLabel(leader.label).model : null;
-        const schedOn = lsGet(BENCH_SCHED.enabled, "0") === "1";
+        const activeScheds = schedules.filter((s) => s.enabled);
         return (
           <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border-subtle bg-surface-warm/40 px-4 py-2 font-mono text-[10px] text-text-muted">
             <span>{modelCount} model{modelCount === 1 ? "" : "s"} · {runs.length} run{runs.length === 1 ? "" : "s"}{lastDate ? ` · last ${lastDate}` : ""}</span>
             {leaderModel && <span className="inline-flex items-center gap-1"><Crown className="h-3 w-3 text-accent" /> {leaderModel} {leader?.judge_avg?.toFixed(1)}</span>}
-            <button onClick={() => setView("schedule")} className="ml-auto inline-flex items-center gap-1.5 hover:text-accent" title="Auto-run schedule (Schedule tab)">
-              <span className={`h-1.5 w-1.5 rounded-full ${schedOn ? "bg-ok" : "bg-text-muted/40"}`} />
-              auto-runs {schedOn ? benchFreqLabel(lsGet(BENCH_SCHED.freq, "weekly") || "weekly") : "off"}
+            <button onClick={() => setView("schedule")} className="ml-auto inline-flex items-center gap-1.5 hover:text-accent" title="Scheduled runs (Schedule tab)">
+              <span className={`h-1.5 w-1.5 rounded-full ${activeScheds.length > 0 ? "bg-ok" : "bg-text-muted/40"}`} />
+              {activeScheds.length > 0 ? `${activeScheds.length} scheduled` : "none scheduled"}
             </button>
           </div>
         );
