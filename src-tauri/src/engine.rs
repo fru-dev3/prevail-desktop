@@ -1197,6 +1197,39 @@ pub fn engine_app_set_soul(id: String, soul: String) -> Result<serde_json::Value
     run_engine_json(&["connectors", "set", &id, "soul", &soul, "--json"])
 }
 
+/// AI-draft an app's Ideal State (its soul.md) from the app's real context —
+/// catalog description, existing note, domains it feeds, skills, connection
+/// method — optionally web-researching the app for best-practice capabilities.
+/// Mirrors `domain_draft_ideal` (the per-domain drafter) for apps, but shells
+/// the sidecar (which owns the app catalog + CLI detection) rather than calling
+/// the model in-process. Returns the drafted markdown for the editor to show;
+/// the user reviews, edits, and Saves — which writes the SAME soul.md the chat
+/// and agent read, so drafting here or from chat lands on one file.
+/// Returns the raw draft string (not JSON) so the UI can drop it straight into
+/// the editor.
+#[tauri::command]
+pub fn engine_app_draft_ideal(id: String, provider: String, model: String) -> Result<String, String> {
+    let mut args: Vec<&str> = vec!["connectors", "draft-ideal", &id];
+    if !provider.trim().is_empty() {
+        args.push("--cli");
+        args.push(&provider);
+    }
+    if !model.trim().is_empty() {
+        args.push("--model");
+        args.push(&model);
+    }
+    // run_engine_json appends --json, so the sidecar emits { ok, draft } | { ok:false, error }.
+    let v = run_engine_json(&args)?;
+    if v.get("ok").and_then(|b| b.as_bool()) == Some(false) {
+        return Err(v.get("error").and_then(|e| e.as_str()).unwrap_or("draft failed").to_string());
+    }
+    let draft = v.get("draft").and_then(|d| d.as_str()).unwrap_or("").trim().to_string();
+    if draft.is_empty() {
+        return Err("the model returned an empty draft".into());
+    }
+    Ok(draft)
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Autonomy controls (the global brake) + playbooks (the orchestrator).
 

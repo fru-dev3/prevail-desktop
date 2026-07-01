@@ -462,6 +462,7 @@ pub fn run() {
             engine::engine_app_set_schedule,
             engine::engine_app_get_soul,
             engine::engine_app_set_soul,
+            engine::engine_app_draft_ideal,
             engine::engine_gws_pending_list,
             engine::engine_gws_approve,
             engine::engine_autonomy_status,

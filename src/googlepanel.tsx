@@ -14,11 +14,13 @@ import type { ReactNode } from "react";
 import {
   AlertTriangle, Boxes, Check, Loader2, Plus, RefreshCw, ExternalLink, Download, Link2,
   Eye, ShieldCheck, Trash2, Sparkles, Pencil, Play, X, Globe, MessageSquare, Star,
+  Activity, Zap, HelpCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke, listen } from "./bridge";
 import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
+import { PREF, getPref } from "./storage";
 import { AppRowLogo } from "./panels3";
 import { ConnectorRunPanel, type ConnectorRunMode } from "./connectorrun";
 import type { BrandLogo, ChatEvent } from "./types";
@@ -237,6 +239,23 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
       if (r?.ok !== false) { setSoulText(typeof r?.soul === "string" ? r.soul : soulDraft.trim()); setEditSoul(false); }
     } catch { /* leave editor open on failure */ } finally { setSoulBusy(false); }
   }, [soulDraft]);
+  // Draft with AI: research Google + gather its context on the sidecar, then
+  // drop the returned markdown into the editor for review. Writes nothing on
+  // its own — the user reviews, edits, then Saves, which persists to the SAME
+  // apps/google/soul.md the chat/agent reads, so this is consistent with
+  // drafting from chat.
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftErr, setDraftErr] = useState<string | null>(null);
+  const draftIdeal = useCallback(async () => {
+    setDraftBusy(true); setDraftErr(null);
+    try {
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      const text = await invoke<string>("engine_app_draft_ideal", { id: GOOGLE_APP_ID, provider, model });
+      if (text?.trim()) { setSoulDraft(text.trim()); setEditSoul(true); }
+    } catch (e) { setDraftErr(String(e)); }
+    finally { setDraftBusy(false); }
+  }, []);
 
   // Remove a Google account (delete its gws config dir) so the user can clear a
   // stuck/half-set-up account and start fresh. Re-scaffolds afterward.
@@ -331,7 +350,7 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
   const TABS: { id: GoogleTab; label: string; icon: LucideIcon }[] = [
     { id: "setup", label: "Setup", icon: Link2 },
     { id: "skills", label: "Skills", icon: Boxes },
-    { id: "soul", label: "Soul", icon: Sparkles },
+    { id: "soul", label: "Ideal State", icon: Sparkles },
     { id: "connections", label: "Connections", icon: Globe },
     { id: "chat", label: "Chat", icon: MessageSquare },
   ];
@@ -674,37 +693,75 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
           </div>
         )}
 
-        {/* SOUL TAB - the editable note (apps/google/soul.md), same as any app. */}
+        {/* IDEAL STATE TAB - a two-column layout: the editable ideal-state note
+            (apps/google/soul.md) on the left, helpful context on the right so
+            the tab reads as intentional rather than an empty white expanse. */}
         {tab === "soul" && (
-          <div className="max-w-2xl space-y-4">
-            <div className="rounded-xl border border-border-subtle bg-background/50 p-5">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Soul</h3>
-                {!editSoul && <button onClick={openSoulEditor} title="Edit soul" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
-              </div>
-              {editSoul ? (
-                <div className="mt-2 flex flex-col">
-                  <textarea autoFocus rows={5} value={soulDraft} onChange={(e) => setSoulDraft(e.target.value)}
-                    placeholder="Why Google is in your harness: what it feeds your world."
-                    className="w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-relaxed text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
-                  <div className="mt-2 flex items-center gap-2">
-                    <button onClick={saveSoul} disabled={soulBusy} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{soulBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
-                    <button onClick={() => setEditSoul(false)} className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">Cancel</button>
-                    <span className="ml-auto font-mono text-[10px] text-text-muted/70">apps/google/soul.md</span>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+            {/* LEFT: the editable Ideal State note + Draft with AI. */}
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col rounded-xl border border-border-subtle bg-background/50 p-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Ideal State</h3>
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={draftIdeal} disabled={draftBusy} title="Research Google Workspace and draft a best-practice ideal state" className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-50">
+                      {draftBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Draft with AI
+                    </button>
+                    {!editSoul && <button onClick={openSoulEditor} title="Edit ideal state" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
                   </div>
                 </div>
-              ) : soulText.trim() ? (
-                <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-text-secondary">{soulText.trim()}</p>
-              ) : (
-                <button onClick={openSoulEditor} className="mt-2 flex flex-col items-start justify-center rounded-lg border border-dashed border-border bg-surface/40 px-4 py-5 text-left hover:border-accent-border">
-                  <span className="text-[13px] text-text-secondary">Give Google a soul.</span>
-                  <span className="mt-0.5 text-[12px] text-text-muted">Why it's in your harness: your AI reads this as standing context.</span>
-                </button>
-              )}
+                <p className="mt-1.5 text-[12px] leading-relaxed text-text-muted">The ideal of what you want from Google Workspace if everything were possible. Your AI reads this as standing context.</p>
+                {draftErr && <p className="mt-2 text-[12px] text-err">{draftErr}</p>}
+                {editSoul ? (
+                  <div className="mt-3 flex flex-col">
+                    <textarea autoFocus rows={12} value={soulDraft} onChange={(e) => setSoulDraft(e.target.value)}
+                      placeholder="What Google Workspace is, the value it gives you, the data it can collect, the insights and metrics it can drive, and how it helps."
+                      className="w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-relaxed text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
+                    <div className="mt-2 flex items-center gap-2">
+                      <button onClick={saveSoul} disabled={soulBusy} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{soulBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
+                      <button onClick={() => setEditSoul(false)} className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">Cancel</button>
+                      <span className="ml-auto font-mono text-[10px] text-text-muted/70">apps/google/soul.md</span>
+                    </div>
+                  </div>
+                ) : soulText.trim() ? (
+                  <p className="mt-3 whitespace-pre-wrap text-[13px] leading-relaxed text-text-secondary">{soulText.trim()}</p>
+                ) : (
+                  <button onClick={openSoulEditor} className="mt-3 flex flex-col items-start justify-center rounded-lg border border-dashed border-border bg-surface/40 px-4 py-6 text-left hover:border-accent-border">
+                    <span className="text-[13px] text-text-secondary">Describe the ideal state for Google Workspace.</span>
+                    <span className="mt-0.5 text-[12px] text-text-muted">Type it, or use Draft with AI to research the app and fill it for you.</span>
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="rounded-xl border border-border-subtle bg-background/50 p-5">
-              <h3 className="text-sm font-semibold text-text-primary">How this connection works</h3>
-              <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">Google Workspace is one connection that reaches Gmail, Calendar, Drive, Docs, Sheets, Tasks and Contacts across every account you sign in. Prevail talks to Google through the local gws helper, so reading happens on this Mac and nothing leaves it unless you act. Reading is instant; sending, changing or deleting waits for your OK under Needs you.</p>
+            {/* RIGHT: the helpful context that fills the space. */}
+            <div className="flex flex-col gap-4">
+              <div className="rounded-xl border border-border-subtle bg-background/50 p-5">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><ShieldCheck className="h-4 w-4 text-accent" /> What a good ideal state covers</h3>
+                <ul className="mt-3 space-y-3">
+                  {([
+                    { icon: Sparkles, label: "Purpose", hint: "What this app is and does" },
+                    { icon: Star, label: "Value", hint: "What you should get out of it" },
+                    { icon: Download, label: "Data collected", hint: "What it can gather from you" },
+                    { icon: Activity, label: "Insights and metrics", hint: "What it can measure and reveal" },
+                    { icon: Zap, label: "How it helps", hint: "How it moves your day forward" },
+                  ] as { icon: LucideIcon; label: string; hint: string }[]).map((row) => {
+                    const RowIcon = row.icon;
+                    return (
+                      <li key={row.label} className="flex items-start gap-3">
+                        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent ring-1 ring-accent-border/40"><RowIcon className="h-3.5 w-3.5" /></span>
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-medium text-text-primary">{row.label}</div>
+                          <div className="text-[12px] leading-snug text-text-muted">{row.hint}</div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+              <div className="rounded-xl border border-border-subtle bg-background/50 p-5">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><HelpCircle className="h-4 w-4 text-accent" /> How this connection works</h3>
+                <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">Google Workspace is one connection that reaches Gmail, Calendar, Drive, Docs, Sheets, Tasks and Contacts across every account you sign in. Prevail talks to Google through the local gws helper, so reading happens on this Mac and nothing leaves it unless you act. Reading is instant; sending, changing or deleting waits for your OK under Needs you.</p>
+              </div>
             </div>
           </div>
         )}

@@ -60,7 +60,7 @@ describe("AppDetail — unified app-detail surface (the two surfaces merged into
   it("exposes both the rich tabs AND the operational facets for a connected app", async () => {
     renderDetail();
     // Rich connector tabs.
-    for (const label of ["Welcome", "Soul", "Journal", "Skills", "Connections", "Chat"]) {
+    for (const label of ["Welcome", "Ideal State", "Journal", "Skills", "Connections", "Chat"]) {
       expect(screen.getByRole("button", { name: new RegExp(`^${label}$`, "i") })).toBeInTheDocument();
     }
     // Operational facets ported from AppFacetPanel - the heart of the unification.
