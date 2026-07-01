@@ -983,6 +983,9 @@ export function BenchRunConfig({
 
   // Which job card is expanded to its question-by-question detail.
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
+  // Domain scope list expanded by default (still collapsible), so the domains are
+  // visible without a click.
+  const [domScopeOpen, setDomScopeOpen] = useState(true);
 
   // ── Saved Benchmark Suites (models + domains + mode), the one reusable unit ──
   const suites = useSuites();
@@ -1551,12 +1554,12 @@ export function BenchRunConfig({
                 key={d}
                 onClick={() => toggleScope(d)}
                 title={count === 0 ? "No questions yet: add or AI-suggest some in Questions" : `${count} question${count === 1 ? "" : "s"}`}
-                className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] transition-colors ${
+                className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] transition-all ${
                   on
                     ? "border-accent bg-accent font-semibold text-background shadow-sm"
                     : count === 0
-                      ? "border-border-subtle bg-background text-text-muted/60 hover:bg-surface-warm"
-                      : "border-border bg-background text-text-secondary hover:bg-surface-warm"
+                      ? "border-border-subtle bg-background text-text-muted/60 hover:border-accent-border/60 hover:bg-accent-soft/50 hover:text-accent"
+                      : "border-border bg-background text-text-secondary hover:-translate-y-0.5 hover:border-accent-border hover:bg-accent-soft hover:text-accent hover:shadow-sm"
                 }`}
               >
                 {Icon && <Icon className="h-3 w-3" />}
@@ -1571,10 +1574,9 @@ export function BenchRunConfig({
             ? "All domains"
             : (withQ.filter((d) => scope.has(d)).map(titleCase).join(", ") || `${scope.size} selected`);
           return (
-            // One collapsible list (collapsed by default) so the scope reads as a
-            // single quiet line - the full domain set only appears on expand, so
-            // the page isn't a wall of chips.
-            <details className="group">
+            // Collapsible list, expanded by default so the domains are visible up
+            // front; the user can still collapse it to a single quiet line.
+            <details className="group" open={domScopeOpen} onToggle={(e) => setDomScopeOpen((e.currentTarget as HTMLDetailsElement).open)}>
               <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md py-0.5 font-mono text-[11px] text-text-secondary transition-colors hover:text-accent">
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-muted transition-transform group-open:rotate-90" />
                 <span className="truncate">{selectedLabel}</span>
@@ -1583,7 +1585,7 @@ export function BenchRunConfig({
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     onClick={() => scope.forEach((d) => toggleScope(d))}
-                    className={`rounded-md border px-2.5 py-1 font-mono text-[11px] ${scope.size === 0 ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:bg-surface-warm"}`}
+                    className={`rounded-md border px-2.5 py-1 font-mono text-[11px] transition-all ${scope.size === 0 ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:-translate-y-0.5 hover:border-accent-border hover:bg-accent-soft hover:text-accent hover:shadow-sm"}`}
                   >
                     All
                   </button>
