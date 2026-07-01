@@ -16,7 +16,6 @@ import { PREF, getPref, isBunkerOn, lsGet, lsSet } from "./storage";
 import { BenchCrumbs, Field, ScoreBar } from "./panels";
 import { Sparkline } from "./ui";
 import { ArenaBars, ArenaHeader, ArenaInsight, ArenaMetric, ArenaRightRail, ArenaStatCard, heatBg } from "./arena/arenaui";
-import { CollapsibleSection } from "./collapsible";
 import { domainIcon } from "./icons";
 import { BENCH_CLI_OPTIONS, BENCH_SCHED, benchBatches, benchFreqLabel, benchNotify, cancelBenchBatch, executeBenchBatch, startQuestionSuggest, useBenchBatches, useQuestionSuggest } from "./bench";
 import { canonicalPresets, deleteSuite, saveSuite, useSuites } from "./bench-presets";
@@ -884,8 +883,11 @@ export function BenchRunConfig({
   onReset: () => void;
   onCrumbHome?: () => void;
 }) {
-  const selCount = mode === "council" ? 1 : selModels.size;
-  void setMode; // mode toggle now lives in the header bar; prop kept for the call site
+  // Council is retired from this page: the run is always the multi-model
+  // head-to-head, so the selection count is simply the chosen models. The
+  // `mode`/`setMode` props are still wired (saved-suite loading + executeRun keep
+  // the mode type), we just never surface the Council branch in this UI.
+  const selCount = selModels.size;
   // Collapsible provider groups - ALL collapsed by default so the page never
   // opens as a wall of models. Each provider row still shows its selected
   // count, so what's on the panel stays visible while collapsed.
@@ -1251,24 +1253,128 @@ export function BenchRunConfig({
   }
 
   // The Run title + breadcrumb now live in the Arena page header. The primary
-  // "Run" action moved into the Run summary rail on the right (mockup 7).
-  const selModelLabels = mode === "council"
-    ? ["Council (multi-model panel)"]
-    : Array.from(selModels).map((k) => { const [cli, model] = k.split(MODEL_SEP); const ml = MODELS[cli]?.find((m) => m.id === model)?.label ?? model; return `${titleCase(cli)} · ${ml}`; });
+  // "Run" action moved into the final "Review & Run" step of the wizard below.
+  // Council is retired from this page, so the selection is always the multi-model
+  // head-to-head list.
+  const selModelLabels = Array.from(selModels).map((k) => { const [cli, model] = k.split(MODEL_SEP); const ml = MODELS[cli]?.find((m) => m.id === model)?.label ?? model; return `${titleCase(cli)} · ${ml}`; });
+
+  // ── The Run page as a left-to-right STEP WIZARD ────────────────────────────
+  // Instead of a wall of stacked collapsibles, the run is a 3-step flow you move
+  // through: Models -> Domains -> Review & Run. A Presets tab sits alongside as a
+  // place to set up / apply reusable model groups (also reachable inline from the
+  // Models step). Each step reports "done" once its selection is valid, and the
+  // stepper draws a progress bar across the completed steps so the user always
+  // knows how far along they are. When the Arena is opened scoped to one domain
+  // the Domains step is dropped exactly as the old picker was hidden.
+  type StepId = "models" | "domains" | "review" | "presets";
+  const domainsStepShown = !scoped;
+  const modelsDone = selModels.size > 0;
+  const domainsDone = true; // empty scope = all domains, always satisfiable
+  const reviewReady = modelsDone && questionCount > 0;
+  // The ordered flow steps (Presets is a side tab, not part of the linear flow).
+  const flowSteps: { id: StepId; label: string; icon: LucideIcon; done: boolean; n: number }[] = [
+    { id: "models", label: "Models", icon: Layers, done: modelsDone, n: 1 },
+    ...(domainsStepShown ? [{ id: "domains" as StepId, label: "Domains", icon: Target, done: domainsDone, n: 2 }] : []),
+    { id: "review", label: "Review & Run", icon: Play, done: reviewReady, n: domainsStepShown ? 3 : 2 },
+  ];
+  const [activeStep, setActiveStep] = useState<StepId>("models");
+  // Keep a live step even if scoped drops the Domains tab out from under us.
+  const activeIsValid = activeStep === "presets" || flowSteps.some((s) => s.id === activeStep);
+  const effectiveStep: StepId = activeIsValid ? activeStep : "models";
+  const flowIndex = flowSteps.findIndex((s) => s.id === effectiveStep);
+  const nextStep = flowIndex >= 0 && flowIndex < flowSteps.length - 1 ? flowSteps[flowIndex + 1] : null;
+  // Progress bar: fraction of the linear flow steps that are "done".
+  const doneCount = flowSteps.filter((s) => s.done).length;
+  const progressPct = Math.round((doneCount / flowSteps.length) * 100);
+  const progressNote = !modelsDone
+    ? "Start by picking the models to compare."
+    : domainsStepShown && effectiveStep === "models"
+      ? "Models selected. Next: choose the domains."
+      : !reviewReady
+        ? (questionCount === 0 ? "No questions in scope yet. Add some in the Questions tab." : "Almost there. Review and run.")
+        : "Ready to run.";
+
+  // A compact preset-apply strip reused inside the Models step so a canonical /
+  // AI / saved preset can fill the selection without leaving the step.
   return (
     <div className="w-full px-8 pb-6">
-      <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="min-w-0 flex-1 space-y-7">
-      {/* Mode lives in the header bar now (one consistent control row). */}
+      {/* STEPPER: clickable tabs left-to-right with a progress bar. Steps read as
+          "done" once valid; the active step's detail renders below. */}
+      <div className="mb-6 rounded-2xl border border-border bg-surface px-4 py-3.5">
+        <div className="flex items-center gap-1.5">
+          {flowSteps.map((s, i) => {
+            const active = s.id === effectiveStep;
+            const Icon = s.done ? Check : s.icon;
+            return (
+              <div key={s.id} className="flex min-w-0 flex-1 items-center gap-1.5">
+                <button
+                  onClick={() => setActiveStep(s.id)}
+                  className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors ${
+                    active
+                      ? "border-accent bg-accent-soft"
+                      : "border-border-subtle bg-surface hover:border-accent-border hover:bg-surface-warm"
+                  }`}
+                >
+                  <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                    s.done ? "bg-ok text-background" : active ? "bg-accent text-background" : "border border-border text-text-muted"
+                  }`}>
+                    {s.done ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : s.n}
+                  </span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className={`truncate text-[13px] font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{s.label}</span>
+                    <span className="truncate font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                      {s.id === "models" ? `${selModels.size} selected` : s.id === "domains" ? (scope.size === 0 ? "all domains" : `${scope.size} chosen`) : `${questionCount} question${questionCount === 1 ? "" : "s"}`}
+                    </span>
+                  </span>
+                  <Icon className={`ml-auto hidden h-3.5 w-3.5 shrink-0 sm:block ${active ? "text-accent" : "text-text-muted"}`} />
+                </button>
+                {i < flowSteps.length - 1 && (
+                  <ChevronRight className={`h-4 w-4 shrink-0 ${flowSteps[i].done ? "text-ok" : "text-text-muted/50"}`} />
+                )}
+              </div>
+            );
+          })}
+          {/* Presets: a side tab, always reachable, for setting up / applying presets. */}
+          <div className="ml-1 flex shrink-0 items-center gap-1.5 border-l border-border-subtle pl-2">
+            <button
+              onClick={() => setActiveStep("presets")}
+              title="Set up and apply reusable model presets"
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[13px] font-semibold transition-colors ${
+                effectiveStep === "presets"
+                  ? "border-accent bg-accent-soft text-accent"
+                  : "border-border-subtle bg-surface text-text-secondary hover:border-accent-border hover:text-accent"
+              }`}
+            >
+              <Bookmark className="h-3.5 w-3.5" /> Presets
+            </button>
+          </div>
+        </div>
+        {/* Progress bar + plain-language status. */}
+        <div className="mt-3">
+          <div className="mb-1 flex items-baseline justify-between font-mono text-[10px]">
+            <span className="text-text-secondary">{progressNote}</span>
+            <span className="tabular-nums text-text-muted">{doneCount}/{flowSteps.length} steps</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-surface-warm">
+            <div className="h-full rounded-full bg-accent transition-all duration-500" style={{ width: `${progressPct}%` }} />
+          </div>
+        </div>
+      </div>
 
-      {/* Models (multi-select) - hidden in council mode. Compact grid so the
-          whole panel of a provider scans in two or three rows instead of a
-          full-width row per model. */}
-      {mode === "single" && (
-        <CollapsibleSection icon={Layers} title="Models" summary={`${selModels.size} selected · runs head-to-head`} storageKey="prevail.bench.sec.models" defaultOpen>
-          {/* One concept: a Benchmark Suite (models + domains) you save + rerun,
-              listed in the Suites section below. (The old model-only "bundle" was a
-              confusing duplicate and has been removed.) */}
+      {/* ── STEP DETAIL renders below the stepper ── */}
+
+      {/* STEP 1 · MODELS - the provider groups + per-provider validity + search,
+          with an inline shortcut into the Presets tab. */}
+      {effectiveStep === "models" && (
+        <div className="space-y-5">
+          {/* Inline preset access: apply a preset here, or jump to the Presets tab. */}
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border-subtle bg-surface-warm/50 px-4 py-2.5">
+            <Bookmark className="h-3.5 w-3.5 shrink-0 text-accent" />
+            <span className="text-[12px] text-text-secondary">Select models directly below, or apply a preset to fill the selection.</span>
+            <button onClick={() => setActiveStep("presets")} className="ml-auto inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[11px] text-accent hover:bg-accent-soft/70">
+              Browse presets <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
           {isBunkerOn() && (
             <div className="mb-3 flex items-center gap-2 rounded-lg border border-border bg-surface-warm/60 px-3 py-2">
               <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-accent" />
@@ -1366,15 +1472,27 @@ export function BenchRunConfig({
               );
             })}
           </div>
-        </CollapsibleSection>
+          {/* Advance affordance: once a model is selected, move right. */}
+          {nextStep && (
+            <div className="flex items-center justify-between border-t border-border-subtle pt-4">
+              <span className="font-mono text-[11px] text-text-muted">{selModels.size} model{selModels.size === 1 ? "" : "s"} selected</span>
+              <button
+                onClick={() => setActiveStep(nextStep.id)}
+                disabled={!modelsDone}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:opacity-40"
+              >
+                Next: {nextStep.label} <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
-      {/* Domains - which domains' questions this run covers. Only shown in the
-          global/Settings Arena; inside a domain the run is already scoped to it,
-          so the picker is hidden. Sorted by question count; empty ones sit behind
-          a disclosure so 20+ domains don't become a wall of noise. */}
-      {!scoped && (
-      <CollapsibleSection icon={Target} title="Domains" summary={scope.size === 0 ? "all domains" : `${scope.size} selected`} storageKey="prevail.bench.sec.scope" defaultOpen>
+      {/* STEP 2 · DOMAINS - which domains' questions this run covers. Hidden when
+          the Arena is opened scoped to a single domain. Sorted by question count;
+          empty ones sit behind a disclosure so 20+ domains don't become noise. */}
+      {effectiveStep === "domains" && domainsStepShown && (
+        <div className="space-y-5">
         {allDomains.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-xs text-text-muted">
             No questions yet: add some in the <span className="text-accent">Questions</span> tab first.
@@ -1442,17 +1560,29 @@ export function BenchRunConfig({
             </details>
           );
         })()}
-      </CollapsibleSection>
+        {nextStep && (
+          <div className="flex items-center justify-between border-t border-border-subtle pt-4">
+            <span className="font-mono text-[11px] text-text-muted">{scope.size === 0 ? "All domains" : `${scope.size} domain${scope.size === 1 ? "" : "s"}`} · {questionCount} question{questionCount === 1 ? "" : "s"}</span>
+            <button
+              onClick={() => setActiveStep(nextStep.id)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover"
+            >
+              Next: {nextStep.label} <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+        </div>
       )}
 
-      {/* Suites - a named (models + domains + mode) you can re-run as a unit or
-          drop onto the background schedule. Built from the current selection. */}
-      <CollapsibleSection icon={Bookmark} title="Presets" summary={suites.length ? `${suites.length} saved` : "AI-suggested + reusable model groups"} storageKey="prevail.bench.sec.suites" defaultOpen>
-        {/* A preset is a first-class Arena object: a named model group you test in
+      {/* PRESETS TAB - set up and apply reusable model presets. In the Models step
+          you can either select models directly OR apply a preset from here.
+          A preset is a first-class Arena object: a named model group you test in
             one tap. Three tiers, top to bottom: always-on CANONICAL presets that
             resolve live over the model universe; an AI-maintained LIBRARY the model
             re-derives on demand; and your own SAVED snapshots. Apply drops a preset
             onto the Run panel, Run fires it now, Save persists it. */}
+      {effectiveStep === "presets" && (
+        <div className="space-y-1">
         {(() => {
           // Compact model chips with a runtime validity tick, reused by every
           // preset card. modelLabel gives the human name; providerStatus gives the
@@ -1579,24 +1709,33 @@ export function BenchRunConfig({
             </div>
           );
         })()}
-      </CollapsibleSection>
-
         </div>
-        {/* Run summary rail: the configured benchmark at a glance, with the
-            primary Run action (mockup 7). All values reflect the live selection. */}
-        <ArenaRightRail>
-          <div className="rounded-2xl border border-border bg-surface p-4">
+      )}
+
+      {/* STEP 3 · REVIEW & RUN - the run summary (selected models, domains, total
+          questions) folded in, with the primary Run action. Everything reflects
+          the live selection. When a run is in progress the whole config is
+          replaced by the running-jobs view above, so this step is the launch pad. */}
+      {effectiveStep === "review" && (
+        <div className="mx-auto max-w-2xl space-y-4">
+          <div className="rounded-2xl border border-border bg-surface p-5">
             <div className="mb-2.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Run summary</div>
-            <div className="text-[12px] font-semibold text-text-primary">Models ({mode === "council" ? 1 : selModels.size})</div>
+            <div className="flex items-center justify-between">
+              <div className="text-[12px] font-semibold text-text-primary">Models ({selModels.size})</div>
+              <button onClick={() => setActiveStep("models")} className="font-mono text-[10px] text-text-muted hover:text-accent">Edit</button>
+            </div>
             <div className="mt-1 space-y-1">
               {selModelLabels.length === 0
-                ? <div className="rounded-lg border border-dashed border-border px-2 py-1.5 text-[11px] text-text-muted">No models selected yet.</div>
+                ? <div className="rounded-lg border border-dashed border-border px-2 py-1.5 text-[11px] text-text-muted">No models selected yet. Go back to the Models step.</div>
                 : selModelLabels.slice(0, 8).map((l, i) => (
                   <div key={i} className="truncate rounded-lg bg-surface-warm/60 px-2 py-1 font-mono text-[11px] text-text-secondary">{l}</div>
                 ))}
               {selModelLabels.length > 8 && <div className="px-2 font-mono text-[10px] text-text-muted">+{selModelLabels.length - 8} more</div>}
             </div>
-            <div className="mb-1 mt-3 text-[12px] font-semibold text-text-primary">Domains ({scope.size === 0 ? allDomains.length : scope.size})</div>
+            <div className="mb-1 mt-3 flex items-center justify-between">
+              <div className="text-[12px] font-semibold text-text-primary">Domains ({scope.size === 0 ? allDomains.length : scope.size})</div>
+              {domainsStepShown && <button onClick={() => setActiveStep("domains")} className="font-mono text-[10px] text-text-muted hover:text-accent">Edit</button>}
+            </div>
             <div className="flex flex-wrap gap-1">
               {scope.size === 0
                 ? <span className="rounded-md bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">All domains</span>
@@ -1609,15 +1748,15 @@ export function BenchRunConfig({
             <button
               onClick={onRun}
               disabled={running || questionCount === 0 || selCount === 0}
-              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
             >
               {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              {running ? "Running…" : mode === "council" ? "Run council benchmark" : `Run ${selCount} model${selCount === 1 ? "" : "s"}`}
+              {running ? "Running…" : `Run ${selCount} model${selCount === 1 ? "" : "s"}`}
             </button>
             <p className="mt-2 text-center font-mono text-[10px] leading-relaxed text-text-muted">Different CLIs run in parallel · auto-scored. Review results in History.</p>
           </div>
-        </ArenaRightRail>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2976,26 +3115,7 @@ export function BenchmarkPanel({
               title={HEAD[view].title}
               subtitle={HEAD[view].subtitle}
               actions={
-                view === "run" ? (
-                  <div className="inline-flex items-center gap-0.5 rounded-xl border border-border-subtle bg-surface-warm/60 p-1">
-                    {([
-                      ["single", "Models", Layers],
-                      ["council", "Council", Scale],
-                    ] as const).map(([id, label, Icon]) => (
-                      <button
-                        key={id}
-                        onClick={() => setMode(id)}
-                        disabled={id === "council" && isBunkerOn()}
-                        title={id === "single" ? "Compare models head-to-head" : isBunkerOn() ? "Blocked by Bunker Mode: the Council convenes cloud models" : "Run the multi-model Council"}
-                        className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
-                          mode === id ? "bg-surface text-accent shadow-sm ring-1 ring-black/5" : "text-text-muted hover:text-text-secondary"
-                        }`}
-                      >
-                        <Icon className="h-3 w-3" /> {label}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
+                view === "run" ? null : (
                   <button onClick={() => setView("run")} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover">
                     <Plus className="h-3.5 w-3.5" /> New Run
                   </button>
