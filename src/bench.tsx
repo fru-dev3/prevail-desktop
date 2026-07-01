@@ -9,6 +9,8 @@ import { isBunkerOn, lsGet, lsSet } from "./storage";
 import { track } from "./telemetry";
 import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun } from "./types";
 import type { UnlistenFn } from "./bridge";
+import { listSchedules, updateSchedule } from "./bench-presets";
+import type { BenchSchedule } from "./bench-presets";
 
 export const BENCH_CLI_OPTIONS = [
   { id: "claude",      label: "Claude" },
@@ -420,20 +422,72 @@ export async function runScheduledBatch(vault: string): Promise<boolean> {
   return rerunLatestBatch(vault);
 }
 
+// Build + run a batch from an EXPLICIT model + domain scope (a schedule entry).
+// Mirrors buildScheduledJobs, but takes its scope from arguments instead of the
+// legacy global keys, so each schedule entry runs its own independent set.
+// Filters to installed CLIs + Bunker-permitted models at build time.
+export async function runBenchModels(vault: string, models: string[], domains: string[]): Promise<boolean> {
+  let keys = models.map((s) => s.trim()).filter(Boolean);
+  if (keys.length === 0) return false;
+  const clis = await invoke<{ id: string; available?: boolean }[]>("detect_clis").catch(() => [] as { id: string; available?: boolean }[]);
+  const avail = new Set((clis ?? []).filter((c) => c.available !== false).map((c) => c.id));
+  keys = keys.filter((k) => { const cli = k.split(MODEL_SEP)[0]; return avail.has(cli) && (!isBunkerOn() || isLocalCli(cli)); });
+  if (keys.length === 0) return false;
+  const domSet = new Set(domains.map((s) => s.trim().toLowerCase()).filter(Boolean));
+  const questions = await invoke<BenchQuestion[]>("benchmark_questions", { vault }).catch(() => [] as BenchQuestion[]);
+  const qids = questions.filter((q) => domSet.size === 0 || domSet.has(q.domain.toLowerCase())).map((q) => q.id).sort();
+  const jobs: BenchJob[] = keys.map((k) => {
+    const [cli, model] = k.split(MODEL_SEP);
+    const ml = modelLabel(cli, model) || model;
+    return { key: `sched-${k}-${Date.now()}`, cli, model, label: `${titleCase(cli)} · ${ml}`, status: "queued", done: 0, total: qids.length, qids, qdone: {} };
+  });
+  void executeBenchBatch(vault, jobs, false, [...domSet].join(","));
+  return true;
+}
+
 export let benchSchedTimer: number | null = null;
+
+// Fire ONE schedule entry: build + run its explicit scope and stamp its lastRun.
+// Isolated so one entry failing (or having nothing runnable) never blocks the
+// others in the tick loop.
+async function runScheduleEntry(vault: string, entry: BenchSchedule): Promise<void> {
+  try {
+    if (await runBenchModels(vault, entry.models, entry.domains)) {
+      updateSchedule(entry.id, { lastRun: Date.now() });
+      window.dispatchEvent(new Event("prevail:bench-sched"));
+    }
+  } catch (e) {
+    console.error("bench schedule entry", entry.id, e);
+  }
+}
 
 export function startBenchScheduler(vault: string) {
   if (benchSchedTimer !== null) window.clearInterval(benchSchedTimer);
   const tick = async () => {
     try {
-      if (lsGet(BENCH_SCHED.enabled, "0") !== "1") return;
-      const freq = benchFreqMs(lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
-      const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
-      if (Date.now() - last < freq) return;
-      if ([...benchBatches.values()].some((b) => b.running)) return; // never stack
-      if (await runScheduledBatch(vault)) {
-        lsSet(BENCH_SCHED.lastRun, String(Date.now()));
-        window.dispatchEvent(new Event("prevail:bench-sched"));
+      // ITERATE every enabled entry independently: each fires when its own
+      // cadence has elapsed, and updates only its own lastRun. One entry being
+      // due (or failing) has no bearing on the others.
+      const now = Date.now();
+      const due = listSchedules().filter((s) => s.enabled && s.models.length > 0 && now - (s.lastRun || 0) >= benchFreqMs(s.freq));
+      // Legacy single-global fallback: if there are NO list entries at all yet
+      // and the old global schedule is still enabled, honor it once so an
+      // un-migrated user keeps their scheduled runs.
+      if (listSchedules().length === 0 && lsGet(BENCH_SCHED.enabled, "0") === "1") {
+        const freq = benchFreqMs(lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
+        const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
+        if (now - last >= freq && ![...benchBatches.values()].some((b) => b.running)) {
+          if (await runScheduledBatch(vault)) {
+            lsSet(BENCH_SCHED.lastRun, String(Date.now()));
+            window.dispatchEvent(new Event("prevail:bench-sched"));
+          }
+        }
+      }
+      // Fire due entries one at a time, never while another benchmark is running,
+      // so runs never stack. Remaining due entries fire on subsequent ticks.
+      for (const entry of due) {
+        if ([...benchBatches.values()].some((b) => b.running)) break;
+        await runScheduleEntry(vault, entry);
       }
     } catch (e) {
       console.error("bench scheduler", e);
