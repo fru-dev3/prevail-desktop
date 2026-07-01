@@ -1783,7 +1783,17 @@ export function ChatPanel({
   // the plain conversation ("chat"). The tab bodies below reuse the SAME existing
   // domain components (LoopsPanel, BoardPanel, InsightsPanel, the context bundle,
   // DomainPrefsPanel, DomainAppsTab) - this only reorganizes their presentation.
-  const inDomainDetail = !!domain && !isApp && domainTab !== "chat";
+  // General is a first-class domain too: it carries no `domain` slug (empty), but
+  // its data lives in the general bucket (data/domains/general on a v4 vault, else
+  // the vault root) exactly as its chat + preferences already read. So the detail
+  // shell treats it as a domain. `dkey`/`dlabel`/`dblurb` give every tab body a
+  // safe key + display name whether or not a real domain slug is present.
+  const dkey = domain || "general";
+  const dlabel = domain ? titleCase(domain) : "General";
+  const dblurb = domain ? domainBlurb(domain) : "Your catch-all workspace for anything not tied to a specific domain.";
+  // Active for any domain including General (no app, and we're off the plain
+  // conversation). General has no `domain` slug but is still a domain.
+  const inDomainDetail = !isApp && domainTab !== "chat";
   // The unified domain tab set. Domain-appropriate: it drops the app-only facets
   // (Connections, Runs, catalog Domains-mapping) and keeps the domain-unique views
   // (Insights, Work). Usage is folded into the Insights tab as a section.
@@ -1806,14 +1816,14 @@ export function ChatPanel({
     <>
       <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle bg-surface px-6 pb-4 pt-4">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
-          {(() => { const I = domainIcon(domain!); return I ? <I className="h-6 w-6" /> : <span className="text-lg">◆</span>; })()}
+          {(() => { const I = domainIcon(dkey); return I ? <I className="h-6 w-6" /> : <span className="text-lg">◆</span>; })()}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h2 className="truncate text-2xl font-bold tracking-tight text-text-primary">{titleCase(domain!)}</h2>
+            <h2 className="truncate text-2xl font-bold tracking-tight text-text-primary">{dlabel}</h2>
             <ContextScoreBadge score={ctxScore} onClick={() => setDomainTab("insights")} />
           </div>
-          <div className="mt-1.5 truncate text-[13px] text-text-muted">{domainBlurb(domain!)}</div>
+          <div className="mt-1.5 truncate text-[13px] text-text-muted">{dblurb}</div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <button
@@ -2011,11 +2021,11 @@ export function ChatPanel({
                   <div className="flex flex-col items-stretch gap-4 rounded-2xl border border-border-subtle bg-surface/50 p-5 md:flex-row md:items-center">
                     <div className="flex min-w-0 flex-1 items-center gap-4">
                       <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-                        {(() => { const I = domainIcon(domain!); return I ? <I className="h-7 w-7" /> : <span className="text-2xl">◆</span>; })()}
+                        {(() => { const I = domainIcon(dkey); return I ? <I className="h-7 w-7" /> : <span className="text-2xl">◆</span>; })()}
                       </div>
                       <div className="min-w-0">
-                        <h2 className="truncate text-xl font-bold tracking-tight text-text-primary">{titleCase(domain!)}</h2>
-                        <p className="mt-1 text-[13px] leading-relaxed text-text-secondary">{domainBlurb(domain!)}</p>
+                        <h2 className="truncate text-xl font-bold tracking-tight text-text-primary">{dlabel}</h2>
+                        <p className="mt-1 text-[13px] leading-relaxed text-text-secondary">{dblurb}</p>
                       </div>
                     </div>
                     {/* Context Score - CLICKABLE: opens the Insights breakdown. Plus a re-scan affordance. */}
@@ -2072,7 +2082,7 @@ export function ChatPanel({
                       className="group flex flex-col rounded-2xl border border-border-subtle bg-surface/50 p-5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm/40"
                     >
                       <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Target className="h-4 w-4 text-accent" /> What this is · why it matters</h3>
-                      <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">{domainBlurb(domain!)}</p>
+                      <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">{dblurb}</p>
                       {idealFirstLine ? (
                         <div className="mt-3 rounded-lg border border-border-subtle bg-background/50 p-3">
                           <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Ideal state</div>
@@ -2081,7 +2091,7 @@ export function ChatPanel({
                       ) : (
                         <div className="mt-3 rounded-lg border border-dashed border-border bg-background/40 p-3">
                           <div className="flex items-center gap-1.5 text-[12px] font-medium text-accent"><Sparkles className="h-3.5 w-3.5" /> Set the ideal state</div>
-                          <p className="mt-0.5 text-[11px] text-text-muted">Describe what a thriving {titleCase(domain!)} looks like. Your AI reads it as standing direction.</p>
+                          <p className="mt-0.5 text-[11px] text-text-muted">Describe what a thriving {dlabel} looks like. Your AI reads it as standing direction.</p>
                         </div>
                       )}
                       <span className="mt-auto pt-3 inline-flex items-center gap-0.5 text-[11px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">Open Ideal State <ArrowUpRight className="h-3 w-3" /></span>
@@ -2161,7 +2171,7 @@ export function ChatPanel({
                           ))}
                         </ul>
                       ) : (
-                        <div className="mt-3 rounded-lg border border-dashed border-border bg-background/40 p-3 text-[12px] text-text-muted">No sessions yet. Start a chat in {titleCase(domain!)} and it will build a journal here.</div>
+                        <div className="mt-3 rounded-lg border border-dashed border-border bg-background/40 p-3 text-[12px] text-text-muted">No sessions yet. Start a chat in {dlabel} and it will build a journal here.</div>
                       )}
                       <span className="mt-auto pt-3 inline-flex items-center gap-0.5 text-[11px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">Open Journal <ArrowUpRight className="h-3 w-3" /></span>
                     </button>
@@ -2182,7 +2192,7 @@ export function ChatPanel({
                           ))}
                         </div>
                       ) : (
-                        <div className="mt-3 rounded-lg border border-dashed border-border bg-background/40 p-3 text-[12px] text-text-muted">No apps feed {titleCase(domain!)} yet. Connect apps to enrich its context automatically.</div>
+                        <div className="mt-3 rounded-lg border border-dashed border-border bg-background/40 p-3 text-[12px] text-text-muted">No apps feed {dlabel} yet. Connect apps to enrich its context automatically.</div>
                       )}
                       <span className="mt-auto pt-3 inline-flex items-center gap-0.5 text-[11px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">Open Apps <ArrowUpRight className="h-3 w-3" /></span>
                     </button>
@@ -2209,12 +2219,12 @@ export function ChatPanel({
                         {!editSoul && <button onClick={() => { setSoulDraft(domainSoul); setEditSoul(true); }} title="Edit ideal state" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
                       </div>
                     </div>
-                    <p className="mt-1.5 text-[12px] leading-relaxed text-text-muted">This domain's ideal state: the target your AI steers toward. It layers under your global ideal state and is injected into every turn in {titleCase(domain!)}.</p>
+                    <p className="mt-1.5 text-[12px] leading-relaxed text-text-muted">This domain's ideal state: the target your AI steers toward. It layers under your global ideal state and is injected into every turn in {dlabel}.</p>
                     {soulDraftErr && <p className="mt-2 text-[12px] text-err">{soulDraftErr}</p>}
                     {editSoul ? (
                       <div className="mt-3 flex flex-col">
                         <textarea autoFocus rows={14} value={soulDraft} onChange={(e) => setSoulDraft(e.target.value)}
-                          placeholder={`What a thriving ${titleCase(domain!)} looks like for you: the purpose, where things are now, the target, the metrics you track, the habits that get you there, and what to avoid.`}
+                          placeholder={`What a thriving ${dlabel} looks like for you: the purpose, where things are now, the target, the metrics you track, the habits that get you there, and what to avoid.`}
                           className="w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-relaxed text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
                         <div className="mt-2 flex items-center gap-2">
                           <button onClick={saveDomainSoul} disabled={soulSaving} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{soulSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
@@ -2225,7 +2235,7 @@ export function ChatPanel({
                       <div className="mt-3"><Markdown source={domainSoul} compact /></div>
                     ) : (
                       <div className="mt-3 flex flex-col items-start justify-center rounded-lg border border-dashed border-border bg-background/40 px-4 py-6 text-left">
-                        <span className="text-[13px] text-text-secondary">Set the ideal state for {titleCase(domain!)}.</span>
+                        <span className="text-[13px] text-text-secondary">Set the ideal state for {dlabel}.</span>
                         <span className="mt-0.5 text-[12px] text-text-muted">Describe its ideal state; your AI reads this as standing direction. Use Generate with AI to draft it from this domain's context, or write your own.</span>
                         <div className="mt-3 flex items-center gap-2">
                           <button onClick={draftDomainSoul} disabled={soulDrafting} className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-50">{soulDrafting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} {soulDrafting ? "Generating…" : "Generate with AI"}</button>
@@ -2263,8 +2273,8 @@ export function ChatPanel({
                   </div>
                   <div className="rounded-2xl border border-border-subtle bg-surface/50 p-5">
                     <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><ClipboardList className="h-4 w-4 text-accent" /> How this is used</h3>
-                    <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">{domainBlurb(domain!)}</p>
-                    <p className="mt-2 text-[12px] leading-relaxed text-text-muted">Your ideal state is prepended to every conversation in {titleCase(domain!)} and steers what your AI proposes, the loops it runs, and how it scores this domain's context. Keep it current as things change.</p>
+                    <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">{dblurb}</p>
+                    <p className="mt-2 text-[12px] leading-relaxed text-text-muted">Your ideal state is prepended to every conversation in {dlabel} and steers what your AI proposes, the loops it runs, and how it scores this domain's context. Keep it current as things change.</p>
                   </div>
                 </div>
               </div>
@@ -2380,11 +2390,11 @@ export function ChatPanel({
                   </ul>
                 )
             )}
-            {domainCtx && domainTab === "skills" && domain && (
+            {domainCtx && domainTab === "skills" && (
               <>
                 <NewSkillForm
                   vaultPath={vaultPath}
-                  domain={domain}
+                  domain={dkey}
                   seed={newSkillSeed}
                   onCreated={() => { setNewSkillSeed(null); refreshDomainCtx(); }}
                 />
