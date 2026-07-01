@@ -580,9 +580,8 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
   // deduped against the installed apps (by normalized name / id / iconSlug) so a
   // catalog entry that matches an installed app shows only once - as the
   // installed one, above. Because the catalog is 1000+ entries we don't render
-  // all of them: when searching we show every match; otherwise we cap to a
-  // curated/tier-1 first slice (CATALOG_CAP) with a "search to find more" note.
-  const CATALOG_CAP = 40;
+  // all of them: the DEFAULT list is the curated launch set only (~200), and
+  // searching reveals the full catalog so the long tail stays reachable.
   const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const catalogView = useMemo(() => {
     const installedKeys = new Set<string>();
@@ -605,19 +604,20 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
     const deduped = available.filter((c) => { const k = norm(c.name); if (seen.has(k)) return false; seen.add(k); return true; });
     // Match the name, category, OR tags so "linkedin", "calendar", "trail" all
     // hit. Both shown and total derive from this same filtered set so they agree.
-    const matched = !q ? deduped : deduped.filter((c) => {
+    const searching = q.length > 0;
+    const searchMatched = !q ? deduped : deduped.filter((c) => {
       const hay = `${c.name} ${c.domain} ${(c.tags ?? []).join(" ")}`.toLowerCase();
       return hay.includes(q);
     });
-    // Curated / tier-1 first so the un-searched cap shows the apps people want.
-    const ranked = [...matched].sort((a, b) => {
+    // DEFAULT view = the curated launch set only (~200). Searching reveals the
+    // full catalog so the long tail is reachable, just not shown by default.
+    const pool = searching ? searchMatched : searchMatched.filter((c) => c.curated === true);
+    const ranked = [...pool].sort((a, b) => {
       const score = (c: CatalogApp) => (c.curated ? 0 : 2) + (c.tier === 1 ? 0 : 1) - (c.verified ? 1 : 0);
       const d = score(a) - score(b);
       return d !== 0 ? d : (a.name || "").localeCompare(b.name || "");
     });
-    const searching = q.length > 0;
-    const shown = searching ? ranked : ranked.slice(0, CATALOG_CAP);
-    return { shown, total: matched.length, searching };
+    return { shown: ranked, total: ranked.length, searching, fullCount: deduped.length };
   }, [apps, catalog, query, lane, isPinnedApp]);
 
   const liveCount = directApps.filter((a) => appStatus(a) === "connected").length;
@@ -914,9 +914,9 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                         />
                         );
                       })}
-                      {availOpen && !catalogView.searching && catalogView.total > catalogView.shown.length && (
+                      {availOpen && !catalogView.searching && catalogView.fullCount > catalogView.total && (
                         <div className="px-1 pt-0.5 text-[10px] text-text-muted/70">
-                          showing {catalogView.shown.length} of {catalogView.total} - search to find more
+                          {catalogView.total} curated apps · search to find any of {catalogView.fullCount}
                         </div>
                       )}
                     </section>
