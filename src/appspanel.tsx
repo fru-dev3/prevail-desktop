@@ -3170,6 +3170,39 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
       setSyncMsg(`Sync failed: ${String(e).slice(0, 200)}`);
     }
   };
+  // A sync/lastError that is really an authorization or scope problem (the user
+  // is signed in but a permission was not granted, or setup never finished). For
+  // these we can offer a one-click fix instead of leaving them stranded with raw
+  // jargon (e.g. a `gws auth setup` terminal command they can't act on).
+  const isAuthSetupError = (msg?: string | null): boolean => {
+    const m = (msg || "").toLowerCase();
+    if (!m) return false;
+    return /\bscope\b|not granted|re-?authori[sz]|\bauthori[sz]|\bauth\b|permission|set ?up|sign(ed)? in/.test(m);
+  };
+  // Google Workspace is fronted by the dedicated multi-profile panel where the
+  // user re-authorizes; any other app routes to its own config. We reuse the same
+  // detection the rest of this file uses so Google never falls through.
+  const appIsGoogle = methodOf({ id: app.id, title: app.title, name: app.title, integration: (app as { integration?: string }).integration }) === "cli"
+    && (/(^|\b)google\b/i.test(`${app.id} ${app.title || ""}`) || isGoogleSubservice({ name: app.title, id: app.id }));
+  // The current error to reason about: prefer the live sync failure, fall back to
+  // the persisted lastError so the fix is offered even before the user re-syncs.
+  const activeErr = (syncMsg && syncMsg.startsWith("Sync failed") ? syncMsg : null) || app.lastError || null;
+  const showAuthFix = isAuthSetupError(activeErr);
+  // Take the user straight to where they fix it. Google -> its dedicated panel
+  // (re-authorize + approve all scopes there); anything else -> its own config.
+  const openAuthFix = () => {
+    if (appIsGoogle) {
+      window.dispatchEvent(new CustomEvent("prevail:app-open", { detail: "google" }));
+    } else {
+      window.dispatchEvent(new CustomEvent("prevail:app-open", { detail: app.id }));
+    }
+  };
+  const AuthFixAction = () => (
+    <button onClick={openAuthFix} title={activeErr || undefined}
+      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent hover:bg-accent hover:text-background">
+      <Plug className="h-3 w-3" /> {appIsGoogle ? "Fix in Google" : "Set up"}
+    </button>
+  );
   const humanizeSkill = (sid: string) => sid.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   const domainsLine = (app.domains ?? []).map(titleCase).join(", ");
   const card = "rounded-xl border border-border-subtle bg-background/50 p-5";
@@ -3581,8 +3614,22 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
             <span><span className="font-medium text-text-primary">Not added yet.</span> <span className="text-text-muted">Run a skill, or add {app.title || app.id} to your apps to start feeding your vault.</span></span>
           </span>
         ) : syncMsg ? (
-          <span className={`inline-flex items-center gap-2 text-sm ${syncMsg.startsWith("Sync failed") ? "text-err" : "text-text-secondary"}`}>
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4 text-ok" />} {syncMsg}
+          showAuthFix && syncMsg.startsWith("Sync failed") ? (
+            // Lead with the actionable fix, keep the raw reason in the tooltip.
+            <span className="inline-flex items-center gap-2 text-sm text-text-secondary">
+              <span className="text-text-secondary">{appIsGoogle ? "Authorize this in the Google panel." : "This app needs to be set up."}</span>
+              <AuthFixAction />
+            </span>
+          ) : (
+            <span className={`inline-flex items-center gap-2 text-sm ${syncMsg.startsWith("Sync failed") ? "text-err" : "text-text-secondary"}`}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4 text-ok" />} {syncMsg}
+            </span>
+          )
+        ) : showAuthFix ? (
+          // No live sync message, but a persisted auth/scope error is on record.
+          <span className="inline-flex items-center gap-2 text-sm text-text-secondary">
+            <span className="text-text-secondary">{appIsGoogle ? "Authorize this in the Google panel." : "This app needs to be set up."}</span>
+            <AuthFixAction />
           </span>
         ) : (
           <span className="inline-flex items-center gap-2.5 text-sm">
