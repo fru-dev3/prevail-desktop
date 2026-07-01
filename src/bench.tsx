@@ -452,13 +452,19 @@ export async function executeBenchBatch(
   plannedJobs: BenchJob[],
   councilMode: boolean,
   scopeStr: string,
+  // CONTINUE/RESUME. When set, reuse this batch id (instead of minting a fresh
+  // one) so the engine resumes INTO the existing run directories: it skips the
+  // questions each model already answered and re-runs only the missing/errored
+  // ones. Persisted answers are never regenerated, questions are never
+  // recreated. Omit for a brand-new batch.
+  resumeBatchId?: string,
 ): Promise<void> {
   const now = new Date();
   const p2 = (n: number) => String(n).padStart(2, "0");
   // Numeric, sortable stamp: YYYY-MM-DD HH:MM (no spelled-out month).
   const dateLabel = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}`;
   const hhmm = `${p2(now.getHours())}:${p2(now.getMinutes())}`;
-  const batchId = `b${now.getTime()}`;
+  const batchId = resumeBatchId ?? `b${now.getTime()}`;
   // T18 (inert until keys exist; default-OFF, allowlist-scrubbed to counts only -
   // no model ids, no domain names, no question text).
   track("benchmark_run", { models: plannedJobs.length, domains: scopeStr ? scopeStr.split(",").filter(Boolean).length : 0 });
@@ -540,12 +546,21 @@ export async function executeBenchBatch(
           batch_label: batchLabel,
         },
       });
-      // Watchdog: a single model's run shouldn't be able to hang the batch. 20
-      // minutes is generous even for a slow local model on a few questions.
-      const code = await benchWaitDone(batch, session, "run", 20 * 60_000);
+      // Watchdog: a single model's run shouldn't be able to hang the batch, but
+      // the ceiling must SCALE with how many questions the model answers - a flat
+      // 20 minutes would wrongly kill a legitimately-progressing large run (100
+      // questions at ~40-60s each is well past 20 min). Budget generously per
+      // question on top of a floor, capped so a truly stuck run still unwinds.
+      // Because answers now persist incrementally, even a watchdog kill loses no
+      // completed work: Continue resumes from what landed on disk.
+      const qCount = Math.max(1, job.qids.length || job.total || 1);
+      const runWatchdogMs = Math.min(6 * 60 * 60_000, 5 * 60_000 + qCount * 3 * 60_000);
+      const code = await benchWaitDone(batch, session, "run", runWatchdogMs);
       if (batch.cancelled) return; // statuses already set by cancelBenchBatch
       if (code === BENCH_TIMEOUT) {
-        benchPatchJob(batch, job.key, { status: "error", note: "timed out - no response" });
+        // Not necessarily lost: partial answers are on disk. Mark it errored so
+        // the user can Continue the batch to finish the remaining questions.
+        benchPatchJob(batch, job.key, { status: "error", note: "timed out - continue to resume" });
         return;
       }
       if (code !== 0 && code !== null) {
