@@ -264,14 +264,20 @@ pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
         if !src.is_dir() {
             continue;
         }
-        // Only migrate things that are actually domains.
+        let dest = domains_root.join(&name);
+        // Only migrate things that are actually domains: a dir that LOOKS like a
+        // domain (soul/state), OR whose name matches a canonical domain already
+        // under data/domains. The latter catches leaked FRAGMENTS of a domain
+        // that carry no soul/state - e.g. a stray general/_log/score.jsonl
+        // written before the score-log path fix - so they merge back in instead
+        // of lingering at the root forever.
         let is_domain = src.join("soul.md").exists()
             || src.join("_state.md").exists()
-            || src.join("state.md").exists();
+            || src.join("state.md").exists()
+            || dest.is_dir();
         if !is_domain {
             continue;
         }
-        let dest = domains_root.join(&name);
         if !dest.exists() {
             match std::fs::rename(&src, &dest) {
                 Ok(()) => moved += 1,
