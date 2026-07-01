@@ -17,7 +17,7 @@ import { Sparkline, Toggle } from "./ui";
 import { ArenaBars, ArenaHeader, ArenaInsight, ArenaMetric, ArenaRightRail, ArenaStatCard, heatBg } from "./arena/arenaui";
 import { domainIcon } from "./icons";
 import { BENCH_CLI_OPTIONS, benchBatches, benchFreqLabel, benchFreqMs, benchNotify, cancelBenchBatch, executeBenchBatch, runBenchModels, startQuestionSuggest, useBenchBatches, useQuestionSuggest } from "./bench";
-import { canonicalPresets, deleteSuite, saveSuite, useSuites, useSchedules, upsertSchedule, updateSchedule, removeSchedule, presetScheduleId } from "./bench-presets";
+import { canonicalPresets, deleteSuite, saveSuite, suiteOrigin, useSuites, useSchedules, upsertSchedule, updateSchedule, removeSchedule, presetScheduleId } from "./bench-presets";
 import type { AvailablePresetModel, BenchSchedule, BenchSuite, CanonicalPreset } from "./bench-presets";
 import { ProviderMark } from "./marks";
 import { autoVerifyClis, useCliVerifyLive } from "./verify";
@@ -995,8 +995,12 @@ export function BenchRunConfig({
   const schedules = useSchedules();
   // Which preset card currently has its cadence picker open (keyed by schedule id).
   const [cadencePickerFor, setCadencePickerFor] = useState<string | null>(null);
-  // Source filter for the unified preset list: All / Canonical / AI / Saved.
-  const [presetFilter, setPresetFilter] = useState<"all" | "canonical" | "ai" | "saved">("all");
+  // Filter for the unified preset list. "ai" is the LIVE Suggest-presets output
+  // (ephemeral suggestions); "mine" = saved presets the user owns (manual or
+  // canonical origin); "fromAi" = saved presets that originated from an AI
+  // suggestion the user chose to keep. This lets the user isolate their own
+  // hand-built/curated presets from AI-generated ones they saved.
+  const [presetFilter, setPresetFilter] = useState<"all" | "canonical" | "ai" | "mine" | "fromAi">("all");
   const selModelArr = Array.from(selModels);
 
   // ── The AVAILABLE MODEL UNIVERSE (shared by canonical + AI presets) ──────────
@@ -1090,7 +1094,9 @@ export function BenchRunConfig({
   const commitSuite = () => {
     // A Preset is a named group of MODELS (reusable across Arena runs),
     // so we save models only - the domain scope is chosen per-run.
-    if (saveSuite({ name: suiteName, mode, models: selModelArr, domains: [] })) {
+    // Hand-built by the user -> origin "manual". Re-saving an existing preset
+    // preserves its original origin (saveSuite keeps the first-set origin).
+    if (saveSuite({ name: suiteName, mode, models: selModelArr, domains: [], origin: "manual" })) {
       setSuiteName(""); setSavingSuite(false);
     }
   };
@@ -1101,7 +1107,11 @@ export function BenchRunConfig({
   // it becomes a durable user snapshot alongside the manual ones.
   const applyPreset = (p: CanonicalPreset) => { setMode("single"); applyModels(p.models); };
   const runPreset = (p: CanonicalPreset) => onRunSuite({ mode: "single", models: p.models, domains: [] });
-  const savePreset = (p: CanonicalPreset) => saveSuite({ name: p.name, mode: "single", models: p.models, domains: [] });
+  // Saving a card records the ORIGIN of the card it came from: a canonical
+  // template -> "canonical", an AI suggestion -> "ai". Re-saving preserves the
+  // original origin (saveSuite keeps the first-set one).
+  const savePreset = (p: CanonicalPreset, origin: "manual" | "ai" | "canonical") =>
+    saveSuite({ name: p.name, mode: "single", models: p.models, domains: [], origin });
 
   // ── Scheduling (multiple entries, each its own cadence) ──────────────────────
   // Schedule a preset by name+models onto its OWN list entry with the chosen
@@ -1674,17 +1684,51 @@ export function BenchRunConfig({
           // one shape so a SINGLE card renders every source identically. `suite`
           // is set only for saved presets (the ones you can Edit / Delete). ──────
           type Source = "canonical" | "ai" | "saved";
-          type UnifiedPreset = { source: Source; name: string; rationale?: string; models: string[]; domains: string[]; suite?: BenchSuite };
-          const unified: UnifiedPreset[] = [
-            ...canonPresets.map((p): UnifiedPreset => ({ source: "canonical", name: p.name, rationale: p.rationale, models: p.models, domains: [] })),
-            ...(aiPresets ?? []).map((p): UnifiedPreset => ({ source: "ai", name: p.name, rationale: p.rationale, models: p.models, domains: [] })),
-            ...suites.map((s): UnifiedPreset => ({ source: "saved", name: s.name, models: s.models, domains: s.domains, suite: s })),
+          type Origin = "manual" | "ai" | "canonical";
+          // For saved presets, `origin` carries who it belongs to (manual / ai /
+          // canonical). For live canonical & AI cards it is left undefined.
+          type UnifiedPreset = { source: Source; origin?: Origin; name: string; rationale?: string; models: string[]; domains: string[]; suite?: BenchSuite };
+          // A stable key for cross-source de-duplication: same name + same model
+          // set. Used to collapse a canonical/AI template that also has a saved
+          // copy so the combined list never shows it twice.
+          const dedupeKey = (name: string, models: string[]) =>
+            `${name.trim().toLowerCase()}::${[...models].map((m) => m.toLowerCase()).sort().join("|")}`;
+          const savedKeys = new Set(suites.map((s) => dedupeKey(s.name, s.models)));
+          const canonUnified: UnifiedPreset[] = canonPresets.map((p) => ({ source: "canonical", name: p.name, rationale: p.rationale, models: p.models, domains: [] }));
+          const aiUnified: UnifiedPreset[] = (aiPresets ?? []).map((p) => ({ source: "ai", name: p.name, rationale: p.rationale, models: p.models, domains: [] }));
+          const savedUnified: UnifiedPreset[] = suites.map((s) => ({ source: "saved", origin: suiteOrigin(s), name: s.name, models: s.models, domains: s.domains, suite: s }));
+          // The combined list (used by "All"): drop any canonical/AI template that
+          // already has a saved copy (same name + model set). The saved copy wins
+          // because it carries origin + Edit/Schedule/Delete. This is what fixes
+          // "All validated appears twice" (once canonical, once as its saved snapshot).
+          const combined: UnifiedPreset[] = [
+            ...canonUnified.filter((u) => !savedKeys.has(dedupeKey(u.name, u.models))),
+            ...aiUnified.filter((u) => !savedKeys.has(dedupeKey(u.name, u.models))),
+            ...savedUnified,
           ];
-          const filtered = presetFilter === "all" ? unified : unified.filter((u) => u.source === presetFilter);
+          // The dedicated filters still show the FULL source list (no dedupe):
+          // Canonical shows every template, AI shows every live suggestion.
+          const filtered =
+            presetFilter === "all" ? combined
+            : presetFilter === "canonical" ? canonUnified
+            : presetFilter === "ai" ? aiUnified
+            : presetFilter === "mine" ? savedUnified.filter((u) => u.origin !== "ai")
+            : /* fromAi */ savedUnified.filter((u) => u.origin === "ai");
+          // Counts mirror each filter's list.
+          const mineCount = savedUnified.filter((u) => u.origin !== "ai").length;
+          const fromAiCount = savedUnified.filter((u) => u.origin === "ai").length;
           const SOURCE_META: Record<Source, { label: string; badge: string }> = {
             canonical: { label: "Canonical", badge: "border-border-subtle bg-surface-warm text-text-secondary" },
             ai: { label: "AI", badge: "border-accent-border bg-accent-soft text-accent" },
             saved: { label: "Saved", badge: "border-ok/40 bg-ok/10 text-ok" },
+          };
+          // A saved card's badge shows WHERE it came from, so manual-saved vs
+          // AI-saved vs canonical-saved is obvious at a glance. Non-saved cards
+          // (live canonical / AI) keep their plain source badge.
+          const ORIGIN_META: Record<Origin, { qualifier: string; sparkle: boolean }> = {
+            manual: { qualifier: "yours", sparkle: false },
+            ai: { qualifier: "from AI", sparkle: true },
+            canonical: { qualifier: "from Canonical", sparkle: false },
           };
           const CADENCES: BenchSchedule["freq"][] = ["daily", "weekly", "monthly"];
 
@@ -1703,7 +1747,12 @@ export function BenchRunConfig({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider ${meta.badge}`}>
-                      {p.source === "ai" && <Sparkles className="h-2.5 w-2.5" aria-hidden />}{meta.label}
+                      {p.source === "ai" && <Sparkles className="h-2.5 w-2.5" aria-hidden />}
+                      {p.source === "saved" && p.origin && ORIGIN_META[p.origin].sparkle && <Sparkles className="h-2.5 w-2.5" aria-hidden />}
+                      {meta.label}
+                      {p.source === "saved" && p.origin && (
+                        <span className="font-normal normal-case tracking-normal opacity-70">· {ORIGIN_META[p.origin].qualifier}</span>
+                      )}
                     </span>
                     <span className="truncate text-[13px] font-medium text-text-primary">{p.name}</span>
                     {sched && <span title={`Scheduled ${benchFreqLabel(sched.freq)}`} className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] text-accent"><CalendarClock className="h-2.5 w-2.5" /> {benchFreqLabel(sched.freq)}</span>}
@@ -1721,7 +1770,7 @@ export function BenchRunConfig({
                   Apply
                 </button>
                 <button
-                  onClick={() => { if (p.source === "saved" && p.suite) { loadSuite(p.suite); setSuiteName(p.suite.name); setSavingSuite(true); } else { savePreset({ name: p.name, rationale: p.rationale ?? "", models: p.models }); } }}
+                  onClick={() => { if (p.source === "saved" && p.suite) { loadSuite(p.suite); setSuiteName(p.suite.name); setSavingSuite(true); } else { savePreset({ name: p.name, rationale: p.rationale ?? "", models: p.models }, p.source === "ai" ? "ai" : "canonical"); } }}
                   title={saved ? (p.source === "saved" ? "Update this saved preset with the models in the editor" : "Already in your library. Click to update it with the current models.") : "Save this preset into your library"}
                   className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] transition-colors ${saved ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}
                 >
@@ -1763,11 +1812,12 @@ export function BenchRunConfig({
             );
           };
 
-          const FILTERS: Array<{ id: typeof presetFilter; label: string; count: number }> = [
-            { id: "all", label: "All", count: unified.length },
-            { id: "canonical", label: "Canonical", count: canonPresets.length },
-            { id: "ai", label: "AI", count: aiPresets?.length ?? 0 },
-            { id: "saved", label: "Saved", count: suites.length },
+          const FILTERS: Array<{ id: typeof presetFilter; label: string; count: number; title: string }> = [
+            { id: "all", label: "All", count: combined.length, title: "Every preset, with cross-source duplicates collapsed" },
+            { id: "canonical", label: "Canonical", count: canonPresets.length, title: "Built-in templates that resolve over your current models" },
+            { id: "ai", label: "AI", count: aiPresets?.length ?? 0, title: "Live AI suggestions (not yet saved). Save one to keep it." },
+            { id: "mine", label: "Mine", count: mineCount, title: "Saved presets you built or curated yourself" },
+            { id: "fromAi", label: "From AI", count: fromAiCount, title: "AI suggestions you saved to reuse" },
           ];
           return (
             <div className="space-y-3">
@@ -1775,7 +1825,7 @@ export function BenchRunConfig({
               <div className="flex flex-wrap items-center gap-2">
                 <div className="inline-flex rounded-lg border border-border bg-background p-0.5">
                   {FILTERS.map((f) => (
-                    <button key={f.id} onClick={() => setPresetFilter(f.id)}
+                    <button key={f.id} onClick={() => setPresetFilter(f.id)} title={f.title}
                       className={`rounded-md px-2.5 py-1 font-mono text-[11px] transition-colors ${presetFilter === f.id ? "bg-accent text-background shadow-sm" : "text-text-secondary hover:bg-surface-warm"}`}>
                       {f.label}<span className="ml-1 opacity-60">{f.count}</span>
                     </button>
@@ -1796,8 +1846,10 @@ export function BenchRunConfig({
                   <div className="rounded-lg border border-dashed border-border px-3 py-2 font-mono text-[11px] text-text-muted">
                     {presetFilter === "ai" && !aiPresets
                       ? `AI can suggest presets like Top Frontier, Second-in-class, or Open source over your ${availableModelsForAi.length} runnable model${availableModelsForAi.length === 1 ? "" : "s"}.`
-                      : presetFilter === "saved"
-                      ? "No saved presets yet. Save any preset, or select models below and save them as one."
+                      : presetFilter === "mine"
+                      ? "No presets of your own yet. Build one from the models below, or save a canonical template to make it yours."
+                      : presetFilter === "fromAi"
+                      ? "No AI-saved presets yet. Suggest presets, then Save the ones you want to keep and reuse."
                       : "No presets to show for this filter."}
                   </div>
                 )}
