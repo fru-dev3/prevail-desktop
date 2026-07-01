@@ -15,10 +15,13 @@ import { track } from "./telemetry";
 // a novel vendor name. Inert until keys exist; default-OFF.
 const TELEMETRY_PROVIDERS = new Set(["openrouter", "anthropic", "openai", "google", "ollama", "lmstudio", "bedrock"]);
 const telemetryProvider = (id: string): string => (TELEMETRY_PROVIDERS.has(id) ? id : "other");
+// Active category tab on the Models page, persisted so it reopens in place.
+const LS_MODELS_TAB = "prevail.settings.models.tab.v1";
 import { SettingsHeader } from "./sectionutil";
 import { autoVerifyClis, setCliVerify } from "./verify";
 import { AgentsSection } from "./settings6";
 import { OrVendorMark, orVendorOf } from "./providermarks";
+import { ProviderMark } from "./marks";
 import type { CliInfo } from "./types";
 
 // Auto-refresh cadence: how often model lists re-discover and providers
@@ -428,64 +431,106 @@ export function ModelsSection({
     void refreshDiscoveredModels(["ollama", "lmstudio", "openrouter"]).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Category tabs replace the old stacked collapsibles: one tab per runtime
+  // category, active tab persisted so the page reopens where you left it.
+  const TABS = [
+    { id: "clis", label: "CLI runtimes", icon: Sparkles },
+    { id: "api", label: "Aggregators", icon: Layers },
+    { id: "direct", label: "Direct keys", icon: Globe },
+  ] as const;
+  type TabId = (typeof TABS)[number]["id"];
+  const [tab, setTab] = useState<TabId>(() => {
+    const saved = lsGet(LS_MODELS_TAB);
+    return (TABS.some((t) => t.id === saved) ? saved : "clis") as TabId;
+  });
+  useEffect(() => { lsSet(LS_MODELS_TAB, tab); }, [tab]);
+
+  // Top-right logo cluster: one brand mark per distinct runtime/provider, ready
+  // ones first, deduped by vendor, capped with a "+N" overflow. Reuses the same
+  // ProviderMark the left rail draws, so the marks match everywhere.
+  const logoVendors = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const c of [...clis].sort((a, b) => Number(b.available) - Number(a.available))) {
+      if (seen.has(c.id)) continue;
+      seen.add(c.id);
+      out.push(c.id);
+    }
+    return out;
+  }, [clis]);
+  const LOGO_CAP = 8;
+  const shownLogos = logoVendors.slice(0, LOGO_CAP);
+  const overflowLogos = logoVendors.length - shownLogos.length;
+  const logoCluster = shownLogos.length > 0 ? (
+    <div className="flex items-center -space-x-1.5" title="Models and runtimes available on this page">
+      {shownLogos.map((id) => (
+        <span key={id} className="rounded-md ring-1 ring-border-subtle">
+          <ProviderMark vendor={id} size={26} />
+        </span>
+      ))}
+      {overflowLogos > 0 && (
+        <span className="flex h-[26px] items-center justify-center rounded-md bg-surface-warm px-1.5 font-mono text-[10px] font-semibold text-text-muted ring-1 ring-border-subtle">
+          +{overflowLogos}
+        </span>
+      )}
+    </div>
+  ) : undefined;
+
   return (
     <>
       <SettingsHeader
-        title="Runtimes"
+        title="Models"
         icon={Layers}
-        subtitle="A runtime is a model plus a way to run it: a local CLI, a direct vendor key, or an aggregator. The same model can run several ways, each with its own cost, speed, and privacy. Validated at launch with a real call; expand one to test individual models and set the default new chats open with."
+        subtitle="A runtime is a model plus a way to run it: a local CLI, a direct vendor key, or an aggregator. The same model can run several ways, each with its own cost, speed, and privacy. Validated at launch with a real call; pick a category below, then expand one to test individual models and set the default new chats open with."
+        right={logoCluster}
       />
-      {/* Three collapsible groups. CLI runtimes open by default (the main list);
-          per-runtime validity shows as a checkmark in the list itself, so the
-          old status strip is gone. */}
-      {([
-        {
-          id: "clis",
-          label: "CLI runtimes",
-          icon: Sparkles,
-          desc: (() => { const cliOnly = clis.filter((c) => c.id !== "openrouter" && c.id !== "bedrock"); return `local · uses your subscription · ${cliOnly.filter((c) => c.available).length} detected · ${cliOnly.filter((c) => !c.available).length} not installed`; })(),
-          content: (
-            <AgentsSection
-              clis={clis}
-              onStartChatWith={onStartChatWith}
-              defaultChatCli={defaultChatCli}
-              onMakeDefault={setDefaultChatCli}
-              vaultPath={vaultPath}
-              embedded
-            />
-          ),
-        },
-        {
-          id: "api",
-          label: "Aggregator runtimes",
-          icon: Layers,
-          desc: "OpenRouter, AWS Bedrock: one key for hundreds of models",
-          content: (
-            <>
-              <p className="mb-4 text-xs text-text-muted">Bring your own key, no install. OpenRouter is one key for 200+ hosted models.</p>
-              <ProvidersSection onActivated={onActivated} embedded />
-            </>
-          ),
-        },
-        {
-          id: "direct",
-          label: "Direct runtimes",
-          icon: Globe,
-          desc: "Anthropic, OpenAI, xAI, Kimi, DeepSeek, Google: your own key per vendor",
-          content: <DirectProvidersSection onActivated={onActivated} />,
-        },
-      ] as const).map(({ id, label, icon: Icon, desc, content }) => (
-        <CollapsibleSection
-          key={id}
-          icon={Icon}
-          title={label}
-          summary={desc}
-          defaultOpen={id === "clis"}
-          storageKey={id === "clis" ? "prevail.settings.models.clis.v2" : `prevail.settings.models.${id}`}
-        >
-          {content}
-        </CollapsibleSection>
-      ))}
+      {/* Category tab bar (segmented control, Arena-consistent styling): selecting
+          a tab shows ONLY that category's content below. */}
+      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+        {TABS.map(({ id, label, icon: Icon }) => {
+          const active = tab === id;
+          const count = id === "clis"
+            ? clis.filter((c) => c.id !== "openrouter" && c.id !== "bedrock" && c.available).length
+            : undefined;
+          return (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              aria-pressed={active}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${active ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:bg-surface-warm hover:text-accent"}`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+              {count !== undefined && (
+                <span className={`rounded-full px-1.5 py-px font-mono text-[9px] ${active ? "bg-accent/15 text-accent" : "bg-surface-warm text-text-muted"}`}>{count}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {tab === "clis" && (
+        <AgentsSection
+          clis={clis}
+          onStartChatWith={onStartChatWith}
+          defaultChatCli={defaultChatCli}
+          onMakeDefault={setDefaultChatCli}
+          vaultPath={vaultPath}
+          embedded
+        />
+      )}
+      {tab === "api" && (
+        <>
+          <p className="mb-4 text-xs text-text-muted">Bring your own key, no install. OpenRouter is one key for 200+ hosted models; AWS Bedrock routes to hosted models in your account.</p>
+          <ProvidersSection onActivated={onActivated} embedded />
+        </>
+      )}
+      {tab === "direct" && (
+        <>
+          <p className="mb-4 text-xs text-text-muted">Anthropic, OpenAI, xAI, Kimi, DeepSeek, Google: paste your own key per vendor. Stored in the OS Keychain, never in plaintext.</p>
+          <DirectProvidersSection onActivated={onActivated} />
+        </>
+      )}
     </>
   );
 }
