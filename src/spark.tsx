@@ -5,7 +5,7 @@
 // randomness comes from the models too. The page loads a fresh batch of 5; you
 // can ask for 1/2/3/5/10, save the ones you like, dismiss the rest, regenerate.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Dices, Loader2, ListPlus, Repeat, MessageSquare, AlertTriangle, Bookmark, Wand2, Sparkles, History, X } from "lucide-react";
+import { Dices, Dice1, Dice2, Dice3, Dice5, Dice6, Loader2, ListPlus, Repeat, MessageSquare, AlertTriangle, Bookmark, Wand2, Sparkles, History, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { MODELS } from "./constants";
 import { modelLabel } from "./helpers2";
@@ -22,6 +22,12 @@ const ENGINE_ONLY = new Set(["openrouter", "lmstudio", "mlx"]);
 const COUNTS = [1, 2, 3, 5, 10] as const;
 const SAVED_KEY = "prevail.spark.saved";
 const COUNT_KEY = "prevail.spark.count";
+
+// The dice-roll motif: each selectable count gets a matching die face so the
+// roller reads as "roll this many". 10 has no single die, so it borrows the two
+// stacked dice (Dices) - fitting, since ten is a two-hand roll.
+const COUNT_FACE: Record<number, typeof Dices> = { 1: Dice1, 2: Dice2, 3: Dice3, 5: Dice5, 10: Dices };
+function countFace(n: number): typeof Dices { return COUNT_FACE[n] ?? Dice6; }
 
 interface Candidate { cli: string; model: string; label: string }
 
@@ -408,40 +414,75 @@ export function SparkPanel({ vaultPath, clis }: { vaultPath: string; clis: CliIn
       <SettingsHeader
         icon={Dices}
         title="Spark"
-        subtitle="A nudge out of the bubble. Genuinely random things - a quote, a concept, a book, a recipe, a fact - generated live by randomly chosen models. Save the ones you like, dismiss the rest, regenerate."
+        subtitle="A nudge out of the bubble. Roll for a genuinely random thing, generated live by a randomly chosen model."
       />
 
-      {/* Controls: how many, regenerate, saved. */}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <button
-          onClick={() => generate(count)}
-          disabled={busy}
-          className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 font-medium text-background shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Dices className="h-4 w-4" />}
-          {busy ? `${word}…` : topic.trim() ? `Spark on "${topic.trim().slice(0, 22)}${topic.trim().length > 22 ? "…" : ""}"` : `Generate ${count} spark${count === 1 ? "" : "s"}`}
-        </button>
-        <div className="inline-flex items-center overflow-hidden rounded-lg border border-border">
-          {COUNTS.map((n, i) => (
-            <button key={n} onClick={() => setCountPersist(n)} disabled={busy}
-              className={`px-2.5 py-1.5 font-mono text-[11px] transition-colors disabled:opacity-50 ${i > 0 ? "border-l border-border" : ""} ${count === n ? "bg-accent text-background" : "bg-background text-text-secondary hover:bg-surface-warm"}`}>
-              {n}
-            </button>
-          ))}
-        </div>
-        {/* "Spark on a topic" affordance: a labelled pill that conjures a themed
-            batch. Fills with accent when a topic is set or the field is open, so
-            its active state reads clearly and it stays distinct from Generate. */}
-        <button onClick={() => setTopicOpen((v) => !v)} title={topic.trim() ? `Topic: ${topic.trim()}` : "Spark on a specific topic"}
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-[12px] font-medium transition-colors ${topicOpen || topic.trim() ? "border-accent bg-accent text-background" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}>
-          <Wand2 className="h-3.5 w-3.5" />
-          {topic.trim() ? `Topic: ${topic.trim().slice(0, 18)}${topic.trim().length > 18 ? "…" : ""}` : "Topic"}
-        </button>
-        {savedSparks.length > 0 && (
-          <button onClick={() => setShowSaved((v) => !v)}
-            className={`ml-auto inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] ${showSaved ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}>
-            <Bookmark className="h-3.5 w-3.5" /> Saved · {savedSparks.length}
+      {/* One elegant "spark console" row. Instead of stacked big buttons, every
+          control lives on a single hairline-framed bar: a special dice-roll tile
+          (the primary generate affordance, showing the face of the count it will
+          roll), an inline count stepper as small chips fused to the roller, then
+          compact icon controls for Topic and Saved, with the Current / Previous
+          view toggle pushed to the far right. Icons carry tooltips to keep text
+          low. It wraps gracefully on narrow widths. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface/60 p-2 shadow-sm backdrop-blur-sm">
+        {/* Roller + count, fused as one unit so "roll N" reads as a single act. */}
+        <div className="inline-flex items-stretch overflow-hidden rounded-xl border border-accent-border/60 bg-surface-warm shadow-inner">
+          <button
+            onClick={() => generate(count)}
+            disabled={busy}
+            title={topic.trim() ? `Roll ${count} spark${count === 1 ? "" : "s"} on "${topic.trim()}"` : `Roll ${count} random spark${count === 1 ? "" : "s"}`}
+            className="group relative inline-flex items-center gap-2 bg-accent px-4 py-2.5 font-medium text-background transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+          >
+            {(() => {
+              const Face = busy ? Loader2 : countFace(count);
+              return <Face className={`h-5 w-5 ${busy ? "animate-spin" : "transition-transform duration-300 group-hover:-rotate-12 group-hover:scale-110"}`} strokeWidth={busy ? 2 : 2.25} />;
+            })()}
+            <span className="text-[13px]">{busy ? `${word}…` : "Roll"}</span>
           </button>
+          {/* Count stepper: small inline chips, only the active one lit. */}
+          <div className="inline-flex items-center border-l border-accent-border/40 bg-surface-warm px-1">
+            {COUNTS.map((n) => (
+              <button key={n} onClick={() => setCountPersist(n)} disabled={busy}
+                title={`Roll ${n} at a time`}
+                className={`mx-0.5 flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 font-mono text-[11px] leading-none transition-colors disabled:opacity-50 ${count === n ? "bg-accent-soft text-accent ring-1 ring-accent-border" : "text-text-muted hover:bg-surface-strong hover:text-text-secondary"}`}>
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Topic: icon-only toggle with a tiny accent dot when a topic is set. */}
+        <button onClick={() => setTopicOpen((v) => !v)} title={topic.trim() ? `Topic: ${topic.trim()} (click to edit)` : "Spark on a specific topic"}
+          className={`relative inline-flex h-10 w-10 items-center justify-center rounded-xl border transition-colors ${topicOpen || topic.trim() ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
+          <Wand2 className="h-4 w-4" />
+          {topic.trim() && !topicOpen && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent ring-2 ring-surface" />}
+        </button>
+
+        {/* Saved: compact icon + count stat, not a fat button. Only when > 0. */}
+        {savedSparks.length > 0 && (
+          <button onClick={() => setShowSaved((v) => !v)} title={showSaved ? "Back to the spark stream" : `${savedSparks.length} saved spark${savedSparks.length === 1 ? "" : "s"}`}
+            className={`inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 transition-colors ${showSaved ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
+            <Bookmark className="h-4 w-4" fill={showSaved ? "currentColor" : "none"} />
+            <span className="font-mono text-[12px] leading-none">{savedSparks.length}</span>
+          </button>
+        )}
+
+        {/* Current / Previous view: compact icon segmented pair, pushed right.
+            "Current" is this session's fresh batch; "Previous" is the on-disk
+            archive loaded on mount (no model call). Hidden while browsing Saved. */}
+        {!showSaved && (
+          <div className="ml-auto inline-flex items-center overflow-hidden rounded-xl border border-border">
+            <button onClick={() => setView("current")} title={`Current batch${sparks.length ? ` (${sparks.length})` : ""}`}
+              className={`inline-flex h-10 items-center gap-1.5 px-3 text-[12px] transition-colors ${view === "current" ? "bg-accent-soft text-accent" : "bg-transparent text-text-muted hover:bg-surface-warm hover:text-text-secondary"}`}>
+              <Sparkles className="h-4 w-4" />
+              {sparks.length > 0 && <span className="font-mono text-[11px] leading-none">{sparks.length}</span>}
+            </button>
+            <button onClick={() => setView("history")} title={`Previous sparks${history.length ? ` (${history.length})` : ""}`}
+              className={`inline-flex h-10 items-center gap-1.5 border-l border-border px-3 text-[12px] transition-colors ${view === "history" ? "bg-accent-soft text-accent" : "bg-transparent text-text-muted hover:bg-surface-warm hover:text-text-secondary"}`}>
+              <History className="h-4 w-4" />
+              {history.length > 0 && <span className="font-mono text-[11px] leading-none">{history.length}</span>}
+            </button>
+          </div>
         )}
       </div>
 
@@ -464,22 +505,6 @@ export function SparkPanel({ vaultPath, clis }: { vaultPath: string; clis: CliIn
       {err && (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-err/30 bg-err/5 px-3 py-2 text-[13px] text-err">
           <AlertTriangle className="h-4 w-4 shrink-0" /> {err}
-        </div>
-      )}
-
-      {/* Current / History segmented control. "Current" is this session's fresh
-          batch; "History" is the prior sparks loaded from the on-disk archive on
-          mount (no model call). Hidden while browsing Saved. */}
-      {!showSaved && (
-        <div className="mb-4 inline-flex items-center overflow-hidden rounded-lg border border-border">
-          <button onClick={() => setView("current")}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] transition-colors ${view === "current" ? "bg-accent text-background" : "bg-background text-text-secondary hover:bg-surface-warm"}`}>
-            <Sparkles className="h-3.5 w-3.5" /> Current{sparks.length > 0 ? ` · ${sparks.length}` : ""}
-          </button>
-          <button onClick={() => setView("history")}
-            className={`inline-flex items-center gap-1.5 border-l border-border px-3 py-1.5 text-[12px] transition-colors ${view === "history" ? "bg-accent text-background" : "bg-background text-text-secondary hover:bg-surface-warm"}`}>
-            <History className="h-3.5 w-3.5" /> Previous{history.length > 0 ? ` · ${history.length}` : ""}
-          </button>
         </div>
       )}
 
