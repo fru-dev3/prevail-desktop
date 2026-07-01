@@ -234,48 +234,91 @@ fn ensure_oauth_client(dir: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
-// Probe one profile's live Gmail auth so the UI shows an honest state, not a
-// hopeful "connected". A quick getProfile is the cheapest authoritative check.
+// Slice the first JSON object out of gws output (gws prints diagnostics like
+// "Using keyring backend: keyring" alongside the JSON, so the combined stream is
+// not valid JSON on its own).
+fn gws_json(text: &str) -> Option<serde_json::Value> {
+    let slice = match (text.find('{'), text.rfind('}')) {
+        (Some(a), Some(b)) if b > a => &text[a..=b],
+        _ => text,
+    };
+    serde_json::from_str::<serde_json::Value>(slice).ok()
+}
+
+// The account's identity (email) + sign-in state come from `gws auth status`,
+// whose `user` field is set whenever the profile is authenticated - independent
+// of Gmail. This is the reliable source that lets a connected account show its
+// email even when Gmail specifically is limited or unverified.
+fn auth_status_email(bin: &str, dir: &Path) -> Option<String> {
+    let out = Command::new(bin)
+        .args(["auth", "status"])
+        .env("PATH", gws_path())
+        .env("GOOGLE_WORKSPACE_CLI_CONFIG_DIR", dir)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    gws_json(&text)?
+        .get("user")
+        .and_then(|u| u.as_str())
+        .filter(|s| s.contains('@'))
+        .map(|s| s.to_string())
+}
+
+// Probe one profile's live auth so the UI shows an honest state. Identity comes
+// from `gws auth status` (works for ANY granted scope); a Gmail getProfile then
+// checks liveness. An authenticated profile reads as "connected" with its email
+// even if Gmail scope is limited - the account is usable for the scopes it does
+// have (Calendar, Drive, etc.), so we no longer demote the whole account to
+// "needs re-authorization" just because the Gmail-only probe came back short.
 fn probe_profile(bin: &str, dir: &Path) -> (String, Option<String>) {
+    let status_email = auth_status_email(bin, dir);
     let out = Command::new(bin)
         .args(["gmail", "users", "getProfile", "--params", "{\"userId\":\"me\"}"])
         .env("PATH", gws_path())
         .env("GOOGLE_WORKSPACE_CLI_CONFIG_DIR", dir)
         .stdin(std::process::Stdio::null())
         .output();
-    let Ok(out) = out else { return ("unknown".into(), None) };
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-    // gws prints diagnostics (e.g. "Using keyring backend: keyring") alongside
-    // the JSON, so the combined stream is NOT valid JSON on its own. Slice out
-    // the JSON object before parsing, otherwise a genuinely connected account
-    // fails to parse and reads as "unknown" / "Not verified".
-    let json_slice = match (text.find('{'), text.rfind('}')) {
-        (Some(a), Some(b)) if b > a => &text[a..=b],
-        _ => text.as_str(),
-    };
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_slice) {
-        if let Some(email) = v.get("emailAddress").and_then(|e| e.as_str()) {
-            return ("connected".into(), Some(email.to_string()));
+    if let Ok(out) = out {
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        if let Some(v) = gws_json(&text) {
+            if let Some(email) = v.get("emailAddress").and_then(|e| e.as_str()) {
+                return ("connected".into(), Some(email.to_string()));
+            }
+            if let Some(err) = v.get("error") {
+                let code = err.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
+                let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("").to_lowercase();
+                // A dead token is genuinely expired even if creds are stored.
+                if code == 401 || msg.contains("invalid_grant") || msg.contains("authentication failed") {
+                    return ("expired".into(), status_email);
+                }
+                // Any other Gmail error (403 / insufficient scope): if the profile
+                // is authenticated (auth status has a user) it IS connected, just
+                // Gmail-limited. Only when we can't confirm auth at all do we ask
+                // the user to re-authorize.
+                if let Some(email) = status_email {
+                    return ("connected".into(), Some(email));
+                }
+                if code == 403 || msg.contains("insufficient") || msg.contains("scope") {
+                    return ("needs_scope".into(), None);
+                }
+            }
         }
-        if let Some(err) = v.get("error") {
-            let code = err.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
-            let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("").to_lowercase();
-            if code == 401 || msg.contains("invalid_grant") || msg.contains("authentication failed") {
-                return ("expired".into(), None);
-            }
-            if code == 403 || msg.contains("insufficient") || msg.contains("scope") {
-                return ("needs_scope".into(), None);
-            }
+        let lower = text.to_lowercase();
+        if lower.contains("invalid_grant") || lower.contains("401") {
+            return ("expired".into(), status_email);
         }
     }
-    let lower = text.to_lowercase();
-    if lower.contains("invalid_grant") || lower.contains("401") { return ("expired".into(), None); }
-    if lower.contains("insufficient") || lower.contains("scope") || lower.contains("403") { return ("needs_scope".into(), None); }
-    ("unknown".into(), None)
+    // Gmail probe inconclusive: fall back to the auth-status identity. An
+    // authenticated profile is connected; otherwise its state is unknown.
+    match status_email {
+        Some(email) => ("connected".into(), Some(email)),
+        None => ("unknown".into(), None),
+    }
 }
 
 /// Every Google profile (one per gws config dir) with its live status. Status is
