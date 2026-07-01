@@ -1293,18 +1293,39 @@ export function AgentsSection({
   const [selectedId, setSelectedId] = useState("");
   const selectedEff = selectedId || defaultChatCli || all.find((c) => c.available)?.id || all[0]?.id || "";
   const selected = all.find((c) => c.id === selectedEff) ?? null;
+  // Collapsible sub-groups (Cloud / Local / Harnesses), matching the Arena rail's
+  // expandable provider groups. Collapsed keys persisted so the rail reopens the
+  // same way; all groups open by default.
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("prevail.runtimes.groupsCollapsed") || "[]")); }
+    catch { return new Set(); }
+  });
+  const toggleGroup = (key: string) => setCollapsedGroups((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    try { localStorage.setItem("prevail.runtimes.groupsCollapsed", JSON.stringify([...next])); } catch { /* ignore */ }
+    return next;
+  });
 
   const listEl = (
     <div className="space-y-3">
       {groups.map((g) => {
         const ready = g.list.filter((c) => c.available).length;
+        const open = !collapsedGroups.has(g.key);
         return (
           <div key={g.key} className="space-y-1">
-            <div className="flex items-baseline justify-between px-1">
-              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{g.label} · {g.list.length}</span>
+            <button
+              onClick={() => toggleGroup(g.key)}
+              aria-expanded={open}
+              className="flex w-full items-baseline justify-between rounded-md px-1 py-0.5 transition-colors hover:bg-surface-warm"
+            >
+              <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">
+                <ChevronRight className={`h-3 w-3 transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
+                {g.label} · {g.list.length}
+              </span>
               <span className="font-mono text-[9px] text-text-muted/60">{ready}/{g.list.length} set up</span>
-            </div>
-            {g.list.map((c) => (
+            </button>
+            {open && g.list.map((c) => (
               <RuntimeRow
                 key={c.id}
                 cli={c}
