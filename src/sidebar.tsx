@@ -657,9 +657,9 @@ export function Sidebar({
                       key={it.id}
                       onClick={() => selectEditor(it.id)}
                       title={collapsed ? it.label : undefined}
-                      className={`flex w-full items-center rounded-md py-1.5 text-left text-sm transition-colors ${collapsed ? "justify-center px-0" : "gap-3 px-3"} ${
-                        active ? "bg-accent font-semibold text-background shadow-sm" : "text-text-secondary hover:bg-surface-strong hover:text-text-primary"
-                      }`}
+                      className={`group flex w-full items-center rounded-md py-1.5 text-left text-sm transition-all ${collapsed ? "justify-center px-0" : "gap-3 px-3"} ${
+                        active ? "bg-accent font-semibold text-background shadow-sm" : "text-text-secondary hover:bg-accent-soft hover:text-accent hover:shadow-sm active:scale-[0.99]"
+                      } ${!active && !collapsed ? "hover:pl-4" : ""}`}
                     >
                       <Icon className="h-4 w-4 shrink-0" />
                       {!collapsed && <span className="flex-1">{it.label}</span>}
@@ -725,8 +725,8 @@ export function Sidebar({
                   <button
                     onClick={() => selectWork(it.id)}
                     title={collapsed ? it.label : undefined}
-                    className={`flex w-full items-center rounded-md py-1.5 text-left text-sm transition-colors ${collapsed ? "justify-center px-0" : "gap-2.5 pl-6 pr-2"} ${
-                      active ? SEL_ROW : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+                    className={`group flex w-full items-center rounded-md py-1.5 text-left text-sm transition-all ${collapsed ? "justify-center px-0" : "gap-2.5 pl-6 pr-2"} ${
+                      active ? SEL_ROW : "text-text-secondary hover:bg-accent-soft hover:text-accent hover:shadow-sm active:scale-[0.99]"
                     }`}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
