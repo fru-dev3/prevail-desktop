@@ -144,19 +144,17 @@ export const LOCAL_CLI_IDS = new Set(["ollama", "lmstudio", "mlx"]);
 
 export const MODELS: Record<string, ModelPick[]> = {
   claude: [
-    // The alias ids (opus/sonnet/haiku) ALWAYS resolve to the newest version at
-    // runtime - Claude Code's `--model` treats them as "latest". So picking one
-    // runs the newest release automatically, even before this label is bumped.
-    // Claude Code exposes no machine-readable model list (verified), so these
-    // display labels are curated; the "(latest)" tag is the source of truth, the
-    // version number is just a hint of what latest currently is.
-    { id: "opus",            label: "Opus (latest)",   blurb: "auto-upgrades to the newest Opus (currently 4.8)" },
-    { id: "claude-opus-4-7", label: "Opus 4.7",        blurb: "pinned · previous flagship" },
-    { id: "claude-opus-4-6", label: "Opus 4.6",        blurb: "pinned · legacy flagship" },
-    { id: "claude-fable-5",  label: "Fable 5",         blurb: "newest · most capable" },
-    { id: "sonnet",          label: "Sonnet (latest)", blurb: "auto-upgrades to the newest Sonnet (currently 5)" },
-    { id: "claude-sonnet-4-6", label: "Sonnet 4.6",    blurb: "pinned · previous" },
-    { id: "haiku",           label: "Haiku (latest)",  blurb: "auto-upgrades to the newest Haiku (currently 4.5)" },
+    // Labels show the ACTUAL model name/version - no "latest" tag. The alias ids
+    // (opus/sonnet/haiku) still resolve to the current release at runtime, so
+    // these run the right model; bump the label when Anthropic ships a new one.
+    // Claude Code exposes no machine-readable model list (verified), so this is a
+    // curated list by necessity.
+    { id: "opus",            label: "Opus 4.8",  blurb: "flagship · complex tasks" },
+    { id: "claude-opus-4-7", label: "Opus 4.7",  blurb: "previous flagship" },
+    { id: "claude-opus-4-6", label: "Opus 4.6",  blurb: "legacy flagship" },
+    { id: "claude-fable-5",  label: "Fable 5",   blurb: "newest · most capable" },
+    { id: "sonnet",          label: "Sonnet 5",  blurb: "balanced · efficient" },
+    { id: "haiku",           label: "Haiku 4.5", blurb: "fast + cheap" },
   ],
   codex: [
     // gpt-5.5 is the ONLY model Codex accepts on a ChatGPT-login
