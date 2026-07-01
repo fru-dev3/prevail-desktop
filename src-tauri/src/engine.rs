@@ -1230,6 +1230,91 @@ pub fn engine_app_draft_ideal(id: String, provider: String, model: String) -> Re
     Ok(draft)
 }
 
+/// AI-draft a complete, valid SKILL.md for a domain from a plain-language
+/// description. Shells the sidecar `skill-draft --json`, which gathers the
+/// domain's real context (ideal state, memory, state, goals, recent decisions
+/// and intents) and drafts a full skill in the SKILL.md format (frontmatter +
+/// heading + prompt body). Mirrors `engine_app_draft_ideal` / `domain_draft_ideal`:
+/// the desktop drops the returned body into the NewSkillForm editor for review,
+/// and the existing `skill_create` Save writes it. Bunker-mode aware in the CLI.
+/// Returns the full SKILL.md text so the editor can show it verbatim.
+#[tauri::command]
+pub fn engine_skill_draft(
+    vault: String,
+    domain: String,
+    name: String,
+    describe: String,
+    provider: String,
+    model: String,
+) -> Result<String, String> {
+    let mut args: Vec<&str> = vec![
+        "skill-draft",
+        "--domain",
+        &domain,
+        "--name",
+        &name,
+        "--describe",
+        &describe,
+        "--vault",
+        &vault,
+    ];
+    if !provider.trim().is_empty() {
+        args.push("--cli");
+        args.push(&provider);
+    }
+    if !model.trim().is_empty() {
+        args.push("--model");
+        args.push(&model);
+    }
+    // run_engine_json appends --json, so the sidecar emits
+    // { ok, name, body } | { ok:false, error }.
+    let v = run_engine_json(&args)?;
+    if v.get("ok").and_then(|b| b.as_bool()) == Some(false) {
+        return Err(v
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("draft failed")
+            .to_string());
+    }
+    let body = v.get("body").and_then(|d| d.as_str()).unwrap_or("").trim().to_string();
+    if body.is_empty() {
+        return Err("the model returned an empty draft".into());
+    }
+    Ok(body)
+}
+
+/// AI-suggest a few skill IDEAS (name + one-line describe) for a domain, based
+/// on its context. Shells the sidecar `skill-draft --ideas --json`. This never
+/// writes anything: the user turns a chosen idea into a real draft via
+/// `engine_skill_draft`. Returns the raw JSON value { ok, ideas: [{name, describe}] }
+/// so the UI can render the suggestions without a second call.
+#[tauri::command]
+pub fn engine_skill_ideas(
+    vault: String,
+    domain: String,
+    provider: String,
+    model: String,
+) -> Result<serde_json::Value, String> {
+    let mut args: Vec<&str> = vec!["skill-draft", "--domain", &domain, "--ideas", "--vault", &vault];
+    if !provider.trim().is_empty() {
+        args.push("--cli");
+        args.push(&provider);
+    }
+    if !model.trim().is_empty() {
+        args.push("--model");
+        args.push(&model);
+    }
+    let v = run_engine_json(&args)?;
+    if v.get("ok").and_then(|b| b.as_bool()) == Some(false) {
+        return Err(v
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("suggest failed")
+            .to_string());
+    }
+    Ok(v)
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Autonomy controls (the global brake) + playbooks (the orchestrator).
 
