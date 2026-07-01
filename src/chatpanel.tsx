@@ -3,7 +3,7 @@
 // shared chatviews + domainpanels.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Activity, ArrowUpRight, BookOpen, Boxes, Briefcase, Check, FileText, Folder, Ghost, Home, Layers, Lightbulb, Loader2, MessageSquare, PanelRightOpen, Paperclip, Pencil, Plug, Plus, Repeat, Scale, Settings as SettingsIcon, Sparkles } from "lucide-react";
+import { Activity, ArrowUpRight, BookOpen, Boxes, Briefcase, Check, ClipboardList, Compass, FileText, Folder, Ghost, Home, Layers, Lightbulb, ListChecks, Loader2, MessageSquare, PanelRightOpen, Paperclip, Pencil, Plug, Plus, RefreshCw, Repeat, Scale, Settings as SettingsIcon, ShieldAlert, Sparkles, Target, TrendingUp } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
 import { MODELS, isHarnessRuntime } from "./constants";
@@ -14,7 +14,7 @@ import { domainBlurb, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stri
 import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, curatedFor, loadPreferredSkills, maybeRedact, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
-import { ContextScoreBadge, NewSkillForm, SkillsList } from "./panels";
+import { ContextScoreBadge, NewSkillForm, ScoreBar, SkillsList } from "./panels";
 import { InsightsPanel, UsageDashboard } from "./panels2";
 import { ContextScorePanel, DomainAppsTab, AppRowLogo } from "./panels3";
 import { domainIcon } from "./icons";
@@ -24,6 +24,7 @@ import { DomainHome, DomainStatusBar, MessageList } from "./chatviews";
 import { LoopsPanel } from "./loopspanel";
 import { BoardPanel } from "./boardpanel";
 import { AgentPickerRail, ContextCanvas, DomainContextDrawer, DomainPrefsPanel } from "./domainpanels";
+import { readLoops } from "./loops";
 import { HomeBriefing } from "./recommendationspanel";
 import type { BrandLogo, ChatEvent, ChatMessage, CliInfo, ContextScore, Domain, DomainContextBundle, DomainTab, EngineApp, LifeReadiness, SkillEntry, ThreadMeta, ThreadTurn } from "./types";
 import type { UnlistenFn } from "./bridge";
@@ -33,6 +34,45 @@ import type { UnlistenFn } from "./bridge";
 // should be instant (no spawn). Rescans (audit) refresh it.
 const _scoreCache = new Map<string, { at: number; score: ContextScore }>();
 const SCORE_CACHE_TTL_MS = 30_000;
+
+// ── Welcome dashboard subcomponents ───────────────────────────────────
+// A clickable stat tile - a single metric that routes to its own tab. Kept
+// local to the Welcome dashboard so its styling stays consistent.
+function StatTile({ icon: Icon, label, value, hint, onClick }: {
+  icon: typeof Home; label: string; value: React.ReactNode; hint?: string; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group flex flex-col items-start gap-1 rounded-xl border border-border-subtle bg-surface/50 p-4 text-left transition-colors hover:border-accent-border hover:bg-surface-warm/50"
+    >
+      <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+        <Icon className="h-3.5 w-3.5 text-accent" /> {label}
+      </span>
+      <span className="text-2xl font-bold leading-none text-text-primary">{value}</span>
+      {hint && <span className="text-[11px] text-text-muted">{hint}</span>}
+      <span className="mt-1 inline-flex items-center gap-0.5 text-[10px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">
+        Open <ArrowUpRight className="h-3 w-3" />
+      </span>
+    </button>
+  );
+}
+
+// The score-breakdown dimension row: a labelled mini ScoreBar. Reused for each
+// of coverage/density/freshness/structure/activity so the score becomes legible.
+function ScoreDimRow({ label, dim }: { label: string; dim: { score: number; detail: string } | undefined }) {
+  const val = dim?.score ?? 0;
+  const color = scoreColor(val);
+  return (
+    <div title={dim?.detail || ""}>
+      <div className="mb-1 flex items-center justify-between text-[11px]">
+        <span className="text-text-secondary">{label}</span>
+        <span className="font-mono font-semibold" style={{ color }}>{Math.round(val)}</span>
+      </div>
+      <ScoreBar value={val} max={100} color={color} />
+    </div>
+  );
+}
 
 export function ChatPanel({
   domain,
@@ -400,6 +440,36 @@ export function ChatPanel({
     } catch (e) { console.error("write domain soul", e); }
     finally { setSoulSaving(false); }
   }, [vaultPath, domain, soulDraft]);
+  // IDEAL-AI: draft this domain's ideal state from its real context, for review.
+  // Reuses the same domain_draft_ideal command + provider/model defaults as the
+  // Preferences panel; the draft opens the editor so the user reviews and Saves
+  // (which persists via write_domain_ideal, identical to a hand-written note).
+  const [soulDrafting, setSoulDrafting] = useState(false);
+  const [soulDraftErr, setSoulDraftErr] = useState<string | null>(null);
+  const draftDomainSoul = useCallback(async () => {
+    setSoulDrafting(true);
+    setSoulDraftErr(null);
+    try {
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      const text = await invoke<string>("domain_draft_ideal", { vault: vaultPath, domain: domain || "general", provider, model });
+      if (text?.trim()) { setSoulDraft(text.trim()); setEditSoul(true); }
+      else setSoulDraftErr("The draft came back empty. Try again or write your own.");
+    } catch (e) { setSoulDraftErr(String(e)); }
+    finally { setSoulDrafting(false); }
+  }, [vaultPath, domain]);
+  // Loops preview for the Welcome dashboard - active standing loops for this
+  // domain. Read cheaply from _loops.json; refreshed on domain switch.
+  type LoopPreview = { id: string; name: string; purpose: string; active: boolean };
+  const [domainLoops, setDomainLoops] = useState<LoopPreview[] | null>(null);
+  useEffect(() => {
+    if (!domainPath) { setDomainLoops(null); return; }
+    let mounted = true;
+    readLoops(domainPath)
+      .then((doc) => { if (mounted) setDomainLoops(doc.loops.map((l) => ({ id: l.id, name: l.name, purpose: l.purpose, active: l.status === "active" && l.enabled }))); })
+      .catch(() => { if (mounted) setDomainLoops([]); });
+    return () => { mounted = false; };
+  }, [domainPath, domain]);
   // I7: "Save as skill" - the composer dispatches this with the typed prompt;
   // we jump to the Skills tab and pre-fill the new-skill form.
   const [newSkillSeed, setNewSkillSeed] = useState<string | null>(null);
@@ -1916,58 +1986,286 @@ export function ChatPanel({
         )}
         {domainTab !== "chat" && (
           <div className="w-full px-6 py-6">
-            {/* WELCOME - a short overview of the domain: what it is + key stats,
-                mirroring AppDetail's Welcome. */}
-            {domainTab === "welcome" && (
-              <div className="max-w-2xl space-y-4">
-                <div className="rounded-xl border border-border-subtle bg-background/50 p-5">
-                  <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Home className="h-4 w-4 text-accent" /> {titleCase(domain!)}</h3>
-                  <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">{domainBlurb(domain!)}</p>
-                  <dl className="mt-4 grid grid-cols-2 gap-x-8 gap-y-2 sm:grid-cols-3">
-                    <div><dt className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Context score</dt><dd className="text-[13px] text-text-primary">{ctxScore?.score != null ? `${ctxScore.score} / 100` : "not scored"}</dd></div>
-                    <div><dt className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Skills</dt><dd className="text-[13px] text-text-primary">{domainCtx?.skills.length ?? 0}</dd></div>
-                    <div><dt className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Recent sessions</dt><dd className="text-[13px] text-text-primary">{domainCtx?.recent_logs.length ?? 0}</dd></div>
-                  </dl>
-                </div>
-                <div className="rounded-xl border border-border-subtle bg-background/50 p-5">
-                  <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Quick moves</h3>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button onClick={() => setDomainTab("soul")} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"><Sparkles className="h-3.5 w-3.5" /> Set the ideal state</button>
-                    <button onClick={() => setDomainTab("loops")} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"><Repeat className="h-3.5 w-3.5" /> Loops</button>
-                    <button onClick={() => setDomainTab("work")} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"><Briefcase className="h-3.5 w-3.5" /> Work board</button>
-                    <button onClick={() => setDomainTab("insights")} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"><Lightbulb className="h-3.5 w-3.5" /> Insights</button>
-                  </div>
-                </div>
-              </div>
-            )}
-            {/* SOUL - this domain's own Ideal State (its target), reusing the same
-                read_domain_ideal / write_domain_ideal contract as DomainPrefsPanel. */}
-            {domainTab === "soul" && (
-              <div className="max-w-2xl space-y-4">
-                <div className="rounded-xl border border-border-subtle bg-background/50 p-5">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Ideal State</h3>
-                    {!editSoul && <button onClick={() => { setSoulDraft(domainSoul); setEditSoul(true); }} title="Edit ideal state" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
-                  </div>
-                  <p className="mt-1.5 text-[12px] text-text-muted">This domain's ideal state: the target your AI steers toward. It layers under your global ideal state and is injected into every turn in {titleCase(domain!)}.</p>
-                  {editSoul ? (
-                    <div className="mt-3 flex flex-col">
-                      <textarea autoFocus rows={7} value={soulDraft} onChange={(e) => setSoulDraft(e.target.value)}
-                        placeholder={`What a thriving ${titleCase(domain!)} looks like for you.`}
-                        className="w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-relaxed text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
-                      <div className="mt-2 flex items-center gap-2">
-                        <button onClick={saveDomainSoul} disabled={soulSaving} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{soulSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
-                        <button onClick={() => setEditSoul(false)} className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">Cancel</button>
+            {/* WELCOME - a full-screen domain dashboard: a hero row with the
+                clickable Context Score, then a responsive grid of rich, clickable
+                cards (what it is + ideal state, context health breakdown, key
+                metrics, recent activity, active loops, apps feeding it). Every
+                card routes to its tab; the score opens its Insights breakdown. */}
+            {domainTab === "welcome" && (() => {
+              const skillsN = domainCtx?.skills.length ?? 0;
+              const sessionsN = domainCtx?.recent_logs.length ?? 0;
+              const loopsAll = domainLoops ?? [];
+              const loopsActive = loopsAll.filter((l) => l.active);
+              const appsFeeding = appsCache.filter((a) => domain != null && a.domains.includes(domain));
+              const journalN = domainCtx?.journal ? domainCtx.journal.trim().split(/\n#{1,3}\s/).filter(Boolean).length : 0;
+              const score = ctxScore?.score ?? null;
+              const scoreCol = score != null ? scoreColor(score) : "var(--color-text-muted)";
+              const idealFirstLine = domainSoul.trim().split(/\n+/).map((s) => s.replace(/^#+\s*/, "").trim()).find((s) => s.length > 0) ?? "";
+              const bd = ctxScore?.breakdown;
+              const missing = ctxScore?.missing ?? [];
+              const openScore = () => setDomainTab("insights");
+              const sevColor = (s: string) => s === "critical" ? "var(--color-err)" : s === "warn" ? "var(--color-warn)" : "var(--color-text-muted)";
+              return (
+                <div className="space-y-4">
+                  {/* HERO ROW - identity on the left, clickable Context Score ring on the right. */}
+                  <div className="flex flex-col items-stretch gap-4 rounded-2xl border border-border-subtle bg-surface/50 p-5 md:flex-row md:items-center">
+                    <div className="flex min-w-0 flex-1 items-center gap-4">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+                        {(() => { const I = domainIcon(domain!); return I ? <I className="h-7 w-7" /> : <span className="text-2xl">◆</span>; })()}
+                      </div>
+                      <div className="min-w-0">
+                        <h2 className="truncate text-xl font-bold tracking-tight text-text-primary">{titleCase(domain!)}</h2>
+                        <p className="mt-1 text-[13px] leading-relaxed text-text-secondary">{domainBlurb(domain!)}</p>
                       </div>
                     </div>
-                  ) : domainSoul.trim() ? (
-                    <div className="mt-3"><Markdown source={domainSoul} compact /></div>
-                  ) : (
-                    <button onClick={() => { setSoulDraft(""); setEditSoul(true); }} className="mt-3 flex flex-col items-start justify-center rounded-lg border border-dashed border-border bg-surface/40 px-4 py-5 text-left hover:border-accent-border">
-                      <span className="text-[13px] text-text-secondary">Set the ideal state for {titleCase(domain!)}.</span>
-                      <span className="mt-0.5 text-[12px] text-text-muted">Describe its ideal state; your AI reads this as standing direction.</span>
+                    {/* Context Score - CLICKABLE: opens the Insights breakdown. Plus a re-scan affordance. */}
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        onClick={openScore}
+                        title="Open the context score breakdown"
+                        className="group flex items-center gap-3 rounded-xl border border-border-subtle bg-background/60 px-4 py-3 transition-colors hover:border-accent-border hover:bg-surface-warm/60"
+                      >
+                        <div className="relative h-14 w-14 shrink-0">
+                          <svg viewBox="0 0 36 36" className="h-14 w-14 -rotate-90">
+                            <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--color-surface-strong)" strokeWidth="3.5" />
+                            <circle cx="18" cy="18" r="15.5" fill="none" stroke={scoreCol} strokeWidth="3.5" strokeLinecap="round"
+                              strokeDasharray={`${((score ?? 0) / 100) * 97.4} 97.4`} />
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="font-mono text-sm font-bold" style={{ color: scoreCol }}>{score != null ? score : "·"}</span>
+                          </div>
+                        </div>
+                        <div className="text-left">
+                          <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-text-muted">Context score</div>
+                          <div className="text-[13px] font-semibold text-text-primary">{score != null ? (score >= 80 ? "Strong" : score >= 60 ? "Solid" : score >= 40 ? "Thin" : "Sparse") : (ctxScoreLoading ? "Scoring…" : "Not scored")}</div>
+                          <div className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] text-text-muted opacity-0 transition-opacity group-hover:opacity-100">View breakdown <ArrowUpRight className="h-3 w-3" /></div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={rescanContextScore}
+                        disabled={ctxScoreRescanning}
+                        title="Re-scan the context score"
+                        className="flex h-10 w-10 items-center justify-center rounded-xl border border-border-subtle text-text-muted transition-colors hover:border-accent-border hover:text-accent disabled:opacity-50"
+                      >
+                        <RefreshCw className={`h-4 w-4 ${ctxScoreRescanning ? "animate-spin" : ""}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {ctxScoreError && <div className="rounded-lg border border-border-subtle bg-surface/50 px-4 py-2 text-[12px] text-warn">Score error: {ctxScoreError}</div>}
+
+                  {/* KEY METRICS - clickable stat tiles, each routing to its tab. */}
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                    <StatTile icon={Boxes} label="Skills" value={skillsN} onClick={() => setDomainTab("skills")} />
+                    <StatTile icon={FileText} label="Sessions" value={sessionsN} onClick={() => setDomainTab("journal")} />
+                    <StatTile icon={Repeat} label="Active loops" value={loopsActive.length} onClick={() => setDomainTab("loops")} />
+                    <StatTile icon={Briefcase} label="Work" value={<Briefcase className="h-6 w-6 text-text-secondary" />} hint="Open board" onClick={() => setDomainTab("work")} />
+                    <StatTile icon={Plug} label="Apps" value={appsFeeding.length} onClick={() => setDomainTab("apps")} />
+                    <StatTile icon={BookOpen} label="Journal" value={journalN} onClick={() => setDomainTab("journal")} />
+                  </div>
+
+                  {/* MAIN GRID - fills the screen with rich, clickable cards. */}
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    {/* What this domain is / why it matters -> Ideal State. */}
+                    <button
+                      onClick={() => setDomainTab("soul")}
+                      className="group flex flex-col rounded-2xl border border-border-subtle bg-surface/50 p-5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm/40"
+                    >
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Target className="h-4 w-4 text-accent" /> What this is · why it matters</h3>
+                      <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">{domainBlurb(domain!)}</p>
+                      {idealFirstLine ? (
+                        <div className="mt-3 rounded-lg border border-border-subtle bg-background/50 p-3">
+                          <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Ideal state</div>
+                          <p className="mt-1 line-clamp-3 text-[12px] leading-relaxed text-text-secondary">{idealFirstLine}</p>
+                        </div>
+                      ) : (
+                        <div className="mt-3 rounded-lg border border-dashed border-border bg-background/40 p-3">
+                          <div className="flex items-center gap-1.5 text-[12px] font-medium text-accent"><Sparkles className="h-3.5 w-3.5" /> Set the ideal state</div>
+                          <p className="mt-0.5 text-[11px] text-text-muted">Describe what a thriving {titleCase(domain!)} looks like. Your AI reads it as standing direction.</p>
+                        </div>
+                      )}
+                      <span className="mt-auto pt-3 inline-flex items-center gap-0.5 text-[11px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">Open Ideal State <ArrowUpRight className="h-3 w-3" /></span>
                     </button>
-                  )}
+
+                    {/* Context health -> Insights. The score dimensions + what to improve. */}
+                    <button
+                      onClick={openScore}
+                      className="group flex flex-col rounded-2xl border border-border-subtle bg-surface/50 p-5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm/40"
+                    >
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Activity className="h-4 w-4 text-accent" /> Context health</h3>
+                      {bd ? (
+                        <div className="mt-3 space-y-2.5">
+                          <ScoreDimRow label="Coverage" dim={bd.coverage} />
+                          <ScoreDimRow label="Density" dim={bd.density} />
+                          <ScoreDimRow label="Freshness" dim={bd.freshness} />
+                          <ScoreDimRow label="Structure" dim={bd.structure} />
+                          <ScoreDimRow label="Activity" dim={bd.activity} />
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-[12px] text-text-muted">{ctxScoreLoading ? "Scoring this domain…" : "Re-scan to compute the context breakdown."}</p>
+                      )}
+                      {missing.length > 0 && (
+                        <div className="mt-4">
+                          <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">What to improve</div>
+                          <ul className="space-y-1">
+                            {missing.slice(0, 3).map((m, i) => (
+                              <li key={i} className="flex items-start gap-1.5 text-[12px] text-text-secondary">
+                                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: sevColor(m.severity) }} />
+                                <span className="min-w-0">{m.label}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          {missing.length > 3 && <div className="mt-1 text-[11px] text-text-muted">+{missing.length - 3} more</div>}
+                        </div>
+                      )}
+                      <span className="mt-auto pt-3 inline-flex items-center gap-0.5 text-[11px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">Open Insights <ArrowUpRight className="h-3 w-3" /></span>
+                    </button>
+
+                    {/* Active loops -> Loops. */}
+                    <button
+                      onClick={() => setDomainTab("loops")}
+                      className="group flex flex-col rounded-2xl border border-border-subtle bg-surface/50 p-5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm/40"
+                    >
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Repeat className="h-4 w-4 text-accent" /> Active loops{loopsActive.length > 0 && <span className="rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] text-text-muted">{loopsActive.length}</span>}</h3>
+                      {loopsActive.length > 0 ? (
+                        <ul className="mt-3 space-y-2">
+                          {loopsActive.slice(0, 4).map((l) => (
+                            <li key={l.id} className="rounded-lg border border-border-subtle bg-background/50 px-3 py-2">
+                              <div className="truncate text-[13px] font-medium text-text-primary">{l.name}</div>
+                              {l.purpose && <div className="mt-0.5 line-clamp-1 text-[11px] text-text-muted">{l.purpose}</div>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="mt-3 rounded-lg border border-dashed border-border bg-background/40 p-3 text-[12px] text-text-muted">No standing loops yet. Loops keep this domain moving on their own.</div>
+                      )}
+                      <span className="mt-auto pt-3 inline-flex items-center gap-0.5 text-[11px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">Open Loops <ArrowUpRight className="h-3 w-3" /></span>
+                    </button>
+
+                    {/* Recent activity -> Journal. */}
+                    <button
+                      onClick={() => setDomainTab("journal")}
+                      className="group flex flex-col rounded-2xl border border-border-subtle bg-surface/50 p-5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm/40 lg:col-span-2"
+                    >
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><FileText className="h-4 w-4 text-accent" /> Recent activity</h3>
+                      {sessionsN > 0 ? (
+                        <ul className="mt-3 space-y-2">
+                          {domainCtx!.recent_logs.slice(0, 4).map((l) => (
+                            <li key={l.path} className="rounded-lg border border-border-subtle bg-background/50 px-3 py-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate text-[13px] font-medium text-text-primary">{l.name.replace(/\.md$/, "")}</span>
+                                <span className="shrink-0 font-mono text-[10px] text-text-muted">{relTime(l.mtime_secs * 1000)}</span>
+                              </div>
+                              {l.preview && <div className="mt-0.5 line-clamp-1 text-[11px] text-text-muted">{l.preview}</div>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="mt-3 rounded-lg border border-dashed border-border bg-background/40 p-3 text-[12px] text-text-muted">No sessions yet. Start a chat in {titleCase(domain!)} and it will build a journal here.</div>
+                      )}
+                      <span className="mt-auto pt-3 inline-flex items-center gap-0.5 text-[11px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">Open Journal <ArrowUpRight className="h-3 w-3" /></span>
+                    </button>
+
+                    {/* Apps feeding this domain -> Apps. */}
+                    <button
+                      onClick={() => setDomainTab("apps")}
+                      className="group flex flex-col rounded-2xl border border-border-subtle bg-surface/50 p-5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm/40"
+                    >
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Plug className="h-4 w-4 text-accent" /> Apps feeding this{appsFeeding.length > 0 && <span className="rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] text-text-muted">{appsFeeding.length}</span>}</h3>
+                      {appsFeeding.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {appsFeeding.slice(0, 8).map((a) => (
+                            <div key={a.id} className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-background/50 px-2 py-1.5" title={a.title}>
+                              <AppRowLogo app={{ title: a.title }} logos={logos} size={16} fallback="letter" />
+                              <span className="max-w-[80px] truncate text-[11px] text-text-secondary">{a.title}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-3 rounded-lg border border-dashed border-border bg-background/40 p-3 text-[12px] text-text-muted">No apps feed {titleCase(domain!)} yet. Connect apps to enrich its context automatically.</div>
+                      )}
+                      <span className="mt-auto pt-3 inline-flex items-center gap-0.5 text-[11px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">Open Apps <ArrowUpRight className="h-3 w-3" /></span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+            {/* SOUL - this domain's own Ideal State (its target). A full-screen
+                two-column layout: the editor + Generate with AI on the left, a
+                "what a good ideal state covers" guide on the right. Reuses the same
+                read_domain_ideal / write_domain_ideal contract as DomainPrefsPanel;
+                Generate calls domain_draft_ideal (same command the Prefs panel uses). */}
+            {domainTab === "soul" && (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+                {/* LEFT: the editable Ideal State note + Generate with AI. */}
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col rounded-2xl border border-border-subtle bg-surface/50 p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Target className="h-4 w-4 text-accent" /> Ideal State</h3>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={draftDomainSoul} disabled={soulDrafting} title="Research this domain and draft an ideal state" className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-50">
+                          {soulDrafting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} {soulDrafting ? "Generating…" : "Generate with AI"}
+                        </button>
+                        {!editSoul && <button onClick={() => { setSoulDraft(domainSoul); setEditSoul(true); }} title="Edit ideal state" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
+                      </div>
+                    </div>
+                    <p className="mt-1.5 text-[12px] leading-relaxed text-text-muted">This domain's ideal state: the target your AI steers toward. It layers under your global ideal state and is injected into every turn in {titleCase(domain!)}.</p>
+                    {soulDraftErr && <p className="mt-2 text-[12px] text-err">{soulDraftErr}</p>}
+                    {editSoul ? (
+                      <div className="mt-3 flex flex-col">
+                        <textarea autoFocus rows={14} value={soulDraft} onChange={(e) => setSoulDraft(e.target.value)}
+                          placeholder={`What a thriving ${titleCase(domain!)} looks like for you: the purpose, where things are now, the target, the metrics you track, the habits that get you there, and what to avoid.`}
+                          className="w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-relaxed text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
+                        <div className="mt-2 flex items-center gap-2">
+                          <button onClick={saveDomainSoul} disabled={soulSaving} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{soulSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
+                          <button onClick={() => setEditSoul(false)} className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">Cancel</button>
+                        </div>
+                      </div>
+                    ) : domainSoul.trim() ? (
+                      <div className="mt-3"><Markdown source={domainSoul} compact /></div>
+                    ) : (
+                      <div className="mt-3 flex flex-col items-start justify-center rounded-lg border border-dashed border-border bg-background/40 px-4 py-6 text-left">
+                        <span className="text-[13px] text-text-secondary">Set the ideal state for {titleCase(domain!)}.</span>
+                        <span className="mt-0.5 text-[12px] text-text-muted">Describe its ideal state; your AI reads this as standing direction. Use Generate with AI to draft it from this domain's context, or write your own.</span>
+                        <div className="mt-3 flex items-center gap-2">
+                          <button onClick={draftDomainSoul} disabled={soulDrafting} className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-50">{soulDrafting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} {soulDrafting ? "Generating…" : "Generate with AI"}</button>
+                          <button onClick={() => { setSoulDraft(""); setEditSoul(true); }} className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /> Write my own</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* RIGHT: the helpful guide that fills the space. */}
+                <div className="flex flex-col gap-4">
+                  <div className="rounded-2xl border border-border-subtle bg-surface/50 p-5">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><ListChecks className="h-4 w-4 text-accent" /> What a good ideal state covers</h3>
+                    <ul className="mt-3 space-y-3">
+                      {([
+                        { icon: Compass, label: "Purpose", hint: "Why this domain matters to you" },
+                        { icon: Activity, label: "Current reality", hint: "Where things stand today, honestly" },
+                        { icon: Target, label: "Target", hint: "What ideal looks like if it went well" },
+                        { icon: TrendingUp, label: "Metrics you track", hint: "How you know you are on course" },
+                        { icon: Repeat, label: "Habits and routines", hint: "The standing behaviors that get you there" },
+                        { icon: ShieldAlert, label: "What to avoid", hint: "The traps and anti-patterns to steer clear of" },
+                      ] as { icon: typeof Home; label: string; hint: string }[]).map((row) => {
+                        const RowIcon = row.icon;
+                        return (
+                          <li key={row.label} className="flex items-start gap-3">
+                            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent ring-1 ring-accent-border/40"><RowIcon className="h-3.5 w-3.5" /></span>
+                            <div className="min-w-0">
+                              <div className="text-[13px] font-medium text-text-primary">{row.label}</div>
+                              <div className="text-[12px] leading-snug text-text-muted">{row.hint}</div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                  <div className="rounded-2xl border border-border-subtle bg-surface/50 p-5">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><ClipboardList className="h-4 w-4 text-accent" /> How this is used</h3>
+                    <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">{domainBlurb(domain!)}</p>
+                    <p className="mt-2 text-[12px] leading-relaxed text-text-muted">Your ideal state is prepended to every conversation in {titleCase(domain!)} and steers what your AI proposes, the loops it runs, and how it scores this domain's context. Keep it current as things change.</p>
+                  </div>
                 </div>
               </div>
             )}
