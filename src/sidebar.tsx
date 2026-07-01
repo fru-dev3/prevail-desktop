@@ -3,11 +3,11 @@
 // gateway/MCP/benchmark status strips from shared modules.
 import { Fragment, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
-import { Activity, Archive, Briefcase, ChevronDown, ChevronLeft, ChevronRight, Clock, ExternalLink, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, PowerOff, RotateCcw, Settings as SettingsIcon, Sparkles, StarOff, Sun, X } from "lucide-react";
+import { Activity, Archive, Briefcase, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Folder, Layers, Loader2, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, PowerOff, RotateCcw, Settings as SettingsIcon, Sparkles, StarOff, Sun, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { STATUS_TINT } from "./constants";
-import { appName, relTime, scoreColor, titleCase } from "./format";
+import { appName, scoreColor, titleCase } from "./format";
 import { lsGet, lsSet } from "./storage";
 import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
 import { SidebarGatewayLive, SidebarMcpLive } from "./panels";
@@ -21,7 +21,7 @@ import { BENCH_SCHED, useBenchBatches } from "./bench";
 import { BACKUP_CFG } from "./backup";
 import { BrandMark } from "./brandmark";
 import { AppRowLogo } from "./panels3";
-import type { BrandLogo, CatalogApp, ConnectorCatalog, Domain, EngineApp, LifeReadiness, Mode, TabId, ThreadMeta } from "./types";
+import type { BrandLogo, CatalogApp, ConnectorCatalog, Domain, EngineApp, LifeReadiness, Mode, TabId } from "./types";
 
 // Shared "selected row" treatment for every selectable nav row in the sidebar
 // (General, Work, Domains, Apps). A solid accent fill reads as a clear,
@@ -52,8 +52,6 @@ export function Sidebar({
   onOpenOnboarding,
   onDomainsChanged,
   onOpenApp,
-  todayThreads,
-  onOpenThread,
 }: {
   collapsed: boolean;
   setCollapsed: (v: boolean | ((cur: boolean) => boolean)) => void;
@@ -75,8 +73,6 @@ export function Sidebar({
   onOpenOnboarding: () => void;
   onDomainsChanged: () => void;
   onOpenApp: (app: EngineApp) => void;
-  todayThreads: ThreadMeta[];
-  onOpenThread: (m: ThreadMeta) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -151,10 +147,6 @@ export function Sidebar({
   const [domainsOpen, setDomainsOpen] = useState<boolean>(() => lsGet("prevail.sidebar.domainsOpen") !== "0");
   useEffect(() => { lsSet("prevail.sidebar.domainsOpen", domainsOpen ? "1" : "0"); }, [domainsOpen]);
 
-  // "Today" section collapse (2026 redesign) — shows today's most recent
-  // conversations across all domains. Persisted like the other groups.
-  const [todayOpen, setTodayOpen] = useState<boolean>(() => lsGet("prevail.sidebar.todayOpen") !== "0");
-  useEffect(() => { lsSet("prevail.sidebar.todayOpen", todayOpen ? "1" : "0"); }, [todayOpen]);
   // "Work" surfaces group — collapsible like Domains. Persisted.
   const [workOpen, setWorkOpen] = useState<boolean>(() => lsGet("prevail.sidebar.workOpen") !== "0");
   useEffect(() => { lsSet("prevail.sidebar.workOpen", workOpen ? "1" : "0"); }, [workOpen]);
@@ -672,47 +664,6 @@ export function Sidebar({
         {/* WORK MODE (everything that isn't Editor): Today + Work surfaces +
             Domains + Apps, all in this one bar. */}
         {tab !== "settings" && (<>
-        {/* Today - the most recent conversations across every domain whose last
-            activity is in the local day (top 5). Hidden when the rail is
-            collapsed to keep the icon rail clean. */}
-        {!collapsed && (
-          <div className="px-2 pt-2">
-            <button
-              onClick={() => setTodayOpen((v) => !v)}
-              className="group/h flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
-            >
-              <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${todayOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
-              <Clock className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-              <span>Today</span>
-              {todayThreads.length > 0 && (
-                <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{todayThreads.length}</span>
-              )}
-            </button>
-            {todayOpen && (todayThreads.length === 0 ? (
-              <p className="px-4 py-1.5 text-[11px] leading-relaxed text-text-muted">No conversations yet today.</p>
-            ) : (
-              <ul className="space-y-0.5">
-                {todayThreads.map((t) => (
-                  <li key={t.path}>
-                    <button
-                      onClick={() => onOpenThread(t)}
-                      title={`${t.title} · ${t.domain ? titleCase(t.domain) : "General"} · ${relTime(t.updated * 1000)}`}
-                      className="group flex w-full items-center gap-2 rounded-md py-1.5 pl-6 pr-2 text-left transition-colors hover:bg-surface-warm"
-                    >
-                      <MessageSquare className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-                      <span className="flex min-w-0 flex-1 flex-col leading-tight">
-                        <span className="truncate text-[13px] text-text-secondary group-hover:text-text-primary">{t.title}</span>
-                        <span className="truncate text-[10px] text-text-muted">
-                          {t.domain ? titleCase(t.domain) : "General"} · {relTime(t.updated * 1000)}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ))}
-          </div>
-        )}
         {/* General - the home for chats not tied to any domain. Selecting it
             unbinds the chat from domain context; its threads live in the vault
             root _threads/. New threads are created via the threads rail's +. */}
@@ -752,7 +703,6 @@ export function Sidebar({
             <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${workOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
             <Briefcase className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
             <span>Work</span>
-            <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{WORK_NAV.flatMap((g) => g.items).length}</span>
           </button>
         )}
         {(collapsed || workOpen) && (
