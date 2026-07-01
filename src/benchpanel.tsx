@@ -1536,8 +1536,8 @@ export function BenchRunConfig({
       {effectiveStep === "domains" && domainsStepShown && (
         <div className="space-y-5">
         {allDomains.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-xs text-text-muted">
-            No questions yet: add some in the <span className="text-accent">Questions</span> tab first.
+          <div className="rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-xs leading-relaxed text-text-muted">
+            No domains to scope yet. The Arena runs your saved questions across domains, so a domain shows up here once it has questions. Add questions in the <span className="text-accent">Questions</span> tab (write them, or AI-draft from your data). By default a run uses <span className="text-text-secondary">All domains</span>, so once you have questions you can run without choosing anything here.
           </div>
         ) : (() => {
           const withQ = allDomains.filter((d) => (questionCounts[d] ?? 0) > 0).sort((a, b) => (questionCounts[b] ?? 0) - (questionCounts[a] ?? 0));
