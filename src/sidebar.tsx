@@ -1181,11 +1181,10 @@ export function Sidebar({
             title="Work: your domains, board, automations, calendar & notes"
             className={`relative flex items-center justify-center gap-2 py-3 text-[13px] font-semibold transition-colors ${
               tab !== "settings"
-                ? "bg-accent-soft text-accent"
+                ? "bg-accent text-background shadow-sm"
                 : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
             }`}
           >
-            {tab !== "settings" && <span className="absolute inset-x-0 top-0 h-0.5 bg-accent" />}
             <Briefcase className="h-4 w-4 shrink-0" />
             Work
           </button>
@@ -1194,11 +1193,10 @@ export function Sidebar({
             title="Editor: models, connections & settings"
             className={`relative flex items-center justify-center gap-2 py-3 text-[13px] font-semibold transition-colors ${
               tab === "settings"
-                ? "bg-surface-warm text-text-primary"
+                ? "bg-accent text-background shadow-sm"
                 : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
             }`}
           >
-            {tab === "settings" && <span className="absolute inset-x-0 top-0 h-0.5 bg-text-secondary" />}
             <SettingsIcon className="h-4 w-4 shrink-0" />
             Editor
           </button>
