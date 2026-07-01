@@ -1719,7 +1719,7 @@ export function ChatPanel({
   // (Insights, Work). Usage is folded into the Insights tab as a section.
   const DOMAIN_TABS: { id: DomainTab; label: string; icon: typeof Home; count?: number }[] = [
     { id: "welcome", label: "Welcome", icon: Home },
-    { id: "soul", label: "Soul", icon: Sparkles },
+    { id: "soul", label: "Ideal State", icon: Sparkles },
     { id: "journal", label: "Journal", icon: BookOpen },
     { id: "skills", label: "Skills", icon: Boxes, count: domainCtx?.skills.length || undefined },
     { id: "loops", label: "Loops", icon: Repeat },
@@ -1932,7 +1932,7 @@ export function ChatPanel({
                 <div className="rounded-xl border border-border-subtle bg-background/50 p-5">
                   <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Quick moves</h3>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <button onClick={() => setDomainTab("soul")} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"><Sparkles className="h-3.5 w-3.5" /> Set the soul</button>
+                    <button onClick={() => setDomainTab("soul")} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"><Sparkles className="h-3.5 w-3.5" /> Set the ideal state</button>
                     <button onClick={() => setDomainTab("loops")} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"><Repeat className="h-3.5 w-3.5" /> Loops</button>
                     <button onClick={() => setDomainTab("work")} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"><Briefcase className="h-3.5 w-3.5" /> Work board</button>
                     <button onClick={() => setDomainTab("insights")} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent"><Lightbulb className="h-3.5 w-3.5" /> Insights</button>
@@ -1946,8 +1946,8 @@ export function ChatPanel({
               <div className="max-w-2xl space-y-4">
                 <div className="rounded-xl border border-border-subtle bg-background/50 p-5">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Soul</h3>
-                    {!editSoul && <button onClick={() => { setSoulDraft(domainSoul); setEditSoul(true); }} title="Edit soul" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Ideal State</h3>
+                    {!editSoul && <button onClick={() => { setSoulDraft(domainSoul); setEditSoul(true); }} title="Edit ideal state" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
                   </div>
                   <p className="mt-1.5 text-[12px] text-text-muted">This domain's ideal state: the target your AI steers toward. It layers under your global ideal state and is injected into every turn in {titleCase(domain!)}.</p>
                   {editSoul ? (
@@ -1964,7 +1964,7 @@ export function ChatPanel({
                     <div className="mt-3"><Markdown source={domainSoul} compact /></div>
                   ) : (
                     <button onClick={() => { setSoulDraft(""); setEditSoul(true); }} className="mt-3 flex flex-col items-start justify-center rounded-lg border border-dashed border-border bg-surface/40 px-4 py-5 text-left hover:border-accent-border">
-                      <span className="text-[13px] text-text-secondary">Give {titleCase(domain!)} a soul.</span>
+                      <span className="text-[13px] text-text-secondary">Set the ideal state for {titleCase(domain!)}.</span>
                       <span className="mt-0.5 text-[12px] text-text-muted">Describe its ideal state; your AI reads this as standing direction.</span>
                     </button>
                   )}
