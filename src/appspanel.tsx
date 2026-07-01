@@ -807,37 +807,45 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         // Master-detail in ONE attached panel: a flush list column (border-r,
         // like the home threads rail) + the detail, joined - not floating cards.
         <div className="flex max-h-[82vh] min-h-[55vh] flex-col overflow-hidden rounded-xl border border-border lg:max-h-[calc(100vh-13rem)] lg:flex-row lg:items-stretch">
-          {/* LEFT - flush connectors column, collapses to a logo rail. */}
+          {/* LEFT - flush connectors column, collapses to an icon-only rail.
+              Shares the Arena section-nav design language: an accent logo chip +
+              wordmark header, a smooth transition-all width, a white-card active
+              treatment on rows, and a collapsed strip that stacks the chip and an
+              expand chevron above icon-only app buttons. */}
           {listCollapsed ? (
-            <div className="flex shrink-0 flex-col items-center gap-2 border-b border-border-subtle bg-surface-warm py-2 lg:w-14 lg:border-b-0 lg:border-r">
-              <button
-                onClick={toggleList}
-                title="Show apps list"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-strong hover:text-accent"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-              <div className="flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto px-1 pb-1">
+            <nav className="flex shrink-0 flex-col border-b border-border-subtle bg-surface-warm/30 transition-all lg:w-12 lg:border-b-0 lg:border-r">
+              <div className="flex shrink-0 items-center gap-2 py-4 lg:flex-col lg:px-2">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent text-background"><Plug className="h-4 w-4" /></span>
+                <button
+                  onClick={toggleList}
+                  title="Show apps list"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-warm hover:text-text-primary"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto px-1.5 pb-3">
                 {directApps.map((a) => (
                   <button
                     key={a.id}
                     onClick={() => { setSelected(a.id); setCatalogPick(null); setGatewayPane(null); }}
                     title={a.title || a.id}
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${selected === a.id && !catalogPick ? "ring-2 ring-accent" : "hover:bg-surface-strong"}`}
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${selected === a.id && !catalogPick ? "bg-surface shadow-sm ring-1 ring-black/5" : "hover:bg-surface-warm"}`}
                   >
                     <AppRowLogo app={a} logos={logos} size={26} fallback="letter" />
                   </button>
                 ))}
               </div>
-            </div>
+            </nav>
           ) : (
-          <aside className="flex w-full shrink-0 flex-col border-b border-border-subtle bg-surface-warm lg:w-72 lg:max-w-xs lg:border-b-0 lg:border-r">
-            <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-3 py-2.5">
-              <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Apps</span>
+          <aside className="flex w-full shrink-0 flex-col border-b border-border-subtle bg-surface-warm transition-all lg:w-72 lg:max-w-xs lg:border-b-0 lg:border-r">
+            <div className="flex shrink-0 items-center gap-2 border-b border-border-subtle px-4 py-4">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent text-background"><Plug className="h-4 w-4" /></span>
+              <span className="font-display text-base font-bold tracking-tight text-text-primary">Apps</span>
               <button
                 onClick={toggleList}
                 title="Collapse list"
-                className="flex h-6 w-6 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-strong hover:text-accent"
+                className="ml-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-warm hover:text-text-primary"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -1989,9 +1997,11 @@ function GatewayConnectDetail({ title, sub, logoId, logos, method, connecting, o
 // strong, distinct highlight: accent-soft fill + a thick left accent bar + ring.
 const ROW_BASE = "group relative flex items-center gap-1 rounded-lg border-l-[3px] pr-1.5 transition-colors";
 function rowCls(active: boolean): string {
+  // Arena section-nav language: the active row reads as a raised white card
+  // (bg-surface + soft shadow + a faint black ring), inactive rows warm on hover.
   return `${ROW_BASE} ${active
-    ? "border-l-accent bg-accent-soft shadow-sm ring-1 ring-accent-border"
-    : "border-l-transparent ring-1 ring-transparent hover:border-l-border hover:bg-surface-strong hover:ring-border-subtle"}`;
+    ? "border-l-accent bg-surface shadow-sm ring-1 ring-black/5"
+    : "border-l-transparent ring-1 ring-transparent hover:border-l-border hover:bg-surface-warm hover:ring-border-subtle"}`;
 }
 
 type KebabAction = { icon: LucideIcon; label: string; onClick: () => void };
