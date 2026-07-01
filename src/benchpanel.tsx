@@ -22,7 +22,8 @@ import { BENCH_CLI_OPTIONS, BENCH_SCHED, benchBatches, benchFreqLabel, benchNoti
 import { deleteSuite, saveSuite, useSuites } from "./bench-presets";
 import type { BenchSuite } from "./bench-presets";
 import { ProviderMark } from "./marks";
-import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, Domain, EngineApp, MatrixRow, RunDetail } from "./types";
+import { autoVerifyClis, useCliVerifyLive } from "./verify";
+import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun, CliInfo, Domain, EngineApp, MatrixRow, RunDetail } from "./types";
 import type { UnlistenFn } from "./bridge";
 
 // --- Model Scout suggestions ---------------------------------------------------
@@ -910,6 +911,40 @@ export function BenchRunConfig({
   // Per-provider search over the full catalog (OpenRouter is 300+ models), so any
   // model is runnable without pinning. Empty = show the curated defaults.
   const [providerSearch, setProviderSearch] = useState<Record<string, string>>({});
+
+  // Up-front runtime validity: which providers will actually run BEFORE the
+  // user starts a test. detect_clis is the binary probe (installed?); the live
+  // verify map is the end-to-end check (auth + model reachable). autoVerifyClis
+  // kicks off a real verification for every detected runtime once loaded.
+  const [clis, setClis] = useState<CliInfo[]>([]);
+  const verify = useCliVerifyLive();
+  useEffect(() => {
+    let alive = true;
+    void invoke<CliInfo[]>("detect_clis")
+      .then((list) => { if (alive) { setClis(list); autoVerifyClis(list); } })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  // Per-provider runnability. The established rule (settings5.tsx): a runtime is
+  // runnable when detected AND its verify did not fail. Not detected OR verify
+  // failed => not runnable. We surface four visible states so the header can
+  // show ok / checking / failed / not-installed honestly.
+  type ProviderStatus = "ok" | "verifying" | "failed" | "unavailable";
+  const providerStatus = (id: string): { status: ProviderStatus; runnable: boolean; reason?: string } => {
+    const ci = clis.find((c) => c.id === id);
+    const v = verify.get(id);
+    if (!ci || !ci.available) {
+      return { status: "unavailable", runnable: false, reason: ci?.error || undefined };
+    }
+    if (v?.status === "failed") {
+      return { status: "failed", runnable: false, reason: v.error || undefined };
+    }
+    // Detected and not failed => runnable. Still "verifying" until the live
+    // end-to-end check reports ok (no verify yet is treated as in-progress).
+    if (v?.status === "ok") return { status: "ok", runnable: true };
+    return { status: "verifying", runnable: true };
+  };
+
   const toggleProvider = (id: string) =>
     setCollapsedProviders((cur) => {
       const next = new Set(cur);
@@ -1166,6 +1201,12 @@ export function BenchRunConfig({
               const selectedHere = models.filter((m) => selModels.has(`${c.id}${MODEL_SEP}${m.id}`)).length;
               const collapsed = collapsedProviders.has(c.id);
               const bunkerBlocked = isBunkerOn() && !isLocalCli(c.id);
+              const ps = providerStatus(c.id);
+              const psTitle =
+                ps.status === "ok" ? `${c.label} is ready to run`
+                : ps.status === "verifying" ? `Checking ${c.label} runtime…`
+                : ps.status === "failed" ? `${c.label} failed verification${ps.reason ? `: ${ps.reason}` : ""}`
+                : `${c.label} is not installed${ps.reason ? `: ${ps.reason}` : ""}`;
               return (
                 <div key={c.id}>
                   <button
@@ -1175,6 +1216,12 @@ export function BenchRunConfig({
                     <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${collapsed ? "" : "rotate-90"}`} strokeWidth={2.5} />
                     <ProviderMark vendor={c.id} size={16} />
                     <span className="text-[13px] font-medium text-text-primary">{c.label}</span>
+                    <span className="shrink-0" title={psTitle} aria-label={psTitle}>
+                      {ps.status === "ok" ? <Check className="h-3.5 w-3.5 text-ok" strokeWidth={2.5} />
+                        : ps.status === "verifying" ? <Loader2 className="h-3 w-3 animate-spin text-text-muted" />
+                        : ps.status === "failed" ? <AlertTriangle className="h-3.5 w-3.5 text-err" />
+                        : <AlertTriangle className="h-3.5 w-3.5 text-warn" />}
+                    </span>
                     {selectedHere > 0 && (
                       <span className="rounded-full bg-accent px-1.5 py-px font-mono text-[9px] font-semibold text-background">{selectedHere}</span>
                     )}
@@ -1200,15 +1247,29 @@ export function BenchRunConfig({
                       {shown.length === 0 && <div className="px-1 py-1 font-mono text-[11px] text-text-muted">No models match "{q}".</div>}
                       {shown.map((m) => {
                         const on = selModels.has(`${c.id}${MODEL_SEP}${m.id}`);
+                        // Validity here reflects the PROVIDER runtime (installed +
+                        // authorized + verified), which is what's checkable up front.
+                        // Not-runnable rows are de-emphasized but still selectable, so
+                        // the user can queue them - they just won't run as-is.
+                        const notRunnable = !ps.runnable;
+                        const runTitle = ps.status === "unavailable"
+                          ? "Runtime not available - install/authorize it in Settings > Runtimes"
+                          : ps.status === "failed"
+                            ? `Runtime failed verification${ps.reason ? `: ${ps.reason}` : ""} - re-check in Settings > Runtimes`
+                            : undefined;
                         return (
                           <button
                             key={m.id}
                             onClick={() => toggleModel(c.id, m.id)}
                             disabled={bunkerBlocked}
-                            title={bunkerBlocked ? "Blocked by Bunker Mode" : m.blurb}
-                            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${on ? "border-accent bg-accent-soft" : "border-border-subtle bg-surface hover:border-accent-border"}`}
+                            title={bunkerBlocked ? "Blocked by Bunker Mode" : (runTitle ?? m.blurb)}
+                            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${on ? "border-accent bg-accent-soft" : "border-border-subtle bg-surface hover:border-accent-border"} ${notRunnable && !on ? "opacity-55" : ""}`}
                           >
                             <span className={`min-w-0 flex-1 truncate font-mono text-xs ${on ? "font-semibold text-accent" : "text-text-primary"}`}>{m.label}</span>
+                            {/* Runtime validity dot - distinct from the selection circle. */}
+                            {ps.runnable
+                              ? <Check className="h-2.5 w-2.5 shrink-0 text-ok" strokeWidth={3} aria-hidden />
+                              : <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ps.status === "failed" ? "bg-err" : "bg-warn"}`} title={runTitle} aria-label={runTitle} />}
                             <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${on ? "bg-accent text-background" : "border border-border"}`}>
                               {on && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
                             </span>
