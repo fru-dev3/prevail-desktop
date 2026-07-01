@@ -251,7 +251,7 @@ export interface Lens {
 
 export type TabId = "chat" | "council" | "benchmark" | "settings" | "work";
 
-export type DomainTab = "chat" | "context" | "insights" | "usage" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs" | "apps" | "loops" | "work";
+export type DomainTab = "chat" | "welcome" | "soul" | "context" | "insights" | "usage" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs" | "apps" | "loops" | "work";
 
 export type DomainToggle = "council" | "web" | "save" | "serendipity" | "auto";
 
