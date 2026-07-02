@@ -2121,7 +2121,7 @@ export function BenchResults({
   onRerun: (run: BenchmarkRun) => void;
   onRerunBatch: (runs: BenchmarkRun[]) => void;
   onContinueBatch: (runs: BenchmarkRun[]) => void;
-  finishedBatch?: string | null;
+  finishedBatch?: { label: string; id: string } | null;
   onViewBatch?: () => void;
   onDismissBanner?: () => void;
   onCrumbHome?: () => void;
@@ -2172,6 +2172,17 @@ export function BenchResults({
     } catch { /* surfaced via refresh */ } finally {
       setScoringRuns((s) => { const n = new Set(s); n.delete(dir); return n; });
     }
+  }
+
+  // Score every UNSCORED run in a set, judge-only (no regeneration). Sequential
+  // so the judge isn't hammered; only unscored runs are touched, so no already-
+  // scored run re-burns judge tokens.
+  const [scoringAll, setScoringAll] = useState(false);
+  async function scoreAllUnscored(candidateRuns: BenchmarkRun[]) {
+    const todo = candidateRuns.filter((r) => !r.scored && !scoringRuns.has(r.run_dir));
+    if (todo.length === 0 || scoringAll) return;
+    setScoringAll(true);
+    try { for (const r of todo) await scoreNow(r); } finally { setScoringAll(false); }
   }
 
   // Runs visible under the current domain filter (a run is "in" a domain
@@ -2432,9 +2443,19 @@ export function BenchResults({
                     <span className="font-mono text-[10px] text-warn">unscored</span>
                   )}
                 </button>
+                {!r.scored && (
+                  <button
+                    onClick={() => void scoreNow(r)}
+                    disabled={scoringRuns.has(r.run_dir)}
+                    title="Score: run only the judge on the existing answers. No answers regenerated, no generation tokens spent."
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:bg-accent-hover disabled:opacity-50"
+                  >
+                    {scoringRuns.has(r.run_dir) ? <Loader2 className="h-3 w-3 animate-spin" /> : "Score"}
+                  </button>
+                )}
                 <button
                   onClick={() => onRerun(r)}
-                  title="Rerun: same model, same domains, as a fresh run"
+                  title="Rerun: regenerate all answers as a fresh run (spends generation tokens). Use Score if you just need the judge to grade existing answers."
                   className="shrink-0 rounded-md border border-border p-1 text-text-muted hover:border-accent-border hover:text-accent"
                 >
                   <RotateCw className="h-3 w-3" />
@@ -2572,12 +2593,41 @@ export function BenchResults({
       {resultsView === "board" && visibleRuns.length > 0 && (
         <div className="flex flex-col gap-5 xl:flex-row">
           <div className="min-w-0 flex-1">
-          {finishedBatch && (
-            <div className="mb-4 flex items-center gap-3 rounded-xl border border-accent-border bg-accent-soft/50 px-4 py-2.5">
-              <Check className="h-4 w-4 shrink-0 text-accent" strokeWidth={3} />
-              <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
-                Batch <span className="font-semibold">{finishedBatch}</span> finished and is on the board.
+          {finishedBatch && (() => {
+            const batchRuns = runs.filter((r) => r.batch_id === finishedBatch.id);
+            const unscored = batchRuns.filter((r) => !r.scored).length;
+            const scoring = scoringAll || batchRuns.some((r) => scoringRuns.has(r.run_dir));
+            // Gap fix: don't claim "finished and on the board" when the judge pass
+            // didn't score the answers. Say what actually happened + offer the
+            // cheap paths (Score = judge-only on existing answers, no regen;
+            // Continue = resume missing questions then score).
+            const allDone = unscored === 0;
+            return (
+            <div className={`mb-4 flex flex-wrap items-center gap-2 rounded-xl border px-4 py-2.5 ${allDone ? "border-accent-border bg-accent-soft/50" : "border-warn/40 bg-warn/10"}`}>
+              {allDone
+                ? <Check className="h-4 w-4 shrink-0 text-accent" strokeWidth={3} />
+                : <AlertTriangle className="h-4 w-4 shrink-0 text-warn" />}
+              <span className="min-w-0 flex-1 text-sm text-text-primary">
+                {allDone ? (
+                  <>Batch <span className="font-semibold">{finishedBatch.label}</span> finished and is on the board.</>
+                ) : (
+                  <>Batch <span className="font-semibold">{finishedBatch.label}</span>: answers are done, but <span className="font-semibold text-warn">{unscored} run{unscored === 1 ? "" : "s"}</span> {unscored === 1 ? "isn't" : "aren't"} scored yet (the judge pass didn't finish). Score them without re-running the answers.</>
+                )}
               </span>
+              {!allDone && (
+                <button onClick={() => void scoreAllUnscored(batchRuns)} disabled={scoring}
+                  title="Run only the judge on the existing answers. No answers are regenerated, no generation tokens are spent."
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:bg-accent-hover disabled:opacity-50">
+                  {scoring ? <><Loader2 className="h-3 w-3 animate-spin" /> Scoring…</> : <>Score {unscored} unscored</>}
+                </button>
+              )}
+              {!allDone && (
+                <button onClick={() => onContinueBatch(batchRuns)}
+                  title="Resume the batch: run only the questions still missing/errored, then score. No completed answers re-run."
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">
+                  Continue
+                </button>
+              )}
               <button onClick={onViewBatch} className="shrink-0 rounded-md border border-accent-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
                 View batch
               </button>
@@ -2585,7 +2635,8 @@ export function BenchResults({
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
-          )}
+            );
+          })()}
           {/* Hero: the current top performer reads first, with its trend and the
               dimensions that matter (speed, cost, value), all from real runs. */}
           {rankedRows.length > 0 && (() => {
@@ -3130,7 +3181,7 @@ export function BenchmarkPanel({
   useEffect(() => { lsSet("prevail.arena.navCollapsed", navCollapsed ? "1" : "0"); }, [navCollapsed]);
   // Set when a batch just finished: the Leaderboard shows a "batch finished"
   // banner linking to it in History (answer first, filing one click away).
-  const [finishedBatch, setFinishedBatch] = useState<string | null>(null);
+  const [finishedBatch, setFinishedBatch] = useState<{ label: string; id: string } | null>(null);
 
   // Data
   const [runs, setRuns] = useState<BenchmarkRun[]>([]);
@@ -3245,7 +3296,7 @@ export function BenchmarkPanel({
         if (ran === 0 && errored > 0) {
           setErr(`Batch "${fin.label}" produced no runs: all ${errored} model${errored === 1 ? "" : "s"} errored. See its card in the Running benchmarks monitor for the per-model reason.`);
         } else {
-          setFinishedBatch(errored > 0 ? `${fin.label} - ${ran} ran, ${errored} failed` : fin.label);
+          setFinishedBatch({ id: fin.id, label: errored > 0 ? `${fin.label} - ${ran} ran, ${errored} failed` : fin.label });
         }
       }
     }
@@ -3513,50 +3564,27 @@ export function BenchmarkPanel({
       {/* Content column: the per-view header + the routed view + footer. */}
       <div className="flex min-w-0 flex-1 flex-col">
         {err && <div className="mx-8 mt-3 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{err}</div>}
+        {/* Header lives OUTSIDE the scroll area (a fixed flex row above it) so it
+            stays visible on long pages regardless of scroll-container height,
+            instead of relying on position:sticky which the nested layout broke. */}
+        <div className="shrink-0 border-b border-border-subtle bg-background px-8 pb-2 pt-6">
+          <ArenaHeader
+            title={HEAD[view].title}
+            subtitle={HEAD[view].subtitle}
+            actions={
+              view === "run" ? null : (
+                <button onClick={() => setView("run")} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover">
+                  <Plus className="h-3.5 w-3.5" /> New Run
+                </button>
+              )
+            }
+          />
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {/* Sticky header: stays pinned so the Arena title, model logos, and
-              actions remain visible while scrolling a long presets/questions list.
-              Translucent + blur so content scrolls cleanly underneath regardless
-              of theme background. */}
-          <div className="sticky top-0 z-20 border-b border-border-subtle bg-background/85 px-8 pb-2 pt-6 backdrop-blur-md">
-            <ArenaHeader
-              title={HEAD[view].title}
-              subtitle={HEAD[view].subtitle}
-              actions={
-                view === "run" ? null : (
-                  <button onClick={() => setView("run")} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover">
-                    <Plus className="h-3.5 w-3.5" /> New Run
-                  </button>
-                )
-              }
-            />
-          </div>
         {view === "run" && (
           <>
-            {/* MONITOR: every active run (in flight + finished-not-dismissed) as
-                its own live card, above the always-available wizard. Each updates
-                independently; several can run at once. */}
-            {monitorBatches.length > 0 && (
-              <div className="w-full space-y-3 px-8 pt-5">
-                <div className="flex items-baseline justify-between">
-                  <h2 className="font-display text-sm font-semibold tracking-tight text-text-primary">
-                    Running benchmarks ({monitorBatches.length})
-                  </h2>
-                  <span className="font-mono text-[10px] text-text-muted">
-                    {monitorBatches.filter((b) => b.running).length} in flight · runs launch concurrently
-                  </span>
-                </div>
-                {monitorBatches.map((b) => (
-                  <RunningBatchCard
-                    key={b.id}
-                    batch={b}
-                    onViewResults={() => setView("board")}
-                    onCancel={() => void cancelBenchBatch(b.id)}
-                    onDismiss={() => dismissBatch(b)}
-                  />
-                ))}
-              </div>
-            )}
+            {/* Wizard leads the New Run page; the runs monitor sits BELOW it so
+                the config you came here for is the first thing you see. */}
             <BenchRunConfig
               mode={mode} setMode={setMode}
               selModels={selModels} toggleModel={toggleModel}
@@ -3570,6 +3598,27 @@ export function BenchmarkPanel({
               }
               onRun={runBenchmark}
             />
+            {monitorBatches.length > 0 && (
+              <div className="w-full space-y-3 border-t border-border-subtle px-8 pb-6 pt-5">
+                <div className="flex items-baseline justify-between">
+                  <h2 className="font-display text-sm font-semibold tracking-tight text-text-primary">
+                    Runs ({monitorBatches.length})
+                  </h2>
+                  <span className="font-mono text-[10px] text-text-muted">
+                    {monitorBatches.filter((b) => b.running).length} in flight · {monitorBatches.filter((b) => !b.running).length} finished
+                  </span>
+                </div>
+                {monitorBatches.map((b) => (
+                  <RunningBatchCard
+                    key={b.id}
+                    batch={b}
+                    onViewResults={() => setView("board")}
+                    onCancel={() => void cancelBenchBatch(b.id)}
+                    onDismiss={() => dismissBatch(b)}
+                  />
+                ))}
+              </div>
+            )}
           </>
         )}
         {view === "scout" && (
