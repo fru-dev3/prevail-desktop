@@ -8,7 +8,7 @@ outputs:
   - { path: data/zoom-recordings-${date}.json, kind: replace }
 ---
 # Refresh Zoom
-Keep the calls, the recordings, and who you sat across from so nothing said out loud gets lost. Strictly read-only — never schedule, update, or delete a meeting.
+Keep the calls, the recordings, and who you sat across from so nothing said out loud gets lost. Strictly read-only, never schedule, update, or delete a meeting.
 1. **Meetings.** List upcoming and past meetings within a window, capturing topic, start time, duration, and host.
 2. **People.** Pull registrants and participants per meeting.
 3. **Recordings.** Fetch recording metadata and transcripts where available.

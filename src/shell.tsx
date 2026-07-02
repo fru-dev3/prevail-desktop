@@ -13,6 +13,7 @@ import { appScheduleText } from "./helpers";
 import { AppCard, AppKV, FloatingChip } from "./widgets";
 import { domainIcon } from "./icons";
 import { ConnectorRunPanel, type ConnectorRunMode } from "./connectorrun";
+import { LoopsPanel } from "./loopspanel";
 import { BrandMark } from "./brandmark";
 import type { AppRunHistory, Domain, EngineApp } from "./types";
 
@@ -35,7 +36,23 @@ function connectHelp(integration: string): string {
   }
 }
 
-export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, onChanged }: { app: EngineApp; vaultPath: string; domains: Domain[]; appTab: "runs" | "settings" | "domains"; onOpenDomain: (d: string) => void; onChanged: () => void }) {
+// Turn the engine probe result into something actionable. Some apps have no
+// credential to verify (a manual data drop, or one that only runs through its
+// skills): the raw "manifest doesn't declare an auth_check" is a dead end, so we
+// say what the app actually needs instead.
+function humanizeProbe(integration: string, raw: string): string {
+  const r = (raw || "").trim();
+  if (/auth_check|can'?t verify|cannot verify|no\s+\w*\s*check|nothing to (test|verify)/i.test(r)) {
+    if (integration === "manual")
+      return "Nothing to verify here. This app is a manual data drop: add its exports or files under its folder, then run a skill. There is no login or key to test.";
+    if (integration === "browser")
+      return "Nothing to auto-verify. This app signs in through a real browser session: use Connect and learn, then a sync proves it works.";
+    return "Nothing to verify here. This app has no login or key to test, it runs through its skills. Run a skill (or Sync) to see it work.";
+  }
+  return r || "tested";
+}
+
+export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, onChanged }: { app: EngineApp; vaultPath: string; domains: Domain[]; appTab: "runs" | "settings" | "domains" | "loops"; onOpenDomain: (d: string) => void; onChanged: () => void }) {
   const [skills, setSkills] = useState<{ id: string; runner: string; trigger: string }[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -88,7 +105,7 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
   }
   async function test() {
     setBusy("test"); setNote(null);
-    try { const r = await invoke<{ status?: string; message?: string }>("engine_app_probe", { id: app.id }); setNote(r.message || r.status || "tested"); }
+    try { const r = await invoke<{ status?: string; message?: string }>("engine_app_probe", { id: app.id }); setNote(humanizeProbe(app.integration, r.message || r.status || "")); }
     catch (e) { setNote(`error: ${e}`); } finally { setBusy(null); }
   }
   async function sync() {
@@ -227,6 +244,7 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
       {appTab === "settings" && (
         <>
           <AppCard icon={KeyRound} label="Connection" action={
+            app.integration === "manual" ? undefined :
             <button onClick={test} disabled={busy === "test"} className="rounded-lg border border-border bg-background px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">{busy === "test" ? "testing…" : "test"}</button>
           }>
             <AppKV k="Status"><span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: tint }} />{app.status}</span></AppKV>
@@ -239,7 +257,16 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
             {/* S5: when the app isn't connected yet, lead with a clear primary
                 action and concrete steps instead of a passive status line - the
                 founder couldn't tell what "not-configured" expected them to do. */}
-            {app.status === "not-configured" && (
+            {app.status === "not-configured" && app.integration === "manual" && (
+              // Manual-drop apps have no credential to verify, so "Check setup"
+              // is a dead end (the probe just reports there's no auth_check).
+              // Tell the user what actually makes this app work instead.
+              <div className="mt-2 rounded-lg border border-accent-border bg-accent-soft/40 px-3 py-2.5">
+                <div className="font-mono text-[10px] uppercase tracking-wider text-accent">No connection step needed</div>
+                <p className="mt-1 text-[12px] leading-relaxed text-text-primary">This app has no login or key to verify. Add its exports or files under its folder, or just run a skill: it works without a connection step. There is nothing to test here.</p>
+              </div>
+            )}
+            {app.status === "not-configured" && app.integration !== "manual" && (
               <div className="mt-2 rounded-lg border border-accent-border bg-accent-soft/40 px-3 py-2.5">
                 <div className="font-mono text-[10px] uppercase tracking-wider text-accent">Not connected yet - here's how</div>
                 <p className="mt-1 text-[11px] leading-relaxed text-text-primary">{connectHelp(app.integration)}</p>
@@ -290,6 +317,18 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
         </>
       )}
 
+      {appTab === "loops" && (
+        // App/domain parity: an app gets the SAME standing-loops surface a domain
+        // has, scoped to data/apps/<id>/_loops.json. isApp hides the domain-only
+        // ideal-state + skips the domain built-in loop seeding.
+        app.path ? (
+          <LoopsPanel domain={app.id} vaultPath={vaultPath} domainPath={app.path} isApp />
+        ) : (
+          <div className="rounded-lg border border-border-subtle bg-background px-4 py-6 text-[13px] leading-relaxed text-text-muted">
+            Loops become available once this app is added to your vault. Add it, then create standing loops here, just like a domain.
+          </div>
+        )
+      )}
       {appTab === "runs" && (
         <>
           {browserCard}

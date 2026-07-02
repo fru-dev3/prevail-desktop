@@ -4,6 +4,45 @@ All notable changes to Prevail desktop. Format: [Keep a Changelog](https://keepa
 
 ---
 
+## [0.2.108] — 2026-06-30 · Ideal State + AI draft, consistent app layouts, Arena upgrades, curated apps
+
+### Added
+- **Ideal State** (renamed from "Soul") across app, Google, and domain detail, with a "Draft with AI" tool that researches the app/domain and drafts it (consistent whether drafted from the detail tab or from chat, since both write the same file). New two-column layout fills the space with a "what a good ideal state covers" guide.
+- **Domain detail** now uses the same tabbed layout as apps (Welcome / Ideal State / Journal / Skills / Loops / Work / Insights / Apps / Settings / Chat).
+- **Arena**: collapsible left nav + right insights rails, per-model validity indicators (know what will run before starting), "Councils" renamed to "Presets".
+
+### Fixed
+- **Apps**: the default "Available to add" list now shows only the curated set (~216), with search revealing the full catalog; Zapier now connects inline in the right pane instead of a popup.
+- **Google**: an authenticated account now shows Connected + email (via `gws auth status`) even if Gmail scope is limited, instead of a false "re-authorize".
+- **Models**: the picker shows actual model names (Opus 4.8, Sonnet 5, Haiku 4.5), no "latest" abstraction.
+- **Arena**: the domains filter shows real domains only (no apps).
+
+## [0.2.107] — 2026-06-30 · app/domain parity, unified app detail, gateways, Google auth fix
+
+### Added
+- **App/domain parity**: apps now have a **Loops** tab and a **Journal/Context** tab (state, journal, decisions, activity) via a new `app_context` command, plus a verified `soul.md` file, mirroring domains.
+- **Unified app detail**: the two drifted app-detail surfaces are merged into one canonical view exposing every tab (Welcome/Soul/Journal/Skills/Connections/Runs/Loops/Settings/Domains/Chat), so an app looks the same wherever you open it. Covered by a new headless render test.
+- **Gateways**: Composio, Nango, and Zapier as single connect-once aggregator apps (Composio/Zapier via MCP, Nango via key) that unlock all of each gateway's integrations.
+- **Sidebar app pinning** (pin-to-top, like domains) and a **Google Chat tab + favorite star**.
+
+### Fixed
+- **Google authentication**: sign-in now requests explicit Gmail/Calendar/Drive/Docs/Sheets/Tasks scopes (the prior `-s` flag only limited the scope picker, so only basic profile access was granted). Clearer "re-authorize to grant access" state and honest scope messaging.
+- **Catalog de-duplication**: zero duplicate app names (1496 apps, 216 curated).
+
+## [0.2.106] — 2026-06-30 · apps + sidebar + Google redesign, Arena 8-view redesign, curated default catalog
+
+### Added
+- **Curated default app catalog**: the union of the curated launch lists is now the default set (213 of 1495 apps), each with a description, a skills list ("What it can do"), a domain grouping, and an honest connection method; plus 31 new connectors including the aggregators (Plaid, Flexpa, Terra, Canopy Connect, Argyle, Arcadia, Smartcar).
+- **Transparent agentic connect**: catalog apps offer "Find the best way" which researches MCP / API / CLI / browser, recommends one with a reason, auto-verifies, and connects after you confirm.
+- **Arena redesign**: all 8 views rebuilt (left rail nav, leaderboard hero, heatmap matrix, chart compare, history, run, questions, scout, schedule).
+- **Google panel**: Setup / Skills / Soul / Connections tabs, real multicolor service logos, clear multi-account display; multi-account OAuth reuses the default client.
+
+### Fixed
+- Apps panel: minimal rows with details on hover + a kebab, labeled status dots, no duplicate pinned apps, stronger hover/active contrast, Google shows as CLI, graceful scroll end, full-width Skills, clarified Connect, corrected `vault/data/apps` paths.
+- Sidebar apps now match domains (selected state, kebab, favorite-as-pin) and disabled apps read as off.
+- Disabled apps are fully inert (no sync, no agent tools, no loops). Manual-drop apps say "nothing to verify" instead of a dead-end check. Autonomy policy "Never" is no longer invisible. Browser skills work in packaged builds (playwright-core shipped beside the app).
+- Profiles page redesign; Starter packs removed; Prompt capture moved to its own section; notes.json now lives in build/.
+
 ## [0.8.2] — 2026-06-14 · self-learning, proactive recommendations, apps that connect themselves, and a much faster engine
 
 ### Added

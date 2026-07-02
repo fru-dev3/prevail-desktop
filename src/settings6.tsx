@@ -902,12 +902,12 @@ export function AgentCard({
             const v = cli.available ? cliVerifyLive.get(cli.id) : undefined;
             const chip = !cli.available
               ? cli.error
-                ? { cls: "border-danger/40 bg-danger/10 text-danger", label: "Broken", Icon: X, spin: false }
+                ? { cls: "border-err/40 bg-err/10 text-err", label: "Broken", Icon: X, spin: false }
                 : { cls: "border-border bg-surface-warm text-text-muted", label: "Not installed", Icon: null, spin: false }
               : v?.status === "ok"
                 ? { cls: "border-ok/40 bg-ok/10 text-ok", label: "Valid", Icon: Check, spin: false }
                 : v?.status === "failed"
-                  ? { cls: "border-danger/40 bg-danger/10 text-danger", label: "Not valid", Icon: X, spin: false }
+                  ? { cls: "border-err/40 bg-err/10 text-err", label: "Not valid", Icon: X, spin: false }
                   : v?.status === "verifying"
                     ? { cls: "border-warn/40 bg-warn/10 text-warn", label: "Checking", Icon: Loader2, spin: true }
                     : { cls: "border-border bg-background text-text-muted", label: "Detected", Icon: null, spin: false };
@@ -926,7 +926,7 @@ export function AgentCard({
         <div className="w-[64px] shrink-0 text-right font-mono text-[11px] text-text-secondary" title="Total spend on this runtime (local usage ledger)">
           {typeof cost === "number" && cost > 0
             ? `$${cost < 1 ? cost.toFixed(2) : cost < 100 ? cost.toFixed(1) : Math.round(cost)}`
-            : <span className="text-text-muted/50">-</span>}
+            : <span className="text-text-muted/50">–</span>}
         </div>
         {/* Version column. */}
         <div className="w-[116px] shrink-0 truncate text-right font-mono text-[10px] text-text-muted/80">
@@ -941,7 +941,7 @@ export function AgentCard({
           </button>
         ) : cli.available && !chattable ? (
           // Harness, installed: catalog-only (not a homepage chat runtime).
-          <span className="inline-flex w-[92px] shrink-0 items-center justify-center font-mono text-[10px] uppercase tracking-wider text-text-muted/60" title="Harness - set up here; not a chat runtime">
+          <span className="inline-flex w-[92px] shrink-0 items-center justify-center font-mono text-[10px] uppercase tracking-wider text-text-muted/60" title="Harness: set up here; not a chat runtime">
             Ready
           </span>
         ) : (
@@ -950,7 +950,7 @@ export function AgentCard({
             href={RUNTIME_META[cli.id]?.install ?? "#"}
             target="_blank"
             rel="noreferrer"
-            title={RUNTIME_META[cli.id]?.blurb ? `${RUNTIME_META[cli.id]?.blurb} - opens setup docs` : "Open setup docs"}
+            title={RUNTIME_META[cli.id]?.blurb ? `${RUNTIME_META[cli.id]?.blurb} (opens setup docs)` : "Open setup docs"}
             className="inline-flex w-[92px] shrink-0 items-center justify-center gap-1 rounded-md border border-border bg-background py-1.5 text-center font-mono text-[11px] uppercase tracking-wider text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
           >
             Set up <ArrowUpRight className="h-3 w-3" />
@@ -1003,7 +1003,7 @@ export function AgentCard({
               const err = errors[m.id];
               return (
                 <div key={m.id} className={`flex items-start gap-3 rounded-md border px-3 py-2 ${defaultModel === m.id ? "border-accent-border bg-accent-soft" : "border-border-subtle bg-background"}`}>
-                  <div className="mt-0.5 w-3 shrink-0 text-center text-[11px] leading-none">
+                  <div className="mt-0.5 w-3 shrink-0 text-center text-[12px] leading-none">
                     <StatusGlyph s={s} />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -1088,7 +1088,7 @@ export function AgentCard({
             {RUNTIME_META[cli.id]?.blurb || `${cli.label} is a harness runtime.`}
           </div>
           <p className="text-xs leading-relaxed text-text-muted">
-            This is a <span className="font-semibold text-text-secondary">harness</span> - it wraps the{" "}
+            This is a <span className="font-semibold text-text-secondary">harness</span>: it wraps the{" "}
             <code className="text-accent">{RUNTIME_META[cli.id]?.protocol ?? "base"}</code> protocol and runs through your installed base CLI. It's installed and validated, so it's ready to use wherever harnesses are offered (it isn't a homepage chat runtime).
           </p>
           <div className="flex flex-wrap items-center gap-2 pt-0.5">
@@ -1108,14 +1108,14 @@ export function AgentCard({
         <div className="space-y-2.5 border-t border-border-subtle px-4 py-3">
           <div className="text-sm text-text-secondary">
             {cli.error
-              ? `${cli.label} is installed but won't run - its launcher is on disk but failed to start.`
+              ? `${cli.label} is installed but won't run: its launcher is on disk but failed to start.`
               : RUNTIME_META[cli.id]?.blurb || `${cli.label} isn't installed on this Mac yet.`}
           </div>
           {/* Broken install: show the actual failure so the user knows what to
               fix (the most common cause is a wrapper pointing at a removed env). */}
           {cli.error && (
-            <div className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger/5 px-2.5 py-2">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" />
+            <div className="flex items-start gap-2 rounded-md border border-err/30 bg-err/5 px-2.5 py-2">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-err" />
               <code className="min-w-0 flex-1 break-all font-mono text-[10px] leading-relaxed text-text-secondary">{cli.error}</code>
             </div>
           )}
@@ -1123,8 +1123,8 @@ export function AgentCard({
             <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">{cli.error ? `Reinstall ${cli.label}` : `Set up ${cli.label}`}</div>
             <p className="text-xs leading-relaxed text-text-secondary">
               {cli.error
-                ? `Reinstall ${cli.label} to repair the launcher. It runs on your own subscription - no key to paste here. Prevail auto-detects it; hit Re-check once it's fixed.`
-                : `Install ${cli.label} from its setup guide. It runs on your own subscription - no key to paste here. Prevail auto-detects it; hit Re-check once it's installed.`}
+                ? `Reinstall ${cli.label} to repair the launcher. It runs on your own subscription, no key to paste here. Prevail auto-detects it; hit Re-check once it's fixed.`
+                : `Install ${cli.label} from its setup guide. It runs on your own subscription, no key to paste here. Prevail auto-detects it; hit Re-check once it's installed.`}
             </p>
             {RUNTIME_META[cli.id]?.cmd && (
               <div className="flex items-center gap-2 rounded-md border border-border-subtle bg-surface-warm/60 px-2 py-1.5">
@@ -1293,18 +1293,39 @@ export function AgentsSection({
   const [selectedId, setSelectedId] = useState("");
   const selectedEff = selectedId || defaultChatCli || all.find((c) => c.available)?.id || all[0]?.id || "";
   const selected = all.find((c) => c.id === selectedEff) ?? null;
+  // Collapsible sub-groups (Cloud / Local / Harnesses), matching the Arena rail's
+  // expandable provider groups. Collapsed keys persisted so the rail reopens the
+  // same way; all groups open by default.
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("prevail.runtimes.groupsCollapsed") || "[]")); }
+    catch { return new Set(); }
+  });
+  const toggleGroup = (key: string) => setCollapsedGroups((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    try { localStorage.setItem("prevail.runtimes.groupsCollapsed", JSON.stringify([...next])); } catch { /* ignore */ }
+    return next;
+  });
 
   const listEl = (
     <div className="space-y-3">
       {groups.map((g) => {
         const ready = g.list.filter((c) => c.available).length;
+        const open = !collapsedGroups.has(g.key);
         return (
           <div key={g.key} className="space-y-1">
-            <div className="flex items-baseline justify-between px-1">
-              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{g.label} · {g.list.length}</span>
+            <button
+              onClick={() => toggleGroup(g.key)}
+              aria-expanded={open}
+              className="flex w-full items-baseline justify-between rounded-md px-1 py-0.5 transition-colors hover:bg-surface-warm"
+            >
+              <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">
+                <ChevronRight className={`h-3 w-3 transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
+                {g.label} · {g.list.length}
+              </span>
               <span className="font-mono text-[10px] text-text-muted/60">{ready}/{g.list.length} set up</span>
-            </div>
-            {g.list.map((c) => (
+            </button>
+            {open && g.list.map((c) => (
               <RuntimeRow
                 key={c.id}
                 cli={c}

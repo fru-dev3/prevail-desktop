@@ -1,13 +1,13 @@
 // The domain/navigation Sidebar, extracted from App.tsx. Prop-driven (collapse
 // state, domains, active selection, and a set of callbacks); renders the live
 // gateway/MCP/benchmark status strips from shared modules.
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
-import { Activity, Archive, Briefcase, ChevronDown, ChevronLeft, ChevronRight, Clock, Folder, Layers, Loader2, MessageSquare, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, RotateCcw, Settings as SettingsIcon, Sparkles, Star, Sun, X } from "lucide-react";
+import { Activity, Archive, Briefcase, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Folder, Layers, Loader2, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, PowerOff, RotateCcw, Settings as SettingsIcon, Sparkles, StarOff, Sun, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { STATUS_TINT } from "./constants";
-import { appName, relTime, scoreColor, titleCase } from "./format";
+import { appName, scoreColor, titleCase } from "./format";
 import { lsGet, lsSet } from "./storage";
 import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
 import { SidebarGatewayLive, SidebarMcpLive } from "./panels";
@@ -21,7 +21,15 @@ import { BENCH_SCHED, useBenchBatches } from "./bench";
 import { BACKUP_CFG } from "./backup";
 import { BrandMark } from "./brandmark";
 import { AppRowLogo } from "./panels3";
-import type { BrandLogo, Domain, EngineApp, LifeReadiness, Mode, TabId, ThreadMeta } from "./types";
+import type { BrandLogo, CatalogApp, ConnectorCatalog, Domain, EngineApp, LifeReadiness, Mode, TabId } from "./types";
+
+// Shared "selected row" treatment for every selectable nav row in the sidebar
+// (General, Work, Domains, Apps). A solid accent fill reads as a clear,
+// high-contrast selected state rather than a faint tint, and keeps the active
+// item looking identical no matter which section it lives in.
+const SEL_ROW = "bg-accent text-background font-semibold shadow-sm";
+// Collapsed icon-rail version (icon only, no label so no font-weight needed).
+const SEL_ICON = "bg-accent text-background shadow-sm";
 
 export function Sidebar({
   collapsed,
@@ -44,8 +52,6 @@ export function Sidebar({
   onOpenOnboarding,
   onDomainsChanged,
   onOpenApp,
-  todayThreads,
-  onOpenThread,
 }: {
   collapsed: boolean;
   setCollapsed: (v: boolean | ((cur: boolean) => boolean)) => void;
@@ -67,8 +73,6 @@ export function Sidebar({
   onOpenOnboarding: () => void;
   onDomainsChanged: () => void;
   onOpenApp: (app: EngineApp) => void;
-  todayThreads: ThreadMeta[];
-  onOpenThread: (m: ThreadMeta) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -83,7 +87,10 @@ export function Sidebar({
   // Group collapse - Pinned vs All. Persisted so collapsing survives
   // app restarts.
   const [pinnedOpen, setPinnedOpen] = useState<boolean>(() => lsGet("prevail.sidebar.pinnedOpen") !== "0");
-  const [allOpen, setAllOpen] = useState<boolean>(() => lsGet("prevail.sidebar.allOpen") !== "0");
+  // "All" collapsed by default so Domains opens just one level (Pinned + the
+  // All header with its count), keeping the rail compact rather than listing
+  // every domain. The header stays visible when collapsed, so nothing is lost.
+  const [allOpen, setAllOpen] = useState<boolean>(() => lsGet("prevail.sidebar.allOpen") === "1");
   useEffect(() => { lsSet("prevail.sidebar.pinnedOpen", pinnedOpen ? "1" : "0"); }, [pinnedOpen]);
   useEffect(() => { lsSet("prevail.sidebar.allOpen", allOpen ? "1" : "0"); }, [allOpen]);
   const togglePin = (name: string) => {
@@ -143,10 +150,6 @@ export function Sidebar({
   const [domainsOpen, setDomainsOpen] = useState<boolean>(() => lsGet("prevail.sidebar.domainsOpen") !== "0");
   useEffect(() => { lsSet("prevail.sidebar.domainsOpen", domainsOpen ? "1" : "0"); }, [domainsOpen]);
 
-  // "Today" section collapse (2026 redesign) — shows today's most recent
-  // conversations across all domains. Persisted like the other groups.
-  const [todayOpen, setTodayOpen] = useState<boolean>(() => lsGet("prevail.sidebar.todayOpen") !== "0");
-  useEffect(() => { lsSet("prevail.sidebar.todayOpen", todayOpen ? "1" : "0"); }, [todayOpen]);
   // "Work" surfaces group — collapsible like Domains. Persisted.
   const [workOpen, setWorkOpen] = useState<boolean>(() => lsGet("prevail.sidebar.workOpen") !== "0");
   useEffect(() => { lsSet("prevail.sidebar.workOpen", workOpen ? "1" : "0"); }, [workOpen]);
@@ -189,6 +192,19 @@ export function Sidebar({
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [menuOpen]);
+  // Which app row's kebab (⋮) menu is open. Keyed by app id (connected rows) or
+  // `cat-<favKey>` (starred-but-not-connected catalog rows); mirrors the domain
+  // kebab so the Apps section gets the same hover-revealed action menu.
+  const [appMenuOpen, setAppMenuOpen] = useState<string | null>(null);
+  useEffect(() => {
+    if (!appMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || !t.closest("[data-app-menu]")) setAppMenuOpen(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [appMenuOpen]);
   const refreshArchived = useCallback(async () => {
     if (!vaultPath) return;
     try {
@@ -211,11 +227,43 @@ export function Sidebar({
   // row can show the real mark instead of a bare status dot.
   const [appLogos, setAppLogos] = useState<Record<string, BrandLogo>>({});
   useEffect(() => { invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setAppLogos).catch(() => {}); }, []);
+  // The connector catalog, so apps the user STARRED but has not connected yet
+  // still pin to the rail (matching the Apps panel "My list" - a star pins,
+  // period, whether or not the app is connected).
+  const [appCatalog, setAppCatalog] = useState<CatalogApp[]>([]);
+  useEffect(() => { invoke<ConnectorCatalog>("ingestion_connector_catalog").then((c) => setAppCatalog(c?.apps ?? [])).catch(() => {}); }, []);
   const [appsOpen, setAppsOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsOpen") !== "0");
   useEffect(() => { lsSet("prevail.sidebar.appsOpen", appsOpen ? "1" : "0"); }, [appsOpen]);
+  // Pinned apps - the exact parallel of pinned domains, so a favorite app can be
+  // promoted to a "Pinned" group at the top of the Apps section. Keyed by the
+  // app's favorite key (favKeyOf of title/id, or the catalog name) so it lines up
+  // with how the star (favorites) keys each row. Persisted as a comma-separated
+  // list, mirroring PIN_KEY for domains.
+  const PINNED_APPS_KEY = "prevail.desktop.pinnedApps";
+  const [pinnedApps, setPinnedApps] = useState<Set<string>>(() => {
+    try {
+      const raw = lsGet(PINNED_APPS_KEY);
+      return new Set(raw ? raw.split(",").filter(Boolean) : []);
+    } catch { return new Set(); }
+  });
+  const toggleAppPin = (key: string) => {
+    setPinnedApps((cur) => {
+      const next = new Set(cur);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      lsSet(PINNED_APPS_KEY, Array.from(next).join(","));
+      return next;
+    });
+  };
+  // Apps "Pinned" vs "All" group collapse - mirrors pinnedOpen/allOpen for
+  // domains so the two sections behave identically. Persisted across restarts.
+  const [appsPinnedOpen, setAppsPinnedOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsPinnedOpen") !== "0");
+  const [appsAllOpen, setAppsAllOpen] = useState<boolean>(() => lsGet("prevail.sidebar.appsAllOpen") === "1");
+  useEffect(() => { lsSet("prevail.sidebar.appsPinnedOpen", appsPinnedOpen ? "1" : "0"); }, [appsPinnedOpen]);
+  useEffect(() => { lsSet("prevail.sidebar.appsAllOpen", appsAllOpen ? "1" : "0"); }, [appsAllOpen]);
   useEffect(() => {
     let alive = true;
-    const pull = () => { invoke<EngineApp[]>("engine_apps_list").then((a) => { if (alive) setSidebarApps((a ?? []).map((x) => ({ ...x, title: appName(x.title) }))); }).catch(() => {}); };
+    const pull = () => { invoke<EngineApp[]>("engine_apps_list", { vault: vaultPath }).then((a) => { if (alive) setSidebarApps((a ?? []).map((x) => ({ ...x, title: appName(x.title) }))); }).catch(() => {}); };
     pull();
     // Re-pull when an app is added/removed elsewhere (e.g. the Apps catalog).
     const onChanged = () => pull();
@@ -231,6 +279,38 @@ export function Sidebar({
       .sort((a, b) => a.title.localeCompare(b.title)),
     [sidebarApps, favs],
   );
+  // Starred catalog apps the user has NOT connected yet. Matched by the same
+  // normalized name key the Apps panel uses (favKeyOf(name)), deduped, and
+  // excluding any already shown as a connected row above so nothing appears
+  // twice. This is what makes a star pin to the rail immediately, before the
+  // app is connected - the behavior the Apps panel "My list" already has.
+  const favoritedCatalogApps = useMemo(() => {
+    const connectedKeys = new Set<string>();
+    for (const a of favoritedSidebarApps) { connectedKeys.add(favKeyOf(a.title || a.id)); connectedKeys.add(favKeyOf(a.id)); }
+    const seen = new Set<string>();
+    return appCatalog
+      .filter((c) => {
+        const k = favKeyOf(c.name);
+        if (!favs.has(k) || connectedKeys.has(k) || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [appCatalog, favs, favoritedSidebarApps]);
+  const pinnedAppCount = favoritedSidebarApps.length + favoritedCatalogApps.length;
+  // Split both favorited lists into pinned vs the rest so pinned apps - across
+  // connected and not-yet-connected rows alike - rise to a "Pinned" group at the
+  // top, exactly like pinned domains. The existing per-list name sort is kept
+  // within each group.
+  const appBuckets = useMemo(() => {
+    const isPinnedApp = (key: string) => pinnedApps.has(key);
+    const pinnedSidebar = favoritedSidebarApps.filter((a) => isPinnedApp(favKeyOf(a.title || a.id)));
+    const restSidebar = favoritedSidebarApps.filter((a) => !isPinnedApp(favKeyOf(a.title || a.id)));
+    const pinnedCatalog = favoritedCatalogApps.filter((c) => isPinnedApp(favKeyOf(c.name)));
+    const restCatalog = favoritedCatalogApps.filter((c) => !isPinnedApp(favKeyOf(c.name)));
+    return { pinnedSidebar, restSidebar, pinnedCatalog, restCatalog };
+  }, [favoritedSidebarApps, favoritedCatalogApps, pinnedApps]);
+  const hasPinnedApps = appBuckets.pinnedSidebar.length + appBuckets.pinnedCatalog.length > 0;
   // The same app can be connected via Direct creds, Composio, or Nango (e.g.
   // two "Notion" rows). Surface which one each row is so identical titles are
   // distinguishable. The gateway provider is derived from the id prefix
@@ -250,7 +330,15 @@ export function Sidebar({
   const renderAppRow = (app: EngineApp) => {
     const tint = STATUS_TINT[app.status] ?? "#9aa0a6";
     const active = activeAppId === app.id;
+    // A disabled app (its skill/connector has enabled === false) won't be run by
+    // the sync daemon. Surface that here so it reads as off at a glance: muted
+    // styling, a grey status dot, and a small "Off" badge. Absent/true = enabled.
+    const disabled = app.enabled === false;
     const method = appMethod(app);
+    // Pin key matches the favorite key the star writes (title preferred, id
+    // fallback) so pinning lines up with whichever key favorited the row.
+    const appPinKey = favKeyOf(app.title || app.id);
+    const isAppPinned = pinnedApps.has(appPinKey);
     return (
       <li key={app.id} className="group flex items-center gap-1 pl-6">
         <button
@@ -298,49 +386,172 @@ export function Sidebar({
           onClick={() => onOpenApp(app)}
           className={`flex flex-1 cursor-grab items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors active:cursor-grabbing ${
             active
-              ? "bg-accent-soft font-semibold text-accent ring-1 ring-inset ring-accent-border/60"
-              : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+              ? SEL_ROW
+              : disabled
+                ? "text-text-muted hover:bg-surface-warm"
+                : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
           }`}
-          title={`Click to open ${app.title} (${method.label}) · drag into chat to attach as context${app.domains.length ? " · refreshes " + app.domains.map(titleCase).join(", ") : ""}`}
+          title={`${disabled ? `${app.title} is turned off and won't sync · ` : ""}Click to open ${app.title} (${method.label}) · drag into chat to attach as context${app.domains.length ? " · refreshes " + app.domains.map(titleCase).join(", ") : ""}`}
         >
           {/* Brand mark + a tiny status dot anchored to it so connection state
               stays visible. Gateway apps key the logo off the toolkit so e.g.
               "composio-notion" still resolves the Notion mark. */}
-          <span className="relative shrink-0">
+          <span className={`relative shrink-0 ${disabled && !active ? "opacity-50" : ""}`}>
             <AppRowLogo app={{ title: app.title, id: method.toolkit }} logos={appLogos} size={18} fallback="letter" />
             <span
               className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-surface-strong"
-              style={{ backgroundColor: tint }}
+              style={{ backgroundColor: disabled ? "#9aa0a6" : tint }}
             />
           </span>
           <span className="flex min-w-0 flex-1 flex-col leading-tight">
-            <span className="truncate text-sm">{app.title}</span>
-            <span className="truncate text-[10px] text-text-muted">{method.label}</span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-sm">{app.title}</span>
+              {disabled && (
+                <span
+                  className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0 font-mono text-[10px] uppercase tracking-wider ${active ? "bg-background/20 text-background" : "bg-surface-warm text-text-muted"}`}
+                  title="This app is turned off and won't be synced"
+                >
+                  <PowerOff className="h-2.5 w-2.5" /> Off
+                </span>
+              )}
+            </span>
+            <span className={`truncate text-[10px] ${active ? "text-background/80" : "text-text-muted"}`}>{disabled ? "Off · " + method.label : method.label}</span>
           </span>
         </button>
-        <button
-          onClick={() => {
-            // Remove whichever key(s) pinned this app - id-keyed (AppDetail star)
-            // or name-keyed (Direct list star). Only delete present keys so this
-            // never accidentally re-adds.
-            const idK = favKeyOf(app.id), titleK = favKeyOf(app.title);
-            if (favs.has(idK)) toggleFavorite(idK);
-            if (titleK !== idK && favs.has(titleK)) toggleFavorite(titleK);
-          }}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-accent opacity-0 hover:bg-surface-warm group-hover:opacity-100"
-          title="Remove from home screen"
-        >
-          <Star className="h-3 w-3 fill-accent" />
-        </button>
-        {app.path && (
+        {/* Row actions collapsed into a kebab (⋮), matching the domain rows: a
+            hover-revealed menu with open / open-in-Finder / remove-from-sidebar
+            (the app equivalent of unpinning a domain). */}
+        <div className="relative shrink-0" data-app-menu>
           <button
-            onClick={() => openInFinder(app.path ?? null)}
-            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${active ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-            title={`Open ${app.title} folder in Finder`}
+            onClick={(e) => { e.stopPropagation(); setAppMenuOpen((cur) => (cur === app.id ? null : app.id)); }}
+            className={`flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${
+              active || appMenuOpen === app.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            }`}
+            title="App actions"
           >
-            <Folder className="h-3.5 w-3.5" />
+            <MoreVertical className="h-4 w-4" />
           </button>
-        )}
+          {appMenuOpen === app.id && (
+            <div className="absolute right-0 top-7 z-50 w-44 rounded-md border border-border bg-surface p-0.5 shadow-xl">
+              {/* Pin to top - the app equivalent of pinning a domain. Promotes
+                  this row into the "Pinned" group above; does NOT unfavorite. */}
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleAppPin(appPinKey); setAppMenuOpen(null); }}
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+              >
+                <Pin className={`h-3 w-3 shrink-0 ${isAppPinned ? "fill-accent text-accent" : ""}`} /> {isAppPinned ? "Unpin" : "Pin to top"}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setAppMenuOpen(null); onOpenApp(app); }}
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+              >
+                <ExternalLink className="h-3 w-3 shrink-0" /> Open
+              </button>
+              {app.path && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setAppMenuOpen(null); openInFinder(app.path ?? null); }}
+                  className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+                >
+                  <Folder className="h-3 w-3 shrink-0" /> Open in Finder
+                </button>
+              )}
+              <div className="my-0.5 h-px bg-border-subtle" />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAppMenuOpen(null);
+                  // Remove whichever key(s) pinned this app - id-keyed (AppDetail
+                  // star) or name-keyed (Direct list star). Only delete present
+                  // keys so this never accidentally re-adds.
+                  const idK = favKeyOf(app.id), titleK = favKeyOf(app.title);
+                  if (favs.has(idK)) toggleFavorite(idK);
+                  if (titleK !== idK && favs.has(titleK)) toggleFavorite(titleK);
+                }}
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+              >
+                <StarOff className="h-3 w-3 shrink-0" /> Remove from sidebar
+              </button>
+            </div>
+          )}
+        </div>
+      </li>
+    );
+  };
+
+  // "Pinned" / "All" group header inside the Apps section - the visual + collapse
+  // twin of the domain group headers (renderGroupHeader above).
+  const renderAppGroupHeader = (label: "Pinned" | "All", open: boolean, set: (v: boolean) => void, count: number) => (
+    <li key={`app-${label}-header`} className="mt-1 first:mt-0">
+      <button
+        onClick={() => set(!open)}
+        title={`${open ? "Collapse" : "Expand"} ${label}`}
+        className="group/h flex w-full items-center gap-1.5 rounded-md py-1.5 pl-4 pr-2 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
+      >
+        <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
+        <span>{label}</span>
+        <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{count}</span>
+      </button>
+    </li>
+  );
+
+  // A starred app the user has not connected yet. It still pins here (a star
+  // pins), shown muted with a "Not connected" hint. Clicking opens the Apps
+  // panel to finish connecting it; the star removes it from the rail.
+  const renderCatalogFavRow = (c: CatalogApp) => {
+    const k = favKeyOf(c.name);
+    const isAppPinned = pinnedApps.has(k);
+    return (
+      <li key={`cat-${k}`} className="group flex items-center gap-1 pl-6">
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
+          className="flex flex-1 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm text-text-secondary transition-colors hover:bg-surface-warm hover:text-text-primary"
+          title={`Open Apps to connect ${c.name}`}
+        >
+          <span className="relative shrink-0">
+            <AppRowLogo app={{ title: c.name, id: c.iconSlug || k }} logos={appLogos} size={18} fallback="letter" />
+            <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-text-muted/50 ring-2 ring-surface-strong" />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="truncate text-sm">{c.name}</span>
+            <span className="truncate text-[10px] text-text-muted">Not connected</span>
+          </span>
+        </button>
+        {/* Same kebab affordance as connected app rows: connect or remove. */}
+        <div className="relative shrink-0" data-app-menu>
+          <button
+            onClick={(e) => { e.stopPropagation(); setAppMenuOpen((cur) => (cur === `cat-${k}` ? null : `cat-${k}`)); }}
+            className={`flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-accent ${
+              appMenuOpen === `cat-${k}` ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            }`}
+            title="App actions"
+          >
+            <MoreVertical className="h-4 w-4" />
+          </button>
+          {appMenuOpen === `cat-${k}` && (
+            <div className="absolute right-0 top-7 z-50 w-44 rounded-md border border-border bg-surface p-0.5 shadow-xl">
+              {/* Pin to top - same affordance as connected app rows and domains. */}
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleAppPin(k); setAppMenuOpen(null); }}
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+              >
+                <Pin className={`h-3 w-3 shrink-0 ${isAppPinned ? "fill-accent text-accent" : ""}`} /> {isAppPinned ? "Unpin" : "Pin to top"}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setAppMenuOpen(null); window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" })); }}
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+              >
+                <ExternalLink className="h-3 w-3 shrink-0" /> Connect
+              </button>
+              <div className="my-0.5 h-px bg-border-subtle" />
+              <button
+                onClick={(e) => { e.stopPropagation(); setAppMenuOpen(null); if (favs.has(k)) toggleFavorite(k); }}
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-primary hover:bg-surface-warm"
+              >
+                <StarOff className="h-3 w-3 shrink-0" /> Remove from sidebar
+              </button>
+            </div>
+          )}
+        </div>
       </li>
     );
   };
@@ -359,12 +570,12 @@ export function Sidebar({
   }
 
   // Archive a domain straight from its sidebar row (the spot users look first).
-  // Nothing is deleted — it moves to the collapsible "Archived" section below
+  // Nothing is deleted - it moves to the collapsible "Archived" section below
   // and can be restored any time.
   async function archiveDomain(name: string) {
     try {
       const ok = await tauriConfirm(
-        `Hide "${titleCase(name)}" from the active list? Nothing is deleted - restore it any time from the Archived section.`,
+        `Hide "${titleCase(name)}" from the active list? Nothing is deleted. Restore it any time from the Archived section.`,
         { title: "Archive domain", kind: "warning" },
       );
       if (!ok) return;
@@ -376,10 +587,17 @@ export function Sidebar({
     }
   }
 
+  // Mode-aware sidebar wash: Work mode gets a faint accent (teal) glow at the
+  // top, Editor mode a warmer neutral wash, so the whole rail visibly reads as
+  // one mode or the other beyond just the footer toggle.
+  const editorMode = tab === "settings";
+  const modeWash = editorMode
+    ? "linear-gradient(180deg, color-mix(in srgb, var(--color-surface-warm) 70%, var(--color-surface-strong)) 0%, var(--color-surface-strong) 240px)"
+    : "linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 9%, var(--color-surface-strong)) 0%, var(--color-surface-strong) 240px)";
   return (
     <aside
       className="flex shrink-0 flex-col border-r border-border-subtle bg-surface-strong"
-      style={{ width: collapsed ? 56 : railWidth }}
+      style={{ width: collapsed ? 56 : railWidth, backgroundImage: modeWash }}
     >
       {/* The Prevail mark on its own row, full width, with the sidebar toggle on
           the far right. The macOS traffic lights are handled by the full-width
@@ -418,7 +636,7 @@ export function Sidebar({
         )}
       </div>
 
-      {/* Profile switcher — pinned at the top under the logo (workspace-context
+      {/* Profile switcher - pinned at the top under the logo (workspace-context
           convention: Notion/Linear), keeping the bottom uncluttered. */}
       <ProfileSwitcher collapsed={collapsed} />
 
@@ -441,9 +659,9 @@ export function Sidebar({
                       key={it.id}
                       onClick={() => selectEditor(it.id)}
                       title={collapsed ? it.label : undefined}
-                      className={`flex w-full items-center rounded-md py-1.5 text-left text-sm transition-colors ${collapsed ? "justify-center px-0" : "gap-3 px-3"} ${
-                        active ? "bg-accent font-semibold text-background shadow-sm" : "text-text-secondary hover:bg-surface-strong hover:text-text-primary"
-                      }`}
+                      className={`group flex w-full items-center rounded-md py-1.5 text-left text-sm transition-all ${collapsed ? "justify-center px-0" : "gap-3 px-3"} ${
+                        active ? "bg-accent font-semibold text-background shadow-sm" : "text-text-secondary hover:bg-accent-soft hover:text-accent hover:shadow-sm active:scale-[0.99]"
+                      } ${!active && !collapsed ? "hover:pl-4" : ""}`}
                     >
                       <Icon className="h-4 w-4 shrink-0" />
                       {!collapsed && <span className="flex-1">{it.label}</span>}
@@ -458,47 +676,6 @@ export function Sidebar({
         {/* WORK MODE (everything that isn't Editor): Today + Work surfaces +
             Domains + Apps, all in this one bar. */}
         {tab !== "settings" && (<>
-        {/* Today - the most recent conversations across every domain whose last
-            activity is in the local day (top 5). Hidden when the rail is
-            collapsed to keep the icon rail clean. */}
-        {!collapsed && (
-          <div className="px-2 pt-2">
-            <button
-              onClick={() => setTodayOpen((v) => !v)}
-              className="group/h flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
-            >
-              <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${todayOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
-              <Clock className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-              <span>Today</span>
-              {todayThreads.length > 0 && (
-                <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{todayThreads.length}</span>
-              )}
-            </button>
-            {todayOpen && (todayThreads.length === 0 ? (
-              <p className="px-4 py-1.5 text-[11px] leading-relaxed text-text-muted">No conversations yet today.</p>
-            ) : (
-              <ul className="space-y-0.5">
-                {todayThreads.map((t) => (
-                  <li key={t.path}>
-                    <button
-                      onClick={() => onOpenThread(t)}
-                      title={`${t.title} · ${t.domain ? titleCase(t.domain) : "General"} · ${relTime(t.updated * 1000)}`}
-                      className="group flex w-full items-center gap-2 rounded-md py-1.5 pl-6 pr-2 text-left transition-colors hover:bg-surface-warm"
-                    >
-                      <MessageSquare className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-                      <span className="flex min-w-0 flex-1 flex-col leading-tight">
-                        <span className="truncate text-[13px] text-text-secondary group-hover:text-text-primary">{t.title}</span>
-                        <span className="truncate text-[10px] text-text-muted">
-                          {t.domain ? titleCase(t.domain) : "General"} · {relTime(t.updated * 1000)}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ))}
-          </div>
-        )}
         {/* General - the home for chats not tied to any domain. Selecting it
             unbinds the chat from domain context; its threads live in the vault
             root _threads/. New threads are created via the threads rail's +. */}
@@ -513,12 +690,12 @@ export function Sidebar({
               collapsed
                 ? `flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
                     selectedDomain === "" && tab !== "work"
-                      ? "bg-accent-soft text-accent"
+                      ? SEL_ICON
                       : "text-text-muted hover:bg-surface-warm hover:text-text-primary"
                   }`
                 : `flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
                     selectedDomain === "" && tab !== "work"
-                      ? "bg-accent-soft text-accent"
+                      ? SEL_ROW
                       : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
                   }`
             }
@@ -528,7 +705,7 @@ export function Sidebar({
           </button>
         </div>
 
-        {/* Work surfaces — board, automations, calendar, notes — in the main bar
+        {/* Work surfaces - board, automations, calendar, notes - in the main bar
             (no second column). Collapsible + indented, mirroring Domains. */}
         {!collapsed && (
           <button
@@ -538,7 +715,6 @@ export function Sidebar({
             <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${workOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
             <Briefcase className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
             <span>Work</span>
-            <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{WORK_NAV.flatMap((g) => g.items).length}</span>
           </button>
         )}
         {(collapsed || workOpen) && (
@@ -551,8 +727,8 @@ export function Sidebar({
                   <button
                     onClick={() => selectWork(it.id)}
                     title={collapsed ? it.label : undefined}
-                    className={`flex w-full items-center rounded-md py-1.5 text-left text-sm transition-colors ${collapsed ? "justify-center px-0" : "gap-2.5 pl-6 pr-2"} ${
-                      active ? "bg-accent-soft font-semibold text-accent ring-1 ring-inset ring-accent-border/60" : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+                    className={`group flex w-full items-center rounded-md py-1.5 text-left text-sm transition-all ${collapsed ? "justify-center px-0" : "gap-2.5 pl-6 pr-2"} ${
+                      active ? SEL_ROW : "text-text-secondary hover:bg-accent-soft hover:text-accent hover:shadow-sm active:scale-[0.99]"
                     }`}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
@@ -565,16 +741,25 @@ export function Sidebar({
         )}
 
         {!collapsed && (
-          <button
-            data-tour="domains"
-            onClick={() => setDomainsOpen((v) => !v)}
-            className="group/h mt-2 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted hover:text-text-secondary transition-colors"
-          >
-            <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${domainsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
-            <Layers className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-            <span>Domains</span>
-            <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{domains.length}</span>
-          </button>
+          <div data-tour="domains" className="group/h mt-2 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted">
+            <button
+              onClick={() => setDomainsOpen((v) => !v)}
+              className="flex flex-1 items-center gap-1.5 text-left transition-colors hover:text-text-secondary"
+            >
+              <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${domainsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+              <Layers className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+              <span>Domains</span>
+            </button>
+            {/* Add affordance: revealed on hover so the rail stays clean. */}
+            <button
+              onClick={() => { setDomainsOpen(true); setAdding(true); }}
+              title="New domain"
+              className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-text-muted opacity-0 transition hover:bg-surface-warm hover:text-accent focus:opacity-100 group-hover/h:opacity-100"
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+            </button>
+            <span className="font-mono text-[10px] tabular-nums text-text-muted/70">{domains.length}</span>
+          </div>
         )}
         {vaultError && !collapsed && domainsOpen && (
           <div className="mx-2 my-2 rounded border border-warn/40 bg-warn/10 p-2 text-xs text-warn">{vaultError}</div>
@@ -632,7 +817,7 @@ export function Sidebar({
                     title={titleCase(d.name)}
                     className={`flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
                       active
-                        ? "bg-accent-soft text-accent"
+                        ? SEL_ICON
                         : "text-text-muted hover:bg-surface-warm hover:text-text-primary"
                     }`}
                   >
@@ -640,7 +825,7 @@ export function Sidebar({
                       // NAV-1: no per-domain icon → a circular badge (not a bare
                       // glyph) so the collapsed rail signals "content behind here".
                       <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
-                        active ? "bg-accent text-background" : "bg-surface-warm text-text-secondary ring-1 ring-border"
+                        active ? "bg-background/20 text-background" : "bg-surface-warm text-text-secondary ring-1 ring-border"
                       }`}>
                         {titleCase(d.name).charAt(0)}
                       </span>
@@ -714,19 +899,19 @@ export function Sidebar({
                   title="Click to enter · drag to chat as context (plain: state · ⇧ full · ⌥ entire folder)"
                   className={`flex flex-1 cursor-grab items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors active:cursor-grabbing ${
                     active
-                      ? "bg-accent-soft text-accent font-semibold ring-1 ring-inset ring-accent-border/60"
+                      ? SEL_ROW
                       : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
                   }`}
                 >
                   {Icon ? (
-                    <Icon className={`h-4 w-4 ${active ? "text-accent" : "text-text-muted"}`} />
+                    <Icon className={`h-4 w-4 ${active ? "text-background" : "text-text-muted"}`} />
                   ) : (
-                    <span className={active ? "text-accent" : "text-text-muted"}>◆</span>
+                    <span className={active ? "text-background" : "text-text-muted"}>◆</span>
                   )}
                   <span className="flex-1 truncate">{titleCase(d.name)}</span>
                   {(domainStats[d.name] ?? 0) > 0 && (
                     <span
-                      className="shrink-0 rounded-full bg-surface-warm px-1.5 py-0 font-mono text-[10px] text-text-muted"
+                      className={`shrink-0 rounded-full px-1.5 py-0 font-mono text-[10px] ${active ? "bg-background/20 text-background" : "bg-surface-warm text-text-muted"}`}
                       title={`${domainStats[d.name]} imports`}
                     >
                       {domainStats[d.name]}
@@ -788,19 +973,11 @@ export function Sidebar({
           })}
         </ul>
 
-        {/* Add domain */}
-        {!collapsed && domainsOpen && (
+        {/* Add domain - triggered by the hover "+" on the Domains header above;
+            only the inline create form renders here (no persistent button). */}
+        {!collapsed && domainsOpen && adding && (
           <div className="mt-2 px-2">
-            {!adding && (
-              <button
-                onClick={() => setAdding(true)}
-                className="flex w-full items-center gap-2 rounded-md border border-dashed border-border px-2.5 py-1.5 text-left text-xs text-text-muted hover:border-accent-border hover:bg-surface-warm hover:text-accent"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                new domain
-              </button>
-            )}
-            {adding && (
+            {(
               <div className="rounded-md border border-border bg-background p-2">
                 <input
                   autoFocus
@@ -888,43 +1065,51 @@ export function Sidebar({
             list stays collapsed so a long catalog never floods the rail. */}
         {!collapsed && (
           <div className="mt-3">
-            <button
-              onClick={() => setAppsOpen((v) => !v)}
-              className="group/h flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-text-secondary"
-            >
-              <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${appsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
-              <Plug className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-              <span>Apps</span>
-              <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{favoritedSidebarApps.length}</span>
-            </button>
-            {appsOpen && (favoritedSidebarApps.length > 0 ? (
+            <div className="group/h flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted">
+              <button
+                onClick={() => setAppsOpen((v) => !v)}
+                className="flex flex-1 items-center gap-1.5 text-left transition-colors hover:text-text-secondary"
+              >
+                <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${appsOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
+                <Plug className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+                <span>Apps</span>
+              </button>
+              {/* Add affordance: revealed on hover so the rail stays clean. */}
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
+                title="Add an app"
+                className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-text-muted opacity-0 transition hover:bg-surface-warm hover:text-accent focus:opacity-100 group-hover/h:opacity-100"
+              >
+                <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+              </button>
+              <span className="font-mono text-[10px] tabular-nums text-text-muted/70">{pinnedAppCount}</span>
+            </div>
+            {appsOpen && (pinnedAppCount > 0 ? (
               <ul className="mt-0.5 space-y-0.5 px-2">
-                {/* The home screen = starred apps only (any mode). The star on a
-                    row removes it from home; the Apps panel adds new ones. */}
-                {favoritedSidebarApps.map(renderAppRow)}
-                {/* Add another app. */}
-                <li className="mt-0.5">
-                  <button
-                    onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
-                    className="flex w-full items-center gap-2 rounded-md py-1.5 pl-6 pr-2 text-left text-xs text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
-                    title="Browse and connect apps"
-                  >
-                    <Plus className="h-3.5 w-3.5 shrink-0" />
-                    add an app
-                  </button>
-                </li>
+                {/* The home screen = starred apps only (any mode). Connected apps
+                    first, then starred-but-not-yet-connected catalog apps. The
+                    star on a row removes it from home; the Apps panel adds new ones.
+                    When any app is pinned, split into a "Pinned" group above an
+                    "All" group - the exact parallel of the Domains section. */}
+                {hasPinnedApps ? (
+                  <>
+                    {renderAppGroupHeader("Pinned", appsPinnedOpen, setAppsPinnedOpen, appBuckets.pinnedSidebar.length + appBuckets.pinnedCatalog.length)}
+                    {appsPinnedOpen && appBuckets.pinnedSidebar.map(renderAppRow)}
+                    {appsPinnedOpen && appBuckets.pinnedCatalog.map(renderCatalogFavRow)}
+                    {renderAppGroupHeader("All", appsAllOpen, setAppsAllOpen, appBuckets.restSidebar.length + appBuckets.restCatalog.length)}
+                    {appsAllOpen && appBuckets.restSidebar.map(renderAppRow)}
+                    {appsAllOpen && appBuckets.restCatalog.map(renderCatalogFavRow)}
+                  </>
+                ) : (
+                  <>
+                    {favoritedSidebarApps.map(renderAppRow)}
+                    {favoritedCatalogApps.map(renderCatalogFavRow)}
+                  </>
+                )}
               </ul>
             ) : (
               <div className="px-2">
-                <p className="mt-0.5 px-4 py-1.5 text-[11px] leading-relaxed text-text-muted">Star an app in Apps to pin it here.</p>
-                <button
-                  onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
-                  className="mt-0.5 flex w-full items-center gap-2 rounded-md py-1.5 pl-4 pr-2 text-left text-xs text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
-                  title="Browse and connect apps"
-                >
-                  <Plus className="h-3.5 w-3.5 shrink-0" />
-                  add an app
-                </button>
+                <p className="mt-0.5 px-4 py-1.5 text-[11px] leading-relaxed text-text-muted">Star an app in Apps to pin it here, or hover this header and hit +.</p>
               </div>
             ))}
           </div>
@@ -974,11 +1159,11 @@ export function Sidebar({
           A solid edge-to-edge bar so it reads as the app's footer action. */}
       {collapsed ? (
         <div data-tour="settings" className="flex flex-col items-center gap-1 border-t border-border-subtle p-2">
-          <button onClick={() => setTab("chat")} title="Work - your domains, board, automations, calendar & notes" aria-label="Work mode"
+          <button onClick={() => setTab("chat")} title="Work: your domains, board, automations, calendar & notes" aria-label="Work mode"
             className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${tab !== "settings" ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}>
             <Briefcase className="h-4 w-4" />
           </button>
-          <button onClick={() => setTab("settings")} title="Editor - models, connections & settings" aria-label="Editor mode"
+          <button onClick={() => setTab("settings")} title="Editor: models, connections & settings" aria-label="Editor mode"
             className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${tab === "settings" ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}>
             <SettingsIcon className="h-4 w-4" />
           </button>
@@ -989,30 +1174,34 @@ export function Sidebar({
           <FooterProcesses collapsed setTab={setTab} />
         </div>
       ) : (
-        <div data-tour="settings" className="flex items-center gap-2 border-t border-border px-3 py-2.5">
-          {/* Segmented pill: the active mode rides a raised inner pill. */}
-          <div className="flex flex-1 items-center rounded-full border border-border bg-surface-strong p-0.5">
-            <button
-              onClick={() => setTab("chat")}
-              title="Work - your domains, board, automations, calendar & notes"
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition-all ${
-                tab !== "settings" ? "bg-surface text-accent shadow-sm ring-1 ring-inset ring-border-subtle" : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              <Briefcase className="h-4 w-4 shrink-0" />
-              Work
-            </button>
-            <button
-              onClick={() => setTab("settings")}
-              title="Editor - models, connections & settings"
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition-all ${
-                tab === "settings" ? "bg-surface text-accent shadow-sm ring-1 ring-inset ring-border-subtle" : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              <SettingsIcon className="h-4 w-4 shrink-0" />
-              Editor
-            </button>
-          </div>
+        // Full-width, edge-to-edge mode switch. Two equal halves span the whole
+        // rail; the active mode is filled (accent for Work, warm for Editor)
+        // with a bold top indicator bar, so the current mode is unmistakable.
+        <div data-tour="settings" className="grid shrink-0 grid-cols-2 border-t border-border">
+          <button
+            onClick={() => setTab("chat")}
+            title="Work: your domains, board, automations, calendar & notes"
+            className={`relative flex items-center justify-center gap-2 py-3 text-[13px] font-semibold transition-colors ${
+              tab !== "settings"
+                ? "bg-accent text-background shadow-sm"
+                : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+            }`}
+          >
+            <Briefcase className="h-4 w-4 shrink-0" />
+            Work
+          </button>
+          <button
+            onClick={() => setTab("settings")}
+            title="Editor: models, connections & settings"
+            className={`relative flex items-center justify-center gap-2 py-3 text-[13px] font-semibold transition-colors ${
+              tab === "settings"
+                ? "bg-accent text-background shadow-sm"
+                : "text-text-secondary hover:bg-surface-warm hover:text-text-primary"
+            }`}
+          >
+            <SettingsIcon className="h-4 w-4 shrink-0" />
+            Editor
+          </button>
         </div>
       )}
       {!collapsed && (
@@ -1025,7 +1214,7 @@ export function Sidebar({
             href="https://github.com/fru-dev3/prevail-desktop/issues/new"
             target="_blank"
             rel="noreferrer"
-            title="Alpha - Prevail is an early research project, provided as-is with no warranty: use at your own risk. Click to send feedback or report a bug."
+            title="Alpha: Prevail is an early research project, provided as-is with no warranty: use at your own risk. Click to send feedback or report a bug."
             className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-accent transition-colors hover:bg-accent hover:text-background"
           >
             <span className="text-[10px] leading-none">◆</span> Alpha
@@ -1033,7 +1222,7 @@ export function Sidebar({
           <div className="flex-1" />
           <button
             onClick={() => { const cycle: Mode[] = ["light", "dark", "system"]; const i = cycle.indexOf(appearance.mode); appearance.setMode(cycle[(i + 1) % cycle.length]); }}
-            title={`Theme: ${appearance.mode} - click to cycle (light · dark · system)`}
+            title={`Theme: ${appearance.mode}, click to cycle (light · dark · system)`}
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
           >
             {appearance.mode === "dark" ? <Moon className="h-3.5 w-3.5" /> : appearance.mode === "system" ? <Monitor className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
@@ -1051,17 +1240,19 @@ export function Sidebar({
 // stays minimal until the user actually wants the detail.
 function FooterProcesses({ collapsed, setTab }: { collapsed: boolean; setTab: (t: TabId) => void }) {
   const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
   const procs = useProcesses();
   const runningBench = useBenchBatches().filter((b) => b.running);
   const count = procs.length + runningBench.length;
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
+        ref={btnRef}
+        onClick={() => setOpen((v) => !v)}
         title={count > 0
-          ? `${count} background process${count === 1 ? "" : "es"} running - click for details`
-          : "Background processes - scheduled benchmarks, backups & live activity"}
-        className={`relative flex ${collapsed ? "h-8 w-8" : "h-6 w-6"} shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-warm hover:text-accent`}
+          ? `${count} background process${count === 1 ? "" : "es"} running (click for details)`
+          : "Background processes: scheduled benchmarks, backups & live activity"}
+        className={`relative flex ${collapsed ? "h-8 w-8" : "h-6 w-6"} shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-warm hover:text-accent ${open ? "bg-surface-warm text-accent" : ""}`}
       >
         <Activity className={collapsed ? "h-4 w-4" : "h-3.5 w-3.5"} />
         {count > 0 && (
@@ -1070,53 +1261,122 @@ function FooterProcesses({ collapsed, setTab }: { collapsed: boolean; setTab: (t
           </span>
         )}
       </button>
-      {open && <ProcessesModal onClose={() => setOpen(false)} setTab={setTab} />}
+      {open && <ProcessesPopover anchorRef={btnRef} onClose={() => setOpen(false)} setTab={setTab} />}
     </>
   );
 }
 
-// The consolidated background-activity modal. Reuses the existing strip
-// components (they self-hide when inactive) so nothing about how a process,
-// benchmark, backup, or connection renders had to be reimplemented.
-function ProcessesModal({ onClose, setTab }: { onClose: () => void; setTab: (t: TabId) => void }) {
+// The consolidated background-activity popover. Anchored to the footer
+// Activity icon (bottom-left of the sidebar) and rises upward from it, so it
+// appears where the user clicked rather than centered on screen. Reuses the
+// existing strip components (they self-hide when inactive) so nothing about how
+// a process, benchmark, backup, or connection renders had to be reimplemented.
+function ProcessesPopover(
+  { anchorRef, onClose, setTab }:
+  { anchorRef: RefObject<HTMLButtonElement | null>; onClose: () => void; setTab: (t: TabId) => void },
+) {
   const procs = useProcesses();
   const runningBench = useBenchBatches().filter((b) => b.running);
   const benchSched = lsGet(BENCH_SCHED.enabled, "0") === "1";
   const backupOn = lsGet(BACKUP_CFG.enabled, "0") === "1";
   const empty = procs.length === 0 && runningBench.length === 0 && !benchSched && !backupOn;
+  // A small live count of the actively running work (processes + benchmark
+  // runs) for the header badge. Scheduled/armed items are not counted here since
+  // they are waiting, not running.
+  const runningCount = procs.length + runningBench.length;
+
+  // Anchor to the trigger: fixed positioning (so sidebar overflow never clips
+  // it), left-aligned to the icon, bottom sitting just above it so the card
+  // grows upward from the bottom-left footer corner.
+  const [pos, setPos] = useState<{ left: number; bottom: number } | null>(null);
+  const [shown, setShown] = useState(false);
   useEffect(() => {
+    const place = () => {
+      const r = anchorRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const left = Math.max(8, r.left);
+      const bottom = Math.max(8, window.innerHeight - r.top + 8);
+      setPos({ left, bottom });
+    };
+    place();
+    // Entrance feel: mount slightly offset/faded, then settle on next frame.
+    const raf = requestAnimationFrame(() => setShown(true));
+    window.addEventListener("resize", place);
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [anchorRef, onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    // Transparent click-away backdrop.
+    <div className="fixed inset-0 z-50" onClick={onClose}>
       <div
-        className="w-full max-w-sm overflow-hidden rounded-xl border border-border bg-surface shadow-2xl"
+        role="dialog"
+        aria-label="Background processes"
         onClick={(e) => e.stopPropagation()}
+        style={{
+          position: "fixed",
+          left: pos?.left ?? 8,
+          bottom: pos?.bottom ?? 8,
+          width: 320,
+          visibility: pos ? "visible" : "hidden",
+          transformOrigin: "bottom left",
+          transform: shown ? "translateY(0) scale(1)" : "translateY(6px) scale(0.98)",
+          opacity: shown ? 1 : 0,
+          transition: "opacity 140ms ease-out, transform 140ms ease-out",
+        }}
+        className="overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl ring-1 ring-black/5"
       >
-        <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-          <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-secondary">
-            <Activity className="h-3.5 w-3.5 text-accent" /> Background processes
+        <div className="flex items-center justify-between border-b border-border-subtle/70 px-4 pb-3 pt-3.5">
+          <span className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-soft text-accent">
+              <Activity className="h-4 w-4" />
+            </span>
+            <span className="flex flex-col leading-tight">
+              <span className="text-[13px] font-semibold text-text-primary">Background work</span>
+              <span className="text-[10px] text-text-muted">Live and scheduled activity</span>
+            </span>
           </span>
-          <button onClick={onClose} title="Close" aria-label="Close" className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary">
-            <X className="h-3.5 w-3.5" />
-          </button>
+          <span className="flex items-center gap-1.5">
+            {runningCount > 0 && (
+              <span className="flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold text-accent">
+                <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+                {runningCount} live
+              </span>
+            )}
+            <button
+              onClick={onClose}
+              title="Close"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-warm hover:text-text-primary"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </span>
         </div>
-        <div className="max-h-[60vh] overflow-y-auto">
+        <div className="max-h-[min(60vh,420px)] overflow-y-auto p-2">
           {empty ? (
-            <p className="px-4 py-8 text-center text-xs leading-relaxed text-text-muted">
-              Nothing running right now.<br />Scheduled benchmarks, automatic backups, and live activity (chats, council, loops) will appear here.
-            </p>
+            <div className="flex flex-col items-center gap-2.5 px-4 py-9 text-center">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-warm text-text-muted">
+                <Activity className="h-5 w-5" />
+              </span>
+              <span className="text-[13px] font-medium text-text-secondary">All quiet</span>
+              <span className="max-w-[220px] text-[11px] leading-relaxed text-text-muted">
+                Scheduled benchmarks, automatic backups, and live activity like chats, council, and loops will show up here.
+              </span>
+            </div>
           ) : (
-            <>
+            <div className="flex flex-col gap-1.5">
               <SidebarProcesses collapsed={false} setTab={setTab} />
               <SidebarBenchmarkRuns collapsed={false} />
               <SidebarBenchScheduled collapsed={false} />
               <SidebarBackupActive collapsed={false} />
               <SidebarGatewayLive collapsed={false} />
               <SidebarMcpLive collapsed={false} setTab={setTab} />
-            </>
+            </div>
           )}
         </div>
       </div>

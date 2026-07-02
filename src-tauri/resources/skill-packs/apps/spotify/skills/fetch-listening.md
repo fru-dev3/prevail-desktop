@@ -1,7 +1,10 @@
 ---
 id: fetch-listening
 runner: llm
-trigger: refresh
+# Demoted to on-demand: this is now a pack fallback for the fetch-listening
+# capability. The browser favorite (and api variant) lead; this still runs if
+# they are blocked or fail, writing the same data/ file the analysis skills read.
+trigger: on-demand
 outputs:
   - { path: data/spotify-recently-played-${date}.json, kind: replace }
   - { path: data/spotify-top-${date}.json, kind: replace }

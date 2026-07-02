@@ -1,5 +1,5 @@
 // Components extracted from App.tsx.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Boxes, Check, ChevronRight, Circle, ExternalLink, Globe, Loader2, Plug, Plus, RefreshCw, Settings as SettingsIcon, Sparkles, Terminal, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
@@ -8,7 +8,7 @@ import { formatFreshness, relTime, scoreColor, titleCase } from "./format";
 import { formatAuditedAt } from "./helpers";
 import { ScoreBar } from "./panels";
 import { Sparkline } from "./ui";
-import type { BrandLogo, CliProvider, ContextScore, EngineApp, IngestionMcpServer, IngestionTierStatus, MissingItem, OnboardingRecommendation } from "./types";
+import type { BrandLogo, CatalogApp, CliProvider, ConnectorCatalog, ContextScore, EngineApp, IngestionMcpServer, IngestionTierStatus, MissingItem, OnboardingRecommendation } from "./types";
 
 // Brand tile from a plain product name (used for AI suggestions, which only
 // carry a name): slug the name, look it up in the simple-icons map, else a
@@ -210,7 +210,7 @@ export function OnboardingModal({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
           {error && (
-            <div className="mb-4 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+            <div className="mb-4 rounded-md border border-err/40 bg-err/10 px-3 py-2 text-sm text-err">
               {error}
             </div>
           )}
@@ -338,6 +338,10 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
   // Learned app suggestions for this domain (the "you should connect X" layer).
   const [suggestions, setSuggestions] = useState<{ name: string; reason: string }[]>([]);
   const [suggesting, setSuggesting] = useState(false);
+  // The connector catalog, used to resolve a suggested name to a real app id /
+  // integration (and its logo) when the user adds it straight to this domain.
+  const [catalog, setCatalog] = useState<CatalogApp[]>([]);
+  const [addingSuggestion, setAddingSuggestion] = useState<string | null>(null);
   const loadSuggestions = () => {
     invoke<Record<string, { items?: { name: string; reason: string }[] }>>("app_suggestions_read", { vault: vaultPath })
       .then((all) => setSuggestions(all?.[domain.toLowerCase()]?.items ?? []))
@@ -346,9 +350,23 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
   useEffect(() => {
     invoke<EngineApp[]>("engine_apps_list").then(setApps).catch(() => setApps([]));
     invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {});
+    invoke<ConnectorCatalog>("ingestion_connector_catalog").then((c) => setCatalog(c?.apps ?? [])).catch(() => {});
     loadSuggestions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [domain]);
+
+  // Auto-suggest on open: if there are no cached suggestions for this domain,
+  // learn from activity in the background so the panel is useful without the
+  // user having to hit "suggest apps" first (founder ask).
+  const autoSuggestedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!apps) return; // wait until the app list has loaded so we know the state
+    if (suggestions.length > 0) { autoSuggestedFor.current = domain; return; }
+    if (autoSuggestedFor.current === domain || suggesting) return;
+    autoSuggestedFor.current = domain;
+    void generateSuggestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apps, domain, suggestions.length]);
 
   async function generateSuggestions() {
     setSuggesting(true);
@@ -356,6 +374,53 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
       const all = await invoke<Record<string, { items?: { name: string; reason: string }[] }>>("app_suggestions_generate", { vault: vaultPath, domain });
       setSuggestions(all?.[domain.toLowerCase()]?.items ?? []);
     } catch { /* surfaced by empty state */ } finally { setSuggesting(false); }
+  }
+
+  // Add a suggested app straight to THIS domain WITHOUT setting up its
+  // connection. Adding to a domain and configuring the connection are two
+  // separate steps: this scaffolds the app (unconfigured) and binds it here, so
+  // it shows up under "apps refreshing this domain" with a "set up" action the
+  // user can do later (or never). Resolves the suggestion name against the
+  // catalog to reuse the real id / integration / logo when we know the app.
+  async function addSuggestionToDomain(name: string) {
+    setAddingSuggestion(name);
+    try {
+      const match = catalog.find((c) => c.name.toLowerCase() === name.toLowerCase())
+        || catalog.find((c) => (c.iconSlug || "").toLowerCase() === name.toLowerCase());
+      const id = ((match?.iconSlug || match?.name || name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48)) || "app";
+      const method = match?.connection_hint?.method || match?.via;
+      const integration = ((): string => {
+        switch ((method || "").toLowerCase()) {
+          case "mcp": case "composio": return "mcp";
+          case "api": return "api";
+          case "oauth": return "oauth";
+          case "browser": return "browser";
+          default: return "manual";
+        }
+      })();
+      const isMcp = match?.connection_hint?.method === "mcp";
+      const mcpCommand = isMcp ? match?.connection_hint?.command : undefined;
+      const mcpInstall = isMcp ? match?.connection_hint?.install : undefined;
+      try {
+        await invoke("engine_app_add", { vault: vaultPath, id, title: match?.name ?? name, integration, domains: [domain], mcpCommand, mcpInstall });
+      } catch (e) {
+        // Already scaffolded: just make sure it feeds this domain (below).
+        if (!/already exists/i.test(String(e))) throw e;
+      }
+      if (match?.soul) { try { await invoke("engine_app_set_soul", { id, soul: match.soul }); } catch { /* best-effort */ } }
+      // If the app already existed under this id without this domain, bind it.
+      const list = await invoke<EngineApp[]>("engine_apps_list").catch(() => apps ?? []);
+      const added = list.find((a) => a.id === id);
+      if (added && !added.domains.includes(domain)) {
+        try { await invoke("engine_app_set_domains", { id, domains: [...added.domains, domain] }); } catch { /* leave as-is */ }
+      }
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+      const next = await invoke<EngineApp[]>("engine_apps_list").catch(() => list);
+      setApps(next);
+      // Drop it from the suggestion list now that it's feeding the domain.
+      setSuggestions((s) => s.filter((x) => x.name.toLowerCase() !== name.toLowerCase()));
+    } catch { /* leave the suggestion in place to retry */ }
+    finally { setAddingSuggestion(null); }
   }
   const domainApps = useMemo(() => (apps ?? []).filter((a) => a.domains.includes(domain)), [apps, domain]);
   // Apps NOT yet feeding this domain - the candidates the picker offers.
@@ -417,7 +482,7 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
           );
         })}
         {matches.length === 0 && (
-          <li className="px-2.5 py-3 text-center text-[11px] text-text-muted">
+          <li className="px-2.5 py-3 text-center text-[12px] text-text-muted">
             {available.length === 0 ? "Every app already feeds this domain." : "No matching app."}
           </li>
         )}
@@ -514,27 +579,40 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
           </button>
         </div>
         {suggestions.length === 0 ? (
-          <div className="px-1 py-2 text-[11px] text-text-muted">
-            {suggesting ? "Learning from your activity in this domain…" : "No suggestions yet. Hit suggest apps to learn from your activity and propose apps to connect."}
+          <div className="px-1 py-2 text-[12px] text-text-muted">
+            {suggesting ? "Learning from your activity in this domain…" : "No suggestions yet. They appear automatically as Prevail learns from your activity here, or hit refresh."}
           </div>
         ) : (
           <div className="space-y-1.5">
-            {suggestions.map((s) => (
+            {suggestions.map((s) => {
+              const adding = addingSuggestion === s.name;
+              return (
               <div key={s.name} className="flex items-center gap-3 rounded-md px-1 py-1.5">
                 <BrandTile name={s.name} logos={logos} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium text-text-primary">{s.name}</div>
                   <div className="truncate text-[11px] text-text-muted">{s.reason}</div>
                 </div>
+                {/* Two separate steps: add to this domain now (no setup), then
+                    set up the connection later from the app's config page. */}
                 <button
                   onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
-                  title={`Set up ${s.name} in the Apps catalog`}
-                  className="inline-flex shrink-0 items-center gap-1 rounded border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background"
+                  title={`Set up the ${s.name} connection in the Apps catalog`}
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent"
                 >
-                  <Plus className="h-3 w-3" /> connect
+                  <SettingsIcon className="h-3 w-3" /> set up
+                </button>
+                <button
+                  onClick={() => addSuggestionToDomain(s.name)}
+                  disabled={adding}
+                  title={`Add ${s.name} to ${titleCase(domain)} now (you can set up the connection later)`}
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
+                >
+                  {adding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} {adding ? "adding…" : "add to domain"}
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -572,6 +650,27 @@ export function ContextScorePanel({
   }, [vaultPath, score?.domain, score?.computed_at]);
   const delta = history.length >= 2 ? history[history.length - 1] - history[0] : null;
 
+  // Live elapsed seconds while an audit runs, so the progress chip visibly ticks
+  // (proof it is working) even though the heavy LLM work runs off the main thread
+  // and the rest of the page stays interactive.
+  const [auditElapsed, setAuditElapsed] = useState(0);
+  useEffect(() => {
+    if (!rescanning) { setAuditElapsed(0); return; }
+    const t0 = Date.now();
+    const iv = setInterval(() => setAuditElapsed(Math.floor((Date.now() - t0) / 1000)), 500);
+    return () => clearInterval(iv);
+  }, [rescanning]);
+  // Clicking a readiness stat tile in the hero scrolls to (and briefly flashes)
+  // its full row in the Structural readiness section below.
+  const [flashDim, setFlashDim] = useState<string | null>(null);
+  const scrollToDim = (key: string) => {
+    const el = document.getElementById(`dim-${key}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setFlashDim(key);
+    window.setTimeout(() => setFlashDim((cur) => (cur === key ? null : cur)), 1200);
+  };
+
   if (loading && !score) {
     return <div className="text-sm text-text-muted">computing context score…</div>;
   }
@@ -604,8 +703,9 @@ export function ContextScorePanel({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Big score + re-scan */}
-      <div className="flex items-center gap-5 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+      {/* Big score + re-scan, with an at-a-glance readiness dashboard on the
+          right so the hero is a full row of useful, clickable signal. */}
+      <div className="flex flex-wrap items-center gap-5 rounded-2xl border border-border bg-surface p-5 shadow-sm">
         <div
           className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-4"
           style={{ borderColor: color }}
@@ -635,14 +735,46 @@ export function ContextScorePanel({
             <div className="mt-2 text-[11px] text-text-muted">Climbs automatically as apps sync, memory builds, and you add context.</div>
           )}
           <div className="mt-3">
-            <button
-              onClick={onRescan}
-              disabled={rescanning}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:bg-accent-soft hover:text-accent disabled:opacity-50"
-            >
-              {rescanning ? "Re-scanning…" : "Re-scan (audit)"}
-            </button>
+            {rescanning ? (
+              // Non-blocking progress: the audit runs off-thread and as a tracked
+              // background process, so the page stays usable and the user can
+              // navigate away and return. The ticking timer proves it is alive.
+              <div className="inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-accent">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Auditing… {auditElapsed}s · runs in the background, keep working
+              </div>
+            ) : (
+              <button
+                onClick={onRescan}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:bg-accent-soft hover:text-accent"
+              >
+                <RefreshCw className="h-3 w-3" /> Re-scan (audit)
+              </button>
+            )}
           </div>
+        </div>
+
+        {/* Readiness dashboard: the six dimensions as compact, clickable stat
+            tiles. Fills the otherwise-empty right side and jumps to the detail
+            row below on click. Hidden on the narrowest screens. */}
+        <div className="hidden shrink-0 grid-cols-3 gap-2 sm:grid" style={{ width: 312 }}>
+          {SCORE_DIMENSIONS.map(({ key, label }) => {
+            const dim = score.breakdown[key];
+            return (
+              <button
+                key={key}
+                onClick={() => scrollToDim(key)}
+                title={dim.detail || `${label}: ${dim.score}`}
+                className="group flex flex-col items-start rounded-lg border border-border-subtle bg-background px-2.5 py-1.5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm"
+              >
+                <span className="font-mono text-[8.5px] uppercase tracking-wider text-text-muted">{label}</span>
+                <span className="font-mono text-base font-semibold leading-tight" style={{ color: scoreColor(dim.score) }}>{dim.score}</span>
+                <span className="mt-1 block h-1 w-full overflow-hidden rounded-full bg-surface-strong">
+                  <span className="block h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, dim.score))}%`, backgroundColor: scoreColor(dim.score) }} />
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -676,7 +808,7 @@ export function ContextScorePanel({
               const dotColor =
                 tone === "ok" ? "var(--color-ok, #2e9e5b)"
                 : tone === "warn" ? "var(--color-warn, #c98a2b)"
-                : tone === "danger" ? "var(--color-danger, #d24b4b)"
+                : tone === "danger" ? "var(--color-err, #d24b4b)"
                 : "var(--color-text-muted, #888)";
               return (
                 <div
@@ -721,7 +853,11 @@ export function ContextScorePanel({
           {SCORE_DIMENSIONS.map(({ key, label }) => {
             const dim = score.breakdown[key];
             return (
-              <div key={key}>
+              <div
+                key={key}
+                id={`dim-${key}`}
+                className={`scroll-mt-24 rounded-md p-1 transition-shadow ${flashDim === key ? "bg-accent-soft/40 ring-2 ring-accent-border" : ""}`}
+              >
                 <div className="mb-1 flex items-center justify-between">
                   <span className="text-sm font-medium text-text-primary">{label}</span>
                   <span className="font-mono text-xs" style={{ color: scoreColor(dim.score) }}>
@@ -750,7 +886,7 @@ export function ContextScorePanel({
                 sev === "critical" ? "danger" : sev === "warn" ? "warn" : "ok";
               const dot =
                 tone === "danger"
-                  ? "var(--color-danger, #d24b4b)"
+                  ? "var(--color-err, #d24b4b)"
                   : tone === "warn"
                   ? "var(--color-warn, #c98a2b)"
                   : "var(--color-text-muted, #888)";

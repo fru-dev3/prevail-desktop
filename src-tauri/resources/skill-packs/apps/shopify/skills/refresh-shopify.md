@@ -8,7 +8,7 @@ outputs:
   - { path: data/shopify-inventory-${date}.json, kind: replace }
 ---
 # Refresh Shopify
-Pull the latest store state into the vault. Strictly read-only — only fetch and list, never `create`, `update`, set inventory, or change product status.
+Pull the latest store state into the vault. Strictly read-only, only fetch and list, never `create`, `update`, set inventory, or change product status.
 1. **Shop & orders.** Call `get-shop-info`, then `list-orders` over a recent window (e.g. last 60 days) capturing status, financial/fulfillment status, totals, line items, and customer.
 2. **Catalog.** Use `search_products` / `list` and `get-product` for titles, variants, prices, and published status.
 3. **Inventory.** Call `get-inventory-levels` across all locations for on-hand quantity per variant.

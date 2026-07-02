@@ -72,7 +72,7 @@ export function ProfileSwitcher({ collapsed }: { collapsed: boolean }) {
     <div ref={ref} className="relative border-b border-border-subtle">
       <button
         onClick={() => setOpen((v) => !v)}
-        title={`Profile: ${active.label}${active.email ? ` (${active.email})` : ""} - click to switch`}
+        title={`Profile: ${active.label}${active.email ? ` (${active.email})` : ""}, click to switch`}
         className={`flex w-full items-center transition-colors hover:bg-surface-warm ${collapsed ? "justify-center px-2 py-2" : "gap-2.5 px-3 py-2"}`}
       >
         {avatar(active, collapsed ? 28 : 26)}

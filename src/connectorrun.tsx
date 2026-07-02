@@ -134,7 +134,7 @@ export function ConnectorRunPanel({
     <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
-          {running ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : final?.ok ? <Check className="h-4 w-4 text-ok" /> : <X className="h-4 w-4 text-danger" />}
+          {running ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : final?.ok ? <Check className="h-4 w-4 text-ok" /> : <X className="h-4 w-4 text-err" />}
           {title} {appId}
         </div>
         {running ? (
@@ -155,7 +155,7 @@ export function ConnectorRunPanel({
           <div className="text-sm text-text-primary">
             {[...events].reverse().find((e) => e.phase === "await_user")?.message
               || `Complete your ${awaiting === "twofa" ? "sign-in / 2FA" : awaiting} in the Chrome window, then the agent continues.`}
-            <div className="mt-0.5 text-xs text-text-muted">Look for the Chrome window that opened - sign in there, then come back.</div>
+            <div className="mt-0.5 text-xs text-text-muted">Look for the Chrome window that opened, sign in there, then come back.</div>
           </div>
         </div>
       )}
@@ -163,7 +163,7 @@ export function ConnectorRunPanel({
       {/* Step timeline */}
       <div ref={logRef} className="max-h-64 overflow-y-auto rounded-md border border-border-subtle bg-surface-warm/40 p-2 font-mono text-[11px] leading-relaxed">
         {events.length === 0 ? (
-          <div className="flex items-center gap-1.5 text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> launching the agent - your Chrome will open…</div>
+          <div className="flex items-center gap-1.5 text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> launching the agent, your Chrome will open…</div>
         ) : (
           events.map((ev, i) => {
             const Icon = PHASE_ICON[ev.phase] ?? null;
@@ -171,7 +171,7 @@ export function ConnectorRunPanel({
               <div key={i} className="flex items-start gap-1.5 text-text-secondary">
                 {Icon ? <Icon className="mt-0.5 h-3 w-3 shrink-0 text-text-muted" /> : <span className="w-3" />}
                 <span className="min-w-0 flex-1 break-words">
-                  {ev.phase === "step" && <span>{ev.action}{ev.target ? ` · ${ev.target}` : ""}{ev.thought ? <span className="text-text-muted"> - {ev.thought}</span> : ""}</span>}
+                  {ev.phase === "step" && <span>{ev.action}{ev.target ? ` · ${ev.target}` : ""}{ev.thought ? <span className="text-text-muted">: {ev.thought}</span> : ""}</span>}
                   {ev.phase === "nav" && <span className="text-text-muted">→ {ev.url}</span>}
                   {ev.phase === "download" && <span className="text-ok">downloaded {ev.name}</span>}
                   {ev.phase === "blocked" && <span className="text-warning">blocked: {ev.reason}</span>}
@@ -181,7 +181,7 @@ export function ConnectorRunPanel({
                   {ev.phase === "browser_open" && <span className="text-text-muted">opening your Chrome…</span>}
                   {ev.phase === "chromium_download" && <span className="text-text-muted">{ev.message ?? "preparing the browser…"}</span>}
                   {ev.phase === "complete" && <span className="text-ok">{ev.message}</span>}
-                  {ev.phase === "error" && <span className="text-danger">{ev.message}</span>}
+                  {ev.phase === "error" && <span className="text-err">{ev.message}</span>}
                 </span>
               </div>
             );
@@ -199,7 +199,7 @@ export function ConnectorRunPanel({
       )}
 
       {final && !running && (
-        <div className={`rounded-md px-3 py-2 text-sm ${final.ok ? "border border-ok/40 bg-ok/10 text-ok" : "border border-danger/40 bg-danger/10 text-danger"}`}>
+        <div className={`rounded-md px-3 py-2 text-sm ${final.ok ? "border border-ok/40 bg-ok/10 text-ok" : "border border-err/40 bg-err/10 text-err"}`}>
           {final.ok ? "✓ " : "✗ "}
           {final.message || (final.ok ? "Done" : "Failed")}
         </div>

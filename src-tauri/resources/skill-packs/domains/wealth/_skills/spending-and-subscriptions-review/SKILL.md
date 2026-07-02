@@ -7,7 +7,7 @@ source: seed
 ---
 # Spending and subscriptions review
 
-Run quarterly — recurring charges drift in quietly.
+Run quarterly, recurring charges drift in quietly.
 
 1. **List the recurring.** From data/transactions.csv, pull every charge that repeats monthly or annually: streaming, software, memberships, insurance, storage. Total the monthly burn.
 2. **Earning its keep?** For each, mark keep / cut / negotiate. The test is honest use in the last 60 days, not the intention behind the signup.

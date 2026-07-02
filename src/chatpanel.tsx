@@ -3,7 +3,7 @@
 // shared chatviews + domainpanels.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ArrowUpRight, BookOpen, Check, FileText, Folder, Ghost, Image as ImageIcon, Layers, ListChecks, PanelRightOpen, Paperclip, Plus, Scale, Sparkles, X } from "lucide-react";
+import { Activity, ArrowUpRight, BookOpen, Boxes, Briefcase, Check, ClipboardList, Compass, FileText, Folder, Ghost, Home, Image as ImageIcon, Layers, Lightbulb, ListChecks, Loader2, MessageSquare, PanelRightOpen, Paperclip, Pencil, Plug, Plus, RefreshCw, Repeat, Scale, Settings as SettingsIcon, ShieldAlert, Sparkles, Target, TrendingUp, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
 import { addNote } from "./notesstore";
@@ -17,7 +17,7 @@ import { domainBlurb, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stri
 import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, curatedFor, loadPreferredSkills, maybeRedact, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
-import { ContextScoreBadge, NewSkillForm, SkillsList } from "./panels";
+import { ContextScoreBadge, NewSkillForm, ScoreBar, SkillsList } from "./panels";
 import { InsightsPanel, UsageDashboard } from "./panels2";
 import { ContextScorePanel, DomainAppsTab, AppRowLogo } from "./panels3";
 import { domainIcon } from "./icons";
@@ -36,6 +36,45 @@ import type { UnlistenFn } from "./bridge";
 // should be instant (no spawn). Rescans (audit) refresh it.
 const _scoreCache = new Map<string, { at: number; score: ContextScore }>();
 const SCORE_CACHE_TTL_MS = 30_000;
+
+// ── Welcome dashboard subcomponents ───────────────────────────────────
+// A clickable stat tile - a single metric that routes to its own tab. Kept
+// local to the Welcome dashboard so its styling stays consistent.
+function StatTile({ icon: Icon, label, value, hint, onClick }: {
+  icon: typeof Home; label: string; value: React.ReactNode; hint?: string; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group flex flex-col items-start gap-1 rounded-xl border border-border-subtle bg-surface/50 p-4 text-left transition-colors hover:border-accent-border hover:bg-surface-warm/50"
+    >
+      <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+        <Icon className="h-3.5 w-3.5 text-accent" /> {label}
+      </span>
+      <span className="text-2xl font-bold leading-none text-text-primary">{value}</span>
+      {hint && <span className="text-[11px] text-text-muted">{hint}</span>}
+      <span className="mt-1 inline-flex items-center gap-0.5 text-[10px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">
+        Open <ArrowUpRight className="h-3 w-3" />
+      </span>
+    </button>
+  );
+}
+
+// The score-breakdown dimension row: a labelled mini ScoreBar. Reused for each
+// of coverage/density/freshness/structure/activity so the score becomes legible.
+function ScoreDimRow({ label, dim }: { label: string; dim: { score: number; detail: string } | undefined }) {
+  const val = dim?.score ?? 0;
+  const color = scoreColor(val);
+  return (
+    <div title={dim?.detail || ""}>
+      <div className="mb-1 flex items-center justify-between text-[11px]">
+        <span className="text-text-secondary">{label}</span>
+        <span className="font-mono font-semibold" style={{ color }}>{Math.round(val)}</span>
+      </div>
+      <ScoreBar value={val} max={100} color={color} />
+    </div>
+  );
+}
 
 export function ChatPanel({
   domain,
@@ -227,7 +266,12 @@ export function ChatPanel({
   useEffect(() => {
     const onSeed = (e: Event) => {
       const text = (e as CustomEvent<string>).detail;
-      if (typeof text === "string" && text) { setInput(text); setDomainTab("chat"); }
+      if (typeof text === "string" && text) {
+        setInput(text); setDomainTab("chat");
+        // Handled live, so drop any pending copy meant for the mount fallback,
+        // otherwise the same seed re-applies on a later chat mount.
+        try { localStorage.removeItem("prevail.compose.pending"); } catch { /* ignore */ }
+      }
     };
     window.addEventListener("prevail:compose-seed", onSeed as EventListener);
     // Pending seed from a view that wasn't mounted when it fired (e.g. Spark in
@@ -372,6 +416,62 @@ export function ChatPanel({
       .then(setDomainCtx)
       .catch(() => {});
   }, [domain, vaultPath]);
+  // Domain "Soul": this domain's own Ideal State (its target), layered under the
+  // global ideal state. Surfaced as a dedicated Soul tab in the domain detail
+  // shell, reusing the same read_domain_ideal / write_domain_ideal contract that
+  // DomainPrefsPanel uses so edits stay consistent everywhere.
+  const [domainSoul, setDomainSoul] = useState<string>("");
+  const [soulDraft, setSoulDraft] = useState<string>("");
+  const [editSoul, setEditSoul] = useState(false);
+  const [soulSaving, setSoulSaving] = useState(false);
+  useEffect(() => {
+    if (!vaultPath) { setDomainSoul(""); return; }
+    let mounted = true;
+    invoke<string>("read_domain_ideal", { vault: vaultPath, domain: domain || "general" })
+      .then((s) => { if (mounted) setDomainSoul(s || ""); })
+      .catch(() => { if (mounted) setDomainSoul(""); });
+    setEditSoul(false);
+    return () => { mounted = false; };
+  }, [domain, vaultPath]);
+  const saveDomainSoul = useCallback(async () => {
+    setSoulSaving(true);
+    try {
+      await invoke("write_domain_ideal", { vault: vaultPath, domain: domain || "general", body: soulDraft });
+      setDomainSoul(soulDraft);
+      setEditSoul(false);
+    } catch (e) { console.error("write domain soul", e); }
+    finally { setSoulSaving(false); }
+  }, [vaultPath, domain, soulDraft]);
+  // IDEAL-AI: draft this domain's ideal state from its real context, for review.
+  // Reuses the same domain_draft_ideal command + provider/model defaults as the
+  // Preferences panel; the draft opens the editor so the user reviews and Saves
+  // (which persists via write_domain_ideal, identical to a hand-written note).
+  const [soulDrafting, setSoulDrafting] = useState(false);
+  const [soulDraftErr, setSoulDraftErr] = useState<string | null>(null);
+  const draftDomainSoul = useCallback(async () => {
+    setSoulDrafting(true);
+    setSoulDraftErr(null);
+    try {
+      const provider = getPref(PREF.memoryProvider, "claude");
+      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      const text = await invoke<string>("domain_draft_ideal", { vault: vaultPath, domain: domain || "general", provider, model });
+      if (text?.trim()) { setSoulDraft(text.trim()); setEditSoul(true); }
+      else setSoulDraftErr("The draft came back empty. Try again or write your own.");
+    } catch (e) { setSoulDraftErr(String(e)); }
+    finally { setSoulDrafting(false); }
+  }, [vaultPath, domain]);
+  // Loops preview for the Welcome dashboard - active standing loops for this
+  // domain. Read cheaply from _loops.json; refreshed on domain switch.
+  type LoopPreview = { id: string; name: string; purpose: string; active: boolean };
+  const [domainLoops, setDomainLoops] = useState<LoopPreview[] | null>(null);
+  useEffect(() => {
+    if (!domainPath) { setDomainLoops(null); return; }
+    let mounted = true;
+    readLoops(domainPath)
+      .then((doc) => { if (mounted) setDomainLoops(doc.loops.map((l) => ({ id: l.id, name: l.name, purpose: l.purpose, active: l.status === "active" && l.enabled }))); })
+      .catch(() => { if (mounted) setDomainLoops([]); });
+    return () => { mounted = false; };
+  }, [domainPath, domain]);
   // I7: "Save as skill" - the composer dispatches this with the typed prompt;
   // we jump to the Skills tab and pre-fill the new-skill form.
   const [newSkillSeed, setNewSkillSeed] = useState<string | null>(null);
@@ -406,13 +506,23 @@ export function ChatPanel({
   }, [domain, vaultPath]);
   const rescanContextScore = useCallback(() => {
     if (!domain || !vaultPath) return;
+    // Idempotent: never launch a second audit while one is in flight (the audit
+    // just recomputes + rewrites the score, so re-running is otherwise harmless).
+    if (ctxScoreRescanning) return;
     setCtxScoreRescanning(true);
     setCtxScoreError(null);
-    invoke<ContextScore>("engine_score", { vault: vaultPath, domain, audit: true })
+    // Register a background process so the audit is visible from any screen and
+    // the user can navigate away and come back while it runs. The Tauri command
+    // is async (runs the engine off the main thread), so the UI never freezes.
+    const proc = `score-audit-${domain}-${Date.now()}`;
+    startProcess(proc, "audit", `Auditing ${titleCase(domain)} context`, domain);
+    invoke<ContextScore>("engine_score_audit", { vault: vaultPath, domain })
+      // Update the module-level cache even if this panel has since unmounted, so
+      // returning to the domain shows the fresh score.
       .then((s) => { setCtxScore(s); _scoreCache.set(`${vaultPath}:${domain}`, { at: Date.now(), score: s }); })
       .catch((e) => setCtxScoreError(String(e)))
-      .finally(() => setCtxScoreRescanning(false));
-  }, [domain, vaultPath]);
+      .finally(() => { setCtxScoreRescanning(false); endProcess(proc); });
+  }, [domain, vaultPath, ctxScoreRescanning]);
   // Aggregate "Life Readiness" - averaged across all domains. Loaded on
   // the no-domain landing. Re-fetched when a re-scan finishes so the
   // headline number stays roughly current.
@@ -524,6 +634,55 @@ export function ChatPanel({
       .catch(() => { if (mounted) setAppSkillFiles([]); });
     return () => { mounted = false; };
   }, [isApp, appId]);
+  // Google multi-account: when the Google app is open AND more than one account
+  // is connected, let the user choose which account this chat acts as. With a
+  // single account there is no selector and no behavior change. The choice rides
+  // the existing context machinery: an "auto-google-account:" note tells the
+  // agent (which fronts gws through the gated gateway) which account to target.
+  type GoogleProfile = { configDir: string; label: string; email: string | null; status: string };
+  const isGoogleApp = !!isApp && appId === "google";
+  const [googleProfiles, setGoogleProfiles] = useState<GoogleProfile[]>([]);
+  const [googleAccount, setGoogleAccount] = useState<string>(() => lsGet("prevail.google.activeAccount") || "");
+  useEffect(() => {
+    if (!isGoogleApp) { setGoogleProfiles([]); return; }
+    let mounted = true;
+    invoke<GoogleProfile[]>("google_profiles")
+      .then((rows) => { if (mounted) setGoogleProfiles(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (mounted) setGoogleProfiles([]); });
+    return () => { mounted = false; };
+  }, [isGoogleApp]);
+  // Only connected accounts can actually be acted as.
+  const connectedGoogle = useMemo(
+    () => googleProfiles.filter((p) => p.status === "connected"),
+    [googleProfiles],
+  );
+  // Default the active account to the first connected one when unset or stale.
+  useEffect(() => {
+    if (connectedGoogle.length === 0) return;
+    if (!googleAccount || !connectedGoogle.some((p) => p.label === googleAccount)) {
+      setGoogleAccount(connectedGoogle[0]!.label);
+    }
+  }, [connectedGoogle, googleAccount]);
+  useEffect(() => { if (googleAccount) lsSet("prevail.google.activeAccount", googleAccount); }, [googleAccount]);
+  // Inject the active-account note only when there is a real choice (>1 connected
+  // account). Label "auto-google-account:" is independent of the "auto:" and
+  // "auto-app:" prefixes, so the other auto-prime effects leave it intact.
+  useEffect(() => {
+    if (!isGoogleApp || connectedGoogle.length < 2) {
+      setPrimedContext((cur) => cur.filter((x) => !x.label.startsWith("auto-google-account:")));
+      return;
+    }
+    const active = connectedGoogle.find((p) => p.label === googleAccount) ?? connectedGoogle[0]!;
+    const who = active.email ?? active.label;
+    const body =
+      `Active Google account for this chat: ${who} (profile "${active.label}", config dir ${active.configDir}). ` +
+      `When using Google Workspace, act as THIS account: pass account "${active.label}" to the google_workspace tool ` +
+      `(equivalently, set GOOGLE_WORKSPACE_CLI_CONFIG_DIR=${active.configDir}). Do not use the other connected accounts unless asked.`;
+    setPrimedContext((cur) => {
+      const cleared = cur.filter((x) => !x.label.startsWith("auto-google-account:"));
+      return [...cleared, { label: `auto-google-account: ${active.label}`, body }];
+    });
+  }, [isGoogleApp, connectedGoogle, googleAccount]);
   // Attach / detach one secondary skill as removable context. Labelled
   // "app-skill: <name>" (distinct from the auto-attached "auto-app:" primary and
   // from the "auto:" domain-state prime), so each layer is independent.
@@ -1651,21 +1810,45 @@ export function ChatPanel({
   const attachAppAsContext = useCallback(async (id: string) => {
     if (!id) return;
     try {
-      const all = await invoke<EngineApp[]>("engine_apps_list");
+      const all = await invoke<EngineApp[]>("engine_apps_list", { vault: vaultPath });
       const app = all.find((a) => a.id === id);
       if (!app) return;
-      const body = [
+      const head = [
         `# App: ${app.title}${app.account?.label ? ` (${app.account.label})` : ""}`,
         `Connector: ${app.integration} · status: ${app.status}`,
         app.domains.length
-          ? `Feeds these domains (data lands in vault/<domain>/): ${app.domains.map(titleCase).join(", ")}`
+          ? `Feeds these domains: ${app.domains.map(titleCase).join(", ")}`
           : "Not bound to any domain yet.",
         app.refresh?.every ? `Syncs every ${app.refresh.every}.` : "Manual sync only.",
         `Last synced ${relTime(app.lastSuccessTs)}.`,
       ].join("\n");
-      injectContext(body, `app: ${app.title}`);
+      // Attach the app's LOCAL saved data from the vault, not a live browse. For
+      // browser-automation (and every other) connector, what the agent can chat
+      // about is whatever the sync captured into the vault - we read the most
+      // recent saved files here, within a budget, and never touch the live app.
+      let dataBlock = "";
+      try {
+        const files = await invoke<{ path: string; name: string; bytes: number }[]>("app_data_files", { vault: vaultPath, appId: id });
+        const TEXT = /\.(md|txt|json|ndjson|csv|tsv|ya?ml|log)$/i;
+        const textFiles = (files ?? []).filter((f) => TEXT.test(f.name)).slice(0, 6);
+        const BUDGET = 8000;
+        let used = 0;
+        const chunks: string[] = [];
+        for (const f of textFiles) {
+          if (used >= BUDGET) break;
+          const raw = await invoke<string>("read_text_file", { path: f.path }).catch(() => "");
+          if (!raw.trim()) continue;
+          const slice = raw.slice(0, Math.min(2500, BUDGET - used));
+          used += slice.length;
+          chunks.push(`### ${f.name}\n${slice}${raw.length > slice.length ? "\n…(truncated)" : ""}`);
+        }
+        dataBlock = chunks.length
+          ? `\n\nSaved local data (read from your vault, not a live browse):\n${chunks.join("\n\n")}`
+          : `\n\nNo local data is saved for this app yet. I read what its sync has captured into your vault - I do not browse the app live - so connect or sync it to pull data in.`;
+      } catch { /* data read is best-effort; the identity card still attaches */ }
+      injectContext(head + dataBlock, `app: ${app.title}`);
     } catch (err) { console.error("attach app", err); setAttachErr(`Couldn't attach app: ${err}`); }
-  }, [injectContext]);
+  }, [injectContext, vaultPath]);
   // Test/drag hooks - exposed on window so the sidebar's manual drag (WebKit's
   // HTML5 DnD is unreliable in WKWebView) can attach a domain or app on drop.
   // Call window.__prevailAttach('tax') / __prevailAttachApp('gmail') in DevTools.
@@ -1687,6 +1870,87 @@ export function ChatPanel({
       try { delete w.__prevailAttach; delete w.__prevailAttachApp; } catch {}
     };
   }, []);
+
+  // Domain detail shell (mirrors AppDetail): a header + horizontal pill tab bar,
+  // one panel shown at a time. Active when a real domain is open and we're not on
+  // the plain conversation ("chat"). The tab bodies below reuse the SAME existing
+  // domain components (LoopsPanel, BoardPanel, InsightsPanel, the context bundle,
+  // DomainPrefsPanel, DomainAppsTab) - this only reorganizes their presentation.
+  // General is a first-class domain too: it carries no `domain` slug (empty), but
+  // its data lives in the general bucket (data/domains/general on a v4 vault, else
+  // the vault root) exactly as its chat + preferences already read. So the detail
+  // shell treats it as a domain. `dkey`/`dlabel`/`dblurb` give every tab body a
+  // safe key + display name whether or not a real domain slug is present.
+  const dkey = domain || "general";
+  const dlabel = domain ? titleCase(domain) : "General";
+  const dblurb = domain ? domainBlurb(domain) : "Your catch-all workspace for anything not tied to a specific domain.";
+  // Active for any domain including General (no app, and we're off the plain
+  // conversation). General has no `domain` slug but is still a domain.
+  const inDomainDetail = !isApp && domainTab !== "chat";
+  // The unified domain tab set. Domain-appropriate: it drops the app-only facets
+  // (Connections, Runs, catalog Domains-mapping) and keeps the domain-unique views
+  // (Insights, Work). Usage is folded into the Insights tab as a section.
+  const DOMAIN_TABS: { id: DomainTab; label: string; icon: typeof Home; count?: number }[] = [
+    { id: "welcome", label: "Welcome", icon: Home },
+    { id: "soul", label: "Ideal State", icon: Sparkles },
+    { id: "journal", label: "Journal", icon: BookOpen },
+    { id: "skills", label: "Skills", icon: Boxes, count: domainCtx?.skills.length || undefined },
+    { id: "loops", label: "Loops", icon: Repeat },
+    { id: "work", label: "Work", icon: Briefcase },
+    { id: "insights", label: "Insights", icon: Lightbulb },
+    ...(domain ? [{ id: "apps" as const, label: "Apps", icon: Plug }] : []),
+    { id: "prefs", label: "Settings", icon: SettingsIcon },
+    { id: "chat", label: "Chat", icon: MessageSquare },
+  ];
+  // The context bundle exposes the raw journal/state/decisions/logs; the Journal
+  // tab surfaces them. `context`/`state`/`decisions`/`logs` remain valid domainTab
+  // values (reached from the context drawer) and fall through to their own bodies.
+  const detailHeader = inDomainDetail && (
+    <>
+      <div className="flex flex-wrap items-start gap-4 border-b border-border-subtle bg-surface px-6 pb-4 pt-4">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+          {(() => { const I = domainIcon(dkey); return I ? <I className="h-6 w-6" /> : <span className="text-lg">◆</span>; })()}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="truncate text-2xl font-bold tracking-tight text-text-primary">{dlabel}</h2>
+            <ContextScoreBadge score={ctxScore} onClick={() => setDomainTab("insights")} />
+          </div>
+          <div className="mt-1.5 truncate text-[13px] text-text-muted">{dblurb}</div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            onClick={() => setDomainTab("chat")}
+            title="Back to the conversation"
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-background hover:bg-accent-hover"
+          >
+            <MessageSquare className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+      <div className="border-b border-border-subtle bg-surface px-6">
+        <div className="flex flex-wrap items-center gap-1 py-2.5">
+          {DOMAIN_TABS.map((t) => {
+            const Icon = t.icon;
+            const active = domainTab === t.id
+              || (t.id === "journal" && (domainTab === "state" || domainTab === "decisions" || domainTab === "logs" || domainTab === "context"));
+            return (
+              <button
+                key={t.id}
+                onClick={() => setDomainTab(t.id)}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${active ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-text-secondary"}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {t.label}
+                {t.count !== undefined && <span className={`rounded-full px-1.5 py-px font-mono text-[10px] ${active ? "bg-background/20 text-background" : "bg-surface-warm text-text-muted"}`}>{t.count}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <div
       className="flex h-full"
@@ -1725,7 +1989,7 @@ export function ChatPanel({
           archive moved up to the top tab bar; the score badge opens the
           context view. When no domain is active there's no header at all -
           the empty state owns the canvas. */}
-      {domain && !isApp && (
+      {inDomainDetail ? detailHeader : domain && !isApp && (
         <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-4 py-2">
           {(() => {
             const I = domainIcon(domain);
@@ -1736,7 +2000,7 @@ export function ChatPanel({
           <div className="ml-auto shrink-0">
             <ContextScoreBadge
               score={ctxScore}
-              onClick={() => setDomainTab(domainTab === "context" ? "chat" : "context")}
+              onClick={() => setDomainTab("welcome")}
             />
           </div>
         </div>
@@ -1757,7 +2021,7 @@ export function ChatPanel({
               What should we work on?
             </h2>
             <p className="mt-3 max-w-md text-balance text-center text-sm text-text-muted">
-              Your private AI that learns you and gets sharper every time you use it.
+              An AI that learns you, gets sharper, and surfaces what you'd have missed.
             </p>
             {lifeReadiness && lifeReadiness.life_readiness !== null && (
               <div
@@ -1830,6 +2094,289 @@ export function ChatPanel({
         )}
         {domainTab !== "chat" && (
           <div className="w-full px-6 py-6">
+            {/* WELCOME - a full-screen domain dashboard: a hero row with the
+                clickable Context Score, then a responsive grid of rich, clickable
+                cards (what it is + ideal state, context health breakdown, key
+                metrics, recent activity, active loops, apps feeding it). Every
+                card routes to its tab; the score opens its Insights breakdown. */}
+            {domainTab === "welcome" && (() => {
+              const skillsN = domainCtx?.skills.length ?? 0;
+              const sessionsN = domainCtx?.recent_logs.length ?? 0;
+              const loopsAll = domainLoops ?? [];
+              const loopsActive = loopsAll.filter((l) => l.active);
+              const appsFeeding = appsCache.filter((a) => domain != null && a.domains.includes(domain));
+              const journalN = domainCtx?.journal ? domainCtx.journal.trim().split(/\n#{1,3}\s/).filter(Boolean).length : 0;
+              const score = ctxScore?.score ?? null;
+              const scoreCol = score != null ? scoreColor(score) : "var(--color-text-muted)";
+              const idealFirstLine = domainSoul.trim().split(/\n+/).map((s) => s.replace(/^#+\s*/, "").trim()).find((s) => s.length > 0) ?? "";
+              const bd = ctxScore?.breakdown;
+              const missing = ctxScore?.missing ?? [];
+              const openScore = () => setDomainTab("insights");
+              const sevColor = (s: string) => s === "critical" ? "var(--color-err)" : s === "warn" ? "var(--color-warn)" : "var(--color-text-muted)";
+              return (
+                <div className="space-y-4">
+                  {/* HERO ROW - identity on the left, clickable Context Score ring on the right. */}
+                  <div className="flex flex-col items-stretch gap-4 rounded-2xl border border-border-subtle bg-surface/50 p-5 md:flex-row md:items-center">
+                    <div className="flex min-w-0 flex-1 items-center gap-4">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+                        {(() => { const I = domainIcon(dkey); return I ? <I className="h-7 w-7" /> : <span className="text-2xl">◆</span>; })()}
+                      </div>
+                      <div className="min-w-0">
+                        <h2 className="truncate text-xl font-bold tracking-tight text-text-primary">{dlabel}</h2>
+                        <p className="mt-1 text-[13px] leading-relaxed text-text-secondary">{dblurb}</p>
+                      </div>
+                    </div>
+                    {/* Context Score - CLICKABLE: opens the Insights breakdown. Plus a re-scan affordance. */}
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        onClick={openScore}
+                        title="Open the context score breakdown"
+                        className="group flex items-center gap-3 rounded-xl border border-border-subtle bg-background/60 px-4 py-3 transition-colors hover:border-accent-border hover:bg-surface-warm/60"
+                      >
+                        <div className="relative h-14 w-14 shrink-0">
+                          <svg viewBox="0 0 36 36" className="h-14 w-14 -rotate-90">
+                            <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--color-surface-strong)" strokeWidth="3.5" />
+                            <circle cx="18" cy="18" r="15.5" fill="none" stroke={scoreCol} strokeWidth="3.5" strokeLinecap="round"
+                              strokeDasharray={`${((score ?? 0) / 100) * 97.4} 97.4`} />
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="font-mono text-sm font-bold" style={{ color: scoreCol }}>{score != null ? score : "·"}</span>
+                          </div>
+                        </div>
+                        <div className="text-left">
+                          <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-text-muted">Context score</div>
+                          <div className="text-[13px] font-semibold text-text-primary">{score != null ? (score >= 80 ? "Strong" : score >= 60 ? "Solid" : score >= 40 ? "Thin" : "Sparse") : (ctxScoreLoading ? "Scoring…" : "Not scored")}</div>
+                          <div className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] text-text-muted opacity-0 transition-opacity group-hover:opacity-100">View breakdown <ArrowUpRight className="h-3 w-3" /></div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={rescanContextScore}
+                        disabled={ctxScoreRescanning}
+                        title="Re-scan the context score"
+                        className="flex h-10 w-10 items-center justify-center rounded-xl border border-border-subtle text-text-muted transition-colors hover:border-accent-border hover:text-accent disabled:opacity-50"
+                      >
+                        <RefreshCw className={`h-4 w-4 ${ctxScoreRescanning ? "animate-spin" : ""}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {ctxScoreError && <div className="rounded-lg border border-border-subtle bg-surface/50 px-4 py-2 text-[12px] text-warn">Score error: {ctxScoreError}</div>}
+
+                  {/* KEY METRICS - clickable stat tiles, each routing to its tab. */}
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                    <StatTile icon={Boxes} label="Skills" value={skillsN} onClick={() => setDomainTab("skills")} />
+                    <StatTile icon={FileText} label="Sessions" value={sessionsN} onClick={() => setDomainTab("journal")} />
+                    <StatTile icon={Repeat} label="Active loops" value={loopsActive.length} onClick={() => setDomainTab("loops")} />
+                    <StatTile icon={Briefcase} label="Work" value={<Briefcase className="h-6 w-6 text-text-secondary" />} hint="Open board" onClick={() => setDomainTab("work")} />
+                    <StatTile icon={Plug} label="Apps" value={appsFeeding.length} onClick={() => setDomainTab("apps")} />
+                    <StatTile icon={BookOpen} label="Journal" value={journalN} onClick={() => setDomainTab("journal")} />
+                  </div>
+
+                  {/* MAIN GRID - fills the screen with rich, clickable cards. */}
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    {/* What this domain is / why it matters -> Ideal State. */}
+                    <button
+                      onClick={() => setDomainTab("soul")}
+                      className="group flex flex-col rounded-2xl border border-border-subtle bg-surface/50 p-5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm/40"
+                    >
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Target className="h-4 w-4 text-accent" /> What this is · why it matters</h3>
+                      <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">{dblurb}</p>
+                      {idealFirstLine ? (
+                        <div className="mt-3 rounded-lg border border-border-subtle bg-background/50 p-3">
+                          <div className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Ideal state</div>
+                          <p className="mt-1 line-clamp-3 text-[12px] leading-relaxed text-text-secondary">{idealFirstLine}</p>
+                        </div>
+                      ) : (
+                        <div className="mt-3 rounded-lg border border-dashed border-border bg-background/40 p-3">
+                          <div className="flex items-center gap-1.5 text-[12px] font-medium text-accent"><Sparkles className="h-3.5 w-3.5" /> Set the ideal state</div>
+                          <p className="mt-0.5 text-[11px] text-text-muted">Describe what a thriving {dlabel} looks like. Your AI reads it as standing direction.</p>
+                        </div>
+                      )}
+                      <span className="mt-auto pt-3 inline-flex items-center gap-0.5 text-[11px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">Open Ideal State <ArrowUpRight className="h-3 w-3" /></span>
+                    </button>
+
+                    {/* Context health -> Insights. The score dimensions + what to improve. */}
+                    <button
+                      onClick={openScore}
+                      className="group flex flex-col rounded-2xl border border-border-subtle bg-surface/50 p-5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm/40"
+                    >
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Activity className="h-4 w-4 text-accent" /> Context health</h3>
+                      {bd ? (
+                        <div className="mt-3 space-y-2.5">
+                          <ScoreDimRow label="Coverage" dim={bd.coverage} />
+                          <ScoreDimRow label="Density" dim={bd.density} />
+                          <ScoreDimRow label="Freshness" dim={bd.freshness} />
+                          <ScoreDimRow label="Structure" dim={bd.structure} />
+                          <ScoreDimRow label="Activity" dim={bd.activity} />
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-[12px] text-text-muted">{ctxScoreLoading ? "Scoring this domain…" : "Re-scan to compute the context breakdown."}</p>
+                      )}
+                      {missing.length > 0 && (
+                        <div className="mt-4">
+                          <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">What to improve</div>
+                          <ul className="space-y-1">
+                            {missing.slice(0, 3).map((m, i) => (
+                              <li key={i} className="flex items-start gap-1.5 text-[12px] text-text-secondary">
+                                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: sevColor(m.severity) }} />
+                                <span className="min-w-0">{m.label}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          {missing.length > 3 && <div className="mt-1 text-[11px] text-text-muted">+{missing.length - 3} more</div>}
+                        </div>
+                      )}
+                      <span className="mt-auto pt-3 inline-flex items-center gap-0.5 text-[11px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">Open Insights <ArrowUpRight className="h-3 w-3" /></span>
+                    </button>
+
+                    {/* Active loops -> Loops. */}
+                    <button
+                      onClick={() => setDomainTab("loops")}
+                      className="group flex flex-col rounded-2xl border border-border-subtle bg-surface/50 p-5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm/40"
+                    >
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Repeat className="h-4 w-4 text-accent" /> Active loops{loopsActive.length > 0 && <span className="rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{loopsActive.length}</span>}</h3>
+                      {loopsActive.length > 0 ? (
+                        <ul className="mt-3 space-y-2">
+                          {loopsActive.slice(0, 4).map((l) => (
+                            <li key={l.id} className="rounded-lg border border-border-subtle bg-background/50 px-3 py-2">
+                              <div className="truncate text-[13px] font-medium text-text-primary">{l.name}</div>
+                              {l.purpose && <div className="mt-0.5 line-clamp-1 text-[11px] text-text-muted">{l.purpose}</div>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="mt-3 rounded-lg border border-dashed border-border bg-background/40 p-3 text-[12px] text-text-muted">No standing loops yet. Loops keep this domain moving on their own.</div>
+                      )}
+                      <span className="mt-auto pt-3 inline-flex items-center gap-0.5 text-[11px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">Open Loops <ArrowUpRight className="h-3 w-3" /></span>
+                    </button>
+
+                    {/* Recent activity -> Journal. */}
+                    <button
+                      onClick={() => setDomainTab("journal")}
+                      className="group flex flex-col rounded-2xl border border-border-subtle bg-surface/50 p-5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm/40 lg:col-span-2"
+                    >
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><FileText className="h-4 w-4 text-accent" /> Recent activity</h3>
+                      {sessionsN > 0 ? (
+                        <ul className="mt-3 space-y-2">
+                          {domainCtx!.recent_logs.slice(0, 4).map((l) => (
+                            <li key={l.path} className="rounded-lg border border-border-subtle bg-background/50 px-3 py-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate text-[13px] font-medium text-text-primary">{l.name.replace(/\.md$/, "")}</span>
+                                <span className="shrink-0 font-mono text-[10px] text-text-muted">{relTime(l.mtime_secs * 1000)}</span>
+                              </div>
+                              {l.preview && <div className="mt-0.5 line-clamp-1 text-[11px] text-text-muted">{l.preview}</div>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="mt-3 rounded-lg border border-dashed border-border bg-background/40 p-3 text-[12px] text-text-muted">No sessions yet. Start a chat in {dlabel} and it will build a journal here.</div>
+                      )}
+                      <span className="mt-auto pt-3 inline-flex items-center gap-0.5 text-[11px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">Open Journal <ArrowUpRight className="h-3 w-3" /></span>
+                    </button>
+
+                    {/* Apps feeding this domain -> Apps. */}
+                    <button
+                      onClick={() => setDomainTab("apps")}
+                      className="group flex flex-col rounded-2xl border border-border-subtle bg-surface/50 p-5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm/40"
+                    >
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Plug className="h-4 w-4 text-accent" /> Apps feeding this{appsFeeding.length > 0 && <span className="rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{appsFeeding.length}</span>}</h3>
+                      {appsFeeding.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {appsFeeding.slice(0, 8).map((a) => (
+                            <div key={a.id} className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-background/50 px-2 py-1.5" title={a.title}>
+                              <AppRowLogo app={{ title: a.title }} logos={logos} size={16} fallback="letter" />
+                              <span className="max-w-[80px] truncate text-[11px] text-text-secondary">{a.title}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-3 rounded-lg border border-dashed border-border bg-background/40 p-3 text-[12px] text-text-muted">No apps feed {dlabel} yet. Connect apps to enrich its context automatically.</div>
+                      )}
+                      <span className="mt-auto pt-3 inline-flex items-center gap-0.5 text-[11px] font-medium text-text-muted opacity-0 transition-opacity group-hover:opacity-100">Open Apps <ArrowUpRight className="h-3 w-3" /></span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+            {/* SOUL - this domain's own Ideal State (its target). A full-screen
+                two-column layout: the editor + Generate with AI on the left, a
+                "what a good ideal state covers" guide on the right. Reuses the same
+                read_domain_ideal / write_domain_ideal contract as DomainPrefsPanel;
+                Generate calls domain_draft_ideal (same command the Prefs panel uses). */}
+            {domainTab === "soul" && (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+                {/* LEFT: the editable Ideal State note + Generate with AI. */}
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col rounded-2xl border border-border-subtle bg-surface/50 p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Target className="h-4 w-4 text-accent" /> Ideal State</h3>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={draftDomainSoul} disabled={soulDrafting} title="Research this domain and draft an ideal state" className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-50">
+                          {soulDrafting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} {soulDrafting ? "Generating…" : "Generate with AI"}
+                        </button>
+                        {!editSoul && <button onClick={() => { setSoulDraft(domainSoul); setEditSoul(true); }} title="Edit ideal state" className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-muted hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /></button>}
+                      </div>
+                    </div>
+                    <p className="mt-1.5 text-[12px] leading-relaxed text-text-muted">This domain's ideal state: the target your AI steers toward. It layers under your global ideal state and is injected into every turn in {dlabel}.</p>
+                    {soulDraftErr && <p className="mt-2 text-[12px] text-err">{soulDraftErr}</p>}
+                    {editSoul ? (
+                      <div className="mt-3 flex flex-col">
+                        <textarea autoFocus rows={14} value={soulDraft} onChange={(e) => setSoulDraft(e.target.value)}
+                          placeholder={`What a thriving ${dlabel} looks like for you: the purpose, where things are now, the target, the metrics you track, the habits that get you there, and what to avoid.`}
+                          className="w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-relaxed text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
+                        <div className="mt-2 flex items-center gap-2">
+                          <button onClick={saveDomainSoul} disabled={soulSaving} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{soulSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
+                          <button onClick={() => setEditSoul(false)} className="rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:text-text-secondary">Cancel</button>
+                        </div>
+                      </div>
+                    ) : domainSoul.trim() ? (
+                      <div className="mt-3"><Markdown source={domainSoul} compact /></div>
+                    ) : (
+                      <div className="mt-3 flex flex-col items-start justify-center rounded-lg border border-dashed border-border bg-background/40 px-4 py-6 text-left">
+                        <span className="text-[13px] text-text-secondary">Set the ideal state for {dlabel}.</span>
+                        <span className="mt-0.5 text-[12px] text-text-muted">Describe its ideal state; your AI reads this as standing direction. Use Generate with AI to draft it from this domain's context, or write your own.</span>
+                        <div className="mt-3 flex items-center gap-2">
+                          <button onClick={draftDomainSoul} disabled={soulDrafting} className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-50">{soulDrafting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} {soulDrafting ? "Generating…" : "Generate with AI"}</button>
+                          <button onClick={() => { setSoulDraft(""); setEditSoul(true); }} className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent"><Pencil className="h-3.5 w-3.5" /> Write my own</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* RIGHT: the helpful guide that fills the space. */}
+                <div className="flex flex-col gap-4">
+                  <div className="rounded-2xl border border-border-subtle bg-surface/50 p-5">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><ListChecks className="h-4 w-4 text-accent" /> What a good ideal state covers</h3>
+                    <ul className="mt-3 space-y-3">
+                      {([
+                        { icon: Compass, label: "Purpose", hint: "Why this domain matters to you" },
+                        { icon: Activity, label: "Current reality", hint: "Where things stand today, honestly" },
+                        { icon: Target, label: "Target", hint: "What ideal looks like if it went well" },
+                        { icon: TrendingUp, label: "Metrics you track", hint: "How you know you are on course" },
+                        { icon: Repeat, label: "Habits and routines", hint: "The standing behaviors that get you there" },
+                        { icon: ShieldAlert, label: "What to avoid", hint: "The traps and anti-patterns to steer clear of" },
+                      ] as { icon: typeof Home; label: string; hint: string }[]).map((row) => {
+                        const RowIcon = row.icon;
+                        return (
+                          <li key={row.label} className="flex items-start gap-3">
+                            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent ring-1 ring-accent-border/40"><RowIcon className="h-3.5 w-3.5" /></span>
+                            <div className="min-w-0">
+                              <div className="text-[13px] font-medium text-text-primary">{row.label}</div>
+                              <div className="text-[12px] leading-snug text-text-muted">{row.hint}</div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                  <div className="rounded-2xl border border-border-subtle bg-surface/50 p-5">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><ClipboardList className="h-4 w-4 text-accent" /> How this is used</h3>
+                    <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">{dblurb}</p>
+                    <p className="mt-2 text-[12px] leading-relaxed text-text-muted">Your ideal state is prepended to every conversation in {dlabel} and steers what your AI proposes, the loops it runs, and how it scores this domain's context. Keep it current as things change.</p>
+                  </div>
+                </div>
+              </div>
+            )}
             {domain && domainTab === "context" && (
               <ContextScorePanel
                 score={ctxScore}
@@ -1841,11 +2388,18 @@ export function ChatPanel({
               />
             )}
             {domainTab === "insights" && (
-              <InsightsPanel
-                vaultPath={vaultPath}
-                domain={domain ?? ""}
-                onSeed={(t) => { setInput(t); setDomainTab("chat"); }}
-              />
+              <div className="space-y-8">
+                <InsightsPanel
+                  vaultPath={vaultPath}
+                  domain={domain ?? ""}
+                  onSeed={(t) => { setInput(t); setDomainTab("chat"); }}
+                />
+                {/* Usage folded into Insights: queries, tokens, and cost for this domain. */}
+                <div>
+                  <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary"><Activity className="h-3.5 w-3.5 text-accent" /> Usage</div>
+                  <UsageDashboard vault={vaultPath} domain={domain ?? null} nonce={chatViewNonce} />
+                </div>
+              </div>
             )}
             {domainTab === "usage" && (
               <UsageDashboard vault={vaultPath} domain={domain ?? null} nonce={chatViewNonce} />
@@ -1859,10 +2413,56 @@ export function ChatPanel({
             {domainTab === "work" && (
               <BoardPanel vaultPath={vaultPath} initialDomain={domain || "general"} />
             )}
-            {!domainCtx && domainTab !== "prefs" && domainTab !== "context" && domainTab !== "insights" && domainTab !== "usage" && domainTab !== "apps" && domainTab !== "loops" && <div className="text-sm text-text-muted">loading…</div>}
+            {!domainCtx && (domainTab === "journal" || domainTab === "state" || domainTab === "decisions" || domainTab === "logs" || domainTab === "skills") && <div className="text-sm text-text-muted">loading…</div>}
             {domainCtx && domainTab === "state" && (domainCtx.state ? <Markdown source={domainCtx.state} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">state.md</code> in this domain.</div>)}
             {domainCtx && domainTab === "decisions" && (domainCtx.decisions ? <Markdown source={domainCtx.decisions} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no <code className="text-accent">decisions.md</code> yet.</div>)}
-            {domainCtx && domainTab === "journal" && (domainCtx.journal ? <Markdown source={domainCtx.journal} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no journal entries yet.</div>)}
+            {/* JOURNAL - the domain's running context: journal + state snapshot +
+                distilled decisions + recent session logs, reusing the same context
+                bundle the context drawer reads. */}
+            {domainCtx && domainTab === "journal" && (
+              <div className="space-y-6">
+                <div>
+                  <div className="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary"><BookOpen className="h-3.5 w-3.5 text-accent" /> Journal</div>
+                  {domainCtx.journal ? <Markdown source={domainCtx.journal} compact /> : <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no journal entries yet.</div>}
+                </div>
+                {domainCtx.state && (
+                  <div>
+                    <div className="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary"><Layers className="h-3.5 w-3.5 text-accent" /> State</div>
+                    <Markdown source={domainCtx.state} compact />
+                  </div>
+                )}
+                {domainCtx.decisions && (
+                  <div>
+                    <div className="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary"><Scale className="h-3.5 w-3.5 text-accent" /> Decisions</div>
+                    <Markdown source={domainCtx.decisions} compact />
+                  </div>
+                )}
+                {domainCtx.recent_logs.length > 0 && (
+                  <div>
+                    <div className="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary"><FileText className="h-3.5 w-3.5 text-accent" /> Recent sessions</div>
+                    <ul className="flex flex-col gap-2">
+                      {domainCtx.recent_logs.map((l) => (
+                        <li key={l.path}>
+                          <button
+                            onClick={async () => {
+                              try {
+                                const body = await invoke<string>("read_file", { path: l.path });
+                                injectContext(body, l.name);
+                                setDomainTab("chat");
+                              } catch (e) { console.error(e); }
+                            }}
+                            className="block w-full rounded-xl border border-border bg-surface px-4 py-3 text-left shadow-sm hover:-translate-y-px hover:border-accent-border hover:shadow-md"
+                          >
+                            <div className="font-mono text-sm text-text-primary">{l.name}</div>
+                            {l.preview && <div className="mt-1 line-clamp-2 text-xs text-text-muted">{l.preview}</div>}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
             {domainCtx && domainTab === "logs" && (
               domainCtx.recent_logs.length === 0
                 ? <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">no past sessions.</div>
@@ -1888,11 +2488,11 @@ export function ChatPanel({
                   </ul>
                 )
             )}
-            {domainCtx && domainTab === "skills" && domain && (
+            {domainCtx && domainTab === "skills" && (
               <>
                 <NewSkillForm
                   vaultPath={vaultPath}
-                  domain={domain}
+                  domain={dkey}
                   seed={newSkillSeed}
                   onCreated={() => { setNewSkillSeed(null); refreshDomainCtx(); }}
                 />
@@ -1987,6 +2587,26 @@ export function ChatPanel({
                   <Sparkles className="h-3 w-3" /> {appAutoSkill ? "App skill on" : "App skill off"}
                 </button>
               )}
+              {/* Google account selector: only when the Google app is open and
+                  more than one account is connected. Picks which account this
+                  chat acts as. A single account shows nothing. */}
+              {isGoogleApp && connectedGoogle.length > 1 && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted"
+                  title="Which Google account this chat acts as for Google Workspace actions."
+                >
+                  <span>Google</span>
+                  <select
+                    value={googleAccount}
+                    onChange={(e) => setGoogleAccount(e.target.value)}
+                    className="bg-transparent text-accent outline-none"
+                  >
+                    {connectedGoogle.map((p) => (
+                      <option key={p.configDir} value={p.label}>{p.email ?? p.label}</option>
+                    ))}
+                  </select>
+                </span>
+              )}
               {/* Suggested app skills: each secondary skill the app ships, offered
                   as a one-click attach. Once attached it shows as a removable
                   context pill above, so we only suggest the not-yet-attached ones. */}
@@ -2035,7 +2655,7 @@ export function ChatPanel({
                 Skills · enter to insert
               </div>
               {slashCandidates.length === 0 ? (
-                <div className="px-3 py-2 text-[11px] text-text-muted">No skills in this vault yet - add one in a domain's <span className="font-mono">_skills/</span> folder.</div>
+                <div className="px-3 py-2 text-[11px] text-text-muted">No skills in this vault yet. Add one in a domain's <span className="font-mono">_skills/</span> folder.</div>
               ) : slashCandidates.map((s, i) => (
                 <button
                   key={s.path}

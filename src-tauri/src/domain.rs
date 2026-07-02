@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::paths::{domain_dir, domain_dir_pub};
+use crate::paths::{data_root, domain_dir, domain_dir_pub};
 use crate::read_dir_retry;
 use crate::read_to_string_retry;
 use crate::secs_to_ymdhms;
@@ -159,10 +159,6 @@ pub(crate) fn domain_context(vault: String, domain: String) -> Result<DomainCont
     if !root.exists() {
         return Err(format!("domain not found: {}", root.display()));
     }
-    let read = |p: PathBuf| -> Option<String> {
-        if !p.exists() { return None; }
-        read_to_string_retry(&p).ok()
-    };
     // General's SUPPORTING files (journal, decisions ledger) may live in build/
     // (the engine writes there once a vault is tidied), while older copies remain
     // at the root. Read both and merge so nothing silently disappears.
@@ -170,6 +166,22 @@ pub(crate) fn domain_context(vault: String, domain: String) -> Result<DomainCont
         let b = crate::paths::build_root(&vault);
         if b != root { Some(b) } else { None }
     } else { None };
+    // The file-reading body is shared with `app_context` (apps are domains with a
+    // little more), so it lives in `context_for_root`. `domain_label` is used only
+    // to tag the domain on each scanned skill, exactly as before.
+    context_for_root(root, extra_base, &domain)
+}
+
+/// Build a DomainContext from a content root: the state/decisions/journal/recent
+/// logs/skills bundle the UI loads. Shared by `domain_context` (domains) and
+/// `app_context` (apps under data/apps/<id>) so both expose the same rich view.
+/// `extra_base` is an optional second base (build/) to merge journal + decisions
+/// from; `domain_label` tags each scanned skill with its owning domain/app id.
+fn context_for_root(root: PathBuf, extra_base: Option<PathBuf>, domain_label: &str) -> Result<DomainContext, String> {
+    let read = |p: PathBuf| -> Option<String> {
+        if !p.exists() { return None; }
+        read_to_string_retry(&p).ok()
+    };
     // v2 layout first (_state.md, written by the distill daemon), v1 fallback
     // (state.md). The panel showed "no state.md found" forever because it only
     // knew the v1 name while everything else wrote v2.
@@ -295,7 +307,7 @@ pub(crate) fn domain_context(vault: String, domain: String) -> Result<DomainCont
                     }
                 }
                 skills.push(SkillEntry {
-                    domain: domain.clone(),
+                    domain: domain_label.to_string(),
                     name,
                     path: p.to_string_lossy().to_string(),
                     description,
@@ -306,6 +318,45 @@ pub(crate) fn domain_context(vault: String, domain: String) -> Result<DomainCont
     }
 
     Ok(DomainContext { state, decisions, journal, recent_logs, skills })
+}
+
+/// App/domain parity: an app is a domain with a little more, so it owns the same
+/// rich context (journal, state, decisions, recent logs, skills). Apps live under
+/// the content root's `apps/<app_id>` (v4: `<vault>/data/apps/<id>`, legacy:
+/// `<vault>/apps/<id>`). A freshly-connected app may have no dir yet, so a missing
+/// dir returns an EMPTY-but-valid context rather than an error.
+#[tauri::command]
+pub(crate) fn app_context(vault: String, app_id: String) -> Result<DomainContext, String> {
+    // Guard the id against traversal before joining it into a path. App ids are
+    // slugified ([a-z0-9-_]); anything else (incl. a "../" attempt) yields an
+    // empty context rather than escaping the vault.
+    let safe = !app_id.is_empty()
+        && app_id.len() <= 64
+        && !app_id.starts_with('.')
+        && app_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    let empty = DomainContext {
+        state: None,
+        decisions: None,
+        journal: None,
+        recent_logs: Vec::new(),
+        skills: Vec::new(),
+    };
+    if !safe {
+        return Ok(empty);
+    }
+    // v4 content root (<vault>/data when it exists, else <vault>) → apps/<id>,
+    // with a legacy <vault>/apps/<id> fallback if the data/ form is absent.
+    let v4 = data_root(&vault).join("apps").join(&app_id);
+    let app_dir = if v4.exists() {
+        v4
+    } else {
+        let legacy = PathBuf::from(&vault).join("apps").join(&app_id);
+        if legacy.exists() { legacy } else { v4 }
+    };
+    if !app_dir.exists() {
+        return Ok(empty);
+    }
+    context_for_root(app_dir, None, &app_id)
 }
 
 #[tauri::command]
