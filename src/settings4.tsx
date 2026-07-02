@@ -395,6 +395,7 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
   useEffect(() => { invoke("set_close_to_tray", { enabled: closeToTray }).catch(() => {}); }, [closeToTray]);
   const [sendKey, setSendKeyState] = useState(() => getPref(PREF.sendKey, "enter"));
   const [desktopNotif, setDesktopNotif] = useState(() => getPref(PREF.desktopNotif, "0") === "1");
+  const [heartbeat, setHeartbeat] = useState(() => getPref(PREF.heartbeatEnabled, "1") === "1");
   const [soundDone, setSoundDone] = useState(() => getPref(PREF.soundOnDone, "0") === "1");
   const [autoConvert, setAutoConvert] = useState(() => getPref(PREF.autoConvertLongPaste, "1") === "1");
   const [stripSyc, setStripSyc] = useState(() => getPref(PREF.stripSycophancy, "0") === "1");
@@ -482,6 +483,11 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
           title="Desktop notifications"
           desc="Get notified when a CLI finishes streaming a reply (Chat and Council)."
           control={<Switch on={desktopNotif} onChange={(v) => { setDesktopNotif(v); setPref(PREF.desktopNotif, v ? "1" : "0"); }} />}
+        />
+        <Row
+          title="Proactive check-ins"
+          desc="During waking hours, Prevail nudges you when approvals or overdue work are waiting, instead of only surfacing them when you open it."
+          control={<Switch on={heartbeat} onChange={(v) => { setHeartbeat(v); setPref(PREF.heartbeatEnabled, v ? "1" : "0"); }} />}
         />
         <Row
           title="Sound effects"
