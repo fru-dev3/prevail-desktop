@@ -3,7 +3,7 @@
 // shared chatviews + domainpanels.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ArrowUpRight, BookOpen, Check, FileText, Folder, Ghost, Image as ImageIcon, Layers, PanelRightOpen, Paperclip, Plus, Scale, Sparkles, X } from "lucide-react";
+import { ArrowUpRight, BookOpen, Check, FileText, Folder, Ghost, Image as ImageIcon, Layers, ListChecks, PanelRightOpen, Paperclip, Plus, Scale, Sparkles, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
 import { addNote } from "./notesstore";
@@ -534,6 +534,10 @@ export function ChatPanel({
       : [...cur, { label, body: s.body }]);
   }, []);
   const [attachments, setAttachments] = useState<string[]>([]);
+  // X7 (plan mode): when on, the model must lay out an editable plan and wait for
+  // approval before acting or giving a final answer. Predictability for anything
+  // consequential; off by default.
+  const [planMode, setPlanMode] = useState(false);
   // Ingested artifacts for this domain. Auto-fetched on entry so the
   // user can flip a chip to attach them to the next turn without
   // hunting through Finder.
@@ -1398,6 +1402,10 @@ export function ChatPanel({
     const attachPreamble = attachments.length > 0
       ? `Attached files (read these as context):\n${attachments.map((p) => `- ${p}`).join("\n")}\n\n`
       : "";
+    // X7: plan mode - ask for an editable plan first, no actions until approved.
+    const planPreamble = planMode
+      ? "PLAN MODE: Before doing anything or giving a final answer, lay out a short, numbered plan of how you would approach this, and STOP. Do not take any actions or produce the final result yet - wait for the user to review and approve or adjust the plan.\n\n"
+      : "";
     // Items the user explicitly clicked "use in chat" on (state.md,
     // decisions.md, a session log, etc.) - included verbatim.
     const primedPreamble = primedContext.length > 0
@@ -1436,8 +1444,8 @@ export function ChatPanel({
     const history = buildChatContext(messages, 40000);
     const promptText = fwLens.buildPrompt(
       history
-        ? `${userPreamble}${profilePreamble}${omegaPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}You are mid-conversation. Below is the prior turn history; use it as context but do NOT repeat it back to the user.\n\n--- PRIOR TURNS ---\n${history}\n--- END PRIOR TURNS ---\n\nUser's next message: ${visible}`
-        : `${userPreamble}${profilePreamble}${omegaPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}${visible}`
+        ? `${planPreamble}${userPreamble}${profilePreamble}${omegaPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}You are mid-conversation. Below is the prior turn history; use it as context but do NOT repeat it back to the user.\n\n--- PRIOR TURNS ---\n${history}\n--- END PRIOR TURNS ---\n\nUser's next message: ${visible}`
+        : `${planPreamble}${userPreamble}${profilePreamble}${omegaPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}${visible}`
     );
     pushHistory(visible);
     setAttachments([]);
@@ -2407,6 +2415,15 @@ export function ChatPanel({
               )}
             </div>
             <DomainStatusBar domain={domain} fwLens={fwLens} />
+            {/* X7: plan-mode toggle - ask for a plan before acting. */}
+            <button
+              onClick={() => setPlanMode((v) => !v)}
+              title={planMode ? "Plan mode on: the AI will propose a plan and wait before acting" : "Plan mode: get an editable plan before the AI acts"}
+              aria-pressed={planMode}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${planMode ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:text-accent"}`}
+            >
+              <ListChecks className="h-3.5 w-3.5" /> Plan
+            </button>
             <div className="flex-1" />
 
             {/* Model picker pill - Codex-style. Click opens cascading
