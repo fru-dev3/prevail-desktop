@@ -6,7 +6,7 @@ outputs:
   - { path: data/coinbase-rewards-income-${date}.json, kind: replace }
 ---
 # Staking and Rewards Income
-The income trickling in from staking and rewards — easy to miss, taxable all the same.
+The income trickling in from staking and rewards, easy to miss, taxable all the same.
 1. **Load.** Read `data/coinbase-transactions-*.json`.
 2. **Filter.** Isolate transaction types like `staking_reward`, `inflation_reward`, and `interest` over the period.
 3. **Value.** Sum reward quantity per asset and its USD value at receipt (ordinary income basis).

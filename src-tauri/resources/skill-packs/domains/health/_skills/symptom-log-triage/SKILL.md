@@ -7,7 +7,7 @@ source: seed
 ---
 # Symptom log triage
 
-Run when a symptom has recurred enough to take seriously — not at the first twinge.
+Run when a symptom has recurred enough to take seriously, not at the first twinge.
 
 1. **The pattern.** From data/symptom-log.csv, lay the episodes in date order with severity and duration. Is it getting more frequent, more intense, or settling on its own?
 2. **Triggers and correlates.** Cross-reference data/vitals.csv (sleep, resting HR) and any food, stress, or activity notes to surface what tends to precede an episode.

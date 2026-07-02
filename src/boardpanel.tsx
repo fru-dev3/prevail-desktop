@@ -75,7 +75,7 @@ const columnFor = (status: string) => (status === "blocked" ? "doing" : status);
 const dueTone = (due?: string | null): string => {
   if (!due) return "text-text-muted/60";
   const today = new Date().toISOString().slice(0, 10);
-  if (due < today) return "text-danger";
+  if (due < today) return "text-err";
   if (due === today) return "text-warn";
   return "text-text-muted";
 };
@@ -88,6 +88,30 @@ const isOverdue = (t: BoardTask): boolean => {
   const today = new Date().toISOString().slice(0, 10);
   return t.due < today;
 };
+
+// Turn a raw harness failure into something actionable. External harnesses
+// (Hermes, Pi, OpenCode) bring their own model, so "validated" only means the
+// binary is installed and responds — it does NOT mean the harness is logged in
+// to a model provider. The most common runtime failure is exactly that missing
+// login, so we detect it and tell the user how to fix it instead of dumping
+// raw stderr. `cli` is the harness binary id (empty for the built-in Prevail
+// agent, which never hits this path).
+function humanizeAgentError(label: string, cli: string, raw: string): string {
+  const needsLogin = /no api key|not logged in|\/login|unauthor|no provider|missing .*api.?key|set .*api.?key/i.test(raw);
+  if (needsLogin && cli) {
+    return [
+      `${label} started but isn't signed in to a model provider yet, so it couldn't run.`,
+      "",
+      `${label} is a separate agent that runs on its own model, so it needs a one-time login in its own app. Open a terminal and run \`${cli}\`, then \`/login\`. Prevail confirmed ${label} is installed (that's the green check), but it can't sign in on ${label}'s behalf.`,
+      "",
+      `Once ${label} is logged in, run this task again. Or hand it to the built-in Prevail agent, which runs on your Prevail model and needs no separate login.`,
+      "",
+      "- original message -",
+      raw,
+    ].join("\n");
+  }
+  return `${label} couldn't finish:\n\n${raw}`;
+}
 
 export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: string; initialDomain?: string; clis?: CliInfo[] }) {
   const [tasks, setTasks] = useState<BoardTask[]>([]);
@@ -287,10 +311,15 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
   const runWithAgent = async (t: BoardTask, cli: string) => {
     if (!t.id) return;
     const taskId = t.id;
+    // "prevail" is the built-in agent: run with the default runtime (no --cli),
+    // so it uses whatever model Prevail already runs on, no harness login needed.
+    const effectiveCli = cli === "prevail" ? "" : cli;
+    const agentLabel = cli === "prevail" ? "Prevail" : cli;
     setAgentPickerFor(null);
     setAgentRunning((s) => new Set(s).add(taskId));
     const session = `agent-${taskId}-${Date.now()}`;
     let result = "";
+    let errored = false;
     let unline: UnlistenFn | undefined;
     let undone: UnlistenFn | undefined;
     const cleanup = () => {
@@ -302,15 +331,18 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
       unline = await listen<{ session: string; data: { type?: string; text?: string; error?: string } }>("engine-agent:line", (e) => {
         if (e.payload.session !== session) return;
         const d = e.payload.data;
-        if (d?.type === "assistant" && d.text) result = d.text;
-        else if (d?.type === "error" && d.error) result = `⚠ ${d.error}`;
+        if (d?.type === "assistant" && d.text) { result = d.text; errored = false; }
+        else if (d?.type === "error" && d.error) { result = d.error; errored = true; }
       });
       undone = await listen<{ session: string }>("engine-agent:done", async (e) => {
         if (e.payload.session !== session) return;
         try {
-          if (result.trim()) {
-            await invoke("task_detail_add_comment", { vault: vaultPath, domain: t.domain, id: taskId, text: result.trim(), author: cli });
-            if (t.status === "todo" || t.status === "doing") {
+          const text = errored ? humanizeAgentError(agentLabel, effectiveCli, result.trim()) : result.trim();
+          if (text) {
+            await invoke("task_detail_add_comment", { vault: vaultPath, domain: t.domain, id: taskId, text, author: agentLabel });
+            // Only advance to Review on a real result. A login/setup failure
+            // means the task was never actually worked, so leave its status.
+            if (!errored && (t.status === "todo" || t.status === "doing")) {
               await invoke("tasks_set_status", { vault: vaultPath, domain: t.domain, id: taskId, status: "review" });
             }
           }
@@ -318,16 +350,17 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
         cleanup();
         window.dispatchEvent(new Event("prevail:tasks-changed"));
       });
-      await invoke("engine_agent_run", { session, vault: vaultPath, domain: t.domain, goal: t.text, taskId, cli, autonomy: "safe" });
+      await invoke("engine_agent_run", { session, vault: vaultPath, domain: t.domain, goal: t.text, taskId, cli: effectiveCli, autonomy: "safe" });
     } catch (err) {
       console.error("engine_agent_run", err);
       cleanup();
     }
   };
   // The per-task "Run with agent" control (shared by card + list views): a Zap
-  // button that opens the HarnessPicker. Only shown when a harness is installed.
+  // button that opens the HarnessPicker. Always available (the built-in Prevail
+  // agent is always an option, even with no external harness installed).
   const agentButton = (t: BoardTask) => {
-    if (harnesses.length === 0 || !t.id) return null;
+    if (!t.id) return null;
     const runningThis = agentRunning.has(t.id);
     const open = agentPickerFor === t.id;
     return (
@@ -335,7 +368,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
         <button
           onClick={() => setAgentPickerFor(open ? null : t.id!)}
           disabled={runningThis}
-          title="Run this task with a harness agent (Hermes, Pi, OpenCode)"
+          title="Run with agent: hand this task to Prevail's agent (or an installed harness like Hermes, Pi, OpenCode). It works in safe mode and posts its result as a comment."
           className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-text-muted transition-colors hover:border-accent-border hover:text-accent disabled:opacity-50"
         >
           {runningThis ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
@@ -453,7 +486,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
           e.dataTransfer.setData("text/plain", t.id);
         }}
         onDragEnd={() => { setDragId(null); setDragCol(null); }}
-        className={`rounded-lg border px-2.5 py-2 transition-opacity ${overdue ? "border-l-2 border-l-danger border-danger/40 bg-danger/5" : blocked ? "border-warn/40 bg-surface" : "border-border bg-surface"} ${dragId === t.id ? "opacity-40" : ""} ${editing ? "" : "cursor-grab active:cursor-grabbing"}`}>
+        className={`rounded-lg border px-2.5 py-2 transition-opacity ${overdue ? "border-l-2 border-l-err border-err/40 bg-err/5" : blocked ? "border-warn/40 bg-surface" : "border-border bg-surface"} ${dragId === t.id ? "opacity-40" : ""} ${editing ? "" : "cursor-grab active:cursor-grabbing"}`}>
         <div className="flex items-start gap-1.5">
           <span title={ai ? "Owned by the agent" : "Owned by you"} className={`mt-0.5 inline-flex h-5 shrink-0 items-center gap-1 rounded-md px-1.5 font-mono text-[10px] font-bold uppercase tracking-wide ${ai ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>
             {ai ? <Bot className="h-3 w-3" /> : <User className="h-3 w-3" />}{ai ? "Agent" : "Me"}
@@ -468,18 +501,18 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
               className="min-w-0 flex-1 cursor-pointer text-[13px] leading-snug text-text-primary hover:text-accent">{t.text}</span>
           )}
           <button onClick={() => cyclePriority(t)} title={`Priority: ${t.priority || "normal"} - click to change`} disabled={busy === `pr:${t.id}`}
-            className={`shrink-0 transition-colors ${t.priority === "critical" ? "text-danger" : t.priority === "high" ? "text-warn" : "text-text-muted/30 hover:text-text-muted"}`}>
+            className={`shrink-0 transition-colors ${t.priority === "critical" ? "text-err" : t.priority === "high" ? "text-warn" : "text-text-muted/30 hover:text-text-muted"}`}>
             <Flag className="h-3.5 w-3.5" fill={t.priority === "critical" || t.priority === "high" ? "currentColor" : "none"} />
           </button>
-          <button onClick={() => del(t)} title="Delete task" disabled={busy === `d:${t.id}`} className="shrink-0 text-text-muted/40 transition-colors hover:text-danger">
+          <button onClick={() => del(t)} title="Delete task" disabled={busy === `d:${t.id}`} className="shrink-0 text-text-muted/40 transition-colors hover:text-err">
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-5 font-mono text-[10px]">
           <span className="rounded-full px-1.5 py-px font-semibold" style={{ color: domainColor(t.domain), backgroundColor: `${domainColor(t.domain)}1f` }}>{titleCase(t.domain)}</span>
           {t.due && <span className={`${dueTone(t.due)} ${overdue ? "font-bold" : ""}`}>{t.due}</span>}
-          {overdue && <span className="rounded-full bg-danger/15 px-1.5 py-px font-bold uppercase tracking-wide text-danger">overdue</span>}
-          {t.priority === "critical" && <span className="text-danger">critical</span>}
+          {overdue && <span className="rounded-full bg-err/15 px-1.5 py-px font-bold uppercase tracking-wide text-err">overdue</span>}
+          {t.priority === "critical" && <span className="text-err">critical</span>}
           {t.priority === "high" && <span className="text-warn">important</span>}
           {blocked && <span className="text-warn">⏸ needs decision</span>}
         </div>
@@ -507,7 +540,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
     const editing = editId != null && editId === t.id;
     return (
       <div key={`row:${t.domain}:${t.id ?? t.text}`}
-        className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${overdue ? "border-l-2 border-l-danger border-danger/40 bg-danger/5" : blocked ? "border-warn/40 bg-surface" : "border-border bg-surface"}`}>
+        className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${overdue ? "border-l-2 border-l-err border-err/40 bg-err/5" : blocked ? "border-warn/40 bg-surface" : "border-border bg-surface"}`}>
         <span title={ai ? "Owned by the agent" : "Owned by you"} className={`inline-flex h-5 shrink-0 items-center gap-1 rounded-md px-1.5 font-mono text-[10px] font-bold uppercase tracking-wide ${ai ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>
           {ai ? <Bot className="h-3 w-3" /> : <User className="h-3 w-3" />}{ai ? "Agent" : "Me"}
         </span>
@@ -522,10 +555,10 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
         )}
         <span className="hidden shrink-0 rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-muted sm:inline">{titleCase(t.domain)}</span>
         {blocked && <span className="shrink-0 font-mono text-[10px] text-warn">⏸ decision</span>}
-        {overdue && <span className="shrink-0 rounded-full bg-danger/15 px-1.5 py-px font-mono text-[10px] font-bold uppercase tracking-wide text-danger">overdue</span>}
+        {overdue && <span className="shrink-0 rounded-full bg-err/15 px-1.5 py-px font-mono text-[10px] font-bold uppercase tracking-wide text-err">overdue</span>}
         <span className={`hidden w-20 shrink-0 text-right font-mono text-[10px] md:inline ${dueTone(t.due)} ${overdue ? "font-bold" : ""}`}>{t.due || ""}</span>
         <button onClick={() => cyclePriority(t)} title={`Priority: ${t.priority || "normal"} - click to change`} disabled={busy === `pr:${t.id}`}
-          className={`shrink-0 transition-colors ${t.priority === "critical" ? "text-danger" : t.priority === "high" ? "text-warn" : "text-text-muted/30 hover:text-text-muted"}`}>
+          className={`shrink-0 transition-colors ${t.priority === "critical" ? "text-err" : t.priority === "high" ? "text-warn" : "text-text-muted/30 hover:text-text-muted"}`}>
           <Flag className="h-3.5 w-3.5" fill={t.priority === "critical" || t.priority === "high" ? "currentColor" : "none"} />
         </button>
         <select value={t.status} onChange={(e) => setStatus(t, e.target.value)} disabled={busy === `s:${t.id}`}
@@ -538,7 +571,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
           className={`inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide transition-colors disabled:opacity-50 ${ai ? "border-border text-text-muted hover:border-accent-border hover:text-text-primary" : "border-accent-border text-accent hover:bg-accent hover:text-background"}`}>
           {ai ? <CornerUpLeft className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
         </button>
-        <button onClick={() => del(t)} title="Delete task" disabled={busy === `d:${t.id}`} className="shrink-0 text-text-muted/40 transition-colors hover:text-danger">
+        <button onClick={() => del(t)} title="Delete task" disabled={busy === `d:${t.id}`} className="shrink-0 text-text-muted/40 transition-colors hover:text-err">
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -721,7 +754,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
               <input type="date" value={addDue} onChange={(e) => setAddDue(e.target.value)} title="Due date (optional)"
                 className="cursor-pointer rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-text-muted focus:border-accent-border focus:outline-none" />
             </div>
-            {addErr && <div className="mt-2 text-[11px] text-danger">{addErr}</div>}
+            {addErr && <div className="mt-2 text-[12px] text-err">{addErr}</div>}
             <div className="mt-3 flex justify-end gap-2">
               <button onClick={() => setAddModalOpen(false)} className="rounded-lg border border-border px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary">Cancel</button>
               <button onClick={addTask} disabled={busy === "add"} className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">
@@ -733,12 +766,12 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
       )}
       {bulkMsg && (
         <div className="mt-1.5 flex justify-start">
-          <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${bulkMsg.startsWith("Failed") ? "bg-danger/15 text-danger" : "bg-accent-soft text-accent"}`}>
+          <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${bulkMsg.startsWith("Failed") ? "bg-err/15 text-err" : "bg-accent-soft text-accent"}`}>
             <Bot className="h-3 w-3" /> {bulkMsg}
           </span>
         </div>
       )}
-      {addErr && <div className="mt-1.5 text-right text-[11px] text-danger">{addErr}</div>}
+      {addErr && <div className="mt-1.5 text-right text-[11px] text-err">{addErr}</div>}
       {addMsg && !addErr && (
         <div className="mt-1.5 flex justify-end">
           <span className="inline-flex items-center gap-1 rounded-md bg-ok/15 px-2 py-0.5 text-[11px] font-medium text-ok">
@@ -768,7 +801,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
                 <RotateCcw className="h-3 w-3" /> Restore
               </button>
               <button onClick={() => purge(t)} disabled={busy === `p:${t.id}`} title="Delete permanently (cannot be undone)"
-                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-danger hover:text-danger disabled:opacity-50">
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-err hover:text-err disabled:opacity-50">
                 <Trash2 className="h-3 w-3" /> Delete
               </button>
             </div>
@@ -809,7 +842,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
             const items = byHorizon[h.key] ?? [];
             if (items.length === 0) return null; // only show buckets that have work
             const isOverdueBucket = h.key === "overdue";
-            const tone = isOverdueBucket ? "text-danger" : h.key === "today" ? "text-warn" : "text-text-muted";
+            const tone = isOverdueBucket ? "text-err" : h.key === "today" ? "text-warn" : "text-text-muted";
             return (
               <section key={h.key}>
                 <div className={`mb-2 flex items-center gap-2 px-1 font-mono text-[10px] uppercase tracking-[0.16em] ${tone} ${isOverdueBucket ? "font-bold" : ""}`}>

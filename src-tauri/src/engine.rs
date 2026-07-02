@@ -242,9 +242,16 @@ pub fn run_engine_json(args: &[&str]) -> Result<serde_json::Value, String> {
 
     if !out.status.success() {
         let code = out.status.code().unwrap_or(-1);
+        // Fix #18 (opacity): surface the REAL cause. Prefer stderr, but many engine
+        // failures (connect agent, connectors) write a JSON `{ ok:false, error }`
+        // to STDOUT and exit nonzero with an empty stderr, so fall back to stdout
+        // so the UI never shows a bare "prevail exited 1" with no reason.
         let stderr = String::from_utf8_lossy(&out.stderr);
         let stderr = stderr.trim();
-        return Err(format!("prevail exited {code}: {stderr}"));
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stdout = stdout.trim();
+        let detail = if !stderr.is_empty() { stderr } else { stdout };
+        return Err(format!("prevail exited {code}: {detail}"));
     }
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -320,9 +327,14 @@ pub fn run_engine_json_stdin(
 
     if !out.status.success() {
         let code = out.status.code().unwrap_or(-1);
+        // Fix #18 (opacity): prefer stderr, fall back to stdout (where the engine
+        // often writes a JSON `{ ok:false, error }` on a nonzero exit).
         let stderr = String::from_utf8_lossy(&out.stderr);
         let stderr = stderr.trim();
-        return Err(format!("prevail exited {code}: {stderr}"));
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stdout = stdout.trim();
+        let detail = if !stderr.is_empty() { stderr } else { stdout };
+        return Err(format!("prevail exited {code}: {detail}"));
     }
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -823,8 +835,16 @@ pub fn engine_domains(vault: String) -> Result<serde_json::Value, String> {
 /// ~/.prevail/apps + vault apps), with connection + sync state. This is the
 /// live counterpart to the static connector catalog: what is actually wired up.
 #[tauri::command]
-pub fn engine_apps_list() -> Result<serde_json::Value, String> {
-    run_engine_json(&["connectors", "list", "--json"])
+pub fn engine_apps_list(vault: Option<String>) -> Result<serde_json::Value, String> {
+    // Scope the listing to the SAME vault the UI adds into. engine_app_add passes
+    // --vault explicitly; if the list relied only on the ambient env it could
+    // resolve a DIFFERENT vault (the user may have several), so a just-added app
+    // would never appear and the UI would treat it as not-connected. Pass --vault
+    // when we have it so add and list always agree.
+    match vault.filter(|v| !v.trim().is_empty()) {
+        Some(v) => run_engine_json(&["connectors", "list", "--vault", &v, "--json"]),
+        None => run_engine_json(&["connectors", "list", "--json"]),
+    }
 }
 
 /// Probe one app's connectivity/auth (api/oauth/browser/mcp/cli/manual).
@@ -1077,16 +1097,26 @@ pub fn engine_app_add(
     title: String,
     integration: String,
     domains: Vec<String>,
+    mcp_command: Option<String>,
+    mcp_install: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let doms = domains.join(",");
     // Pass --vault explicitly: `connectors add` resolves the vault from this
     // flag first, so the scaffold lands in the real vault even if the engine's
     // PREVAIL_VAULT_ROOT env wasn't set for this call (which otherwise made it
     // fall back to a bogus default path and fail with EROFS).
-    run_engine_json(&[
-        "connectors", "add", "--id", &id, "--title", &title,
-        "--integration", &integration, "--domains", &doms, "--vault", &vault, "--json",
-    ])
+    let mut args: Vec<String> = vec![
+        "connectors".into(), "add".into(), "--id".into(), id, "--title".into(), title,
+        "--integration".into(), integration, "--domains".into(), doms,
+        "--vault".into(), vault,
+    ];
+    // MCP servers carry their stdio spawn command (and optional one-time install)
+    // so the connector knows how to launch the server. Only forwarded when set.
+    if let Some(c) = mcp_command { if !c.trim().is_empty() { args.push("--mcp-command".into()); args.push(c); } }
+    if let Some(i) = mcp_install { if !i.trim().is_empty() { args.push("--mcp-install".into()); args.push(i); } }
+    args.push("--json".into());
+    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_engine_json(&refs)
 }
 
 /// Scaffold a GATEWAY app (Composio / Nango) for a toolkit pick. Unlike
@@ -1165,6 +1195,162 @@ pub fn engine_app_get_soul(id: String) -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub fn engine_app_set_soul(id: String, soul: String) -> Result<serde_json::Value, String> {
     run_engine_json(&["connectors", "set", &id, "soul", &soul, "--json"])
+}
+
+/// AI-draft an app's Ideal State (its soul.md) from the app's real context —
+/// catalog description, existing note, domains it feeds, skills, connection
+/// method — optionally web-researching the app for best-practice capabilities.
+/// Mirrors `domain_draft_ideal` (the per-domain drafter) for apps, but shells
+/// the sidecar (which owns the app catalog + CLI detection) rather than calling
+/// the model in-process. Returns the drafted markdown for the editor to show;
+/// the user reviews, edits, and Saves — which writes the SAME soul.md the chat
+/// and agent read, so drafting here or from chat lands on one file.
+/// Returns the raw draft string (not JSON) so the UI can drop it straight into
+/// the editor.
+#[tauri::command]
+pub fn engine_app_draft_ideal(id: String, provider: String, model: String) -> Result<String, String> {
+    let mut args: Vec<&str> = vec!["connectors", "draft-ideal", &id];
+    if !provider.trim().is_empty() {
+        args.push("--cli");
+        args.push(&provider);
+    }
+    if !model.trim().is_empty() {
+        args.push("--model");
+        args.push(&model);
+    }
+    // run_engine_json appends --json, so the sidecar emits { ok, draft } | { ok:false, error }.
+    let v = run_engine_json(&args)?;
+    if v.get("ok").and_then(|b| b.as_bool()) == Some(false) {
+        return Err(v.get("error").and_then(|e| e.as_str()).unwrap_or("draft failed").to_string());
+    }
+    let draft = v.get("draft").and_then(|d| d.as_str()).unwrap_or("").trim().to_string();
+    if draft.is_empty() {
+        return Err("the model returned an empty draft".into());
+    }
+    Ok(draft)
+}
+
+/// AI-draft a complete, valid SKILL.md for a domain from a plain-language
+/// description. Shells the sidecar `skill-draft --json`, which gathers the
+/// domain's real context (ideal state, memory, state, goals, recent decisions
+/// and intents) and drafts a full skill in the SKILL.md format (frontmatter +
+/// heading + prompt body). Mirrors `engine_app_draft_ideal` / `domain_draft_ideal`:
+/// the desktop drops the returned body into the NewSkillForm editor for review,
+/// and the existing `skill_create` Save writes it. Bunker-mode aware in the CLI.
+/// Returns the full SKILL.md text so the editor can show it verbatim.
+#[tauri::command]
+pub fn engine_skill_draft(
+    vault: String,
+    domain: String,
+    name: String,
+    describe: String,
+    provider: String,
+    model: String,
+) -> Result<String, String> {
+    let mut args: Vec<&str> = vec![
+        "skill-draft",
+        "--domain",
+        &domain,
+        "--name",
+        &name,
+        "--describe",
+        &describe,
+        "--vault",
+        &vault,
+    ];
+    if !provider.trim().is_empty() {
+        args.push("--cli");
+        args.push(&provider);
+    }
+    if !model.trim().is_empty() {
+        args.push("--model");
+        args.push(&model);
+    }
+    // run_engine_json appends --json, so the sidecar emits
+    // { ok, name, body } | { ok:false, error }.
+    let v = run_engine_json(&args)?;
+    if v.get("ok").and_then(|b| b.as_bool()) == Some(false) {
+        return Err(v
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("draft failed")
+            .to_string());
+    }
+    let body = v.get("body").and_then(|d| d.as_str()).unwrap_or("").trim().to_string();
+    if body.is_empty() {
+        return Err("the model returned an empty draft".into());
+    }
+    Ok(body)
+}
+
+/// AI-suggest a few skill IDEAS (name + one-line describe) for a domain, based
+/// on its context. Shells the sidecar `skill-draft --ideas --json`. This never
+/// writes anything: the user turns a chosen idea into a real draft via
+/// `engine_skill_draft`. Returns the raw JSON value { ok, ideas: [{name, describe}] }
+/// so the UI can render the suggestions without a second call.
+#[tauri::command]
+pub fn engine_skill_ideas(
+    vault: String,
+    domain: String,
+    provider: String,
+    model: String,
+) -> Result<serde_json::Value, String> {
+    let mut args: Vec<&str> = vec!["skill-draft", "--domain", &domain, "--ideas", "--vault", &vault];
+    if !provider.trim().is_empty() {
+        args.push("--cli");
+        args.push(&provider);
+    }
+    if !model.trim().is_empty() {
+        args.push("--model");
+        args.push(&model);
+    }
+    let v = run_engine_json(&args)?;
+    if v.get("ok").and_then(|b| b.as_bool()) == Some(false) {
+        return Err(v
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("suggest failed")
+            .to_string());
+    }
+    Ok(v)
+}
+
+/// AI-curate a LIBRARY of Arena presets over the model universe the desktop
+/// enumerated. Shells the sidecar `bench preset-suggest --json`, passing the
+/// available-model list (each: { key: "cli::model", label, provider, validated,
+/// local, tier }) on STDIN so a large list never blows the argv limit. The
+/// sidecar grounds every returned key against that list, so a hallucinated model
+/// can never reach the UI. Mirrors `engine_skill_ideas`: never writes anything;
+/// the desktop renders the returned presets as cards the user can Apply / Run /
+/// Save. Bunker-mode aware in the CLI. Returns { ok, presets: [{ name, rationale,
+/// models }] } so the UI can render without a second call.
+#[tauri::command]
+pub fn engine_bench_preset_suggest(
+    models_json: String,
+    provider: String,
+    model: String,
+) -> Result<serde_json::Value, String> {
+    let mut args: Vec<&str> = vec!["bench", "preset-suggest"];
+    if !provider.trim().is_empty() {
+        args.push("--cli");
+        args.push(&provider);
+    }
+    if !model.trim().is_empty() {
+        args.push("--model");
+        args.push(&model);
+    }
+    // The available-model list rides on stdin (see run_engine_json_stdin); the
+    // sidecar reads it when --models-json is absent. run_engine_json_stdin
+    // appends --json, so the sidecar emits { ok, presets } | { ok:false, error }.
+    let v = run_engine_json_stdin(&args, &models_json)?;
+    if v.get("ok").and_then(|b| b.as_bool()) == Some(false) {
+        return Err(v
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("preset suggest failed")
+            .to_string());
+    }
+    Ok(v)
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1347,26 +1533,32 @@ pub fn model_suggestions_read(vault: String) -> Result<serde_json::Value, String
     }
 }
 
-/// Force a Model Scout pass now (web search). Blocks until the CLI finishes, then
-/// returns the refreshed suggestions. `known` is a comma-joined list of models
-/// already in the benchmark, so the scout proposes only NEW ones.
+/// Force a Model Scout pass now (web search). The CLI scan (web search + model
+/// call) is slow, so it runs on a blocking thread via spawn_blocking: the command
+/// is async and never blocks the main/UI thread, so the app stays responsive while
+/// it scans. `known` is a comma-joined list of models already in the benchmark, so
+/// the scout proposes only NEW ones.
 #[tauri::command]
-pub fn model_scout_run(
+pub async fn model_scout_run(
     vault: String,
     known: Option<String>,
     cli: Option<String>,
     model: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let mut args: Vec<String> = vec![
-        "scout-models".into(),
-        "--vault".into(), vault,
-        "--json".into(),
-    ];
-    if let Some(k) = known.filter(|s| !s.is_empty()) { args.push("--known".into()); args.push(k); }
-    if let Some(c) = cli.filter(|s| !s.is_empty()) { args.push("--cli".into()); args.push(c); }
-    if let Some(m) = model.filter(|s| !s.is_empty()) { args.push("--model".into()); args.push(m); }
-    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    run_engine_json(&refs)
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut args: Vec<String> = vec![
+            "scout-models".into(),
+            "--vault".into(), vault,
+            "--json".into(),
+        ];
+        if let Some(k) = known.filter(|s| !s.is_empty()) { args.push("--known".into()); args.push(k); }
+        if let Some(c) = cli.filter(|s| !s.is_empty()) { args.push("--cli".into()); args.push(c); }
+        if let Some(m) = model.filter(|s| !s.is_empty()) { args.push("--model".into()); args.push(m); }
+        let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        run_engine_json(&refs)
+    })
+    .await
+    .map_err(|e| format!("model scout task failed: {e}"))?
 }
 
 /// Run one autonomous-sync pass over every DUE app (the in-app scheduler calls
@@ -1985,27 +2177,6 @@ pub fn engine_discover_models(provider: String) -> Result<serde_json::Value, Str
     run_engine_json(&["models", &provider])
 }
 
-/// `prevail pack list` — the bundled persona packs.
-#[tauri::command]
-pub fn engine_pack_list() -> Result<serde_json::Value, String> {
-    run_engine_json(&["pack", "list"])
-}
-
-/// `prevail --vault <vault> pack import <pack> [--overwrite]` — materialize a
-/// bundled (or file) pack's starter domains into the vault.
-#[tauri::command]
-pub fn engine_pack_import(
-    vault: String,
-    pack: String,
-    overwrite: bool,
-) -> Result<serde_json::Value, String> {
-    let mut args: Vec<&str> = vec!["--vault", &vault, "pack", "import", &pack];
-    if overwrite {
-        args.push("--overwrite");
-    }
-    run_engine_json(&args)
-}
-
 /// `prevail --vault <vault> vault embed --from <vault> --json`
 /// Non-destructively copy the active vault into the app-owned location
 /// (~/.prevail/vault) and repoint config there. Returns the engine's
@@ -2066,6 +2237,39 @@ pub fn engine_score(
     let value = run_engine_json(&args)?;
     serde_json::from_value::<ContextScore>(value)
         .map_err(|e| format!("failed to decode ContextScore: {e}"))
+}
+
+/// Async audit re-scan. Same result as `engine_score(audit=true)`, but runs the
+/// blocking engine subprocess on a blocking thread instead of the main thread,
+/// so the LLM audit (which can take many seconds) never freezes the UI. The
+/// audit just recomputes and rewrites the score, so it is idempotent: running it
+/// repeatedly has no cumulative effect beyond a fresh score.
+#[tauri::command]
+pub async fn engine_score_audit(
+    vault: String,
+    domain: String,
+) -> Result<ContextScore, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let value = run_engine_json(&["--vault", &vault, "score", &domain, "--audit"])?;
+        serde_json::from_value::<ContextScore>(value)
+            .map_err(|e| format!("failed to decode ContextScore: {e}"))
+    })
+    .await
+    .map_err(|e| format!("score audit task failed: {e}"))?
+}
+
+/// Pull Google Calendar events (READ-ONLY) into the vault's plaintext
+/// `calendar-external.json`, which the Calendar view reads. Runs the engine off
+/// the main thread so the network round-trip never freezes the UI. Always
+/// returns parseable JSON: `{ ok, count, reason? }` - `ok:false` with a reason
+/// when Google is not connected, instead of failing. Stage A (one-way) only.
+#[tauri::command]
+pub async fn engine_calendar_pull(vault: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_engine_json(&["--vault", &vault, "calendar", "pull-google"])
+    })
+    .await
+    .map_err(|e| format!("calendar pull task failed: {e}"))?
 }
 
 /// `prevail --vault <vault> manifest get <domain> --json`
@@ -2639,6 +2843,84 @@ pub async fn engine_agent_run(
     args.push(auto.to_string());
 
     run_engine_stream(app, session, args, "engine-agent").await
+}
+
+/// Run one of an app's skills, streaming progress to the frontend.
+///
+/// `prevail connectors skill-run --app <app> --skill <skill> --vault <vault>
+///  [--cli <provider>] --json`. The browser-method skill performs its
+/// first-time login on the first run, so this also covers setup. Streams the
+/// same ChatEvent NDJSON shape as `engine_chat` / `engine_agent_run`, on
+/// `engine-skill:line` and `engine-skill:done`, so the UI reuses its existing
+/// stream parser. Mirrors `engine_agent_run`'s spawn/stream/emit path.
+#[tauri::command]
+pub async fn engine_app_run_skill(
+    handle: tauri::AppHandle,
+    session: String,
+    vault: String,
+    app: String,
+    skill: String,
+    cli: Option<String>,
+) -> Result<(), String> {
+    let mut args: Vec<String> = vec![
+        "connectors".to_string(),
+        "skill-run".to_string(),
+        "--app".to_string(),
+        app,
+        "--skill".to_string(),
+        skill,
+        "--vault".to_string(),
+        vault,
+    ];
+    if let Some(c) = cli.filter(|s| !s.is_empty()) {
+        args.push("--cli".to_string());
+        args.push(c);
+    }
+    run_engine_stream(handle, session, args, "engine-skill").await
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Google Workspace (gws) write approvals. Reads run automatically inside
+// chat and need no UI. WRITES are queued by the CLI to
+// <vault>/_meta/pending_gws.json as [{ id, domain, summary, args, ts }] and
+// must wait for the user to approve them under "Needs you". The approve path
+// reuses the existing token spine: loop_request_approval mints a single-use
+// token bound to (domain, summary), and authorize_action verifies it here so
+// a gws write only ever runs with a valid, single-use approval.
+
+/// List the queued gws write actions awaiting approval.
+/// `prevail --vault <vault> gws pending-list --json` -> the pending array.
+#[tauri::command]
+pub async fn engine_gws_pending_list(vault: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_engine_json(&["--vault", &vault, "gws", "pending-list"])
+    })
+    .await
+    .map_err(|e| format!("gws pending-list task failed: {e}"))?
+}
+
+/// Execute ONE user-approved gws write for real. Requires a valid single-use
+/// `approval` token bound to this exact (domain, summary) — minted by
+/// loop_request_approval — so a UI bug or injected invoke can't drive a gws
+/// write without real approval. Mirrors loop_execute_action's single
+/// authorization checkpoint, then runs the exact stored command by id.
+/// Returns the engine's `{ ok, output?, error? }`.
+#[tauri::command]
+pub async fn engine_gws_approve(
+    vault: String,
+    id: String,
+    domain: String,
+    summary: String,
+    approval: String,
+) -> Result<serde_json::Value, String> {
+    // Single authorization checkpoint: the broker verifies the approval token is
+    // valid, single-use, and bound to this exact (domain, summary). Do NOT weaken.
+    crate::broker::authorize_action(&domain, &summary, &approval)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        run_engine_json(&["--vault", &vault, "gws", "run", "--id", &id])
+    })
+    .await
+    .map_err(|e| format!("gws run task failed: {e}"))?
 }
 
 #[cfg(test)]

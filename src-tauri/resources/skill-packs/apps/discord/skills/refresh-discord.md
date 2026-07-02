@@ -8,7 +8,7 @@ outputs:
   - { path: data/discord-channels-${date}.json, kind: replace }
 ---
 # Refresh Discord
-Pull the server and DM threads so the people and projects you care about don't get lost in the scroll. Strictly read-only — never send, react, or edit.
+Pull the server and DM threads so the people and projects you care about don't get lost in the scroll. Strictly read-only, never send, react, or edit.
 1. **Servers.** List the servers (guilds) and channels you can read, capturing names and IDs.
 2. **Messages.** Read recent messages per channel within a window, capturing author, timestamp, content, and reactions.
 3. **Direct.** Collect @-mentions of you and DM threads.

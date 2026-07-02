@@ -981,7 +981,6 @@ export function DomainPrefsPanel({
       {/* CLI picker - select a CLI to expand its models inline (collapse & indent) */}
       <PrefSection
         title="CLI"
-        defaultOpen
         icon={<Terminal className="h-4 w-4" />}
         subtitle={pickedCli ? titleCase(pickedCli) : "Global default"}
         right={pickedCli ? (

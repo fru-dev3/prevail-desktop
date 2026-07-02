@@ -6,7 +6,7 @@ outputs:
   - { path: data/schwab-allocation-${date}.json, kind: replace }
 ---
 # Portfolio Allocation Review
-How the long game is actually positioned — across assets, sectors, and single names.
+How the long game is actually positioned, across assets, sectors, and single names.
 1. **Load.** Read the latest `data/schwab-positions-*.json` and `data/schwab-accounts-*.json`.
 2. **Total.** Sum market value across all accounts including cash.
 3. **Allocate.** Break down by asset class (equity / ETF / fixed income / cash) and by individual position as a percent of total.

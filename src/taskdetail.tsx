@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Bot, Flag, MessageSquarePlus, Sparkles, User, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase, relTime } from "./format";
+import { VENDOR_BRAND } from "./constants";
 import type { BoardTask } from "./types";
 
 type Detail = { description?: string; comments?: { ts: number; text: string; author?: string }[] };
@@ -63,10 +64,33 @@ export function TaskDetailPanel({ task, vaultPath, onClose, onChanged }: {
 
   const cyclePriority = () => patchTask({ priority: task.priority === "critical" ? null : task.priority === "high" ? "critical" : "high" });
 
-  // Open this task's domain chat seeded with the task as context.
+  // Open this task's domain chat seeded with the FULL task context, so the
+  // conversation continues with everything the task already carries: its
+  // status/meta, description, and the discussion (comments) so far. A done task
+  // is fine - we just frame it as a follow-up.
   const discuss = () => {
+    const meta = [
+      `Status: ${titleCase(task.status)}`,
+      task.due ? `Due ${task.due}` : null,
+      task.priority ? `Priority ${task.priority}` : null,
+      `Owner ${task.owner === "ai" ? "AI" : "Me"}`,
+    ].filter(Boolean).join(" · ");
+    const cmts = detail.comments ?? [];
+    const history = cmts.length
+      ? "\n\nDiscussion so far:\n" + cmts.map((c) => {
+          const a = c.author;
+          const who = !a || a === "me" || a === "you" ? "Me" : a === "ai" ? "AI" : (VENDOR_BRAND[a]?.name ?? a);
+          return `- ${who}: ${c.text}`;
+        }).join("\n")
+      : "";
+    const seed = `Let's discuss this task from my ${titleCase(task.domain)} board.\n\nTask: "${task.text}"\n${meta}${desc ? `\n\nDescription:\n${desc}` : ""}${history}\n\nWhere should we take it from here?`;
+    // Persist so the seed survives navigating from the Work board to the (then-
+    // mounting) chat panel; ChatPanel reads pending seeds on mount. Without this
+    // the live event can fire before the chat is listening and the composer ends
+    // up blank - which is the bug this fixes.
+    try { localStorage.setItem("prevail.compose.pending", seed); } catch { /* ignore */ }
     window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: task.domain }));
-    window.dispatchEvent(new CustomEvent("prevail:compose-seed", { detail: `Help me with this task: "${task.text}"${desc ? `\n\nDetails: ${desc}` : ""}` }));
+    window.dispatchEvent(new CustomEvent("prevail:compose-seed", { detail: seed }));
     onClose();
   };
 
@@ -74,8 +98,10 @@ export function TaskDetailPanel({ task, vaultPath, onClose, onChanged }: {
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
-      <div className="fixed right-0 top-0 z-50 flex h-full w-[440px] max-w-[92vw] flex-col border-l border-border bg-surface shadow-2xl">
+      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      {/* Floating side drawer: anchored to the right but inset on all sides so it
+          reads as a compact card, not a full-height slab covering the screen. */}
+      <div className="fixed right-3 top-3 bottom-3 z-50 flex w-[400px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
         {/* Header */}
         <div className="flex items-start gap-2 border-b border-border-subtle px-4 py-3">
           <span title={task.owner === "ai" ? "AI" : "Me"} className={`mt-0.5 shrink-0 ${task.owner === "ai" ? "text-accent" : "text-text-muted"}`}>
@@ -111,7 +137,7 @@ export function TaskDetailPanel({ task, vaultPath, onClose, onChanged }: {
             </label>
             <button onClick={cyclePriority} disabled={busy} className="flex items-center justify-between rounded-md border border-border bg-background px-2 py-1.5 text-left">
               <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Priority</span>
-              <span className={`inline-flex items-center gap-1 text-xs ${task.priority === "critical" ? "text-danger" : task.priority === "high" ? "text-warn" : "text-text-muted"}`}>
+              <span className={`inline-flex items-center gap-1 text-xs ${task.priority === "critical" ? "text-err" : task.priority === "high" ? "text-warn" : "text-text-muted"}`}>
                 <Flag className="h-3 w-3" fill={task.priority ? "currentColor" : "none"} /> {task.priority ?? "normal"}
               </span>
             </button>
@@ -146,8 +172,20 @@ export function TaskDetailPanel({ task, vaultPath, onClose, onChanged }: {
               {comments.map((c, i) => (
                 <div key={i} className="rounded-lg border border-border-subtle bg-background px-3 py-2">
                   <div className="mb-0.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-                    {c.author === "ai" ? <Bot className="h-3 w-3 text-accent" /> : <User className="h-3 w-3" />}
-                    {c.author === "ai" ? "AI" : "You"} · {relTime(c.ts)}
+                    {(() => {
+                      // author is "me"/"you" (the user), "ai" (generic), or an
+                      // agent id like "pi"/"hermes"/"opencode"/"Prevail" when a
+                      // task was handed to an agent. Show who actually wrote it.
+                      const a = c.author;
+                      const isUser = !a || a === "me" || a === "you";
+                      const label = isUser ? "You" : a === "ai" ? "AI" : (VENDOR_BRAND[a]?.name ?? a);
+                      return (
+                        <>
+                          {isUser ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3 text-accent" />}
+                          {label} · {relTime(c.ts)}
+                        </>
+                      );
+                    })()}
                   </div>
                   <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-text-secondary">{c.text}</div>
                 </div>

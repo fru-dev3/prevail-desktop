@@ -59,7 +59,7 @@ const RUN_PHASES: { key: string; label: string }[] = [
   { key: "apply", label: "Apply" },
 ];
 
-export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; vaultPath: string; domainPath: string }) {
+export function LoopsPanel({ domain, vaultPath, domainPath, isApp = false }: { domain: string; vaultPath: string; domainPath: string; isApp?: boolean }) {
   const [doc, setDoc] = useState<LoopsDoc | null>(null);
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
@@ -76,8 +76,11 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
   // editor on this page.
   const [ideal, setIdeal] = useState<string>("");
   useEffect(() => {
+    // Apps have no domain ideal-state.md; their "why" is the soul. Skip the
+    // domain-only read so the panel works cleanly for an app.
+    if (isApp) { setIdeal(""); return; }
     invoke<string>("read_domain_ideal", { vault: vaultPath, domain }).then((s) => setIdeal(s || "")).catch(() => setIdeal(""));
-  }, [vaultPath, domain]);
+  }, [vaultPath, domain, isApp]);
   // Keep the engine mirror in sync (read-only): if the domain ideal differs from
   // the loops doc's desiredState, write it through once loaded.
   useEffect(() => {
@@ -91,6 +94,10 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
     // missing (and persist once), so it's present in the panel and the runner.
     readLoops(domainPath).then((d) => {
       if (!alive) return;
+      // Apps start with a clean loops list (the user adds app-appropriate loops
+      // like "Inbox Zero"); the domain built-ins (Briefing / Model Scout) are
+      // domain-flavored, so don't seed them into an app.
+      if (isApp) { setDoc(d); return; }
       const { doc: withBrief, added: addedB } = ensureBriefingLoop(d, domain);
       // General also gets the built-in Model Scout (web-searches models for the Arena).
       const { doc: withScout, added: addedS } = ensureModelScoutLoop(withBrief, domain);
@@ -101,12 +108,12 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
     // The background loop runner advances loops + queues approvals; refresh when
     // it reports a pass so new actions/proposals appear without a manual reload.
     const onAdvanced = () => {
-      readLoops(domainPath).then((d) => { if (alive) setDoc(ensureModelScoutLoop(ensureBriefingLoop(d, domain).doc, domain).doc); });
+      readLoops(domainPath).then((d) => { if (alive) setDoc(isApp ? d : ensureModelScoutLoop(ensureBriefingLoop(d, domain).doc, domain).doc); });
       readLoopsRuntime(domainPath).then((rt) => { if (alive) setRuntime(rt); });
     };
     window.addEventListener("prevail:loops-advanced", onAdvanced);
     return () => { alive = false; window.removeEventListener("prevail:loops-advanced", onAdvanced); };
-  }, [domainPath, domain]);
+  }, [domainPath, domain, isApp]);
 
   // Pending approvals across all of this domain's loops (the steps a loop is
   // ASKING the user to OK before it acts).
@@ -302,7 +309,7 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
             <button
               onClick={stopAll}
               title="Stop the whole run: the loop running now is stopped and no further loops start."
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-danger/40 bg-danger/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-danger hover:bg-danger/20"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-err/40 bg-err/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-err hover:bg-err/20"
             >
               <X className="h-3.5 w-3.5" /> Stop run
             </button>
@@ -618,7 +625,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
           const d = e.payload.data as { type?: string; phase?: string; label?: string; result?: RunResult };
           if (d && typeof d === "object" && d.type === "phase") {
             setPhase(d.phase || ""); setPhaseLabel(d.label || "");
-            updateProcess(session, d.label ? `${baseLabel} - ${d.label}` : baseLabel);
+            updateProcess(session, d.label ? `${baseLabel}: ${d.label}` : baseLabel);
           } else if (d && typeof d === "object" && d.type === "result" && d.result) {
             captured = d.result;
           }
@@ -775,7 +782,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
           )}
           {/* Run-now result: exactly what this pass did. */}
           {!running && result && (
-            <div className={`rounded-lg border px-3 py-2.5 ${result.ok ? "border-accent-border bg-accent-soft/30" : "border-danger/40 bg-danger/10"}`}>
+            <div className={`rounded-lg border px-3 py-2.5 ${result.ok ? "border-accent-border bg-accent-soft/30" : "border-err/40 bg-err/10"}`}>
               {result.ok ? (
                 <>
                   <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-accent">{result.briefing ? <Mail className="h-3 w-3" /> : <Play className="h-3 w-3" />} {result.briefing ? "Briefing ready" : "Ran just now"}</div>
@@ -793,10 +800,10 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
                         </li>
                       ))}
                     </ul>
-                  ) : <div className="text-[11px] text-text-muted">No new actions this pass - the gap looks handled.</div>}
+                  ) : <div className="text-[12px] text-text-muted">No new actions this pass. The gap looks handled.</div>}
                   {!result.briefing && <div className="mt-2 font-mono text-[10px] text-text-muted">{result.tasksCreated.length} task{result.tasksCreated.length === 1 ? "" : "s"} filed · {result.pending.length} awaiting approval</div>}
                 </>
-              ) : <div className="text-[11px] text-danger">Run failed: {result.error}</div>}
+              ) : <div className="text-[12px] text-err">Run failed: {result.error}</div>}
             </div>
           )}
           {/* Controls */}
@@ -805,7 +812,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
               {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} {running ? "Running…" : "Run now"}
             </button>
             {running && (
-              <button onClick={stopRun} title="Stop this loop's run" className="inline-flex items-center gap-1.5 rounded-md border border-danger/40 bg-danger/10 px-2.5 py-1 text-xs font-semibold text-danger hover:bg-danger/20">
+              <button onClick={stopRun} title="Stop this loop's run" className="inline-flex items-center gap-1.5 rounded-md border border-err/40 bg-err/10 px-2.5 py-1 text-xs font-semibold text-err hover:bg-err/20">
                 <X className="h-3.5 w-3.5" /> Stop
               </button>
             )}

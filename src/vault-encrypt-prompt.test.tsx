@@ -13,7 +13,7 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-describe("VaultEncryptPrompt — first-run encrypt-at-rest (default-ON)", () => {
+describe("VaultEncryptPrompt - first-run encrypt-at-rest (default-ON)", () => {
   it("disables Encrypt until an 8-char matching passcode is entered", () => {
     render(<VaultEncryptPrompt vaultPath="/v" onClose={() => {}} />);
     const btn = screen.getByRole("button", { name: /encrypt vault/i });

@@ -9,6 +9,8 @@ import { isBunkerOn, lsGet, lsSet } from "./storage";
 import { track } from "./telemetry";
 import type { BenchBatch, BenchJob, BenchJobStatus, BenchQuestion, BenchmarkRun } from "./types";
 import type { UnlistenFn } from "./bridge";
+import { listSchedules, updateSchedule } from "./bench-presets";
+import type { BenchSchedule } from "./bench-presets";
 
 export const BENCH_CLI_OPTIONS = [
   { id: "claude",      label: "Claude" },
@@ -114,6 +116,133 @@ export function benchWaitDone(b: BenchBatch, session: string, phase: string, tim
       timer = setTimeout(() => { cleanup(); resolve(BENCH_TIMEOUT); }, timeoutMs);
     }
   });
+}
+
+// ── AI question-suggestion registry ─────────────────────────────────────────
+// "Suggest with AI" (question drafting) is a long-running engine call that must
+// outlive the Questions panel. Mirroring benchBatches, this module-scope store
+// is the single source of truth for every in-flight (and finished) suggest job,
+// so navigating away from Arena and back never drops one. Panels subscribe via
+// useQuestionSuggest(); startQuestionSuggest() runs the engine call from module
+// scope with module-scope event listeners, so nothing is tied to a component.
+
+export type QSuggestJob = {
+  id: string;
+  vault: string;
+  domain: string;
+  status: "running" | "done" | "error";
+  added?: number;
+  error?: string;
+  tail?: string;
+  startedTs: number;
+};
+
+// Keyed by vault + "|" + domain: "all domains" runs one job per domain, and
+// re-starting a domain replaces its prior (finished) job in place.
+const qSuggestJobs = new Map<string, QSuggestJob>();
+
+function qSuggestKey(vault: string, domain: string) {
+  return `${vault}|${domain.toLowerCase()}`;
+}
+
+function qSuggestNotify() {
+  window.dispatchEvent(new Event("prevail:qsuggest-changed"));
+}
+
+// Subscribe hook: re-renders on prevail:qsuggest-changed and returns the current
+// jobs. Mirrors useBenchBatches (which re-renders through benchSubs); here the
+// window event is the notification channel so any mounted panel stays in sync.
+export function useQuestionSuggest(): QSuggestJob[] {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const f = () => force((n) => n + 1);
+    window.addEventListener("prevail:qsuggest-changed", f);
+    return () => window.removeEventListener("prevail:qsuggest-changed", f);
+  }, []);
+  return Array.from(qSuggestJobs.values());
+}
+
+// MODULE-SCOPE runner: draft `count` questions for ONE domain via the engine's
+// `benchmark_suggest`. Everything (invoke + streaming listeners + recount) lives
+// here, not in a component, so an unmount of the Questions panel cannot drop it.
+// Guards against double-starting the same vault+domain while one is running.
+export async function startQuestionSuggest({
+  vault, domain, count, cli, model,
+}: {
+  vault: string;
+  domain: string;
+  count: number;
+  cli: string;
+  model?: string | null;
+}): Promise<void> {
+  const target = domain.toLowerCase();
+  const key = qSuggestKey(vault, target);
+  const existing = qSuggestJobs.get(key);
+  if (existing && existing.status === "running") return; // already in flight
+
+  // Count from disk, not stale React state, so the "added" delta is honest.
+  let before = 0;
+  try {
+    const pre = await invoke<BenchQuestion[]>("benchmark_questions", { vault });
+    before = (pre ?? []).filter((q) => q.domain === target).length;
+  } catch { /* fall back to before = 0; exit code still drives success */ }
+
+  const session = `bench-suggest-${target}-${Date.now()}`;
+  const job: QSuggestJob = { id: session, vault, domain: target, status: "running", startedTs: Date.now() };
+  qSuggestJobs.set(key, job);
+  qSuggestNotify();
+
+  // Module-scope streaming + completion listeners (not component-scoped).
+  let output = "";
+  let chunkUn: UnlistenFn | null = null;
+  listen<{ session: string; data: string }>("benchmark:chunk", (e) => {
+    if (e.payload.session === session) {
+      output = (output + e.payload.data).slice(-2000);
+      job.tail = output.trim().split("\n").filter(Boolean).slice(-2).join(" / ");
+      qSuggestNotify();
+    }
+  }).then((u) => { chunkUn = u; });
+
+  const done = new Promise<number | null>((resolve) => {
+    let un: UnlistenFn | null = null;
+    listen<{ session: string; code: number | null; phase: string }>("benchmark:done", (e) => {
+      if (e.payload.session === session && e.payload.phase === "suggest") { un?.(); resolve(e.payload.code); }
+    }).then((u) => { un = u; });
+  });
+
+  try {
+    await invoke("benchmark_suggest", {
+      args: { session_id: session, vault, domain: target, count, cli, model: model || null },
+    });
+    const code = await done;
+    (chunkUn as UnlistenFn | null)?.();
+    // Let the engine flush new questions to disk before recounting.
+    await new Promise((r) => setTimeout(r, 150));
+    let added = 0;
+    try {
+      const fresh = await invoke<BenchQuestion[]>("benchmark_questions", { vault });
+      added = (fresh ?? []).filter((q) => q.domain === target).length - before;
+    } catch { /* counting is best-effort; exit code still drives success */ }
+    if (code === 0 || code === null) {
+      job.status = "done";
+      job.added = added > 0 ? added : 0;
+    } else {
+      // Surface WHY it failed: the engine prints a reason on the last line;
+      // fall back to a plain-English guess when it's empty.
+      const reason = (output.trim().split("\n").filter(Boolean).pop() || "").trim()
+        || "the drafting model returned nothing usable (check the model is installed and signed in)";
+      job.status = "error";
+      job.error = reason;
+    }
+  } catch (e) {
+    (chunkUn as UnlistenFn | null)?.();
+    job.status = "error";
+    job.error = String(e);
+  }
+  qSuggestNotify();
+  // Tell any mounted questions panel to reload its list, whether or not the user
+  // is currently looking at it, so completed drafts appear on return.
+  window.dispatchEvent(new Event("prevail:questions-changed"));
 }
 
 // ── Scheduled benchmark runs ────────────────────────────────────────────────
@@ -293,20 +422,72 @@ export async function runScheduledBatch(vault: string): Promise<boolean> {
   return rerunLatestBatch(vault);
 }
 
+// Build + run a batch from an EXPLICIT model + domain scope (a schedule entry).
+// Mirrors buildScheduledJobs, but takes its scope from arguments instead of the
+// legacy global keys, so each schedule entry runs its own independent set.
+// Filters to installed CLIs + Bunker-permitted models at build time.
+export async function runBenchModels(vault: string, models: string[], domains: string[]): Promise<boolean> {
+  let keys = models.map((s) => s.trim()).filter(Boolean);
+  if (keys.length === 0) return false;
+  const clis = await invoke<{ id: string; available?: boolean }[]>("detect_clis").catch(() => [] as { id: string; available?: boolean }[]);
+  const avail = new Set((clis ?? []).filter((c) => c.available !== false).map((c) => c.id));
+  keys = keys.filter((k) => { const cli = k.split(MODEL_SEP)[0]; return avail.has(cli) && (!isBunkerOn() || isLocalCli(cli)); });
+  if (keys.length === 0) return false;
+  const domSet = new Set(domains.map((s) => s.trim().toLowerCase()).filter(Boolean));
+  const questions = await invoke<BenchQuestion[]>("benchmark_questions", { vault }).catch(() => [] as BenchQuestion[]);
+  const qids = questions.filter((q) => domSet.size === 0 || domSet.has(q.domain.toLowerCase())).map((q) => q.id).sort();
+  const jobs: BenchJob[] = keys.map((k) => {
+    const [cli, model] = k.split(MODEL_SEP);
+    const ml = modelLabel(cli, model) || model;
+    return { key: `sched-${k}-${Date.now()}`, cli, model, label: `${titleCase(cli)} · ${ml}`, status: "queued", done: 0, total: qids.length, qids, qdone: {} };
+  });
+  void executeBenchBatch(vault, jobs, false, [...domSet].join(","));
+  return true;
+}
+
 export let benchSchedTimer: number | null = null;
+
+// Fire ONE schedule entry: build + run its explicit scope and stamp its lastRun.
+// Isolated so one entry failing (or having nothing runnable) never blocks the
+// others in the tick loop.
+async function runScheduleEntry(vault: string, entry: BenchSchedule): Promise<void> {
+  try {
+    if (await runBenchModels(vault, entry.models, entry.domains)) {
+      updateSchedule(entry.id, { lastRun: Date.now() });
+      window.dispatchEvent(new Event("prevail:bench-sched"));
+    }
+  } catch (e) {
+    console.error("bench schedule entry", entry.id, e);
+  }
+}
 
 export function startBenchScheduler(vault: string) {
   if (benchSchedTimer !== null) window.clearInterval(benchSchedTimer);
   const tick = async () => {
     try {
-      if (lsGet(BENCH_SCHED.enabled, "0") !== "1") return;
-      const freq = benchFreqMs(lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
-      const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
-      if (Date.now() - last < freq) return;
-      if ([...benchBatches.values()].some((b) => b.running)) return; // never stack
-      if (await runScheduledBatch(vault)) {
-        lsSet(BENCH_SCHED.lastRun, String(Date.now()));
-        window.dispatchEvent(new Event("prevail:bench-sched"));
+      // ITERATE every enabled entry independently: each fires when its own
+      // cadence has elapsed, and updates only its own lastRun. One entry being
+      // due (or failing) has no bearing on the others.
+      const now = Date.now();
+      const due = listSchedules().filter((s) => s.enabled && s.models.length > 0 && now - (s.lastRun || 0) >= benchFreqMs(s.freq));
+      // Legacy single-global fallback: if there are NO list entries at all yet
+      // and the old global schedule is still enabled, honor it once so an
+      // un-migrated user keeps their scheduled runs.
+      if (listSchedules().length === 0 && lsGet(BENCH_SCHED.enabled, "0") === "1") {
+        const freq = benchFreqMs(lsGet(BENCH_SCHED.freq, "weekly") || "weekly");
+        const last = Number(lsGet(BENCH_SCHED.lastRun, "0")) || 0;
+        if (now - last >= freq && ![...benchBatches.values()].some((b) => b.running)) {
+          if (await runScheduledBatch(vault)) {
+            lsSet(BENCH_SCHED.lastRun, String(Date.now()));
+            window.dispatchEvent(new Event("prevail:bench-sched"));
+          }
+        }
+      }
+      // Fire due entries one at a time, never while another benchmark is running,
+      // so runs never stack. Remaining due entries fire on subsequent ticks.
+      for (const entry of due) {
+        if ([...benchBatches.values()].some((b) => b.running)) break;
+        await runScheduleEntry(vault, entry);
       }
     } catch (e) {
       console.error("bench scheduler", e);
@@ -325,13 +506,19 @@ export async function executeBenchBatch(
   plannedJobs: BenchJob[],
   councilMode: boolean,
   scopeStr: string,
+  // CONTINUE/RESUME. When set, reuse this batch id (instead of minting a fresh
+  // one) so the engine resumes INTO the existing run directories: it skips the
+  // questions each model already answered and re-runs only the missing/errored
+  // ones. Persisted answers are never regenerated, questions are never
+  // recreated. Omit for a brand-new batch.
+  resumeBatchId?: string,
 ): Promise<void> {
   const now = new Date();
   const p2 = (n: number) => String(n).padStart(2, "0");
   // Numeric, sortable stamp: YYYY-MM-DD HH:MM (no spelled-out month).
   const dateLabel = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}`;
   const hhmm = `${p2(now.getHours())}:${p2(now.getMinutes())}`;
-  const batchId = `b${now.getTime()}`;
+  const batchId = resumeBatchId ?? `b${now.getTime()}`;
   // T18 (inert until keys exist; default-OFF, allowlist-scrubbed to counts only -
   // no model ids, no domain names, no question text).
   track("benchmark_run", { models: plannedJobs.length, domains: scopeStr ? scopeStr.split(",").filter(Boolean).length : 0 });
@@ -413,12 +600,21 @@ export async function executeBenchBatch(
           batch_label: batchLabel,
         },
       });
-      // Watchdog: a single model's run shouldn't be able to hang the batch. 20
-      // minutes is generous even for a slow local model on a few questions.
-      const code = await benchWaitDone(batch, session, "run", 20 * 60_000);
+      // Watchdog: a single model's run shouldn't be able to hang the batch, but
+      // the ceiling must SCALE with how many questions the model answers - a flat
+      // 20 minutes would wrongly kill a legitimately-progressing large run (100
+      // questions at ~40-60s each is well past 20 min). Budget generously per
+      // question on top of a floor, capped so a truly stuck run still unwinds.
+      // Because answers now persist incrementally, even a watchdog kill loses no
+      // completed work: Continue resumes from what landed on disk.
+      const qCount = Math.max(1, job.qids.length || job.total || 1);
+      const runWatchdogMs = Math.min(6 * 60 * 60_000, 5 * 60_000 + qCount * 3 * 60_000);
+      const code = await benchWaitDone(batch, session, "run", runWatchdogMs);
       if (batch.cancelled) return; // statuses already set by cancelBenchBatch
       if (code === BENCH_TIMEOUT) {
-        benchPatchJob(batch, job.key, { status: "error", note: "timed out - no response" });
+        // Not necessarily lost: partial answers are on disk. Mark it errored so
+        // the user can Continue the batch to finish the remaining questions.
+        benchPatchJob(batch, job.key, { status: "error", note: "timed out - continue to resume" });
         return;
       }
       if (code !== 0 && code !== null) {

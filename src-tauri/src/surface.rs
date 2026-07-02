@@ -203,9 +203,9 @@ pub async fn domain_surface(
 }
 
 /// Draft a per-domain Ideal State from the domain's real context (memory, state,
-/// decisions, recent intents). Returns 2-4 sentences describing what a thriving
-/// version of this domain looks like — grounded in the user's actual situation,
-/// not generic. The desktop puts it in the editor for review before saving.
+/// decisions, recent intents). Returns a COMPREHENSIVE, sectioned ideal state
+/// (vision, outcomes, metrics, habits, anti-patterns) grounded in the user's
+/// actual situation, not generic. The desktop puts it in the editor for review.
 #[tauri::command]
 pub async fn domain_draft_ideal(
     vault: String,
@@ -216,12 +216,16 @@ pub async fn domain_draft_ideal(
     let dir = crate::paths::domain_dir_pub(&vault, &domain);
     let context = gather_context(&dir);
     let prompt = format!(
-        "{}You are helping define the IDEAL STATE for this person's \"{domain}\" domain — a \
-short, vivid description of what a thriving {domain} looks like FOR THEM, used as the \
-standing target their AI council and background loops work toward.\n\n\
-Write 2-4 sentences, second person or declarative (no preamble, no headers, no quotes). \
-Make it specific and grounded in the context below — reference their actual situation, \
-goals, and decisions where possible — but aspirational. Return ONLY the ideal-state text.\n\n\
+        "{}You are defining the IDEAL STATE for this person's \"{domain}\" domain: a comprehensive, \
+vivid picture of what a thriving {domain} looks like FOR THEM, used as the standing target their \
+AI council and background loops work toward.\n\n\
+Write a COMPREHENSIVE ideal state in markdown, NOT one or two sentences. Cover, in short titled \
+sections: the vision (what a thriving {domain} looks like), the concrete outcomes and targets that \
+define it, the metrics or signals worth tracking, the habits and routines that sustain it, the \
+risks or anti-patterns to avoid, and what good looks like day to day. Ground EVERY part in the \
+context below: reference their actual situation, goals, and decisions wherever possible, and stay \
+aspirational but realistic. Write in the second person or declarative voice. No preamble, no meta \
+commentary, no surrounding quotes, and do not use em dashes. Return ONLY the ideal-state markdown.\n\n\
 --- CONTEXT ---\n{context}",
         crate::ideal_state_preamble(Path::new(&vault)),
     );
