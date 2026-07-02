@@ -4,9 +4,10 @@
 // and current actions. The runner daemon (separate) evaluates enabled loops and
 // keeps their actions current; here you define and steer them.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, ListPlus, Mail, Play, Plus, RefreshCw, ShieldQuestion, Target, Trash2, X, Zap } from "lucide-react";
+import { Check, ChevronRight, Download, Infinity as InfinityIcon, Loader2, ListPlus, Mail, Play, Plus, RefreshCw, ShieldQuestion, Target, Trash2, Upload, X, Zap } from "lucide-react";
 import { invoke, listen } from "./bridge";
 import type { UnlistenFn } from "./bridge";
+import { open, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { titleCase, relTime } from "./format";
 import { PREF, getPref } from "./storage";
 import { startProcess, endProcess, updateProcess } from "./processes";
@@ -196,6 +197,40 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
 
   const toggleOpen = (id: string) => setOpenIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  // X11 (marketplace seed): share automations as portable files. Export writes
+  // this domain's loops to a .json a user can send; import merges loops from such
+  // a file (fresh ids so they never collide), the foundation for a shared hub.
+  const exportLoops = useCallback(async () => {
+    if (!doc || doc.loops.length === 0) return;
+    try {
+      const dest = await saveFileDialog({ defaultPath: `${domain}-automations.json`, filters: [{ name: "Prevail automations", extensions: ["json"] }] });
+      if (!dest) return;
+      const payload = { kind: "prevail.automations/v1", domain, loops: doc.loops };
+      await invoke("write_text_file", { path: dest, contents: JSON.stringify(payload, null, 2) });
+    } catch (e) { console.error("export loops", e); }
+  }, [doc, domain]);
+  const importLoops = useCallback(async () => {
+    if (!doc) return;
+    try {
+      const src = await open({ multiple: false, filters: [{ name: "Prevail automations", extensions: ["json"] }] });
+      if (!src || typeof src !== "string") return;
+      const raw = await invoke<string>("read_file", { path: src });
+      const parsed = JSON.parse(raw) as { loops?: Partial<Loop>[] };
+      const incoming = Array.isArray(parsed.loops) ? parsed.loops : [];
+      if (incoming.length === 0) return;
+      const added = incoming.map((l) => makeLoop({
+        name: l.name || "Imported automation",
+        type: l.type === "closed" ? "closed" : "open",
+        cadence: (l.cadence as Loop["cadence"]) || "weekly",
+        autonomy: (l.autonomy as Loop["autonomy"]) || "suggest",
+        purpose: l.purpose || "",
+        status: "active",
+        enabled: false, // imported loops arrive paused so the user vets them first
+      }));
+      persist({ ...doc, loops: [...added, ...doc.loops] });
+    } catch (e) { console.error("import loops", e); }
+  }, [doc, persist]);
+
   // "Run loops now" runs every active, enabled loop in turn via the streamed
   // per-loop runner. Each loop visibly runs (header spinner + live progress + a
   // sidebar dot on the domain), is individually stoppable, and the whole batch
@@ -280,6 +315,15 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
               <RefreshCw className="h-3.5 w-3.5" /> Run loops now
             </button>
           )
+        )}
+        {/* X11: share automations as portable files. */}
+        <button onClick={importLoops} title="Import automations from a shared file (they arrive paused)" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+          <Download className="h-3.5 w-3.5" /> Import
+        </button>
+        {doc && doc.loops.length > 0 && (
+          <button onClick={exportLoops} title="Export this domain's automations to a shareable file" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+            <Upload className="h-3.5 w-3.5" /> Export
+          </button>
         )}
       </div>
 
