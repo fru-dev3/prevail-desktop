@@ -21,7 +21,8 @@ export function ShortcutsSection() {
     {
       name: "Navigation",
       entries: [
-        { keys: ["⌘", "K"], label: "New chat", desc: "Drops the current domain + thread, lands on the no-domain dashboard." },
+        { keys: ["⌘", "K"], label: "Command palette", desc: "Search actions, every page, and every domain from one place." },
+        { keys: ["⌘", "⇧", "K"], label: "New chat", desc: "Drops the current domain + thread, lands on the no-domain dashboard." },
         { keys: ["⌘", "P"], label: "Quick switcher", desc: "Fuzzy finder over every domain and every saved thread." },
         { keys: ["⌘", "B"], label: "Toggle sidebar", desc: "Collapses or expands the domain rail." },
         { keys: ["⌘", ","], label: "Open Settings", desc: "Jumps to the settings panel from anywhere." },
