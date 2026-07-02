@@ -2,8 +2,10 @@
 // ad-hoc one-liners ("No notes yet.", "Nothing scheduled…") with inconsistent
 // tone and no call to action, and loading was bare spinners. These two
 // primitives give panels a consistent, designed baseline.
+import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Monitor } from "lucide-react";
+import { isBrowser } from "./bridge";
 
 export function EmptyState({
   icon: Icon,
@@ -35,6 +37,24 @@ export function EmptyState({
       )}
     </div>
   );
+}
+
+// E3: gate desktop-only features when the app is served to a browser (WebUI).
+// The same React bundle renders remotely, but many controls (bridge setup, vault
+// encryption, the WebUI server toggle itself) hit the deny-by-default allowlist
+// and just error. Rather than showing a control that silently fails, explain it
+// is desktop-only. `inline` renders a compact note for a small row.
+export function DesktopOnly({ children, feature, inline }: { children: ReactNode; feature: string; inline?: boolean }) {
+  if (!isBrowser()) return <>{children}</>;
+  if (inline) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-border-subtle bg-surface-warm px-3 py-2 text-xs text-text-muted">
+        <Monitor className="h-3.5 w-3.5 shrink-0" />
+        {feature} is available in the Prevail desktop app.
+      </div>
+    );
+  }
+  return <EmptyState icon={Monitor} title="Desktop only" body={`${feature} is configured in the Prevail desktop app, not the web view.`} />;
 }
 
 export function LoadingState({ label = "Loading…" }: { label?: string }) {

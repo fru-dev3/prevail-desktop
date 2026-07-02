@@ -12,6 +12,7 @@ import { IngestionBrowserRunner, PreambleColumn } from "./panels2";
 import { IngestionTierCard } from "./panels3";
 import { useFrameworkLens } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
+import { DesktopOnly } from "./emptystate";
 import type { IngestionArtifact, IngestionMcpServer, IngestionTierStatus } from "./types";
 import type { UnlistenFn } from "./bridge";
 
@@ -189,6 +190,7 @@ export function RemoteSection() {
   return (
     <>
       <SettingsHeader title="Remote (WebUI)" subtitle="Serve this exact app to a browser: same UI, no rebuild. Then reach it from your phone or laptop, anywhere, via Tailscale or Cloudflare." />
+      <DesktopOnly feature="The WebUI server">
       <div className="rounded-lg border border-border bg-surface px-5">
         <SettingsRowLite title="Enable WebUI" desc="Run the bridge server so a browser can use Prevail. This Mac must stay on."
           control={<Toggle on={running} onChange={toggle} />} />
@@ -211,6 +213,7 @@ export function RemoteSection() {
         </div>
       )}
       {err && <div className="mt-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{err}</div>}
+      </DesktopOnly>
     </>
   );
 }
