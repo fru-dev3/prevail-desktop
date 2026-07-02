@@ -8,6 +8,7 @@ import { DOMAIN_LABEL, PATTERN_LABEL, PATTERN_TIER, SETTINGS_ROW, SOURCE_ABBR, S
 import { relTime, titleCase } from "./format";
 import { AppLogo, ConnectorIcon, PatternChip } from "./panels";
 import { SettingsHeader } from "./sectionutil";
+import { DesktopOnly } from "./emptystate";
 import { backupVaultNow } from "./backup";
 import type { Brand, BrandLogo, CatalogApp, Connector, ConnectorCatalog, EngineApp } from "./types";
 
@@ -550,6 +551,7 @@ export function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
   }
   if (!status) return null;
   return (
+    <DesktopOnly feature="Vault encryption">
     <div className="mb-4 rounded-lg border border-border bg-surface p-5">
       <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">
         <Shield className="h-3.5 w-3.5" /> Vault encryption {status.encrypted ? "· on" : "· off"}
@@ -593,5 +595,6 @@ export function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
       )}
       {note && <div className="mt-2 text-xs text-text-secondary">{note}</div>}
     </div>
+    </DesktopOnly>
   );
 }
