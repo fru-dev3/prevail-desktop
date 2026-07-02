@@ -8,6 +8,7 @@ import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
 import { addNote } from "./notesstore";
 import { toast } from "./toast";
+import { readLoops, writeLoops, newLoopId, type Loop } from "./loops";
 import { MODELS, isHarnessRuntime } from "./constants";
 import { relTime, scoreColor, titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
@@ -1286,6 +1287,39 @@ export function ChatPanel({
       toast.success(`Pinned to ${dom === "general" ? "your" : dom + "'s"} memory.`);
     } catch (e) { toast.error(`Could not pin to memory: ${String(e)}`); }
   }, [vaultPath, tDomain, domain]);
+  // X9: turn a message's intent into a recurring automation (loop) in this
+  // domain, seeded from the text, then jump to Automations to refine it.
+  const makeLoopFromChat = useCallback(async (text: string) => {
+    const intent = text.trim().replace(/\s+/g, " ");
+    if (!intent || !domainPath) {
+      if (!domainPath) toast.error("Open a domain first to create an automation.");
+      return;
+    }
+    const name = intent.length > 48 ? intent.slice(0, 45).trimEnd() + "…" : intent;
+    try {
+      const doc = await readLoops(domainPath);
+      const loop: Loop = {
+        id: newLoopId(name),
+        name,
+        purpose: intent,
+        type: "open",
+        signals: [],
+        condition: "always on",
+        cadence: "weekly",
+        autonomy: "suggest",
+        evaluation: "The intent is being made real over time.",
+        actions: [],
+        status: "active",
+        enabled: true,
+        lastRunTs: null,
+        createdTs: Date.now(),
+      };
+      await writeLoops(domainPath, { ...doc, loops: [loop, ...doc.loops] });
+      window.dispatchEvent(new Event("prevail:loops-changed"));
+      window.dispatchEvent(new CustomEvent("prevail:work-section", { detail: "automations" }));
+      toast.success("Created an automation. Opening it to refine…");
+    } catch (e) { toast.error(`Could not create the automation: ${String(e)}`); }
+  }, [domainPath]);
   const retryFromHere = useCallback((index: number) => {
     // Find the user message that produced this assistant slot.
     let userIdx = index;
@@ -1767,6 +1801,7 @@ export function ChatPanel({
               onMakeTask={makeTaskFromMessage}
               onSaveNote={saveMessageAsNote}
               onPinMemory={pinMessageToMemory}
+              onMakeLoop={makeLoopFromChat}
             />
           </div>
         )}
@@ -1871,6 +1906,7 @@ export function ChatPanel({
               onMakeTask={makeTaskFromMessage}
               onSaveNote={saveMessageAsNote}
               onPinMemory={pinMessageToMemory}
+              onMakeLoop={makeLoopFromChat}
             />
           </div>
         )}

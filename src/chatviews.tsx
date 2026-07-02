@@ -1,7 +1,7 @@
 // Chat-display leaf components extracted from App.tsx: ChatBubble (one rendered
 // turn), MessageList (windowed transcript), DomainStatusBar, and DomainHome.
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, ListPlus, NotebookPen, Pin, SlidersHorizontal, Sparkles, User } from "lucide-react";
+import { ArrowRight, ListPlus, NotebookPen, Pin, Repeat, SlidersHorizontal, Sparkles, User } from "lucide-react";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES } from "./constants";
 import { titleCase } from "./format";
@@ -27,6 +27,7 @@ export function ChatBubble({
   onMakeTask,
   onSaveNote,
   onPinMemory,
+  onMakeLoop,
 }: {
   msg: ChatMessage;
   onCopy?: (text: string) => void;
@@ -35,6 +36,7 @@ export function ChatBubble({
   onMakeTask?: (text: string) => void;
   onSaveNote?: (text: string) => void;
   onPinMemory?: (text: string) => void;
+  onMakeLoop?: (text: string) => void;
 }) {
   // Small inline action button used on bubble hover. Stays muted by
   // default so the chat stays calm; lights up on hover.
@@ -97,6 +99,14 @@ export function ChatBubble({
               label="Task"
               onClick={() => onMakeTask(msg.content)}
               icon={<ListPlus className="h-3 w-3" />}
+            />
+          )}
+          {onMakeLoop && (
+            <ActionButton
+              title="Turn this into a recurring automation in this domain"
+              label="Automate"
+              onClick={() => onMakeLoop(msg.content)}
+              icon={<Repeat className="h-3 w-3" />}
             />
           )}
         </div>
@@ -263,7 +273,7 @@ export function ChatBubble({
 // ─────────────────────────────────────────────────────────────────────
 // COUNCIL PANEL
 
-export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit, onMakeTask, onSaveNote, onPinMemory }: {
+export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit, onMakeTask, onSaveNote, onPinMemory, onMakeLoop }: {
   messages: ChatMessage[];
   resetKey: number;
   onCopy: (text: string) => void;
@@ -272,6 +282,7 @@ export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit, onMak
   onMakeTask?: (text: string) => void;
   onSaveNote?: (text: string) => void;
   onPinMemory?: (text: string) => void;
+  onMakeLoop?: (text: string) => void;
 }) {
   const [limit, setLimit] = useState(MESSAGE_WINDOW);
   // Reset the window when the thread changes (switched/cleared) so a new thread
@@ -303,6 +314,7 @@ export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit, onMak
             onMakeTask={onMakeTask}
             onSaveNote={m.role === "assistant" ? onSaveNote : undefined}
             onPinMemory={m.role === "assistant" ? onPinMemory : undefined}
+            onMakeLoop={m.role === "user" ? onMakeLoop : undefined}
           />
         );
       })}
