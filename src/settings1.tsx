@@ -156,16 +156,24 @@ export function RemoteSection() {
   const [running, setRunning] = useState(false);
   const [port, setPort] = useState(() => getPref(PREF.webuiPort, "8787"));
   const [user, setUser] = useState(() => getPref(PREF.webuiUser, "admin"));
-  const [pass, setPass] = useState(() => {
-    let p = getPref(PREF.webuiPass, "");
-    if (!p) { p = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6); setPref(PREF.webuiPass, p); }
-    return p;
-  });
+  // E2: the password lives in the OS keychain, not plaintext localStorage. Load
+  // it on mount, migrating any legacy localStorage value (then scrubbing it).
+  const [pass, setPass] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [err, setErr] = useState("");
   useEffect(() => {
     invoke<{ running: boolean }>("webui_status").then((s) => setRunning(!!s.running)).catch(() => {});
+    (async () => {
+      let p = "";
+      try { p = await invoke<string>("webui_secret_get"); } catch { /* keychain unavailable */ }
+      const legacy = getPref(PREF.webuiPass, "");
+      if (!p && legacy) { p = legacy; try { await invoke("webui_secret_set", { pass: p }); } catch { /* ignore */ } }
+      if (legacy) setPref(PREF.webuiPass, ""); // scrub the plaintext copy
+      if (!p) { p = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6); try { await invoke("webui_secret_set", { pass: p }); } catch { /* ignore */ } }
+      setPass(p);
+    })();
   }, []);
+  const savePass = (p: string) => { setPass(p); void invoke("webui_secret_set", { pass: p }).catch(() => {}); };
   async function toggle(on: boolean) {
     setErr("");
     try {
@@ -191,7 +199,7 @@ export function RemoteSection() {
         <SettingsRowLite title="Password" desc="Keep this private: anyone with it and the URL can use your agent."
           control={
             <div className="flex items-center gap-2">
-              <input type={showPass ? "text" : "password"} value={pass} disabled={running} onChange={(e) => { setPass(e.target.value); setPref(PREF.webuiPass, e.target.value); }} className="w-40 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />
+              <input type={showPass ? "text" : "password"} value={pass} disabled={running} onChange={(e) => savePass(e.target.value)} className="w-40 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />
               <button onClick={() => setShowPass((v) => !v)} className="font-mono text-[11px] text-text-muted hover:text-accent">{showPass ? "hide" : "show"}</button>
             </div>
           } />
