@@ -910,11 +910,29 @@ export default function App() {
   // approvals / AI reviews are visible without opening Settings. Cheap call
   // (list_domain_names, no state reads); refreshed slowly + on task/loop events.
   const [decisionsCount, setDecisionsCount] = useState(0);
+  // F7: remember the last count so a RISE (the AI newly blocked, waiting on you)
+  // fires a native notification - the one "needs you" moment that previously
+  // surfaced only as an in-app pill. -1 = not yet polled, so the first load
+  // never notifies for pre-existing decisions.
+  const prevDecisionsRef = useRef<number>(-1);
   useEffect(() => {
     if (!vaultPath) return;
     let alive = true;
     const poll = () => invoke<unknown[]>("decisions_pending", { vault: vaultPath })
-      .then((d) => { if (alive) setDecisionsCount(Array.isArray(d) ? d.length : 0); })
+      .then((d) => {
+        if (!alive) return;
+        const n = Array.isArray(d) ? d.length : 0;
+        setDecisionsCount(n);
+        const prev = prevDecisionsRef.current;
+        if (prev >= 0 && n > prev && !isBrowser()) {
+          const added = n - prev;
+          void invoke("notify_user", {
+            title: "Prevail needs your approval",
+            body: added === 1 ? "An automation is waiting for you to approve an action." : `${n} actions are waiting for your approval.`,
+          }).catch(() => {});
+        }
+        prevDecisionsRef.current = n;
+      })
       .catch(() => {});
     void poll();
     const id = window.setInterval(poll, 60000);
