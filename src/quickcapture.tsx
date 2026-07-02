@@ -44,6 +44,13 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
 
   useEffect(() => () => stopRec(), [stopRec]);
   useEffect(() => { if (!open) stopRec(); }, [open, stopRec]);
+  // F8: the global capture hotkey (Cmd/Ctrl+Shift+Space) reveals the window and
+  // fires this event; open the ribbon so the user can capture immediately.
+  useEffect(() => {
+    const onSummon = () => setOpen(true);
+    window.addEventListener("prevail:quick-capture", onSummon);
+    return () => window.removeEventListener("prevail:quick-capture", onSummon);
+  }, []);
   // Recording timer.
   useEffect(() => {
     if (!recording) return;

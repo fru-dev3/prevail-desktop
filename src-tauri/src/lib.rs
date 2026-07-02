@@ -203,6 +203,12 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // F8: system-wide capture hotkey + deep-link handling. The shortcut
+        // itself is registered in setup() (needs the app handle); deep-link URLs
+        // (prevail://...) are forwarded to the frontend as an event, the
+        // foundation for OAuth/connect redirects.
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_deep_link::init())
         // Start-on-boot (LaunchAgent). The frontend toggles it via the
         // autostart plugin's enable/disable in Settings → General.
         .plugin(tauri_plugin_autostart::init(
@@ -289,6 +295,40 @@ pub fn run() {
                     let st = app.state::<webui::WebuiState>();
                     let _ = st.start(handle, port, u, p);
                 }
+            }
+
+            // F8: register the global capture hotkey (Cmd/Ctrl+Shift+Space).
+            // Pressing it from anywhere reveals the window and opens Quick
+            // Capture, so a note can be captured without the app focused.
+            {
+                use tauri::Emitter;
+                use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+                let capture = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Space);
+                if let Err(e) = app.global_shortcut().on_shortcut(capture, move |app, _sc, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        use tauri::Manager;
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                            let _ = w.emit("prevail:quick-capture", ());
+                        }
+                    }
+                }) {
+                    eprintln!("global capture shortcut registration failed: {e}");
+                }
+            }
+
+            // F8: forward deep-link opens (prevail://...) to the frontend so
+            // OAuth/connect redirects can complete in-app.
+            {
+                use tauri::Emitter;
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    let urls: Vec<String> = event.urls().iter().map(|u| u.to_string()).collect();
+                    let _ = handle.emit("prevail:deep-link", urls);
+                });
             }
 
             // Memory watchdog: always-on safety net. Never fires in normal use;

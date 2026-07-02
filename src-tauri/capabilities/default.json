@@ -19,6 +19,8 @@
     "notification:default",
     "notification:allow-notify",
     "process:allow-restart",
+    "global-shortcut:default",
+    "deep-link:default",
     "shell:default",
     {
       "identifier": "shell:allow-execute",
