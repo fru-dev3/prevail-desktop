@@ -204,7 +204,7 @@ function PlaybookRun({ playbook, onClose }: { playbook: Playbook; onClose: () =>
         )}
       </div>
 
-      <div ref={logRef} className="max-h-64 overflow-y-auto rounded-md border border-border-subtle bg-surface-warm/40 p-2 text-[12px] leading-relaxed">
+      <div ref={logRef} className="max-h-64 overflow-y-auto rounded-md border border-border-subtle bg-surface-warm/40 p-2 text-[11px] leading-relaxed">
         {steps.length === 0 ? (
           <div className="flex items-center gap-1.5 text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> starting the playbook…</div>
         ) : (
@@ -217,7 +217,7 @@ function PlaybookRun({ playbook, onClose }: { playbook: Playbook; onClose: () =>
                 </span>
                 <span className="min-w-0 flex-1 break-words text-text-secondary">
                   <span className="text-text-primary">{s.label}</span>
-                  {badge && <span className={`ml-1.5 rounded border px-1 py-px font-mono text-[9px] uppercase tracking-wider ${badge.cls}`}>{badge.label}</span>}
+                  {badge && <span className={`ml-1.5 rounded border px-1 py-px font-mono text-[10px] uppercase tracking-wider ${badge.cls}`}>{badge.label}</span>}
                   {s.note && <span className="block text-[11px] text-text-muted">{s.note}</span>}
                 </span>
               </div>
@@ -296,7 +296,7 @@ function RecentActivity({ vaultPath }: { vaultPath: string }) {
                     {err && <span className="text-danger">failed</span>}
                   </div>
                   <div className="mt-0.5 text-[13px] leading-snug text-text-primary">{e.title}</div>
-                  {e.detail && <div className="mt-0.5 text-[12px] leading-relaxed text-text-muted">{e.detail}</div>}
+                  {e.detail && <div className="mt-0.5 text-[11px] leading-relaxed text-text-muted">{e.detail}</div>}
                 </div>
               </li>
             );

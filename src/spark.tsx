@@ -265,13 +265,13 @@ function SparkCard({ s, onSave, onDismiss, saved, vaultPath }: {
         <div className="text-[15px] leading-relaxed text-text-primary"><Markdown source={s.body} /></div>
       </div>
       <div className="flex flex-wrap items-center gap-2 border-t border-border-subtle px-4 py-2.5">
-        <button onClick={makeTask} disabled={didTask} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[12px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
+        <button onClick={makeTask} disabled={didTask} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
           <ListPlus className="h-3.5 w-3.5" /> {didTask ? "Saved to Work" : "Make a task"}
         </button>
-        <button onClick={() => discuss(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[12px] text-text-secondary hover:border-accent-border hover:text-accent">
+        <button onClick={() => discuss(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
           <Repeat className="h-3.5 w-3.5" /> Turn into routine
         </button>
-        <button onClick={() => discuss(false)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[12px] text-text-secondary hover:border-accent-border hover:text-accent">
+        <button onClick={() => discuss(false)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
           <MessageSquare className="h-3.5 w-3.5" /> Explore in chat
         </button>
       </div>
@@ -433,13 +433,13 @@ export function SparkPanel({ vaultPath, clis }: { vaultPath: string; clis: CliIn
             batch. Fills with accent when a topic is set or the field is open, so
             its active state reads clearly and it stays distinct from Generate. */}
         <button onClick={() => setTopicOpen((v) => !v)} title={topic.trim() ? `Topic: ${topic.trim()}` : "Spark on a specific topic"}
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-[12px] font-medium transition-colors ${topicOpen || topic.trim() ? "border-accent bg-accent text-background" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}>
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-[11px] font-medium transition-colors ${topicOpen || topic.trim() ? "border-accent bg-accent text-background" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}>
           <Wand2 className="h-3.5 w-3.5" />
           {topic.trim() ? `Topic: ${topic.trim().slice(0, 18)}${topic.trim().length > 18 ? "…" : ""}` : "Topic"}
         </button>
         {savedSparks.length > 0 && (
           <button onClick={() => setShowSaved((v) => !v)}
-            className={`ml-auto inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] ${showSaved ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}>
+            className={`ml-auto inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] ${showSaved ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-secondary hover:border-accent-border hover:text-accent"}`}>
             <Bookmark className="h-3.5 w-3.5" /> Saved · {savedSparks.length}
           </button>
         )}
@@ -473,11 +473,11 @@ export function SparkPanel({ vaultPath, clis }: { vaultPath: string; clis: CliIn
       {!showSaved && (
         <div className="mb-4 inline-flex items-center overflow-hidden rounded-lg border border-border">
           <button onClick={() => setView("current")}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] transition-colors ${view === "current" ? "bg-accent text-background" : "bg-background text-text-secondary hover:bg-surface-warm"}`}>
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] transition-colors ${view === "current" ? "bg-accent text-background" : "bg-background text-text-secondary hover:bg-surface-warm"}`}>
             <Sparkles className="h-3.5 w-3.5" /> Current{sparks.length > 0 ? ` · ${sparks.length}` : ""}
           </button>
           <button onClick={() => setView("history")}
-            className={`inline-flex items-center gap-1.5 border-l border-border px-3 py-1.5 text-[12px] transition-colors ${view === "history" ? "bg-accent text-background" : "bg-background text-text-secondary hover:bg-surface-warm"}`}>
+            className={`inline-flex items-center gap-1.5 border-l border-border px-3 py-1.5 text-[11px] transition-colors ${view === "history" ? "bg-accent text-background" : "bg-background text-text-secondary hover:bg-surface-warm"}`}>
             <History className="h-3.5 w-3.5" /> Previous{history.length > 0 ? ` · ${history.length}` : ""}
           </button>
         </div>

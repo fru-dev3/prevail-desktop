@@ -103,7 +103,7 @@ export function FrameworksSection() {
 
       {/* No collapse: everything on one page. A compact "how it works" strip, then
           Frameworks + Lenses side by side (two columns). */}
-      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-border-subtle bg-background px-3 py-2 text-[12px] text-text-secondary">
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-border-subtle bg-background px-3 py-2 text-[11px] text-text-secondary">
         <MessageSquare className="h-4 w-4 shrink-0 text-text-muted" />
         <span>Your question</span>
         <ArrowRight className="h-3.5 w-3.5 shrink-0 text-accent" />
@@ -137,7 +137,7 @@ export function FrameworksSection() {
       </div>
 
       {/* Custom + feedback — a quiet one-line footer, not a section. */}
-      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border-subtle pt-3 text-[12px] text-text-muted">
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border-subtle pt-3 text-[11px] text-text-muted">
         <span>Custom frameworks &amp; lenses are coming.</span>
         <a href="https://github.com/fru-dev3/prevail-desktop/issues/new" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-accent"><MessageSquare className="h-3 w-3" /> Suggest one</a>
         <a href="https://prevail.sh" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-accent"><Globe className="h-3 w-3" /> prevail.sh</a>

@@ -742,7 +742,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
                       <span>{new Date(r.ts).toLocaleString()}</span>
                       {r.tasksCreated?.length > 0 && <span className="rounded-full bg-surface-warm px-1.5 text-text-secondary">{r.tasksCreated.length} task{r.tasksCreated.length === 1 ? "" : "s"}</span>}
                     </div>
-                    {r.note && <div className="mt-0.5 text-[12px] leading-relaxed text-text-secondary">{r.note}</div>}
+                    {r.note && <div className="mt-0.5 text-[11px] leading-relaxed text-text-secondary">{r.note}</div>}
                   </li>
                 ))}
               </ul>
@@ -770,7 +770,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
                   );
                 })}
               </div>
-              {phaseLabel && <div className="mt-2 text-[12px] text-text-secondary">{phaseLabel}…</div>}
+              {phaseLabel && <div className="mt-2 text-[11px] text-text-secondary">{phaseLabel}…</div>}
             </div>
           )}
           {/* Run-now result: exactly what this pass did. */}
@@ -779,13 +779,13 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
               {result.ok ? (
                 <>
                   <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-accent">{result.briefing ? <Mail className="h-3 w-3" /> : <Play className="h-3 w-3" />} {result.briefing ? "Briefing ready" : "Ran just now"}</div>
-                  {result.note && <div className="mb-2 text-[12px] leading-relaxed text-text-secondary">{result.note}</div>}
+                  {result.note && <div className="mb-2 text-[11px] leading-relaxed text-text-secondary">{result.note}</div>}
                   {result.briefing ? (
-                    <div className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-md border border-border-subtle bg-background px-3 py-2 text-[12px] leading-relaxed text-text-secondary">{result.briefing}</div>
+                    <div className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-md border border-border-subtle bg-background px-3 py-2 text-[11px] leading-relaxed text-text-secondary">{result.briefing}</div>
                   ) : result.actions.length > 0 ? (
                     <ul className="space-y-1">
                       {result.actions.map((a, i) => (
-                        <li key={i} className="flex items-start gap-2 text-[12px] text-text-secondary">
+                        <li key={i} className="flex items-start gap-2 text-[11px] text-text-secondary">
                           <span className={`mt-0.5 inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0 font-mono text-[10px] uppercase tracking-wider ${a.disposition === "task" ? "bg-accent-soft text-accent" : a.disposition === "approval" ? "bg-warn/15 text-warn" : "bg-surface-warm text-text-muted"}`}>
                             {a.disposition === "task" ? <><ListPlus className="h-2.5 w-2.5" /> task</> : a.disposition === "approval" ? <><ShieldQuestion className="h-2.5 w-2.5" /> approval</> : "idea"}
                           </span>
@@ -793,10 +793,10 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
                         </li>
                       ))}
                     </ul>
-                  ) : <div className="text-[12px] text-text-muted">No new actions this pass - the gap looks handled.</div>}
+                  ) : <div className="text-[11px] text-text-muted">No new actions this pass - the gap looks handled.</div>}
                   {!result.briefing && <div className="mt-2 font-mono text-[10px] text-text-muted">{result.tasksCreated.length} task{result.tasksCreated.length === 1 ? "" : "s"} filed · {result.pending.length} awaiting approval</div>}
                 </>
-              ) : <div className="text-[12px] text-danger">Run failed: {result.error}</div>}
+              ) : <div className="text-[11px] text-danger">Run failed: {result.error}</div>}
             </div>
           )}
           {/* Controls */}
