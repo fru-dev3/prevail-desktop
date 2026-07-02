@@ -485,6 +485,7 @@ pub fn run() {
             idealstate::read_ideal_state,
             idealstate::write_ideal_state,
             appcmds::write_paste_attachment,
+            appcmds::write_paste_image,
             appcmds::save_session,
             chat::verify_cli_model,
             chat::model_oneshot,
