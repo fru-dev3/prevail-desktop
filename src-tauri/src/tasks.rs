@@ -424,7 +424,7 @@ pub fn work_count(vault: String, today: String, domain: Option<String>) -> Resul
 /// tasks ships a bounded first page (the open, time-sensitive ones) instead of
 /// the whole set; the board raises the limit on "Load more". None = all.
 #[tauri::command]
-pub fn tasks_read_all(vault: String, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
+pub async fn tasks_read_all(vault: String, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
     let mut out: Vec<serde_json::Value> = Vec::new();
     // Enumerate domains the v3-aware way (handles BOTH <vault>/<domain> and the v3
     // <vault>/domains/<domain> container) — lightweight (names only, no state reads).

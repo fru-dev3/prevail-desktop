@@ -59,6 +59,7 @@ mod slack_bridge;
 mod telegram_bridge;
 mod watchdog;
 mod webhook_bridge;
+mod webpush;
 mod webui;
 mod integrations;
 
@@ -183,6 +184,19 @@ pub(crate) fn read_to_string_retry<P: AsRef<Path>>(p: P) -> std::io::Result<Stri
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // C2: guard the vault against concurrent writers. The single-instance
+        // plugin must be registered FIRST. A second launch never spins up a
+        // second process pointed at the same vault folder (which the in-process
+        // write lock cannot serialize); instead it just refocuses the window
+        // that is already running.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            use tauri::Manager;
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -190,6 +204,12 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // F8: system-wide capture hotkey + deep-link handling. The shortcut
+        // itself is registered in setup() (needs the app handle); deep-link URLs
+        // (prevail://...) are forwarded to the frontend as an event, the
+        // foundation for OAuth/connect redirects.
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_deep_link::init())
         // Start-on-boot (LaunchAgent). The frontend toggles it via the
         // autostart plugin's enable/disable in Settings → General.
         .plugin(tauri_plugin_autostart::init(
@@ -278,6 +298,40 @@ pub fn run() {
                 }
             }
 
+            // F8: register the global capture hotkey (Cmd/Ctrl+Shift+Space).
+            // Pressing it from anywhere reveals the window and opens Quick
+            // Capture, so a note can be captured without the app focused.
+            {
+                use tauri::Emitter;
+                use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+                let capture = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Space);
+                if let Err(e) = app.global_shortcut().on_shortcut(capture, move |app, _sc, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        use tauri::Manager;
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                            let _ = w.emit("prevail:quick-capture", ());
+                        }
+                    }
+                }) {
+                    eprintln!("global capture shortcut registration failed: {e}");
+                }
+            }
+
+            // F8: forward deep-link opens (prevail://...) to the frontend so
+            // OAuth/connect redirects can complete in-app.
+            {
+                use tauri::Emitter;
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    let urls: Vec<String> = event.urls().iter().map(|u| u.to_string()).collect();
+                    let _ = handle.emit("prevail:deep-link", urls);
+                });
+            }
+
             // Memory watchdog: always-on safety net. Never fires in normal use;
             // only steps in if Prevail's footprint approaches a machine-freezing
             // fraction of physical RAM, at which point it stops the largest
@@ -310,6 +364,7 @@ pub fn run() {
         .manage(taskgen::TaskGenState::new())
         .manage(skillgen::SkillGenState::new())
         .manage(webui::WebuiState::default())
+        .manage({ let s = webpush::PushStore::default(); s.load(); s })
         .invoke_handler(tauri::generate_handler![
             vault::scan_vault,
             vault::vault_migrate_layout,
@@ -335,6 +390,7 @@ pub fn run() {
             usage::usage_append,
             usage::usage_summary,
             usage::usage_summary_domain,
+            usage::engine_budget_status,
             intents::intent_append,
             intents::intents_read,
             intents::intents_read_all,
@@ -357,6 +413,7 @@ pub fn run() {
             vault_lock::vault_lock_status,
             vault_lock::vault_lock_set,
             idealstate::read_memory_md,
+            idealstate::append_memory_md,
             appcmds::write_text_file,
             appcmds::read_text_file,
             appcmds::spark_archive_append,
@@ -370,9 +427,12 @@ pub fn run() {
             settings::provider_key_exists,
             settings::provider_key_last4,
             settings::provider_key_del,
+            settings::webui_secret_set,
+            settings::webui_secret_get,
             webui::webui_start,
             webui::webui_stop,
             webui::webui_status,
+            webui::webui_push,
             webui::webui_resolve,
             webui::webui_event,
             distill::distill_start,
@@ -432,6 +492,8 @@ pub fn run() {
             idealstate::read_ideal_state,
             idealstate::write_ideal_state,
             appcmds::write_paste_attachment,
+            appcmds::write_paste_image,
+            appcmds::write_voice_note,
             appcmds::save_session,
             chat::verify_cli_model,
             chat::model_oneshot,
@@ -532,6 +594,7 @@ pub fn run() {
             engine::engine_vault_lock_session,
             engine::engine_vault_encrypt,
             engine::engine_vault_decrypt,
+            engine::engine_vault_recover,
             engine::engine_score,
             engine::engine_manifest_get,
             engine::engine_score_all,
@@ -542,6 +605,7 @@ pub fn run() {
             loops::loops_run_once,
             loops::loop_execute_action,
             loops::loop_request_approval,
+            approval::autonomy_classify,
             loops::loop_run_now,
             loops::loop_run_now_stream,
             loops::loop_pending_drop,

@@ -112,7 +112,7 @@ export function ProfilesSection() {
   const remove = async (p: Profile) => {
     if (profiles.length <= 1) { setErr("You need at least one profile."); return; }
     const ok = await tauriConfirm(
-      `Remove the profile "${p.label}"? This only forgets the profile here — its vault folder and all its data are left untouched on disk.`,
+      `Remove the profile "${p.label}"? This only forgets the profile here - its vault folder and all its data are left untouched on disk.`,
       { title: "Remove profile", kind: "warning" },
     );
     if (!ok) return;
@@ -145,7 +145,7 @@ export function ProfilesSection() {
       <SettingsHeader
         title="Profiles"
         icon={UserRound}
-        subtitle="Separate, fully-isolated identities — each with its own vault, context, domains, and history. Switch profiles to switch everything. An optional passcode gates a profile before you can open it."
+        subtitle="Separate, fully-isolated identities - each with its own vault, context, domains, and history. Switch profiles to switch everything. An optional passcode gates a profile before you can open it."
         right={
           !draft ? (
             <button onClick={startAdd} className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover">
@@ -192,7 +192,7 @@ export function ProfilesSection() {
                 <button onClick={() => void pickFolder()} className="flex shrink-0 items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:bg-surface-strong hover:text-text-primary"><FolderOpen className="h-4 w-4" /> Browse</button>
               </div>
               <div className="mt-1.5 flex items-center justify-between">
-                <p className="text-[11px] text-text-muted">Each profile needs its own vault folder — that's what makes it isolated.</p>
+                <p className="text-[11px] text-text-muted">Each profile needs its own vault folder - that's what makes it isolated.</p>
                 <button onClick={() => void useSampleData()} disabled={sampling} className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-accent hover:underline disabled:opacity-50">
                   <Sparkles className="h-3 w-3" /> {sampling ? "Creating…" : "Start from sample data"}
                 </button>
@@ -200,7 +200,7 @@ export function ProfilesSection() {
             </div>
             <div>
               <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-text-muted">Passcode <span className="text-text-muted/60">(optional)</span></label>
-              <input type="password" value={draft.passcode} onChange={(e) => setDraft({ ...draft, passcode: e.target.value })} placeholder={draft.hadPass ? "•••••• (set — type to change)" : "Set a passcode to gate this profile"} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-accent-border focus:outline-none" />
+              <input type="password" value={draft.passcode} onChange={(e) => setDraft({ ...draft, passcode: e.target.value })} placeholder={draft.hadPass ? "•••••• (set - type to change)" : "Set a passcode to gate this profile"} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-accent-border focus:outline-none" />
               {draft.hadPass && (
                 <button onClick={clearPasscode} className="mt-1 text-[11px] text-text-muted underline hover:text-err">Remove passcode</button>
               )}
@@ -234,7 +234,7 @@ export function ProfilesSection() {
                 <span className="flex items-center gap-1.5 truncate text-sm font-semibold text-text-primary">
                   {p.label}
                   {p.passHash && <Lock className="h-3 w-3 text-text-muted" />}
-                  {p.id === activeId && <span className="rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent">Active</span>}
+                  {p.id === activeId && <span className="rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[10px] uppercase tracking-wider text-accent">Active</span>}
                 </span>
                 {p.email && <span className="truncate text-[11px] text-text-muted">{p.email}</span>}
                 <span className="truncate font-mono text-[10px] text-text-muted/80" title={p.vaultPath}>{p.vaultPath}</span>

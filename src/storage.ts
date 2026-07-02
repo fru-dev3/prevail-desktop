@@ -161,6 +161,12 @@ export const PREF = {
   webuiPort: "prevail.pref.webuiPort",                     // integer port
   webuiUser: "prevail.pref.webuiUser",                     // login username
   webuiPass: "prevail.pref.webuiPass",                     // login password (local only)
+  // Heartbeat (X1) — ambient proactivity: nudge you during active hours when
+  // approvals/overdue work are waiting. Default on, 8-22, min 3h between nudges.
+  heartbeatEnabled: "prevail.pref.heartbeatEnabled",       // "1" | "0"
+  heartbeatActiveStart: "prevail.pref.heartbeatActiveStart", // hour 0-23
+  heartbeatActiveEnd: "prevail.pref.heartbeatActiveEnd",     // hour 0-23
+  heartbeatIntervalHours: "prevail.pref.heartbeatIntervalHours", // min gap between nudges
   // Chat — auto-compact the conversation when the context window fills up
   // (summarize & continue), default ON. Keeps responses sharp without manual action.
   autoCompact: "prevail.pref.autoCompact",                 // "1" | "0"

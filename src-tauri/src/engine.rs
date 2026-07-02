@@ -1898,6 +1898,32 @@ pub fn engine_vault_decrypt(vault: String, passcode: String) -> Result<serde_jso
     Ok(r)
 }
 
+/// Forgot-passcode escape: unlock an encrypted vault with its one-time recovery
+/// code and install a NEW passcode in one step. The two secrets go to the engine
+/// as JSON on stdin (never argv). On success the engine hands back the DEK, so
+/// the session opens immediately — the same in-memory-key handoff as unlock.
+#[tauri::command]
+pub fn engine_vault_recover(
+    vault: String,
+    recovery_code: String,
+    new_passcode: String,
+) -> Result<serde_json::Value, String> {
+    let stdin = serde_json::json!({
+        "recoveryCode": recovery_code,
+        "newPasscode": new_passcode,
+    })
+    .to_string();
+    let r = run_engine_json_stdin(&["--vault", &vault, "vault", "recover"], &stdin)?;
+    if r.get("ok").and_then(|v| v.as_bool()) == Some(true) {
+        if let Some(k) = read_dek_from_unlock(&r)? {
+            set_vault_key(Some(k));
+            set_vault_root(Some(vault.clone()));
+        }
+        return Ok(serde_json::json!({ "ok": true }));
+    }
+    Ok(r)
+}
+
 /// `prevail appmode get` — the demo vs production flag (engine config, global).
 #[tauri::command]
 pub fn engine_appmode_get() -> Result<serde_json::Value, String> {

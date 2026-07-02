@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { invoke } from "./bridge";
 import App from "./App";
+import { Toaster } from "./toast";
 import { APP_VERSION } from "./constants";
 import { initCrashReporting, osFamily, reportError, track } from "./telemetry";
 import "./index.css";
@@ -9,6 +10,13 @@ import "./index.css";
 // Anonymous, consent-gated, allowlisted. Logs locally always (transparency);
 // only transmitted when the user opts in AND build-time keys exist.
 track("app_opened", { version: APP_VERSION, os: osFamily() });
+
+// X8: register the notification service worker in the WebUI (browser). Lets
+// notifications persist / show while the tab is backgrounded, and is the hook
+// for server-sent Web Push. Desktop (Tauri) uses native notifications instead.
+if (typeof window !== "undefined" && !("__TAURI_INTERNALS__" in window) && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("/sw.js").catch(() => { /* SW optional */ }); });
+}
 
 // Attach Sentry's global crash handlers if (and only if) the user has opted into
 // crash reports and a DSN was built in. Uncaught errors / unhandled rejections
@@ -63,6 +71,9 @@ try {
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <ErrorBoundary>
       <App />
+      {/* F6: single app-wide toast host. Fixed-position, so it overlays every
+          top-level view (lock screen, chat, work, editor) from the root. */}
+      <Toaster />
     </ErrorBoundary>,
   );
 } catch (err) {

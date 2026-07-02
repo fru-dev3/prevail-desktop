@@ -266,7 +266,7 @@ export function OnboardingModal({
                             <span className="font-display text-sm font-semibold text-text-primary">{d.label}</span>
                             <span className="font-mono text-[10px] text-text-muted">/{d.name}</span>
                             {d.recommended && (
-                              <span className="rounded-full bg-accent/15 px-1.5 py-0 font-mono text-[8px] uppercase tracking-wider text-accent">
+                              <span className="rounded-full bg-accent/15 px-1.5 py-0 font-mono text-[10px] uppercase tracking-wider text-accent">
                                 recommended
                               </span>
                             )}
@@ -410,14 +410,14 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
               <button onClick={() => bindApp(a)} disabled={binding === a.id} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-accent-soft disabled:opacity-40">
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: tint }} />
                 <span className="text-sm font-medium text-text-primary">{a.title}</span>
-                <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{a.integration}</span>
+                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{a.integration}</span>
                 <span className="ml-auto font-mono text-[10px] text-text-muted/60">{binding === a.id ? "adding…" : ""}</span>
               </button>
             </li>
           );
         })}
         {matches.length === 0 && (
-          <li className="px-2.5 py-3 text-center text-[12px] text-text-muted">
+          <li className="px-2.5 py-3 text-center text-[11px] text-text-muted">
             {available.length === 0 ? "Every app already feeds this domain." : "No matching app."}
           </li>
         )}
@@ -460,7 +460,7 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium text-text-primary group-hover:text-accent">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
-                  <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">{app.integration}</span>
+                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">{app.integration}</span>
                   <ExternalLink className="h-3 w-3 shrink-0 text-text-muted/0 transition-colors group-hover:text-accent" />
                 </div>
                 <div className="font-mono text-[10px] text-text-muted">
@@ -514,7 +514,7 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
           </button>
         </div>
         {suggestions.length === 0 ? (
-          <div className="px-1 py-2 text-[12px] text-text-muted">
+          <div className="px-1 py-2 text-[11px] text-text-muted">
             {suggesting ? "Learning from your activity in this domain…" : "No suggestions yet. Hit suggest apps to learn from your activity and propose apps to connect."}
           </div>
         ) : (
@@ -951,7 +951,7 @@ export function IngestionTierCard({
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm text-text-primary">{s.name}</span>
                       {s.running && s.pid != null && (
-                        <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] text-accent">pid {s.pid}</span>
+                        <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] text-accent">pid {s.pid}</span>
                       )}
                     </div>
                     <div className="font-mono text-[10px] text-text-muted">
@@ -1055,9 +1055,9 @@ export function IngestionTierCard({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-text-primary">{p.label}</span>
-                      <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">→ {titleCase(p.domain)}</span>
-                      {installed === true && <span className="font-mono text-[9px] text-accent">installed</span>}
-                      {installed === false && <span className="font-mono text-[9px] text-text-muted/60">not found on PATH</span>}
+                      <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">→ {titleCase(p.domain)}</span>
+                      {installed === true && <span className="font-mono text-[10px] text-accent">installed</span>}
+                      {installed === false && <span className="font-mono text-[10px] text-text-muted/60">not found on PATH</span>}
                     </div>
                     <div className="font-mono text-[10px] text-text-muted">{p.binary} {p.fetch_args.join(" ")}</div>
                     {cliMsg[p.id] && <div className="mt-0.5 font-mono text-[10px] text-text-muted">{cliMsg[p.id]}</div>}

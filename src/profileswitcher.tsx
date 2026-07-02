@@ -72,7 +72,7 @@ export function ProfileSwitcher({ collapsed }: { collapsed: boolean }) {
     <div ref={ref} className="relative border-b border-border-subtle">
       <button
         onClick={() => setOpen((v) => !v)}
-        title={`Profile: ${active.label}${active.email ? ` (${active.email})` : ""} — click to switch`}
+        title={`Profile: ${active.label}${active.email ? ` (${active.email})` : ""} - click to switch`}
         className={`flex w-full items-center transition-colors hover:bg-surface-warm ${collapsed ? "justify-center px-2 py-2" : "gap-2.5 px-3 py-2"}`}
       >
         {avatar(active, collapsed ? 28 : 26)}
@@ -89,7 +89,7 @@ export function ProfileSwitcher({ collapsed }: { collapsed: boolean }) {
 
       {open && (
         <div className={`absolute top-full z-50 mt-1 w-60 rounded-lg border border-border bg-surface p-1 shadow-2xl ${collapsed ? "left-2" : "left-3 right-3 w-auto"}`}>
-          <div className="px-2 py-1 font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted">Profiles</div>
+          <div className="px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Profiles</div>
           <ul className="max-h-72 overflow-y-auto">
             {profiles.map((p) => (
               <li key={p.id}>

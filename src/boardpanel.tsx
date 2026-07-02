@@ -455,7 +455,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
         onDragEnd={() => { setDragId(null); setDragCol(null); }}
         className={`rounded-lg border px-2.5 py-2 transition-opacity ${overdue ? "border-l-2 border-l-danger border-danger/40 bg-danger/5" : blocked ? "border-warn/40 bg-surface" : "border-border bg-surface"} ${dragId === t.id ? "opacity-40" : ""} ${editing ? "" : "cursor-grab active:cursor-grabbing"}`}>
         <div className="flex items-start gap-1.5">
-          <span title={ai ? "Owned by the agent" : "Owned by you"} className={`mt-0.5 inline-flex h-5 shrink-0 items-center gap-1 rounded-md px-1.5 font-mono text-[9px] font-bold uppercase tracking-wide ${ai ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>
+          <span title={ai ? "Owned by the agent" : "Owned by you"} className={`mt-0.5 inline-flex h-5 shrink-0 items-center gap-1 rounded-md px-1.5 font-mono text-[10px] font-bold uppercase tracking-wide ${ai ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>
             {ai ? <Bot className="h-3 w-3" /> : <User className="h-3 w-3" />}{ai ? "Agent" : "Me"}
           </span>
           {editing ? (
@@ -508,7 +508,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
     return (
       <div key={`row:${t.domain}:${t.id ?? t.text}`}
         className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${overdue ? "border-l-2 border-l-danger border-danger/40 bg-danger/5" : blocked ? "border-warn/40 bg-surface" : "border-border bg-surface"}`}>
-        <span title={ai ? "Owned by the agent" : "Owned by you"} className={`inline-flex h-5 shrink-0 items-center gap-1 rounded-md px-1.5 font-mono text-[9px] font-bold uppercase tracking-wide ${ai ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>
+        <span title={ai ? "Owned by the agent" : "Owned by you"} className={`inline-flex h-5 shrink-0 items-center gap-1 rounded-md px-1.5 font-mono text-[10px] font-bold uppercase tracking-wide ${ai ? "bg-accent text-background" : "bg-surface-warm text-text-muted"}`}>
           {ai ? <Bot className="h-3 w-3" /> : <User className="h-3 w-3" />}{ai ? "Agent" : "Me"}
         </span>
         {editing ? (
@@ -651,7 +651,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
           className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 transition-colors ${view === "needs" ? "border-accent-border bg-accent-soft text-accent" : decisionsCount > 0 ? "border-warn/40 text-warn hover:bg-surface-warm" : "border-border text-text-muted hover:bg-surface-warm"}`}>
           <Inbox className="h-3.5 w-3.5" /> Needs you
           {decisionsCount > 0 && (
-            <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[9px] font-bold text-background">{decisionsCount}</span>
+            <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[10px] font-bold text-background">{decisionsCount}</span>
           )}
         </button>
         {/* More: reveal the secondary controls (collapsed by default). */}
@@ -682,7 +682,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
               className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 transition-colors ${view === "trash" ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:bg-surface-warm"}`}>
               <Trash2 className="h-3.5 w-3.5" /> Trash
               {trashed.length > 0 && (
-                <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-surface-warm px-1 font-mono text-[9px] font-bold text-text-secondary">{trashed.length}</span>
+                <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-surface-warm px-1 font-mono text-[10px] font-bold text-text-secondary">{trashed.length}</span>
               )}
             </button>
             {/* Icebox: tasks set aside (won't do, not done) - recoverable. */}
@@ -690,7 +690,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
               className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 transition-colors ${view === "icebox" ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:bg-surface-warm"}`}>
               <Snowflake className="h-3.5 w-3.5" /> Icebox
               {iceboxed.length > 0 && (
-                <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-surface-warm px-1 font-mono text-[9px] font-bold text-text-secondary">{iceboxed.length}</span>
+                <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-surface-warm px-1 font-mono text-[10px] font-bold text-text-secondary">{iceboxed.length}</span>
               )}
             </button>
           </>
@@ -721,7 +721,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
               <input type="date" value={addDue} onChange={(e) => setAddDue(e.target.value)} title="Due date (optional)"
                 className="cursor-pointer rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-text-muted focus:border-accent-border focus:outline-none" />
             </div>
-            {addErr && <div className="mt-2 text-[12px] text-danger">{addErr}</div>}
+            {addErr && <div className="mt-2 text-[11px] text-danger">{addErr}</div>}
             <div className="mt-3 flex justify-end gap-2">
               <button onClick={() => setAddModalOpen(false)} className="rounded-lg border border-border px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary">Cancel</button>
               <button onClick={addTask} disabled={busy === "add"} className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">

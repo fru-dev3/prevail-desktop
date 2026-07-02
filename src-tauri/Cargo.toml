@@ -23,6 +23,12 @@ tauri-plugin-autostart = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-deep-link = "2"
+# X8: server-side Web Push (VAPID) so the WebUI can notify a closed browser tab.
+web-push = { version = "0.11", default-features = false, features = ["hyper-client"] }
+openssl = "0.10"
 tiny_http = "0.12"
 # In-process HTTP (Telegram bot API) so the bot token never lands on a process
 # command line. default-features off keeps http2/h2 out of the tree (HTTP/1.1 is

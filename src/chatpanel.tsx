@@ -3,9 +3,12 @@
 // shared chatviews + domainpanels.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ArrowUpRight, BookOpen, Check, FileText, Folder, Ghost, Layers, PanelRightOpen, Paperclip, Plus, Scale, Sparkles } from "lucide-react";
+import { ArrowUpRight, BookOpen, Check, FileText, Folder, Ghost, Image as ImageIcon, Layers, ListChecks, PanelRightOpen, Paperclip, Plus, Scale, Sparkles, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
+import { addNote } from "./notesstore";
+import { toast } from "./toast";
+import { readLoops, writeLoops, newLoopId, type Loop } from "./loops";
 import { MODELS, isHarnessRuntime } from "./constants";
 import { relTime, scoreColor, titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
@@ -531,6 +534,10 @@ export function ChatPanel({
       : [...cur, { label, body: s.body }]);
   }, []);
   const [attachments, setAttachments] = useState<string[]>([]);
+  // X7 (plan mode): when on, the model must lay out an editable plan and wait for
+  // approval before acting or giving a final answer. Predictability for anything
+  // consequential; off by default.
+  const [planMode, setPlanMode] = useState(false);
   // Ingested artifacts for this domain. Auto-fetched on entry so the
   // user can flip a chip to attach them to the next turn without
   // hunting through Finder.
@@ -1248,6 +1255,89 @@ export function ChatPanel({
   const copyToClipboard = useCallback(async (text: string) => {
     try { await navigator.clipboard.writeText(text); } catch (e) { console.error(e); }
   }, []);
+  // F2: capture a chat turn into the rest of the app. "Task" adds it to the
+  // board (in the active domain, or General); "Note" saves it to Notes. Both
+  // confirm with a toast so the action is visible without leaving the chat.
+  const makeTaskFromMessage = useCallback(async (text: string) => {
+    const body = text.trim();
+    if (!body) return;
+    // A task is a one-liner; use the first line and keep it reasonable.
+    const line = body.split("\n").find((l) => l.trim()) ?? body;
+    const taskText = line.trim().slice(0, 240);
+    const dom = tDomain || domain || "general";
+    try {
+      await invoke("tasks_add", { vault: vaultPath, domain: dom, text: taskText, source: "chat" });
+      window.dispatchEvent(new Event("prevail:tasks-changed"));
+      toast.success(`Added to your ${dom === "general" ? "board" : dom + " board"}.`);
+    } catch (e) { toast.error(`Could not add the task: ${String(e)}`); }
+  }, [vaultPath, tDomain, domain]);
+  const saveMessageAsNote = useCallback(async (text: string) => {
+    const body = text.trim();
+    if (!body) return;
+    try {
+      await addNote(vaultPath, { body, source: "note" });
+      toast.success("Saved to your notes.");
+    } catch (e) { toast.error(`Could not save the note: ${String(e)}`); }
+  }, [vaultPath]);
+  // X10: pin a reply into the domain's layered memory (_memory.md) so it grounds
+  // every future answer in this domain, alongside the daemon-distilled memory.
+  const pinMessageToMemory = useCallback(async (text: string) => {
+    const body = text.trim();
+    if (!body) return;
+    const dom = tDomain || domain || "general";
+    try {
+      await invoke("append_memory_md", { vault: vaultPath, domain: dom, note: body });
+      window.dispatchEvent(new Event("prevail:context-changed"));
+      toast.success(`Pinned to ${dom === "general" ? "your" : dom + "'s"} memory.`);
+    } catch (e) { toast.error(`Could not pin to memory: ${String(e)}`); }
+  }, [vaultPath, tDomain, domain]);
+  // X5: distill a reply into a reusable skill file in this domain, so Prevail can
+  // replay the procedure later instead of re-reasoning it.
+  const makeSkillFromChat = useCallback(async (text: string) => {
+    const body = text.trim();
+    if (!body) return;
+    const dom = tDomain || domain || "general";
+    const firstLine = body.split("\n").map((l) => l.replace(/^#+\s*|[*_`]/g, "").trim()).find((l) => l.length > 0) ?? "skill";
+    const name = firstLine.length > 48 ? firstLine.slice(0, 45).trimEnd() : firstLine;
+    try {
+      await invoke<string>("skill_create", { vault: vaultPath, domain: dom, name, body });
+      window.dispatchEvent(new Event("prevail:context-changed"));
+      toast.success(`Saved "${name}" as a skill.`);
+    } catch (e) { toast.error(`Could not save the skill: ${String(e)}`); }
+  }, [vaultPath, tDomain, domain]);
+  // X9: turn a message's intent into a recurring automation (loop) in this
+  // domain, seeded from the text, then jump to Automations to refine it.
+  const makeLoopFromChat = useCallback(async (text: string) => {
+    const intent = text.trim().replace(/\s+/g, " ");
+    if (!intent || !domainPath) {
+      if (!domainPath) toast.error("Open a domain first to create an automation.");
+      return;
+    }
+    const name = intent.length > 48 ? intent.slice(0, 45).trimEnd() + "…" : intent;
+    try {
+      const doc = await readLoops(domainPath);
+      const loop: Loop = {
+        id: newLoopId(name),
+        name,
+        purpose: intent,
+        type: "open",
+        signals: [],
+        condition: "always on",
+        cadence: "weekly",
+        autonomy: "suggest",
+        evaluation: "The intent is being made real over time.",
+        actions: [],
+        status: "active",
+        enabled: true,
+        lastRunTs: null,
+        createdTs: Date.now(),
+      };
+      await writeLoops(domainPath, { ...doc, loops: [loop, ...doc.loops] });
+      window.dispatchEvent(new Event("prevail:loops-changed"));
+      window.dispatchEvent(new CustomEvent("prevail:work-section", { detail: "automations" }));
+      toast.success("Created an automation. Opening it to refine…");
+    } catch (e) { toast.error(`Could not create the automation: ${String(e)}`); }
+  }, [domainPath]);
   const retryFromHere = useCallback((index: number) => {
     // Find the user message that produced this assistant slot.
     let userIdx = index;
@@ -1312,6 +1402,10 @@ export function ChatPanel({
     const attachPreamble = attachments.length > 0
       ? `Attached files (read these as context):\n${attachments.map((p) => `- ${p}`).join("\n")}\n\n`
       : "";
+    // X7: plan mode - ask for an editable plan first, no actions until approved.
+    const planPreamble = planMode
+      ? "PLAN MODE: Before doing anything or giving a final answer, lay out a short, numbered plan of how you would approach this, and STOP. Do not take any actions or produce the final result yet - wait for the user to review and approve or adjust the plan.\n\n"
+      : "";
     // Items the user explicitly clicked "use in chat" on (state.md,
     // decisions.md, a session log, etc.) - included verbatim.
     const primedPreamble = primedContext.length > 0
@@ -1350,8 +1444,8 @@ export function ChatPanel({
     const history = buildChatContext(messages, 40000);
     const promptText = fwLens.buildPrompt(
       history
-        ? `${userPreamble}${profilePreamble}${omegaPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}You are mid-conversation. Below is the prior turn history; use it as context but do NOT repeat it back to the user.\n\n--- PRIOR TURNS ---\n${history}\n--- END PRIOR TURNS ---\n\nUser's next message: ${visible}`
-        : `${userPreamble}${profilePreamble}${omegaPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}${visible}`
+        ? `${planPreamble}${userPreamble}${profilePreamble}${omegaPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}You are mid-conversation. Below is the prior turn history; use it as context but do NOT repeat it back to the user.\n\n--- PRIOR TURNS ---\n${history}\n--- END PRIOR TURNS ---\n\nUser's next message: ${visible}`
+        : `${planPreamble}${userPreamble}${profilePreamble}${omegaPreamble}${memoryPreamble}${attachPreamble}${primedPreamble}${skillsPreamble}${visible}`
     );
     pushHistory(visible);
     setAttachments([]);
@@ -1659,10 +1753,10 @@ export function ChatPanel({
         {messages.length === 0 && !domain && domainTab === "chat" && (
           <div className="flex h-full flex-col items-center justify-center px-6 py-8">
             <PrevailLogo size={64} src="/logo-512.png" />
-            <h2 className="mt-6 font-display text-5xl font-bold tracking-tight">
+            <h2 className="mt-6 font-display text-4xl font-bold tracking-tight sm:text-5xl">
               What should we work on?
             </h2>
-            <p className="mt-3 max-w-none whitespace-nowrap text-center text-sm text-text-muted">
+            <p className="mt-3 max-w-md text-balance text-center text-sm text-text-muted">
               Your private AI that learns you and gets sharper every time you use it.
             </p>
             {lifeReadiness && lifeReadiness.life_readiness !== null && (
@@ -1726,6 +1820,11 @@ export function ChatPanel({
               onCopy={copyToClipboard}
               onRetry={retryFromHere}
               onEdit={editFromHere}
+              onMakeTask={makeTaskFromMessage}
+              onSaveNote={saveMessageAsNote}
+              onPinMemory={pinMessageToMemory}
+              onMakeLoop={makeLoopFromChat}
+              onMakeSkill={makeSkillFromChat}
             />
           </div>
         )}
@@ -1827,6 +1926,11 @@ export function ChatPanel({
               onCopy={copyToClipboard}
               onRetry={retryFromHere}
               onEdit={editFromHere}
+              onMakeTask={makeTaskFromMessage}
+              onSaveNote={saveMessageAsNote}
+              onPinMemory={pinMessageToMemory}
+              onMakeLoop={makeLoopFromChat}
+              onMakeSkill={makeSkillFromChat}
             />
           </div>
         )}
@@ -1844,7 +1948,7 @@ export function ChatPanel({
           {/* Incognito affordance: a ghost badge over the top-left edge + the glow
               above, so it's unmistakable the turn sends none of your context. */}
           {(incognito || globalIncognito) && (
-            <span className="absolute -top-2.5 left-3 z-10 inline-flex items-center gap-1 rounded-full border border-accent bg-surface px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-accent shadow-sm">
+            <span className="absolute -top-2.5 left-3 z-10 inline-flex items-center gap-1 rounded-full border border-accent bg-surface px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-accent shadow-sm">
               <Ghost className="h-3 w-3" /> Incognito
             </span>
           )}
@@ -1931,7 +2035,7 @@ export function ChatPanel({
                 Skills · enter to insert
               </div>
               {slashCandidates.length === 0 ? (
-                <div className="px-3 py-2 text-[11px] text-text-muted">No skills in this vault yet — add one in a domain's <span className="font-mono">_skills/</span> folder.</div>
+                <div className="px-3 py-2 text-[11px] text-text-muted">No skills in this vault yet - add one in a domain's <span className="font-mono">_skills/</span> folder.</div>
               ) : slashCandidates.map((s, i) => (
                 <button
                   key={s.path}
@@ -2015,6 +2119,27 @@ export function ChatPanel({
               void attachDomainAsContext(name, e.altKey ? "folder" : e.shiftKey ? "full" : "light");
             }}
             onPaste={async (e) => {
+              // F3: a pasted image is saved to the vault and attached, so
+              // screenshots can go into chat (vision-capable runtimes read the
+              // file). Handled before the long-text path.
+              const imageItem = Array.from(e.clipboardData.items).find((it) => it.type.startsWith("image/"));
+              if (imageItem) {
+                const file = imageItem.getAsFile();
+                if (file) {
+                  e.preventDefault();
+                  try {
+                    const buf = new Uint8Array(await file.arrayBuffer());
+                    let bin = "";
+                    for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+                    const b64 = btoa(bin);
+                    const ext = (file.type.split("/")[1] || "png").replace("jpeg", "jpg");
+                    const path = await invoke<string>("write_paste_image", { vault: vaultPath, base64: b64, ext });
+                    setAttachments((cur) => (cur.includes(path) ? cur : [...cur, path]));
+                    toast.success("Image attached.");
+                  } catch (err) { console.error("write_paste_image", err); toast.error(`Could not attach the image: ${String(err)}`); }
+                  return;
+                }
+              }
               if (lsGet("prevail.pref.autoConvertLongPaste") !== "1") return;
               const txt = e.clipboardData.getData("text/plain");
               if (txt.length < 5000) return;
@@ -2111,7 +2236,7 @@ export function ChatPanel({
               when the domain changes. */}
           {domainImports.length > 0 && (
             <div className="mt-1 flex flex-wrap items-center gap-1.5 px-2">
-              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
                 imports
               </span>
               {domainImports.slice(0, 8).map((it) => {
@@ -2185,7 +2310,7 @@ export function ChatPanel({
             if (matches.length === 0) return null;
             return (
               <div className="mt-1 flex flex-wrap items-center gap-1.5 px-2">
-                <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">suggested</span>
+                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">suggested</span>
                 {matches.map((s) => (
                   <button
                     key={s.name}
@@ -2203,17 +2328,21 @@ export function ChatPanel({
           {/* Attachment pills */}
           {attachments.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5 px-2">
-              {attachments.map((p, i) => (
+              {attachments.map((p, i) => {
+                const isImage = /\.(png|jpe?g|gif|webp)$/i.test(p);
+                return (
                 <span key={i} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background py-0.5 pl-2 pr-1 font-mono text-[11px] text-text-secondary">
-                  <Folder className="h-3 w-3 text-text-muted" />
+                  {isImage ? <ImageIcon className="h-3 w-3 text-ai" /> : <Folder className="h-3 w-3 text-text-muted" />}
                   {p.split("/").pop()}
                   <button
                     onClick={() => setAttachments((cur) => cur.filter((_, j) => j !== i))}
                     className="flex h-3.5 w-3.5 items-center justify-center rounded-full text-text-muted hover:bg-surface-warm hover:text-err"
+                    aria-label="Remove attachment"
                     title="Remove attachment"
-                  >×</button>
+                  ><X className="h-3 w-3" /></button>
                 </span>
-              ))}
+                );
+              })}
             </div>
           )}
           {/* Single inline toolbar: + then the per-domain toggles,
@@ -2286,6 +2415,15 @@ export function ChatPanel({
               )}
             </div>
             <DomainStatusBar domain={domain} fwLens={fwLens} />
+            {/* X7: plan-mode toggle - ask for a plan before acting. */}
+            <button
+              onClick={() => setPlanMode((v) => !v)}
+              title={planMode ? "Plan mode on: the AI will propose a plan and wait before acting" : "Plan mode: get an editable plan before the AI acts"}
+              aria-pressed={planMode}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${planMode ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:text-accent"}`}
+            >
+              <ListChecks className="h-3.5 w-3.5" /> Plan
+            </button>
             <div className="flex-1" />
 
             {/* Model picker pill - Codex-style. Click opens cascading

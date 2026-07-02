@@ -294,7 +294,7 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
       title={`${e.title} · ${e.domain ? titleCase(e.domain) : (e.kind === "google" ? "Google" : "General")} · ${e.detail}`}
       className={`flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[10px] leading-tight transition-colors hover:brightness-95 ${
         e.kind === "loop" ? "bg-ai/15 text-ai" : e.kind === "google" ? "bg-purple-500/15 text-purple-600 dark:text-purple-300" : "bg-accent-soft text-accent"
-      } ${full ? "text-[12px] py-1" : ""}`}
+      } ${full ? "text-[11px] py-1" : ""}`}
     >
       {e.kind === "loop" ? <Repeat className="h-2.5 w-2.5 shrink-0" /> : e.kind === "google" ? <CalendarDays className="h-2.5 w-2.5 shrink-0" /> : <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
       <span className="truncate">{e.title}</span>
@@ -330,7 +330,7 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
               <ul className="mt-1 space-y-0.5">
                 {dayEvents.slice(0, 4).map((e) => <li key={e.key}><Chip e={e} /></li>)}
                 {dayEvents.length > 4 && (
-                  <li><button onClick={() => drillToDay(key)} className="px-1 text-[9px] text-text-muted hover:text-accent">+{dayEvents.length - 4} more</button></li>
+                  <li><button onClick={() => drillToDay(key)} className="px-1 text-[10px] text-text-muted hover:text-accent">+{dayEvents.length - 4} more</button></li>
                 )}
               </ul>
             </div>
@@ -400,7 +400,7 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
                         important bit, color-coded. */}
                     <span className="flex shrink-0 items-center gap-1.5">
                       {prio && PRIORITY_CLS[prio] && (
-                        <span className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider ${PRIORITY_CLS[prio]}`}>{prio}</span>
+                        <span className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${PRIORITY_CLS[prio]}`}>{prio}</span>
                       )}
                       <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wide ${due.cls}`}>{due.label}</span>
                     </span>
@@ -478,7 +478,7 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
       <SettingsHeader
         title="Calendar"
         icon={CalendarDays}
-        subtitle="Everything scheduled on your system — automation loops, tasks, and your Google Calendar — in one place. Click an item to edit it; click a day to add one."
+        subtitle="Everything scheduled on your system - automation loops, tasks, and your Google Calendar - in one place. Click an item to edit it; click a day to add one."
         right={
           <div className="flex items-center gap-1.5">
             <button onClick={() => shift(-1)} title="Previous" className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-text-secondary hover:bg-surface-warm hover:text-text-primary"><ChevronLeft className="h-4 w-4" /></button>
@@ -503,7 +503,7 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
           <Source id="loop" label="Loops" color="color-mix(in srgb, var(--color-ai, #3CD8FF) 40%, transparent)" />
           <Source id="task" label="Tasks" color="var(--color-accent, #0d7a6e)" />
           <Source id="google" label="Google" color="#a855f7" />
-          <button onClick={() => void syncGoogle()} disabled={syncing} title="Sync with Google Calendar — uses the Google Workspace CLI (takes you to set it up if it isn't yet)" className="ml-1 flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:bg-surface-warm hover:text-text-primary disabled:opacity-50">
+          <button onClick={() => void syncGoogle()} disabled={syncing} title="Sync with Google Calendar - uses the Google Workspace CLI (takes you to set it up if it isn't yet)" className="ml-1 flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:bg-surface-warm hover:text-text-primary disabled:opacity-50">
             <RefreshCw className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing…" : "Sync"}
           </button>
         </div>
@@ -621,7 +621,7 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
               <div className="space-y-3">
                 <div className="text-sm font-semibold text-text-primary">{edit.title}</div>
                 <div className="text-[11px] text-text-muted">{prettyDate(edit.dateKey)} · synced from Google Calendar</div>
-                <p className="text-[12px] text-text-muted">Google events are managed in Google Calendar; the app-sync keeps them in sync both ways.</p>
+                <p className="text-[11px] text-text-muted">Google events are managed in Google Calendar; the app-sync keeps them in sync both ways.</p>
                 {edit.external?.url && (
                   <a href={edit.external.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-warm hover:text-text-primary"><ExternalLink className="h-3.5 w-3.5" /> Open in Google Calendar</a>
                 )}

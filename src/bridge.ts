@@ -21,6 +21,35 @@ function token(): string {
 }
 export function isBrowser(): boolean { return !isTauri; }
 
+// X8: subscribe this browser to server-sent Web Push so approval alerts arrive
+// even when the tab is closed. No-ops on desktop, without a SW/permission, or if
+// the server has no VAPID key. Safe to call more than once (the server de-dups).
+export async function subscribeWebPush(): Promise<void> {
+  try {
+    if (isTauri || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    const reg = await navigator.serviceWorker.ready;
+    const keyRes = await fetch("/api/push/key", { headers: { authorization: token() } });
+    if (!keyRes.ok) return;
+    const { publicKey } = (await keyRes.json()) as { publicKey?: string };
+    if (!publicKey) return;
+    // base64url → Uint8Array for applicationServerKey.
+    const pad = "=".repeat((4 - (publicKey.length % 4)) % 4);
+    const raw = atob((publicKey + pad).replace(/-/g, "+").replace(/_/g, "/"));
+    const appKey = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) appKey[i] = raw.charCodeAt(i);
+    const existing = await reg.pushManager.getSubscription();
+    const sub = existing ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey }));
+    const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return;
+    await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: token() },
+      body: JSON.stringify({ endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth }),
+    });
+  } catch { /* push is best-effort */ }
+}
+
 export async function invoke<T = unknown>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (isTauri) return tauriInvoke<T>(cmd, args);
   const res = await fetch("/api/invoke", {
@@ -28,7 +57,7 @@ export async function invoke<T = unknown>(cmd: string, args?: Record<string, unk
     headers: { "content-type": "application/json", authorization: token() },
     body: JSON.stringify({ cmd, args: args ?? {} }),
   });
-  if (res.status === 401) throw new Error("unauthorized — sign in again");
+  if (res.status === 401) throw new Error("unauthorized - sign in again");
   if (!res.ok) throw new Error(await res.text().catch(() => `HTTP ${res.status}`));
   const j = (await res.json()) as { data?: T; error?: string };
   if (j && j.error) throw new Error(j.error);

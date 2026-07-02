@@ -1,7 +1,7 @@
 // Chat-display leaf components extracted from App.tsx: ChatBubble (one rendered
 // turn), MessageList (windowed transcript), DomainStatusBar, and DomainHome.
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, SlidersHorizontal, Sparkles, User } from "lucide-react";
+import { ArrowRight, ListPlus, NotebookPen, Pin, Repeat, SlidersHorizontal, Sparkles, User } from "lucide-react";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES } from "./constants";
 import { titleCase } from "./format";
@@ -24,11 +24,21 @@ export function ChatBubble({
   onCopy,
   onRetry,
   onEdit,
+  onMakeTask,
+  onSaveNote,
+  onPinMemory,
+  onMakeLoop,
+  onMakeSkill,
 }: {
   msg: ChatMessage;
   onCopy?: (text: string) => void;
   onRetry?: () => void;
   onEdit?: (text: string) => void;
+  onMakeTask?: (text: string) => void;
+  onSaveNote?: (text: string) => void;
+  onPinMemory?: (text: string) => void;
+  onMakeLoop?: (text: string) => void;
+  onMakeSkill?: (text: string) => void;
 }) {
   // Small inline action button used on bubble hover. Stays muted by
   // default so the chat stays calm; lights up on hover.
@@ -85,6 +95,22 @@ export function ChatBubble({
               icon={<svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M11.5 2.5l2 2-7 7-2.5.5.5-2.5 7-7z" /></svg>}
             />
           )}
+          {onMakeTask && (
+            <ActionButton
+              title="Turn this into a task on your board"
+              label="Task"
+              onClick={() => onMakeTask(msg.content)}
+              icon={<ListPlus className="h-3 w-3" />}
+            />
+          )}
+          {onMakeLoop && (
+            <ActionButton
+              title="Turn this into a recurring automation in this domain"
+              label="Automate"
+              onClick={() => onMakeLoop(msg.content)}
+              icon={<Repeat className="h-3 w-3" />}
+            />
+          )}
         </div>
       </div>
     );
@@ -126,10 +152,10 @@ export function ChatBubble({
             <span className="font-mono text-[10px] lowercase text-text-muted" title={`Model: ${msg.model}`}>{modelLabel(msg.cli, msg.model)}</span>
           )}
           {msg.role === "assistant" && msg.framework && (
-            <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Reasoning framework in effect">{msg.framework}</span>
+            <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted" title="Reasoning framework in effect">{msg.framework}</span>
           )}
           {msg.role === "assistant" && msg.lens && (
-            <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Lens in effect">{msg.lens}</span>
+            <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted" title="Lens in effect">{msg.lens}</span>
           )}
           {/* BP3: timestamp on the assistant turn. */}
           {stamp && <span className="font-mono text-[10px] text-text-muted/70">· {stamp}</span>}
@@ -215,6 +241,38 @@ export function ChatBubble({
                 icon={<svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M14 8a6 6 0 1 1-1.76-4.24" /><path d="M14 2v4h-4" /></svg>}
               />
             )}
+            {onMakeTask && (
+              <ActionButton
+                title="Turn this reply into a task on your board"
+                label="Task"
+                onClick={() => onMakeTask(msg.content)}
+                icon={<ListPlus className="h-3 w-3" />}
+              />
+            )}
+            {onSaveNote && (
+              <ActionButton
+                title="Save this reply to your notes"
+                label="Note"
+                onClick={() => onSaveNote(msg.content)}
+                icon={<NotebookPen className="h-3 w-3" />}
+              />
+            )}
+            {onPinMemory && (
+              <ActionButton
+                title="Pin this to memory so it grounds future answers in this domain"
+                label="Pin"
+                onClick={() => onPinMemory(msg.content)}
+                icon={<Pin className="h-3 w-3" />}
+              />
+            )}
+            {onMakeSkill && (
+              <ActionButton
+                title="Save this as a reusable skill Prevail can replay"
+                label="Skill"
+                onClick={() => onMakeSkill(msg.content)}
+                icon={<Sparkles className="h-3 w-3" />}
+              />
+            )}
           </div>
         )}
       </div>
@@ -225,12 +283,17 @@ export function ChatBubble({
 // ─────────────────────────────────────────────────────────────────────
 // COUNCIL PANEL
 
-export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit }: {
+export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit, onMakeTask, onSaveNote, onPinMemory, onMakeLoop, onMakeSkill }: {
   messages: ChatMessage[];
   resetKey: number;
   onCopy: (text: string) => void;
   onRetry: (i: number) => void;
   onEdit: (text: string, i: number) => void;
+  onMakeTask?: (text: string) => void;
+  onSaveNote?: (text: string) => void;
+  onPinMemory?: (text: string) => void;
+  onMakeLoop?: (text: string) => void;
+  onMakeSkill?: (text: string) => void;
 }) {
   const [limit, setLimit] = useState(MESSAGE_WINDOW);
   // Reset the window when the thread changes (switched/cleared) so a new thread
@@ -259,6 +322,11 @@ export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit }: {
             onCopy={onCopy}
             onRetry={m.role === "assistant" ? () => onRetry(i) : undefined}
             onEdit={m.role === "user" ? (text) => onEdit(text, i) : undefined}
+            onMakeTask={onMakeTask}
+            onSaveNote={m.role === "assistant" ? onSaveNote : undefined}
+            onPinMemory={m.role === "assistant" ? onPinMemory : undefined}
+            onMakeLoop={m.role === "user" ? onMakeLoop : undefined}
+            onMakeSkill={m.role === "assistant" ? onMakeSkill : undefined}
           />
         );
       })}
@@ -382,7 +450,7 @@ export function DomainStatusBar({
           >
             <SlidersHorizontal className="h-3 w-3" /> Modes
             {activeModes > 0 && (
-              <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[9px] font-bold text-background">{activeModes}</span>
+              <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[10px] font-bold text-background">{activeModes}</span>
             )}
           </button>
           {modesOpen && (
@@ -526,7 +594,7 @@ export function DomainHome({
                       className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm"
                     >
                       <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-accent"><span className="mr-1">{q.glyph}</span>{q.label}</span>
-                      {q.council && <span className="shrink-0 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent">→ Council</span>}
+                      {q.council && <span className="shrink-0 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0 font-mono text-[10px] uppercase tracking-wider text-accent">→ Council</span>}
                       <span className="min-w-0 flex-1 truncate text-xs text-text-muted">{q.prompt}</span>
                     </button>
                   </li>
