@@ -11,6 +11,13 @@ import "./index.css";
 // only transmitted when the user opts in AND build-time keys exist.
 track("app_opened", { version: APP_VERSION, os: osFamily() });
 
+// X8: register the notification service worker in the WebUI (browser). Lets
+// notifications persist / show while the tab is backgrounded, and is the hook
+// for server-sent Web Push. Desktop (Tauri) uses native notifications instead.
+if (typeof window !== "undefined" && !("__TAURI_INTERNALS__" in window) && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("/sw.js").catch(() => { /* SW optional */ }); });
+}
+
 // Attach Sentry's global crash handlers if (and only if) the user has opted into
 // crash reports and a DSN was built in. Uncaught errors / unhandled rejections
 // are then captured automatically; React render crashes are reported explicitly

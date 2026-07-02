@@ -147,12 +147,26 @@ import {
 
 // X8: fire a foreground Web Notification (the WebUI, on a phone/laptop). Asks
 // permission the first time; silently no-ops if denied or unsupported.
+function showWebNotification(title: string, body: string) {
+  // Prefer the service worker registration (persists / shows when backgrounded);
+  // fall back to a page Notification.
+  try {
+    if (navigator.serviceWorker?.ready) {
+      void navigator.serviceWorker.ready.then((reg) => {
+        if (reg?.showNotification) reg.showNotification(title, { body, icon: "/logo-512.png", tag: "prevail" });
+        else new Notification(title, { body });
+      }).catch(() => { try { new Notification(title, { body }); } catch { /* noop */ } });
+    } else {
+      new Notification(title, { body });
+    }
+  } catch { /* noop */ }
+}
 function notifyWeb(title: string, body: string) {
   try {
     if (typeof Notification === "undefined") return;
-    if (Notification.permission === "granted") { new Notification(title, { body }); return; }
+    if (Notification.permission === "granted") { showWebNotification(title, body); return; }
     if (Notification.permission !== "denied") {
-      void Notification.requestPermission().then((p) => { if (p === "granted") new Notification(title, { body }); });
+      void Notification.requestPermission().then((p) => { if (p === "granted") showWebNotification(title, body); });
     }
   } catch { /* notifications unavailable */ }
 }
