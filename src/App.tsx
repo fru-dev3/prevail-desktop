@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke, listen, isBrowser, type UnlistenFn } from "./bridge";
+import { invoke, listen, isBrowser, subscribeWebPush, type UnlistenFn } from "./bridge";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { titleCase } from "./format";
@@ -164,9 +164,9 @@ function showWebNotification(title: string, body: string) {
 function notifyWeb(title: string, body: string) {
   try {
     if (typeof Notification === "undefined") return;
-    if (Notification.permission === "granted") { showWebNotification(title, body); return; }
+    if (Notification.permission === "granted") { showWebNotification(title, body); void subscribeWebPush(); return; }
     if (Notification.permission !== "denied") {
-      void Notification.requestPermission().then((p) => { if (p === "granted") showWebNotification(title, body); });
+      void Notification.requestPermission().then((p) => { if (p === "granted") { showWebNotification(title, body); void subscribeWebPush(); } });
     }
   } catch { /* notifications unavailable */ }
 }
@@ -960,6 +960,9 @@ export default function App() {
             notifyWeb(title, body);
           } else {
             void invoke("notify_user", { title, body }).catch(() => {});
+            // X8: the desktop host also pushes to any subscribed (possibly closed)
+            // WebUI browser tabs via VAPID Web Push.
+            void invoke("webui_push", { title, body }).catch(() => {});
           }
         }
         prevDecisionsRef.current = n;
