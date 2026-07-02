@@ -99,6 +99,26 @@ export function getActiveProfile(): Profile | null {
   return loadProfiles().find((p) => p.id === id) ?? null;
 }
 
+// The default/startup profile object (the one the user has taken ownership of by
+// switching to it). Used at boot to honor that profile's vault instead of
+// reverting to the sample sandbox. Null when nothing has been made the default.
+export function getDefaultProfile(): Profile | null {
+  const id = getDefaultId();
+  if (!id) return null;
+  return loadProfiles().find((p) => p.id === id) ?? null;
+}
+
+// The profile whose vault should be honored at boot (demo mode). Prefer the
+// pinned default; otherwise, if the user has engaged with profiles beyond the
+// single auto-adopted "Personal", honor the active one. Returns null for a
+// fresh single-profile sandbox so it still re-seeds fresh sample data. This is
+// what stops the "my profile changes every time" revert.
+export function getOwnedProfile(): Profile | null {
+  const def = getDefaultProfile();
+  if (def) return def;
+  return loadProfiles().length > 1 ? getActiveProfile() : null;
+}
+
 export function newProfileId(): string {
   return `p_${Date.now().toString(36)}_${Math.floor(performance.now() % 1e6).toString(36)}`;
 }

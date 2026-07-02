@@ -5,7 +5,7 @@
 // Gated profiles require their passcode inline before switching.
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronsUpDown, Lock, Plus, Settings2 } from "lucide-react";
-import { getActiveId, initials, loadProfiles, setActiveId, verifyPasscode, type Profile } from "./profiles";
+import { getActiveId, initials, loadProfiles, setActiveId, setDefaultId, verifyPasscode, type Profile } from "./profiles";
 
 export function ProfileSwitcher({ collapsed }: { collapsed: boolean }) {
   const [profiles, setProfiles] = useState<Profile[]>(() => loadProfiles());
@@ -41,6 +41,10 @@ export function ProfileSwitcher({ collapsed }: { collapsed: boolean }) {
       if (!ok) { setErr("Wrong passcode"); return; }
     }
     setActiveId(p.id);
+    // Switching to a profile makes it the startup default, so the app opens
+    // this profile's vault on the next launch instead of reverting to the
+    // sample sandbox (the "profile changes every time" bug).
+    setDefaultId(p.id);
     setActive(p.id);
     window.dispatchEvent(new CustomEvent("prevail:switch-profile", { detail: { vaultPath: p.vaultPath, profileId: p.id } }));
     window.dispatchEvent(new CustomEvent("prevail:profiles-changed"));
