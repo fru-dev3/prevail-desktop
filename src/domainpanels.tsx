@@ -159,7 +159,7 @@ function RebuildStateButton({ vaultPath, domain, field }: { vaultPath: string; d
   };
   return (
     <span className="flex shrink-0 items-center gap-1">
-      {note && <span className="font-mono text-[9px] lowercase text-text-muted">{note}</span>}
+      {note && <span className="font-mono text-[10px] lowercase text-text-muted">{note}</span>}
       <button onClick={run} disabled={busy} title={`Rebuild ${field} from your activity here`}
         className="rounded p-1 text-text-muted transition-colors hover:text-accent disabled:opacity-50">
         {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -247,9 +247,22 @@ export function DomainContextDrawer({
   // G2: the learned user profile - what Prevail knows about you, surfaced so it's
   // visible what grounds the answers. Loaded from user.md (falls back to profile.md).
   const [profile, setProfile] = useState<string>("");
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileDraft, setProfileDraft] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
   useEffect(() => {
     invoke<string>("read_user_md", { vault: vaultPath }).then((s) => setProfile(s || "")).catch(() => setProfile(""));
   }, [vaultPath]);
+  const startEditProfile = () => { setProfileDraft(profile); setEditingProfile(true); };
+  const saveProfile = async () => {
+    setSavingProfile(true);
+    try {
+      await invoke("write_user_md", { vault: vaultPath, body: profileDraft });
+      setProfile(profileDraft);
+      setEditingProfile(false);
+    } catch (e) { console.error("write_user_md", e); }
+    finally { setSavingProfile(false); }
+  };
 
   const Section = ({
     keyName, title, count, body, action,
@@ -299,6 +312,31 @@ export function DomainContextDrawer({
         </button>
       </div>
       <div className="flex-1 overflow-y-auto">
+        {/* X6 (cascading goals): make the "why" legible - every domain's context
+            traces up to your life mission (the ideal-state). Shows the mission's
+            headline so tasks/answers here read as serving something bigger. */}
+        {(() => {
+          const mission = idealState
+            .split("\n")
+            .map((l) => l.replace(/^#+\s*/, "").trim())
+            .find((l) => l.length > 0);
+          if (!mission) return null;
+          return (
+            <button
+              onClick={() => openCanvas("Ideal", idealState)}
+              className="flex w-full items-start gap-2 border-b border-border-subtle bg-accent-soft/40 px-4 py-2 text-left hover:bg-accent-soft"
+              title="Your north star - open your ideal state"
+            >
+              <Compass className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
+              <div className="min-w-0">
+                <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
+                  {domain ? `${titleCase(domain)} serves your mission` : "Your mission"}
+                </div>
+                <div className="truncate text-[11px] text-text-secondary">{mission}</div>
+              </div>
+            </button>
+          );
+        })()}
         {loading && <div className="p-4 text-xs text-text-muted">loading…</div>}
         {/* B2-28: calm, recoverable message instead of a raw "domain not found:
             /path" error. The Global sections (Ideal State, Profile, Memory) still
@@ -329,11 +367,35 @@ export function DomainContextDrawer({
             ? <CtxRow desc="Your constitution (ideal-state.md), injected into every turn." onView={() => openCanvas("Ideal", idealState)} onUse={() => onInjectContext(idealState, "Ideal · constitution")} />
             : <div className="text-[11px] text-text-muted">Not set. Add it in Settings → Ideals.</div>
         } />
-        {/* G2: what Prevail knows about you - the profile that grounds every answer. */}
+        {/* G2: what Prevail knows about you - the profile that grounds every answer.
+            Now editable (write_user_md), not just viewable. */}
         <Section keyName="profile" title="User" count={profile.trim() ? 1 : undefined} body={
-          profile.trim()
-            ? <CtxRow desc="What Prevail knows about you (profile.md)." onView={() => openCanvas("User", profile)} onUse={() => onInjectContext(profile, "User · who you are")} />
-            : <div className="text-[11px] text-text-muted">Not set. Prevail keeps your profile at build/_profile.md.</div>
+          editingProfile ? (
+            <div>
+              <textarea
+                value={profileDraft}
+                onChange={(e) => setProfileDraft(e.target.value)}
+                rows={8}
+                placeholder="Who you are, what matters to you, how you like to work. Prevail reads this as standing context for every answer."
+                className="w-full resize-y rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-relaxed text-text-primary focus:border-accent-border focus:outline-none"
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <button onClick={saveProfile} disabled={savingProfile} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-semibold text-on-accent hover:opacity-90 disabled:opacity-50">
+                  {savingProfile ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Save
+                </button>
+                <button onClick={() => setEditingProfile(false)} className="rounded-md border border-border px-3 py-1 text-xs hover:bg-surface-warm">Cancel</button>
+              </div>
+            </div>
+          ) : profile.trim() ? (
+            <div>
+              <CtxRow desc="What Prevail knows about you (profile.md)." onView={() => openCanvas("User", profile)} onUse={() => onInjectContext(profile, "User · who you are")} />
+              <button onClick={startEditProfile} className="mt-1.5 text-[11px] text-accent underline decoration-dotted underline-offset-2 hover:opacity-80">Edit profile</button>
+            </div>
+          ) : (
+            <div className="text-[11px] text-text-muted">
+              Not set yet. <button onClick={startEditProfile} className="text-accent underline decoration-dotted underline-offset-2 hover:opacity-80">Add your profile</button> so Prevail grounds every answer in who you are.
+            </div>
+          )
         } />
         <div title={domain ? `Specific to ${titleCase(domain)}` : "Specific to General (the no-domain workspace)"} className="flex cursor-help items-center gap-1.5 border-b border-border-subtle bg-surface-warm/60 px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
           {(() => { const I = domain ? domainIcon(domain) : MessageSquare; return I ? <I className="h-3.5 w-3.5 text-accent" /> : <span className="text-accent">◆</span>; })()}
@@ -370,7 +432,7 @@ export function DomainContextDrawer({
                     return (
                       <li key={key} className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-background px-2.5 py-1.5">
                         <button onClick={() => openCanvas(title, full)} className="min-w-0 flex-1 text-left" title="Open in canvas">
-                          <div className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                          <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
                             <span>{d.kind ?? "decision"}{ago ? ` · ${ago}` : ""}</span>
                             {fb === "up" && <ThumbsUp className="h-2.5 w-2.5 text-accent" />}
                             {fb === "down" && <ThumbsDown className="h-2.5 w-2.5 text-red-500" />}
@@ -398,7 +460,7 @@ export function DomainContextDrawer({
               )}
               {ctx.recent_logs.length > 0 ? (
                 <>
-                  <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">Session logs</div>
+                  <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-muted/70">Session logs</div>
                   <ul className="space-y-1">
                     {ctx.recent_logs.map((l) => (
                       <li key={l.path}>
@@ -433,7 +495,7 @@ export function DomainContextDrawer({
                         <button
                           onClick={() => onTogglePreferred(s.name)}
                           title={preferredSet?.has(s.name) ? "Unpin" : "Pin: auto-attach"}
-                          className={`shrink-0 rounded border px-2 text-[12px] transition-colors ${
+                          className={`shrink-0 rounded border px-2 text-[11px] transition-colors ${
                             preferredSet?.has(s.name)
                               ? "border-accent-border bg-accent-soft text-accent"
                               : "border-border-subtle bg-background text-text-muted hover:border-accent-border hover:text-accent"
@@ -536,7 +598,7 @@ export function AgentPickerRail({
             <span className="relative">
               <ProviderMark vendor={c.id} size={24} />
               {v === "ok" && (
-                <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-ok text-[8px] font-bold leading-none text-background">✓</span>
+                <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-ok text-[10px] font-bold leading-none text-background">✓</span>
               )}
               {v === "verifying" && (
                 <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-text-muted" />
@@ -592,7 +654,7 @@ export function PrefPickerColumn({
         {selected && (
           <button
             onClick={onClear}
-            className="rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+            className="rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
           >
             use global
           </button>
@@ -925,7 +987,7 @@ export function DomainPrefsPanel({
         right={pickedCli ? (
           <button
             onClick={() => { setOverride(cliKey, ""); setOverride(modelKey, ""); }}
-            className="rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+            className="rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
           >
             use global
           </button>
@@ -975,7 +1037,7 @@ export function DomainPrefsPanel({
                     {c.label}
                   </span>
                   {disabled && (
-                    <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">not installed</span>
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">not installed</span>
                   )}
                   {picked && (
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-background">
@@ -999,7 +1061,7 @@ export function DomainPrefsPanel({
                       {pickedModel && (
                         <button
                           onClick={() => setOverride(modelKey, "")}
-                          className="rounded border border-border bg-background px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                          className="rounded border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
                         >
                           use cli default
                         </button>
@@ -1293,7 +1355,7 @@ export function DomainPrefsPanel({
                       title={r.on ? "Running" : "Off"}
                     />
                     <span className="text-sm font-semibold text-text-primary">{r.title}</span>
-                    <span className={`font-mono text-[9px] uppercase tracking-wider ${r.on ? "text-ok" : "text-text-muted"}`}>{r.on ? "on" : "off"}</span>
+                    <span className={`font-mono text-[10px] uppercase tracking-wider ${r.on ? "text-ok" : "text-text-muted"}`}>{r.on ? "on" : "off"}</span>
                   </div>
                   <div className="mt-0.5 text-xs leading-relaxed text-text-secondary">{r.desc}</div>
                 </div>

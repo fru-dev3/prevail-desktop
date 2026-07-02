@@ -353,7 +353,7 @@ function CouncilCircle({ members, chair, clis }: { members: string[]; chair: str
         {/* Center emblem: the panel size at a glance. */}
         <div className="absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border border-border bg-background">
           <span className="font-display text-base font-bold leading-none text-text-primary">{members.length}</span>
-          <span className="font-mono text-[7px] uppercase tracking-wider text-text-muted">panel</span>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">panel</span>
         </div>
         {ordered.map((key, i) => {
           const a = -Math.PI / 2 + i * ((2 * Math.PI) / n);
@@ -376,7 +376,7 @@ function CouncilCircle({ members, chair, clis }: { members: string[]; chair: str
                 )}
               </div>
               {/* B2-4: model name under the seat. */}
-              <div className="absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap text-center font-mono text-[8px] leading-tight text-text-secondary">
+              <div className="absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap text-center font-mono text-[10px] leading-tight text-text-secondary">
                 {modelShort(key)}
               </div>
             </div>
@@ -888,7 +888,7 @@ export function AgentCard({
           )}
           <span className="truncate font-display text-sm font-semibold tracking-tight">{cli.label}</span>
           {isDefault && (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-background">
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-background">
               <Check className="h-2.5 w-2.5" strokeWidth={3} /> Default
             </span>
           )}
@@ -912,7 +912,7 @@ export function AgentCard({
                     ? { cls: "border-warn/40 bg-warn/10 text-warn", label: "Checking", Icon: Loader2, spin: true }
                     : { cls: "border-border bg-background text-text-muted", label: "Detected", Icon: null, spin: false };
             return (
-              <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ${chip.cls}`}>
+              <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] ${chip.cls}`}>
                 {chip.Icon && <chip.Icon className={`h-2.5 w-2.5 ${chip.spin ? "animate-spin" : ""}`} strokeWidth={3} />}
                 {chip.label}
               </span>
@@ -926,7 +926,7 @@ export function AgentCard({
         <div className="w-[64px] shrink-0 text-right font-mono text-[11px] text-text-secondary" title="Total spend on this runtime (local usage ledger)">
           {typeof cost === "number" && cost > 0
             ? `$${cost < 1 ? cost.toFixed(2) : cost < 100 ? cost.toFixed(1) : Math.round(cost)}`
-            : <span className="text-text-muted/50">—</span>}
+            : <span className="text-text-muted/50">-</span>}
         </div>
         {/* Version column. */}
         <div className="w-[116px] shrink-0 truncate text-right font-mono text-[10px] text-text-muted/80">
@@ -941,7 +941,7 @@ export function AgentCard({
           </button>
         ) : cli.available && !chattable ? (
           // Harness, installed: catalog-only (not a homepage chat runtime).
-          <span className="inline-flex w-[92px] shrink-0 items-center justify-center font-mono text-[10px] uppercase tracking-wider text-text-muted/60" title="Harness — set up here; not a chat runtime">
+          <span className="inline-flex w-[92px] shrink-0 items-center justify-center font-mono text-[10px] uppercase tracking-wider text-text-muted/60" title="Harness - set up here; not a chat runtime">
             Ready
           </span>
         ) : (
@@ -950,7 +950,7 @@ export function AgentCard({
             href={RUNTIME_META[cli.id]?.install ?? "#"}
             target="_blank"
             rel="noreferrer"
-            title={RUNTIME_META[cli.id]?.blurb ? `${RUNTIME_META[cli.id]?.blurb} — opens setup docs` : "Open setup docs"}
+            title={RUNTIME_META[cli.id]?.blurb ? `${RUNTIME_META[cli.id]?.blurb} - opens setup docs` : "Open setup docs"}
             className="inline-flex w-[92px] shrink-0 items-center justify-center gap-1 rounded-md border border-border bg-background py-1.5 text-center font-mono text-[11px] uppercase tracking-wider text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
           >
             Set up <ArrowUpRight className="h-3 w-3" />
@@ -992,7 +992,7 @@ export function AgentCard({
             </div>
             <button
               onClick={verifyAll}
-              className="rounded-md border border-border bg-background px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+              className="rounded-md border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
             >
               re-verify all
             </button>
@@ -1003,13 +1003,13 @@ export function AgentCard({
               const err = errors[m.id];
               return (
                 <div key={m.id} className={`flex items-start gap-3 rounded-md border px-3 py-2 ${defaultModel === m.id ? "border-accent-border bg-accent-soft" : "border-border-subtle bg-background"}`}>
-                  <div className="mt-0.5 w-3 shrink-0 text-center text-[12px] leading-none">
+                  <div className="mt-0.5 w-3 shrink-0 text-center text-[11px] leading-none">
                     <StatusGlyph s={s} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-x-2">
                       <span className="font-mono text-sm text-text-primary">{m.label}</span>
-                      {defaultModel === m.id && <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[8px] uppercase tracking-wider text-background">default</span>}
+                      {defaultModel === m.id && <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[10px] uppercase tracking-wider text-background">default</span>}
                       {m.blurb && <span className="text-[11px] text-text-muted">{m.blurb}</span>}
                     </div>
                     <div className="mt-0.5 font-mono text-[10px] text-text-muted/80">
@@ -1040,31 +1040,31 @@ export function AgentCard({
                         window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: "benchmark" }));
                       }}
                       title={`Benchmark runs for ${m.label}: scores, domains, history`}
-                      className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                      className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
                     >
                       runs
                     </button>
                     <button
                       onClick={() => verifyModel(m.id)}
                       disabled={s === "verifying"}
-                      className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40"
+                      className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40"
                     >
                       {s === "verifying" ? "testing…" : s === "ok" ? "re-test" : "test"}
                     </button>
                     {defaultModel === m.id ? (
-                      <span className="rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-accent">default</span>
+                      <span className="rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent">default</span>
                     ) : (
                       <button
                         onClick={() => setAsDefault(m.id)}
                         title="Use this model by default for new chats"
-                        className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                        className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
                       >
                         set default
                       </button>
                     )}
                     <button
                       onClick={() => onStartChat?.(cli.id, m.id)}
-                      className={`rounded-md border px-2 py-1 font-mono text-[9px] uppercase tracking-wider ${
+                      className={`rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${
                         s === "ok"
                           ? "border-accent-border bg-accent-soft text-accent hover:bg-accent hover:text-background"
                           : "border-border bg-background text-text-secondary hover:bg-surface-warm"
@@ -1088,7 +1088,7 @@ export function AgentCard({
             {RUNTIME_META[cli.id]?.blurb || `${cli.label} is a harness runtime.`}
           </div>
           <p className="text-xs leading-relaxed text-text-muted">
-            This is a <span className="font-semibold text-text-secondary">harness</span> — it wraps the{" "}
+            This is a <span className="font-semibold text-text-secondary">harness</span> - it wraps the{" "}
             <code className="text-accent">{RUNTIME_META[cli.id]?.protocol ?? "base"}</code> protocol and runs through your installed base CLI. It's installed and validated, so it's ready to use wherever harnesses are offered (it isn't a homepage chat runtime).
           </p>
           <div className="flex flex-wrap items-center gap-2 pt-0.5">
@@ -1108,7 +1108,7 @@ export function AgentCard({
         <div className="space-y-2.5 border-t border-border-subtle px-4 py-3">
           <div className="text-sm text-text-secondary">
             {cli.error
-              ? `${cli.label} is installed but won't run — its launcher is on disk but failed to start.`
+              ? `${cli.label} is installed but won't run - its launcher is on disk but failed to start.`
               : RUNTIME_META[cli.id]?.blurb || `${cli.label} isn't installed on this Mac yet.`}
           </div>
           {/* Broken install: show the actual failure so the user knows what to
@@ -1123,8 +1123,8 @@ export function AgentCard({
             <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">{cli.error ? `Reinstall ${cli.label}` : `Set up ${cli.label}`}</div>
             <p className="text-xs leading-relaxed text-text-secondary">
               {cli.error
-                ? `Reinstall ${cli.label} to repair the launcher. It runs on your own subscription — no key to paste here. Prevail auto-detects it; hit Re-check once it's fixed.`
-                : `Install ${cli.label} from its setup guide. It runs on your own subscription — no key to paste here. Prevail auto-detects it; hit Re-check once it's installed.`}
+                ? `Reinstall ${cli.label} to repair the launcher. It runs on your own subscription - no key to paste here. Prevail auto-detects it; hit Re-check once it's fixed.`
+                : `Install ${cli.label} from its setup guide. It runs on your own subscription - no key to paste here. Prevail auto-detects it; hit Re-check once it's installed.`}
             </p>
             {RUNTIME_META[cli.id]?.cmd && (
               <div className="flex items-center gap-2 rounded-md border border-border-subtle bg-surface-warm/60 px-2 py-1.5">
@@ -1220,10 +1220,10 @@ function RuntimeRow({ cli, active, vstatus, isDefault, onSelect }: {
       <ProviderMark vendor={cli.id} size={28} />
       <span className="min-w-0 flex-1">
         <span className={`block truncate text-sm font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{cli.label}</span>
-        <span className="block truncate font-mono text-[9px] uppercase tracking-wider text-text-muted">{sub}</span>
+        <span className="block truncate font-mono text-[10px] uppercase tracking-wider text-text-muted">{sub}</span>
       </span>
-      {isDefault && <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-background">def</span>}
-      <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold leading-none ${badge}`} title={tip}>{glyph}</span>
+      {isDefault && <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-background">def</span>}
+      <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold leading-none ${badge}`} title={tip}>{glyph}</span>
     </button>
   );
 }
@@ -1251,7 +1251,7 @@ export function AgentsSection({
   // "Set up" link. All groups open by default so every supported runtime is
   // visible to set up.
   const sortReady = (a: CliInfo, b: CliInfo) => Number(b.available) - Number(a.available) || a.label.localeCompare(b.label);
-  // Aggregators (OpenRouter, Bedrock) are HTTP gateways, not spawnable CLIs —
+  // Aggregators (OpenRouter, Bedrock) are HTTP gateways, not spawnable CLIs -
   // they have their own "Aggregator runtimes" section with key + catalog, so
   // they must NOT also appear in the CLI runtimes list (and can't be "spawned").
   const AGGREGATOR_IDS = new Set(["openrouter", "bedrock"]);
@@ -1302,7 +1302,7 @@ export function AgentsSection({
           <div key={g.key} className="space-y-1">
             <div className="flex items-baseline justify-between px-1">
               <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{g.label} · {g.list.length}</span>
-              <span className="font-mono text-[9px] text-text-muted/60">{ready}/{g.list.length} set up</span>
+              <span className="font-mono text-[10px] text-text-muted/60">{ready}/{g.list.length} set up</span>
             </div>
             {g.list.map((c) => (
               <RuntimeRow

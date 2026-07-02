@@ -63,9 +63,59 @@ pub fn verify_and_consume(token: &str, payload: &str) -> bool {
     }
 }
 
+// ── X2: graduated autonomy classifier ───────────────────────────────────────
+// Upgrades the brake from binary (allow / ask / never) to a graduated decision,
+// the Cursor Auto-review pattern: an allowlisted class runs immediately, a
+// reversible one runs sandboxed (auto, because it can be undone), reads are
+// free, and only genuinely consequential classes (send/spend/irreversible/
+// credential/unknown) stop for approval. This is the pure decision logic; the
+// autonomy UI configures the per-class Decision and consumes this tier.
+
+/// Graduated execution tier for one action, from its policy class + the user's
+/// configured decision for that class.
+///   "allow"   - run immediately (allowlisted / a read)
+///   "sandbox" - run now but reversibly, no prompt (safe because it can be undone)
+///   "ask"     - require explicit approval before running
+///   "block"   - never run (hard denied)
+pub fn classify_tier(class: &str, decision: &str) -> &'static str {
+    match decision {
+        "never" => "block",
+        "allow" => "allow",
+        // decision == "ask" (or anything unset): grade by how risky the class is.
+        _ => match class {
+            "read" => "allow",             // reads never need a prompt
+            "reversible" => "sandbox",     // undoable → run, but reversibly
+            "external_send" | "financial" | "irreversible" | "credential" => "ask",
+            _ => "ask",                    // "unknown" and anything new: be cautious
+        },
+    }
+}
+
+/// Command form of `classify_tier` for the autonomy engine / UI.
+#[tauri::command]
+pub fn autonomy_classify(class: String, decision: String) -> String {
+    classify_tier(&class, &decision).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graduated_classifier_tiers() {
+        // Hard config wins regardless of class.
+        assert_eq!(classify_tier("irreversible", "allow"), "allow");
+        assert_eq!(classify_tier("read", "never"), "block");
+        // decision "ask": graded by class risk.
+        assert_eq!(classify_tier("read", "ask"), "allow");
+        assert_eq!(classify_tier("reversible", "ask"), "sandbox");
+        assert_eq!(classify_tier("external_send", "ask"), "ask");
+        assert_eq!(classify_tier("financial", "ask"), "ask");
+        assert_eq!(classify_tier("credential", "ask"), "ask");
+        assert_eq!(classify_tier("unknown", "ask"), "ask");
+        // Unset decision defaults to the cautious branch too.
+        assert_eq!(classify_tier("reversible", ""), "sandbox");
+    }
 
     #[test]
     fn mint_then_verify_once_bound_to_payload() {

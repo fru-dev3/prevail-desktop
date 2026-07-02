@@ -205,7 +205,7 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
       {report && (
         <div className="mt-5 rounded-xl border border-border bg-surface/60 px-3.5 py-3">
           <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">Result · {report.text}</div>
-          <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-text-secondary">{report.report}</div>
+          <div className="whitespace-pre-wrap text-[11px] leading-relaxed text-text-secondary">{report.report}</div>
         </div>
       )}
     </div>

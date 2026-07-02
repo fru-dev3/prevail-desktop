@@ -200,7 +200,7 @@ export function UsageDashboard({
           {days.length <= 14 && (
             <div className="mt-1.5 flex gap-1.5">
               {days.map((d) => (
-                <div key={d.key} className="flex-1 truncate text-center font-mono text-[9px] text-text-muted">
+                <div key={d.key} className="flex-1 truncate text-center font-mono text-[10px] text-text-muted">
                   {shortDay(d.key)}
                 </div>
               ))}

@@ -4,9 +4,10 @@
 // and current actions. The runner daemon (separate) evaluates enabled loops and
 // keeps their actions current; here you define and steer them.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronRight, Infinity as InfinityIcon, Loader2, ListPlus, Mail, Play, Plus, RefreshCw, ShieldQuestion, Target, Trash2, X, Zap } from "lucide-react";
+import { Check, ChevronRight, Download, Infinity as InfinityIcon, Loader2, ListPlus, Mail, Play, Plus, RefreshCw, ShieldQuestion, Target, Trash2, Upload, X, Zap } from "lucide-react";
 import { invoke, listen } from "./bridge";
 import type { UnlistenFn } from "./bridge";
+import { open, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { titleCase, relTime } from "./format";
 import { PREF, getPref } from "./storage";
 import { startProcess, endProcess, updateProcess } from "./processes";
@@ -196,6 +197,40 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
 
   const toggleOpen = (id: string) => setOpenIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  // X11 (marketplace seed): share automations as portable files. Export writes
+  // this domain's loops to a .json a user can send; import merges loops from such
+  // a file (fresh ids so they never collide), the foundation for a shared hub.
+  const exportLoops = useCallback(async () => {
+    if (!doc || doc.loops.length === 0) return;
+    try {
+      const dest = await saveFileDialog({ defaultPath: `${domain}-automations.json`, filters: [{ name: "Prevail automations", extensions: ["json"] }] });
+      if (!dest) return;
+      const payload = { kind: "prevail.automations/v1", domain, loops: doc.loops };
+      await invoke("write_text_file", { path: dest, contents: JSON.stringify(payload, null, 2) });
+    } catch (e) { console.error("export loops", e); }
+  }, [doc, domain]);
+  const importLoops = useCallback(async () => {
+    if (!doc) return;
+    try {
+      const src = await open({ multiple: false, filters: [{ name: "Prevail automations", extensions: ["json"] }] });
+      if (!src || typeof src !== "string") return;
+      const raw = await invoke<string>("read_file", { path: src });
+      const parsed = JSON.parse(raw) as { loops?: Partial<Loop>[] };
+      const incoming = Array.isArray(parsed.loops) ? parsed.loops : [];
+      if (incoming.length === 0) return;
+      const added = incoming.map((l) => makeLoop({
+        name: l.name || "Imported automation",
+        type: l.type === "closed" ? "closed" : "open",
+        cadence: (l.cadence as Loop["cadence"]) || "weekly",
+        autonomy: (l.autonomy as Loop["autonomy"]) || "suggest",
+        purpose: l.purpose || "",
+        status: "active",
+        enabled: false, // imported loops arrive paused so the user vets them first
+      }));
+      persist({ ...doc, loops: [...added, ...doc.loops] });
+    } catch (e) { console.error("import loops", e); }
+  }, [doc, persist]);
+
   // "Run loops now" runs every active, enabled loop in turn via the streamed
   // per-loop runner. Each loop visibly runs (header spinner + live progress + a
   // sidebar dot on the domain), is individually stoppable, and the whole batch
@@ -280,6 +315,15 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
               <RefreshCw className="h-3.5 w-3.5" /> Run loops now
             </button>
           )
+        )}
+        {/* X11: share automations as portable files. */}
+        <button onClick={importLoops} title="Import automations from a shared file (they arrive paused)" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+          <Download className="h-3.5 w-3.5" /> Import
+        </button>
+        {doc && doc.loops.length > 0 && (
+          <button onClick={exportLoops} title="Export this domain's automations to a shareable file" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">
+            <Upload className="h-3.5 w-3.5" /> Export
+          </button>
         )}
       </div>
 
@@ -446,20 +490,20 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
             />
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
               <label className="block">
-                <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Kind</div>
+                <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">Kind</div>
                 <select value={newType} onChange={(e) => setNewType(e.target.value as LoopType)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs">
                   <option value="open">Open (never ends)</option>
                   <option value="closed">Closed (has a finish line)</option>
                 </select>
               </label>
               <label className="block">
-                <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Checks</div>
+                <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">Checks</div>
                 <select value={newCadence} onChange={(e) => setNewCadence(e.target.value as LoopCadence)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs">
                   {CADENCES.map((c) => <option key={c} value={c}>{CADENCE_LABEL[c]}</option>)}
                 </select>
               </label>
               <label className="block">
-                <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Guardrail</div>
+                <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">Guardrail</div>
                 <select value={newAutonomy} onChange={(e) => setNewAutonomy(e.target.value as LoopAutonomy)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs" title={AUTONOMY_BLURB[newAutonomy]}>
                   {(["suggest", "tasks", "ask", "auto"] as LoopAutonomy[]).map((a) => <option key={a} value={a}>{AUTONOMY_LABEL[a]}</option>)}
                 </select>
@@ -510,7 +554,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
   const autonomy = loop.autonomy ?? "ask";
   const history = (rt?.history ?? []).slice().reverse();
 
-  // Installed runtimes for the executor picker — only ones actually on the
+  // Installed runtimes for the executor picker - only ones actually on the
   // machine (plus the current selection, so a since-uninstalled executor still
   // shows rather than silently reverting to the default).
   const installedRuntimes = useDetectedClis().filter((c) => c.available);
@@ -574,7 +618,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
           const d = e.payload.data as { type?: string; phase?: string; label?: string; result?: RunResult };
           if (d && typeof d === "object" && d.type === "phase") {
             setPhase(d.phase || ""); setPhaseLabel(d.label || "");
-            updateProcess(session, d.label ? `${baseLabel} — ${d.label}` : baseLabel);
+            updateProcess(session, d.label ? `${baseLabel} - ${d.label}` : baseLabel);
           } else if (d && typeof d === "object" && d.type === "result" && d.result) {
             captured = d.result;
           }
@@ -627,16 +671,16 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
             ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-accent" />
             : <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dot }} />}
           <span className={`truncate text-sm font-semibold ${done ? "text-text-muted line-through" : "text-text-primary"}`}>{loop.name}</span>
-          {running && <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-accent">running…</span>}
+          {running && <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-accent">running…</span>}
           {isBriefing ? (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent" title="Built-in briefing loop: synthesizes + delivers a digest of this domain"><Mail className="h-2.5 w-2.5" /> briefing</span>
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent" title="Built-in briefing loop: synthesizes + delivers a digest of this domain"><Mail className="h-2.5 w-2.5" /> briefing</span>
           ) : loop.type === "open"
-            ? <span className="inline-flex items-center gap-1 rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Open loop: never ends"><InfinityIcon className="h-2.5 w-2.5" /> open</span>
-            : <span className="rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Closed loop: finishes when its condition is met">closed</span>}
-          <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">{CADENCE_LABEL[loop.cadence]}</span>
+            ? <span className="inline-flex items-center gap-1 rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted" title="Open loop: never ends"><InfinityIcon className="h-2.5 w-2.5" /> open</span>
+            : <span className="rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted" title="Closed loop: finishes when its condition is met">closed</span>}
+          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted/70">{CADENCE_LABEL[loop.cadence]}</span>
           {isBriefing
-            ? <span className="shrink-0 rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-secondary" title="Delivery channel">{loop.channel ?? "gmail"}</span>
-            : <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent" title={AUTONOMY_BLURB[autonomy]}>{AUTONOMY_LABEL[autonomy]}</span>}
+            ? <span className="shrink-0 rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary" title="Delivery channel">{loop.channel ?? "gmail"}</span>
+            : <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent" title={AUTONOMY_BLURB[autonomy]}>{AUTONOMY_LABEL[autonomy]}</span>}
         </button>
         {!done && (
           <Toggle on={loop.enabled} onChange={(v) => onChange({ enabled: v })} label={`${loop.name} enabled`} />
@@ -698,7 +742,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
                       <span>{new Date(r.ts).toLocaleString()}</span>
                       {r.tasksCreated?.length > 0 && <span className="rounded-full bg-surface-warm px-1.5 text-text-secondary">{r.tasksCreated.length} task{r.tasksCreated.length === 1 ? "" : "s"}</span>}
                     </div>
-                    {r.note && <div className="mt-0.5 text-[12px] leading-relaxed text-text-secondary">{r.note}</div>}
+                    {r.note && <div className="mt-0.5 text-[11px] leading-relaxed text-text-secondary">{r.note}</div>}
                   </li>
                 ))}
               </ul>
@@ -721,12 +765,12 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
                   return (
                     <div key={p.key} className="flex flex-1 flex-col items-center gap-1">
                       <div className={`h-1 w-full rounded-full ${st === "done" ? "bg-accent" : st === "current" ? "bg-accent/60 animate-pulse" : "bg-border-subtle"}`} />
-                      <span className={`font-mono text-[9px] ${st === "todo" ? "text-text-muted/50" : st === "current" ? "text-accent" : "text-text-muted"}`}>{p.label}</span>
+                      <span className={`font-mono text-[10px] ${st === "todo" ? "text-text-muted/50" : st === "current" ? "text-accent" : "text-text-muted"}`}>{p.label}</span>
                     </div>
                   );
                 })}
               </div>
-              {phaseLabel && <div className="mt-2 text-[12px] text-text-secondary">{phaseLabel}…</div>}
+              {phaseLabel && <div className="mt-2 text-[11px] text-text-secondary">{phaseLabel}…</div>}
             </div>
           )}
           {/* Run-now result: exactly what this pass did. */}
@@ -735,24 +779,24 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
               {result.ok ? (
                 <>
                   <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-accent">{result.briefing ? <Mail className="h-3 w-3" /> : <Play className="h-3 w-3" />} {result.briefing ? "Briefing ready" : "Ran just now"}</div>
-                  {result.note && <div className="mb-2 text-[12px] leading-relaxed text-text-secondary">{result.note}</div>}
+                  {result.note && <div className="mb-2 text-[11px] leading-relaxed text-text-secondary">{result.note}</div>}
                   {result.briefing ? (
-                    <div className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-md border border-border-subtle bg-background px-3 py-2 text-[12px] leading-relaxed text-text-secondary">{result.briefing}</div>
+                    <div className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-md border border-border-subtle bg-background px-3 py-2 text-[11px] leading-relaxed text-text-secondary">{result.briefing}</div>
                   ) : result.actions.length > 0 ? (
                     <ul className="space-y-1">
                       {result.actions.map((a, i) => (
-                        <li key={i} className="flex items-start gap-2 text-[12px] text-text-secondary">
-                          <span className={`mt-0.5 inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider ${a.disposition === "task" ? "bg-accent-soft text-accent" : a.disposition === "approval" ? "bg-warn/15 text-warn" : "bg-surface-warm text-text-muted"}`}>
+                        <li key={i} className="flex items-start gap-2 text-[11px] text-text-secondary">
+                          <span className={`mt-0.5 inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0 font-mono text-[10px] uppercase tracking-wider ${a.disposition === "task" ? "bg-accent-soft text-accent" : a.disposition === "approval" ? "bg-warn/15 text-warn" : "bg-surface-warm text-text-muted"}`}>
                             {a.disposition === "task" ? <><ListPlus className="h-2.5 w-2.5" /> task</> : a.disposition === "approval" ? <><ShieldQuestion className="h-2.5 w-2.5" /> approval</> : "idea"}
                           </span>
                           <span>{a.text}</span>
                         </li>
                       ))}
                     </ul>
-                  ) : <div className="text-[12px] text-text-muted">No new actions this pass — the gap looks handled.</div>}
+                  ) : <div className="text-[11px] text-text-muted">No new actions this pass - the gap looks handled.</div>}
                   {!result.briefing && <div className="mt-2 font-mono text-[10px] text-text-muted">{result.tasksCreated.length} task{result.tasksCreated.length === 1 ? "" : "s"} filed · {result.pending.length} awaiting approval</div>}
                 </>
-              ) : <div className="text-[12px] text-danger">Run failed: {result.error}</div>}
+              ) : <div className="text-[11px] text-danger">Run failed: {result.error}</div>}
             </div>
           )}
           {/* Controls */}

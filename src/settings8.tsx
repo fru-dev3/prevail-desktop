@@ -27,6 +27,7 @@ import { Toggle } from "./ui";
 import { PaletteCard } from "./panels3";
 import { useAppearance } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
+import { VaultHygieneCard } from "./vaulthygiene";
 import { BACKUP_CFG, backupFreqMs, backupVaultNow } from "./backup";
 import type { Mode } from "./types";
 
@@ -220,7 +221,7 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
         </div>
         {/* Where backups land — visible + changeable right here. Kept OUTSIDE the
             vault (a backup inside what it backs up is circular). */}
-        <div className="flex w-full items-center gap-1.5 text-[9px] text-text-muted">
+        <div className="flex w-full items-center gap-1.5 text-[10px] text-text-muted">
           <FolderOpen className="h-3 w-3 shrink-0" />
           <span className="min-w-0 flex-1 truncate" title={backupDir}>{backupDir || "default location"}{backupDirCustom ? "" : " · default"}</span>
           <button onClick={changeBackupDir} className="shrink-0 uppercase tracking-wider hover:text-accent">change</button>
@@ -408,7 +409,7 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
           <div className="flex items-center gap-2">
             <ShieldCheck className={`h-4 w-4 shrink-0 ${!isDemo ? "text-warn" : "text-text-muted"}`} />
             <span className="text-sm font-semibold text-text-primary">Your vault</span>
-            {!isDemo && <span className="rounded-full bg-warn px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-background">Active</span>}
+            {!isDemo && <span className="rounded-full bg-warn px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-background">Active</span>}
             <span className="ml-auto"><Toggle on={!isDemo} disabled={switchingMode} onChange={(v) => { if (v) void switchToProduction(); else void switchToDemo(); }} label="Use my own vault" /></span>
           </div>
           {/* Path + an even, aligned row of icon actions: rescan, change folder, open. */}
@@ -439,7 +440,7 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
           <div className="flex items-center gap-2">
             <Sparkles className={`h-4 w-4 ${isDemo ? "text-accent" : "text-text-muted"}`} />
             <span className="text-sm font-semibold text-text-primary">Demo vault</span>
-            {isDemo && <span className="rounded-full bg-accent px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-background">Active</span>}
+            {isDemo && <span className="rounded-full bg-accent px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-background">Active</span>}
             <span className="ml-auto"><Toggle on={isDemo} disabled={switchingMode} onChange={(v) => { if (v) void switchToDemo(); else void switchToProduction(); }} label="Explore the demo sandbox" /></span>
           </div>
           <div className="mt-1.5 flex items-center gap-1.5">
@@ -638,7 +639,7 @@ export function BackupAutomationCard({ vault, onChange }: { vault: string; onCha
                     finally { setBusy(false); }
                   }}
                   disabled={busy}
-                  className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
+                  className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
                   Restore
                 </button>
               </div>
@@ -702,7 +703,7 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
       if (r.ok) {
         const n = r.movedEntries?.length ?? 0;
         setTidyBuildNote(n === 0
-          ? "Nothing to tidy — no loose runtime files at the vault root."
+          ? "Nothing to tidy - no loose runtime files at the vault root."
           : `Moved runtime files into build/ (${r.copiedFiles ?? "the"} files). Originals are kept until you archive them; nothing was deleted.`);
         onChange();
       } else {
@@ -761,7 +762,7 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
         <div className="mt-3 flex items-center gap-2 rounded-lg border border-border-subtle bg-background px-3 py-2">
           <Database className="h-3.5 w-3.5 shrink-0 text-text-muted" />
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-primary" title={vaultPath}>{vaultPath}</span>
-          {embedded && <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent">in app</span>}
+          {embedded && <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">in app</span>}
           <button onClick={() => void invoke("open_in_finder", { path: vaultPath }).catch(() => {})} title="Reveal in Finder" className="shrink-0 rounded p-1 text-text-muted hover:text-accent">
             <ExternalLink className="h-3.5 w-3.5" />
           </button>
@@ -801,7 +802,7 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
               </button>
             </SettingRow>
           )}
-          <SettingRow label="Tidy runtime files into build/" desc="Move generated runtime files (decision + intent ledgers, _meta, benchmark) into a build/ folder so the root holds just your content. Copied + verified first; originals are kept until you archive — never deleted.">
+          <SettingRow label="Tidy runtime files into build/" desc="Move generated runtime files (decision + intent ledgers, _meta, benchmark) into a build/ folder so the root holds just your content. Copied + verified first; originals are kept until you archive - never deleted.">
             <button onClick={tidyIntoBuild} disabled={tidyingBuild} className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50">
               {tidyingBuild ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderTree className="h-3.5 w-3.5" />}
               {tidyingBuild ? "Tidying…" : "Tidy into build/"}
@@ -849,6 +850,9 @@ export function WorkspaceSection({ vaultPath, onSetupDomains, onVaultMoved }: { 
         <WorkspaceSubLabel icon={FolderOpen} label="Vault" desc="your vault · demo vault · backups" />
         <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} headerless view="cards" />
       </div>
+      {/* F5: vault-hygiene tools (normalize + consolidate) - engine features that
+          shipped with no UI. Copy-only, dry-run first. */}
+      <VaultHygieneCard vaultPath={vaultPath} />
       {/* Starter packs as its own section. */}
       <div>
         <WorkspaceSubLabel icon={Sparkles} label="Starter packs" desc="ready-made domains for your situation" />

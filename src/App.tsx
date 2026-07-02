@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke, listen, isBrowser, type UnlistenFn } from "./bridge";
+import { invoke, listen, isBrowser, subscribeWebPush, type UnlistenFn } from "./bridge";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { titleCase } from "./format";
@@ -34,6 +34,8 @@ import { OnboardingTour } from "./onboarding";
 import { VaultEncryptPrompt, vaultEncryptOffered } from "./vault-encrypt-prompt";
 import { migrateModelPrefs } from "./helpers2";
 import { AppHeaderBar, DomainActionsMenu, LockScreen, QuickSwitcher, ThreadsRail, WebLogin } from "./panels";
+import { CommandPalette, type Command } from "./commandpalette";
+import { EDITOR_NAV, WORK_NAV } from "./navdefs";
 
 // Single source of truth for the version chip in title bar.
 
@@ -132,13 +134,42 @@ import {
   Plug,
   ChevronsRight,
   ChevronsLeft,
-  
-  
+  MessageSquarePlus,
+  FileText,
+  CalendarDays,
+  PanelLeft,
+  Compass,
   ShieldCheck,
   RefreshCw,
   Repeat,
   Power,
 } from "lucide-react";
+
+// X8: fire a foreground Web Notification (the WebUI, on a phone/laptop). Asks
+// permission the first time; silently no-ops if denied or unsupported.
+function showWebNotification(title: string, body: string) {
+  // Prefer the service worker registration (persists / shows when backgrounded);
+  // fall back to a page Notification.
+  try {
+    if (navigator.serviceWorker?.ready) {
+      void navigator.serviceWorker.ready.then((reg) => {
+        if (reg?.showNotification) reg.showNotification(title, { body, icon: "/logo-512.png", tag: "prevail" });
+        else new Notification(title, { body });
+      }).catch(() => { try { new Notification(title, { body }); } catch { /* noop */ } });
+    } else {
+      new Notification(title, { body });
+    }
+  } catch { /* noop */ }
+}
+function notifyWeb(title: string, body: string) {
+  try {
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission === "granted") { showWebNotification(title, body); void subscribeWebPush(); return; }
+    if (Notification.permission !== "denied") {
+      void Notification.requestPermission().then((p) => { if (p === "granted") { showWebNotification(title, body); void subscribeWebPush(); } });
+    }
+  } catch { /* notifications unavailable */ }
+}
 
 // Friendly one-line descriptions for the domain cards - plain, warm, no jargon.
 // Shown as the card subtitle; falls back to a generic line for unknown domains.
@@ -201,6 +232,19 @@ export default function App() {
   // prompt so it never flashes before we know whether the vault is encrypted.
   const [vaultStatusChecked, setVaultStatusChecked] = useState(false);
   const [encryptPromptClosed, setEncryptPromptClosed] = useState(false);
+  // Track demo vs production so we never offer to encrypt (with a passcode +
+  // recovery code the user must save) over throwaway sample data. The offer
+  // belongs at the demo-to-production graduation, not in the sandbox.
+  const [appMode, setAppMode] = useState<"demo" | "production" | null>(null);
+  useEffect(() => {
+    const load = () =>
+      invoke<{ mode: "demo" | "production" }>("engine_appmode_get")
+        .then((m) => setAppMode(m.mode))
+        .catch(() => {});
+    void load();
+    window.addEventListener("prevail:appmode", load);
+    return () => window.removeEventListener("prevail:appmode", load);
+  }, []);
   useEffect(() => {
     if (isBrowser()) return;
     (async () => {
@@ -704,6 +748,17 @@ export default function App() {
     })();
     return () => { if (unl) unl(); };
   }, []);
+  // F8: bridge the native global-hotkey + deep-link Tauri events to DOM events
+  // the rest of the app already listens for (Quick Capture summon, connect flows).
+  useEffect(() => {
+    let unlA: UnlistenFn | null = null;
+    let unlB: UnlistenFn | null = null;
+    (async () => {
+      unlA = await listen("prevail:quick-capture", () => window.dispatchEvent(new Event("prevail:quick-capture")));
+      unlB = await listen<string[]>("prevail:deep-link", (e) => window.dispatchEvent(new CustomEvent("prevail:deep-link", { detail: e.payload })));
+    })();
+    return () => { if (unlA) unlA(); if (unlB) unlB(); };
+  }, []);
   // Switching domains never drags the previous domain's thread pointer
   // along (the next auto-save would write into the wrong domain folder),
   // but returning to a domain lands on what you were working on: a stream
@@ -866,6 +921,11 @@ export default function App() {
   }, [vaultPath, threadScope]);
   useEffect(() => { void refreshThreads(); }, [refreshThreads]);
   const [clis, setClis] = useState<CliInfo[]>([]);
+  // O1/F6: once runtime detection has run, know whether ANY model is usable, so
+  // we can prompt a new user to set one up instead of letting chat fail silently.
+  const [clisDetected, setClisDetected] = useState(false);
+  const [noModelDismissed, setNoModelDismissed] = useState(false);
+  const noModelConfigured = clisDetected && clis.length > 0 && !clis.some((c) => c.available);
   const [tab, setTab] = useState<TabId>("chat");
   // T18: record which primary surface is in use (inert until keys exist;
   // default-OFF; "settings" is not a tracked feature so it's simply skipped).
@@ -876,11 +936,37 @@ export default function App() {
   // approvals / AI reviews are visible without opening Settings. Cheap call
   // (list_domain_names, no state reads); refreshed slowly + on task/loop events.
   const [decisionsCount, setDecisionsCount] = useState(0);
+  // F7: remember the last count so a RISE (the AI newly blocked, waiting on you)
+  // fires a native notification - the one "needs you" moment that previously
+  // surfaced only as an in-app pill. -1 = not yet polled, so the first load
+  // never notifies for pre-existing decisions.
+  const prevDecisionsRef = useRef<number>(-1);
   useEffect(() => {
     if (!vaultPath) return;
     let alive = true;
     const poll = () => invoke<unknown[]>("decisions_pending", { vault: vaultPath })
-      .then((d) => { if (alive) setDecisionsCount(Array.isArray(d) ? d.length : 0); })
+      .then((d) => {
+        if (!alive) return;
+        const n = Array.isArray(d) ? d.length : 0;
+        setDecisionsCount(n);
+        const prev = prevDecisionsRef.current;
+        if (prev >= 0 && n > prev) {
+          const added = n - prev;
+          const title = "Prevail needs your approval";
+          const body = added === 1 ? "An automation is waiting for you to approve an action." : `${n} actions are waiting for your approval.`;
+          if (isBrowser()) {
+            // X8: mobile/web (WebUI) - foreground browser notification so a phone
+            // or laptop gets the approval alert too, no native host needed.
+            notifyWeb(title, body);
+          } else {
+            void invoke("notify_user", { title, body }).catch(() => {});
+            // X8: the desktop host also pushes to any subscribed (possibly closed)
+            // WebUI browser tabs via VAPID Web Push.
+            void invoke("webui_push", { title, body }).catch(() => {});
+          }
+        }
+        prevDecisionsRef.current = n;
+      })
       .catch(() => {});
     void poll();
     const id = window.setInterval(poll, 60000);
@@ -915,6 +1001,36 @@ export default function App() {
     window.addEventListener("prevail:loops-advanced", onEvt);
     return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:tasks-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
   }, [vaultPath, selectedDomain]);
+  // X1 (heartbeat): ambient proactivity. On a slow tick, during active hours, if
+  // things need you (pending approvals or overdue work) and we haven't nudged in
+  // a while, fire ONE consolidated native notification - so Prevail reaches out
+  // instead of waiting to be opened. Config via prefs; on by default. (A full
+  // background heartbeat that runs agent turns on a checklist is a follow-on that
+  // rides the loop-run engine.)
+  useEffect(() => {
+    if (isBrowser()) return;
+    const HEARTBEAT_KEY = "prevail.heartbeat.lastNudge";
+    const tick = () => {
+      if (getPref(PREF.heartbeatEnabled, "1") !== "1") return;
+      const now = new Date();
+      const hour = now.getHours();
+      const startH = parseInt(getPref(PREF.heartbeatActiveStart, "8"), 10) || 8;
+      const endH = parseInt(getPref(PREF.heartbeatActiveEnd, "22"), 10) || 22;
+      if (hour < startH || hour >= endH) return; // quiet outside active hours
+      const needs = decisionsCount + (dueAlert.overdue || 0);
+      if (needs <= 0) return;
+      const last = parseInt(lsGet(HEARTBEAT_KEY) || "0", 10) || 0;
+      const minGapMs = (parseInt(getPref(PREF.heartbeatIntervalHours, "3"), 10) || 3) * 3600_000;
+      if (now.getTime() - last < minGapMs) return;
+      const parts: string[] = [];
+      if (decisionsCount > 0) parts.push(`${decisionsCount} waiting on your approval`);
+      if (dueAlert.overdue > 0) parts.push(`${dueAlert.overdue} overdue`);
+      void invoke("notify_user", { title: "Prevail check-in", body: `${parts.join(" · ")}. Open Prevail when you have a moment.` }).catch(() => {});
+      lsSet(HEARTBEAT_KEY, String(now.getTime()));
+    };
+    const id = window.setInterval(tick, 10 * 60_000); // evaluate every 10 min
+    return () => window.clearInterval(id);
+  }, [decisionsCount, dueAlert]);
   // Insights (recommendations) + Loops counts — surfaced as always-visible badges on
   // the top-nav tabs so the user sees how much is waiting without opening either view.
   // Both are computed in the background on a slow poll + event refresh, same cadence as
@@ -1147,6 +1263,35 @@ export default function App() {
   // Quick switcher (⌘P) - fuzzy finder over all domains + recent
   // threads across all domains. Modal owns its own state when open.
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
+  const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
+
+  // F1: the command palette's item list - actions, navigation to every section,
+  // and every domain. Rebuilt when the domains change.
+  const paletteCommands = useMemo<Command[]>(() => {
+    const cmds: Command[] = [];
+    // Actions.
+    cmds.push(
+      { id: "act:new-chat", label: "New chat", hint: "⌘K", group: "Actions", icon: MessageSquarePlus, keywords: "conversation ask", run: () => { setSelectedDomain(""); setActiveThreadPath(null); setTab("chat"); } },
+      { id: "act:new-note", label: "New note", group: "Actions", icon: FileText, keywords: "capture write", run: () => openWorkAt("notes") },
+      { id: "act:board", label: "Open work board", group: "Actions", icon: Briefcase, keywords: "tasks todo", run: () => openWorkAt("tasks") },
+      { id: "act:calendar", label: "Open calendar", group: "Actions", icon: CalendarDays, keywords: "schedule events", run: () => openWorkAt("calendar") },
+      { id: "act:toggle-rail", label: "Toggle domain rail", hint: "⌘B", group: "Actions", icon: PanelLeft, keywords: "sidebar hide show", run: () => setSidebarCollapsed((v) => !v) },
+      { id: "act:settings", label: "Open settings", hint: "⌘,", group: "Actions", icon: SettingsIcon, keywords: "preferences config", run: () => setTab("settings") },
+    );
+    // Navigation to every Work + Editor section.
+    for (const grp of WORK_NAV) for (const it of grp.items) {
+      cmds.push({ id: `nav:w:${it.id}`, label: it.label, hint: "Go to", group: `Go to · ${grp.heading}`, icon: it.icon, run: () => openWorkAt(it.id) });
+    }
+    for (const grp of EDITOR_NAV) for (const it of grp.items) {
+      cmds.push({ id: `nav:e:${it.id}`, label: it.label, hint: "Go to", group: `Go to · ${grp.heading}`, icon: it.icon, run: () => openSettingsAt(it.id) });
+    }
+    // Every domain.
+    for (const d of domains) {
+      cmds.push({ id: `dom:${d.name}`, label: titleCase(d.name), hint: "Domain", group: "Domains", icon: Compass, keywords: d.name, run: () => openDomain(d.name) });
+    }
+    return cmds;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domains]);
 
   // Keyboard shortcuts - global. Skip when a text input has focus
   // (so typing ⌘B in the composer doesn't toggle the sidebar).
@@ -1161,11 +1306,15 @@ export default function App() {
       const k = e.key.toLowerCase();
       if (editable && k !== "," && k !== "k" && k !== "p") return;
       switch (k) {
-        case "k": // ⌘K - new chat (no domain)
+        case "k": // ⌘K - command palette; ⌘⇧K - new chat (no domain)
           e.preventDefault();
-          setSelectedDomain("");
-          setActiveThreadPath(null);
-          setTab("chat");
+          if (e.shiftKey) {
+            setSelectedDomain("");
+            setActiveThreadPath(null);
+            setTab("chat");
+          } else {
+            setCmdPaletteOpen((v) => !v);
+          }
           break;
         case ",": // ⌘, - open settings
           e.preventDefault();
@@ -1204,6 +1353,7 @@ export default function App() {
     try {
       const list = await invoke<CliInfo[]>("detect_clis");
       setClis(list);
+      setClisDetected(true);
       // Validate every detected provider right away (once per session), so
       // valid / not-valid marks are visible without expanding anything.
       autoVerifyClis(list);
@@ -1389,6 +1539,7 @@ export default function App() {
         <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
         <BridgeStatusChips />
         <QuickCapture vaultPath={vaultPath} />
+        {cmdPaletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setCmdPaletteOpen(false)} />}
       </div>
     );
   }
@@ -1408,6 +1559,7 @@ export default function App() {
         <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
         <BridgeStatusChips />
         <QuickCapture vaultPath={vaultPath} />
+        {cmdPaletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setCmdPaletteOpen(false)} />}
       </div>
     );
   }
@@ -1417,8 +1569,10 @@ export default function App() {
       {/* O1 (Monday feedback): first-run onboarding tour (dismissible, replayable). */}
       <OnboardingTour />
       {/* C4: first-run encrypt-at-rest prompt (default-ON). Only for a fresh,
-          confirmed-unencrypted vault the user hasn't been offered yet. */}
-      {!isBrowser() && vaultPath && vaultStatusChecked && !vaultEncrypted && !encryptPromptClosed && !vaultEncryptOffered() && (
+          confirmed-unencrypted vault the user hasn't been offered yet. Never in
+          the demo sandbox (C6): encrypting throwaway sample data would ask the
+          user to save a passcode + recovery code for data they'll discard. */}
+      {!isBrowser() && vaultPath && vaultStatusChecked && appMode === "production" && !vaultEncrypted && !encryptPromptClosed && !vaultEncryptOffered() && (
         <VaultEncryptPrompt vaultPath={vaultPath} onClose={() => setEncryptPromptClosed(true)} />
       )}
       {memoryAlert && (
@@ -1436,6 +1590,16 @@ export default function App() {
           <ShieldCheck className="h-3.5 w-3.5" />
           <span>Bunker Mode needs a local model provider, but none was detected.</span>
           <a href="https://ollama.com/download" target="_blank" rel="noreferrer" className="font-medium underline">Install Ollama ›</a>
+        </div>
+      )}
+      {/* O1/F6: no usable model - guide the user to set one up rather than letting
+          the first chat fail with a raw spawn error. */}
+      {noModelConfigured && !noModelDismissed && (
+        <div className="flex shrink-0 items-center justify-center gap-2 border-b border-accent-border bg-accent-soft px-4 py-1.5 text-xs text-text-primary">
+          <Layers className="h-3.5 w-3.5 text-accent" />
+          <span>No AI model is set up yet, so chat can't run.</span>
+          <button onClick={() => openSettingsAt("models")} className="font-semibold text-accent underline underline-offset-2 hover:opacity-80">Set up a model ›</button>
+          <button onClick={() => setNoModelDismissed(true)} aria-label="Dismiss" className="ml-1 rounded p-0.5 text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
         </div>
       )}
       <div className="flex min-h-0 flex-1">
@@ -1503,7 +1667,7 @@ export default function App() {
                 installed build. Absolutely positioned at the bottom-right corner so
                 it never pushes the first icon off the left edge. */}
             {import.meta.env.DEV && (
-              <span className="pointer-events-none absolute bottom-0.5 right-1.5 z-10 rounded bg-danger px-1 py-0 font-mono text-[8px] font-bold uppercase tracking-wide text-background opacity-70">DEV</span>
+              <span className="pointer-events-none absolute bottom-0.5 right-1.5 z-10 rounded bg-danger px-1 py-0 font-mono text-[10px] font-bold uppercase tracking-wide text-background opacity-70">DEV</span>
             )}
             {/* Quick visual cue: are we in an APP or a DOMAIN? An icon (no text)
                 at the far left, so the two contexts are instantly distinguishable.
@@ -1616,7 +1780,7 @@ export default function App() {
                       className="flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] text-warn transition-colors hover:bg-surface-warm"
                     >
                       <Inbox className="h-3.5 w-3.5" /> Needs you
-                      <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[9px] font-bold text-background">{cap9(decisionsCount)}</span>
+                      <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[10px] font-bold text-background">{cap9(decisionsCount)}</span>
                     </button>
                   )}
                   {/* Work: this domain's tasks in-panel (scoped board); a badge counts
@@ -1856,6 +2020,9 @@ export default function App() {
             setQuickSwitcherOpen(false);
           }}
         />
+      )}
+      {cmdPaletteOpen && (
+        <CommandPalette commands={paletteCommands} onClose={() => setCmdPaletteOpen(false)} />
       )}
       {onboardOpen && (
         <OnboardingModal

@@ -60,8 +60,8 @@ function ModelScoutSuggestions({ vaultPath }: { vaultPath: string }) {
       {/* Why this page matters — new models ship constantly; Scout keeps the
           Arena's roster current so you don't have to track releases yourself. */}
       <div className="rounded-lg border border-accent-border/40 bg-accent-soft/30 px-3 py-2.5">
-        <p className="text-[12px] leading-relaxed text-text-secondary">
-          <span className="font-semibold text-text-primary">New models ship every week.</span> Scout's daily web scan flags freshly-released models — open-weight and frontier — worth adding to your Arena, so your benchmarks stay current without you tracking announcements. Each suggestion links to its source; pick the ones you care about and add them as Arena models to run.
+        <p className="text-[11px] leading-relaxed text-text-secondary">
+          <span className="font-semibold text-text-primary">New models ship every week.</span> Scout's daily web scan flags freshly-released models - open-weight and frontier - worth adding to your Arena, so your benchmarks stay current without you tracking announcements. Each suggestion links to its source; pick the ones you care about and add them as Arena models to run.
         </p>
       </div>
       <div className="space-y-2 px-1">
@@ -81,7 +81,7 @@ function ModelScoutSuggestions({ vaultPath }: { vaultPath: string }) {
           <ul className="space-y-1">
             {items.map((it, i) => (
               <li key={`${it.name}-${i}`} className="flex items-start gap-2 rounded-md border border-border-subtle bg-surface-warm/40 px-2 py-1.5">
-                <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase ${it.kind === "open" ? "bg-accent/15 text-accent" : "bg-warn/15 text-warn"}`}>{it.kind}</span>
+                <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase ${it.kind === "open" ? "bg-accent/15 text-accent" : "bg-warn/15 text-warn"}`}>{it.kind}</span>
                 <span className="min-w-0 flex-1">
                   <span className="text-xs font-medium text-text-primary">{it.name}</span>
                   <span className="ml-1 text-[11px] text-text-muted">({it.provider})</span>
@@ -261,7 +261,7 @@ export function BenchMatrix({
             {dimPickerOpen && (
               <div className="absolute right-0 z-20 mt-1 max-h-72 w-60 overflow-auto rounded-xl border border-border bg-surface p-1.5 shadow-xl">
                 <div className="flex items-center justify-between px-1.5 py-1">
-                  <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Show dimensions</span>
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Show dimensions</span>
                   <button onClick={() => setDimSelPersist(null)} className="text-[10px] text-text-muted hover:text-accent">Top {TOP_DIMS}</button>
                 </div>
                 {orderedDomains.map((d) => {
@@ -290,7 +290,7 @@ export function BenchMatrix({
             {pickerOpen && (
               <div className="absolute right-0 z-20 mt-1 max-h-72 w-72 overflow-auto rounded-xl border border-border bg-surface p-1.5 shadow-xl">
                 <div className="flex items-center justify-between px-1.5 py-1">
-                  <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Add more models</span>
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Add more models</span>
                   {extra.size > 0 && <button onClick={() => setExtraPersist(new Set())} className="text-[10px] text-text-muted hover:text-accent">Clear</button>}
                 </div>
                 {extraModels.map((m) => {
@@ -668,7 +668,7 @@ export function BenchQuestions({
           {/* Labeled controls, not a cramped row of bare selects. */}
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1">
-              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Domain</span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Domain</span>
               <select value={suggestDomain} onChange={(e) => setSuggestDomain(e.target.value)} className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-text-secondary focus:border-accent-border focus:outline-none">
                 <option value="">pick a domain…</option>
                 <option value="all">All domains</option>
@@ -676,13 +676,13 @@ export function BenchQuestions({
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">How many{suggestDomain === "all" ? " per domain" : ""}</span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">How many{suggestDomain === "all" ? " per domain" : ""}</span>
               <select value={suggestCount} onChange={(e) => setSuggestCount(Number(e.target.value))} className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-text-secondary focus:border-accent-border focus:outline-none">
                 {[1, 2, 3, 5, 8].map((n) => <option key={n} value={n}>{n} question{n === 1 ? "" : "s"}</option>)}
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Drafting model</span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Drafting model</span>
               <select value={suggestModel} onChange={(e) => setSuggestModel(e.target.value)} className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-text-secondary focus:border-accent-border focus:outline-none">
                 {Object.entries(MODELS)
                   .filter(([cli]) => !isBunkerOn() || isLocalCli(cli))
@@ -721,12 +721,12 @@ export function BenchQuestions({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     {q.source === "ai" && (
-                      <span className="shrink-0 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-accent">Draft · review</span>
+                      <span className="shrink-0 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[10px] uppercase tracking-wider text-accent">Draft · review</span>
                     )}
                     <span className="truncate text-sm text-text-primary">{q.prompt || <span className="text-text-muted">(empty prompt)</span>}</span>
                   </div>
                   {q.expected_decision && <div className="mt-0.5 truncate text-[11px] text-ok">→ {q.expected_decision}</div>}
-                  <div className="mt-0.5 font-mono text-[9px] text-text-muted">
+                  <div className="mt-0.5 font-mono text-[10px] text-text-muted">
                     {q.source === "ai" ? "AI-drafted - click to review and confirm the ground truth" : "written by you"}{q.created ? ` · added ${q.created}` : ""}{q.edited ? ` · edited ${q.edited} (prior version kept)` : ""}
                   </div>
                 </div>
@@ -736,7 +736,7 @@ export function BenchQuestions({
               <button
                 onClick={() => void setArchived(q, true)}
                 title="Archive: kept for past runs, excluded from new ones"
-                className="mt-0.5 shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                className="mt-0.5 shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
               >
                 <Archive className="h-3 w-3" />
               </button>
@@ -755,20 +755,20 @@ export function BenchQuestions({
                 <span className="mt-0.5 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{q.domain}</span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm text-text-muted">{q.prompt}</div>
-                  <div className="mt-0.5 font-mono text-[9px] text-text-muted">
+                  <div className="mt-0.5 font-mono text-[10px] text-text-muted">
                     {q.source === "ai" ? "AI-suggested" : "written by you"}{q.created ? ` · added ${q.created}` : ""}
                   </div>
                 </div>
                 <button
                   onClick={() => void setArchived(q, false)}
-                  className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                  className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
                 >
                   Restore
                 </button>
                 <button
                   onClick={async () => { try { await invoke("benchmark_delete_question", { path: q.path }); onChanged(); } catch (e) { setInfo(`Delete failed: ${e}`); } }}
                   title="Delete permanently (past runs lose this question's text)"
-                  className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn"
+                  className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn"
                 >
                   Delete
                 </button>
@@ -1021,8 +1021,8 @@ export function BenchRunConfig({
                           <span className={`min-w-0 flex-1 truncate font-mono text-[11px] ${info ? "text-text-primary" : isCur ? "text-accent" : "text-text-muted/60"}`}>
                             {q}
                           </span>
-                          {info && !failed && <span className="max-w-[200px] truncate font-mono text-[9px] text-text-muted">{info}</span>}
-                          {failed && <span className="max-w-[260px] truncate font-mono text-[9px] text-danger" title={info}>{info}</span>}
+                          {info && !failed && <span className="max-w-[200px] truncate font-mono text-[10px] text-text-muted">{info}</span>}
+                          {failed && <span className="max-w-[260px] truncate font-mono text-[10px] text-danger" title={info}>{info}</span>}
                         </div>
                       );
                     })}
@@ -1093,7 +1093,7 @@ export function BenchRunConfig({
                     <ProviderMark vendor={c.id} size={16} />
                     <span className="text-[13px] font-medium text-text-primary">{c.label}</span>
                     {selectedHere > 0 && (
-                      <span className="rounded-full bg-accent px-1.5 py-px font-mono text-[9px] font-semibold text-background">{selectedHere}</span>
+                      <span className="rounded-full bg-accent px-1.5 py-px font-mono text-[10px] font-semibold text-background">{selectedHere}</span>
                     )}
                     <span className="ml-auto font-mono text-[10px] text-text-muted">{models.length}</span>
                   </button>
@@ -1178,7 +1178,7 @@ export function BenchRunConfig({
                 {Icon && <Icon className="h-3 w-3" />}
                 {titleCase(d)}
                 {count > 0 && (
-                  <span className={`ml-0.5 rounded-full px-1 text-[9px] ${on ? "bg-background/25 text-background" : "bg-surface-warm text-text-muted"}`}>{count}</span>
+                  <span className={`ml-0.5 rounded-full px-1 text-[10px] ${on ? "bg-background/25 text-background" : "bg-surface-warm text-text-muted"}`}>{count}</span>
                 )}
               </button>
             );
@@ -1232,7 +1232,7 @@ export function BenchRunConfig({
                 <button onClick={() => loadSuite(s)} title="Load into the editor to tweak (does not run)" className="min-w-0 flex-1 text-left">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-[13px] font-normal text-text-secondary hover:text-accent">{s.name}</span>
-                    {isScheduled && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] text-accent"><CalendarClock className="h-2.5 w-2.5" /> {schedFreq}</span>}
+                    {isScheduled && <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[10px] text-accent"><CalendarClock className="h-2.5 w-2.5" /> {schedFreq}</span>}
                   </div>
                   <div className="mt-0.5 font-mono text-[10px] text-text-muted">
                     {s.models.length} model{s.models.length === 1 ? "" : "s"}{s.domains.length ? ` · ${suiteScopeLabel(s)}` : ""}
@@ -1567,7 +1567,7 @@ export function BenchResults({
             <span className="block font-mono text-[10px] text-text-muted">
               {m.runs.length} run{m.runs.length === 1 ? "" : "s"} · {m.domains.length} domain{m.domains.length === 1 ? "" : "s"} · last {m.latestDate || "-"}
               {rank === null ? (
-                <span className="ml-1.5 font-semibold text-warn" title="No judged score — this model errored or hasn't been scored, so it isn't ranked.">· no score</span>
+                <span className="ml-1.5 font-semibold text-warn" title="No judged score - this model errored or hasn't been scored, so it isn't ranked.">· no score</span>
               ) : m.delta !== null && Math.abs(m.delta) >= 0.05 ? (
                 <span className={`ml-1.5 font-semibold ${m.delta > 0 ? "text-ok" : "text-warn"}`} title={`Judge trend: ${m.history.map((v) => v.toFixed(1)).join(" → ")}`}>
                   {m.delta > 0 ? "▲" : "▼"}{Math.abs(m.delta).toFixed(1)}
@@ -1603,9 +1603,9 @@ export function BenchResults({
                   <span className="w-20 shrink-0 font-mono text-[10px] text-text-muted">{r.date || "undated"}</span>
                   <span className="flex min-w-0 flex-1 items-center gap-1">
                     {r.domains.slice(0, 6).map((d) => (
-                      <span key={d} className="rounded bg-surface-warm px-1.5 py-0 font-mono text-[9px] text-text-muted">{d}</span>
+                      <span key={d} className="rounded bg-surface-warm px-1.5 py-0 font-mono text-[10px] text-text-muted">{d}</span>
                     ))}
-                    {r.domains.length > 6 && <span className="font-mono text-[9px] text-text-muted">+{r.domains.length - 6}</span>}
+                    {r.domains.length > 6 && <span className="font-mono text-[10px] text-text-muted">+{r.domains.length - 6}</span>}
                   </span>
                   <span className="font-mono text-[10px] text-text-muted">{r.questions} q</span>
                   {r.scored ? (
@@ -1789,8 +1789,8 @@ export function BenchResults({
               ))}
             </div>
           </div>
-          {/* Column header — aligns with the fixed-width columns below. */}
-          <div className="mb-1 hidden items-center gap-3 px-4 font-mono text-[9px] uppercase tracking-wider text-text-muted/70 sm:flex">
+          {/* Column header - aligns with the fixed-width columns below. */}
+          <div className="mb-1 hidden items-center gap-3 px-4 font-mono text-[10px] uppercase tracking-wider text-text-muted/70 sm:flex">
             <span className="min-w-0 flex-1" />
             <span className="w-16 text-right">Speed</span>
             <span className="w-20 text-right">Cost</span>
@@ -1804,7 +1804,7 @@ export function BenchResults({
           {unrankedRows.length > 0 && (
             <div className="mt-4">
               <div className="mb-1.5 flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-                <AlertTriangle className="h-3 w-3 text-warn" /> Not ranked — no judged score (errored or unscored)
+                <AlertTriangle className="h-3 w-3 text-warn" /> Not ranked - no judged score (errored or unscored)
               </div>
               <div className="flex flex-col gap-2">
                 {unrankedRows.map((m) => renderBoardRow(m, null))}
@@ -1834,10 +1834,10 @@ export function BenchResults({
             <details key={group.key} className="group/date overflow-hidden rounded-2xl border border-border bg-surface">
               <summary className="flex cursor-pointer list-none items-center gap-2.5 px-4 py-2.5 hover:bg-surface-warm">
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-muted transition-transform group-open/date:rotate-90" />
-                {group.isBatch && <span className="font-mono text-[12px] font-semibold text-text-primary">{group.date}</span>}
-                <span className={`min-w-0 truncate font-mono text-[12px] ${group.isBatch ? "text-text-secondary" : "font-semibold text-text-primary"}`}>{group.label}</span>
+                {group.isBatch && <span className="font-mono text-[11px] font-semibold text-text-primary">{group.date}</span>}
+                <span className={`min-w-0 truncate font-mono text-[11px] ${group.isBatch ? "text-text-secondary" : "font-semibold text-text-primary"}`}>{group.label}</span>
                 <span className="font-mono text-[10px] text-text-muted">{group.runs.length} model{group.runs.length === 1 ? "" : "s"}</span>
-                {unscored > 0 && <span className="rounded bg-warn/10 px-1.5 py-0 font-mono text-[9px] text-warn">{unscored} unscored</span>}
+                {unscored > 0 && <span className="rounded bg-warn/10 px-1.5 py-0 font-mono text-[10px] text-warn">{unscored} unscored</span>}
                 <span
                   role="button"
                   tabIndex={0}
@@ -1868,9 +1868,9 @@ export function BenchResults({
                         <span className="min-w-0 truncate font-mono text-xs text-text-primary">{parsed.model || r.label}</span>
                         <span className="hidden items-center gap-1 md:flex">
                           {r.domains.slice(0, 5).map((d) => (
-                            <span key={d} className="rounded bg-surface-warm px-1.5 py-0 font-mono text-[9px] text-text-muted">{d}</span>
+                            <span key={d} className="rounded bg-surface-warm px-1.5 py-0 font-mono text-[10px] text-text-muted">{d}</span>
                           ))}
-                          {r.domains.length > 5 && <span className="font-mono text-[9px] text-text-muted">+{r.domains.length - 5}</span>}
+                          {r.domains.length > 5 && <span className="font-mono text-[10px] text-text-muted">+{r.domains.length - 5}</span>}
                         </span>
                       </button>
                       <span className="font-mono text-[10px] text-text-muted">{r.questions} q</span>
@@ -1971,7 +1971,7 @@ function BenchFrontier({
   const frontierKeys = new Set(frontier.map((p) => p.key));
 
   if (plotted.length === 0) {
-    return <div className="rounded-xl border border-border-subtle bg-surface px-4 py-10 text-center text-sm text-text-muted">No scored runs with both a score and a cost yet — run a benchmark to populate the frontier.</div>;
+    return <div className="rounded-xl border border-border-subtle bg-surface px-4 py-10 text-center text-sm text-text-muted">No scored runs with both a score and a cost yet - run a benchmark to populate the frontier.</div>;
   }
 
   return (
@@ -1997,17 +1997,17 @@ function BenchFrontier({
         </svg>
         {/* Y-axis tick numbers — right-aligned in the gutter, sitting on each gridline. */}
         {[0, 2, 4, 6, 8, 10].map((g) => (
-          <span key={g} className="absolute -translate-y-1/2 pr-1.5 text-right font-mono text-[9px] tabular-nums text-text-muted" style={{ left: 0, width: `${PL}%`, top: `${yPct(g)}%` }}>{g}</span>
+          <span key={g} className="absolute -translate-y-1/2 pr-1.5 text-right font-mono text-[10px] tabular-nums text-text-muted" style={{ left: 0, width: `${PL}%`, top: `${yPct(g)}%` }}>{g}</span>
         ))}
         {/* Y-axis title — rotated along the axis. */}
-        <span className="pointer-events-none absolute left-0 font-mono text-[9px] uppercase tracking-[0.14em] text-text-muted" style={{ top: `${(PT + PB) / 2}%`, transform: "translateY(-50%) rotate(-90deg)", transformOrigin: "center", marginLeft: -14 }}>intelligence</span>
+        <span className="pointer-events-none absolute left-0 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted" style={{ top: `${(PT + PB) / 2}%`, transform: "translateY(-50%) rotate(-90deg)", transformOrigin: "center", marginLeft: -14 }}>intelligence</span>
         {/* X-axis tick numbers — centered under each gridpoint. */}
-        <span className="absolute -translate-x-1/2 font-mono text-[9px] text-text-muted" style={{ left: `${PL}%`, top: `${PB + 3}%` }}>free</span>
+        <span className="absolute -translate-x-1/2 font-mono text-[10px] text-text-muted" style={{ left: `${PL}%`, top: `${PB + 3}%` }}>free</span>
         {positives.length > 0 && [xmin, Math.sqrt(xmin * xmax), xmax].map((c, i) => (
-          <span key={i} className="absolute -translate-x-1/2 font-mono text-[9px] tabular-nums text-text-muted" style={{ left: `${xPct(c)}%`, top: `${PB + 3}%` }}>{fmtCost(c)}</span>
+          <span key={i} className="absolute -translate-x-1/2 font-mono text-[10px] tabular-nums text-text-muted" style={{ left: `${xPct(c)}%`, top: `${PB + 3}%` }}>{fmtCost(c)}</span>
         ))}
         {/* X-axis title — centered under the plot. */}
-        <span className="absolute -translate-x-1/2 font-mono text-[9px] uppercase tracking-[0.14em] text-text-muted" style={{ left: `${(PL + PR) / 2}%`, top: `${PB + 9}%` }}>cost per run →</span>
+        <span className="absolute -translate-x-1/2 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted" style={{ left: `${(PL + PR) / 2}%`, top: `${PB + 9}%` }}>cost per run →</span>
         {plotted.map((p) => {
           const rad = radius(p.ms);
           const on = frontierKeys.has(p.key);
@@ -2018,7 +2018,7 @@ function BenchFrontier({
               onClick={() => onPick(p.key)}
               onMouseEnter={() => setHover(p.key)}
               onMouseLeave={() => setHover((h) => (h === p.key ? null : h))}
-              title={`${p.label} — ${p.intel.toFixed(1)}/10 · ${fmtLatency(p.ms)} · ${fmtCost(p.cost, p.local ? "local" : undefined)}${on ? " · best-value frontier" : ""}`}
+              title={`${p.label} - ${p.intel.toFixed(1)}/10 · ${fmtLatency(p.ms)} · ${fmtCost(p.cost, p.local ? "local" : undefined)}${on ? " · best-value frontier" : ""}`}
               className={`absolute flex items-center justify-center rounded-full border transition-transform ${on ? "border-accent bg-accent-soft" : "border-border bg-surface-warm"} ${isHover ? "ring-2 ring-accent/40" : ""}`}
               style={{ left: `${xPct(p.cost)}%`, top: `${yPct(p.intel)}%`, width: rad * 2, height: rad * 2, transform: `translate(-50%,-50%) scale(${isHover ? 1.15 : 1})`, zIndex: isHover ? 30 : on ? 10 : 2 }}
             >
@@ -2043,7 +2043,7 @@ function BenchFrontier({
               <span className={`max-w-full truncate font-mono text-[10px] font-semibold ${frontierKeys.has(p.key) ? "text-accent" : "text-text-primary"}`}>
                 {frontierKeys.has(p.key) ? "★ " : ""}{p.label}
               </span>
-              <span className="font-mono text-[9px] text-text-muted">{p.intel.toFixed(1)} · {fmtLatency(p.ms)} · {fmtCost(p.cost, p.local ? "local" : undefined)}</span>
+              <span className="font-mono text-[10px] text-text-muted">{p.intel.toFixed(1)} · {fmtLatency(p.ms)} · {fmtCost(p.cost, p.local ? "local" : undefined)}</span>
             </div>
           );
         })}
@@ -2053,7 +2053,7 @@ function BenchFrontier({
         Each bubble is a model. <span className="text-text-secondary">Higher is smarter</span> (judge score out of 10),{" "}
         <span className="text-text-secondary">further left is cheaper</span> (cost per run, log scale), and a{" "}
         <span className="text-text-secondary">bigger bubble is faster</span>. The dashed line connects the{" "}
-        <span className="text-accent">best-value picks</span> (★) — the most intelligence you can buy at each price. The tinted top-left corner is the sweet spot: smart and cheap.
+        <span className="text-accent">best-value picks</span> (★) - the most intelligence you can buy at each price. The tinted top-left corner is the sweet spot: smart and cheap.
       </p>
       {unpriced.length > 0 && (
         <div className="px-1 font-mono text-[10px] text-text-muted">unpriced (no cost axis): {unpriced.map((p) => p.label).join(", ")}</div>
@@ -2343,7 +2343,7 @@ export function BenchmarkPanel({
           ] as const).map(([group, tabs], gi) => (
             <div key={group} className={`flex items-center gap-1.5 px-2.5 py-1.5 ${gi > 0 ? "border-l border-border-subtle" : ""}`}>
               {(tabs.length > 1 || group !== tabs[0][1]) && (
-                <span className="shrink-0 select-none font-mono text-[8px] uppercase tracking-[0.14em] text-text-muted/50">{group}</span>
+                <span className="shrink-0 select-none font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted/50">{group}</span>
               )}
               <div className="flex flex-wrap items-center gap-0.5">
                 {tabs.map(([id, label, Icon]) => (

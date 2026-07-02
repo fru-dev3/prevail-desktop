@@ -249,7 +249,7 @@ export function OmegaSection({ vaultPath, headerless }: { vaultPath: string; hea
                           }
                         } catch (e) { console.error("restore omega", e); }
                       }}
-                      className="rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                      className="rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
                     >
                       Restore
                     </button>

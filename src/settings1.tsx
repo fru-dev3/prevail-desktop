@@ -12,6 +12,7 @@ import { IngestionBrowserRunner, PreambleColumn } from "./panels2";
 import { IngestionTierCard } from "./panels3";
 import { useFrameworkLens } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
+import { DesktopOnly } from "./emptystate";
 import type { IngestionArtifact, IngestionMcpServer, IngestionTierStatus } from "./types";
 import type { UnlistenFn } from "./bridge";
 
@@ -21,7 +22,8 @@ export function ShortcutsSection() {
     {
       name: "Navigation",
       entries: [
-        { keys: ["⌘", "K"], label: "New chat", desc: "Drops the current domain + thread, lands on the no-domain dashboard." },
+        { keys: ["⌘", "K"], label: "Command palette", desc: "Search actions, every page, and every domain from one place." },
+        { keys: ["⌘", "⇧", "K"], label: "New chat", desc: "Drops the current domain + thread, lands on the no-domain dashboard." },
         { keys: ["⌘", "P"], label: "Quick switcher", desc: "Fuzzy finder over every domain and every saved thread." },
         { keys: ["⌘", "B"], label: "Toggle sidebar", desc: "Collapses or expands the domain rail." },
         { keys: ["⌘", ","], label: "Open Settings", desc: "Jumps to the settings panel from anywhere." },
@@ -101,7 +103,7 @@ export function FrameworksSection() {
 
       {/* No collapse: everything on one page. A compact "how it works" strip, then
           Frameworks + Lenses side by side (two columns). */}
-      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-border-subtle bg-background px-3 py-2 text-[12px] text-text-secondary">
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-border-subtle bg-background px-3 py-2 text-[11px] text-text-secondary">
         <MessageSquare className="h-4 w-4 shrink-0 text-text-muted" />
         <span>Your question</span>
         <ArrowRight className="h-3.5 w-3.5 shrink-0 text-accent" />
@@ -135,7 +137,7 @@ export function FrameworksSection() {
       </div>
 
       {/* Custom + feedback — a quiet one-line footer, not a section. */}
-      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border-subtle pt-3 text-[12px] text-text-muted">
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border-subtle pt-3 text-[11px] text-text-muted">
         <span>Custom frameworks &amp; lenses are coming.</span>
         <a href="https://github.com/fru-dev3/prevail-desktop/issues/new" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-accent"><MessageSquare className="h-3 w-3" /> Suggest one</a>
         <a href="https://prevail.sh" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-accent"><Globe className="h-3 w-3" /> prevail.sh</a>
@@ -155,16 +157,24 @@ export function RemoteSection() {
   const [running, setRunning] = useState(false);
   const [port, setPort] = useState(() => getPref(PREF.webuiPort, "8787"));
   const [user, setUser] = useState(() => getPref(PREF.webuiUser, "admin"));
-  const [pass, setPass] = useState(() => {
-    let p = getPref(PREF.webuiPass, "");
-    if (!p) { p = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6); setPref(PREF.webuiPass, p); }
-    return p;
-  });
+  // E2: the password lives in the OS keychain, not plaintext localStorage. Load
+  // it on mount, migrating any legacy localStorage value (then scrubbing it).
+  const [pass, setPass] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [err, setErr] = useState("");
   useEffect(() => {
     invoke<{ running: boolean }>("webui_status").then((s) => setRunning(!!s.running)).catch(() => {});
+    (async () => {
+      let p = "";
+      try { p = await invoke<string>("webui_secret_get"); } catch { /* keychain unavailable */ }
+      const legacy = getPref(PREF.webuiPass, "");
+      if (!p && legacy) { p = legacy; try { await invoke("webui_secret_set", { pass: p }); } catch { /* ignore */ } }
+      if (legacy) setPref(PREF.webuiPass, ""); // scrub the plaintext copy
+      if (!p) { p = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6); try { await invoke("webui_secret_set", { pass: p }); } catch { /* ignore */ } }
+      setPass(p);
+    })();
   }, []);
+  const savePass = (p: string) => { setPass(p); void invoke("webui_secret_set", { pass: p }).catch(() => {}); };
   async function toggle(on: boolean) {
     setErr("");
     try {
@@ -180,6 +190,7 @@ export function RemoteSection() {
   return (
     <>
       <SettingsHeader title="Remote (WebUI)" subtitle="Serve this exact app to a browser: same UI, no rebuild. Then reach it from your phone or laptop, anywhere, via Tailscale or Cloudflare." />
+      <DesktopOnly feature="The WebUI server">
       <div className="rounded-lg border border-border bg-surface px-5">
         <SettingsRowLite title="Enable WebUI" desc="Run the bridge server so a browser can use Prevail. This Mac must stay on."
           control={<Toggle on={running} onChange={toggle} />} />
@@ -190,7 +201,7 @@ export function RemoteSection() {
         <SettingsRowLite title="Password" desc="Keep this private: anyone with it and the URL can use your agent."
           control={
             <div className="flex items-center gap-2">
-              <input type={showPass ? "text" : "password"} value={pass} disabled={running} onChange={(e) => { setPass(e.target.value); setPref(PREF.webuiPass, e.target.value); }} className="w-40 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />
+              <input type={showPass ? "text" : "password"} value={pass} disabled={running} onChange={(e) => savePass(e.target.value)} className="w-40 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-sm focus:border-accent-border focus:outline-none disabled:opacity-50" />
               <button onClick={() => setShowPass((v) => !v)} className="font-mono text-[11px] text-text-muted hover:text-accent">{showPass ? "hide" : "show"}</button>
             </div>
           } />
@@ -202,6 +213,7 @@ export function RemoteSection() {
         </div>
       )}
       {err && <div className="mt-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">{err}</div>}
+      </DesktopOnly>
     </>
   );
 }
@@ -340,8 +352,8 @@ export function IngestionSection() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-x-2">
                       <span className="font-mono text-sm text-text-primary">{a.original}</span>
-                      <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] text-accent">{a.domain}</span>
-                      <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] text-text-secondary">{a.source}</span>
+                      <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] text-accent">{a.domain}</span>
+                      <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">{a.source}</span>
                     </div>
                     <div className="mt-0.5 truncate font-mono text-[10px] text-text-muted">
                       {a.path} · {a.sha256.slice(0, 12)}… · {(a.size / 1024).toFixed(1)} KB
@@ -349,7 +361,7 @@ export function IngestionSection() {
                   </div>
                   <button
                     onClick={() => invoke("open_in_finder", { path: a.path })}
-                    className="shrink-0 rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                    className="shrink-0 rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
                   >
                     reveal
                   </button>

@@ -8,6 +8,7 @@ import { DOMAIN_LABEL, PATTERN_LABEL, PATTERN_TIER, SETTINGS_ROW, SOURCE_ABBR, S
 import { relTime, titleCase } from "./format";
 import { AppLogo, ConnectorIcon, PatternChip } from "./panels";
 import { SettingsHeader } from "./sectionutil";
+import { DesktopOnly } from "./emptystate";
 import { backupVaultNow } from "./backup";
 import type { Brand, BrandLogo, CatalogApp, Connector, ConnectorCatalog, EngineApp } from "./types";
 
@@ -251,8 +252,8 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
                       <div className="flex items-center gap-2">
                         <ChevronRight className={`h-3 w-3 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
                         <span className="truncate text-sm font-medium text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
-                        <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">{app.integration}</span>
-                        {app.domains.length > 0 && <span className="shrink-0 font-mono text-[9px] text-text-muted/70">→ {app.domains.map(titleCase).join(", ")}</span>}
+                        <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">{app.integration}</span>
+                        {app.domains.length > 0 && <span className="shrink-0 font-mono text-[10px] text-text-muted/70">→ {app.domains.map(titleCase).join(", ")}</span>}
                       </div>
                       <div className="pl-5 font-mono text-[10px] text-text-muted">
                         {app.status}{app.refresh?.every ? ` · ${app.refresh.every}` : ""} · synced {relTime(app.lastSuccessTs)}
@@ -453,10 +454,10 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
                   {[a.domain, ...(a.tags ?? [])].map((t) => DOMAIN_LABEL[t] ?? titleCase(t)).join(" · ")}
                 </span>
               </span>
-              {a.via && <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">via {a.via}</span>}
-              {a.fallback && <span className="shrink-0 font-mono text-[9px] text-text-muted/50" title={`falls back to ${a.fallback}`}>→ {PATTERN_LABEL[a.fallback] ?? a.fallback}</span>}
+              {a.via && <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted/70">via {a.via}</span>}
+              {a.fallback && <span className="shrink-0 font-mono text-[10px] text-text-muted/50" title={`falls back to ${a.fallback}`}>→ {PATTERN_LABEL[a.fallback] ?? a.fallback}</span>}
               {a.verified && a.sources && a.sources.length > 0 && (
-                <span className="shrink-0 font-mono text-[9px] text-accent" title={`Verified connector. Listed by: ${a.sources.join(", ")}`}>
+                <span className="shrink-0 font-mono text-[10px] text-accent" title={`Verified connector. Listed by: ${a.sources.join(", ")}`}>
                   ✓ {a.sources.map((s) => SOURCE_ABBR[s] ?? s).join("·")}
                 </span>
               )}
@@ -466,17 +467,17 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
                 const msg = addMsg[a.name];
                 const errored = msg && msg !== "added";
                 return already ? (
-                  <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-accent" title="Already a connected app">added</span>
+                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-accent" title="Already a connected app">added</span>
                 ) : (
                   <span className="flex shrink-0 items-center gap-1.5">
                     {errored && (
-                      <span className="max-w-[160px] truncate font-mono text-[9px] text-err" title={msg}>{msg}</span>
+                      <span className="max-w-[160px] truncate font-mono text-[10px] text-err" title={msg}>{msg}</span>
                     )}
                     <button
                       onClick={() => addApp(a)}
                       disabled={adding === a.name}
                       title={errored ? `Retry. Last error: ${msg}` : "Add as a connectable app"}
-                      className={`shrink-0 rounded border bg-background px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider transition-opacity group-hover:opacity-100 disabled:opacity-50 ${errored ? "border-err/50 text-err opacity-100 hover:border-err" : "border-border text-text-muted opacity-0 hover:border-accent-border hover:text-accent"}`}
+                      className={`shrink-0 rounded border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider transition-opacity group-hover:opacity-100 disabled:opacity-50 ${errored ? "border-err/50 text-err opacity-100 hover:border-err" : "border-border text-text-muted opacity-0 hover:border-accent-border hover:text-accent"}`}
                     >
                       {adding === a.name ? "…" : errored ? "retry" : "add"}
                     </button>
@@ -485,8 +486,8 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
               })()}
               {a.connection_hint && (
                 <span
-                  className={`shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${a.connection_hint.privacy === "vendor-cloud" ? "border-warn/40 bg-warn/10 text-warn" : "border-accent-border bg-accent-soft text-accent"}`}
-                  title={`Suggested: ${a.connection_hint.method}${a.connection_hint.server ? " · " + a.connection_hint.server : ""}${a.connection_hint.readOnly ? " · read-only" : ""} — ${a.connection_hint.privacy === "vendor-cloud" ? "routes through the vendor's cloud" : "stays on your machine"}${a.connection_hint.note ? `. ${a.connection_hint.note}` : ""}`}
+                  className={`shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${a.connection_hint.privacy === "vendor-cloud" ? "border-warn/40 bg-warn/10 text-warn" : "border-accent-border bg-accent-soft text-accent"}`}
+                  title={`Suggested: ${a.connection_hint.method}${a.connection_hint.server ? " · " + a.connection_hint.server : ""}${a.connection_hint.readOnly ? " · read-only" : ""} - ${a.connection_hint.privacy === "vendor-cloud" ? "routes through the vendor's cloud" : "stays on your machine"}${a.connection_hint.note ? `. ${a.connection_hint.note}` : ""}`}
                 >
                   {a.connection_hint.privacy === "vendor-cloud" ? "○ cloud" : "● local"}
                 </span>
@@ -522,7 +523,7 @@ export function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
   };
   useEffect(() => { void refresh(); /* eslint-disable-next-line */ }, [vaultPath]);
   async function encrypt() {
-    if (pass.length < 4) { setNote("Passcode must be at least 4 characters."); return; }
+    if (pass.length < 8) { setNote("Passcode must be at least 8 characters."); return; }
     if (!window.confirm("Encrypt this vault? Make sure you have a backup first. You'll get a one-time recovery code: save it.")) return;
     setBusy(true); setNote(null); setRecovery(null);
     try {
@@ -550,6 +551,7 @@ export function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
   }
   if (!status) return null;
   return (
+    <DesktopOnly feature="Vault encryption">
     <div className="mb-4 rounded-lg border border-border bg-surface p-5">
       <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-text-primary">
         <Shield className="h-3.5 w-3.5" /> Vault encryption {status.encrypted ? "· on" : "· off"}
@@ -564,7 +566,7 @@ export function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
           type="password"
           value={pass}
           onChange={(e) => setPass(e.target.value)}
-          placeholder={status.encrypted ? "Passcode" : "New passcode (min 4 chars)"}
+          placeholder={status.encrypted ? "Passcode" : "New passcode (min 8 chars)"}
           className="w-56 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none"
         />
         {status.encrypted ? (
@@ -572,7 +574,7 @@ export function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Decrypt vault
           </button>
         ) : (
-          <button onClick={encrypt} disabled={busy || pass.length < 4} className="inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent px-3 py-1.5 text-sm text-background hover:opacity-90 disabled:opacity-50">
+          <button onClick={encrypt} disabled={busy || pass.length < 8} className="inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent px-3 py-1.5 text-sm text-background hover:opacity-90 disabled:opacity-50">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Shield className="h-3.5 w-3.5" />} Encrypt vault
           </button>
         )}
@@ -593,5 +595,6 @@ export function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
       )}
       {note && <div className="mt-2 text-xs text-text-secondary">{note}</div>}
     </div>
+    </DesktopOnly>
   );
 }

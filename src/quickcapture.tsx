@@ -6,6 +6,7 @@
 // and strategy analysis.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Mic, Settings2, Sparkles, Square, X } from "lucide-react";
+import { invoke } from "./bridge";
 import { addNote } from "./notesstore";
 
 function getSpeechRecognition(): (new () => SpeechRecognitionLike) | null {
@@ -33,17 +34,37 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const committedRef = useRef("");
   const usedVoiceRef = useRef(false);
+  // C4: live transcription needs the Web Speech API (absent in the desktop
+  // WKWebView). When it's missing we fall back to MediaRecorder: record the audio
+  // and save it with the note, so voice capture still works (just without live
+  // text). getUserMedia + MediaRecorder ARE available in WKWebView.
   const speechSupported = !!getSpeechRecognition();
+  const mediaSupported = typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined";
+  const voiceSupported = speechSupported || mediaSupported;
+  const mediaRecRef = useRef<MediaRecorder | null>(null);
+  const mediaChunksRef = useRef<Blob[]>([]);
+  const audioPathRef = useRef<string | null>(null);
   const words = body.trim() ? body.trim().split(/\s+/).length : 0;
 
   const stopRec = useCallback(() => {
     try { recRef.current?.stop(); } catch { /* ignore */ }
     recRef.current = null;
+    try {
+      const mr = mediaRecRef.current;
+      if (mr && mr.state !== "inactive") mr.stop(); // fires onstop → saves the audio
+    } catch { /* ignore */ }
     setRecording(false);
   }, []);
 
   useEffect(() => () => stopRec(), [stopRec]);
   useEffect(() => { if (!open) stopRec(); }, [open, stopRec]);
+  // F8: the global capture hotkey (Cmd/Ctrl+Shift+Space) reveals the window and
+  // fires this event; open the ribbon so the user can capture immediately.
+  useEffect(() => {
+    const onSummon = () => setOpen(true);
+    window.addEventListener("prevail:quick-capture", onSummon);
+    return () => window.removeEventListener("prevail:quick-capture", onSummon);
+  }, []);
   // Recording timer.
   useEffect(() => {
     if (!recording) return;
@@ -55,7 +76,12 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
   const startRec = () => {
     setError(null);
     const SR = getSpeechRecognition();
-    if (!SR) { setError("Voice capture isn't available in this build."); return; }
+    if (!SR) {
+      // No live transcription here - record the audio instead.
+      if (mediaSupported) { void startAudioRec(); return; }
+      setError("Voice capture isn't available in this build.");
+      return;
+    }
     let r: SpeechRecognitionLike;
     try { r = new SR(); } catch { setError("Couldn't start the microphone."); return; }
     r.continuous = true; r.interimResults = true; r.lang = navigator.language || "en-US";
@@ -80,14 +106,52 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
     catch { setError("Couldn't start the microphone."); }
   };
 
+  // C4 fallback: capture the microphone with MediaRecorder and save the audio to
+  // the vault. The saved path is attached to the note on save.
+  const startAudioRec = async () => {
+    setError(null);
+    let stream: MediaStream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch {
+      setError("Microphone access is off. Enable it in System Settings → Privacy & Security → Microphone, then try again.");
+      return;
+    }
+    const mime = ["audio/webm", "audio/mp4", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
+    let mr: MediaRecorder;
+    try { mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined); }
+    catch { setError("Couldn't start the recorder."); stream.getTracks().forEach((t) => t.stop()); return; }
+    mediaChunksRef.current = [];
+    usedVoiceRef.current = true;
+    mr.ondataavailable = (e) => { if (e.data.size > 0) mediaChunksRef.current.push(e.data); };
+    mr.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const blob = new Blob(mediaChunksRef.current, { type: mr.mimeType || "audio/webm" });
+      if (blob.size === 0) return;
+      try {
+        const buf = new Uint8Array(await blob.arrayBuffer());
+        let bin = ""; for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+        const b64 = btoa(bin);
+        const ext = (mr.mimeType.split("/")[1] || "webm").split(";")[0];
+        audioPathRef.current = await invoke<string>("write_voice_note", { vault: vaultPath, base64: b64, ext });
+        setBody((b) => (b.trim() ? b : "Voice memo recorded."));
+      } catch (err) { setError(`Couldn't save the recording: ${String(err)}`); }
+    };
+    try { mr.start(); mediaRecRef.current = mr; setRecording(true); }
+    catch { setError("Couldn't start the recorder."); stream.getTracks().forEach((t) => t.stop()); }
+  };
+
   const save = async () => {
-    const text = body.trim();
-    if (!text && !title.trim()) return;
+    let text = body.trim();
     if (recording) stopRec();
+    // If a voice memo was recorded, keep a reference to the audio file in the note
+    // (the recording is saved even when we couldn't transcribe it live).
+    const audio = audioPathRef.current;
+    if (audio) text = `${text ? text + "\n\n" : ""}Voice memo: ${audio}`;
+    if (!text && !title.trim()) return;
     setSaving(true);
     try {
       await addNote(vaultPath, { title, body: text, source: usedVoiceRef.current ? "voice" : "quick" });
-      setTitle(""); setBody(""); committedRef.current = ""; usedVoiceRef.current = false;
+      setTitle(""); setBody(""); committedRef.current = ""; usedVoiceRef.current = false; audioPathRef.current = null;
       setSavedFlash(true);
       window.setTimeout(() => setSavedFlash(false), 1600);
     } catch (e) { setError(`Couldn't save: ${e}`); } finally { setSaving(false); }
@@ -98,7 +162,7 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
     return (
       <button
         onClick={() => setOpen(true)}
-        title="Quick note — capture a thought by typing or voice"
+        title="Quick note - capture a thought by typing or voice"
         className="group fixed right-0 top-1/3 z-40 flex h-14 w-10 items-center justify-center rounded-l-2xl border border-r-0 border-border bg-surface/90 text-text-secondary shadow-lg backdrop-blur transition-all hover:w-11 hover:bg-accent hover:text-background"
       >
         <Mic className="h-[18px] w-[18px] transition-transform group-hover:scale-110" />
@@ -113,7 +177,7 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-background shadow-sm"><Mic className="h-4 w-4" /></span>
         <div className="flex min-w-0 flex-1 flex-col leading-tight">
           <span className="font-display text-sm font-bold text-text-primary">Quick note</span>
-          <span className="text-[10px] text-text-muted">Type or speak — saved to Notes</span>
+          <span className="text-[10px] text-text-muted">Type or speak - saved to Notes</span>
         </div>
         <button onClick={() => setOpen(false)} title="Collapse" className="rounded-md p-1 text-text-muted transition-colors hover:bg-surface-warm hover:text-text-primary"><X className="h-4 w-4" /></button>
       </div>
@@ -138,7 +202,7 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
             </div>
             <div className="font-mono text-2xl tabular-nums text-accent">{mmss(seconds)}</div>
             <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent/80">Listening</div>
-            {body && <p className="line-clamp-3 px-5 text-center text-[12px] leading-relaxed text-text-secondary">{body}</p>}
+            {body && <p className="line-clamp-3 px-5 text-center text-[11px] leading-relaxed text-text-secondary">{body}</p>}
           </div>
         ) : (
           <textarea
@@ -152,11 +216,11 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
 
         {/* Friendly, actionable error */}
         {error && (
-          <div className="flex items-start gap-2 rounded-lg border border-err/30 bg-err/5 px-3 py-2 text-[12px] text-err">
+          <div className="flex items-start gap-2 rounded-lg border border-err/30 bg-err/5 px-3 py-2 text-[11px] text-err">
             <Settings2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <div className="flex-1">
               <span>{error}</span>
-              {speechSupported && <button onClick={startRec} className="ml-1 font-semibold underline hover:no-underline">Try again</button>}
+              {voiceSupported && <button onClick={startRec} className="ml-1 font-semibold underline hover:no-underline">Try again</button>}
             </div>
           </div>
         )}
@@ -169,13 +233,13 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
               <Square className="h-4 w-4" />
             </button>
           ) : (
-            <button onClick={startRec} disabled={!speechSupported} title={speechSupported ? "Record & transcribe" : "Voice capture isn't available in this build"} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent ring-1 ring-inset ring-accent-border/50 transition-transform hover:scale-105 disabled:opacity-40 disabled:hover:scale-100">
+            <button onClick={startRec} disabled={!voiceSupported} title={speechSupported ? "Record & transcribe" : mediaSupported ? "Record a voice memo" : "Voice capture isn't available in this build"} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent ring-1 ring-inset ring-accent-border/50 transition-transform hover:scale-105 disabled:opacity-40 disabled:hover:scale-100">
               <Mic className="h-[18px] w-[18px]" />
             </button>
           )}
 
           <div className="flex min-w-0 flex-1 flex-col leading-tight">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{recording ? "Recording…" : speechSupported ? "Tap to dictate" : "Voice unavailable"}</span>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{recording ? "Recording…" : speechSupported ? "Tap to dictate" : mediaSupported ? "Tap to record" : "Voice unavailable"}</span>
             {words > 0 && <span className="text-[10px] text-text-muted/70">{words} word{words === 1 ? "" : "s"}</span>}
           </div>
 
@@ -191,7 +255,7 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
         {/* Quiet footer hint */}
         <div className="flex items-center gap-1.5 border-t border-border-subtle pt-2.5 text-[10px] text-text-muted">
           <Sparkles className="h-3 w-3 text-accent/60" />
-          Saved to Notes — feeds your context over time.
+          Saved to Notes - feeds your context over time.
         </div>
       </div>
     </div>

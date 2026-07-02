@@ -476,6 +476,67 @@ pub(crate) fn write_paste_attachment(vault: String, body: String) -> Result<Stri
     Ok(p.to_string_lossy().to_string())
 }
 
+/// F3: save a pasted/dropped image (base64, no data-URL prefix) under
+/// <vault>/_paste and return the path, so it can be attached to a chat like any
+/// other file. `ext` is the image extension (png/jpg/gif/webp); anything else is
+/// rejected so this can't be used to write arbitrary files.
+#[tauri::command]
+pub(crate) fn write_paste_image(vault: String, base64: String, ext: String) -> Result<String, String> {
+    use ::base64::Engine as _;
+    let ext = ext.to_lowercase();
+    if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp") {
+        return Err(format!("unsupported image type: {ext}"));
+    }
+    let bytes = ::base64::engine::general_purpose::STANDARD
+        .decode(base64.trim())
+        .map_err(|e| format!("decode image: {e}"))?;
+    // Guard against absurd pastes writing the vault full.
+    if bytes.len() > 25 * 1024 * 1024 {
+        return Err("image is larger than 25 MB".into());
+    }
+    let dir = PathBuf::from(&vault).join("_paste");
+    fs::create_dir_all(&dir).map_err(|e| format!("mkdir _paste: {e}"))?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, m, d, hh, mm, ss) = secs_to_ymdhms(now as i64);
+    let name = format!("{y:04}-{m:02}-{d:02}_{hh:02}-{mm:02}-{ss:02}.{ext}");
+    let p = dir.join(&name);
+    fs::write(&p, &bytes).map_err(|e| format!("write image: {e}"))?;
+    Ok(p.to_string_lossy().to_string())
+}
+
+/// C4: save a recorded voice memo (base64 audio) under <vault>/_voice and return
+/// the path. Fallback capture for platforms without the Web Speech API (the
+/// desktop WKWebView): we can still record + keep the audio even if we can't
+/// transcribe it live. Type-guarded to common recorder outputs; 50 MB cap.
+#[tauri::command]
+pub(crate) fn write_voice_note(vault: String, base64: String, ext: String) -> Result<String, String> {
+    use ::base64::Engine as _;
+    let ext = ext.to_lowercase();
+    if !matches!(ext.as_str(), "webm" | "mp4" | "m4a" | "ogg" | "wav") {
+        return Err(format!("unsupported audio type: {ext}"));
+    }
+    let bytes = ::base64::engine::general_purpose::STANDARD
+        .decode(base64.trim())
+        .map_err(|e| format!("decode audio: {e}"))?;
+    if bytes.len() > 50 * 1024 * 1024 {
+        return Err("recording is larger than 50 MB".into());
+    }
+    let dir = PathBuf::from(&vault).join("_voice");
+    fs::create_dir_all(&dir).map_err(|e| format!("mkdir _voice: {e}"))?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, m, d, hh, mm, ss) = secs_to_ymdhms(now as i64);
+    let name = format!("{y:04}-{m:02}-{d:02}_{hh:02}-{mm:02}-{ss:02}.{ext}");
+    let p = dir.join(&name);
+    fs::write(&p, &bytes).map_err(|e| format!("write audio: {e}"))?;
+    Ok(p.to_string_lossy().to_string())
+}
+
 // Save a chat session as a markdown transcript under <domain>/_log/.
 // Filename format: YYYY-MM-DD_HH-MM-SS_session.md so directory listings
 // sort newest-last and the user can scan when each happened. Nothing is
