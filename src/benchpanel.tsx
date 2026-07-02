@@ -1323,7 +1323,12 @@ export function BenchRunConfig({
   type StepId = "models" | "domains" | "review" | "presets";
   const domainsStepShown = !scoped;
   const modelsDone = selModels.size > 0;
-  const domainsDone = true; // empty scope = all domains, always satisfiable
+  // The Domains step is optional (empty scope = run across all domains), but it is
+  // only marked DONE once the user actually engages it - picks specific domains OR
+  // explicitly chooses All - so it never shows a pre-completed check or "all
+  // domains" before they have touched it. Reset by Clear.
+  const [domainsTouched, setDomainsTouched] = useState(scope.size > 0);
+  const domainsDone = scope.size > 0 || domainsTouched;
   const reviewReady = modelsDone && questionCount > 0;
   // The ordered flow steps (Presets is a side tab, not part of the linear flow).
   const flowSteps: { id: StepId; label: string; icon: LucideIcon; done: boolean; n: number }[] = [
@@ -1377,7 +1382,7 @@ export function BenchRunConfig({
                   <span className="flex min-w-0 flex-col">
                     <span className={`truncate text-[13px] font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{s.label}</span>
                     <span className="truncate font-mono text-[9px] uppercase tracking-wider text-text-muted">
-                      {s.id === "models" ? `${selModels.size} selected` : s.id === "domains" ? (scope.size === 0 ? "all domains" : `${scope.size} chosen`) : `${questionCount} question${questionCount === 1 ? "" : "s"}`}
+                      {s.id === "models" ? `${selModels.size} selected` : s.id === "domains" ? (scope.size > 0 ? `${scope.size} chosen` : domainsTouched ? "all domains" : "any domain") : `${questionCount} question${questionCount === 1 ? "" : "s"}`}
                     </span>
                   </span>
                   <Icon className={`ml-auto hidden h-3.5 w-3.5 shrink-0 sm:block ${active ? "text-accent" : "text-text-muted"}`} />
@@ -1531,9 +1536,9 @@ export function BenchRunConfig({
             <div className="flex items-center justify-between border-t border-border-subtle pt-4">
               <div className="flex items-center gap-3">
                 <span className="font-mono text-[11px] text-text-muted">{selModels.size} model{selModels.size === 1 ? "" : "s"} selected</span>
-                {(selModels.size > 0 || scope.size > 0) && (
+                {(selModels.size > 0 || scope.size > 0 || domainsTouched) && (
                   <button
-                    onClick={() => { applyModels([]); applyScope([]); setActiveStep("models"); }}
+                    onClick={() => { applyModels([]); applyScope([]); setDomainsTouched(false); setActiveStep("models"); }}
                     title="Clear the selected models and domains to start a fresh run"
                     className="inline-flex items-center gap-1 rounded-md border border-warn/50 bg-warn/10 px-2.5 py-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-warn transition-colors hover:bg-warn hover:text-background"
                   >
@@ -1572,7 +1577,7 @@ export function BenchRunConfig({
             return (
               <button
                 key={d}
-                onClick={() => toggleScope(d)}
+                onClick={() => { setDomainsTouched(true); toggleScope(d); }}
                 title={count === 0 ? "No questions yet: add or AI-suggest some in Questions" : `${count} question${count === 1 ? "" : "s"}`}
                 className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] transition-all ${
                   on
@@ -1604,8 +1609,8 @@ export function BenchRunConfig({
               <div className="ml-[7px] mt-2 space-y-2 border-l border-border-subtle/70 pl-4">
                 <div className="flex flex-wrap gap-1.5">
                   <button
-                    onClick={() => scope.forEach((d) => toggleScope(d))}
-                    title="Reset to all domains"
+                    onClick={() => { setDomainsTouched(true); scope.forEach((d) => toggleScope(d)); }}
+                    title="Run across all domains"
                     className="rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] text-text-muted transition-all hover:-translate-y-0.5 hover:border-accent-border hover:bg-accent-soft hover:text-accent hover:shadow-sm"
                   >
                     All
@@ -1628,11 +1633,11 @@ export function BenchRunConfig({
         {nextStep && (
           <div className="flex items-center justify-between border-t border-border-subtle pt-4">
             <div className="flex items-center gap-3">
-              <span className="font-mono text-[11px] text-text-muted">{scope.size === 0 ? "All domains (default)" : `${scope.size} domain${scope.size === 1 ? "" : "s"}`} · {questionCount} question{questionCount === 1 ? "" : "s"}</span>
-              {scope.size > 0 && (
+              <span className="font-mono text-[11px] text-text-muted">{scope.size > 0 ? `${scope.size} domain${scope.size === 1 ? "" : "s"}` : domainsTouched ? "All domains" : "Any domain (runs all)"} · {questionCount} question{questionCount === 1 ? "" : "s"}</span>
+              {(scope.size > 0 || domainsTouched) && (
                 <button
-                  onClick={() => applyScope([])}
-                  title="Clear the selected domains (defaults back to all domains)"
+                  onClick={() => { applyScope([]); setDomainsTouched(false); }}
+                  title="Clear the domain choice"
                   className="inline-flex items-center gap-1 rounded-md border border-warn/50 bg-warn/10 px-2.5 py-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-warn transition-colors hover:bg-warn hover:text-background"
                 >
                   <RotateCw className="h-3 w-3" /> Clear
