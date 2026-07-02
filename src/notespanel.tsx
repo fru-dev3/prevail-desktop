@@ -8,6 +8,7 @@ import { relTime } from "./format";
 import { SettingsHeader } from "./sectionutil";
 import { loadNotes, newNoteId as newId, saveNotes, type Note } from "./notesstore";
 import { toast } from "./toast";
+import { EmptyState } from "./emptystate";
 
 export function NotesPanel({ vaultPath }: { vaultPath: string }) {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -128,8 +129,12 @@ export function NotesPanel({ vaultPath }: { vaultPath: string }) {
           </div>
           <ul className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {filtered.length === 0 ? (
-              <li className="px-3 py-6 text-center text-[13px] text-text-muted">
-                {notes.length === 0 ? "No notes yet. Capture your first idea." : "No notes match your search."}
+              <li>
+                {notes.length === 0 ? (
+                  <EmptyState icon={FileText} title="No notes yet" body="Capture a thought here, or hit the global capture hotkey from anywhere." action={{ label: "New note", onClick: createNote }} />
+                ) : (
+                  <EmptyState icon={Search} title="No matches" body="No notes match your search." />
+                )}
               </li>
             ) : filtered.map((n) => (
               <li key={n.id}>
