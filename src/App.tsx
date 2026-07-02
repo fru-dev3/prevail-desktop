@@ -34,6 +34,8 @@ import { OnboardingTour } from "./onboarding";
 import { VaultEncryptPrompt, vaultEncryptOffered } from "./vault-encrypt-prompt";
 import { migrateModelPrefs } from "./helpers2";
 import { AppHeaderBar, DomainActionsMenu, LockScreen, QuickSwitcher, ThreadsRail, WebLogin } from "./panels";
+import { CommandPalette, type Command } from "./commandpalette";
+import { EDITOR_NAV, WORK_NAV } from "./navdefs";
 
 // Single source of truth for the version chip in title bar.
 
@@ -132,8 +134,11 @@ import {
   Plug,
   ChevronsRight,
   ChevronsLeft,
-  
-  
+  MessageSquarePlus,
+  FileText,
+  CalendarDays,
+  PanelLeft,
+  Compass,
   ShieldCheck,
   RefreshCw,
   Repeat,
@@ -1160,6 +1165,35 @@ export default function App() {
   // Quick switcher (⌘P) - fuzzy finder over all domains + recent
   // threads across all domains. Modal owns its own state when open.
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
+  const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
+
+  // F1: the command palette's item list - actions, navigation to every section,
+  // and every domain. Rebuilt when the domains change.
+  const paletteCommands = useMemo<Command[]>(() => {
+    const cmds: Command[] = [];
+    // Actions.
+    cmds.push(
+      { id: "act:new-chat", label: "New chat", hint: "⌘K", group: "Actions", icon: MessageSquarePlus, keywords: "conversation ask", run: () => { setSelectedDomain(""); setActiveThreadPath(null); setTab("chat"); } },
+      { id: "act:new-note", label: "New note", group: "Actions", icon: FileText, keywords: "capture write", run: () => openWorkAt("notes") },
+      { id: "act:board", label: "Open work board", group: "Actions", icon: Briefcase, keywords: "tasks todo", run: () => openWorkAt("tasks") },
+      { id: "act:calendar", label: "Open calendar", group: "Actions", icon: CalendarDays, keywords: "schedule events", run: () => openWorkAt("calendar") },
+      { id: "act:toggle-rail", label: "Toggle domain rail", hint: "⌘B", group: "Actions", icon: PanelLeft, keywords: "sidebar hide show", run: () => setSidebarCollapsed((v) => !v) },
+      { id: "act:settings", label: "Open settings", hint: "⌘,", group: "Actions", icon: SettingsIcon, keywords: "preferences config", run: () => setTab("settings") },
+    );
+    // Navigation to every Work + Editor section.
+    for (const grp of WORK_NAV) for (const it of grp.items) {
+      cmds.push({ id: `nav:w:${it.id}`, label: it.label, hint: "Go to", group: `Go to · ${grp.heading}`, icon: it.icon, run: () => openWorkAt(it.id) });
+    }
+    for (const grp of EDITOR_NAV) for (const it of grp.items) {
+      cmds.push({ id: `nav:e:${it.id}`, label: it.label, hint: "Go to", group: `Go to · ${grp.heading}`, icon: it.icon, run: () => openSettingsAt(it.id) });
+    }
+    // Every domain.
+    for (const d of domains) {
+      cmds.push({ id: `dom:${d.name}`, label: titleCase(d.name), hint: "Domain", group: "Domains", icon: Compass, keywords: d.name, run: () => openDomain(d.name) });
+    }
+    return cmds;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domains]);
 
   // Keyboard shortcuts - global. Skip when a text input has focus
   // (so typing ⌘B in the composer doesn't toggle the sidebar).
@@ -1174,11 +1208,15 @@ export default function App() {
       const k = e.key.toLowerCase();
       if (editable && k !== "," && k !== "k" && k !== "p") return;
       switch (k) {
-        case "k": // ⌘K - new chat (no domain)
+        case "k": // ⌘K - command palette; ⌘⇧K - new chat (no domain)
           e.preventDefault();
-          setSelectedDomain("");
-          setActiveThreadPath(null);
-          setTab("chat");
+          if (e.shiftKey) {
+            setSelectedDomain("");
+            setActiveThreadPath(null);
+            setTab("chat");
+          } else {
+            setCmdPaletteOpen((v) => !v);
+          }
           break;
         case ",": // ⌘, - open settings
           e.preventDefault();
@@ -1402,6 +1440,7 @@ export default function App() {
         <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
         <BridgeStatusChips />
         <QuickCapture vaultPath={vaultPath} />
+        {cmdPaletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setCmdPaletteOpen(false)} />}
       </div>
     );
   }
@@ -1421,6 +1460,7 @@ export default function App() {
         <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
         <BridgeStatusChips />
         <QuickCapture vaultPath={vaultPath} />
+        {cmdPaletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setCmdPaletteOpen(false)} />}
       </div>
     );
   }
@@ -1871,6 +1911,9 @@ export default function App() {
             setQuickSwitcherOpen(false);
           }}
         />
+      )}
+      {cmdPaletteOpen && (
+        <CommandPalette commands={paletteCommands} onClose={() => setCmdPaletteOpen(false)} />
       )}
       {onboardOpen && (
         <OnboardingModal
