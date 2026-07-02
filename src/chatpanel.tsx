@@ -1287,6 +1287,20 @@ export function ChatPanel({
       toast.success(`Pinned to ${dom === "general" ? "your" : dom + "'s"} memory.`);
     } catch (e) { toast.error(`Could not pin to memory: ${String(e)}`); }
   }, [vaultPath, tDomain, domain]);
+  // X5: distill a reply into a reusable skill file in this domain, so Prevail can
+  // replay the procedure later instead of re-reasoning it.
+  const makeSkillFromChat = useCallback(async (text: string) => {
+    const body = text.trim();
+    if (!body) return;
+    const dom = tDomain || domain || "general";
+    const firstLine = body.split("\n").map((l) => l.replace(/^#+\s*|[*_`]/g, "").trim()).find((l) => l.length > 0) ?? "skill";
+    const name = firstLine.length > 48 ? firstLine.slice(0, 45).trimEnd() : firstLine;
+    try {
+      await invoke<string>("skill_create", { vault: vaultPath, domain: dom, name, body });
+      window.dispatchEvent(new Event("prevail:context-changed"));
+      toast.success(`Saved "${name}" as a skill.`);
+    } catch (e) { toast.error(`Could not save the skill: ${String(e)}`); }
+  }, [vaultPath, tDomain, domain]);
   // X9: turn a message's intent into a recurring automation (loop) in this
   // domain, seeded from the text, then jump to Automations to refine it.
   const makeLoopFromChat = useCallback(async (text: string) => {
@@ -1802,6 +1816,7 @@ export function ChatPanel({
               onSaveNote={saveMessageAsNote}
               onPinMemory={pinMessageToMemory}
               onMakeLoop={makeLoopFromChat}
+              onMakeSkill={makeSkillFromChat}
             />
           </div>
         )}
@@ -1907,6 +1922,7 @@ export function ChatPanel({
               onSaveNote={saveMessageAsNote}
               onPinMemory={pinMessageToMemory}
               onMakeLoop={makeLoopFromChat}
+              onMakeSkill={makeSkillFromChat}
             />
           </div>
         )}
