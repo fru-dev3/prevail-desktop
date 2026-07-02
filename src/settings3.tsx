@@ -486,7 +486,7 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
               {a.connection_hint && (
                 <span
                   className={`shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${a.connection_hint.privacy === "vendor-cloud" ? "border-warn/40 bg-warn/10 text-warn" : "border-accent-border bg-accent-soft text-accent"}`}
-                  title={`Suggested: ${a.connection_hint.method}${a.connection_hint.server ? " · " + a.connection_hint.server : ""}${a.connection_hint.readOnly ? " · read-only" : ""} — ${a.connection_hint.privacy === "vendor-cloud" ? "routes through the vendor's cloud" : "stays on your machine"}${a.connection_hint.note ? `. ${a.connection_hint.note}` : ""}`}
+                  title={`Suggested: ${a.connection_hint.method}${a.connection_hint.server ? " · " + a.connection_hint.server : ""}${a.connection_hint.readOnly ? " · read-only" : ""} - ${a.connection_hint.privacy === "vendor-cloud" ? "routes through the vendor's cloud" : "stays on your machine"}${a.connection_hint.note ? `. ${a.connection_hint.note}` : ""}`}
                 >
                   {a.connection_hint.privacy === "vendor-cloud" ? "○ cloud" : "● local"}
                 </span>
@@ -522,7 +522,7 @@ export function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
   };
   useEffect(() => { void refresh(); /* eslint-disable-next-line */ }, [vaultPath]);
   async function encrypt() {
-    if (pass.length < 4) { setNote("Passcode must be at least 4 characters."); return; }
+    if (pass.length < 8) { setNote("Passcode must be at least 8 characters."); return; }
     if (!window.confirm("Encrypt this vault? Make sure you have a backup first. You'll get a one-time recovery code: save it.")) return;
     setBusy(true); setNote(null); setRecovery(null);
     try {
@@ -564,7 +564,7 @@ export function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
           type="password"
           value={pass}
           onChange={(e) => setPass(e.target.value)}
-          placeholder={status.encrypted ? "Passcode" : "New passcode (min 4 chars)"}
+          placeholder={status.encrypted ? "Passcode" : "New passcode (min 8 chars)"}
           className="w-56 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-accent-border focus:outline-none"
         />
         {status.encrypted ? (
@@ -572,7 +572,7 @@ export function VaultEncryptionCard({ vaultPath }: { vaultPath: string }) {
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Decrypt vault
           </button>
         ) : (
-          <button onClick={encrypt} disabled={busy || pass.length < 4} className="inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent px-3 py-1.5 text-sm text-background hover:opacity-90 disabled:opacity-50">
+          <button onClick={encrypt} disabled={busy || pass.length < 8} className="inline-flex items-center gap-2 rounded-md border border-accent-border bg-accent px-3 py-1.5 text-sm text-background hover:opacity-90 disabled:opacity-50">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Shield className="h-3.5 w-3.5" />} Encrypt vault
           </button>
         )}

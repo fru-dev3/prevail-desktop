@@ -232,7 +232,7 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
         <div className="mt-4 border-t border-border-subtle pt-3">
           <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
             <Layers className="h-3 w-3 text-accent" /> Model catalog
-            {orLive.length > 0 && <span className="text-text-muted normal-case tracking-normal">· {orLive.length} live models — search to browse</span>}
+            {orLive.length > 0 && <span className="text-text-muted normal-case tracking-normal">· {orLive.length} live models - search to browse</span>}
           </div>
           <input
             value={orQuery}
@@ -268,39 +268,29 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
         </div>
       </div>
       </CollapsibleSection>
-      {/* Other aggregators - one key, many models - landing next. Shown so the
-          roadmap is visible; each is a disabled "coming soon" card like OpenRouter. */}
-      <ComingSoonAggregators />
+      {/* Other aggregators are on the roadmap. Kept to a single understated line
+          (not six "coming soon" cards) so the panel advertises what works today,
+          not what is missing. */}
+      <MoreAggregators />
     </>
   );
 }
 
-// Aggregators (one key -> many hosted models) on the roadmap. Rendered as
-// disabled cards beneath OpenRouter so the user sees what's coming.
-const COMING_SOON_AGGREGATORS: { name: string; blurb: string }[] = [
-  { name: "AWS Bedrock", blurb: "Anthropic, Llama, Mistral, Titan via your AWS account." },
-  { name: "Google Vertex AI", blurb: "Gemini + partner models on Google Cloud." },
-  { name: "Azure AI Foundry", blurb: "OpenAI + open models on Azure." },
-  { name: "Together AI", blurb: "Fast hosted open models (Llama, Qwen, DeepSeek)." },
-  { name: "Fireworks AI", blurb: "Low-latency open-model inference." },
-  { name: "Groq", blurb: "Ultra-fast inference on LPUs." },
-];
-
-function ComingSoonAggregators() {
+function MoreAggregators() {
   return (
-    <div className="mt-3 space-y-2">
-      {COMING_SOON_AGGREGATORS.map((a) => (
-        <div key={a.name} className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface/50 px-4 py-3 opacity-70">
-          <Layers className="h-4 w-4 shrink-0 text-text-muted" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-text-secondary">{a.name}</span>
-              <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">Coming soon</span>
-            </div>
-            <div className="mt-0.5 text-xs text-text-muted">{a.blurb}</div>
-          </div>
-        </div>
-      ))}
+    <div className="mt-3 flex items-start gap-3 rounded-lg border border-border-subtle bg-surface/40 px-4 py-2.5 text-xs text-text-muted">
+      <Layers className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
+      <div className="min-w-0 flex-1">
+        <span className="text-text-secondary">More aggregators are on the roadmap</span> (Bedrock, Vertex, Azure, Together, Fireworks, Groq). Most hosted models are already reachable today through OpenRouter above, or add a vendor key directly below.{" "}
+        <a
+          href="https://github.com/fru-dev3/prevail-desktop/issues/new"
+          target="_blank"
+          rel="noreferrer"
+          className="text-accent underline decoration-dotted underline-offset-2 hover:opacity-80"
+        >
+          Request a provider
+        </a>
+      </div>
     </div>
   );
 }
@@ -433,7 +423,7 @@ export function ModelsSection({
       <SettingsHeader
         title="Runtimes"
         icon={Layers}
-        subtitle="A runtime is a model plus a way to run it — a local CLI, a direct vendor key, or an aggregator. The same model can run several ways, each with its own cost, speed, and privacy. Validated at launch with a real call; expand one to test individual models and set the default new chats open with."
+        subtitle="A runtime is a model plus a way to run it - a local CLI, a direct vendor key, or an aggregator. The same model can run several ways, each with its own cost, speed, and privacy. Validated at launch with a real call; expand one to test individual models and set the default new chats open with."
       />
       {/* Three collapsible groups. CLI runtimes open by default (the main list);
           per-runtime validity shows as a checkmark in the list itself, so the

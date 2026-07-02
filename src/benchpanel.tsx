@@ -61,7 +61,7 @@ function ModelScoutSuggestions({ vaultPath }: { vaultPath: string }) {
           Arena's roster current so you don't have to track releases yourself. */}
       <div className="rounded-lg border border-accent-border/40 bg-accent-soft/30 px-3 py-2.5">
         <p className="text-[12px] leading-relaxed text-text-secondary">
-          <span className="font-semibold text-text-primary">New models ship every week.</span> Scout's daily web scan flags freshly-released models — open-weight and frontier — worth adding to your Arena, so your benchmarks stay current without you tracking announcements. Each suggestion links to its source; pick the ones you care about and add them as Arena models to run.
+          <span className="font-semibold text-text-primary">New models ship every week.</span> Scout's daily web scan flags freshly-released models - open-weight and frontier - worth adding to your Arena, so your benchmarks stay current without you tracking announcements. Each suggestion links to its source; pick the ones you care about and add them as Arena models to run.
         </p>
       </div>
       <div className="space-y-2 px-1">
@@ -1567,7 +1567,7 @@ export function BenchResults({
             <span className="block font-mono text-[10px] text-text-muted">
               {m.runs.length} run{m.runs.length === 1 ? "" : "s"} · {m.domains.length} domain{m.domains.length === 1 ? "" : "s"} · last {m.latestDate || "-"}
               {rank === null ? (
-                <span className="ml-1.5 font-semibold text-warn" title="No judged score — this model errored or hasn't been scored, so it isn't ranked.">· no score</span>
+                <span className="ml-1.5 font-semibold text-warn" title="No judged score - this model errored or hasn't been scored, so it isn't ranked.">· no score</span>
               ) : m.delta !== null && Math.abs(m.delta) >= 0.05 ? (
                 <span className={`ml-1.5 font-semibold ${m.delta > 0 ? "text-ok" : "text-warn"}`} title={`Judge trend: ${m.history.map((v) => v.toFixed(1)).join(" → ")}`}>
                   {m.delta > 0 ? "▲" : "▼"}{Math.abs(m.delta).toFixed(1)}
@@ -1789,7 +1789,7 @@ export function BenchResults({
               ))}
             </div>
           </div>
-          {/* Column header — aligns with the fixed-width columns below. */}
+          {/* Column header - aligns with the fixed-width columns below. */}
           <div className="mb-1 hidden items-center gap-3 px-4 font-mono text-[9px] uppercase tracking-wider text-text-muted/70 sm:flex">
             <span className="min-w-0 flex-1" />
             <span className="w-16 text-right">Speed</span>
@@ -1804,7 +1804,7 @@ export function BenchResults({
           {unrankedRows.length > 0 && (
             <div className="mt-4">
               <div className="mb-1.5 flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-                <AlertTriangle className="h-3 w-3 text-warn" /> Not ranked — no judged score (errored or unscored)
+                <AlertTriangle className="h-3 w-3 text-warn" /> Not ranked - no judged score (errored or unscored)
               </div>
               <div className="flex flex-col gap-2">
                 {unrankedRows.map((m) => renderBoardRow(m, null))}
@@ -1971,7 +1971,7 @@ function BenchFrontier({
   const frontierKeys = new Set(frontier.map((p) => p.key));
 
   if (plotted.length === 0) {
-    return <div className="rounded-xl border border-border-subtle bg-surface px-4 py-10 text-center text-sm text-text-muted">No scored runs with both a score and a cost yet — run a benchmark to populate the frontier.</div>;
+    return <div className="rounded-xl border border-border-subtle bg-surface px-4 py-10 text-center text-sm text-text-muted">No scored runs with both a score and a cost yet - run a benchmark to populate the frontier.</div>;
   }
 
   return (
@@ -2018,7 +2018,7 @@ function BenchFrontier({
               onClick={() => onPick(p.key)}
               onMouseEnter={() => setHover(p.key)}
               onMouseLeave={() => setHover((h) => (h === p.key ? null : h))}
-              title={`${p.label} — ${p.intel.toFixed(1)}/10 · ${fmtLatency(p.ms)} · ${fmtCost(p.cost, p.local ? "local" : undefined)}${on ? " · best-value frontier" : ""}`}
+              title={`${p.label} - ${p.intel.toFixed(1)}/10 · ${fmtLatency(p.ms)} · ${fmtCost(p.cost, p.local ? "local" : undefined)}${on ? " · best-value frontier" : ""}`}
               className={`absolute flex items-center justify-center rounded-full border transition-transform ${on ? "border-accent bg-accent-soft" : "border-border bg-surface-warm"} ${isHover ? "ring-2 ring-accent/40" : ""}`}
               style={{ left: `${xPct(p.cost)}%`, top: `${yPct(p.intel)}%`, width: rad * 2, height: rad * 2, transform: `translate(-50%,-50%) scale(${isHover ? 1.15 : 1})`, zIndex: isHover ? 30 : on ? 10 : 2 }}
             >
@@ -2053,7 +2053,7 @@ function BenchFrontier({
         Each bubble is a model. <span className="text-text-secondary">Higher is smarter</span> (judge score out of 10),{" "}
         <span className="text-text-secondary">further left is cheaper</span> (cost per run, log scale), and a{" "}
         <span className="text-text-secondary">bigger bubble is faster</span>. The dashed line connects the{" "}
-        <span className="text-accent">best-value picks</span> (★) — the most intelligence you can buy at each price. The tinted top-left corner is the sweet spot: smart and cheap.
+        <span className="text-accent">best-value picks</span> (★) - the most intelligence you can buy at each price. The tinted top-left corner is the sweet spot: smart and cheap.
       </p>
       {unpriced.length > 0 && (
         <div className="px-1 font-mono text-[10px] text-text-muted">unpriced (no cost axis): {unpriced.map((p) => p.label).join(", ")}</div>
