@@ -293,7 +293,7 @@ export function RecommendationsPanel({ vaultPath }: { vaultPath: string }) {
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-sm font-semibold text-text-primary">{recTitle(r)}</span>
                               {recScore(r) && <span className="font-mono text-[10px] italic text-text-muted" title="Current context score">{recScore(r)}</span>}
-                              <span className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${impact.cls}`}>{impact.label}</span>
+                              <span className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${impact.cls}`}>{impact.label}</span>
                             </div>
                             <p className="mt-0.5 text-xs text-text-secondary">{r.detail}</p>
                             <button onClick={() => setOpenWhy(whyOpen ? null : r.id)} className="mt-1 inline-flex items-center gap-1 text-[11px] text-accent hover:underline">

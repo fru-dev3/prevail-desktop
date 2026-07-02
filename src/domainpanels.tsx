@@ -159,7 +159,7 @@ function RebuildStateButton({ vaultPath, domain, field }: { vaultPath: string; d
   };
   return (
     <span className="flex shrink-0 items-center gap-1">
-      {note && <span className="font-mono text-[9px] lowercase text-text-muted">{note}</span>}
+      {note && <span className="font-mono text-[10px] lowercase text-text-muted">{note}</span>}
       <button onClick={run} disabled={busy} title={`Rebuild ${field} from your activity here`}
         className="rounded p-1 text-text-muted transition-colors hover:text-accent disabled:opacity-50">
         {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -329,7 +329,7 @@ export function DomainContextDrawer({
             >
               <Compass className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
               <div className="min-w-0">
-                <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-accent">
+                <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
                   {domain ? `${titleCase(domain)} serves your mission` : "Your mission"}
                 </div>
                 <div className="truncate text-[12px] text-text-secondary">{mission}</div>
@@ -432,7 +432,7 @@ export function DomainContextDrawer({
                     return (
                       <li key={key} className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-background px-2.5 py-1.5">
                         <button onClick={() => openCanvas(title, full)} className="min-w-0 flex-1 text-left" title="Open in canvas">
-                          <div className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                          <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
                             <span>{d.kind ?? "decision"}{ago ? ` · ${ago}` : ""}</span>
                             {fb === "up" && <ThumbsUp className="h-2.5 w-2.5 text-accent" />}
                             {fb === "down" && <ThumbsDown className="h-2.5 w-2.5 text-red-500" />}
@@ -460,7 +460,7 @@ export function DomainContextDrawer({
               )}
               {ctx.recent_logs.length > 0 ? (
                 <>
-                  <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">Session logs</div>
+                  <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-muted/70">Session logs</div>
                   <ul className="space-y-1">
                     {ctx.recent_logs.map((l) => (
                       <li key={l.path}>
@@ -598,7 +598,7 @@ export function AgentPickerRail({
             <span className="relative">
               <ProviderMark vendor={c.id} size={24} />
               {v === "ok" && (
-                <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-ok text-[8px] font-bold leading-none text-background">✓</span>
+                <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-ok text-[10px] font-bold leading-none text-background">✓</span>
               )}
               {v === "verifying" && (
                 <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-text-muted" />
@@ -654,7 +654,7 @@ export function PrefPickerColumn({
         {selected && (
           <button
             onClick={onClear}
-            className="rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+            className="rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
           >
             use global
           </button>
@@ -987,7 +987,7 @@ export function DomainPrefsPanel({
         right={pickedCli ? (
           <button
             onClick={() => { setOverride(cliKey, ""); setOverride(modelKey, ""); }}
-            className="rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+            className="rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
           >
             use global
           </button>
@@ -1037,7 +1037,7 @@ export function DomainPrefsPanel({
                     {c.label}
                   </span>
                   {disabled && (
-                    <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">not installed</span>
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">not installed</span>
                   )}
                   {picked && (
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-background">
@@ -1061,7 +1061,7 @@ export function DomainPrefsPanel({
                       {pickedModel && (
                         <button
                           onClick={() => setOverride(modelKey, "")}
-                          className="rounded border border-border bg-background px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                          className="rounded border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
                         >
                           use cli default
                         </button>
@@ -1355,7 +1355,7 @@ export function DomainPrefsPanel({
                       title={r.on ? "Running" : "Off"}
                     />
                     <span className="text-sm font-semibold text-text-primary">{r.title}</span>
-                    <span className={`font-mono text-[9px] uppercase tracking-wider ${r.on ? "text-ok" : "text-text-muted"}`}>{r.on ? "on" : "off"}</span>
+                    <span className={`font-mono text-[10px] uppercase tracking-wider ${r.on ? "text-ok" : "text-text-muted"}`}>{r.on ? "on" : "off"}</span>
                   </div>
                   <div className="mt-0.5 text-xs leading-relaxed text-text-secondary">{r.desc}</div>
                 </div>

@@ -100,30 +100,30 @@ export function TaskDetailPanel({ task, vaultPath, onClose, onChanged }: {
           {/* Meta controls */}
           <div className="grid grid-cols-2 gap-2.5">
             <label className="block">
-              <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Status</div>
+              <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">Status</div>
               <select value={task.status} onChange={(e) => patchTask({ status: e.target.value })} disabled={busy} className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs">
                 {["todo", "doing", "review", "blocked", "done", "icebox"].map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
               </select>
             </label>
             <label className="block">
-              <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Due</div>
+              <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">Due</div>
               <input type="date" value={task.due ?? ""} onChange={(e) => patchTask({ due: e.target.value || null })} disabled={busy} className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs text-text-secondary" />
             </label>
             <button onClick={cyclePriority} disabled={busy} className="flex items-center justify-between rounded-md border border-border bg-background px-2 py-1.5 text-left">
-              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Priority</span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Priority</span>
               <span className={`inline-flex items-center gap-1 text-xs ${task.priority === "critical" ? "text-danger" : task.priority === "high" ? "text-warn" : "text-text-muted"}`}>
                 <Flag className="h-3 w-3" fill={task.priority ? "currentColor" : "none"} /> {task.priority ?? "normal"}
               </span>
             </button>
             <button onClick={() => patchTask({ owner: task.owner === "ai" ? "me" : "ai" })} disabled={busy} className="flex items-center justify-between rounded-md border border-border bg-background px-2 py-1.5 text-left">
-              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Owner</span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Owner</span>
               <span className="inline-flex items-center gap-1 text-xs text-text-secondary">{task.owner === "ai" ? <><Bot className="h-3 w-3" /> AI</> : <><User className="h-3 w-3" /> Me</>}</span>
             </button>
           </div>
 
           {/* Description */}
           <div className="mt-4">
-            <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Description</div>
+            <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">Description</div>
             <textarea
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
@@ -141,11 +141,11 @@ export function TaskDetailPanel({ task, vaultPath, onClose, onChanged }: {
 
           {/* Comments / activity */}
           <div className="mt-5">
-            <div className="mb-2 font-mono text-[9px] uppercase tracking-wider text-text-muted">Comments · {comments.length}</div>
+            <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">Comments · {comments.length}</div>
             <div className="space-y-2">
               {comments.map((c, i) => (
                 <div key={i} className="rounded-lg border border-border-subtle bg-background px-3 py-2">
-                  <div className="mb-0.5 flex items-center gap-2 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                  <div className="mb-0.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
                     {c.author === "ai" ? <Bot className="h-3 w-3 text-accent" /> : <User className="h-3 w-3" />}
                     {c.author === "ai" ? "AI" : "You"} · {relTime(c.ts)}
                   </div>

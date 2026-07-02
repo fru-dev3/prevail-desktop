@@ -368,7 +368,7 @@ export function IdealStateSection({ vaultPath, headerless = false }: { vaultPath
                           }
                         } catch (e) { console.error("restore ideal state", e); }
                       }}
-                      className="rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                      className="rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
                     >
                       Restore
                     </button>

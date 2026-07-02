@@ -152,10 +152,10 @@ export function ChatBubble({
             <span className="font-mono text-[10px] lowercase text-text-muted" title={`Model: ${msg.model}`}>{modelLabel(msg.cli, msg.model)}</span>
           )}
           {msg.role === "assistant" && msg.framework && (
-            <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Reasoning framework in effect">{msg.framework}</span>
+            <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted" title="Reasoning framework in effect">{msg.framework}</span>
           )}
           {msg.role === "assistant" && msg.lens && (
-            <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Lens in effect">{msg.lens}</span>
+            <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted" title="Lens in effect">{msg.lens}</span>
           )}
           {/* BP3: timestamp on the assistant turn. */}
           {stamp && <span className="font-mono text-[10px] text-text-muted/70">· {stamp}</span>}
@@ -450,7 +450,7 @@ export function DomainStatusBar({
           >
             <SlidersHorizontal className="h-3 w-3" /> Modes
             {activeModes > 0 && (
-              <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[9px] font-bold text-background">{activeModes}</span>
+              <span className="rounded-full bg-accent px-1.5 py-0 font-mono text-[10px] font-bold text-background">{activeModes}</span>
             )}
           </button>
           {modesOpen && (
@@ -594,7 +594,7 @@ export function DomainHome({
                       className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-left transition-colors hover:border-accent-border hover:bg-surface-warm"
                     >
                       <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-accent"><span className="mr-1">{q.glyph}</span>{q.label}</span>
-                      {q.council && <span className="shrink-0 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent">→ Council</span>}
+                      {q.council && <span className="shrink-0 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0 font-mono text-[10px] uppercase tracking-wider text-accent">→ Council</span>}
                       <span className="min-w-0 flex-1 truncate text-xs text-text-muted">{q.prompt}</span>
                     </button>
                   </li>

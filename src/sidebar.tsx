@@ -431,7 +431,7 @@ export function Sidebar({
             {EDITOR_NAV.map((group) => (
               <div key={group.heading} className="mb-1.5">
                 {!collapsed && (
-                  <div className="mb-0.5 mt-2 px-3 font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted/70">{group.heading}</div>
+                  <div className="mb-0.5 mt-2 px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted/70">{group.heading}</div>
                 )}
                 {group.items.map((it) => {
                   const Icon = it.icon;
@@ -726,7 +726,7 @@ export function Sidebar({
                   <span className="flex-1 truncate">{titleCase(d.name)}</span>
                   {(domainStats[d.name] ?? 0) > 0 && (
                     <span
-                      className="shrink-0 rounded-full bg-surface-warm px-1.5 py-0 font-mono text-[9px] text-text-muted"
+                      className="shrink-0 rounded-full bg-surface-warm px-1.5 py-0 font-mono text-[10px] text-text-muted"
                       title={`${domainStats[d.name]} imports`}
                     >
                       {domainStats[d.name]}
@@ -856,7 +856,7 @@ export function Sidebar({
               {archivedOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
               <Archive className="h-3 w-3" />
               Archived
-              <span className="ml-auto rounded-full bg-surface-strong px-1.5 text-[9px] text-text-muted">{archived.length}</span>
+              <span className="ml-auto rounded-full bg-surface-strong px-1.5 text-[10px] text-text-muted">{archived.length}</span>
             </button>
             {archivedOpen && (
               <ul className="mt-1 space-y-0.5">
@@ -871,7 +871,7 @@ export function Sidebar({
                       onClick={() => restoreDomain(name)}
                       disabled={restoring === name}
                       title={`Restore ${titleCase(name)}`}
-                      className="flex shrink-0 items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted opacity-0 hover:border-accent-border hover:text-accent group-hover:opacity-100 disabled:opacity-100"
+                      className="flex shrink-0 items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted opacity-0 hover:border-accent-border hover:text-accent group-hover:opacity-100 disabled:opacity-100"
                     >
                       {restoring === name ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
                       restore
@@ -951,7 +951,7 @@ export function Sidebar({
                 strokeDasharray={`${(lifeScore.value / 100) * 94.2} 94.2`}
               />
             </svg>
-            <span className="absolute font-mono text-[9px] font-semibold" style={{ color: scoreColor(lifeScore.value) }}>
+            <span className="absolute font-mono text-[10px] font-semibold" style={{ color: scoreColor(lifeScore.value) }}>
               {lifeScore.value}
             </span>
           </span>
@@ -1026,9 +1026,9 @@ export function Sidebar({
             target="_blank"
             rel="noreferrer"
             title="Alpha - Prevail is an early research project, provided as-is with no warranty: use at your own risk. Click to send feedback or report a bug."
-            className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-accent transition-colors hover:bg-accent hover:text-background"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-accent transition-colors hover:bg-accent hover:text-background"
           >
-            <span className="text-[7px] leading-none">◆</span> Alpha
+            <span className="text-[10px] leading-none">◆</span> Alpha
           </a>
           <div className="flex-1" />
           <button
@@ -1065,7 +1065,7 @@ function FooterProcesses({ collapsed, setTab }: { collapsed: boolean; setTab: (t
       >
         <Activity className={collapsed ? "h-4 w-4" : "h-3.5 w-3.5"} />
         {count > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 font-mono text-[8px] font-bold leading-none text-background">
+          <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 font-mono text-[10px] font-bold leading-none text-background">
             {count}
           </span>
         )}

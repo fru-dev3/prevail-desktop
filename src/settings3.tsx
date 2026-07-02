@@ -252,8 +252,8 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
                       <div className="flex items-center gap-2">
                         <ChevronRight className={`h-3 w-3 shrink-0 text-text-muted transition-transform ${open ? "rotate-90" : ""}`} strokeWidth={2.5} />
                         <span className="truncate text-sm font-medium text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
-                        <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">{app.integration}</span>
-                        {app.domains.length > 0 && <span className="shrink-0 font-mono text-[9px] text-text-muted/70">→ {app.domains.map(titleCase).join(", ")}</span>}
+                        <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">{app.integration}</span>
+                        {app.domains.length > 0 && <span className="shrink-0 font-mono text-[10px] text-text-muted/70">→ {app.domains.map(titleCase).join(", ")}</span>}
                       </div>
                       <div className="pl-5 font-mono text-[10px] text-text-muted">
                         {app.status}{app.refresh?.every ? ` · ${app.refresh.every}` : ""} · synced {relTime(app.lastSuccessTs)}
@@ -454,10 +454,10 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
                   {[a.domain, ...(a.tags ?? [])].map((t) => DOMAIN_LABEL[t] ?? titleCase(t)).join(" · ")}
                 </span>
               </span>
-              {a.via && <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">via {a.via}</span>}
-              {a.fallback && <span className="shrink-0 font-mono text-[9px] text-text-muted/50" title={`falls back to ${a.fallback}`}>→ {PATTERN_LABEL[a.fallback] ?? a.fallback}</span>}
+              {a.via && <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted/70">via {a.via}</span>}
+              {a.fallback && <span className="shrink-0 font-mono text-[10px] text-text-muted/50" title={`falls back to ${a.fallback}`}>→ {PATTERN_LABEL[a.fallback] ?? a.fallback}</span>}
               {a.verified && a.sources && a.sources.length > 0 && (
-                <span className="shrink-0 font-mono text-[9px] text-accent" title={`Verified connector. Listed by: ${a.sources.join(", ")}`}>
+                <span className="shrink-0 font-mono text-[10px] text-accent" title={`Verified connector. Listed by: ${a.sources.join(", ")}`}>
                   ✓ {a.sources.map((s) => SOURCE_ABBR[s] ?? s).join("·")}
                 </span>
               )}
@@ -467,17 +467,17 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
                 const msg = addMsg[a.name];
                 const errored = msg && msg !== "added";
                 return already ? (
-                  <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-accent" title="Already a connected app">added</span>
+                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-accent" title="Already a connected app">added</span>
                 ) : (
                   <span className="flex shrink-0 items-center gap-1.5">
                     {errored && (
-                      <span className="max-w-[160px] truncate font-mono text-[9px] text-err" title={msg}>{msg}</span>
+                      <span className="max-w-[160px] truncate font-mono text-[10px] text-err" title={msg}>{msg}</span>
                     )}
                     <button
                       onClick={() => addApp(a)}
                       disabled={adding === a.name}
                       title={errored ? `Retry. Last error: ${msg}` : "Add as a connectable app"}
-                      className={`shrink-0 rounded border bg-background px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider transition-opacity group-hover:opacity-100 disabled:opacity-50 ${errored ? "border-err/50 text-err opacity-100 hover:border-err" : "border-border text-text-muted opacity-0 hover:border-accent-border hover:text-accent"}`}
+                      className={`shrink-0 rounded border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider transition-opacity group-hover:opacity-100 disabled:opacity-50 ${errored ? "border-err/50 text-err opacity-100 hover:border-err" : "border-border text-text-muted opacity-0 hover:border-accent-border hover:text-accent"}`}
                     >
                       {adding === a.name ? "…" : errored ? "retry" : "add"}
                     </button>
@@ -486,7 +486,7 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
               })()}
               {a.connection_hint && (
                 <span
-                  className={`shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${a.connection_hint.privacy === "vendor-cloud" ? "border-warn/40 bg-warn/10 text-warn" : "border-accent-border bg-accent-soft text-accent"}`}
+                  className={`shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${a.connection_hint.privacy === "vendor-cloud" ? "border-warn/40 bg-warn/10 text-warn" : "border-accent-border bg-accent-soft text-accent"}`}
                   title={`Suggested: ${a.connection_hint.method}${a.connection_hint.server ? " · " + a.connection_hint.server : ""}${a.connection_hint.readOnly ? " · read-only" : ""} - ${a.connection_hint.privacy === "vendor-cloud" ? "routes through the vendor's cloud" : "stays on your machine"}${a.connection_hint.note ? `. ${a.connection_hint.note}` : ""}`}
                 >
                   {a.connection_hint.privacy === "vendor-cloud" ? "○ cloud" : "● local"}

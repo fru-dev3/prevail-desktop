@@ -490,20 +490,20 @@ export function LoopsPanel({ domain, vaultPath, domainPath }: { domain: string; 
             />
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
               <label className="block">
-                <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Kind</div>
+                <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">Kind</div>
                 <select value={newType} onChange={(e) => setNewType(e.target.value as LoopType)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs">
                   <option value="open">Open (never ends)</option>
                   <option value="closed">Closed (has a finish line)</option>
                 </select>
               </label>
               <label className="block">
-                <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Checks</div>
+                <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">Checks</div>
                 <select value={newCadence} onChange={(e) => setNewCadence(e.target.value as LoopCadence)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs">
                   {CADENCES.map((c) => <option key={c} value={c}>{CADENCE_LABEL[c]}</option>)}
                 </select>
               </label>
               <label className="block">
-                <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">Guardrail</div>
+                <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-text-muted">Guardrail</div>
                 <select value={newAutonomy} onChange={(e) => setNewAutonomy(e.target.value as LoopAutonomy)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs" title={AUTONOMY_BLURB[newAutonomy]}>
                   {(["suggest", "tasks", "ask", "auto"] as LoopAutonomy[]).map((a) => <option key={a} value={a}>{AUTONOMY_LABEL[a]}</option>)}
                 </select>
@@ -671,16 +671,16 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
             ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-accent" />
             : <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dot }} />}
           <span className={`truncate text-sm font-semibold ${done ? "text-text-muted line-through" : "text-text-primary"}`}>{loop.name}</span>
-          {running && <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-accent">running…</span>}
+          {running && <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-accent">running…</span>}
           {isBriefing ? (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent" title="Built-in briefing loop: synthesizes + delivers a digest of this domain"><Mail className="h-2.5 w-2.5" /> briefing</span>
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent" title="Built-in briefing loop: synthesizes + delivers a digest of this domain"><Mail className="h-2.5 w-2.5" /> briefing</span>
           ) : loop.type === "open"
-            ? <span className="inline-flex items-center gap-1 rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Open loop: never ends"><InfinityIcon className="h-2.5 w-2.5" /> open</span>
-            : <span className="rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted" title="Closed loop: finishes when its condition is met">closed</span>}
-          <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted/70">{CADENCE_LABEL[loop.cadence]}</span>
+            ? <span className="inline-flex items-center gap-1 rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted" title="Open loop: never ends"><InfinityIcon className="h-2.5 w-2.5" /> open</span>
+            : <span className="rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted" title="Closed loop: finishes when its condition is met">closed</span>}
+          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted/70">{CADENCE_LABEL[loop.cadence]}</span>
           {isBriefing
-            ? <span className="shrink-0 rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-secondary" title="Delivery channel">{loop.channel ?? "gmail"}</span>
-            : <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent" title={AUTONOMY_BLURB[autonomy]}>{AUTONOMY_LABEL[autonomy]}</span>}
+            ? <span className="shrink-0 rounded-full bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary" title="Delivery channel">{loop.channel ?? "gmail"}</span>
+            : <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent" title={AUTONOMY_BLURB[autonomy]}>{AUTONOMY_LABEL[autonomy]}</span>}
         </button>
         {!done && (
           <Toggle on={loop.enabled} onChange={(v) => onChange({ enabled: v })} label={`${loop.name} enabled`} />
@@ -765,7 +765,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
                   return (
                     <div key={p.key} className="flex flex-1 flex-col items-center gap-1">
                       <div className={`h-1 w-full rounded-full ${st === "done" ? "bg-accent" : st === "current" ? "bg-accent/60 animate-pulse" : "bg-border-subtle"}`} />
-                      <span className={`font-mono text-[9px] ${st === "todo" ? "text-text-muted/50" : st === "current" ? "text-accent" : "text-text-muted"}`}>{p.label}</span>
+                      <span className={`font-mono text-[10px] ${st === "todo" ? "text-text-muted/50" : st === "current" ? "text-accent" : "text-text-muted"}`}>{p.label}</span>
                     </div>
                   );
                 })}
@@ -786,7 +786,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
                     <ul className="space-y-1">
                       {result.actions.map((a, i) => (
                         <li key={i} className="flex items-start gap-2 text-[12px] text-text-secondary">
-                          <span className={`mt-0.5 inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider ${a.disposition === "task" ? "bg-accent-soft text-accent" : a.disposition === "approval" ? "bg-warn/15 text-warn" : "bg-surface-warm text-text-muted"}`}>
+                          <span className={`mt-0.5 inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0 font-mono text-[10px] uppercase tracking-wider ${a.disposition === "task" ? "bg-accent-soft text-accent" : a.disposition === "approval" ? "bg-warn/15 text-warn" : "bg-surface-warm text-text-muted"}`}>
                             {a.disposition === "task" ? <><ListPlus className="h-2.5 w-2.5" /> task</> : a.disposition === "approval" ? <><ShieldQuestion className="h-2.5 w-2.5" /> approval</> : "idea"}
                           </span>
                           <span>{a.text}</span>

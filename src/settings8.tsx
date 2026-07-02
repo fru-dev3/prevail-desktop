@@ -221,7 +221,7 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
         </div>
         {/* Where backups land — visible + changeable right here. Kept OUTSIDE the
             vault (a backup inside what it backs up is circular). */}
-        <div className="flex w-full items-center gap-1.5 text-[9px] text-text-muted">
+        <div className="flex w-full items-center gap-1.5 text-[10px] text-text-muted">
           <FolderOpen className="h-3 w-3 shrink-0" />
           <span className="min-w-0 flex-1 truncate" title={backupDir}>{backupDir || "default location"}{backupDirCustom ? "" : " · default"}</span>
           <button onClick={changeBackupDir} className="shrink-0 uppercase tracking-wider hover:text-accent">change</button>
@@ -409,7 +409,7 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
           <div className="flex items-center gap-2">
             <ShieldCheck className={`h-4 w-4 shrink-0 ${!isDemo ? "text-warn" : "text-text-muted"}`} />
             <span className="text-sm font-semibold text-text-primary">Your vault</span>
-            {!isDemo && <span className="rounded-full bg-warn px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-background">Active</span>}
+            {!isDemo && <span className="rounded-full bg-warn px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-background">Active</span>}
             <span className="ml-auto"><Toggle on={!isDemo} disabled={switchingMode} onChange={(v) => { if (v) void switchToProduction(); else void switchToDemo(); }} label="Use my own vault" /></span>
           </div>
           {/* Path + an even, aligned row of icon actions: rescan, change folder, open. */}
@@ -440,7 +440,7 @@ export function DemoModeSection({ vaultPath, onVaultMoved, onSetupDomains, heade
           <div className="flex items-center gap-2">
             <Sparkles className={`h-4 w-4 ${isDemo ? "text-accent" : "text-text-muted"}`} />
             <span className="text-sm font-semibold text-text-primary">Demo vault</span>
-            {isDemo && <span className="rounded-full bg-accent px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-background">Active</span>}
+            {isDemo && <span className="rounded-full bg-accent px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-background">Active</span>}
             <span className="ml-auto"><Toggle on={isDemo} disabled={switchingMode} onChange={(v) => { if (v) void switchToDemo(); else void switchToProduction(); }} label="Explore the demo sandbox" /></span>
           </div>
           <div className="mt-1.5 flex items-center gap-1.5">
@@ -639,7 +639,7 @@ export function BackupAutomationCard({ vault, onChange }: { vault: string; onCha
                     finally { setBusy(false); }
                   }}
                   disabled={busy}
-                  className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
+                  className="shrink-0 rounded-md border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-50">
                   Restore
                 </button>
               </div>
@@ -762,7 +762,7 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
         <div className="mt-3 flex items-center gap-2 rounded-lg border border-border-subtle bg-background px-3 py-2">
           <Database className="h-3.5 w-3.5 shrink-0 text-text-muted" />
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-primary" title={vaultPath}>{vaultPath}</span>
-          {embedded && <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent">in app</span>}
+          {embedded && <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">in app</span>}
           <button onClick={() => void invoke("open_in_finder", { path: vaultPath }).catch(() => {})} title="Reveal in Finder" className="shrink-0 rounded p-1 text-text-muted hover:text-accent">
             <ExternalLink className="h-3.5 w-3.5" />
           </button>
