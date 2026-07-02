@@ -28,6 +28,7 @@ export function ChatBubble({
   onSaveNote,
   onPinMemory,
   onMakeLoop,
+  onMakeSkill,
 }: {
   msg: ChatMessage;
   onCopy?: (text: string) => void;
@@ -37,6 +38,7 @@ export function ChatBubble({
   onSaveNote?: (text: string) => void;
   onPinMemory?: (text: string) => void;
   onMakeLoop?: (text: string) => void;
+  onMakeSkill?: (text: string) => void;
 }) {
   // Small inline action button used on bubble hover. Stays muted by
   // default so the chat stays calm; lights up on hover.
@@ -263,6 +265,14 @@ export function ChatBubble({
                 icon={<Pin className="h-3 w-3" />}
               />
             )}
+            {onMakeSkill && (
+              <ActionButton
+                title="Save this as a reusable skill Prevail can replay"
+                label="Skill"
+                onClick={() => onMakeSkill(msg.content)}
+                icon={<Sparkles className="h-3 w-3" />}
+              />
+            )}
           </div>
         )}
       </div>
@@ -273,7 +283,7 @@ export function ChatBubble({
 // ─────────────────────────────────────────────────────────────────────
 // COUNCIL PANEL
 
-export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit, onMakeTask, onSaveNote, onPinMemory, onMakeLoop }: {
+export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit, onMakeTask, onSaveNote, onPinMemory, onMakeLoop, onMakeSkill }: {
   messages: ChatMessage[];
   resetKey: number;
   onCopy: (text: string) => void;
@@ -283,6 +293,7 @@ export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit, onMak
   onSaveNote?: (text: string) => void;
   onPinMemory?: (text: string) => void;
   onMakeLoop?: (text: string) => void;
+  onMakeSkill?: (text: string) => void;
 }) {
   const [limit, setLimit] = useState(MESSAGE_WINDOW);
   // Reset the window when the thread changes (switched/cleared) so a new thread
@@ -315,6 +326,7 @@ export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit, onMak
             onSaveNote={m.role === "assistant" ? onSaveNote : undefined}
             onPinMemory={m.role === "assistant" ? onPinMemory : undefined}
             onMakeLoop={m.role === "user" ? onMakeLoop : undefined}
+            onMakeSkill={m.role === "assistant" ? onMakeSkill : undefined}
           />
         );
       })}
