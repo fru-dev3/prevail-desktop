@@ -41,7 +41,60 @@
    palette controls accent + surface styling.
    ═════════════════════════════════════════════════════════════════════ */
 
-/* ── VAULT (default) — cream + teal ────────────────────────────────── */
+/* ── PREVAIL (brand default) — gold + cyan on graphite ─────────────────
+   The signature 2026 identity: gold #C4A35A accent, cyan #3CD8FF as the AI
+   color, on the #141416 / #0a0a0c brand darks. Dark-first (the light variant
+   below is the exception); new users open here in dark mode. */
+:root[data-palette="prevail"] {
+  --color-background: #f6f5f2;
+  --color-surface: #ffffff;
+  --color-surface-warm: #efece5;
+  --color-surface-strong: #e5e1d6;
+  --color-border: #d6d1c4;
+  --color-border-subtle: #e6e2d7;
+  --color-text-primary: #1a1814;
+  --color-text-secondary: #4d4636;
+  --color-text-muted: #726a58;
+  --color-accent: #a9863f;
+  --color-accent-hover: #c4a35a;
+  --color-accent-soft: rgba(169, 134, 63, 0.12);
+  --color-accent-border: rgba(169, 134, 63, 0.32);
+  --color-on-accent: #ffffff;
+  --color-ai: #0e8ba8;
+  --color-ai-soft: rgba(14, 139, 168, 0.10);
+  --color-ok: #2e7d32;
+  --color-warn: #c05621;
+  --color-err: #c62828;
+  --color-logo-bg: #141416;
+  --color-logo-teal: #c4a35a;
+  --color-logo-cyan: #3cd8ff;
+}
+:root[data-palette="prevail"][data-theme="dark"] {
+  --color-background: #0a0a0c;
+  --color-surface: #141416;
+  --color-surface-warm: #1b1b1f;
+  --color-surface-strong: #232329;
+  --color-border: #2c2c34;
+  --color-border-subtle: #1f1f25;
+  --color-text-primary: #f4f1ea;
+  --color-text-secondary: #b8b0a0;
+  --color-text-muted: #7d7566;
+  --color-accent: #c4a35a;
+  --color-accent-hover: #d8bd7f;
+  --color-accent-soft: rgba(196, 163, 90, 0.12);
+  --color-accent-border: rgba(196, 163, 90, 0.30);
+  --color-on-accent: #141416;
+  --color-ai: #3cd8ff;
+  --color-ai-soft: rgba(60, 216, 255, 0.10);
+  --color-ok: #52c41a;
+  --color-warn: #f97316;
+  --color-err: #ff5a5f;
+  --color-logo-bg: #141416;
+  --color-logo-teal: #c4a35a;
+  --color-logo-cyan: #3cd8ff;
+}
+
+/* ── VAULT — cream + teal ──────────────────────────────────────────── */
 :root[data-palette="vault"][data-theme="dark"] {
   --color-background: #0d0d0e;
   --color-surface: #16161a;
