@@ -1003,7 +1003,7 @@ export function AgentCard({
               const err = errors[m.id];
               return (
                 <div key={m.id} className={`flex items-start gap-3 rounded-md border px-3 py-2 ${defaultModel === m.id ? "border-accent-border bg-accent-soft" : "border-border-subtle bg-background"}`}>
-                  <div className="mt-0.5 w-3 shrink-0 text-center text-[12px] leading-none">
+                  <div className="mt-0.5 w-3 shrink-0 text-center text-[11px] leading-none">
                     <StatusGlyph s={s} />
                   </div>
                   <div className="min-w-0 flex-1">

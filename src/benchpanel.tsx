@@ -60,7 +60,7 @@ function ModelScoutSuggestions({ vaultPath }: { vaultPath: string }) {
       {/* Why this page matters — new models ship constantly; Scout keeps the
           Arena's roster current so you don't have to track releases yourself. */}
       <div className="rounded-lg border border-accent-border/40 bg-accent-soft/30 px-3 py-2.5">
-        <p className="text-[12px] leading-relaxed text-text-secondary">
+        <p className="text-[11px] leading-relaxed text-text-secondary">
           <span className="font-semibold text-text-primary">New models ship every week.</span> Scout's daily web scan flags freshly-released models - open-weight and frontier - worth adding to your Arena, so your benchmarks stay current without you tracking announcements. Each suggestion links to its source; pick the ones you care about and add them as Arena models to run.
         </p>
       </div>
@@ -1834,8 +1834,8 @@ export function BenchResults({
             <details key={group.key} className="group/date overflow-hidden rounded-2xl border border-border bg-surface">
               <summary className="flex cursor-pointer list-none items-center gap-2.5 px-4 py-2.5 hover:bg-surface-warm">
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-muted transition-transform group-open/date:rotate-90" />
-                {group.isBatch && <span className="font-mono text-[12px] font-semibold text-text-primary">{group.date}</span>}
-                <span className={`min-w-0 truncate font-mono text-[12px] ${group.isBatch ? "text-text-secondary" : "font-semibold text-text-primary"}`}>{group.label}</span>
+                {group.isBatch && <span className="font-mono text-[11px] font-semibold text-text-primary">{group.date}</span>}
+                <span className={`min-w-0 truncate font-mono text-[11px] ${group.isBatch ? "text-text-secondary" : "font-semibold text-text-primary"}`}>{group.label}</span>
                 <span className="font-mono text-[10px] text-text-muted">{group.runs.length} model{group.runs.length === 1 ? "" : "s"}</span>
                 {unscored > 0 && <span className="rounded bg-warn/10 px-1.5 py-0 font-mono text-[10px] text-warn">{unscored} unscored</span>}
                 <span

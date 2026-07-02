@@ -721,7 +721,7 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
               <input type="date" value={addDue} onChange={(e) => setAddDue(e.target.value)} title="Due date (optional)"
                 className="cursor-pointer rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-text-muted focus:border-accent-border focus:outline-none" />
             </div>
-            {addErr && <div className="mt-2 text-[12px] text-danger">{addErr}</div>}
+            {addErr && <div className="mt-2 text-[11px] text-danger">{addErr}</div>}
             <div className="mt-3 flex justify-end gap-2">
               <button onClick={() => setAddModalOpen(false)} className="rounded-lg border border-border px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary">Cancel</button>
               <button onClick={addTask} disabled={busy === "add"} className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-50">

@@ -179,7 +179,7 @@ export function NotesPanel({ vaultPath }: { vaultPath: string }) {
                 value={selected.body}
                 onChange={(e) => updateSelected({ body: e.target.value })}
                 placeholder="Start writing… ideas, logs, brain-dumps."
-                className="min-h-0 flex-1 resize-none bg-transparent text-[14px] leading-relaxed text-text-secondary placeholder:text-text-muted/50 focus:outline-none"
+                className="min-h-0 flex-1 resize-none bg-transparent text-[15px] leading-relaxed text-text-secondary placeholder:text-text-muted/50 focus:outline-none"
               />
               <div className="mt-2 border-t border-border-subtle pt-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
                 Saved to vault · updated {relTime(selected.updated)}

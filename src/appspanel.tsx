@@ -1089,7 +1089,7 @@ function ComposioMode({ vaultPath, expanded }: { vaultPath: string; expanded: bo
             ))}
           </div>
         </div>
-        <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-text-secondary">One managed gateway: a single key fronts 1000+ apps. Authorize each app once in Composio, then Prevail's agent uses them through the Composio MCP endpoint - no per-app setup on this Mac. <button onClick={() => void openUrl("https://composio.dev")} className="text-accent hover:underline">What is Composio?</button></p>
+        <p className="mt-1.5 max-w-prose text-[11px] leading-relaxed text-text-secondary">One managed gateway: a single key fronts 1000+ apps. Authorize each app once in Composio, then Prevail's agent uses them through the Composio MCP endpoint - no per-app setup on this Mac. <button onClick={() => void openUrl("https://composio.dev")} className="text-accent hover:underline">What is Composio?</button></p>
         {composioMethod === "cli" ? (
           (() => {
             const installed = !!cliStatus?.installed;
@@ -1194,7 +1194,7 @@ function ComposioMode({ vaultPath, expanded }: { vaultPath: string; expanded: bo
               className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
               {refreshingConn ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh
             </button>
-            {connectMsg && <div className="rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2 text-[12px] text-text-secondary">{connectMsg}</div>}
+            {connectMsg && <div className="rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2 text-[11px] text-text-secondary">{connectMsg}</div>}
           </div>
         }
         list={
@@ -1345,7 +1345,7 @@ function NangoMode({ vaultPath, expanded }: { vaultPath: string; expanded: boole
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
         <div className="flex items-start gap-4 px-5 py-4">
         <div className="min-w-0 flex-1">
-        <p className="max-w-prose text-[12px] leading-relaxed text-text-secondary">Your own Nango project, fronted by one secret key. Prevail lists the integrations you configured in Nango; connect one and Nango runs the sign-in and syncs its data for the agent to use. <button onClick={() => void openUrl("https://nango.dev")} className="text-accent hover:underline">What is Nango?</button></p>
+        <p className="max-w-prose text-[11px] leading-relaxed text-text-secondary">Your own Nango project, fronted by one secret key. Prevail lists the integrations you configured in Nango; connect one and Nango runs the sign-in and syncs its data for the agent to use. <button onClick={() => void openUrl("https://nango.dev")} className="text-accent hover:underline">What is Nango?</button></p>
         {showForm ? (
           <div className="mt-3 max-w-xl space-y-2">
             <p className="text-[11px] leading-relaxed text-text-secondary">Copy your <span className="font-mono text-text-primary">Secret Key</span> from <button onClick={() => void openUrl("https://app.nango.dev/dev/getting-started")} className="text-accent hover:underline">app.nango.dev</button> (Environment Settings). Stored in your Mac's Keychain.</p>
@@ -1398,12 +1398,12 @@ function NangoMode({ vaultPath, expanded }: { vaultPath: string; expanded: boole
               className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:border-accent-border hover:text-accent">
               <RefreshCw className="h-3.5 w-3.5" /> Refresh
             </button>
-            {connectMsg && <div className="rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2 text-[12px] text-text-secondary">{connectMsg}</div>}
+            {connectMsg && <div className="rounded-lg border border-accent-border bg-accent-soft/20 px-3 py-2 text-[11px] text-text-secondary">{connectMsg}</div>}
           </div>
         }
         list={
           integrations.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-center text-[12px] text-text-secondary">
+            <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-center text-[11px] text-text-secondary">
               No integrations configured in your Nango project yet. Add one in the <button onClick={() => void openUrl("https://app.nango.dev")} className="text-accent hover:underline">Nango dashboard</button>, then Refresh.
             </div>
           ) : (
@@ -1588,7 +1588,7 @@ function GatewayConnectDetail({ title, sub, logoId, logos, method, connecting, o
             <span className="truncate text-lg font-semibold text-text-primary">{title}</span>
             <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted"><Globe className="h-2.5 w-2.5" /> Available to connect</span>
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-text-muted">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-text-muted">
             <span>{titleCase(sub)}</span>
             <span>· connects via {label}</span>
           </div>
@@ -1603,7 +1603,7 @@ function GatewayConnectDetail({ title, sub, logoId, logos, method, connecting, o
         </button>
       </div>
       <div className="px-5 py-4">
-        <div className="flex items-start gap-2 rounded-lg border border-accent-border/40 bg-accent-soft/20 px-3 py-2.5 text-[12px] leading-relaxed text-text-secondary">
+        <div className="flex items-start gap-2 rounded-lg border border-accent-border/40 bg-accent-soft/20 px-3 py-2.5 text-[11px] leading-relaxed text-text-secondary">
           <Plug className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
           <span>After you authorize in the browser, come back to this window - the list refreshes and {title} moves to Connected, where you can set its refresh schedule.</span>
         </div>
@@ -1746,7 +1746,7 @@ export function CatalogDetail({ app, logos, onConnect, connecting }: {
               <Globe className="h-2.5 w-2.5" /> Available to add
             </span>
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-text-muted">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-text-muted">
             {app.domain && <span>{titleCase(app.domain)}</span>}
             {app.tags?.length ? <span>· {app.tags.slice(0, 4).map(titleCase).join(", ")}</span> : null}
             <span>· connects via {catalogMethodLabel(method)}</span>
@@ -1777,7 +1777,7 @@ export function CatalogDetail({ app, logos, onConnect, connecting }: {
           privacy posture (local vs vendor cloud) so the choice is informed. */}
       <div className="border-b border-border-subtle px-5 py-4">
         <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">How Prevail connects</div>
-        <div className="flex items-start gap-2 rounded-lg border border-accent-border/40 bg-accent-soft/20 px-3 py-2.5 text-[12px] leading-relaxed text-text-secondary">
+        <div className="flex items-start gap-2 rounded-lg border border-accent-border/40 bg-accent-soft/20 px-3 py-2.5 text-[11px] leading-relaxed text-text-secondary">
           <Plug className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
           <span>
             When you Connect, Prevail confirms the best method ({catalogMethodLabel(method)}), drives the
@@ -1805,7 +1805,7 @@ export function CatalogDetail({ app, logos, onConnect, connecting }: {
             <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">More info</div>
             <div className="flex flex-wrap gap-x-4 gap-y-1">
               {sources.slice(0, 4).map((s, i) => (
-                <button key={i} onClick={() => void openUrl(s)} className="inline-flex items-center gap-1 text-[12px] text-accent hover:underline">
+                <button key={i} onClick={() => void openUrl(s)} className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline">
                   {prettyHost(s)} <ExternalLink className="h-3 w-3" />
                 </button>
               ))}
@@ -2235,7 +2235,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
           ) : (
             <button onClick={openSoulEditor} className="mt-2 flex flex-1 flex-col items-start justify-center rounded-lg border border-dashed border-border bg-surface/40 px-4 py-5 text-left hover:border-accent-border">
               <span className="text-[13px] text-text-secondary">Give {app.title || app.id} a soul.</span>
-              <span className="mt-0.5 text-[12px] text-text-muted">Why it's in your harness - your AI reads this as standing context.</span>
+              <span className="mt-0.5 text-[11px] text-text-muted">Why it's in your harness - your AI reads this as standing context.</span>
             </button>
           )}
         </div>
@@ -2254,7 +2254,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                 <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-accent-border bg-accent-soft text-accent"><Sparkles className="h-6 w-6" /></span>
               </div>
               {notConnected ? (
-                <p className="text-center text-[12px] leading-snug text-text-muted">Log in once in your own Chrome - the agent learns how to fetch your data, then replays it automatically.</p>
+                <p className="text-center text-[11px] leading-snug text-text-muted">Log in once in your own Chrome - the agent learns how to fetch your data, then replays it automatically.</p>
               ) : (
                 <div className="flex flex-col items-center">
                   <button onClick={importLogins} disabled={importing}
@@ -2283,7 +2283,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
               )}
             </div>
             {!gatewayProvider && (
-              <p className="mt-1.5 text-[12px] text-text-muted">Skills are actions Prevail learned to do for you on {app.title || app.id} - taught once, replayed automatically.</p>
+              <p className="mt-1.5 text-[11px] text-text-muted">Skills are actions Prevail learned to do for you on {app.title || app.id} - taught once, replayed automatically.</p>
             )}
 
             {learnMode ? (
@@ -2311,7 +2311,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
             ) : skills.length === 0 ? (
               <div className="mt-3 rounded-lg border border-dashed border-border bg-surface/40 px-4 py-6 text-center">
                 <div className="text-[13px] text-text-secondary">No skills yet.</div>
-                <div className="mt-0.5 text-[12px] text-text-muted">Click <span className="text-accent">Learn New Skill</span>, say what to fetch{notConnected ? " - I'll connect and learn it in one go." : <> - saved in <code className="rounded bg-surface-warm px-1 font-mono text-[11px]">vault/apps/{app.id}/skills/</code></>}</div>
+                <div className="mt-0.5 text-[11px] text-text-muted">Click <span className="text-accent">Learn New Skill</span>, say what to fetch{notConnected ? " - I'll connect and learn it in one go." : <> - saved in <code className="rounded bg-surface-warm px-1 font-mono text-[11px]">vault/apps/{app.id}/skills/</code></>}</div>
               </div>
             ) : (
               <ul className="mt-3 space-y-2">
@@ -2344,7 +2344,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                 <div className="flex flex-wrap gap-1.5">
                   {(app.domains ?? []).length ? (app.domains).map((d) => (
                     <button key={d} onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: d }))} className="rounded-full border border-border bg-surface px-2.5 py-0.5 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">{titleCase(d)}</button>
-                  )) : <span className="text-[12px] text-text-muted">none yet</span>}
+                  )) : <span className="text-[11px] text-text-muted">none yet</span>}
                 </div>
               ) : (
                 <div>

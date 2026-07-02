@@ -202,7 +202,7 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
             </div>
             <div className="font-mono text-2xl tabular-nums text-accent">{mmss(seconds)}</div>
             <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent/80">Listening</div>
-            {body && <p className="line-clamp-3 px-5 text-center text-[12px] leading-relaxed text-text-secondary">{body}</p>}
+            {body && <p className="line-clamp-3 px-5 text-center text-[11px] leading-relaxed text-text-secondary">{body}</p>}
           </div>
         ) : (
           <textarea
@@ -216,7 +216,7 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
 
         {/* Friendly, actionable error */}
         {error && (
-          <div className="flex items-start gap-2 rounded-lg border border-err/30 bg-err/5 px-3 py-2 text-[12px] text-err">
+          <div className="flex items-start gap-2 rounded-lg border border-err/30 bg-err/5 px-3 py-2 text-[11px] text-err">
             <Settings2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <div className="flex-1">
               <span>{error}</span>

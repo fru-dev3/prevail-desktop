@@ -332,7 +332,7 @@ export function DomainContextDrawer({
                 <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
                   {domain ? `${titleCase(domain)} serves your mission` : "Your mission"}
                 </div>
-                <div className="truncate text-[12px] text-text-secondary">{mission}</div>
+                <div className="truncate text-[11px] text-text-secondary">{mission}</div>
               </div>
             </button>
           );
@@ -495,7 +495,7 @@ export function DomainContextDrawer({
                         <button
                           onClick={() => onTogglePreferred(s.name)}
                           title={preferredSet?.has(s.name) ? "Unpin" : "Pin: auto-attach"}
-                          className={`shrink-0 rounded border px-2 text-[12px] transition-colors ${
+                          className={`shrink-0 rounded border px-2 text-[11px] transition-colors ${
                             preferredSet?.has(s.name)
                               ? "border-accent-border bg-accent-soft text-accent"
                               : "border-border-subtle bg-background text-text-muted hover:border-accent-border hover:text-accent"

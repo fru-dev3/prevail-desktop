@@ -74,7 +74,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       {multiline ? (
         <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-text-secondary">{value}</pre>
       ) : (
-        <div className="break-words text-[12px] leading-relaxed text-text-secondary">{value}</div>
+        <div className="break-words text-[11px] leading-relaxed text-text-secondary">{value}</div>
       )}
     </div>
   );
@@ -115,7 +115,7 @@ function ActivityDetail({ event }: { event: ActivityEvent }) {
         </>
       )}
       {!hasMore && (
-        <div className="mt-1 text-[12px] italic leading-relaxed text-text-muted">No further detail recorded for this event.</div>
+        <div className="mt-1 text-[11px] italic leading-relaxed text-text-muted">No further detail recorded for this event.</div>
       )}
     </div>
   );
@@ -270,7 +270,7 @@ export function SystemActivity({ vaultPath }: { vaultPath: string }) {
                         {e.status === "pending" && <span className="text-warn">needs setup</span>}
                       </div>
                       <div className="mt-0.5 text-[13px] leading-snug text-text-primary">{e.title}</div>
-                      {e.detail && <div className="mt-0.5 text-[12px] leading-relaxed text-text-muted">{e.detail}</div>}
+                      {e.detail && <div className="mt-0.5 text-[11px] leading-relaxed text-text-muted">{e.detail}</div>}
                     </div>
                   </button>
                   {open && <ActivityDetail event={e} />}

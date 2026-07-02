@@ -76,7 +76,7 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
             {cli?.installed && <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[10px] uppercase tracking-wider text-text-muted">gws{(() => { const m = cli.version?.match(/(\d+\.\d+\.\d+)/); return m ? ` ${m[1]}` : ""; })()}</span>}
             {connectedCount > 0 && <span className="inline-flex items-center gap-1 rounded-full border border-ok/40 bg-ok/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ok"><Check className="h-2.5 w-2.5" /> {connectedCount} connected</span>}
           </div>
-          <p className="mt-1 max-w-prose text-[12px] leading-relaxed text-text-secondary">One connection for the whole Google ecosystem - Gmail, Calendar, Drive, Docs, Sheets, Tasks, Meet - across every Google profile. The agent pulls, summarizes, and replies per profile.</p>
+          <p className="mt-1 max-w-prose text-[11px] leading-relaxed text-text-secondary">One connection for the whole Google ecosystem - Gmail, Calendar, Drive, Docs, Sheets, Tasks, Meet - across every Google profile. The agent pulls, summarizes, and replies per profile.</p>
         </div>
         <button onClick={() => void reload()} disabled={loading} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">
           {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Refresh
@@ -85,9 +85,9 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
 
       <div className="space-y-3 px-5 py-4">
         {loading && !cli ? (
-          <div className="flex items-center gap-2 text-[12px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking the Google Workspace CLI…</div>
+          <div className="flex items-center gap-2 text-[11px] text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking the Google Workspace CLI…</div>
         ) : !cli?.installed ? (
-          <div className="rounded-lg border border-dashed border-border bg-background p-3 text-[12px] text-text-secondary">
+          <div className="rounded-lg border border-dashed border-border bg-background p-3 text-[11px] text-text-secondary">
             The Google Workspace CLI (<span className="font-mono">gws</span>) isn't installed. Install it, then click Refresh.
             <div className="mt-2 flex items-center gap-2">
               <code className="rounded bg-surface-warm px-2 py-1 font-mono text-[11px] text-text-primary">brew install googleworkspace/tap/gws</code>
@@ -100,7 +100,7 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
             <div className="space-y-1.5">
               <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Profiles</div>
               {profiles.length === 0 ? (
-                <div className="text-[12px] text-text-muted">No profiles yet. Add one to sign in to a Google account.</div>
+                <div className="text-[11px] text-text-muted">No profiles yet. Add one to sign in to a Google account.</div>
               ) : profiles.map((p) => {
                 const meta = STATUS_META[p.status];
                 const rowBusy = busy === p.configDir;
@@ -146,7 +146,7 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
             </div>
           </>
         )}
-        {msg && <div className="text-[12px] text-text-secondary">{msg}</div>}
+        {msg && <div className="text-[11px] text-text-secondary">{msg}</div>}
       </div>
     </div>
   );
