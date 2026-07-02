@@ -201,6 +201,19 @@ export default function App() {
   // prompt so it never flashes before we know whether the vault is encrypted.
   const [vaultStatusChecked, setVaultStatusChecked] = useState(false);
   const [encryptPromptClosed, setEncryptPromptClosed] = useState(false);
+  // Track demo vs production so we never offer to encrypt (with a passcode +
+  // recovery code the user must save) over throwaway sample data. The offer
+  // belongs at the demo-to-production graduation, not in the sandbox.
+  const [appMode, setAppMode] = useState<"demo" | "production" | null>(null);
+  useEffect(() => {
+    const load = () =>
+      invoke<{ mode: "demo" | "production" }>("engine_appmode_get")
+        .then((m) => setAppMode(m.mode))
+        .catch(() => {});
+    void load();
+    window.addEventListener("prevail:appmode", load);
+    return () => window.removeEventListener("prevail:appmode", load);
+  }, []);
   useEffect(() => {
     if (isBrowser()) return;
     (async () => {
@@ -1417,8 +1430,10 @@ export default function App() {
       {/* O1 (Monday feedback): first-run onboarding tour (dismissible, replayable). */}
       <OnboardingTour />
       {/* C4: first-run encrypt-at-rest prompt (default-ON). Only for a fresh,
-          confirmed-unencrypted vault the user hasn't been offered yet. */}
-      {!isBrowser() && vaultPath && vaultStatusChecked && !vaultEncrypted && !encryptPromptClosed && !vaultEncryptOffered() && (
+          confirmed-unencrypted vault the user hasn't been offered yet. Never in
+          the demo sandbox (C6): encrypting throwaway sample data would ask the
+          user to save a passcode + recovery code for data they'll discard. */}
+      {!isBrowser() && vaultPath && vaultStatusChecked && appMode === "production" && !vaultEncrypted && !encryptPromptClosed && !vaultEncryptOffered() && (
         <VaultEncryptPrompt vaultPath={vaultPath} onClose={() => setEncryptPromptClosed(true)} />
       )}
       {memoryAlert && (

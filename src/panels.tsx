@@ -180,6 +180,12 @@ export function LockScreen({ vault, encrypted, onUnlock }: { vault: string | nul
   const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  // "passcode" is the normal unlock; "recovery" is the forgot-passcode escape,
+  // offered only for an encrypted vault (the recovery code unwraps the DEK).
+  const [mode, setMode] = useState<"passcode" | "recovery">("passcode");
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [newPass, setNewPass] = useState("");
+  const [confirmPass, setConfirmPass] = useState("");
   // Touch ID is offered only for the plaintext app lock - it authenticates the
   // user but doesn't release an encryption key, so an encrypted vault still
   // needs the passcode to derive the DEK.
@@ -208,41 +214,123 @@ export function LockScreen({ vault, encrypted, onUnlock }: { vault: string | nul
       setBusy(false);
     }
   }
+  async function submitRecovery(e: React.FormEvent) {
+    e.preventDefault();
+    if (newPass.length < 8) { setErr("Your new passcode must be at least 8 characters."); return; }
+    if (newPass !== confirmPass) { setErr("The new passcodes do not match."); return; }
+    setBusy(true);
+    setErr("");
+    try {
+      const r = await invoke<{ ok: boolean; error?: string }>("engine_vault_recover", {
+        vault,
+        recoveryCode: recoveryCode.trim(),
+        newPasscode: newPass,
+      });
+      if (r.ok) onUnlock();
+      else setErr(r.error === "wrong recovery code" ? "That recovery code is not correct." : (r.error ?? "Could not recover the vault."));
+    } catch (e2) {
+      setErr(`Could not recover: ${String(e2)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const inputCls = "rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent-border focus:outline-none";
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-background text-text-primary">
       <PrevailLogo size={64} src="/logo-512.png" />
       <h1 className="mt-5 font-display text-2xl font-semibold">Locked</h1>
-      <p className="mt-1 text-sm text-text-muted">
-        {encrypted ? "Enter your passcode to unlock your encrypted vault." : "Enter your passcode to open Prevail."}
-      </p>
-      <form onSubmit={submit} className="mt-6 flex w-72 flex-col gap-3">
-        <input
-          type="password"
-          autoFocus
-          value={pass}
-          onChange={(e) => setPass(e.target.value)}
-          placeholder="Passcode"
-          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent-border focus:outline-none"
-        />
-        {err && <div className="text-xs text-err">{err}</div>}
-        <button
-          type="submit"
-          disabled={busy || !pass}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-background hover:opacity-90 disabled:opacity-50"
-        >
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          Unlock
-        </button>
-        {touchIdOn && (
-          <button
-            type="button"
-            onClick={tryTouchId}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-warm"
-          >
-            <Shield className="h-4 w-4" /> Use Touch ID
-          </button>
-        )}
-      </form>
+      {mode === "passcode" ? (
+        <>
+          <p className="mt-1 text-sm text-text-muted">
+            {encrypted ? "Enter your passcode to unlock your encrypted vault." : "Enter your passcode to open Prevail."}
+          </p>
+          <form onSubmit={submit} className="mt-6 flex w-72 flex-col gap-3">
+            <input
+              type="password"
+              autoFocus
+              value={pass}
+              onChange={(e) => setPass(e.target.value)}
+              placeholder="Passcode"
+              className={inputCls}
+            />
+            {err && <div className="text-xs text-err">{err}</div>}
+            <button
+              type="submit"
+              disabled={busy || !pass}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-background hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Unlock
+            </button>
+            {touchIdOn && (
+              <button
+                type="button"
+                onClick={tryTouchId}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-warm"
+              >
+                <Shield className="h-4 w-4" /> Use Touch ID
+              </button>
+            )}
+            {encrypted && (
+              <button
+                type="button"
+                onClick={() => { setErr(""); setMode("recovery"); }}
+                className="mt-1 text-xs text-text-muted underline decoration-dotted hover:text-text-secondary"
+              >
+                Forgot your passcode? Use your recovery code.
+              </button>
+            )}
+          </form>
+        </>
+      ) : (
+        <>
+          <p className="mt-1 max-w-sm text-center text-sm text-text-muted">
+            Enter the one-time recovery code you saved when you encrypted this vault, then choose a new passcode.
+          </p>
+          <form onSubmit={submitRecovery} className="mt-6 flex w-80 flex-col gap-3">
+            <input
+              type="text"
+              autoFocus
+              autoCapitalize="characters"
+              spellCheck={false}
+              value={recoveryCode}
+              onChange={(e) => setRecoveryCode(e.target.value)}
+              placeholder="Recovery code (XXXXX-XXXXX-XXXXX-XXXXX)"
+              className={`${inputCls} font-mono uppercase tracking-wider`}
+            />
+            <input
+              type="password"
+              value={newPass}
+              onChange={(e) => setNewPass(e.target.value)}
+              placeholder="New passcode (min 8 characters)"
+              className={inputCls}
+            />
+            <input
+              type="password"
+              value={confirmPass}
+              onChange={(e) => setConfirmPass(e.target.value)}
+              placeholder="Confirm new passcode"
+              className={inputCls}
+            />
+            {err && <div className="text-xs text-err">{err}</div>}
+            <button
+              type="submit"
+              disabled={busy || !recoveryCode || !newPass || !confirmPass}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-background hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Reset passcode and unlock
+            </button>
+            <button
+              type="button"
+              onClick={() => { setErr(""); setMode("passcode"); }}
+              className="text-xs text-text-muted underline decoration-dotted hover:text-text-secondary"
+            >
+              Back to passcode
+            </button>
+          </form>
+        </>
+      )}
     </div>
   );
 }
@@ -331,14 +419,10 @@ export function SidebarMcpLive({ collapsed, setTab }: { collapsed: boolean; setT
       // just because the CLI can still handshake an MCP server out of process.
       if (lsGet(LS.mcpEnabled) !== "1") { if (alive) setLive(false); return; }
       try {
-        const s = await invoke<{ running: boolean }>("mcp_server_status");
-        if (alive) setLive(!!s.running);
-      } catch {
-        try {
-          const h = await invoke<{ ok: boolean }>("mcp_test_handshake", { vault: "" });
-          if (alive) setLive(!!h.ok);
-        } catch { if (alive) setLive(false); }
-      }
+        // "Live" means the CLI can actually handshake an MCP server right now.
+        const h = await invoke<{ ok: boolean }>("mcp_test_handshake", { vault: "" });
+        if (alive) setLive(!!h.ok);
+      } catch { if (alive) setLive(false); }
     };
     void check();
     const id = window.setInterval(() => void check(), 30_000);

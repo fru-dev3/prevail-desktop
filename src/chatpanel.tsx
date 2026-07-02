@@ -1659,10 +1659,10 @@ export function ChatPanel({
         {messages.length === 0 && !domain && domainTab === "chat" && (
           <div className="flex h-full flex-col items-center justify-center px-6 py-8">
             <PrevailLogo size={64} src="/logo-512.png" />
-            <h2 className="mt-6 font-display text-5xl font-bold tracking-tight">
+            <h2 className="mt-6 font-display text-4xl font-bold tracking-tight sm:text-5xl">
               What should we work on?
             </h2>
-            <p className="mt-3 max-w-none whitespace-nowrap text-center text-sm text-text-muted">
+            <p className="mt-3 max-w-md text-balance text-center text-sm text-text-muted">
               Your private AI that learns you and gets sharper every time you use it.
             </p>
             {lifeReadiness && lifeReadiness.life_readiness !== null && (
@@ -1931,7 +1931,7 @@ export function ChatPanel({
                 Skills · enter to insert
               </div>
               {slashCandidates.length === 0 ? (
-                <div className="px-3 py-2 text-[11px] text-text-muted">No skills in this vault yet — add one in a domain's <span className="font-mono">_skills/</span> folder.</div>
+                <div className="px-3 py-2 text-[11px] text-text-muted">No skills in this vault yet - add one in a domain's <span className="font-mono">_skills/</span> folder.</div>
               ) : slashCandidates.map((s, i) => (
                 <button
                   key={s.path}

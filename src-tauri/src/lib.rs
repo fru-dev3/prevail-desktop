@@ -183,6 +183,19 @@ pub(crate) fn read_to_string_retry<P: AsRef<Path>>(p: P) -> std::io::Result<Stri
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // C2: guard the vault against concurrent writers. The single-instance
+        // plugin must be registered FIRST. A second launch never spins up a
+        // second process pointed at the same vault folder (which the in-process
+        // write lock cannot serialize); instead it just refocuses the window
+        // that is already running.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            use tauri::Manager;
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -532,6 +545,7 @@ pub fn run() {
             engine::engine_vault_lock_session,
             engine::engine_vault_encrypt,
             engine::engine_vault_decrypt,
+            engine::engine_vault_recover,
             engine::engine_score,
             engine::engine_manifest_get,
             engine::engine_score_all,
