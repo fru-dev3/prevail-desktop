@@ -889,12 +889,208 @@ async function startPresetSuggest(modelsJson: string, known: Set<string>, provid
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// RUNNING BATCH MONITOR CARD
+//
+// One live progress card per in-flight (or finished-but-not-dismissed) batch.
+// It reads EVERYTHING from the BenchBatch it is handed, so many cards can run
+// side by side, each updating independently. Extracted from the old single
+// full-page progress view so the New Run wizard stays usable while runs are in
+// flight and several runs can be monitored at once.
+function RunningBatchCard({
+  batch, onViewResults, onCancel, onDismiss,
+}: {
+  batch: BenchBatch;
+  onViewResults: () => void;
+  onCancel: () => void;
+  onDismiss: () => void;
+}) {
+  const jobs = batch.jobs;
+  const running = batch.running;
+  const log = batch.log;
+  // Which job card is expanded to its question-by-question detail (per card).
+  const [expandedJob, setExpandedJob] = useState<string | null>(null);
+  const logRef = useRef<HTMLPreElement>(null);
+  useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log]);
+
+  const allDone = !running;
+  const doneCount = jobs.filter((j) => j.status === "done").length;
+  const errCount = jobs.filter((j) => j.status === "error").length;
+  const cancelled = jobs.some((j) => j.status === "cancelled") || batch.cancelled;
+  // Phase: once every model has answered (nothing queued/running), the batch
+  // moves to the judge-scoring pass. The progress bar hits 100% at the END of
+  // the answering phase, so without this it reads as "done" while scoring is
+  // still underway.
+  const answersDone = jobs.length > 0 && jobs.every((j) => j.status !== "queued" && j.status !== "running");
+  const scoringPhase = running && answersDone;
+  const scopeLine = batch.scopeDomains.length
+    ? batch.scopeDomains.slice(0, 3).map(titleCase).join(", ") + (batch.scopeDomains.length > 3 ? ` +${batch.scopeDomains.length - 3}` : "")
+    : "All domains";
+  return (
+    <div className="space-y-3 rounded-2xl border border-border bg-surface px-6 py-5 shadow-sm">
+      {/* Header: status icon + heading, with a Dismiss control for finished
+          batches so a completed card can be cleared without leaving the wizard. */}
+      <div className="flex items-start gap-2.5">
+        {running
+          ? <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-accent" />
+          : cancelled ? <X className="mt-0.5 h-5 w-5 shrink-0 text-text-muted" />
+          : errCount > 0 ? <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warn" />
+          : <Check className="mt-0.5 h-5 w-5 shrink-0 text-ok" strokeWidth={3} />}
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate font-display text-lg font-semibold tracking-tight text-text-primary">
+            {scoringPhase ? "Scoring answers…"
+              : running ? "Benchmarking…"
+              : cancelled ? "Run cancelled"
+              : errCount > 0 ? "Finished with errors"
+              : "Benchmark complete"}
+          </h2>
+          <div className="mt-0.5 truncate font-mono text-[11px] text-text-muted">
+            {batch.label}
+          </div>
+          <div className="mt-0.5 font-mono text-[11px] text-text-muted">
+            {scopeLine}{" · "}{jobs.length} model{jobs.length === 1 ? "" : "s"}{" · "}{jobs[0]?.total ?? 0} q each{" · auto-scored"}
+          </div>
+        </div>
+        {allDone && (
+          <button
+            onClick={onDismiss}
+            title="Dismiss this run from the monitor"
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1 font-mono text-[10px] text-text-secondary transition-colors hover:bg-surface-warm"
+          >
+            <Trash2 className="h-3 w-3" /> Dismiss
+          </button>
+        )}
+      </div>
+      {(() => {
+        const overallTotal = jobs.reduce((a, j) => a + j.total, 0);
+        const overallDone = jobs.reduce((a, j) => a + (j.status === "done" || j.status === "scoring" ? j.total : j.done), 0);
+        const pct = overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0;
+        return (
+          <div>
+            <div className="mb-1.5 flex items-baseline justify-between font-mono text-[11px]">
+              <span className="text-text-muted">{scoringPhase || allDone ? "answers" : "answering"}</span>
+              <span className="tabular-nums text-text-secondary">{overallDone}/{overallTotal} · <span className="font-semibold text-text-primary">{pct}%</span></span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-surface-warm">
+              <div className={`h-full rounded-full transition-all duration-500 ${scoringPhase ? "bg-text-primary/70" : "bg-accent"}`} style={{ width: `${pct}%` }} />
+            </div>
+            {scoringPhase && (
+              <div className="mt-3 flex items-center justify-center gap-1.5 font-mono text-[11px] text-accent">
+                <Loader2 className="h-3 w-3 animate-spin" /> answers in · scoring with the judge, almost done
+              </div>
+            )}
+          </div>
+        );
+      })()}
+      {running && (
+        <div className="flex justify-center">
+          <button
+            onClick={onCancel}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3.5 py-1.5 font-mono text-[11px] text-text-secondary transition-colors hover:border-err hover:text-err"
+          >
+            <X className="h-3.5 w-3.5" /> Cancel run
+          </button>
+        </div>
+      )}
+      <div className="space-y-2">
+        {jobs.map((j) => {
+          const pct = j.total > 0 ? Math.round((j.done / j.total) * 100) : 0;
+          const expanded = expandedJob === j.key;
+          return (
+            <div key={j.key} className="overflow-hidden rounded-xl border border-border bg-surface">
+              <button
+                onClick={() => setExpandedJob(expanded ? null : j.key)}
+                className="w-full px-4 py-3 text-left hover:bg-surface-warm/60"
+                title="Click for question-by-question detail"
+              >
+                <div className="flex items-center gap-3">
+                  <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${expanded ? "rotate-90" : ""}`} />
+                  {j.cli ? <ProviderMark vendor={j.cli} size={20} /> : <Scale className="h-5 w-5 text-accent" />}
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">{j.label}</span>
+                  {j.status === "running" && j.qcur && (
+                    <span className="hidden min-w-0 max-w-[220px] truncate font-mono text-[10px] text-text-muted md:inline">{j.qcur}…</span>
+                  )}
+                  <span className="font-mono text-[11px] tabular-nums text-text-muted">
+                    {j.status === "queued" ? "queued" : `${j.done}/${j.total}`}
+                  </span>
+                  <span className={`w-16 text-right font-mono text-[10px] uppercase tracking-wider ${
+                    j.status === "error" ? "text-err" : j.status === "cancelled" ? "text-text-muted" : j.status === "done" ? "text-ok" : "text-accent"
+                  }`}>
+                    {j.status === "error" ? "error" : j.status === "cancelled" ? "cancelled" : j.status === "done" ? "done" : j.status === "scoring" ? "scoring" : j.status === "running" ? `${pct}%` : "queued"}
+                  </span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-warm">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      j.status === "error" ? "bg-err/60" : j.status === "cancelled" ? "bg-surface-strong" : j.status === "scoring" || j.status === "done" ? "bg-ok" : "bg-accent"
+                    } ${j.status === "scoring" ? "animate-pulse" : ""}`}
+                    style={{ width: `${j.status === "done" || j.status === "scoring" ? 100 : pct}%` }}
+                  />
+                </div>
+                {j.note && <div className="mt-1.5 font-mono text-[10px] text-err">{j.note}</div>}
+              </button>
+              {expanded && j.qids.length > 0 && (
+                <div className="max-h-64 overflow-y-auto border-t border-border-subtle bg-background/40 px-4 py-2">
+                  {j.qids.map((q) => {
+                    const info = j.qdone[q];
+                    const isCur = !info && j.qcur === q;
+                    const failed = info?.startsWith("✗");
+                    return (
+                      <div key={q} className="flex items-center gap-2.5 py-1">
+                        <span className="w-4 shrink-0 text-center">
+                          {info ? (
+                            failed
+                              ? <AlertTriangle className="h-3 w-3 text-err" />
+                              : <Check className="h-3 w-3 text-ok" strokeWidth={3} />
+                          ) : isCur ? (
+                            <Loader2 className="h-3 w-3 animate-spin text-accent" />
+                          ) : (
+                            <Circle className="h-2.5 w-2.5 text-text-muted/40" />
+                          )}
+                        </span>
+                        <span className={`min-w-0 flex-1 truncate font-mono text-[11px] ${info ? "text-text-primary" : isCur ? "text-accent" : "text-text-muted/60"}`}>
+                          {q}
+                        </span>
+                        {info && !failed && <span className="max-w-[200px] truncate font-mono text-[9px] text-text-muted">{info}</span>}
+                        {failed && <span className="max-w-[260px] truncate font-mono text-[9px] text-err" title={info}>{info}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {allDone && (
+        <div className="flex items-center justify-center gap-2 pt-1">
+          <button onClick={onViewResults} className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background hover:bg-accent-hover">
+            <TrendingUp className="h-4 w-4" /> View results
+          </button>
+          <button onClick={onDismiss} className="rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-warm">
+            Dismiss
+          </button>
+        </div>
+      )}
+      {allDone && doneCount > 0 && errCount > 0 && (
+        <p className="text-center font-mono text-[10px] text-text-muted">Failed jobs can be rerun individually from a new run.</p>
+      )}
+      {log && (
+        <details className="rounded-lg border border-border-subtle bg-surface px-3 py-2">
+          <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-wider text-text-muted">engine log</summary>
+          <pre ref={logRef} className="mt-2 max-h-48 overflow-y-auto font-mono text-[10px] leading-relaxed text-text-muted">{log}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // SETTINGS PANEL - vault, theme, defaults, about
 
 export function BenchRunConfig({
   mode, setMode, selModels, toggleModel, allDomains, scope, toggleScope, scoped,
   applyModels, applyScope, onRunSuite,
-  questionCounts, questionCount, running, jobs, log, logRef, activeBatch, onRun, onViewResults, onReset, onCancel, onCrumbHome,
+  questionCounts, questionCount, onRun,
 }: {
   mode: "single" | "council";
   setMode: (m: "single" | "council") => void;
@@ -914,16 +1110,7 @@ export function BenchRunConfig({
   onRunSuite: (s: { mode: "single" | "council"; models: string[]; domains: string[] }) => void;
   questionCounts: Record<string, number>;
   questionCount: number;
-  running: boolean;
-  jobs: BenchJob[];
-  log: string;
-  logRef: React.RefObject<HTMLPreElement | null>;
-  activeBatch?: { label: string; scope: string; domains: string[] } | null;
   onRun: () => void;
-  onViewResults: () => void;
-  onCancel?: () => void;
-  onReset: () => void;
-  onCrumbHome?: () => void;
 }) {
   // Council is retired from this page: the run is always the multi-model
   // head-to-head, so the selection count is simply the chosen models. The
@@ -980,8 +1167,6 @@ export function BenchRunConfig({
       return next;
     });
 
-  // Which job card is expanded to its question-by-question detail.
-  const [expandedJob, setExpandedJob] = useState<string | null>(null);
   // Domain scope list expanded by default (still collapsible), so the domains are
   // visible without a click.
   const [domScopeOpen, setDomScopeOpen] = useState(true);
@@ -1134,178 +1319,6 @@ export function BenchRunConfig({
     s.domains.length === 0 ? "all domains"
     : s.domains.length <= 2 ? s.domains.map(titleCase).join(", ")
     : `${s.domains.length} domains`;
-
-  // While a benchmark is in flight (or just finished with errors), the page
-  // IS the progress: the config disappears and each model gets a live
-  // question-by-question progress bar. No clutter, no guessing.
-  if (running || jobs.length > 0) {
-    const allDone = !running;
-    const doneCount = jobs.filter((j) => j.status === "done").length;
-    const errCount = jobs.filter((j) => j.status === "error").length;
-    // Phase: once every model has answered (nothing queued/running), the batch
-    // moves to the judge-scoring pass. The progress bar hits 100% at the END of
-    // the answering phase, so without this it reads as "done" while scoring is
-    // still underway.
-    const answersDone = jobs.length > 0 && jobs.every((j) => j.status !== "queued" && j.status !== "running");
-    const scoringPhase = running && answersDone;
-    return (
-      <div className="w-full space-y-4 px-8 py-5">
-        <BenchCrumbs
-          items={[
-            { label: "Arena", onClick: onCrumbHome },
-            { label: "Run", onClick: allDone ? onReset : undefined },
-            { label: activeBatch?.label ?? (running ? "Running…" : "Finished") },
-          ]}
-          meta={`${jobs.length} model${jobs.length === 1 ? "" : "s"} · ${jobs[0]?.total ?? 0} questions each`}
-        />
-        {/* Progress card: one contained block with a clear status, a single quiet
-            meta line, the answer-progress bar, and a distinct scoring phase so a
-            full bar never reads as "done" while the judge is still scoring. */}
-        <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-surface px-8 py-6 shadow-sm">
-          <div className="flex items-center justify-center gap-2.5">
-            {running
-              ? <Loader2 className="h-5 w-5 shrink-0 animate-spin text-accent" />
-              : jobs.some((j) => j.status === "cancelled") ? <X className="h-5 w-5 shrink-0 text-text-muted" />
-              : errCount > 0 ? <AlertTriangle className="h-5 w-5 shrink-0 text-warn" />
-              : <Check className="h-5 w-5 shrink-0 text-ok" strokeWidth={3} />}
-            <h2 className="font-display text-xl font-semibold tracking-tight text-text-primary">
-              {scoringPhase ? "Scoring answers…"
-                : running ? "Benchmarking…"
-                : jobs.some((j) => j.status === "cancelled") ? "Run cancelled"
-                : errCount > 0 ? "Finished with errors"
-                : "Benchmark complete"}
-            </h2>
-          </div>
-          <div className="mt-2 text-center font-mono text-[11px] text-text-muted">
-            {(activeBatch?.domains?.length
-              ? activeBatch.domains.slice(0, 3).map(titleCase).join(", ") + (activeBatch.domains.length > 3 ? ` +${activeBatch.domains.length - 3}` : "")
-              : "All domains")}
-            {" · "}{jobs.length} model{jobs.length === 1 ? "" : "s"}{" · "}{jobs[0]?.total ?? 0} q each{" · auto-scored"}
-          </div>
-          {(() => {
-            const overallTotal = jobs.reduce((a, j) => a + j.total, 0);
-            const overallDone = jobs.reduce((a, j) => a + (j.status === "done" || j.status === "scoring" ? j.total : j.done), 0);
-            const pct = overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0;
-            return (
-              <div className="mt-6">
-                <div className="mb-1.5 flex items-baseline justify-between font-mono text-[11px]">
-                  <span className="text-text-muted">{scoringPhase || allDone ? "answers" : "answering"}</span>
-                  <span className="tabular-nums text-text-secondary">{overallDone}/{overallTotal} · <span className="font-semibold text-text-primary">{pct}%</span></span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-surface-warm">
-                  <div className={`h-full rounded-full transition-all duration-500 ${scoringPhase ? "bg-text-primary/70" : "bg-accent"}`} style={{ width: `${pct}%` }} />
-                </div>
-                {scoringPhase && (
-                  <div className="mt-3 flex items-center justify-center gap-1.5 font-mono text-[11px] text-accent">
-                    <Loader2 className="h-3 w-3 animate-spin" /> answers in · scoring with the judge, almost done
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-          {running && onCancel && (
-            <div className="mt-6 flex justify-center">
-              <button
-                onClick={onCancel}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3.5 py-1.5 font-mono text-[11px] text-text-secondary transition-colors hover:border-err hover:text-err"
-              >
-                <X className="h-3.5 w-3.5" /> Cancel run
-              </button>
-            </div>
-          )}
-        </div>
-        <div className="space-y-2">
-          {jobs.map((j) => {
-            const pct = j.total > 0 ? Math.round((j.done / j.total) * 100) : 0;
-            const expanded = expandedJob === j.key;
-            return (
-              <div key={j.key} className="overflow-hidden rounded-xl border border-border bg-surface">
-                <button
-                  onClick={() => setExpandedJob(expanded ? null : j.key)}
-                  className="w-full px-4 py-3 text-left hover:bg-surface-warm/60"
-                  title="Click for question-by-question detail"
-                >
-                  <div className="flex items-center gap-3">
-                    <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${expanded ? "rotate-90" : ""}`} />
-                    {j.cli ? <ProviderMark vendor={j.cli} size={20} /> : <Scale className="h-5 w-5 text-accent" />}
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">{j.label}</span>
-                    {j.status === "running" && j.qcur && (
-                      <span className="hidden min-w-0 max-w-[220px] truncate font-mono text-[10px] text-text-muted md:inline">{j.qcur}…</span>
-                    )}
-                    <span className="font-mono text-[11px] tabular-nums text-text-muted">
-                      {j.status === "queued" ? "queued" : `${j.done}/${j.total}`}
-                    </span>
-                    <span className={`w-16 text-right font-mono text-[10px] uppercase tracking-wider ${
-                      j.status === "error" ? "text-err" : j.status === "cancelled" ? "text-text-muted" : j.status === "done" ? "text-ok" : "text-accent"
-                    }`}>
-                      {j.status === "error" ? "error" : j.status === "cancelled" ? "cancelled" : j.status === "done" ? "done" : j.status === "scoring" ? "scoring" : j.status === "running" ? `${pct}%` : "queued"}
-                    </span>
-                  </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-warm">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        j.status === "error" ? "bg-err/60" : j.status === "cancelled" ? "bg-surface-strong" : j.status === "scoring" || j.status === "done" ? "bg-ok" : "bg-accent"
-                      } ${j.status === "scoring" ? "animate-pulse" : ""}`}
-                      style={{ width: `${j.status === "done" || j.status === "scoring" ? 100 : pct}%` }}
-                    />
-                  </div>
-                  {j.note && <div className="mt-1.5 font-mono text-[10px] text-err">{j.note}</div>}
-                </button>
-                {expanded && j.qids.length > 0 && (
-                  <div className="max-h-64 overflow-y-auto border-t border-border-subtle bg-background/40 px-4 py-2">
-                    {j.qids.map((q) => {
-                      const info = j.qdone[q];
-                      const isCur = !info && j.qcur === q;
-                      const failed = info?.startsWith("✗");
-                      return (
-                        <div key={q} className="flex items-center gap-2.5 py-1">
-                          <span className="w-4 shrink-0 text-center">
-                            {info ? (
-                              failed
-                                ? <AlertTriangle className="h-3 w-3 text-err" />
-                                : <Check className="h-3 w-3 text-ok" strokeWidth={3} />
-                            ) : isCur ? (
-                              <Loader2 className="h-3 w-3 animate-spin text-accent" />
-                            ) : (
-                              <Circle className="h-2.5 w-2.5 text-text-muted/40" />
-                            )}
-                          </span>
-                          <span className={`min-w-0 flex-1 truncate font-mono text-[11px] ${info ? "text-text-primary" : isCur ? "text-accent" : "text-text-muted/60"}`}>
-                            {q}
-                          </span>
-                          {info && !failed && <span className="max-w-[200px] truncate font-mono text-[9px] text-text-muted">{info}</span>}
-                          {failed && <span className="max-w-[260px] truncate font-mono text-[9px] text-err" title={info}>{info}</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        {allDone && (
-          <div className="flex items-center justify-center gap-2 pt-1">
-            <button onClick={onViewResults} className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background hover:bg-accent-hover">
-              <TrendingUp className="h-4 w-4" /> View results
-            </button>
-            <button onClick={onReset} className="rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-warm">
-              New run
-            </button>
-          </div>
-        )}
-        {allDone && doneCount > 0 && errCount > 0 && (
-          <p className="text-center font-mono text-[10px] text-text-muted">Failed jobs can be rerun individually from a new run.</p>
-        )}
-        {log && (
-          <details className="rounded-lg border border-border-subtle bg-surface px-3 py-2">
-            <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-wider text-text-muted">engine log</summary>
-            <pre ref={logRef} className="mt-2 max-h-48 overflow-y-auto font-mono text-[10px] leading-relaxed text-text-muted">{log}</pre>
-          </details>
-        )}
-      </div>
-    );
-  }
 
   // The Run title + breadcrumb now live in the Arena page header. The primary
   // "Run" action moved into the final "Review & Run" step of the wizard below.
@@ -1768,7 +1781,7 @@ export function BenchRunConfig({
                 </div>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <button onClick={doRun} disabled={running} title="Run this preset now" className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
+                <button onClick={doRun} title="Run this preset now" className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 font-mono text-[11px] font-semibold text-background hover:bg-accent-hover disabled:opacity-40">
                   <Play className="h-3 w-3" /> Run
                 </button>
                 <button onClick={doApply} title="Drop these models onto the Run panel to tweak" className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-text-secondary hover:border-accent-border hover:text-accent">
@@ -2017,17 +2030,19 @@ export function BenchRunConfig({
               )}
             </div>
 
-            {/* Start CTA: same onRun, same disabled logic, same states. */}
+            {/* Start CTA: launching is always available now (concurrent runs are
+                supported), so the button is gated only on having a valid selection
+                and questions in scope, never on another run being in flight. */}
             <div className="border-t border-border-subtle px-5 pb-5 pt-4">
               <button
                 onClick={onRun}
-                disabled={running || questionCount === 0 || selCount === 0}
+                disabled={questionCount === 0 || selCount === 0}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
               >
-                {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                {running ? "Running…" : `Run ${selCount} model${selCount === 1 ? "" : "s"}`}
+                <Play className="h-4 w-4" />
+                {`Run ${selCount} model${selCount === 1 ? "" : "s"}`}
               </button>
-              <p className="mt-2 text-center font-mono text-[10px] leading-relaxed text-text-muted">Different CLIs enter the arena in parallel · auto-scored. Review results in History.</p>
+              <p className="mt-2 text-center font-mono text-[10px] leading-relaxed text-text-muted">Different CLIs enter the arena in parallel · auto-scored. Runs launch concurrently and appear in the monitor above. Review results in History.</p>
             </div>
           </div>
         </div>
@@ -3174,55 +3189,59 @@ export function BenchmarkPanel({
     () => new Set(initialDomain ? [initialDomain.toLowerCase()] : []),
   );
   // Live run state comes from the module-scope registry, so it survives any
-  // navigation and remount. This panel surfaces the batch matching its home
-  // domain when scoped, otherwise the most relevant one.
+  // navigation and remount, and the engine runs every batch concurrently. This
+  // panel MONITORS all of them at once instead of surfacing a single "current"
+  // batch, so the New Run wizard stays usable while runs are in flight.
   const allBatches = useBenchBatches().filter((b) => b.vault === vaultPath);
   const homeDomain = initialDomain ? initialDomain.toLowerCase() : null;
   const matchesHome = (b: BenchBatch) =>
     !homeDomain || b.scopeKey === "" || b.scopeKey.split(",").includes(homeDomain);
   const visibleBatches = allBatches.filter(matchesHome);
-  const current =
-    // A RUNNING batch always surfaces (even if its scope differs from this panel's
-    // home domain) - otherwise launching a run scoped to another domain looks like
-    // "nothing happened". Finished batches still respect the home filter.
-    [...allBatches].reverse().find((b) => b.running) ??
-    [...visibleBatches].reverse().find((b) => !b.consumed) ??
-    null;
-  const jobs = current?.jobs ?? [];
-  const running = current?.running ?? false;
-  const log = current?.log ?? "";
-  const activeBatch = current
-    ? { label: current.label, scope: current.scopeLabel, domains: current.scopeDomains }
-    : null;
-  const logRef = useRef<HTMLPreElement>(null);
-  useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log]);
+  // The monitor shows EVERY running batch (regardless of this panel's scope, so a
+  // run launched for another domain still shows progress) plus finished batches
+  // that match this panel's home domain and have not been dismissed. Running
+  // cards first, then finished, newest of each first. Each renders its own live
+  // progress from its BenchBatch.
+  const monitorBatches = useMemo(() => {
+    const shown = allBatches.filter((b) => b.running || matchesHome(b));
+    const rev = [...shown].reverse();
+    return [...rev.filter((b) => b.running), ...rev.filter((b) => !b.running)];
+    // matchesHome closes over homeDomain; allBatches is a fresh array each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allBatches, homeDomain]);
 
-  // When a batch this panel surfaces finishes, land on the refreshed
-  // leaderboard with the "batch finished" banner - once.
+  // When a batch this panel surfaces finishes, refresh the leaderboard ONCE (so
+  // results are ready when the user clicks View results) and, for a batch that
+  // produced no runs, surface the reason. Unlike before, we do NOT navigate away
+  // or delete the batch: it stays in the monitor as a finished card with View
+  // results + Dismiss, so a run completing never yanks the user out of the wizard
+  // or another run's monitor. Guarded by a ref so each batch fires only once.
+  const finishedSeen = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const fin = visibleBatches.find((b) => !b.running && !b.consumed);
-    if (!fin) return;
-    fin.consumed = true;
-    refresh();
-    if (!fin.cancelled) {
-      const ran = fin.jobs.filter((j) => j.status === "done").length;
-      const errored = fin.jobs.filter((j) => j.status === "error").length;
-      if (ran === 0 && errored > 0) {
-        // Nothing produced a run. Don't flash a misleading "finished and is on
-        // the board" banner - keep the user on the Run view with the per-job
-        // errors visible. (Leave the batch in the registry so those errors stay
-        // on screen; the next run's startup sweep clears consumed batches.)
-        setErr(`Batch "${fin.label}" produced no runs: all ${errored} model${errored === 1 ? "" : "s"} errored. Open the Run tab for the per-model reason.`);
-        setView("run");
-        benchNotify();
-        return;
+    let changed = false;
+    for (const fin of visibleBatches) {
+      if (fin.running || finishedSeen.current.has(fin.id)) continue;
+      finishedSeen.current.add(fin.id);
+      changed = true;
+      if (!fin.cancelled) {
+        const ran = fin.jobs.filter((j) => j.status === "done").length;
+        const errored = fin.jobs.filter((j) => j.status === "error").length;
+        if (ran === 0 && errored > 0) {
+          setErr(`Batch "${fin.label}" produced no runs: all ${errored} model${errored === 1 ? "" : "s"} errored. See its card in the Running benchmarks monitor for the per-model reason.`);
+        } else {
+          setFinishedBatch(errored > 0 ? `${fin.label} - ${ran} ran, ${errored} failed` : fin.label);
+        }
       }
-      setFinishedBatch(errored > 0 ? `${fin.label} - ${ran} ran, ${errored} failed` : fin.label);
-      setView("board");
     }
-    benchBatches.delete(fin.id);
-    benchNotify();
+    if (changed) refresh();
   }, [visibleBatches, refresh]);
+  // Dismiss a finished card: drop it from the registry and forget its "seen"
+  // marker so a re-run under a fresh id is tracked cleanly.
+  const dismissBatch = (b: BenchBatch) => {
+    finishedSeen.current.delete(b.id);
+    benchBatches.delete(b.id);
+    benchNotify();
+  };
 
   const toggleModel = (cli: string, model: string) => {
     const k = `${cli}${MODEL_SEP}${model}`;
@@ -3497,25 +3516,45 @@ export function BenchmarkPanel({
             />
           </div>
         {view === "run" && (
-          <BenchRunConfig
-            mode={mode} setMode={setMode}
-            selModels={selModels} toggleModel={toggleModel}
-            allDomains={allDomains} scope={scope} toggleScope={toggleScope} scoped={!!initialDomain}
-            applyModels={applyModels} applyScope={applyScope} onRunSuite={runSuite}
-            questionCounts={questionCounts}
-            questionCount={
-              scope.size === 0
-                ? questions.filter((q) => !q.archived).length
-                : questions.filter((q) => !q.archived && scope.has(q.domain.toLowerCase())).length
-            }
-            running={running} jobs={jobs} log={log} logRef={logRef}
-            activeBatch={activeBatch}
-            onRun={runBenchmark}
-            onViewResults={() => setView("board")}
-            onReset={() => { if (current && !current.running) { benchBatches.delete(current.id); benchNotify(); } }}
-            onCancel={current?.running ? () => void cancelBenchBatch(current.id) : undefined}
-            onCrumbHome={() => setView("board")}
-          />
+          <>
+            {/* MONITOR: every active run (in flight + finished-not-dismissed) as
+                its own live card, above the always-available wizard. Each updates
+                independently; several can run at once. */}
+            {monitorBatches.length > 0 && (
+              <div className="w-full space-y-3 px-8 pt-5">
+                <div className="flex items-baseline justify-between">
+                  <h2 className="font-display text-sm font-semibold tracking-tight text-text-primary">
+                    Running benchmarks ({monitorBatches.length})
+                  </h2>
+                  <span className="font-mono text-[10px] text-text-muted">
+                    {monitorBatches.filter((b) => b.running).length} in flight · runs launch concurrently
+                  </span>
+                </div>
+                {monitorBatches.map((b) => (
+                  <RunningBatchCard
+                    key={b.id}
+                    batch={b}
+                    onViewResults={() => setView("board")}
+                    onCancel={() => void cancelBenchBatch(b.id)}
+                    onDismiss={() => dismissBatch(b)}
+                  />
+                ))}
+              </div>
+            )}
+            <BenchRunConfig
+              mode={mode} setMode={setMode}
+              selModels={selModels} toggleModel={toggleModel}
+              allDomains={allDomains} scope={scope} toggleScope={toggleScope} scoped={!!initialDomain}
+              applyModels={applyModels} applyScope={applyScope} onRunSuite={runSuite}
+              questionCounts={questionCounts}
+              questionCount={
+                scope.size === 0
+                  ? questions.filter((q) => !q.archived).length
+                  : questions.filter((q) => !q.archived && scope.has(q.domain.toLowerCase())).length
+              }
+              onRun={runBenchmark}
+            />
+          </>
         )}
         {view === "scout" && (
           <div className="px-8 pb-6">
