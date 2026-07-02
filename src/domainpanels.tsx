@@ -312,6 +312,31 @@ export function DomainContextDrawer({
         </button>
       </div>
       <div className="flex-1 overflow-y-auto">
+        {/* X6 (cascading goals): make the "why" legible - every domain's context
+            traces up to your life mission (the ideal-state). Shows the mission's
+            headline so tasks/answers here read as serving something bigger. */}
+        {(() => {
+          const mission = idealState
+            .split("\n")
+            .map((l) => l.replace(/^#+\s*/, "").trim())
+            .find((l) => l.length > 0);
+          if (!mission) return null;
+          return (
+            <button
+              onClick={() => openCanvas("Ideal", idealState)}
+              className="flex w-full items-start gap-2 border-b border-border-subtle bg-accent-soft/40 px-4 py-2 text-left hover:bg-accent-soft"
+              title="Your north star - open your ideal state"
+            >
+              <Compass className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
+              <div className="min-w-0">
+                <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-accent">
+                  {domain ? `${titleCase(domain)} serves your mission` : "Your mission"}
+                </div>
+                <div className="truncate text-[12px] text-text-secondary">{mission}</div>
+              </div>
+            </button>
+          );
+        })()}
         {loading && <div className="p-4 text-xs text-text-muted">loading…</div>}
         {/* B2-28: calm, recoverable message instead of a raw "domain not found:
             /path" error. The Global sections (Ideal State, Profile, Memory) still
