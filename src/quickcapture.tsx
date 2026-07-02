@@ -6,6 +6,7 @@
 // and strategy analysis.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Mic, Settings2, Sparkles, Square, X } from "lucide-react";
+import { invoke } from "./bridge";
 import { addNote } from "./notesstore";
 
 function getSpeechRecognition(): (new () => SpeechRecognitionLike) | null {
@@ -33,12 +34,25 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const committedRef = useRef("");
   const usedVoiceRef = useRef(false);
+  // C4: live transcription needs the Web Speech API (absent in the desktop
+  // WKWebView). When it's missing we fall back to MediaRecorder: record the audio
+  // and save it with the note, so voice capture still works (just without live
+  // text). getUserMedia + MediaRecorder ARE available in WKWebView.
   const speechSupported = !!getSpeechRecognition();
+  const mediaSupported = typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined";
+  const voiceSupported = speechSupported || mediaSupported;
+  const mediaRecRef = useRef<MediaRecorder | null>(null);
+  const mediaChunksRef = useRef<Blob[]>([]);
+  const audioPathRef = useRef<string | null>(null);
   const words = body.trim() ? body.trim().split(/\s+/).length : 0;
 
   const stopRec = useCallback(() => {
     try { recRef.current?.stop(); } catch { /* ignore */ }
     recRef.current = null;
+    try {
+      const mr = mediaRecRef.current;
+      if (mr && mr.state !== "inactive") mr.stop(); // fires onstop → saves the audio
+    } catch { /* ignore */ }
     setRecording(false);
   }, []);
 
@@ -62,7 +76,12 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
   const startRec = () => {
     setError(null);
     const SR = getSpeechRecognition();
-    if (!SR) { setError("Voice capture isn't available in this build."); return; }
+    if (!SR) {
+      // No live transcription here - record the audio instead.
+      if (mediaSupported) { void startAudioRec(); return; }
+      setError("Voice capture isn't available in this build.");
+      return;
+    }
     let r: SpeechRecognitionLike;
     try { r = new SR(); } catch { setError("Couldn't start the microphone."); return; }
     r.continuous = true; r.interimResults = true; r.lang = navigator.language || "en-US";
@@ -87,14 +106,52 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
     catch { setError("Couldn't start the microphone."); }
   };
 
+  // C4 fallback: capture the microphone with MediaRecorder and save the audio to
+  // the vault. The saved path is attached to the note on save.
+  const startAudioRec = async () => {
+    setError(null);
+    let stream: MediaStream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch {
+      setError("Microphone access is off. Enable it in System Settings → Privacy & Security → Microphone, then try again.");
+      return;
+    }
+    const mime = ["audio/webm", "audio/mp4", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
+    let mr: MediaRecorder;
+    try { mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined); }
+    catch { setError("Couldn't start the recorder."); stream.getTracks().forEach((t) => t.stop()); return; }
+    mediaChunksRef.current = [];
+    usedVoiceRef.current = true;
+    mr.ondataavailable = (e) => { if (e.data.size > 0) mediaChunksRef.current.push(e.data); };
+    mr.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const blob = new Blob(mediaChunksRef.current, { type: mr.mimeType || "audio/webm" });
+      if (blob.size === 0) return;
+      try {
+        const buf = new Uint8Array(await blob.arrayBuffer());
+        let bin = ""; for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+        const b64 = btoa(bin);
+        const ext = (mr.mimeType.split("/")[1] || "webm").split(";")[0];
+        audioPathRef.current = await invoke<string>("write_voice_note", { vault: vaultPath, base64: b64, ext });
+        setBody((b) => (b.trim() ? b : "Voice memo recorded."));
+      } catch (err) { setError(`Couldn't save the recording: ${String(err)}`); }
+    };
+    try { mr.start(); mediaRecRef.current = mr; setRecording(true); }
+    catch { setError("Couldn't start the recorder."); stream.getTracks().forEach((t) => t.stop()); }
+  };
+
   const save = async () => {
-    const text = body.trim();
-    if (!text && !title.trim()) return;
+    let text = body.trim();
     if (recording) stopRec();
+    // If a voice memo was recorded, keep a reference to the audio file in the note
+    // (the recording is saved even when we couldn't transcribe it live).
+    const audio = audioPathRef.current;
+    if (audio) text = `${text ? text + "\n\n" : ""}Voice memo: ${audio}`;
+    if (!text && !title.trim()) return;
     setSaving(true);
     try {
       await addNote(vaultPath, { title, body: text, source: usedVoiceRef.current ? "voice" : "quick" });
-      setTitle(""); setBody(""); committedRef.current = ""; usedVoiceRef.current = false;
+      setTitle(""); setBody(""); committedRef.current = ""; usedVoiceRef.current = false; audioPathRef.current = null;
       setSavedFlash(true);
       window.setTimeout(() => setSavedFlash(false), 1600);
     } catch (e) { setError(`Couldn't save: ${e}`); } finally { setSaving(false); }
@@ -163,7 +220,7 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
             <Settings2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <div className="flex-1">
               <span>{error}</span>
-              {speechSupported && <button onClick={startRec} className="ml-1 font-semibold underline hover:no-underline">Try again</button>}
+              {voiceSupported && <button onClick={startRec} className="ml-1 font-semibold underline hover:no-underline">Try again</button>}
             </div>
           </div>
         )}
@@ -176,13 +233,13 @@ export function QuickCapture({ vaultPath }: { vaultPath: string }) {
               <Square className="h-4 w-4" />
             </button>
           ) : (
-            <button onClick={startRec} disabled={!speechSupported} title={speechSupported ? "Record & transcribe" : "Voice capture isn't available in this build"} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent ring-1 ring-inset ring-accent-border/50 transition-transform hover:scale-105 disabled:opacity-40 disabled:hover:scale-100">
+            <button onClick={startRec} disabled={!voiceSupported} title={speechSupported ? "Record & transcribe" : mediaSupported ? "Record a voice memo" : "Voice capture isn't available in this build"} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent ring-1 ring-inset ring-accent-border/50 transition-transform hover:scale-105 disabled:opacity-40 disabled:hover:scale-100">
               <Mic className="h-[18px] w-[18px]" />
             </button>
           )}
 
           <div className="flex min-w-0 flex-1 flex-col leading-tight">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{recording ? "Recording…" : speechSupported ? "Tap to dictate" : "Voice unavailable"}</span>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{recording ? "Recording…" : speechSupported ? "Tap to dictate" : mediaSupported ? "Tap to record" : "Voice unavailable"}</span>
             {words > 0 && <span className="text-[10px] text-text-muted/70">{words} word{words === 1 ? "" : "s"}</span>}
           </div>
 
