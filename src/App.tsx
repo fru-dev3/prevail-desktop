@@ -6,7 +6,7 @@ import { titleCase } from "./format";
 import type { CliInfo, Domain, DomainTab, EngineApp, TabId, ThreadMeta } from "./types";
 import { BUNKER_LS, LS, PREF, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet } from "./storage";
 import { track } from "./telemetry";
-import { ensureDefaultProfile } from "./profiles";
+import { ensureDefaultProfile, getOwnedProfile } from "./profiles";
 import { QuickCapture } from "./quickcapture";
 import { BridgeStatusChips, DemoRibbon, ResizeHandle } from "./widgets";
 import { useProcesses } from "./processes";
@@ -528,8 +528,23 @@ export default function App() {
             if (ok) { setVaultPath(bp); lsSet(LS.vault, bp); return; }
           }
         }
-        // Demo mode (default) - always re-seed from the bundled sample vault
-        // so every launch starts with fresh, up-to-date sample data.
+        // Demo mode (default). If the user has taken ownership of a profile
+        // (switching to one makes it the default) and its vault still exists,
+        // honor that vault so the active profile survives restarts instead of
+        // being reverted to the sample sandbox on every launch. A fresh,
+        // never-switched sandbox falls through and re-seeds below.
+        const owned = getOwnedProfile();
+        if (owned?.vaultPath) {
+          const ok = await invoke<boolean>("vault_exists", { path: owned.vaultPath }).catch(() => false);
+          if (ok) {
+            setVaultPath(owned.vaultPath);
+            lsSet(LS.vault, owned.vaultPath);
+            setSelectedDomain(null);
+            return;
+          }
+        }
+        // No owned profile (or its vault is gone) - re-seed the bundled sample
+        // vault so every launch starts with fresh, up-to-date sample data.
         await seedDemo();
       } catch { /* fall through to the VaultWizard if seeding fails */ }
     })();
