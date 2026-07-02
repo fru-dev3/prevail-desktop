@@ -2,7 +2,7 @@
 id: trip-blueprint
 runner: llm
 trigger: on-demand
-description: Turn a trip idea into a booked plan — dates, budget, the three anchors, and what stays unplanned.
+description: Turn a trip idea into a booked plan, dates, budget, the three anchors, and what stays unplanned.
 source: seed
 ---
 

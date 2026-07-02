@@ -251,7 +251,7 @@ export interface Lens {
 
 export type TabId = "chat" | "council" | "benchmark" | "settings" | "work";
 
-export type DomainTab = "chat" | "context" | "insights" | "usage" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs" | "apps" | "loops" | "work";
+export type DomainTab = "chat" | "welcome" | "soul" | "context" | "insights" | "usage" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs" | "apps" | "loops" | "work";
 
 export type DomainToggle = "council" | "web" | "save" | "serendipity" | "auto";
 
@@ -421,8 +421,9 @@ export type DirectProvider = { name: string; path?: string; hex?: string; mono?:
 
 export type Connector = { name: string; domain: string; brand?: Brand; icon?: LucideIcon; color?: string };
 
-export type ConnectionHint = { method: string; server?: string; privacy?: "local" | "vendor-cloud"; readOnly?: boolean; note?: string };
-export type CatalogApp = { name: string; domain: string; tags?: string[]; pattern: string; fallback?: string; via?: string; note?: string; tier?: number; sources?: string[]; verified?: boolean; obscure?: boolean; iconSlug?: string; curated?: boolean; soul?: string; connection_hint?: ConnectionHint };
+export type ConnectionHint = { method: string; server?: string; command?: string; install?: string; privacy?: "local" | "vendor-cloud"; readOnly?: boolean; note?: string };
+export type CatalogSkill = { id: string; title: string; description: string };
+export type CatalogApp = { name: string; domain: string; tags?: string[]; pattern: string; fallback?: string; via?: string; note?: string; tier?: number; sources?: string[]; verified?: boolean; obscure?: boolean; iconSlug?: string; curated?: boolean; soul?: string; skills?: CatalogSkill[]; connection_hint?: ConnectionHint };
 
 export type BrandLogo = { hex: string; path: string };
 

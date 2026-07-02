@@ -642,7 +642,7 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
                 </button>
                 {/* M4: dismiss this intent so the list stays manageable. */}
                 <button onClick={() => dismissIntent(intentKey(it, i))} title="Dismiss this intent"
-                  className="m-2 shrink-0 rounded p-1 text-text-muted hover:bg-surface-warm hover:text-danger">
+                  className="m-2 shrink-0 rounded p-1 text-text-muted hover:bg-surface-warm hover:text-err">
                   <X className="h-3.5 w-3.5" />
                 </button>
                </div>

@@ -6,7 +6,7 @@
 // Selecting an item dispatches an event the matching content panel listens to:
 //   • Work items   → "prevail:work-section"
 //   • Editor items → "prevail:settings-section"
-import { Activity, Bot, Briefcase, CalendarDays, Compass, Database, Dices, FileText, Github, Layers, Lightbulb, MessagesSquare, Network, Plug, Repeat, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sparkles, Swords, UserRound, Webhook, Wrench, Zap } from "lucide-react";
+import { Activity, Bot, Briefcase, CalendarDays, Compass, Database, Dices, FileText, Github, Inbox, Layers, Lightbulb, MessagesSquare, Network, Plug, Repeat, Scale, Settings as SettingsIcon, Shield, ShieldCheck, Sparkles, Swords, UserRound, Webhook, Wrench, Zap } from "lucide-react";
 
 export type NavItem = { id: string; label: string; icon: typeof Database };
 export type NavGroup = { heading: string; items: NavItem[] };
@@ -30,7 +30,7 @@ export const WORK_NAV: NavGroup[] = [
 // Editor mode — configuration.
 export const EDITOR_NAV: NavGroup[] = [
   { heading: "Intelligence", items: [
-    { id: "models", label: "Runtimes", icon: Layers },
+    { id: "models", label: "Models", icon: Layers },
     { id: "council", label: "Council", icon: Scale },
     { id: "frameworks", label: "Frameworks", icon: Lightbulb },
     { id: "skills", label: "Skills", icon: Sparkles },
@@ -39,6 +39,7 @@ export const EDITOR_NAV: NavGroup[] = [
   { heading: "Context & Memory", items: [
     { id: "ideal-state", label: "Ideals", icon: Compass },
     { id: "intents", label: "Intents", icon: Lightbulb },
+    { id: "prompt-capture", label: "Prompts", icon: Inbox },
     { id: "daemons", label: "Daemons", icon: Zap },
     { id: "activity", label: "Activity", icon: Activity },
   ]},
@@ -56,7 +57,7 @@ export const EDITOR_NAV: NavGroup[] = [
   ]},
   { heading: "Settings", items: [
     { id: "profiles", label: "Profiles", icon: UserRound },
-    { id: "workspace", label: "Context", icon: Database },
+    { id: "workspace", label: "Vault", icon: Database },
     { id: "general", label: "General", icon: SettingsIcon },
     { id: "about", label: "About", icon: Github },
   ]},

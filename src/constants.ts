@@ -85,7 +85,7 @@ export const RUNTIME_META: Record<string, { blurb: string; install: string; prot
   codex:       { blurb: "OpenAI's coding agent CLI.", install: "https://developers.openai.com/codex/cli", protocol: "codex", category: "cli", cmd: "npm install -g @openai/codex" },
   antigravity: { blurb: "Google's agentic CLI (agy).", install: "https://antigravity.google", protocol: "gemini", category: "cli", cmd: "curl -fsSL https://antigravity.google/cli/install.sh | bash" },
   // ── Local model runtimes (on-device, no subscription) ──
-  ollama:      { blurb: "Run open models locally with Ollama - private, offline, free.", install: "https://ollama.com/download", protocol: "openai", category: "cli", cmd: "brew install ollama" },
+  ollama:      { blurb: "Run open models locally with Ollama, private, offline, free.", install: "https://ollama.com/download", protocol: "openai", category: "cli", cmd: "brew install ollama" },
   lmstudio:    { blurb: "LM Studio: a local model server with a desktop GUI.", install: "https://lmstudio.ai", protocol: "openai", category: "cli", cmd: "brew install --cask lm-studio" },
   mlx:         { blurb: "Apple-silicon local inference via MLX.", install: "https://github.com/ml-explore/mlx", protocol: "openai", category: "cli", cmd: "pip install mlx-lm" },
   omlx:        { blurb: "Apple-silicon local inference via MLX (oMLX server).", install: "https://github.com/ml-explore/mlx", protocol: "openai", category: "cli", cmd: "pip install mlx-lm" },
@@ -144,15 +144,17 @@ export const LOCAL_CLI_IDS = new Set(["ollama", "lmstudio", "mlx"]);
 
 export const MODELS: Record<string, ModelPick[]> = {
   claude: [
-    // One entry per model: the alias id (auto-upgrades) carries the resolved
-    // version in its label, so "Opus 4.8 (latest)" and a separate "Opus 4.8"
-    // never coexist. Bump these labels when Anthropic ships a new version.
-    { id: "opus",            label: "Opus 4.8 (latest)",   blurb: "auto-upgrades to the newest Opus" },
-    { id: "claude-opus-4-7", label: "Opus 4.7",            blurb: "pinned · previous flagship" },
-    { id: "claude-opus-4-6", label: "Opus 4.6",            blurb: "pinned · legacy flagship" },
-    { id: "claude-fable-5",  label: "Fable 5",             blurb: "newest · most capable" },
-    { id: "sonnet",          label: "Sonnet 4.6 (latest)", blurb: "auto-upgrades · balanced" },
-    { id: "haiku",           label: "Haiku 4.5 (latest)",  blurb: "auto-upgrades · fast + cheap" },
+    // Labels show the ACTUAL model name/version - no "latest" tag. The alias ids
+    // (opus/sonnet/haiku) still resolve to the current release at runtime, so
+    // these run the right model; bump the label when Anthropic ships a new one.
+    // Claude Code exposes no machine-readable model list (verified), so this is a
+    // curated list by necessity.
+    { id: "opus",            label: "Opus 4.8",  blurb: "flagship · complex tasks" },
+    { id: "claude-opus-4-7", label: "Opus 4.7",  blurb: "previous flagship" },
+    { id: "claude-opus-4-6", label: "Opus 4.6",  blurb: "legacy flagship" },
+    { id: "claude-fable-5",  label: "Fable 5",   blurb: "newest · most capable" },
+    { id: "sonnet",          label: "Sonnet 5",  blurb: "balanced · efficient" },
+    { id: "haiku",           label: "Haiku 4.5", blurb: "fast + cheap" },
   ],
   codex: [
     // gpt-5.5 is the ONLY model Codex accepts on a ChatGPT-login

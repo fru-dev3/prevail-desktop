@@ -45,7 +45,11 @@ export function MasterDetail({
   });
   return (
     <div
-      className="flex flex-col overflow-hidden rounded-xl border border-border lg:flex-row lg:items-stretch"
+      // Bound the height (max-h) so the list and detail each scroll INTERNALLY
+      // instead of growing the panel and scrolling the whole page. minHeight is
+      // the floor; on lg the panel caps near the viewport so the sticky toolbar
+      // (a shrink-0 region above the scrolling list) stays put.
+      className="flex max-h-[82vh] flex-col overflow-hidden rounded-xl border border-border lg:max-h-[calc(100vh-13rem)] lg:flex-row lg:items-stretch"
       style={{ minHeight }}
     >
       {collapsed ? (

@@ -151,8 +151,23 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel, presetName, preset
     setNewDomain("");
   };
 
+  // Google Workspace is special: it has a dedicated, fully Prevail-driven setup
+  // panel (opens the browser, authenticates via the gws CLI, shows which account
+  // you signed in as, and manages multiple Google accounts). It must NEVER go
+  // through the generic "research + run a command" connect flow (which wrongly
+  // told the user to run `gws auth setup` by hand). Detect it and hand off.
+  const isGoogleWorkspace = (s: string) => {
+    const n = (s || "").toLowerCase().replace(/[^a-z]/g, "");
+    return n === "google" || n === "googleworkspace" || n === "gws";
+  };
+  const openGoogleDedicated = () => {
+    window.dispatchEvent(new CustomEvent("prevail:app-open", { detail: "google" }));
+    onCancel();
+  };
+
   const find = async () => {
     if (!name.trim()) return;
+    if (isGoogleWorkspace(name)) { openGoogleDedicated(); return; }
     setBusy(true);
     setResult(null);
     try {
@@ -173,6 +188,7 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel, presetName, preset
   useEffect(() => {
     if (presetName && presetName.trim() && !autoStarted.current) {
       autoStarted.current = true;
+      if (isGoogleWorkspace(presetName)) { openGoogleDedicated(); return; }
       void find();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -487,7 +487,7 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
               {a.connection_hint && (
                 <span
                   className={`shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${a.connection_hint.privacy === "vendor-cloud" ? "border-warn/40 bg-warn/10 text-warn" : "border-accent-border bg-accent-soft text-accent"}`}
-                  title={`Suggested: ${a.connection_hint.method}${a.connection_hint.server ? " · " + a.connection_hint.server : ""}${a.connection_hint.readOnly ? " · read-only" : ""} - ${a.connection_hint.privacy === "vendor-cloud" ? "routes through the vendor's cloud" : "stays on your machine"}${a.connection_hint.note ? `. ${a.connection_hint.note}` : ""}`}
+                  title={`Suggested: ${a.connection_hint.method}${a.connection_hint.server ? " · " + a.connection_hint.server : ""}${a.connection_hint.readOnly ? " · read-only" : ""}, ${a.connection_hint.privacy === "vendor-cloud" ? "routes through the vendor's cloud" : "stays on your machine"}${a.connection_hint.note ? `. ${a.connection_hint.note}` : ""}`}
                 >
                   {a.connection_hint.privacy === "vendor-cloud" ? "○ cloud" : "● local"}
                 </span>

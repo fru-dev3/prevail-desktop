@@ -11,7 +11,7 @@ import { QuickCapture } from "./quickcapture";
 import { BridgeStatusChips, DemoRibbon, ResizeHandle } from "./widgets";
 import { useProcesses } from "./processes";
 import { OnboardingModal } from "./panels3";
-import { AppFacetPanel, BunkerRibbon, VaultWizard } from "./shell";
+import { BunkerRibbon, VaultWizard } from "./shell";
 // Heavy surfaces are code-split: each loads its own chunk on first use instead of
 // inflating the initial bundle (and the live memory footprint). SettingsPanel
 // alone transitively pulls in every settings section, so deferring it is the
@@ -28,7 +28,7 @@ import { autoVerifyClis } from "./verify";
 import { startBenchScheduler } from "./bench";
 import { bumpBackupChangeCount, startBackupScheduler } from "./backup";
 import { startLoopsScheduler, readLoops, ensureBriefingLoop, ensureModelScoutLoop } from "./loops";
-import { startAppsScheduler } from "./appspanel";
+import { startAppsScheduler, AppDetail, appStatus } from "./appspanel";
 import { startOmegaScheduler } from "./omega";
 import { OnboardingTour } from "./onboarding";
 import { VaultEncryptPrompt, vaultEncryptOffered } from "./vault-encrypt-prompt";
@@ -101,7 +101,6 @@ import {
   
   Scale,
   
-  Settings as SettingsIcon,
   Swords,
 
   
@@ -124,13 +123,9 @@ import {
   
   
   
-  Activity,
-
   Layers,
 
-  Lightbulb,
   Inbox,
-  Briefcase,
   Plug,
   ChevronsRight,
   ChevronsLeft,
@@ -140,9 +135,9 @@ import {
   PanelLeft,
   Compass,
   ShieldCheck,
-  RefreshCw,
-  Repeat,
   Power,
+  Briefcase,
+  Settings as SettingsIcon,
 } from "lucide-react";
 
 // X8: fire a foreground Web Notification (the WebUI, on a phone/laptop). Asks
@@ -312,7 +307,11 @@ export default function App() {
   // Which facet of the open app the canvas shows. "chat" = the app's own
   // conversation; the rest are app sub-views (mirror of DomainTab, but for an
   // app's own concerns - never the grounding domain's).
-  type AppTab = "chat" | "runs" | "settings" | "domains";
+  // "chat" = the app's own conversation; "detail" = the unified AppDetail surface
+  // (Welcome / Soul / Skills / Connections / Runs / Settings / Domains / Loops),
+  // which owns its own tab navigation. This used to fan out to per-facet keys, but
+  // AppDetail now exposes every facet itself, so the host only toggles the mode.
+  type AppTab = "chat" | "detail";
   const [appTab, setAppTab] = useState<AppTab>("chat");
   // Thread scope - WHERE conversations are stored/listed. An open app gets its
   // OWN thread space (`_app-<id>`) that's INDEPENDENT of any domain, so you can
@@ -370,6 +369,37 @@ export default function App() {
     } catch (e) { console.error("set app enabled", e); }
     finally { setTogglingEnabled(false); }
   }, [selectedApp]);
+  // Props the unified AppDetail needs in the full-page app view. Re-fetch the open
+  // app record after a mutation so status / schedule / domains stay current without
+  // re-opening (which would reset the conversation). These mirror what the Apps
+  // panel passes its AppDetail, so the two surfaces behave identically.
+  const [appSyncBusy, setAppSyncBusy] = useState(false);
+  const reloadSelectedApp = useCallback(async () => {
+    if (!selectedApp) return;
+    const id = selectedApp.id;
+    try {
+      const list = await invoke<EngineApp[]>("engine_apps_list");
+      const fresh = (list ?? []).find((a) => a.id === id);
+      if (fresh) setSelectedApp(fresh);
+    } catch { /* keep the stale record on failure */ }
+  }, [selectedApp]);
+  const onAppSync = useCallback(async (): Promise<{ ok: boolean; error?: string; artifacts?: number }> => {
+    if (!selectedApp) return { ok: false, error: "no app open" };
+    setAppSyncBusy(true);
+    try {
+      const r = await invoke<{ ok: boolean; error?: string; artifacts?: number }>("engine_app_sync", { id: selectedApp.id, vault: vaultPath });
+      await reloadSelectedApp();
+      return r ?? { ok: true };
+    } catch (e) { return { ok: false, error: String(e).slice(0, 200) }; }
+    finally { setAppSyncBusy(false); }
+  }, [selectedApp, vaultPath, reloadSelectedApp]);
+  const onAppSetEnabled = useCallback(async (v: boolean) => {
+    if (!selectedApp) return;
+    try {
+      await invoke("engine_app_set_enabled", { id: selectedApp.id, enabled: v });
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+    } catch (e) { console.error("set app enabled", e); }
+  }, [selectedApp]);
   // The domain Apps strip lives deep in the tree; let it open an app via a
   // window event instead of threading a callback through every layer.
   useEffect(() => {
@@ -402,6 +432,16 @@ export default function App() {
     window.addEventListener("prevail:apps-changed", onAppsChanged);
     return () => window.removeEventListener("prevail:apps-changed", onAppsChanged);
   }, [appView, selectedApp]);
+  // Quick Capture floating widget — opt-in (default OFF). Tracks
+  // PREF.quickCaptureEnabled and reacts live to the General-settings toggle via
+  // the "prevail:quickcapture-changed" event so the widget appears/disappears
+  // without a reload.
+  const [quickCaptureOn, setQuickCaptureOn] = useState(() => getPref(PREF.quickCaptureEnabled, "0") === "1");
+  useEffect(() => {
+    const sync = () => setQuickCaptureOn(getPref(PREF.quickCaptureEnabled, "0") === "1");
+    window.addEventListener("prevail:quickcapture-changed", sync);
+    return () => window.removeEventListener("prevail:quickcapture-changed", sync);
+  }, []);
   // Threads - backed by <vault>/<domain>/_threads/<slug>.md files.
   // Active thread defines what's loaded into the chat transcript.
   const [threads, setThreads] = useState<ThreadMeta[]>([]);
@@ -409,47 +449,6 @@ export default function App() {
   // Bumped on every thread pick so the chat panel returns to the chat view even
   // when the same thread is re-clicked (e.g. to escape the Preferences view).
   const [chatViewNonce, setChatViewNonce] = useState(0);
-  // "Today" rail (2026 redesign): the 5 most-recently-touched threads from
-  // across ALL domains whose last activity is in the local day. list_threads is
-  // per-domain, so we fan out over General + every real domain and merge
-  // client-side — no engine change needed for Phase 1.
-  const [todayThreads, setTodayThreads] = useState<ThreadMeta[]>([]);
-  const refreshTodayThreads = useCallback(async () => {
-    if (!vaultPath) { setTodayThreads([]); return; }
-    try {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      const cutoff = Math.floor(startOfDay.getTime() / 1000); // ThreadMeta.updated is unix seconds
-      // General (null scope) + every real domain. Skip internal "_"-prefixed
-      // pseudo-domains (app thread spaces) — the rail lists real conversations.
-      const scopes: (string | null)[] = [null, ...domains.map((d) => d.name).filter((n) => !n.startsWith("_"))];
-      const lists = await Promise.all(
-        scopes.map((s) => invoke<ThreadMeta[]>("list_threads", { vault: vaultPath, domain: s }).catch(() => [] as ThreadMeta[])),
-      );
-      const merged = lists
-        .flat()
-        .filter((t) => t.updated >= cutoff)
-        .sort((a, b) => b.updated - a.updated)
-        .slice(0, 5);
-      setTodayThreads(merged);
-    } catch (e) {
-      console.error("today threads", e);
-    }
-  }, [vaultPath, domains]);
-  // Recompute on vault/domain change AND whenever the active scope's threads
-  // change (a proxy for "a thread was just saved/renamed/deleted"), so the rail
-  // stays live without an engine event.
-  useEffect(() => { void refreshTodayThreads(); }, [refreshTodayThreads, threads]);
-  // Open a Today-rail thread: jump to its domain (or General) and load it.
-  const openTodayThread = useCallback((m: ThreadMeta) => {
-    setSelectedApp(null);
-    setAppView(false);
-    setSelectedDomain(m.domain ?? "");
-    setActiveThreadPath(m.path);
-    setChatViewNonce((n) => n + 1);
-    setDomainTab("chat");
-    setTab("chat");
-  }, []);
   // Per-domain import counts shown as a tiny badge in the sidebar.
   // Refreshed when ingestion:artifact fires (any tier writes a file)
   // or when the domain list changes.
@@ -648,7 +647,7 @@ export default function App() {
         }
       }));
       // Forward the event channels the UI listens to → web clients.
-      const channels = ["chat:chunk", "chat:done", "engine-chat:line", "engine-chat:done", "engine-agent:line", "engine-agent:done", "benchmark:chunk", "benchmark:done", "ingestion:artifact", "ingestion:browser", "connector_learn:line", "connector_learn:done", "connector_run:line", "connector_run:done", "tg:message_in", "tg:message_out"];
+      const channels = ["chat:chunk", "chat:done", "engine-chat:line", "engine-chat:done", "engine-agent:line", "engine-agent:done", "engine-skill:line", "engine-skill:done", "benchmark:chunk", "benchmark:done", "ingestion:artifact", "ingestion:browser", "connector_learn:line", "connector_learn:done", "connector_run:line", "connector_run:done", "tg:message_in", "tg:message_out"];
       for (const ch of channels) {
         unlistens.push(await listen<unknown>(ch, (e) => { void invoke("webui_event", { event: ch, payload: e.payload }); }));
       }
@@ -1495,8 +1494,6 @@ export default function App() {
       onOpenOnboarding={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
       onDomainsChanged={() => void refreshDomains()}
       onOpenApp={openApp}
-      todayThreads={todayThreads}
-      onOpenThread={openTodayThread}
     />
   );
 
@@ -1538,7 +1535,7 @@ export default function App() {
         <BunkerRibbon enabled={bunkerEnabled} />
         <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
         <BridgeStatusChips />
-        <QuickCapture vaultPath={vaultPath} />
+        {quickCaptureOn && <QuickCapture vaultPath={vaultPath} />}
         {cmdPaletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setCmdPaletteOpen(false)} />}
       </div>
     );
@@ -1558,7 +1555,7 @@ export default function App() {
         <BunkerRibbon enabled={bunkerEnabled} />
         <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
         <BridgeStatusChips />
-        <QuickCapture vaultPath={vaultPath} />
+        {quickCaptureOn && <QuickCapture vaultPath={vaultPath} />}
         {cmdPaletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setCmdPaletteOpen(false)} />}
       </div>
     );
@@ -1667,7 +1664,7 @@ export default function App() {
                 installed build. Absolutely positioned at the bottom-right corner so
                 it never pushes the first icon off the left edge. */}
             {import.meta.env.DEV && (
-              <span className="pointer-events-none absolute bottom-0.5 right-1.5 z-10 rounded bg-danger px-1 py-0 font-mono text-[10px] font-bold uppercase tracking-wide text-background opacity-70">DEV</span>
+              <span className="pointer-events-none absolute bottom-0.5 right-1.5 z-10 rounded bg-err px-1 py-0 font-mono text-[10px] font-bold uppercase tracking-wide text-background opacity-70">DEV</span>
             )}
             {/* Quick visual cue: are we in an APP or a DOMAIN? An icon (no text)
                 at the far left, so the two contexts are instantly distinguishable.
@@ -1727,28 +1724,25 @@ export default function App() {
               {onApp ? (
                 // An open app shows ITS OWN facets, independent of the domain it
                 // grounds in (the isolation shipped in 0.7.24). Chat is the app's
-                // conversation; Runs / Settings / Domains are the AppFacetPanel
-                // views. The grounding domain's own Insights/Usage/Preferences no
-                // longer leak in here.
+                // conversation; Details opens the unified AppDetail surface. The
+                // grounding domain's own Insights/Usage/Preferences no longer leak
+                // in here.
                 <>
-                  {([
-                    { key: "runs", label: "Runs", Icon: RefreshCw, title: "Last sync, schedule, and run history" },
-                    { key: "settings", label: "Settings", Icon: SettingsIcon, title: "Connection, autonomy, schedule, and skills" },
-                    { key: "domains", label: "Domains", Icon: Layers, title: "Domains this app refreshes" },
-                  ] as const).map(({ key, label, Icon, title }) => (
-                    <button
-                      key={key}
-                      onClick={() => { setTab("chat"); setAppTab(key); }}
-                      title={title}
-                      className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
-                        tab === "chat" && appTab === key
-                          ? "bg-accent text-background shadow-sm"
-                          : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" /> {label}
-                    </button>
-                  ))}
+                  {/* One entry into the unified AppDetail surface. It exposes every
+                      facet itself (Welcome / Soul / Skills / Connections / Runs /
+                      Settings / Domains / Loops) via its own tab bar, so the host no
+                      longer needs a tab per facet. Chat is the left-hand tab. */}
+                  <button
+                    onClick={() => { setTab("chat"); setAppTab("detail"); }}
+                    title="App details: connection, skills, runs, schedule, domains, and loops"
+                    className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                      tab === "chat" && appTab === "detail"
+                        ? "bg-accent text-background shadow-sm"
+                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <Layers className="h-4 w-4" /> Details
+                  </button>
                   <button
                     onClick={toggleAppEnabled}
                     disabled={togglingEnabled}
@@ -1783,72 +1777,27 @@ export default function App() {
                       <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[10px] font-bold text-background">{cap9(decisionsCount)}</span>
                     </button>
                   )}
-                  {/* Work: this domain's tasks in-panel (scoped board); a badge counts
-                      anything overdue / due-today / critical. One Work entry, not two. */}
+                  {/* A single Details entry into the unified domain-detail surface,
+                      mirroring how the app view now uses one Details entry + its own
+                      tab bar. It opens the tabbed shell (Welcome / Ideal State /
+                      Journal / Skills / Loops / Work / Insights / Apps / Settings /
+                      Chat) rendered by ChatPanel; every former facet button now lives
+                      as a tab there. The Work badge (overdue/due) rides along so it
+                      stays visible. General is a first-class domain too, so it uses
+                      the exact same Details button and tabbed shell. */}
                   <button
-                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "work" ? "chat" : "work"); }}
-                    title={dueAlert.open > 0 ? [
-                      `${dueAlert.open} open`,
-                      dueAlert.overdue ? `${dueAlert.overdue} overdue` : "",
-                      dueAlert.today ? `${dueAlert.today} due today` : "",
-                    ].filter(Boolean).join(" · ") : "Work: this domain's tasks, in-panel"}
-                    className={`relative flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
-                      tab === "chat" && domainTab === "work"
+                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab !== "chat" ? "chat" : "welcome"); }}
+                    title="Details: ideal state, journal, skills, loops, work, insights, apps, and settings"
+                    className={`relative flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] transition-colors ${
+                      tab === "chat" && domainTab !== "chat"
                         ? "bg-accent text-background shadow-sm"
                         : "text-text-muted hover:bg-surface-warm hover:text-accent"
                     }`}
                   >
-                    <Briefcase className="h-3.5 w-3.5" /> Work
-                    {dueAlert.open > 0 && (
-                      // Identical to the Insights/Loops badges - a plain static
-                      // bg-ai pill. (The old conditional bg-danger/bg-warn classes
-                      // aren't generated by Tailwind here, so with overdue tasks the
-                      // pill rendered white-on-nothing = the faded, unreadable count.)
-                      <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ai px-1.5 font-mono text-[10px] font-bold leading-none text-white">{cap9(dueAlert.open)}</span>
+                    <Layers className="h-4 w-4" /> Details
+                    {(dueAlert.open > 0 || recCount > 0 || loopCount > 0) && (
+                      <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ai px-1.5 font-mono text-[10px] font-bold leading-none text-white">{cap9(dueAlert.open + recCount + loopCount)}</span>
                     )}
-                  </button>
-                  {/* Order (founder): Insights · Usage · Benchmark · Preferences,
-                      then Back up (actions menu). Compact px/text so the cluster stays small. */}
-                  <button
-                    onClick={() => { setTab("chat"); setDomainTab("insights"); }}
-                    title="Insights: what to work on, your tasks, and recent intents (use the Chat tab to return to the conversation)"
-                    className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
-                      tab === "chat" && domainTab === "insights"
-                        ? "bg-accent text-background shadow-sm"
-                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                    }`}
-                  >
-                    <Lightbulb className="h-3.5 w-3.5" /> Insights
-                    {recCount > 0 && (
-                      <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ai px-1.5 font-mono text-[10px] font-bold leading-none text-white">{cap9(recCount)}</span>
-                    )}
-                  </button>
-                  {/* Loops right after Insights so Work · Insights · Loops read as
-                      one group (Context is in the right-side drawer). */}
-                  <button
-                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "loops" ? "chat" : "loops"); }}
-                    title="Loops: the standing forces working to reach this domain's desired state"
-                    className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
-                      tab === "chat" && domainTab === "loops"
-                        ? "bg-accent text-background shadow-sm"
-                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                    }`}
-                  >
-                    <Repeat className="h-3.5 w-3.5" /> Loops
-                    {loopCount > 0 && (
-                      <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ai px-1.5 font-mono text-[10px] font-bold leading-none text-white">{cap9(loopCount)}</span>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "usage" ? "chat" : "usage"); }}
-                    title={selectedDomain ? "Usage: queries, tokens, and cost for this domain" : "Usage: queries, tokens, and cost across everything"}
-                    className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
-                      tab === "chat" && domainTab === "usage"
-                        ? "bg-accent text-background shadow-sm"
-                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                    }`}
-                  >
-                    <Activity className="h-3.5 w-3.5" /> Usage
                   </button>
                   <button
                     onClick={() => setTab("benchmark")}
@@ -1859,30 +1808,6 @@ export default function App() {
                   >
                     <Swords className="h-3.5 w-3.5" /> Arena
                   </button>
-                  <button
-                    onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "prefs" ? "chat" : "prefs"); }}
-                    title={selectedDomain ? "Domain preferences" : "General preferences"}
-                    className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
-                      tab === "chat" && domainTab === "prefs"
-                        ? "bg-accent text-background shadow-sm"
-                        : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                    }`}
-                  >
-                    <SettingsIcon className="h-3.5 w-3.5" /> Preferences
-                  </button>
-                  {selectedDomain && (
-                    <button
-                      onClick={() => { setTab("chat"); setDomainTab(tab === "chat" && domainTab === "apps" ? "chat" : "apps"); }}
-                      title="Apps that refresh this domain"
-                      className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
-                        tab === "chat" && domainTab === "apps"
-                          ? "bg-accent text-background shadow-sm"
-                          : "text-text-muted hover:bg-surface-warm hover:text-accent"
-                      }`}
-                    >
-                      <Plug className="h-3.5 w-3.5" /> Apps
-                    </button>
-                  )}
                 </>
               )}
               <DomainActionsMenu
@@ -1901,8 +1826,9 @@ export default function App() {
 
           {/* App view: a slim, always-visible identity bar above the canvas.
               Full-width chrome (not inside the chat scroll) so ChatPanel's own
-              layout is untouched. The rich detail lives in the AppFacetPanel
-              facets (Runs / Settings / Domains), reached via the top-bar chips. */}
+              layout is untouched. The rich detail lives in the unified AppDetail
+              surface (embedded, so it suppresses its own header), reached via the
+              Details tab in the top bar. */}
           {appView && selectedApp && (
             <AppHeaderBar
               app={selectedApp}
@@ -1914,13 +1840,20 @@ export default function App() {
           <div className="min-h-0 flex-1 overflow-y-auto">
             <Suspense fallback={<PanelLoading />}>
             {tab === "chat" && onApp && selectedApp && appTab !== "chat" ? (
-              <AppFacetPanel
+              // Unified canonical app-detail surface, the SAME component the Apps
+              // panel renders. `embedded` suppresses its own identity header since
+              // AppHeaderBar already sits above; it brings every facet itself.
+              <AppDetail
+                key={selectedApp.id}
                 app={selectedApp}
                 vaultPath={vaultPath}
-                domains={domains}
-                appTab={appTab}
-                onOpenDomain={openDomain}
-                onChanged={() => { void refreshThreads(); }}
+                logos={{}}
+                status={appStatus(selectedApp)}
+                busy={appSyncBusy}
+                onSync={onAppSync}
+                onSetEnabled={onAppSetEnabled}
+                onReload={reloadSelectedApp}
+                embedded
               />
             ) : tab === "chat" && (
               <ChatPanel
@@ -2031,7 +1964,7 @@ export default function App() {
           onApplied={() => void refreshDomains()}
         />
       )}
-      <QuickCapture vaultPath={vaultPath} />
+      {quickCaptureOn && <QuickCapture vaultPath={vaultPath} />}
     </div>
   );
 }

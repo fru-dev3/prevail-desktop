@@ -195,7 +195,10 @@ pub(crate) async fn distill_omega_core(
     if block.trim().is_empty() {
         return Err("Omega distiller found nothing durable + cross-cutting yet.".into());
     }
-    let p = root.join("omega.md");
+    // omega.md lives in build/ on a migrated vault (read_omega/write_omega are
+    // already build-aware); build_root() falls back to the vault root for legacy
+    // flat vaults, so the distiller and the editor agree on one location.
+    let p = crate::paths::build_root(vault).join("omega.md");
     let existing = read_to_string_retry(&p)
         .map(|raw| engine::maybe_decrypt(&p, raw))
         .unwrap_or_default();

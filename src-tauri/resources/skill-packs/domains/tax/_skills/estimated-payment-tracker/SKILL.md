@@ -2,7 +2,7 @@
 id: estimated-payment-tracker
 runner: llm
 trigger: on-demand
-description: Track the year's four estimated payments — what was paid, what's due, and whether you're on safe harbor.
+description: Track the year's four estimated payments, what was paid, what's due, and whether you're on safe harbor.
 source: seed
 ---
 # Estimated payment tracker
