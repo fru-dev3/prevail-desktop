@@ -967,6 +967,36 @@ export default function App() {
     window.addEventListener("prevail:loops-advanced", onEvt);
     return () => { alive = false; window.clearInterval(id); window.removeEventListener("prevail:tasks-changed", onEvt); window.removeEventListener("prevail:loops-advanced", onEvt); };
   }, [vaultPath, selectedDomain]);
+  // X1 (heartbeat): ambient proactivity. On a slow tick, during active hours, if
+  // things need you (pending approvals or overdue work) and we haven't nudged in
+  // a while, fire ONE consolidated native notification - so Prevail reaches out
+  // instead of waiting to be opened. Config via prefs; on by default. (A full
+  // background heartbeat that runs agent turns on a checklist is a follow-on that
+  // rides the loop-run engine.)
+  useEffect(() => {
+    if (isBrowser()) return;
+    const HEARTBEAT_KEY = "prevail.heartbeat.lastNudge";
+    const tick = () => {
+      if (getPref(PREF.heartbeatEnabled, "1") !== "1") return;
+      const now = new Date();
+      const hour = now.getHours();
+      const startH = parseInt(getPref(PREF.heartbeatActiveStart, "8"), 10) || 8;
+      const endH = parseInt(getPref(PREF.heartbeatActiveEnd, "22"), 10) || 22;
+      if (hour < startH || hour >= endH) return; // quiet outside active hours
+      const needs = decisionsCount + (dueAlert.overdue || 0);
+      if (needs <= 0) return;
+      const last = parseInt(lsGet(HEARTBEAT_KEY) || "0", 10) || 0;
+      const minGapMs = (parseInt(getPref(PREF.heartbeatIntervalHours, "3"), 10) || 3) * 3600_000;
+      if (now.getTime() - last < minGapMs) return;
+      const parts: string[] = [];
+      if (decisionsCount > 0) parts.push(`${decisionsCount} waiting on your approval`);
+      if (dueAlert.overdue > 0) parts.push(`${dueAlert.overdue} overdue`);
+      void invoke("notify_user", { title: "Prevail check-in", body: `${parts.join(" · ")}. Open Prevail when you have a moment.` }).catch(() => {});
+      lsSet(HEARTBEAT_KEY, String(now.getTime()));
+    };
+    const id = window.setInterval(tick, 10 * 60_000); // evaluate every 10 min
+    return () => window.clearInterval(id);
+  }, [decisionsCount, dueAlert]);
   // Insights (recommendations) + Loops counts — surfaced as always-visible badges on
   // the top-nav tabs so the user sees how much is waiting without opening either view.
   // Both are computed in the background on a slow poll + event refresh, same cadence as
