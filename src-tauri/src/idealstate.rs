@@ -140,3 +140,42 @@ pub(crate) async fn read_memory_md(vault: String, domain: Option<String>) -> Res
     read_to_string_retry(&p).map_err(|e| e.to_string())
 }
 
+/// X10: pin a fact into the domain's layered memory. Appends a dated bullet under
+/// a "Pinned by you" section of `_memory.md` so it grounds every future answer
+/// in that domain, alongside the daemon-distilled memory. User-authored, so it is
+/// never overwritten by distillation (which manages its own section).
+#[tauri::command]
+pub(crate) fn append_memory_md(vault: String, domain: Option<String>, note: String) -> Result<(), String> {
+    let note = note.trim();
+    if note.is_empty() {
+        return Err("nothing to pin".into());
+    }
+    let dir = domain_dir(&vault, &domain);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir domain: {e}"))?;
+    let p = dir.join("_memory.md");
+    let existing = if p.exists() { read_to_string_retry(&p).unwrap_or_default() } else { String::new() };
+    const HEADER: &str = "## Pinned by you";
+    let date = crate::tasks::today_ymd();
+    // One-line bullets; collapse newlines so the entry stays a single item.
+    let entry = format!("- {} ({})", note.replace('\n', " "), date);
+    let next = if existing.contains(HEADER) {
+        // Insert the new bullet right after the header line.
+        let mut out = String::with_capacity(existing.len() + entry.len() + 1);
+        let mut inserted = false;
+        for line in existing.lines() {
+            out.push_str(line);
+            out.push('\n');
+            if !inserted && line.trim() == HEADER {
+                out.push_str(&entry);
+                out.push('\n');
+                inserted = true;
+            }
+        }
+        out
+    } else {
+        let sep = if existing.is_empty() || existing.ends_with('\n') { "" } else { "\n" };
+        format!("{existing}{sep}\n{HEADER}\n{entry}\n")
+    };
+    crate::vaultio::write_atomic(&p, &next).map_err(|e| format!("write _memory.md: {e}"))
+}
+

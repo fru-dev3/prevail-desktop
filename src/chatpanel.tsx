@@ -1274,6 +1274,18 @@ export function ChatPanel({
       toast.success("Saved to your notes.");
     } catch (e) { toast.error(`Could not save the note: ${String(e)}`); }
   }, [vaultPath]);
+  // X10: pin a reply into the domain's layered memory (_memory.md) so it grounds
+  // every future answer in this domain, alongside the daemon-distilled memory.
+  const pinMessageToMemory = useCallback(async (text: string) => {
+    const body = text.trim();
+    if (!body) return;
+    const dom = tDomain || domain || "general";
+    try {
+      await invoke("append_memory_md", { vault: vaultPath, domain: dom, note: body });
+      window.dispatchEvent(new Event("prevail:context-changed"));
+      toast.success(`Pinned to ${dom === "general" ? "your" : dom + "'s"} memory.`);
+    } catch (e) { toast.error(`Could not pin to memory: ${String(e)}`); }
+  }, [vaultPath, tDomain, domain]);
   const retryFromHere = useCallback((index: number) => {
     // Find the user message that produced this assistant slot.
     let userIdx = index;
@@ -1754,6 +1766,7 @@ export function ChatPanel({
               onEdit={editFromHere}
               onMakeTask={makeTaskFromMessage}
               onSaveNote={saveMessageAsNote}
+              onPinMemory={pinMessageToMemory}
             />
           </div>
         )}
@@ -1857,6 +1870,7 @@ export function ChatPanel({
               onEdit={editFromHere}
               onMakeTask={makeTaskFromMessage}
               onSaveNote={saveMessageAsNote}
+              onPinMemory={pinMessageToMemory}
             />
           </div>
         )}
