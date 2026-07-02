@@ -247,9 +247,22 @@ export function DomainContextDrawer({
   // G2: the learned user profile - what Prevail knows about you, surfaced so it's
   // visible what grounds the answers. Loaded from user.md (falls back to profile.md).
   const [profile, setProfile] = useState<string>("");
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileDraft, setProfileDraft] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
   useEffect(() => {
     invoke<string>("read_user_md", { vault: vaultPath }).then((s) => setProfile(s || "")).catch(() => setProfile(""));
   }, [vaultPath]);
+  const startEditProfile = () => { setProfileDraft(profile); setEditingProfile(true); };
+  const saveProfile = async () => {
+    setSavingProfile(true);
+    try {
+      await invoke("write_user_md", { vault: vaultPath, body: profileDraft });
+      setProfile(profileDraft);
+      setEditingProfile(false);
+    } catch (e) { console.error("write_user_md", e); }
+    finally { setSavingProfile(false); }
+  };
 
   const Section = ({
     keyName, title, count, body, action,
@@ -329,11 +342,35 @@ export function DomainContextDrawer({
             ? <CtxRow desc="Your constitution (ideal-state.md), injected into every turn." onView={() => openCanvas("Ideal", idealState)} onUse={() => onInjectContext(idealState, "Ideal · constitution")} />
             : <div className="text-[11px] text-text-muted">Not set. Add it in Settings → Ideals.</div>
         } />
-        {/* G2: what Prevail knows about you - the profile that grounds every answer. */}
+        {/* G2: what Prevail knows about you - the profile that grounds every answer.
+            Now editable (write_user_md), not just viewable. */}
         <Section keyName="profile" title="User" count={profile.trim() ? 1 : undefined} body={
-          profile.trim()
-            ? <CtxRow desc="What Prevail knows about you (profile.md)." onView={() => openCanvas("User", profile)} onUse={() => onInjectContext(profile, "User · who you are")} />
-            : <div className="text-[11px] text-text-muted">Not set. Prevail keeps your profile at build/_profile.md.</div>
+          editingProfile ? (
+            <div>
+              <textarea
+                value={profileDraft}
+                onChange={(e) => setProfileDraft(e.target.value)}
+                rows={8}
+                placeholder="Who you are, what matters to you, how you like to work. Prevail reads this as standing context for every answer."
+                className="w-full resize-y rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-relaxed text-text-primary focus:border-accent-border focus:outline-none"
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <button onClick={saveProfile} disabled={savingProfile} className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-semibold text-on-accent hover:opacity-90 disabled:opacity-50">
+                  {savingProfile ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Save
+                </button>
+                <button onClick={() => setEditingProfile(false)} className="rounded-md border border-border px-3 py-1 text-xs hover:bg-surface-warm">Cancel</button>
+              </div>
+            </div>
+          ) : profile.trim() ? (
+            <div>
+              <CtxRow desc="What Prevail knows about you (profile.md)." onView={() => openCanvas("User", profile)} onUse={() => onInjectContext(profile, "User · who you are")} />
+              <button onClick={startEditProfile} className="mt-1.5 text-[11px] text-accent underline decoration-dotted underline-offset-2 hover:opacity-80">Edit profile</button>
+            </div>
+          ) : (
+            <div className="text-[11px] text-text-muted">
+              Not set yet. <button onClick={startEditProfile} className="text-accent underline decoration-dotted underline-offset-2 hover:opacity-80">Add your profile</button> so Prevail grounds every answer in who you are.
+            </div>
+          )
         } />
         <div title={domain ? `Specific to ${titleCase(domain)}` : "Specific to General (the no-domain workspace)"} className="flex cursor-help items-center gap-1.5 border-b border-border-subtle bg-surface-warm/60 px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
           {(() => { const I = domain ? domainIcon(domain) : MessageSquare; return I ? <I className="h-3.5 w-3.5 text-accent" /> : <span className="text-accent">◆</span>; })()}
