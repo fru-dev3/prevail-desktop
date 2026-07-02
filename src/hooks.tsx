@@ -42,13 +42,16 @@ export function useAppearance() {
   const [mode, setMode] = useState<Mode>(() => {
     const saved = lsGet(LS.theme);
     if (saved === "light" || saved === "dark" || saved === "system") return saved;
-    return "light";
+    // D1: brand-new users open in dark mode, where the graphite-first Prevail
+    // palette looks like the 2026 identity. Existing users keep their saved mode.
+    return "dark";
   });
   const [palette, setPalette] = useState<Palette>(() => {
     const saved = lsGet(LS.palette) as Palette;
-    // THEME-1: brand-new users open in "mono" (clean grayscale). Existing users
-    // keep whatever they saved. Supersedes the earlier greenish "vault" default.
-    return PALETTES.some((p) => p.id === saved) ? saved : "mono";
+    // D1: brand-new users open in the signature "prevail" palette (gold + cyan
+    // on graphite), so the app looks like the brand out of the box. Existing
+    // users keep whatever they saved. Supersedes the earlier "mono" default.
+    return PALETTES.some((p) => p.id === saved) ? saved : "prevail";
   });
   // Track system preference for "system" mode
   const [systemDark, setSystemDark] = useState<boolean>(() =>

@@ -35,6 +35,11 @@
         "https://github.com/fru-dev3/prevail-desktop/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwQkJGNTZCOEIzMEMxMDUKUldRRndUQ0xhL1c3TUdRV0VqWldQYjBwTDdMeDlLM1cxdzJVcjlzZmxSZi9PclJRYWN4M3BmOWUK"
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["prevail"]
+      }
     }
   },
   "bundle": {

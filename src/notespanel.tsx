@@ -7,6 +7,8 @@ import { FileText, Plus, Search, Trash2 } from "lucide-react";
 import { relTime } from "./format";
 import { SettingsHeader } from "./sectionutil";
 import { loadNotes, newNoteId as newId, saveNotes, type Note } from "./notesstore";
+import { toast } from "./toast";
+import { EmptyState } from "./emptystate";
 
 export function NotesPanel({ vaultPath }: { vaultPath: string }) {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -79,8 +81,20 @@ export function NotesPanel({ vaultPath }: { vaultPath: string }) {
 
   const deleteNote = (id: string) => {
     setNotes((cur) => {
+      const idx = cur.findIndex((n) => n.id === id);
+      if (idx < 0) return cur;
+      const removed = cur[idx];
       const next = cur.filter((n) => n.id !== id);
       if (id === selectedId) setSelectedId(next[0]?.id ?? null);
+      // F4: notes used to hard-delete with no recovery. Offer an immediate undo
+      // that restores the note in its original position (autosave persists the
+      // removal, so undo re-adds and re-saves).
+      toast("Note deleted.", {
+        action: {
+          label: "Undo",
+          onClick: () => setNotes((c) => (c.some((n) => n.id === removed.id) ? c : [...c.slice(0, idx), removed, ...c.slice(idx)])),
+        },
+      });
       return next;
     });
   };
@@ -92,7 +106,7 @@ export function NotesPanel({ vaultPath }: { vaultPath: string }) {
       <SettingsHeader
         title="Notes"
         icon={FileText}
-        subtitle="Quick brain-dumps, ideas, and logs — searchable, saved to your vault. Everything here lives in notes.json inside your vault folder."
+        subtitle="Quick brain-dumps, ideas, and logs - searchable, saved to your vault. Everything here lives in notes.json inside your vault folder."
         right={
           <button onClick={createNote} className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-background hover:bg-accent-hover">
             <Plus className="h-4 w-4" /> New note
@@ -115,8 +129,12 @@ export function NotesPanel({ vaultPath }: { vaultPath: string }) {
           </div>
           <ul className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {filtered.length === 0 ? (
-              <li className="px-3 py-6 text-center text-[13px] text-text-muted">
-                {notes.length === 0 ? "No notes yet. Capture your first idea." : "No notes match your search."}
+              <li>
+                {notes.length === 0 ? (
+                  <EmptyState icon={FileText} title="No notes yet" body="Capture a thought here, or hit the global capture hotkey from anywhere." action={{ label: "New note", onClick: createNote }} />
+                ) : (
+                  <EmptyState icon={Search} title="No matches" body="No notes match your search." />
+                )}
               </li>
             ) : filtered.map((n) => (
               <li key={n.id}>
@@ -161,7 +179,7 @@ export function NotesPanel({ vaultPath }: { vaultPath: string }) {
                 value={selected.body}
                 onChange={(e) => updateSelected({ body: e.target.value })}
                 placeholder="Start writing… ideas, logs, brain-dumps."
-                className="min-h-0 flex-1 resize-none bg-transparent text-[14px] leading-relaxed text-text-secondary placeholder:text-text-muted/50 focus:outline-none"
+                className="min-h-0 flex-1 resize-none bg-transparent text-[15px] leading-relaxed text-text-secondary placeholder:text-text-muted/50 focus:outline-none"
               />
               <div className="mt-2 border-t border-border-subtle pt-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
                 Saved to vault · updated {relTime(selected.updated)}

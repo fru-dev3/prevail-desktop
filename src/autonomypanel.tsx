@@ -47,6 +47,24 @@ const DECISIONS: { id: Decision; label: string }[] = [
   { id: "never", label: "Never" },
 ];
 
+// X2: the graduated tier this class+decision resolves to (mirrors the engine's
+// classify_tier). Shows the user what will ACTUALLY happen: allowlisted classes
+// run, reversible ones run sandboxed, only consequential ones stop for approval.
+type Tier = "allow" | "sandbox" | "ask" | "block";
+function tierFor(cls: PolicyClass, decision: Decision): Tier {
+  if (decision === "never") return "block";
+  if (decision === "allow") return "allow";
+  if (cls === "read") return "allow";
+  if (cls === "reversible") return "sandbox";
+  return "ask"; // external_send / financial / irreversible / credential / unknown
+}
+const TIER_META: Record<Tier, { label: string; cls: string }> = {
+  allow: { label: "runs", cls: "text-ok" },
+  sandbox: { label: "sandboxed", cls: "text-ai" },
+  ask: { label: "asks first", cls: "text-warn" },
+  block: { label: "blocked", cls: "text-err" },
+};
+
 // ── Action policy: a 3-way segmented control per class ───────────────────
 function PolicySegmented({ value, onChange, disabled }: { value: Decision; onChange: (d: Decision) => void; disabled?: boolean }) {
   const tint: Record<Decision, string> = {
@@ -187,7 +205,7 @@ function PlaybookRun({ playbook, onClose }: { playbook: Playbook; onClose: () =>
         )}
       </div>
 
-      <div ref={logRef} className="max-h-64 overflow-y-auto rounded-md border border-border-subtle bg-surface-warm/40 p-2 text-[12px] leading-relaxed">
+      <div ref={logRef} className="max-h-64 overflow-y-auto rounded-md border border-border-subtle bg-surface-warm/40 p-2 text-[11px] leading-relaxed">
         {steps.length === 0 ? (
           <div className="flex items-center gap-1.5 text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> starting the playbook…</div>
         ) : (
@@ -200,7 +218,7 @@ function PlaybookRun({ playbook, onClose }: { playbook: Playbook; onClose: () =>
                 </span>
                 <span className="min-w-0 flex-1 break-words text-text-secondary">
                   <span className="text-text-primary">{s.label}</span>
-                  {badge && <span className={`ml-1.5 rounded border px-1 py-px font-mono text-[9px] uppercase tracking-wider ${badge.cls}`}>{badge.label}</span>}
+                  {badge && <span className={`ml-1.5 rounded border px-1 py-px font-mono text-[10px] uppercase tracking-wider ${badge.cls}`}>{badge.label}</span>}
                   {s.note && <span className="block text-[11px] text-text-muted">{s.note}</span>}
                 </span>
               </div>
@@ -279,7 +297,7 @@ function RecentActivity({ vaultPath }: { vaultPath: string }) {
                     {err && <span className="text-danger">failed</span>}
                   </div>
                   <div className="mt-0.5 text-[13px] leading-snug text-text-primary">{e.title}</div>
-                  {e.detail && <div className="mt-0.5 text-[12px] leading-relaxed text-text-muted">{e.detail}</div>}
+                  {e.detail && <div className="mt-0.5 text-[11px] leading-relaxed text-text-muted">{e.detail}</div>}
                 </div>
               </li>
             );
@@ -298,6 +316,8 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [running, setRunning] = useState<Playbook | null>(null);
   const [capDraft, setCapDraft] = useState<string>("");
+  // X4: real month-to-date spend, so the cap reads against actual usage.
+  const [spentUsd, setSpentUsd] = useState<number | null>(null);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -310,7 +330,10 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
   useEffect(() => {
     void loadStatus();
     void invoke<Playbook[]>("engine_list_playbooks").then((p) => setPlaybooks(Array.isArray(p) ? p : [])).catch(() => setPlaybooks([]));
-  }, [loadStatus]);
+    void invoke<{ spent_usd?: number }>("engine_budget_status", { vault: vaultPath, domain: null })
+      .then((b) => { if (typeof b?.spent_usd === "number") setSpentUsd(b.spent_usd); })
+      .catch(() => {});
+  }, [loadStatus, vaultPath]);
 
   // Keep the cap input in sync with the loaded status.
   useEffect(() => {
@@ -411,6 +434,9 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
                   <div className="text-sm font-medium text-text-primary">{row.label}</div>
                   <div className="text-xs text-text-muted">{row.desc}</div>
                 </div>
+                {(() => { const t = tierFor(row.key, value ?? "ask"); return (
+                  <span title="What actually happens with this setting (graduated brake)" className={`shrink-0 font-mono text-[10px] uppercase tracking-wider ${TIER_META[t].cls}`}>{TIER_META[t].label}</span>
+                ); })()}
                 <PolicySegmented value={value ?? "ask"} disabled={!status} onChange={(d) => void setPolicy(row.key, d)} />
               </div>
             );
@@ -423,7 +449,20 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-warm text-text-muted"><DollarSign className="h-4 w-4" /></span>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-text-primary">Monthly spend cap</div>
-            <div className="text-xs text-text-muted">An auto-approved financial action that would exceed this asks instead. Blank = no cap.</div>
+            <div className="text-xs text-text-muted">
+              An auto-approved financial action that would exceed this asks instead. Blank = no cap.
+              {/* X4: real month-to-date spend against the cap. */}
+              {spentUsd !== null && (() => {
+                const cap = status?.monthlyFinancialCapUsd ?? null;
+                const over = cap !== null && cap > 0 && spentUsd >= cap;
+                const warn = cap !== null && cap > 0 && spentUsd >= cap * 0.8;
+                return (
+                  <> Spent this month: <span className={`font-mono ${over ? "text-err" : warn ? "text-warn" : "text-text-secondary"}`}>
+                    ${spentUsd.toFixed(2)}{cap !== null && cap > 0 ? ` of $${cap}` : ""}
+                  </span>{over ? " — cap reached." : "."}</>
+                );
+              })()}
+            </div>
           </div>
           <div className="flex items-center gap-1">
             <span className="text-sm text-text-muted">$</span>

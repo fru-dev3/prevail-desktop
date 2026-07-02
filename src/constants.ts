@@ -85,7 +85,7 @@ export const RUNTIME_META: Record<string, { blurb: string; install: string; prot
   codex:       { blurb: "OpenAI's coding agent CLI.", install: "https://developers.openai.com/codex/cli", protocol: "codex", category: "cli", cmd: "npm install -g @openai/codex" },
   antigravity: { blurb: "Google's agentic CLI (agy).", install: "https://antigravity.google", protocol: "gemini", category: "cli", cmd: "curl -fsSL https://antigravity.google/cli/install.sh | bash" },
   // ── Local model runtimes (on-device, no subscription) ──
-  ollama:      { blurb: "Run open models locally with Ollama — private, offline, free.", install: "https://ollama.com/download", protocol: "openai", category: "cli", cmd: "brew install ollama" },
+  ollama:      { blurb: "Run open models locally with Ollama - private, offline, free.", install: "https://ollama.com/download", protocol: "openai", category: "cli", cmd: "brew install ollama" },
   lmstudio:    { blurb: "LM Studio: a local model server with a desktop GUI.", install: "https://lmstudio.ai", protocol: "openai", category: "cli", cmd: "brew install --cask lm-studio" },
   mlx:         { blurb: "Apple-silicon local inference via MLX.", install: "https://github.com/ml-explore/mlx", protocol: "openai", category: "cli", cmd: "pip install mlx-lm" },
   omlx:        { blurb: "Apple-silicon local inference via MLX (oMLX server).", install: "https://github.com/ml-explore/mlx", protocol: "openai", category: "cli", cmd: "pip install mlx-lm" },
@@ -225,6 +225,7 @@ export const LENSES: Lens[] = [
 ];
 
 export const PALETTES: { id: Palette; name: string; blurb: string; swatch: { bg: string; surface: string; accent: string; ai: string } }[] = [
+  { id: "prevail",   name: "Prevail",   blurb: "Signature gold and cyan on graphite",               swatch: { bg: "#0a0a0c", surface: "#141416", accent: "#c4a35a", ai: "#3cd8ff" } },
   { id: "vault",     name: "Vault",     blurb: "Cream + teal, focused, calm",                       swatch: { bg: "#faf8f1", surface: "#ffffff", accent: "#0d7a6e", ai: "#60a8c0" } },
   { id: "midnight",  name: "Midnight",  blurb: "Deep blue-violet with cool accents",                  swatch: { bg: "#0a0d1f", surface: "#131730", accent: "#818cf8", ai: "#60a8c0" } },
   { id: "ember",     name: "Ember",     blurb: "Warm crimson and bronze, forge vibes",               swatch: { bg: "#1a0a06", surface: "#2a130c", accent: "#ef6c4a", ai: "#60a8c0" } },

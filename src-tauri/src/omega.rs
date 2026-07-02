@@ -21,7 +21,7 @@ const AUTO_END: &str = "<!-- omega:auto:end -->";
 /// so a fresh vault has nothing to inject (no boilerplate template, unlike the
 /// authored ideal-state.md). The UI shows an empty state + "Distill now".
 #[tauri::command]
-pub(crate) fn read_omega(vault: String) -> Result<String, String> {
+pub(crate) async fn read_omega(vault: String) -> Result<String, String> {
     let p = crate::idealstate::config_read_path(&vault, "omega.md");
     if !p.exists() {
         return Ok(String::new());

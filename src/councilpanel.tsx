@@ -1186,17 +1186,17 @@ export function CouncilPanel({
             the Modes menu above. */}
         <div className="relative">
         {(incognito || globalIncognito) && (
-          <span className="absolute -top-2 left-3 z-10 inline-flex items-center gap-1 rounded-full border border-accent-border bg-surface px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-accent shadow-sm">
+          <span className="absolute -top-2 left-3 z-10 inline-flex items-center gap-1 rounded-full border border-accent-border bg-surface px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-accent shadow-sm">
             <Ghost className="h-3 w-3" /> Incognito
           </span>
         )}
         {/* Slash-command popover for skills (parity with Chat). Shown whenever a
-            `/` is typed — including an empty state — so it never looks broken. */}
+            `/` is typed - including an empty state - so it never looks broken. */}
         {slashMatch && (
           <div className="absolute bottom-full left-3 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-border bg-surface shadow-xl">
             <div className="border-b border-border-subtle bg-surface-warm px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Skills · enter to insert</div>
             {slashCandidates.length === 0 ? (
-              <div className="px-3 py-2 text-[11px] text-text-muted">No skills in this vault yet — add one in a domain's <span className="font-mono">_skills/</span> folder.</div>
+              <div className="px-3 py-2 text-[11px] text-text-muted">No skills in this vault yet - add one in a domain's <span className="font-mono">_skills/</span> folder.</div>
             ) : slashCandidates.map((s, i) => (
               <button key={s.path} onMouseDown={(e) => { e.preventDefault(); applySlashCompletion(s.name); }}
                 className={`flex w-full items-start gap-2 px-3 py-1.5 text-left ${i === slashIdx ? "bg-accent-soft" : "hover:bg-surface-warm"}`}>

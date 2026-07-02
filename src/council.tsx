@@ -42,7 +42,7 @@ export function CouncilPanelStrip({ className = "" }: { className?: string }) {
   const ordered = [chair, ...members.filter((m) => m && m !== chair)].filter(Boolean);
   return (
     <div className={`flex flex-wrap items-center gap-1.5 ${className}`}>
-      <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">Council</span>
+      <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Council</span>
       {ordered.map((key) => {
         const [cli, model] = key.split(MODEL_SEP);
         const isChair = key === chair;

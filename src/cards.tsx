@@ -46,7 +46,7 @@ export function SidebarProcesses({ collapsed, setTab }: { collapsed: boolean; se
     return (
       <div title={`${n} process${n === 1 ? "" : "es"} running`} className="flex w-full flex-col items-center gap-0.5 border-t border-border-subtle px-2 py-2 text-accent">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        <span className="font-mono text-[9px]">{n}</span>
+        <span className="font-mono text-[10px]">{n}</span>
       </div>
     );
   }

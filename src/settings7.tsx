@@ -16,6 +16,7 @@ import { track } from "./telemetry";
 const TELEMETRY_PROVIDERS = new Set(["openrouter", "anthropic", "openai", "google", "ollama", "lmstudio", "bedrock"]);
 const telemetryProvider = (id: string): string => (TELEMETRY_PROVIDERS.has(id) ? id : "other");
 import { SettingsHeader } from "./sectionutil";
+import { toast } from "./toast";
 import { autoVerifyClis, setCliVerify } from "./verify";
 import { AgentsSection } from "./settings6";
 import { OrVendorMark, orVendorOf } from "./providermarks";
@@ -97,7 +98,7 @@ export function RefreshCadence({ value, onChange }: { value: string; onChange: (
       </button>
       {open && (
         <div className="absolute left-0 top-full z-30 mt-1 w-60 overflow-hidden rounded-xl border border-border bg-surface shadow-lg">
-          <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted">Auto-refresh cadence</div>
+          <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Auto-refresh cadence</div>
           <ul className="p-1">
             {REFRESH_PRESETS.map((p) => (
               <li key={p.value}>
@@ -112,14 +113,14 @@ export function RefreshCadence({ value, onChange }: { value: string; onChange: (
             ))}
           </ul>
           <div className={`flex items-center gap-2 border-t border-border-subtle px-3 py-2 ${isCustom ? "bg-accent-soft/40" : ""}`}>
-            <span className="text-[12px] text-text-muted">Every</span>
+            <span className="text-[11px] text-text-muted">Every</span>
             <input
               type="number" min={1} max={365} value={days}
               onChange={(e) => setDays(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") commitCustom(); }}
               className="w-14 rounded border border-border bg-background px-2 py-1 text-[13px] text-text-primary outline-none focus:border-accent-border"
             />
-            <span className="text-[12px] text-text-muted">days</span>
+            <span className="text-[11px] text-text-muted">days</span>
             <button onClick={commitCustom} className="ml-auto rounded border border-accent-border bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:opacity-90">Set</button>
           </div>
         </div>
@@ -167,7 +168,7 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
         setActivated(ok);
         window.setTimeout(() => setActivated(null), 6000);
       }
-    } catch (e) { console.error("provider_key_set", e); }
+    } catch (e) { console.error("provider_key_set", e); toast.error(`Could not save the key: ${String(e)}`); }
   }
   async function remove() {
     try {
@@ -175,7 +176,7 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
       setConfigured(false);
       setActivated(null);
       if (onActivated) await onActivated();
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); toast.error(`Could not remove the key: ${String(e)}`); }
   }
   return (
     <>
@@ -232,7 +233,7 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
         <div className="mt-4 border-t border-border-subtle pt-3">
           <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
             <Layers className="h-3 w-3 text-accent" /> Model catalog
-            {orLive.length > 0 && <span className="text-text-muted normal-case tracking-normal">· {orLive.length} live models — search to browse</span>}
+            {orLive.length > 0 && <span className="text-text-muted normal-case tracking-normal">· {orLive.length} live models - search to browse</span>}
           </div>
           <input
             value={orQuery}
@@ -256,7 +257,7 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
                   >
                     <OrVendorMark id={m.id} size={16} />
                     <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-primary">{m.label && m.label !== m.id ? m.label : m.id}</span>
-                    <span className="shrink-0 font-mono text-[9px] text-text-muted">{orVendorOf(m.id) || "model"}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-text-muted">{orVendorOf(m.id) || "model"}</span>
                   </button>
                 ))
               )}
@@ -268,39 +269,29 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
         </div>
       </div>
       </CollapsibleSection>
-      {/* Other aggregators - one key, many models - landing next. Shown so the
-          roadmap is visible; each is a disabled "coming soon" card like OpenRouter. */}
-      <ComingSoonAggregators />
+      {/* Other aggregators are on the roadmap. Kept to a single understated line
+          (not six "coming soon" cards) so the panel advertises what works today,
+          not what is missing. */}
+      <MoreAggregators />
     </>
   );
 }
 
-// Aggregators (one key -> many hosted models) on the roadmap. Rendered as
-// disabled cards beneath OpenRouter so the user sees what's coming.
-const COMING_SOON_AGGREGATORS: { name: string; blurb: string }[] = [
-  { name: "AWS Bedrock", blurb: "Anthropic, Llama, Mistral, Titan via your AWS account." },
-  { name: "Google Vertex AI", blurb: "Gemini + partner models on Google Cloud." },
-  { name: "Azure AI Foundry", blurb: "OpenAI + open models on Azure." },
-  { name: "Together AI", blurb: "Fast hosted open models (Llama, Qwen, DeepSeek)." },
-  { name: "Fireworks AI", blurb: "Low-latency open-model inference." },
-  { name: "Groq", blurb: "Ultra-fast inference on LPUs." },
-];
-
-function ComingSoonAggregators() {
+function MoreAggregators() {
   return (
-    <div className="mt-3 space-y-2">
-      {COMING_SOON_AGGREGATORS.map((a) => (
-        <div key={a.name} className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface/50 px-4 py-3 opacity-70">
-          <Layers className="h-4 w-4 shrink-0 text-text-muted" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-text-secondary">{a.name}</span>
-              <span className="rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">Coming soon</span>
-            </div>
-            <div className="mt-0.5 text-xs text-text-muted">{a.blurb}</div>
-          </div>
-        </div>
-      ))}
+    <div className="mt-3 flex items-start gap-3 rounded-lg border border-border-subtle bg-surface/40 px-4 py-2.5 text-xs text-text-muted">
+      <Layers className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
+      <div className="min-w-0 flex-1">
+        <span className="text-text-secondary">More aggregators are on the roadmap</span> (Bedrock, Vertex, Azure, Together, Fireworks, Groq). Most hosted models are already reachable today through OpenRouter above, or add a vendor key directly below.{" "}
+        <a
+          href="https://github.com/fru-dev3/prevail-desktop/issues/new"
+          target="_blank"
+          rel="noreferrer"
+          className="text-accent underline decoration-dotted underline-offset-2 hover:opacity-80"
+        >
+          Request a provider
+        </a>
+      </div>
     </div>
   );
 }
@@ -340,7 +331,7 @@ function DirectProviderRow({ id, label, hint, onActivated }: {
         setActivated(list.some((c) => c.id === id && c.available));
         window.setTimeout(() => setActivated(null), 6000);
       }
-    } catch (e) { console.error("provider_key_set", e); }
+    } catch (e) { console.error("provider_key_set", e); toast.error(`Could not save the key: ${String(e)}`); }
     finally { setBusy(false); }
   }
   async function remove() {
@@ -350,7 +341,7 @@ function DirectProviderRow({ id, label, hint, onActivated }: {
       setConfigured(false);
       setActivated(null);
       if (onActivated) await onActivated();
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); toast.error(`Could not remove the key: ${String(e)}`); }
     finally { setBusy(false); }
   }
   return (
@@ -433,7 +424,7 @@ export function ModelsSection({
       <SettingsHeader
         title="Runtimes"
         icon={Layers}
-        subtitle="A runtime is a model plus a way to run it — a local CLI, a direct vendor key, or an aggregator. The same model can run several ways, each with its own cost, speed, and privacy. Validated at launch with a real call; expand one to test individual models and set the default new chats open with."
+        subtitle="A runtime is a model plus a way to run it - a local CLI, a direct vendor key, or an aggregator. The same model can run several ways, each with its own cost, speed, and privacy. Validated at launch with a real call; expand one to test individual models and set the default new chats open with."
       />
       {/* Three collapsible groups. CLI runtimes open by default (the main list);
           per-runtime validity shows as a checkmark in the list itself, so the

@@ -364,7 +364,7 @@ export function Sidebar({
   async function archiveDomain(name: string) {
     try {
       const ok = await tauriConfirm(
-        `Hide "${titleCase(name)}" from the active list? Nothing is deleted — restore it any time from the Archived section.`,
+        `Hide "${titleCase(name)}" from the active list? Nothing is deleted - restore it any time from the Archived section.`,
         { title: "Archive domain", kind: "warning" },
       );
       if (!ok) return;
@@ -396,6 +396,7 @@ export function Sidebar({
             <button
               onClick={() => setCollapsed(false)}
               title="Expand sidebar"
+              aria-label="Expand sidebar"
               className="flex h-7 w-7 items-center justify-center rounded-md bg-text-primary text-background shadow-sm transition-opacity hover:opacity-80"
             >
               <ChevronRight className="h-[18px] w-[18px]" strokeWidth={2} />
@@ -408,6 +409,7 @@ export function Sidebar({
             <button
               onClick={() => setCollapsed(true)}
               title="Collapse sidebar"
+              aria-label="Collapse sidebar"
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white/12 text-white transition-colors hover:bg-white/25"
             >
               <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={2} />
@@ -429,7 +431,7 @@ export function Sidebar({
             {EDITOR_NAV.map((group) => (
               <div key={group.heading} className="mb-1.5">
                 {!collapsed && (
-                  <div className="mb-0.5 mt-2 px-3 font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted/70">{group.heading}</div>
+                  <div className="mb-0.5 mt-2 px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted/70">{group.heading}</div>
                 )}
                 {group.items.map((it) => {
                   const Icon = it.icon;
@@ -724,7 +726,7 @@ export function Sidebar({
                   <span className="flex-1 truncate">{titleCase(d.name)}</span>
                   {(domainStats[d.name] ?? 0) > 0 && (
                     <span
-                      className="shrink-0 rounded-full bg-surface-warm px-1.5 py-0 font-mono text-[9px] text-text-muted"
+                      className="shrink-0 rounded-full bg-surface-warm px-1.5 py-0 font-mono text-[10px] text-text-muted"
                       title={`${domainStats[d.name]} imports`}
                     >
                       {domainStats[d.name]}
@@ -854,7 +856,7 @@ export function Sidebar({
               {archivedOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
               <Archive className="h-3 w-3" />
               Archived
-              <span className="ml-auto rounded-full bg-surface-strong px-1.5 text-[9px] text-text-muted">{archived.length}</span>
+              <span className="ml-auto rounded-full bg-surface-strong px-1.5 text-[10px] text-text-muted">{archived.length}</span>
             </button>
             {archivedOpen && (
               <ul className="mt-1 space-y-0.5">
@@ -869,7 +871,7 @@ export function Sidebar({
                       onClick={() => restoreDomain(name)}
                       disabled={restoring === name}
                       title={`Restore ${titleCase(name)}`}
-                      className="flex shrink-0 items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted opacity-0 hover:border-accent-border hover:text-accent group-hover:opacity-100 disabled:opacity-100"
+                      className="flex shrink-0 items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted opacity-0 hover:border-accent-border hover:text-accent group-hover:opacity-100 disabled:opacity-100"
                     >
                       {restoring === name ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
                       restore
@@ -949,7 +951,7 @@ export function Sidebar({
                 strokeDasharray={`${(lifeScore.value / 100) * 94.2} 94.2`}
               />
             </svg>
-            <span className="absolute font-mono text-[9px] font-semibold" style={{ color: scoreColor(lifeScore.value) }}>
+            <span className="absolute font-mono text-[10px] font-semibold" style={{ color: scoreColor(lifeScore.value) }}>
               {lifeScore.value}
             </span>
           </span>
@@ -972,11 +974,11 @@ export function Sidebar({
           A solid edge-to-edge bar so it reads as the app's footer action. */}
       {collapsed ? (
         <div data-tour="settings" className="flex flex-col items-center gap-1 border-t border-border-subtle p-2">
-          <button onClick={() => setTab("chat")} title="Work — your domains, board, automations, calendar & notes"
+          <button onClick={() => setTab("chat")} title="Work - your domains, board, automations, calendar & notes" aria-label="Work mode"
             className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${tab !== "settings" ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}>
             <Briefcase className="h-4 w-4" />
           </button>
-          <button onClick={() => setTab("settings")} title="Editor — models, connections & settings"
+          <button onClick={() => setTab("settings")} title="Editor - models, connections & settings" aria-label="Editor mode"
             className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${tab === "settings" ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}>
             <SettingsIcon className="h-4 w-4" />
           </button>
@@ -992,7 +994,7 @@ export function Sidebar({
           <div className="flex flex-1 items-center rounded-full border border-border bg-surface-strong p-0.5">
             <button
               onClick={() => setTab("chat")}
-              title="Work — your domains, board, automations, calendar & notes"
+              title="Work - your domains, board, automations, calendar & notes"
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition-all ${
                 tab !== "settings" ? "bg-surface text-accent shadow-sm ring-1 ring-inset ring-border-subtle" : "text-text-secondary hover:text-text-primary"
               }`}
@@ -1002,7 +1004,7 @@ export function Sidebar({
             </button>
             <button
               onClick={() => setTab("settings")}
-              title="Editor — models, connections & settings"
+              title="Editor - models, connections & settings"
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition-all ${
                 tab === "settings" ? "bg-surface text-accent shadow-sm ring-1 ring-inset ring-border-subtle" : "text-text-secondary hover:text-text-primary"
               }`}
@@ -1023,15 +1025,15 @@ export function Sidebar({
             href="https://github.com/fru-dev3/prevail-desktop/issues/new"
             target="_blank"
             rel="noreferrer"
-            title="Alpha — Prevail is an early research project, provided as-is with no warranty: use at your own risk. Click to send feedback or report a bug."
-            className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-accent transition-colors hover:bg-accent hover:text-background"
+            title="Alpha - Prevail is an early research project, provided as-is with no warranty: use at your own risk. Click to send feedback or report a bug."
+            className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-accent transition-colors hover:bg-accent hover:text-background"
           >
-            <span className="text-[7px] leading-none">◆</span> Alpha
+            <span className="text-[10px] leading-none">◆</span> Alpha
           </a>
           <div className="flex-1" />
           <button
             onClick={() => { const cycle: Mode[] = ["light", "dark", "system"]; const i = cycle.indexOf(appearance.mode); appearance.setMode(cycle[(i + 1) % cycle.length]); }}
-            title={`Theme: ${appearance.mode} — click to cycle (light · dark · system)`}
+            title={`Theme: ${appearance.mode} - click to cycle (light · dark · system)`}
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
           >
             {appearance.mode === "dark" ? <Moon className="h-3.5 w-3.5" /> : appearance.mode === "system" ? <Monitor className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
@@ -1057,13 +1059,13 @@ function FooterProcesses({ collapsed, setTab }: { collapsed: boolean; setTab: (t
       <button
         onClick={() => setOpen(true)}
         title={count > 0
-          ? `${count} background process${count === 1 ? "" : "es"} running — click for details`
-          : "Background processes — scheduled benchmarks, backups & live activity"}
+          ? `${count} background process${count === 1 ? "" : "es"} running - click for details`
+          : "Background processes - scheduled benchmarks, backups & live activity"}
         className={`relative flex ${collapsed ? "h-8 w-8" : "h-6 w-6"} shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-warm hover:text-accent`}
       >
         <Activity className={collapsed ? "h-4 w-4" : "h-3.5 w-3.5"} />
         {count > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 font-mono text-[8px] font-bold leading-none text-background">
+          <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 font-mono text-[10px] font-bold leading-none text-background">
             {count}
           </span>
         )}
@@ -1097,7 +1099,7 @@ function ProcessesModal({ onClose, setTab }: { onClose: () => void; setTab: (t: 
           <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-secondary">
             <Activity className="h-3.5 w-3.5 text-accent" /> Background processes
           </span>
-          <button onClick={onClose} title="Close" className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary">
+          <button onClick={onClose} title="Close" aria-label="Close" className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary">
             <X className="h-3.5 w-3.5" />
           </button>
         </div>

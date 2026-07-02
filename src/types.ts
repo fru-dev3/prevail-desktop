@@ -259,7 +259,7 @@ export type CliVerifyInfo = { status: "unknown" | "verifying" | "ok" | "failed";
 
 export type Mode = "light" | "dark" | "system";
 
-export type Palette = "vault" | "midnight" | "ember" | "mono" | "cyberpunk" | "slate";
+export type Palette = "prevail" | "vault" | "midnight" | "ember" | "mono" | "cyberpunk" | "slate";
 
 export interface ChatMessage {
   role: "user" | "assistant";
