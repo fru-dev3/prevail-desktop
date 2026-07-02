@@ -2622,14 +2622,30 @@ export function BenchResults({
               </div>
             );
           })()}
-          <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Sort by</span>
-            <div className="inline-flex items-center rounded-lg border border-border-subtle bg-surface p-0.5">
-              {([["intel", "Intelligence"], ["value", "Value"], ["speed", "Speed"], ["cost", "Cost"]] as const).map(([k, label]) => (
-                <button key={k} onClick={() => setBoardSort(k)} className={`rounded-md px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${boardSort === k ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-text-primary"}`}>{label}</button>
-              ))}
-            </div>
-          </div>
+          {(() => {
+            // What each sort dimension means, surfaced as per-tab tooltips and a
+            // live legend line, so the metrics (especially the composite Value)
+            // are self-explanatory in the app.
+            const SORT_META: Record<"intel" | "value" | "speed" | "cost", { tip: string; legend: string }> = {
+              intel: { tip: "Intelligence: average judge score out of 10 (answer quality)", legend: "Intelligence = average judge score out of 10. How good the answers are, graded by a judge model." },
+              value: { tip: "Value: 50% intelligence + 25% speed + 25% cost, each normalized across the visible models", legend: "Value = 50% intelligence + 25% speed + 25% cost, each normalized across the visible models. Best quality per dollar and per second." },
+              speed: { tip: "Speed: average response latency per question (faster ranks higher)", legend: "Speed = average response time per question. Faster ranks higher." },
+              cost: { tip: "Cost: estimated dollar cost of the run (local models are free)", legend: "Cost = estimated dollar cost of the run, from tokens used. Local models are free." },
+            };
+            return (
+              <div className="mb-2 px-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Sort by</span>
+                  <div className="inline-flex items-center rounded-lg border border-border-subtle bg-surface p-0.5">
+                    {([["intel", "Intelligence"], ["value", "Value"], ["speed", "Speed"], ["cost", "Cost"]] as const).map(([k, label]) => (
+                      <button key={k} onClick={() => setBoardSort(k)} title={SORT_META[k].tip} className={`rounded-md px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${boardSort === k ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-text-primary"}`}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-text-muted">{SORT_META[boardSort].legend}</p>
+              </div>
+            );
+          })()}
           {/* Column header — aligns with the fixed-width columns below. */}
           <div className="mb-1 hidden items-center gap-3 px-4 font-mono text-[9px] uppercase tracking-wider text-text-muted/70 sm:flex">
             <span className="min-w-0 flex-1" />
