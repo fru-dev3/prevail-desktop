@@ -417,7 +417,7 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
           );
         })}
         {matches.length === 0 && (
-          <li className="px-2.5 py-3 text-center text-[12px] text-text-muted">
+          <li className="px-2.5 py-3 text-center text-[11px] text-text-muted">
             {available.length === 0 ? "Every app already feeds this domain." : "No matching app."}
           </li>
         )}
@@ -514,7 +514,7 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
           </button>
         </div>
         {suggestions.length === 0 ? (
-          <div className="px-1 py-2 text-[12px] text-text-muted">
+          <div className="px-1 py-2 text-[11px] text-text-muted">
             {suggesting ? "Learning from your activity in this domain…" : "No suggestions yet. Hit suggest apps to learn from your activity and propose apps to connect."}
           </div>
         ) : (

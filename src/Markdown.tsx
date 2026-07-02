@@ -39,7 +39,7 @@ function MarkdownCode(props: React.HTMLAttributes<HTMLElement> & { className?: s
           copy
         </button>
       </div>
-      <pre className="overflow-x-auto px-3 py-2 font-mono text-[12px] leading-relaxed text-text-primary">
+      <pre className="overflow-x-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-text-primary">
         <code className={className}>{children}</code>
       </pre>
     </div>

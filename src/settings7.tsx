@@ -113,14 +113,14 @@ export function RefreshCadence({ value, onChange }: { value: string; onChange: (
             ))}
           </ul>
           <div className={`flex items-center gap-2 border-t border-border-subtle px-3 py-2 ${isCustom ? "bg-accent-soft/40" : ""}`}>
-            <span className="text-[12px] text-text-muted">Every</span>
+            <span className="text-[11px] text-text-muted">Every</span>
             <input
               type="number" min={1} max={365} value={days}
               onChange={(e) => setDays(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") commitCustom(); }}
               className="w-14 rounded border border-border bg-background px-2 py-1 text-[13px] text-text-primary outline-none focus:border-accent-border"
             />
-            <span className="text-[12px] text-text-muted">days</span>
+            <span className="text-[11px] text-text-muted">days</span>
             <button onClick={commitCustom} className="ml-auto rounded border border-accent-border bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:opacity-90">Set</button>
           </div>
         </div>

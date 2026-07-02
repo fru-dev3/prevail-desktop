@@ -115,7 +115,7 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
         />
       ) : (
         <div className="space-y-2">
-          <p className="text-[12px] text-text-muted">
+          <p className="text-[11px] text-text-muted">
             A real browser opens; you log in once (and do 2FA). The agent learns the steps and records them, then later syncs replay fast with no AI.
           </p>
           <div className="flex flex-wrap gap-2">
@@ -136,9 +136,9 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
 
   const domainEditor = (
     <AppCard icon={Layers} label="Domains this app refreshes" action={savingDoms ? <span className="font-mono text-[10px] text-text-muted/60">saving…</span> : undefined}>
-      <p className="mb-2 text-[12px] text-text-muted">Many-to-many. Click a domain to open it and chat there; remove or add bindings here.</p>
+      <p className="mb-2 text-[11px] text-text-muted">Many-to-many. Click a domain to open it and chat there; remove or add bindings here.</p>
       {doms.length === 0 ? (
-        <div className="text-[12px] text-text-muted">Not bound to any domain yet. Add one below to start refreshing it.</div>
+        <div className="text-[11px] text-text-muted">Not bound to any domain yet. Add one below to start refreshing it.</div>
       ) : (
         <ul className="space-y-1">
           {doms.map((d) => (
@@ -207,7 +207,7 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
                     </li>
                   )}
                   {matches.length === 0 && !isNew && (
-                    <li className="px-2.5 py-3 text-center text-[12px] text-text-muted">
+                    <li className="px-2.5 py-3 text-center text-[11px] text-text-muted">
                       {addable.length === 0 ? "This app already feeds every domain." : "No match. Keep typing to create a new domain."}
                     </li>
                   )}
@@ -242,7 +242,7 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
             {app.status === "not-configured" && (
               <div className="mt-2 rounded-lg border border-accent-border bg-accent-soft/40 px-3 py-2.5">
                 <div className="font-mono text-[10px] uppercase tracking-wider text-accent">Not connected yet - here's how</div>
-                <p className="mt-1 text-[12px] leading-relaxed text-text-primary">{connectHelp(app.integration)}</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-text-primary">{connectHelp(app.integration)}</p>
                 <div className="mt-2 flex items-center gap-2">
                   <button
                     onClick={test}
@@ -258,13 +258,13 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
             {/* Pattern-specific "how to connect" - kept for already-connected apps
                 as a quiet reference (the prominent version above covers setup). */}
             {app.status !== "not-configured" && (
-              <div className="mt-2 rounded-lg border border-border-subtle bg-background px-3 py-2 text-[12px] leading-relaxed text-text-secondary">
+              <div className="mt-2 rounded-lg border border-border-subtle bg-background px-3 py-2 text-[11px] leading-relaxed text-text-secondary">
                 <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">How to connect</span>
                 <p className="mt-1">{connectHelp(app.integration)}</p>
               </div>
             )}
             {demoMode && (
-              <div className="mt-2 rounded-lg border border-ai/40 bg-ai/10 px-3 py-2 text-[12px] leading-relaxed text-text-secondary">
+              <div className="mt-2 rounded-lg border border-ai/40 bg-ai/10 px-3 py-2 text-[11px] leading-relaxed text-text-secondary">
                 You're in the <span className="font-semibold">Sandbox</span>, so this is a sample app and won't make a real connection. Switch to your own vault (Settings → Workspace) to connect real accounts.
               </div>
             )}
@@ -276,9 +276,9 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
           </AppCard>
           <AppCard icon={Zap} label="Skills">
             {skills === null ? (
-              <div className="text-[12px] text-text-muted">loading…</div>
+              <div className="text-[11px] text-text-muted">loading…</div>
             ) : skills.length === 0 ? (
-              <div className="text-[12px] text-text-muted">No skills yet. Add one under <code className="text-accent">skills/</code> to enable syncing.</div>
+              <div className="text-[11px] text-text-muted">No skills yet. Add one under <code className="text-accent">skills/</code> to enable syncing.</div>
             ) : (
               <ul className="space-y-1">
                 {skills.map((s) => (
@@ -297,9 +297,9 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
             <button onClick={sync} disabled={busy === "sync"} className="inline-flex items-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent/10 disabled:opacity-50"><RefreshCw className={`h-3 w-3 ${busy === "sync" ? "animate-spin" : ""}`} />{busy === "sync" ? "syncing…" : "sync now"}</button>
           }>
             <div className="text-2xl font-semibold text-text-primary">{relTime(app.lastSuccessTs)}</div>
-            <div className="mt-0.5 text-[12px] text-text-muted">{app.lastSuccessTs ? "last successful refresh" : "this app has never run"}</div>
+            <div className="mt-0.5 text-[11px] text-text-muted">{app.lastSuccessTs ? "last successful refresh" : "this app has never run"}</div>
             {app.lastError && (
-              <div className="mt-3 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-[12px] text-warn"><span className="font-mono uppercase tracking-wider">last error</span> · {app.lastError}</div>
+              <div className="mt-3 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-[11px] text-warn"><span className="font-mono uppercase tracking-wider">last error</span> · {app.lastError}</div>
             )}
             {note && <div className="mt-3 rounded-lg bg-surface-warm px-3 py-1.5 font-mono text-[11px] text-text-secondary">{note}</div>}
           </AppCard>
@@ -309,13 +309,13 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
           </AppCard>
           <AppCard icon={Activity} label="Run history">
             {history === null ? (
-              <div className="text-[12px] text-text-muted">loading…</div>
+              <div className="text-[11px] text-text-muted">loading…</div>
             ) : history.runs.length === 0 ? (
-              <div className="text-[12px] text-text-muted">No runs recorded yet. Use Sync now above to run this app.</div>
+              <div className="text-[11px] text-text-muted">No runs recorded yet. Use Sync now above to run this app.</div>
             ) : (
               <ul className="space-y-1">
                 {[...history.runs].reverse().map((r, i) => (
-                  <li key={`${r.ts}-${i}`} title={r.error ?? r.summary ?? undefined} className="flex items-center gap-2.5 rounded-lg border border-border-subtle bg-background px-3 py-2 text-[12px]">
+                  <li key={`${r.ts}-${i}`} title={r.error ?? r.summary ?? undefined} className="flex items-center gap-2.5 rounded-lg border border-border-subtle bg-background px-3 py-2 text-[11px]">
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: r.ok ? "#2fb87a" : "#e06c75" }} />
                     <span className="shrink-0 text-text-secondary">{relTime(r.ts)}</span>
                     <span className="truncate font-mono text-[10px] text-text-muted">{r.skill}</span>

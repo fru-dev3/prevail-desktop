@@ -589,7 +589,7 @@ export function ThreadsRail({
             {threadFilter && (
               <button
                 onClick={() => setThreadFilter("")}
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-[12px] text-text-muted hover:text-warn"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-[11px] text-text-muted hover:text-warn"
                 title="Clear filter"
               >×</button>
             )}
@@ -862,7 +862,7 @@ export function AppHeaderBar({ app, enabled, onOpenDomain, onClose }: { app: Eng
               <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted/70">feeds</span>
               {app.domains.map((d, i) => (
                 <span key={d} className="inline-flex items-center gap-1.5">
-                  <button onClick={() => onOpenDomain(d)} className="rounded px-1 text-[12px] font-medium text-accent hover:bg-accent-soft hover:underline" title={`Open ${titleCase(d)} and chat there`}>{titleCase(d)}</button>
+                  <button onClick={() => onOpenDomain(d)} className="rounded px-1 text-[11px] font-medium text-accent hover:bg-accent-soft hover:underline" title={`Open ${titleCase(d)} and chat there`}>{titleCase(d)}</button>
                   {i < app.domains.length - 1 && <span className="text-text-muted/40">·</span>}
                 </span>
               ))}
@@ -2308,7 +2308,7 @@ export function RecipeActionEditor({
               <button
                 onClick={() => remove(i)}
                 title="Remove step"
-                className="shrink-0 rounded border border-border bg-background px-1.5 py-0 font-mono text-[12px] text-text-muted hover:border-warn hover:text-warn"
+                className="shrink-0 rounded border border-border bg-background px-1.5 py-0 font-mono text-[11px] text-text-muted hover:border-warn hover:text-warn"
               >
                 ×
               </button>

@@ -294,7 +294,7 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
       title={`${e.title} · ${e.domain ? titleCase(e.domain) : (e.kind === "google" ? "Google" : "General")} · ${e.detail}`}
       className={`flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[10px] leading-tight transition-colors hover:brightness-95 ${
         e.kind === "loop" ? "bg-ai/15 text-ai" : e.kind === "google" ? "bg-purple-500/15 text-purple-600 dark:text-purple-300" : "bg-accent-soft text-accent"
-      } ${full ? "text-[12px] py-1" : ""}`}
+      } ${full ? "text-[11px] py-1" : ""}`}
     >
       {e.kind === "loop" ? <Repeat className="h-2.5 w-2.5 shrink-0" /> : e.kind === "google" ? <CalendarDays className="h-2.5 w-2.5 shrink-0" /> : <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
       <span className="truncate">{e.title}</span>
@@ -621,7 +621,7 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
               <div className="space-y-3">
                 <div className="text-sm font-semibold text-text-primary">{edit.title}</div>
                 <div className="text-[11px] text-text-muted">{prettyDate(edit.dateKey)} · synced from Google Calendar</div>
-                <p className="text-[12px] text-text-muted">Google events are managed in Google Calendar; the app-sync keeps them in sync both ways.</p>
+                <p className="text-[11px] text-text-muted">Google events are managed in Google Calendar; the app-sync keeps them in sync both ways.</p>
                 {edit.external?.url && (
                   <a href={edit.external.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-warm hover:text-text-primary"><ExternalLink className="h-3.5 w-3.5" /> Open in Google Calendar</a>
                 )}
