@@ -293,26 +293,6 @@ fn handle(
         return;
     }
 
-    // ── X8: Web Push (VAPID). The browser fetches the public key, subscribes,
-    //    and POSTs its subscription so the host can push to a closed tab. ──
-    if path == "/api/push/key" && method == tiny_http::Method::Get {
-        let key = crate::webpush::load_or_create_keys().map(|k| k.public_b64url).unwrap_or_default();
-        let _ = req.respond(json_response(200, &serde_json::json!({ "publicKey": key })));
-        return;
-    }
-    if path == "/api/push/subscribe" && method == tiny_http::Method::Post {
-        use tauri::Manager;
-        let mut body = String::new();
-        let _ = req.as_reader().read_to_string(&mut body);
-        match serde_json::from_str::<crate::webpush::PushSub>(&body) {
-            Ok(sub) => {
-                let n = app.state::<crate::webpush::PushStore>().add(sub);
-                let _ = req.respond(json_response(200, &serde_json::json!({ "ok": true, "count": n })));
-            }
-            Err(e) => { let _ = req.respond(json_response(400, &serde_json::json!({ "error": e.to_string() }))); }
-        }
-        return;
-    }
 
     // ── Static assets (the embedded frontend bundle) ──
     let asset_path = if path == "/" { "index.html".to_string() } else { path.trim_start_matches('/').to_string() };
@@ -376,17 +356,6 @@ pub fn webui_stop(state: tauri::State<'_, WebuiState>) -> Result<WebuiStatus, St
 #[tauri::command]
 pub fn webui_status(state: tauri::State<'_, WebuiState>) -> WebuiStatus {
     state.status()
-}
-// X8: the host pushes a notification to every subscribed (possibly closed) web
-// tab. Called by the desktop's approval-rise handler so remote users are alerted
-// even when the WebUI tab isn't open. Fire-and-forget on the async runtime.
-#[tauri::command]
-pub fn webui_push(app: tauri::AppHandle, title: String, body: String) {
-    tauri::async_runtime::spawn(async move {
-        use tauri::Manager;
-        let store = app.state::<crate::webpush::PushStore>();
-        let _ = crate::webpush::push_all(store.inner(), &title, &body).await;
-    });
 }
 // Host window → server: deliver the result of a proxied invoke.
 #[tauri::command]
