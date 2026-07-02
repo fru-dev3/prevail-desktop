@@ -74,6 +74,19 @@ pub(crate) fn provider_key_del(provider: String) -> Result<(), String> {
     ingestion::keychain::del("prevail.providers", &provider)
 }
 
+// E2: WebUI login password in the OS keychain instead of plaintext localStorage.
+// Unlike provider keys (write-only for security), this getter is intentional -
+// it's the user's own login, which they set, view (show/hide), and which must be
+// passed to webui_start. Keychain service "prevail.webui", account "password".
+#[tauri::command]
+pub(crate) fn webui_secret_set(pass: String) -> Result<(), String> {
+    ingestion::keychain::set("prevail.webui", "password", &pass)
+}
+#[tauri::command]
+pub(crate) fn webui_secret_get() -> String {
+    ingestion::keychain::get("prevail.webui", "password").unwrap_or_default()
+}
+
 fn ui_settings_path() -> Option<std::path::PathBuf> {
     let home = std::env::var("HOME").ok()?;
     Some(Path::new(&home).join("Library/Application Support/sh.prevail.desktop/ui-settings.json"))

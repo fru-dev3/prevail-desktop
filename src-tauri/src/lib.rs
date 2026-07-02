@@ -423,6 +423,8 @@ pub fn run() {
             settings::provider_key_exists,
             settings::provider_key_last4,
             settings::provider_key_del,
+            settings::webui_secret_set,
+            settings::webui_secret_get,
             webui::webui_start,
             webui::webui_stop,
             webui::webui_status,
