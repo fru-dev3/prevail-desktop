@@ -117,8 +117,15 @@ pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
     Ok(moved)
 }
 
+// E1: run off the main thread (Tauri v2 executes async commands on a worker
+// thread, sync ones on the UI thread). The body stays sync in scan_vault_impl so
+// internal Rust callers (and tests) use it directly without awaiting.
 #[tauri::command]
-pub(crate) fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
+pub(crate) async fn scan_vault(path: String) -> Result<Vec<Domain>, String> {
+    scan_vault_impl(path)
+}
+
+pub(crate) fn scan_vault_impl(path: String) -> Result<Vec<Domain>, String> {
     let root = PathBuf::from(&path);
     if !root.exists() {
         return Err(format!("vault path does not exist: {}", path));
@@ -298,7 +305,7 @@ mod tests {
         let names = list_domain_names(&vault.to_string_lossy());
         assert!(names.contains(&"wealth".to_string()), "v4 domain must be found: {names:?}");
         assert!(names.contains(&"health".to_string()), "v4 domain must be found: {names:?}");
-        let scanned = scan_vault(vault.to_string_lossy().to_string()).unwrap();
+        let scanned = scan_vault_impl(vault.to_string_lossy().to_string()).unwrap();
         let scanned_names: Vec<String> = scanned.iter().map(|d| d.name.clone()).collect();
         assert!(scanned_names.contains(&"wealth".to_string()), "scan_vault must find v4 domain: {scanned_names:?}");
         assert_eq!(scanned.len(), 2, "exactly the two v4 domains, not build/data: {scanned_names:?}");

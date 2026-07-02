@@ -132,7 +132,7 @@ pub(crate) fn write_domain_ideal(vault: String, domain: Option<String>, body: St
 // Distilled long-term memory for a domain (vault root for General), written
 // by the distill daemon. Prepended to prompts like user.md. Empty if none yet.
 #[tauri::command]
-pub(crate) fn read_memory_md(vault: String, domain: Option<String>) -> Result<String, String> {
+pub(crate) async fn read_memory_md(vault: String, domain: Option<String>) -> Result<String, String> {
     let p = domain_dir(&vault, &domain).join("_memory.md");
     if !p.exists() {
         return Ok(String::new());

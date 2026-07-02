@@ -9,7 +9,7 @@ use crate::paths::runtime_path;
 use crate::read_to_string_retry;
 
 #[tauri::command]
-pub(crate) fn activity_read(vault: String, limit: Option<usize>) -> Result<Vec<Value>, String> {
+pub(crate) async fn activity_read(vault: String, limit: Option<usize>) -> Result<Vec<Value>, String> {
     let path = runtime_path(&vault, "_meta").join("activity.jsonl");
     let raw = match read_to_string_retry(path.to_str().unwrap_or_default()) {
         Ok(s) => s,

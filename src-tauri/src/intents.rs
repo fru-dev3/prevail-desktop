@@ -78,8 +78,14 @@ pub(crate) fn journal_append(vault: String, domain: Option<String>, entry: Strin
 /// Every intent across the whole vault (each domain's _intents.jsonl plus the
 /// vault-root general ledger), tagged with its domain, newest first. Powers the
 /// Settings > Intents browser.
+// E1: async command (off the UI thread); the sync body is intents_read_all_impl
+// so internal Rust callers use it directly.
 #[tauri::command]
-pub(crate) fn intents_read_all(vault: String, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
+pub(crate) async fn intents_read_all(vault: String, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
+    intents_read_all_impl(vault, limit)
+}
+
+pub(crate) fn intents_read_all_impl(vault: String, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
     let root = PathBuf::from(&vault);
     // General resolves to its real home (v4 <vault>/data/domains/general, else
     // legacy vault root) - NOT build/, which never held the intent ledger.
@@ -197,7 +203,7 @@ fn parse_intents_output(out: &str) -> Result<serde_json::Value, String> {
 /// Count every intent record across the vault. Cheap signal the daemon uses to
 /// decide whether enough NEW prompts have arrived to be worth a model pass.
 pub(crate) fn count_intents(vault: &str) -> usize {
-    intents_read_all(vault.to_string(), None).map(|v| v.len()).unwrap_or(0)
+    intents_read_all_impl(vault.to_string(), None).map(|v| v.len()).unwrap_or(0)
 }
 
 // ── Capture streams as a distiller source ─────────────────────────────────────
@@ -291,7 +297,7 @@ pub(crate) async fn distill_intents_core(
     // Merge the native ledger with the captured cross-tool prompt streams, then
     // keep the newest `limit` across both so a unified chronological log feeds
     // the model.
-    let mut intents = intents_read_all(vault.to_string(), Some(limit))?;
+    let mut intents = intents_read_all_impl(vault.to_string(), Some(limit))?;
     intents.extend(read_capture_prompts(vault, Some(limit)));
     intents.sort_by_key(|v| std::cmp::Reverse(v.get("ts").and_then(|t| t.as_i64()).unwrap_or(0)));
     intents.truncate(limit);
