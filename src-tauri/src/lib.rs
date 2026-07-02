@@ -59,6 +59,7 @@ mod slack_bridge;
 mod telegram_bridge;
 mod watchdog;
 mod webhook_bridge;
+mod webpush;
 mod webui;
 mod integrations;
 
@@ -363,6 +364,7 @@ pub fn run() {
         .manage(taskgen::TaskGenState::new())
         .manage(skillgen::SkillGenState::new())
         .manage(webui::WebuiState::default())
+        .manage({ let s = webpush::PushStore::default(); s.load(); s })
         .invoke_handler(tauri::generate_handler![
             vault::scan_vault,
             vault::vault_migrate_layout,
@@ -430,6 +432,7 @@ pub fn run() {
             webui::webui_start,
             webui::webui_stop,
             webui::webui_status,
+            webui::webui_push,
             webui::webui_resolve,
             webui::webui_event,
             distill::distill_start,
