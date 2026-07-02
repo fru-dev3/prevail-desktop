@@ -6,6 +6,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { ArrowUpRight, BookOpen, Check, FileText, Folder, Ghost, Layers, PanelRightOpen, Paperclip, Plus, Scale, Sparkles } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
+import { addNote } from "./notesstore";
+import { toast } from "./toast";
 import { MODELS, isHarnessRuntime } from "./constants";
 import { relTime, scoreColor, titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
@@ -1248,6 +1250,30 @@ export function ChatPanel({
   const copyToClipboard = useCallback(async (text: string) => {
     try { await navigator.clipboard.writeText(text); } catch (e) { console.error(e); }
   }, []);
+  // F2: capture a chat turn into the rest of the app. "Task" adds it to the
+  // board (in the active domain, or General); "Note" saves it to Notes. Both
+  // confirm with a toast so the action is visible without leaving the chat.
+  const makeTaskFromMessage = useCallback(async (text: string) => {
+    const body = text.trim();
+    if (!body) return;
+    // A task is a one-liner; use the first line and keep it reasonable.
+    const line = body.split("\n").find((l) => l.trim()) ?? body;
+    const taskText = line.trim().slice(0, 240);
+    const dom = tDomain || domain || "general";
+    try {
+      await invoke("tasks_add", { vault: vaultPath, domain: dom, text: taskText, source: "chat" });
+      window.dispatchEvent(new Event("prevail:tasks-changed"));
+      toast.success(`Added to your ${dom === "general" ? "board" : dom + " board"}.`);
+    } catch (e) { toast.error(`Could not add the task: ${String(e)}`); }
+  }, [vaultPath, tDomain, domain]);
+  const saveMessageAsNote = useCallback(async (text: string) => {
+    const body = text.trim();
+    if (!body) return;
+    try {
+      await addNote(vaultPath, { body, source: "note" });
+      toast.success("Saved to your notes.");
+    } catch (e) { toast.error(`Could not save the note: ${String(e)}`); }
+  }, [vaultPath]);
   const retryFromHere = useCallback((index: number) => {
     // Find the user message that produced this assistant slot.
     let userIdx = index;
@@ -1726,6 +1752,8 @@ export function ChatPanel({
               onCopy={copyToClipboard}
               onRetry={retryFromHere}
               onEdit={editFromHere}
+              onMakeTask={makeTaskFromMessage}
+              onSaveNote={saveMessageAsNote}
             />
           </div>
         )}
@@ -1827,6 +1855,8 @@ export function ChatPanel({
               onCopy={copyToClipboard}
               onRetry={retryFromHere}
               onEdit={editFromHere}
+              onMakeTask={makeTaskFromMessage}
+              onSaveNote={saveMessageAsNote}
             />
           </div>
         )}
