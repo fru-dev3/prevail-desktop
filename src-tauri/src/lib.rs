@@ -410,6 +410,7 @@ pub fn run() {
             vault_lock::vault_lock_status,
             vault_lock::vault_lock_set,
             idealstate::read_memory_md,
+            idealstate::append_memory_md,
             appcmds::write_text_file,
             appcmds::read_text_file,
             appcmds::spark_archive_append,
