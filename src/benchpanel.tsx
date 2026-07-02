@@ -1736,8 +1736,8 @@ export function BenchRunConfig({
           const mineCount = savedUnified.filter((u) => u.origin !== "ai").length;
           const fromAiCount = savedUnified.filter((u) => u.origin === "ai").length;
           const SOURCE_META: Record<Source, { label: string; badge: string }> = {
-            canonical: { label: "Canonical", badge: "border-border-subtle bg-surface-warm text-text-secondary" },
-            ai: { label: "AI", badge: "border-accent-border bg-accent-soft text-accent" },
+            canonical: { label: "Built-in", badge: "border-border-subtle bg-surface-warm text-text-secondary" },
+            ai: { label: "Suggested", badge: "border-accent-border bg-accent-soft text-accent" },
             saved: { label: "Saved", badge: "border-ok/40 bg-ok/10 text-ok" },
           };
           // A saved card's badge shows WHERE it came from, so manual-saved vs
@@ -1746,7 +1746,7 @@ export function BenchRunConfig({
           const ORIGIN_META: Record<Origin, { qualifier: string; sparkle: boolean }> = {
             manual: { qualifier: "yours", sparkle: false },
             ai: { qualifier: "from AI", sparkle: true },
-            canonical: { qualifier: "from Canonical", sparkle: false },
+            canonical: { qualifier: "from Built-in", sparkle: false },
           };
           const CADENCES: BenchSchedule["freq"][] = ["daily", "weekly", "monthly"];
 
@@ -1831,11 +1831,11 @@ export function BenchRunConfig({
           };
 
           const FILTERS: Array<{ id: typeof presetFilter; label: string; count: number; title: string }> = [
-            { id: "all", label: "All", count: combined.length, title: "Every preset, with cross-source duplicates collapsed" },
-            { id: "canonical", label: "Canonical", count: canonPresets.length, title: "Built-in templates that resolve over your current models" },
-            { id: "ai", label: "AI", count: aiPresets?.length ?? 0, title: "Live AI suggestions (not yet saved). Save one to keep it." },
-            { id: "mine", label: "Mine", count: mineCount, title: "Saved presets you built or curated yourself" },
-            { id: "fromAi", label: "From AI", count: fromAiCount, title: "AI suggestions you saved to reuse" },
+            { id: "all", label: "All", count: combined.length, title: "Every preset from all sources, with duplicates merged" },
+            { id: "canonical", label: "Built-in", count: canonPresets.length, title: "Ready-made presets that ship with Prevail" },
+            { id: "ai", label: "Suggested", count: aiPresets?.length ?? 0, title: "Live AI suggestions from Suggest presets. Not saved yet." },
+            { id: "mine", label: "Mine", count: mineCount, title: "Presets you built and saved yourself" },
+            { id: "fromAi", label: "Saved AI", count: fromAiCount, title: "AI suggestions you saved to reuse" },
           ];
           return (
             <div className="space-y-3">
@@ -1865,7 +1865,7 @@ export function BenchRunConfig({
                     {presetFilter === "ai" && !aiPresets
                       ? `AI can suggest presets like Top Frontier, Second-in-class, or Open source over your ${availableModelsForAi.length} runnable model${availableModelsForAi.length === 1 ? "" : "s"}.`
                       : presetFilter === "mine"
-                      ? "No presets of your own yet. Build one from the models below, or save a canonical template to make it yours."
+                      ? "No presets of your own yet. Build one from the models below, or save a built-in preset to make it yours."
                       : presetFilter === "fromAi"
                       ? "No AI-saved presets yet. Suggest presets, then Save the ones you want to keep and reuse."
                       : "No presets to show for this filter."}
