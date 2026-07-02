@@ -353,7 +353,7 @@ function CouncilCircle({ members, chair, clis }: { members: string[]; chair: str
         {/* Center emblem: the panel size at a glance. */}
         <div className="absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border border-border bg-background">
           <span className="font-display text-base font-bold leading-none text-text-primary">{members.length}</span>
-          <span className="font-mono text-[7px] uppercase tracking-wider text-text-muted">panel</span>
+          <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">panel</span>
         </div>
         {ordered.map((key, i) => {
           const a = -Math.PI / 2 + i * ((2 * Math.PI) / n);
