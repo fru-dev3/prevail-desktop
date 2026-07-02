@@ -396,6 +396,7 @@ export function Sidebar({
             <button
               onClick={() => setCollapsed(false)}
               title="Expand sidebar"
+              aria-label="Expand sidebar"
               className="flex h-7 w-7 items-center justify-center rounded-md bg-text-primary text-background shadow-sm transition-opacity hover:opacity-80"
             >
               <ChevronRight className="h-[18px] w-[18px]" strokeWidth={2} />
@@ -408,6 +409,7 @@ export function Sidebar({
             <button
               onClick={() => setCollapsed(true)}
               title="Collapse sidebar"
+              aria-label="Collapse sidebar"
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white/12 text-white transition-colors hover:bg-white/25"
             >
               <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={2} />
@@ -972,11 +974,11 @@ export function Sidebar({
           A solid edge-to-edge bar so it reads as the app's footer action. */}
       {collapsed ? (
         <div data-tour="settings" className="flex flex-col items-center gap-1 border-t border-border-subtle p-2">
-          <button onClick={() => setTab("chat")} title="Work - your domains, board, automations, calendar & notes"
+          <button onClick={() => setTab("chat")} title="Work - your domains, board, automations, calendar & notes" aria-label="Work mode"
             className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${tab !== "settings" ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}>
             <Briefcase className="h-4 w-4" />
           </button>
-          <button onClick={() => setTab("settings")} title="Editor - models, connections & settings"
+          <button onClick={() => setTab("settings")} title="Editor - models, connections & settings" aria-label="Editor mode"
             className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${tab === "settings" ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}>
             <SettingsIcon className="h-4 w-4" />
           </button>
@@ -1097,7 +1099,7 @@ function ProcessesModal({ onClose, setTab }: { onClose: () => void; setTab: (t: 
           <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-text-secondary">
             <Activity className="h-3.5 w-3.5 text-accent" /> Background processes
           </span>
-          <button onClick={onClose} title="Close" className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary">
+          <button onClick={onClose} title="Close" aria-label="Close" className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-surface-warm hover:text-text-primary">
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
