@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { invoke } from "./bridge";
 import App from "./App";
+import { Toaster } from "./toast";
 import { APP_VERSION } from "./constants";
 import { initCrashReporting, osFamily, reportError, track } from "./telemetry";
 import "./index.css";
@@ -63,6 +64,9 @@ try {
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <ErrorBoundary>
       <App />
+      {/* F6: single app-wide toast host. Fixed-position, so it overlays every
+          top-level view (lock screen, chat, work, editor) from the root. */}
+      <Toaster />
     </ErrorBoundary>,
   );
 } catch (err) {

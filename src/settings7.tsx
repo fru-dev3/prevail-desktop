@@ -16,6 +16,7 @@ import { track } from "./telemetry";
 const TELEMETRY_PROVIDERS = new Set(["openrouter", "anthropic", "openai", "google", "ollama", "lmstudio", "bedrock"]);
 const telemetryProvider = (id: string): string => (TELEMETRY_PROVIDERS.has(id) ? id : "other");
 import { SettingsHeader } from "./sectionutil";
+import { toast } from "./toast";
 import { autoVerifyClis, setCliVerify } from "./verify";
 import { AgentsSection } from "./settings6";
 import { OrVendorMark, orVendorOf } from "./providermarks";
@@ -167,7 +168,7 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
         setActivated(ok);
         window.setTimeout(() => setActivated(null), 6000);
       }
-    } catch (e) { console.error("provider_key_set", e); }
+    } catch (e) { console.error("provider_key_set", e); toast.error(`Could not save the key: ${String(e)}`); }
   }
   async function remove() {
     try {
@@ -175,7 +176,7 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
       setConfigured(false);
       setActivated(null);
       if (onActivated) await onActivated();
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); toast.error(`Could not remove the key: ${String(e)}`); }
   }
   return (
     <>
@@ -330,7 +331,7 @@ function DirectProviderRow({ id, label, hint, onActivated }: {
         setActivated(list.some((c) => c.id === id && c.available));
         window.setTimeout(() => setActivated(null), 6000);
       }
-    } catch (e) { console.error("provider_key_set", e); }
+    } catch (e) { console.error("provider_key_set", e); toast.error(`Could not save the key: ${String(e)}`); }
     finally { setBusy(false); }
   }
   async function remove() {
@@ -340,7 +341,7 @@ function DirectProviderRow({ id, label, hint, onActivated }: {
       setConfigured(false);
       setActivated(null);
       if (onActivated) await onActivated();
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); toast.error(`Could not remove the key: ${String(e)}`); }
     finally { setBusy(false); }
   }
   return (
