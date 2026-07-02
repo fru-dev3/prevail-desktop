@@ -137,8 +137,14 @@ impl PushStore {
 
 /// Send one notification payload to every stored subscription, signed with
 /// VAPID. Prunes subscriptions the service permanently rejects. Async: run on
-/// the tauri runtime. Returns the number sent.
-pub async fn push_all(store: &PushStore, title: &str, body: &str) -> Result<usize, String> {
+/// the tauri runtime. Returns the number sent. `keys` is injected so this is
+/// testable against a mock endpoint without touching the persisted keypair.
+pub async fn push_all_with_keys(
+    store: &PushStore,
+    keys: &VapidKeys,
+    title: &str,
+    body: &str,
+) -> Result<usize, String> {
     use web_push::{
         ContentEncoding, SubscriptionInfo, VapidSignatureBuilder, WebPushClient,
         WebPushMessageBuilder,
@@ -147,7 +153,6 @@ pub async fn push_all(store: &PushStore, title: &str, body: &str) -> Result<usiz
     if subs.is_empty() {
         return Ok(0);
     }
-    let keys = load_or_create_keys()?;
     let payload = serde_json::json!({ "title": title, "body": body, "tag": "prevail" }).to_string();
     let client = web_push::HyperWebPushClient::new();
     let mut sent = 0usize;
@@ -178,6 +183,12 @@ pub async fn push_all(store: &PushStore, title: &str, body: &str) -> Result<usiz
     Ok(sent)
 }
 
+/// Convenience: load the persisted VAPID keypair, then send. Used by the command.
+pub async fn push_all(store: &PushStore, title: &str, body: &str) -> Result<usize, String> {
+    let keys = load_or_create_keys()?;
+    push_all_with_keys(store, &keys, title, body).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,6 +201,58 @@ mod tests {
         // Uncompressed P-256 point = 65 bytes → 87 base64url chars, and unique.
         assert!(a.public_b64url.len() >= 80);
         assert_ne!(a.public_b64url, b.public_b64url);
+    }
+
+    // Exercises the ENTIRE send path — VAPID signing, RFC 8291 ECE encryption,
+    // and the HTTP POST — against a local mock push endpoint. This is everything
+    // a real push service (FCM/Mozilla) sees; only the final hop to the live
+    // provider is out of scope (that's a network address, not logic).
+    #[test]
+    fn push_all_signs_encrypts_and_posts_to_endpoint() {
+        use std::io::Read;
+        use std::sync::mpsc::channel;
+
+        // Mock push server: capture one request, reply 201.
+        let server = tiny_http::Server::http("127.0.0.1:0").expect("bind mock");
+        let port = server.server_addr().to_ip().unwrap().port();
+        let (tx, rx) = channel::<(String, bool, bool, usize)>();
+        let handle = std::thread::spawn(move || {
+            if let Some(mut req) = server.incoming_requests().next() {
+                let method = req.method().to_string();
+                let has_vapid = req.headers().iter().any(|h| h.field.equiv("Authorization")
+                    && h.value.as_str().to_lowercase().contains("vapid"));
+                let is_ece = req.headers().iter().any(|h| h.field.equiv("Content-Encoding")
+                    && h.value.as_str().contains("aes128gcm"));
+                let mut body = Vec::new();
+                let _ = req.as_reader().read_to_end(&mut body);
+                let _ = tx.send((method, has_vapid, is_ece, body.len()));
+                let _ = req.respond(tiny_http::Response::empty(201));
+            }
+        });
+
+        // Server VAPID keypair + a valid subscriber keypair (its public point is a
+        // real P-256 uncompressed point, exactly what a browser's p256dh is).
+        let vapid = generate_keys().expect("vapid");
+        let subscriber = generate_keys().expect("subscriber");
+        let auth = b64url(&[7u8; 16]); // 16-byte auth secret
+        let store = PushStore::default();
+        store.add(PushSub {
+            endpoint: format!("http://127.0.0.1:{port}/push"),
+            p256dh: subscriber.public_b64url.clone(),
+            auth,
+        });
+
+        let sent = tauri::async_runtime::block_on(push_all_with_keys(&store, &vapid, "Prevail", "Approve?"))
+            .expect("push_all");
+        assert_eq!(sent, 1, "one subscription should be sent");
+
+        let (method, has_vapid, is_ece, body_len) = rx.recv_timeout(std::time::Duration::from_secs(10))
+            .expect("mock received the push");
+        assert_eq!(method, "POST");
+        assert!(has_vapid, "must carry a VAPID Authorization header");
+        assert!(is_ece, "must be aes128gcm ECE-encrypted");
+        assert!(body_len > 0, "encrypted payload must be non-empty");
+        let _ = handle.join();
     }
 
     #[test]
