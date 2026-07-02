@@ -1850,9 +1850,9 @@ function ChromeLogo({ size = 28 }: { size?: number }) {
 }
 
 // Synthesize a minimal EngineApp from a catalog entry so an un-added app renders
-// in the SAME AppDetail view (in Connect mode) — one detail view for everything.
+// in the SAME AppDetail view (in Connect mode) - one detail view for everything.
 // Hand-off when a user starts "Learn New Skill" on an app that isn't added yet:
-// we implicitly connect (scaffold) it, which re-routes to the real AppDetail —
+// we implicitly connect (scaffold) it, which re-routes to the real AppDetail -
 // this carries the goal across that remount so learning starts automatically,
 // without a separate "Connect" step. Keyed by the derived app id (which
 // catalogToApp and connectCatalogApp compute identically).
@@ -1918,7 +1918,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
       .catch(() => setSkills([]));
   }, [app.id]);
   useEffect(() => { loadSkills(); }, [loadSkills, app.lastSuccessTs]);
-  // Per-app soul: the same construct domains use (soul.md) — a markdown note
+  // Per-app soul: the same construct domains use (soul.md) - a markdown note
   // declaring WHY this app is in the harness, persisted to apps/<id>/soul.md and
   // read by the agent as standing context. Editable inline; saved to the file.
   const [soulText, setSoulText] = useState("");
@@ -1927,7 +1927,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   const [soulBusy, setSoulBusy] = useState(false);
   useEffect(() => {
     let live = true;
-    // Un-added catalog apps have no soul.md yet — fall back to the soul shipped
+    // Un-added catalog apps have no soul.md yet - fall back to the soul shipped
     // in the catalog so the card is pre-filled before the user even connects.
     const fallback = connect?.soul ?? "";
     invoke<{ soul?: string }>("engine_app_get_soul", { id: app.id })
@@ -1955,7 +1955,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
   }, [app.id, soulDraft]);
   // After a successful learn, capture the FOLDER + FREQUENCY the user described
   // in plain English (e.g. "...file under Travel, check monthly") and apply them
-  // — so the conversation sets the config, not separate forms.
+  // - so the conversation sets the config, not separate forms.
   const applyLearnedConfig = useCallback(async (goal: string) => {
     const text = (goal || "").toLowerCase();
     if (!text.trim()) return;
@@ -2129,7 +2129,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
     finally { setDeleting(false); }
   };
   // The "learned lane": browser apps, un-configured manual apps, or anything that
-  // already has a recorded skill. For these, the agentic Learn flow IS the setup —
+  // already has a recorded skill. For these, the agentic Learn flow IS the setup -
   // so the legacy METHOD / RE-EVALUATE / WHAT-TO-PULL config is redundant and hidden.
   // Real API/OAuth/CLI/MCP apps still show it (the method genuinely matters there).
   const learnedLane = isBrowser || integ === "manual" || integ === "" || skills.length > 0;
@@ -2196,7 +2196,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <button onClick={() => toggleFavorite(favKey)} title={isFav ? "On your home screen — click to remove" : "Add to your home screen"} aria-pressed={isFav}
+          <button onClick={() => toggleFavorite(favKey)} title={isFav ? "On your home screen - click to remove" : "Add to your home screen"} aria-pressed={isFav}
             className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${isFav ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
             <Star className={`h-4 w-4 ${isFav ? "fill-accent" : ""}`} />
           </button>
@@ -2211,9 +2211,9 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
         </div>
       </div>
 
-      {/* Even two-column grid — row 1: About | Browser Sync, row 2: Learned Skills | Schedule */}
+      {/* Even two-column grid - row 1: About | Browser Sync, row 2: Learned Skills | Schedule */}
       <div className="grid grid-cols-1 items-stretch gap-4 px-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        {/* Soul (top-left) — same construct domains use */}
+        {/* Soul (top-left) - same construct domains use */}
         <div className={`${card} flex h-full flex-col`}>
           <div className="flex items-center justify-between gap-2">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Soul</h3>
@@ -2222,7 +2222,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
           {editSoul ? (
             <div className="mt-2 flex flex-1 flex-col">
               <textarea autoFocus rows={4} value={soulDraft} onChange={(e) => setSoulDraft(e.target.value)}
-                placeholder={`Why ${app.title || app.id} is in your harness — what it feeds your world.`}
+                placeholder={`Why ${app.title || app.id} is in your harness - what it feeds your world.`}
                 className="w-full flex-1 resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-relaxed text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
               <div className="mt-2 flex items-center gap-2">
                 <button onClick={saveSoul} disabled={soulBusy} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{soulBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save</button>
@@ -2235,7 +2235,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
           ) : (
             <button onClick={openSoulEditor} className="mt-2 flex flex-1 flex-col items-start justify-center rounded-lg border border-dashed border-border bg-surface/40 px-4 py-5 text-left hover:border-accent-border">
               <span className="text-[13px] text-text-secondary">Give {app.title || app.id} a soul.</span>
-              <span className="mt-0.5 text-[12px] text-text-muted">Why it's in your harness — your AI reads this as standing context.</span>
+              <span className="mt-0.5 text-[12px] text-text-muted">Why it's in your harness - your AI reads this as standing context.</span>
             </button>
           )}
         </div>
@@ -2254,7 +2254,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                 <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-accent-border bg-accent-soft text-accent"><Sparkles className="h-6 w-6" /></span>
               </div>
               {notConnected ? (
-                <p className="text-center text-[12px] leading-snug text-text-muted">Log in once in your own Chrome — the agent learns how to fetch your data, then replays it automatically.</p>
+                <p className="text-center text-[12px] leading-snug text-text-muted">Log in once in your own Chrome - the agent learns how to fetch your data, then replays it automatically.</p>
               ) : (
                 <div className="flex flex-col items-center">
                   <button onClick={importLogins} disabled={importing}
@@ -2283,7 +2283,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
               )}
             </div>
             {!gatewayProvider && (
-              <p className="mt-1.5 text-[12px] text-text-muted">Skills are actions Prevail learned to do for you on {app.title || app.id} — taught once, replayed automatically.</p>
+              <p className="mt-1.5 text-[12px] text-text-muted">Skills are actions Prevail learned to do for you on {app.title || app.id} - taught once, replayed automatically.</p>
             )}
 
             {learnMode ? (
@@ -2306,12 +2306,12 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
                     className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-40">{notConnected && connect?.connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Start learning</button>
                   <button onClick={() => setComposing(false)} className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary">Cancel</button>
                 </div>
-                <p className="text-[11px] text-text-muted">Your Chrome opens — log in once. I'll learn the steps + remember the folder and cadence from what you said.</p>
+                <p className="text-[11px] text-text-muted">Your Chrome opens - log in once. I'll learn the steps + remember the folder and cadence from what you said.</p>
               </div>
             ) : skills.length === 0 ? (
               <div className="mt-3 rounded-lg border border-dashed border-border bg-surface/40 px-4 py-6 text-center">
                 <div className="text-[13px] text-text-secondary">No skills yet.</div>
-                <div className="mt-0.5 text-[12px] text-text-muted">Click <span className="text-accent">Learn New Skill</span>, say what to fetch{notConnected ? " — I'll connect and learn it in one go." : <> — saved in <code className="rounded bg-surface-warm px-1 font-mono text-[11px]">vault/apps/{app.id}/skills/</code></>}</div>
+                <div className="mt-0.5 text-[12px] text-text-muted">Click <span className="text-accent">Learn New Skill</span>, say what to fetch{notConnected ? " - I'll connect and learn it in one go." : <> - saved in <code className="rounded bg-surface-warm px-1 font-mono text-[11px]">vault/apps/{app.id}/skills/</code></>}</div>
               </div>
             ) : (
               <ul className="mt-3 space-y-2">
@@ -2389,7 +2389,7 @@ function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEnabled, 
         ) : (
           <div className="flex items-center gap-1.5">
             <button onClick={() => void runSync()} disabled={busy} title="Sync now" className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-background hover:bg-accent-hover disabled:opacity-50">{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} {busy ? "Syncing…" : "Sync"}</button>
-            <button onClick={openSchedModal} title={`Schedule & sync — ${scheduleLabel(app.refresh)}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent"><Clock className="h-3.5 w-3.5" /> Schedule{enabled && app.refresh ? <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-ok" /> : null}</button>
+            <button onClick={openSchedModal} title={`Schedule & sync - ${scheduleLabel(app.refresh)}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-border hover:text-accent"><Clock className="h-3.5 w-3.5" /> Schedule{enabled && app.refresh ? <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-ok" /> : null}</button>
             {app.path && <button onClick={() => void invoke("open_in_finder", { path: app.path! }).catch(() => {})} title="Open folder" className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-muted hover:border-accent-border hover:text-accent"><FolderOpen className="h-4 w-4" /></button>}
             <button onClick={() => setConfirmDelete(true)} title="Remove this app entirely" className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-danger/10 hover:text-danger"><Trash2 className="h-4 w-4" /></button>
           </div>

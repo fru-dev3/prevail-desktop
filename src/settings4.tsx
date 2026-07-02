@@ -402,28 +402,14 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
   const [showBriefing, setShowBriefing] = useState(() => getPref(PREF.showHomeBriefing, "0") === "1");
   const [promptTimeout, setPromptTimeout] = useState<string>(() => getPref(PREF.llmPromptTimeoutSec, "300"));
   const [budgetCap, setBudgetCap] = useState<string>(() => getPref(PREF.budgetMonthlyCapUsd, ""));
-  // Running spend estimate. Display-only: seeded from localStorage and, if the
-  // engine ever exposes a `engine_budget_status` command, refreshed from it.
-  const [budgetSpent, setBudgetSpent] = useState<number>(() => {
+  // Running spend estimate. Display-only for now: seeded from localStorage. A
+  // live engine-backed budget (real per-loop/per-domain spend with hard stops)
+  // is tracked separately; until that engine command lands there is nothing to
+  // poll, so we do not call one.
+  const [budgetSpent] = useState<number>(() => {
     const v = parseFloat(getPref(PREF.budgetSpentUsd, "0"));
     return Number.isFinite(v) ? v : 0;
   });
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const s = await invoke<{ spent_usd?: number; cap_usd?: number }>("engine_budget_status");
-        if (!alive) return;
-        if (typeof s?.spent_usd === "number") setBudgetSpent(s.spent_usd);
-        if (typeof s?.cap_usd === "number" && !getPref(PREF.budgetMonthlyCapUsd, "")) {
-          setBudgetCap(String(s.cap_usd));
-        }
-      } catch {
-        /* no engine budget command - stays display-only from localStorage */
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
   const capNum = parseFloat(budgetCap);
   const hasCap = Number.isFinite(capNum) && capNum > 0;
   const pct = hasCap ? Math.min(100, Math.round((budgetSpent / capNum) * 100)) : 0;

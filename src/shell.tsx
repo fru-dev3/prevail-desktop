@@ -590,7 +590,7 @@ export function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLo
           )}
         </motion.div>
 
-        <motion.p variants={item} className="mx-auto mt-5 max-w-2xl whitespace-nowrap text-[15px] text-text-secondary">
+        <motion.p variants={item} className="mx-auto mt-5 max-w-2xl text-balance text-[15px] text-text-secondary">
           Your life in <span className="font-medium text-text-primary">domains</span>: scored, private, <span className="font-medium text-accent">local-first</span>.
         </motion.p>
 

@@ -478,7 +478,7 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
       <SettingsHeader
         title="Calendar"
         icon={CalendarDays}
-        subtitle="Everything scheduled on your system — automation loops, tasks, and your Google Calendar — in one place. Click an item to edit it; click a day to add one."
+        subtitle="Everything scheduled on your system - automation loops, tasks, and your Google Calendar - in one place. Click an item to edit it; click a day to add one."
         right={
           <div className="flex items-center gap-1.5">
             <button onClick={() => shift(-1)} title="Previous" className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-text-secondary hover:bg-surface-warm hover:text-text-primary"><ChevronLeft className="h-4 w-4" /></button>
@@ -503,7 +503,7 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
           <Source id="loop" label="Loops" color="color-mix(in srgb, var(--color-ai, #3CD8FF) 40%, transparent)" />
           <Source id="task" label="Tasks" color="var(--color-accent, #0d7a6e)" />
           <Source id="google" label="Google" color="#a855f7" />
-          <button onClick={() => void syncGoogle()} disabled={syncing} title="Sync with Google Calendar — uses the Google Workspace CLI (takes you to set it up if it isn't yet)" className="ml-1 flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:bg-surface-warm hover:text-text-primary disabled:opacity-50">
+          <button onClick={() => void syncGoogle()} disabled={syncing} title="Sync with Google Calendar - uses the Google Workspace CLI (takes you to set it up if it isn't yet)" className="ml-1 flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:bg-surface-warm hover:text-text-primary disabled:opacity-50">
             <RefreshCw className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing…" : "Sync"}
           </button>
         </div>

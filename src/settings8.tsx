@@ -702,7 +702,7 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
       if (r.ok) {
         const n = r.movedEntries?.length ?? 0;
         setTidyBuildNote(n === 0
-          ? "Nothing to tidy — no loose runtime files at the vault root."
+          ? "Nothing to tidy - no loose runtime files at the vault root."
           : `Moved runtime files into build/ (${r.copiedFiles ?? "the"} files). Originals are kept until you archive them; nothing was deleted.`);
         onChange();
       } else {
@@ -801,7 +801,7 @@ export function VaultSettings({ vaultPath, onChange, onSetupDomains, onVaultMove
               </button>
             </SettingRow>
           )}
-          <SettingRow label="Tidy runtime files into build/" desc="Move generated runtime files (decision + intent ledgers, _meta, benchmark) into a build/ folder so the root holds just your content. Copied + verified first; originals are kept until you archive — never deleted.">
+          <SettingRow label="Tidy runtime files into build/" desc="Move generated runtime files (decision + intent ledgers, _meta, benchmark) into a build/ folder so the root holds just your content. Copied + verified first; originals are kept until you archive - never deleted.">
             <button onClick={tidyIntoBuild} disabled={tidyingBuild} className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-surface-warm disabled:opacity-50">
               {tidyingBuild ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderTree className="h-3.5 w-3.5" />}
               {tidyingBuild ? "Tidying…" : "Tidy into build/"}

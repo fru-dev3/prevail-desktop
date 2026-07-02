@@ -510,7 +510,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
   const autonomy = loop.autonomy ?? "ask";
   const history = (rt?.history ?? []).slice().reverse();
 
-  // Installed runtimes for the executor picker — only ones actually on the
+  // Installed runtimes for the executor picker - only ones actually on the
   // machine (plus the current selection, so a since-uninstalled executor still
   // shows rather than silently reverting to the default).
   const installedRuntimes = useDetectedClis().filter((c) => c.available);
@@ -574,7 +574,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
           const d = e.payload.data as { type?: string; phase?: string; label?: string; result?: RunResult };
           if (d && typeof d === "object" && d.type === "phase") {
             setPhase(d.phase || ""); setPhaseLabel(d.label || "");
-            updateProcess(session, d.label ? `${baseLabel} — ${d.label}` : baseLabel);
+            updateProcess(session, d.label ? `${baseLabel} - ${d.label}` : baseLabel);
           } else if (d && typeof d === "object" && d.type === "result" && d.result) {
             captured = d.result;
           }
@@ -749,7 +749,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
                         </li>
                       ))}
                     </ul>
-                  ) : <div className="text-[12px] text-text-muted">No new actions this pass — the gap looks handled.</div>}
+                  ) : <div className="text-[12px] text-text-muted">No new actions this pass - the gap looks handled.</div>}
                   {!result.briefing && <div className="mt-2 font-mono text-[10px] text-text-muted">{result.tasksCreated.length} task{result.tasksCreated.length === 1 ? "" : "s"} filed · {result.pending.length} awaiting approval</div>}
                 </>
               ) : <div className="text-[12px] text-danger">Run failed: {result.error}</div>}

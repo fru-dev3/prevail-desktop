@@ -279,6 +279,17 @@
      bar style hides the lights (e.g. Transparent on macOS 14+), so the
      logo doesn't sit in a wide empty gap. */
   .titlebar-pad { padding-left: 12px; }
+  /* D2: one visible keyboard-focus ring for every interactive element. Scoped
+     to :focus-visible so mouse clicks stay ring-free while keyboard navigation
+     is always visible. `!important` intentionally overrides the many component
+     `focus:outline-none` resets (which target :focus, so they do not affect
+     mouse-vs-keyboard here). Themed via the palette accent, so it adapts across
+     light/dark and every palette. Modern WebKit makes the outline follow the
+     element's own border-radius, so pills and cards keep their rounded ring. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent) !important;
+    outline-offset: 2px;
+  }
 }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
