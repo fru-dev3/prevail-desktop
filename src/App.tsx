@@ -145,6 +145,18 @@ import {
   Power,
 } from "lucide-react";
 
+// X8: fire a foreground Web Notification (the WebUI, on a phone/laptop). Asks
+// permission the first time; silently no-ops if denied or unsupported.
+function notifyWeb(title: string, body: string) {
+  try {
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission === "granted") { new Notification(title, { body }); return; }
+    if (Notification.permission !== "denied") {
+      void Notification.requestPermission().then((p) => { if (p === "granted") new Notification(title, { body }); });
+    }
+  } catch { /* notifications unavailable */ }
+}
+
 // Friendly one-line descriptions for the domain cards - plain, warm, no jargon.
 // Shown as the card subtitle; falls back to a generic line for unknown domains.
 
@@ -924,12 +936,17 @@ export default function App() {
         const n = Array.isArray(d) ? d.length : 0;
         setDecisionsCount(n);
         const prev = prevDecisionsRef.current;
-        if (prev >= 0 && n > prev && !isBrowser()) {
+        if (prev >= 0 && n > prev) {
           const added = n - prev;
-          void invoke("notify_user", {
-            title: "Prevail needs your approval",
-            body: added === 1 ? "An automation is waiting for you to approve an action." : `${n} actions are waiting for your approval.`,
-          }).catch(() => {});
+          const title = "Prevail needs your approval";
+          const body = added === 1 ? "An automation is waiting for you to approve an action." : `${n} actions are waiting for your approval.`;
+          if (isBrowser()) {
+            // X8: mobile/web (WebUI) - foreground browser notification so a phone
+            // or laptop gets the approval alert too, no native host needed.
+            notifyWeb(title, body);
+          } else {
+            void invoke("notify_user", { title, body }).catch(() => {});
+          }
         }
         prevDecisionsRef.current = n;
       })
