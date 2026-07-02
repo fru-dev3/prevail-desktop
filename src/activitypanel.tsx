@@ -110,7 +110,7 @@ function ActivityDetail({ event }: { event: ActivityEvent }) {
       {knownRows.map((r) => <DetailRow key={`k-${r.label}`} label={r.label} value={r.value} />)}
       {extraRows.length > 0 && (
         <>
-          <div className="mt-2 mb-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-text-muted">Additional detail</div>
+          <div className="mt-2 mb-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">Additional detail</div>
           {extraRows.map((r) => <DetailRow key={`x-${r.label}`} label={r.label} value={r.value} />)}
         </>
       )}

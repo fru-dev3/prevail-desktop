@@ -1650,7 +1650,7 @@ export default function App() {
                 installed build. Absolutely positioned at the bottom-right corner so
                 it never pushes the first icon off the left edge. */}
             {import.meta.env.DEV && (
-              <span className="pointer-events-none absolute bottom-0.5 right-1.5 z-10 rounded bg-danger px-1 py-0 font-mono text-[8px] font-bold uppercase tracking-wide text-background opacity-70">DEV</span>
+              <span className="pointer-events-none absolute bottom-0.5 right-1.5 z-10 rounded bg-danger px-1 py-0 font-mono text-[10px] font-bold uppercase tracking-wide text-background opacity-70">DEV</span>
             )}
             {/* Quick visual cue: are we in an APP or a DOMAIN? An icon (no text)
                 at the far left, so the two contexts are instantly distinguishable.
@@ -1763,7 +1763,7 @@ export default function App() {
                       className="flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] text-warn transition-colors hover:bg-surface-warm"
                     >
                       <Inbox className="h-3.5 w-3.5" /> Needs you
-                      <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[9px] font-bold text-background">{cap9(decisionsCount)}</span>
+                      <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[10px] font-bold text-background">{cap9(decisionsCount)}</span>
                     </button>
                   )}
                   {/* Work: this domain's tasks in-panel (scoped board); a badge counts

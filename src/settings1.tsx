@@ -352,8 +352,8 @@ export function IngestionSection() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-x-2">
                       <span className="font-mono text-sm text-text-primary">{a.original}</span>
-                      <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] text-accent">{a.domain}</span>
-                      <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] text-text-secondary">{a.source}</span>
+                      <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] text-accent">{a.domain}</span>
+                      <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">{a.source}</span>
                     </div>
                     <div className="mt-0.5 truncate font-mono text-[10px] text-text-muted">
                       {a.path} · {a.sha256.slice(0, 12)}… · {(a.size / 1024).toFixed(1)} KB
@@ -361,7 +361,7 @@ export function IngestionSection() {
                   </div>
                   <button
                     onClick={() => invoke("open_in_finder", { path: a.path })}
-                    className="shrink-0 rounded border border-border bg-background px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                    className="shrink-0 rounded border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
                   >
                     reveal
                   </button>

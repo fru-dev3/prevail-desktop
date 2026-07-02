@@ -330,7 +330,7 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
               <ul className="mt-1 space-y-0.5">
                 {dayEvents.slice(0, 4).map((e) => <li key={e.key}><Chip e={e} /></li>)}
                 {dayEvents.length > 4 && (
-                  <li><button onClick={() => drillToDay(key)} className="px-1 text-[9px] text-text-muted hover:text-accent">+{dayEvents.length - 4} more</button></li>
+                  <li><button onClick={() => drillToDay(key)} className="px-1 text-[10px] text-text-muted hover:text-accent">+{dayEvents.length - 4} more</button></li>
                 )}
               </ul>
             </div>
@@ -400,7 +400,7 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
                         important bit, color-coded. */}
                     <span className="flex shrink-0 items-center gap-1.5">
                       {prio && PRIORITY_CLS[prio] && (
-                        <span className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider ${PRIORITY_CLS[prio]}`}>{prio}</span>
+                        <span className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${PRIORITY_CLS[prio]}`}>{prio}</span>
                       )}
                       <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wide ${due.cls}`}>{due.label}</span>
                     </span>

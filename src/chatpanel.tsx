@@ -1948,7 +1948,7 @@ export function ChatPanel({
           {/* Incognito affordance: a ghost badge over the top-left edge + the glow
               above, so it's unmistakable the turn sends none of your context. */}
           {(incognito || globalIncognito) && (
-            <span className="absolute -top-2.5 left-3 z-10 inline-flex items-center gap-1 rounded-full border border-accent bg-surface px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-accent shadow-sm">
+            <span className="absolute -top-2.5 left-3 z-10 inline-flex items-center gap-1 rounded-full border border-accent bg-surface px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-accent shadow-sm">
               <Ghost className="h-3 w-3" /> Incognito
             </span>
           )}
@@ -2236,7 +2236,7 @@ export function ChatPanel({
               when the domain changes. */}
           {domainImports.length > 0 && (
             <div className="mt-1 flex flex-wrap items-center gap-1.5 px-2">
-              <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
                 imports
               </span>
               {domainImports.slice(0, 8).map((it) => {
@@ -2310,7 +2310,7 @@ export function ChatPanel({
             if (matches.length === 0) return null;
             return (
               <div className="mt-1 flex flex-wrap items-center gap-1.5 px-2">
-                <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">suggested</span>
+                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">suggested</span>
                 {matches.map((s) => (
                   <button
                     key={s.name}

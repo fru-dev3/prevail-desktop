@@ -435,9 +435,9 @@ export function TasksCrossDomainSection({ vaultPath }: { vaultPath: string }) {
               <input type="checkbox" checked={r.done} onChange={() => toggle(r)} className="mt-0.5" />
               <span className="mt-0.5 shrink-0 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{titleCase(r.domain)}</span>
               <span className={`min-w-0 flex-1 text-sm ${r.done ? "text-text-muted line-through" : "text-text-primary"}`}>{r.text}</span>
-              {r.source && r.source !== "user" && <span className="shrink-0 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] text-text-muted">{r.source === "daemon" ? "auto" : "suggested"}</span>}
-              {r.due && !r.done && (() => { const od = r.due < today, du = r.due === today; return <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] ${od ? "bg-warn/15 text-warn" : du ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>{od ? "overdue" : du ? "today" : r.due}</span>; })()}
-              <span className="shrink-0 font-mono text-[9px] text-text-muted/60">{r.added ?? ""}</span>
+              {r.source && r.source !== "user" && <span className="shrink-0 rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{r.source === "daemon" ? "auto" : "suggested"}</span>}
+              {r.due && !r.done && (() => { const od = r.due < today, du = r.due === today; return <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] ${od ? "bg-warn/15 text-warn" : du ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>{od ? "overdue" : du ? "today" : r.due}</span>; })()}
+              <span className="shrink-0 font-mono text-[10px] text-text-muted/60">{r.added ?? ""}</span>
             </label>
           ))}
         </div>
@@ -619,15 +619,15 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-display text-base font-semibold tracking-tight text-text-primary">{it.title ?? "Intent"}</span>
-                      {it.status && <span className={`font-mono text-[9px] uppercase tracking-wider ${statusTone(it.status)}`}>{it.status}</span>}
-                      {typeof it.confidence === "number" && <span className="font-mono text-[9px] text-text-muted">{Math.round(it.confidence * 100)}%</span>}
+                      {it.status && <span className={`font-mono text-[10px] uppercase tracking-wider ${statusTone(it.status)}`}>{it.status}</span>}
+                      {typeof it.confidence === "number" && <span className="font-mono text-[10px] text-text-muted">{Math.round(it.confidence * 100)}%</span>}
                     </div>
                     {it.goal && <div className="mt-0.5 text-sm text-text-secondary">{it.goal}</div>}
                     {(it.sources ?? []).length > 0 && (
                       <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                        <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">From</span>
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">From</span>
                         {(it.sources ?? []).map((s) => (
-                          <span key={s} className="inline-flex items-center gap-1 rounded border border-ai/30 bg-ai/5 px-1.5 py-0.5 font-mono text-[9px] text-ai" title="Surface this intent was drawn from">
+                          <span key={s} className="inline-flex items-center gap-1 rounded border border-ai/30 bg-ai/5 px-1.5 py-0.5 font-mono text-[10px] text-ai" title="Surface this intent was drawn from">
                             {sourceLabel(s)}
                           </span>
                         ))}
@@ -636,7 +636,7 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
                   </div>
                   <span className="hidden shrink-0 items-center gap-1 sm:flex">
                     {(it.domains ?? []).slice(0, 3).map((d) => (
-                      <span key={d} className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">{titleCase(d)}</span>
+                      <span key={d} className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">{titleCase(d)}</span>
                     ))}
                   </span>
                 </button>
@@ -666,7 +666,7 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
                                   onClick={() => addRecAsTask(it, r, key)}
                                   disabled={added}
                                   title={added ? "Added to your tasks" : `Add as a task in ${titleCase((it.domains && it.domains[0]) || "general")}`}
-                                  className={`shrink-0 rounded-md border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider transition-colors ${added ? "border-ok/40 text-ok" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}
+                                  className={`shrink-0 rounded-md border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider transition-colors ${added ? "border-ok/40 text-ok" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}
                                 >
                                   {added ? "added ✓" : "+ task"}
                                 </button>
@@ -1070,7 +1070,7 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-baseline gap-2">
                             <span className="font-display text-base font-semibold tracking-tight text-text-primary">{s.name}</span>
-                            <span className="rounded-md border border-border-subtle bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                            <span className="rounded-md border border-border-subtle bg-background px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
                               {titleCase(s.domain)}
                             </span>
                           </div>

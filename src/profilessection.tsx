@@ -234,7 +234,7 @@ export function ProfilesSection() {
                 <span className="flex items-center gap-1.5 truncate text-sm font-semibold text-text-primary">
                   {p.label}
                   {p.passHash && <Lock className="h-3 w-3 text-text-muted" />}
-                  {p.id === activeId && <span className="rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent">Active</span>}
+                  {p.id === activeId && <span className="rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[10px] uppercase tracking-wider text-accent">Active</span>}
                 </span>
                 {p.email && <span className="truncate text-[11px] text-text-muted">{p.email}</span>}
                 <span className="truncate font-mono text-[10px] text-text-muted/80" title={p.vaultPath}>{p.vaultPath}</span>

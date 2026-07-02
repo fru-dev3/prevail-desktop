@@ -1186,7 +1186,7 @@ export function CouncilPanel({
             the Modes menu above. */}
         <div className="relative">
         {(incognito || globalIncognito) && (
-          <span className="absolute -top-2 left-3 z-10 inline-flex items-center gap-1 rounded-full border border-accent-border bg-surface px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-accent shadow-sm">
+          <span className="absolute -top-2 left-3 z-10 inline-flex items-center gap-1 rounded-full border border-accent-border bg-surface px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-accent shadow-sm">
             <Ghost className="h-3 w-3" /> Incognito
           </span>
         )}

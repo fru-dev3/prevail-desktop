@@ -1074,7 +1074,7 @@ function ComposioMode({ vaultPath, expanded }: { vaultPath: string; expanded: bo
         <div className="flex items-start gap-4 px-5 py-4">
         <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          {composioMethod === "mcp" && verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-danger">Invalid key</span>}
+          {composioMethod === "mcp" && verified === false && <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-danger">Invalid key</span>}
           {/* Connect via: CLI (default) or MCP. Small segmented control. */}
           <div className="ml-auto inline-flex rounded-md border border-border bg-background p-0.5">
             {([["cli", "CLI", Terminal], ["mcp", "MCP", Boxes]] as const).map(([m, label, Icon]) => (
@@ -1545,7 +1545,7 @@ function GatewayRow({ title, sub, logoId, logos, connected, active, onSelect, fa
         <AppRowLogo app={{ title, id: logoId }} logos={logos} size={28} fallback="letter" />
         <span className="min-w-0 flex-1">
           <span className={`block truncate text-sm font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{title}</span>
-          <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{sub}</span>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{sub}</span>
         </span>
       </button>
       {connected && fav && (
@@ -1586,7 +1586,7 @@ function GatewayConnectDetail({ title, sub, logoId, logos, method, connecting, o
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="truncate text-lg font-semibold text-text-primary">{title}</span>
-            <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted"><Globe className="h-2.5 w-2.5" /> Available to connect</span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted"><Globe className="h-2.5 w-2.5" /> Available to connect</span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-text-muted">
             <span>{titleCase(sub)}</span>
@@ -1642,7 +1642,7 @@ function ConnectorRow({ app, logos, status, active, onSelect, isFav, onToggleFav
         <AppRowLogo app={app} logos={logos} size={28} fallback="letter" />
         <span className="min-w-0 flex-1">
           <span className={`block truncate text-sm font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{app.title || app.id}</span>
-          <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{methodLabel(app.integration)}</span>
         </span>
         <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot} ${status === "connecting" ? "animate-pulse" : ""}`} title={meta.label} />
       </button>
@@ -1676,7 +1676,7 @@ function CatalogRow({ app, logos, active, onSelect, isFav, onToggleFav }: {
         <AppRowLogo app={catalogLogoApp(app)} logos={logos} size={28} fallback="letter" />
         <span className="min-w-0 flex-1">
           <span className={`block truncate text-sm font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{app.name}</span>
-          <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">{titleCase(sub)}</span>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{titleCase(sub)}</span>
         </span>
       </button>
       <PinButton isFav={isFav} onToggle={onToggleFav} />
@@ -1738,11 +1738,11 @@ export function CatalogDetail({ app, logos, onConnect, connecting }: {
           <div className="flex flex-wrap items-center gap-2">
             <span className="truncate text-lg font-semibold text-text-primary">{app.name}</span>
             {app.verified && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent" title="Verified connector">
+              <span className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent" title="Verified connector">
                 <ShieldCheck className="h-2.5 w-2.5" /> Verified
               </span>
             )}
-            <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+            <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
               <Globe className="h-2.5 w-2.5" /> Available to add
             </span>
           </div>

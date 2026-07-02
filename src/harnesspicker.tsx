@@ -20,7 +20,7 @@ export function HarnessPicker({
       {/* click-away catcher */}
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div className="absolute right-0 z-50 mt-1 w-48 overflow-hidden rounded-lg border border-border bg-surface shadow-xl">
-        <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-text-muted">
+        <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
           Run with agent
         </div>
         {harnesses.length === 0 ? (
