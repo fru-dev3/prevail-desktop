@@ -27,6 +27,7 @@ import { Toggle } from "./ui";
 import { PaletteCard } from "./panels3";
 import { useAppearance } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
+import { VaultHygieneCard } from "./vaulthygiene";
 import { BACKUP_CFG, backupFreqMs, backupVaultNow } from "./backup";
 import type { Mode } from "./types";
 
@@ -849,6 +850,9 @@ export function WorkspaceSection({ vaultPath, onSetupDomains, onVaultMoved }: { 
         <WorkspaceSubLabel icon={FolderOpen} label="Vault" desc="your vault · demo vault · backups" />
         <DemoModeSection vaultPath={vaultPath} onVaultMoved={onVaultMoved} onSetupDomains={onSetupDomains} headerless view="cards" />
       </div>
+      {/* F5: vault-hygiene tools (normalize + consolidate) - engine features that
+          shipped with no UI. Copy-only, dry-run first. */}
+      <VaultHygieneCard vaultPath={vaultPath} />
       {/* Starter packs as its own section. */}
       <div>
         <WorkspaceSubLabel icon={Sparkles} label="Starter packs" desc="ready-made domains for your situation" />
