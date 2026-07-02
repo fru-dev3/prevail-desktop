@@ -722,6 +722,17 @@ export default function App() {
     })();
     return () => { if (unl) unl(); };
   }, []);
+  // F8: bridge the native global-hotkey + deep-link Tauri events to DOM events
+  // the rest of the app already listens for (Quick Capture summon, connect flows).
+  useEffect(() => {
+    let unlA: UnlistenFn | null = null;
+    let unlB: UnlistenFn | null = null;
+    (async () => {
+      unlA = await listen("prevail:quick-capture", () => window.dispatchEvent(new Event("prevail:quick-capture")));
+      unlB = await listen<string[]>("prevail:deep-link", (e) => window.dispatchEvent(new CustomEvent("prevail:deep-link", { detail: e.payload })));
+    })();
+    return () => { if (unlA) unlA(); if (unlB) unlB(); };
+  }, []);
   // Switching domains never drags the previous domain's thread pointer
   // along (the next auto-save would write into the wrong domain folder),
   // but returning to a domain lands on what you were working on: a stream
