@@ -3,7 +3,7 @@
 // shared chatviews + domainpanels.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ArrowUpRight, BookOpen, Check, FileText, Folder, Ghost, Layers, PanelRightOpen, Paperclip, Plus, Scale, Sparkles } from "lucide-react";
+import { ArrowUpRight, BookOpen, Check, FileText, Folder, Ghost, Image as ImageIcon, Layers, PanelRightOpen, Paperclip, Plus, Scale, Sparkles, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke, listen } from "./bridge";
 import { addNote } from "./notesstore";
@@ -2045,6 +2045,27 @@ export function ChatPanel({
               void attachDomainAsContext(name, e.altKey ? "folder" : e.shiftKey ? "full" : "light");
             }}
             onPaste={async (e) => {
+              // F3: a pasted image is saved to the vault and attached, so
+              // screenshots can go into chat (vision-capable runtimes read the
+              // file). Handled before the long-text path.
+              const imageItem = Array.from(e.clipboardData.items).find((it) => it.type.startsWith("image/"));
+              if (imageItem) {
+                const file = imageItem.getAsFile();
+                if (file) {
+                  e.preventDefault();
+                  try {
+                    const buf = new Uint8Array(await file.arrayBuffer());
+                    let bin = "";
+                    for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+                    const b64 = btoa(bin);
+                    const ext = (file.type.split("/")[1] || "png").replace("jpeg", "jpg");
+                    const path = await invoke<string>("write_paste_image", { vault: vaultPath, base64: b64, ext });
+                    setAttachments((cur) => (cur.includes(path) ? cur : [...cur, path]));
+                    toast.success("Image attached.");
+                  } catch (err) { console.error("write_paste_image", err); toast.error(`Could not attach the image: ${String(err)}`); }
+                  return;
+                }
+              }
               if (lsGet("prevail.pref.autoConvertLongPaste") !== "1") return;
               const txt = e.clipboardData.getData("text/plain");
               if (txt.length < 5000) return;
@@ -2233,17 +2254,21 @@ export function ChatPanel({
           {/* Attachment pills */}
           {attachments.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5 px-2">
-              {attachments.map((p, i) => (
+              {attachments.map((p, i) => {
+                const isImage = /\.(png|jpe?g|gif|webp)$/i.test(p);
+                return (
                 <span key={i} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background py-0.5 pl-2 pr-1 font-mono text-[11px] text-text-secondary">
-                  <Folder className="h-3 w-3 text-text-muted" />
+                  {isImage ? <ImageIcon className="h-3 w-3 text-ai" /> : <Folder className="h-3 w-3 text-text-muted" />}
                   {p.split("/").pop()}
                   <button
                     onClick={() => setAttachments((cur) => cur.filter((_, j) => j !== i))}
                     className="flex h-3.5 w-3.5 items-center justify-center rounded-full text-text-muted hover:bg-surface-warm hover:text-err"
+                    aria-label="Remove attachment"
                     title="Remove attachment"
-                  >×</button>
+                  ><X className="h-3 w-3" /></button>
                 </span>
-              ))}
+                );
+              })}
             </div>
           )}
           {/* Single inline toolbar: + then the per-domain toggles,
