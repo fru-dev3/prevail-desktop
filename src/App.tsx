@@ -895,6 +895,11 @@ export default function App() {
   }, [vaultPath, threadScope]);
   useEffect(() => { void refreshThreads(); }, [refreshThreads]);
   const [clis, setClis] = useState<CliInfo[]>([]);
+  // O1/F6: once runtime detection has run, know whether ANY model is usable, so
+  // we can prompt a new user to set one up instead of letting chat fail silently.
+  const [clisDetected, setClisDetected] = useState(false);
+  const [noModelDismissed, setNoModelDismissed] = useState(false);
+  const noModelConfigured = clisDetected && clis.length > 0 && !clis.some((c) => c.available);
   const [tab, setTab] = useState<TabId>("chat");
   // T18: record which primary surface is in use (inert until keys exist;
   // default-OFF; "settings" is not a tracked feature so it's simply skipped).
@@ -1266,6 +1271,7 @@ export default function App() {
     try {
       const list = await invoke<CliInfo[]>("detect_clis");
       setClis(list);
+      setClisDetected(true);
       // Validate every detected provider right away (once per session), so
       // valid / not-valid marks are visible without expanding anything.
       autoVerifyClis(list);
@@ -1502,6 +1508,16 @@ export default function App() {
           <ShieldCheck className="h-3.5 w-3.5" />
           <span>Bunker Mode needs a local model provider, but none was detected.</span>
           <a href="https://ollama.com/download" target="_blank" rel="noreferrer" className="font-medium underline">Install Ollama ›</a>
+        </div>
+      )}
+      {/* O1/F6: no usable model - guide the user to set one up rather than letting
+          the first chat fail with a raw spawn error. */}
+      {noModelConfigured && !noModelDismissed && (
+        <div className="flex shrink-0 items-center justify-center gap-2 border-b border-accent-border bg-accent-soft px-4 py-1.5 text-xs text-text-primary">
+          <Layers className="h-3.5 w-3.5 text-accent" />
+          <span>No AI model is set up yet, so chat can't run.</span>
+          <button onClick={() => openSettingsAt("models")} className="font-semibold text-accent underline underline-offset-2 hover:opacity-80">Set up a model ›</button>
+          <button onClick={() => setNoModelDismissed(true)} aria-label="Dismiss" className="ml-1 rounded p-0.5 text-text-muted hover:text-text-primary"><X className="h-3.5 w-3.5" /></button>
         </div>
       )}
       <div className="flex min-h-0 flex-1">
