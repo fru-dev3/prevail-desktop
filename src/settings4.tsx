@@ -9,7 +9,7 @@ import { CollapsibleSection } from "./collapsible";
 import { ALLOWED_EVENTS, clearTelemetryLog, crashOn, setCrash, setUsage, telemetryConfigured, telemetryLog, usageOn } from "./telemetry";
 import { invoke } from "./bridge";
 import { PALETTES } from "./constants";
-import { PREF, getPref, setPref } from "./storage";
+import { LS, PREF, getPref, lsGet, setPref } from "./storage";
 import { Toggle } from "./ui";
 import { Markdown } from "./Markdown";
 import { AlignmentCard, AppLockCard, SettingsRowLite } from "./panels";
@@ -407,10 +407,25 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
   // live engine-backed budget (real per-loop/per-domain spend with hard stops)
   // is tracked separately; until that engine command lands there is nothing to
   // poll, so we do not call one.
-  const [budgetSpent] = useState<number>(() => {
+  // X4: real month-to-date spend from the engine's usage ledger (falls back to
+  // the last-known estimate if the engine is unavailable).
+  const [budgetSpent, setBudgetSpent] = useState<number>(() => {
     const v = parseFloat(getPref(PREF.budgetSpentUsd, "0"));
     return Number.isFinite(v) ? v : 0;
   });
+  useEffect(() => {
+    const vault = lsGet(LS.vault);
+    if (!vault) return;
+    let alive = true;
+    invoke<{ spent_usd?: number }>("engine_budget_status", { vault, domain: null })
+      .then((s) => {
+        if (!alive || typeof s?.spent_usd !== "number") return;
+        setBudgetSpent(s.spent_usd);
+        setPref(PREF.budgetSpentUsd, String(s.spent_usd));
+      })
+      .catch(() => { /* keep the cached estimate */ });
+    return () => { alive = false; };
+  }, []);
   const capNum = parseFloat(budgetCap);
   const hasCap = Number.isFinite(capNum) && capNum > 0;
   const pct = hasCap ? Math.min(100, Math.round((budgetSpent / capNum) * 100)) : 0;
