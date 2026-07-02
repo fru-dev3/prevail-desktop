@@ -7,6 +7,7 @@ import { FileText, Plus, Search, Trash2 } from "lucide-react";
 import { relTime } from "./format";
 import { SettingsHeader } from "./sectionutil";
 import { loadNotes, newNoteId as newId, saveNotes, type Note } from "./notesstore";
+import { toast } from "./toast";
 
 export function NotesPanel({ vaultPath }: { vaultPath: string }) {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -79,8 +80,20 @@ export function NotesPanel({ vaultPath }: { vaultPath: string }) {
 
   const deleteNote = (id: string) => {
     setNotes((cur) => {
+      const idx = cur.findIndex((n) => n.id === id);
+      if (idx < 0) return cur;
+      const removed = cur[idx];
       const next = cur.filter((n) => n.id !== id);
       if (id === selectedId) setSelectedId(next[0]?.id ?? null);
+      // F4: notes used to hard-delete with no recovery. Offer an immediate undo
+      // that restores the note in its original position (autosave persists the
+      // removal, so undo re-adds and re-saves).
+      toast("Note deleted.", {
+        action: {
+          label: "Undo",
+          onClick: () => setNotes((c) => (c.some((n) => n.id === removed.id) ? c : [...c.slice(0, idx), removed, ...c.slice(idx)])),
+        },
+      });
       return next;
     });
   };

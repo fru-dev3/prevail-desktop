@@ -1,7 +1,7 @@
 // Chat-display leaf components extracted from App.tsx: ChatBubble (one rendered
 // turn), MessageList (windowed transcript), DomainStatusBar, and DomainHome.
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, SlidersHorizontal, Sparkles, User } from "lucide-react";
+import { ArrowRight, ListPlus, NotebookPen, SlidersHorizontal, Sparkles, User } from "lucide-react";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES } from "./constants";
 import { titleCase } from "./format";
@@ -24,11 +24,15 @@ export function ChatBubble({
   onCopy,
   onRetry,
   onEdit,
+  onMakeTask,
+  onSaveNote,
 }: {
   msg: ChatMessage;
   onCopy?: (text: string) => void;
   onRetry?: () => void;
   onEdit?: (text: string) => void;
+  onMakeTask?: (text: string) => void;
+  onSaveNote?: (text: string) => void;
 }) {
   // Small inline action button used on bubble hover. Stays muted by
   // default so the chat stays calm; lights up on hover.
@@ -83,6 +87,14 @@ export function ChatBubble({
               label="Edit"
               onClick={() => onEdit(msg.content)}
               icon={<svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M11.5 2.5l2 2-7 7-2.5.5.5-2.5 7-7z" /></svg>}
+            />
+          )}
+          {onMakeTask && (
+            <ActionButton
+              title="Turn this into a task on your board"
+              label="Task"
+              onClick={() => onMakeTask(msg.content)}
+              icon={<ListPlus className="h-3 w-3" />}
             />
           )}
         </div>
@@ -215,6 +227,22 @@ export function ChatBubble({
                 icon={<svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M14 8a6 6 0 1 1-1.76-4.24" /><path d="M14 2v4h-4" /></svg>}
               />
             )}
+            {onMakeTask && (
+              <ActionButton
+                title="Turn this reply into a task on your board"
+                label="Task"
+                onClick={() => onMakeTask(msg.content)}
+                icon={<ListPlus className="h-3 w-3" />}
+              />
+            )}
+            {onSaveNote && (
+              <ActionButton
+                title="Save this reply to your notes"
+                label="Note"
+                onClick={() => onSaveNote(msg.content)}
+                icon={<NotebookPen className="h-3 w-3" />}
+              />
+            )}
           </div>
         )}
       </div>
@@ -225,12 +253,14 @@ export function ChatBubble({
 // ─────────────────────────────────────────────────────────────────────
 // COUNCIL PANEL
 
-export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit }: {
+export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit, onMakeTask, onSaveNote }: {
   messages: ChatMessage[];
   resetKey: number;
   onCopy: (text: string) => void;
   onRetry: (i: number) => void;
   onEdit: (text: string, i: number) => void;
+  onMakeTask?: (text: string) => void;
+  onSaveNote?: (text: string) => void;
 }) {
   const [limit, setLimit] = useState(MESSAGE_WINDOW);
   // Reset the window when the thread changes (switched/cleared) so a new thread
@@ -259,6 +289,8 @@ export function MessageList({ messages, resetKey, onCopy, onRetry, onEdit }: {
             onCopy={onCopy}
             onRetry={m.role === "assistant" ? () => onRetry(i) : undefined}
             onEdit={m.role === "user" ? (text) => onEdit(text, i) : undefined}
+            onMakeTask={onMakeTask}
+            onSaveNote={m.role === "assistant" ? onSaveNote : undefined}
           />
         );
       })}
