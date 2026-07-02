@@ -388,6 +388,7 @@ pub fn run() {
             usage::usage_append,
             usage::usage_summary,
             usage::usage_summary_domain,
+            usage::engine_budget_status,
             intents::intent_append,
             intents::intents_read,
             intents::intents_read_all,
