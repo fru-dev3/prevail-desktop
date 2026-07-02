@@ -150,6 +150,31 @@ pub(crate) fn usage_summary_domain(vault: String, domain: String) -> Result<Usag
     usage_summary_inner(&vault, Some(&domain))
 }
 
+/// X4 (budgets): real month-to-date spend for the budget meter, optionally scoped
+/// to one domain. Sums the by-day cost buckets whose day is in the current
+/// calendar month. The cap itself is a user pref on the frontend; this is the
+/// live "spent" side that was previously only an estimate. Fills the gap the
+/// budget UI was calling a nonexistent command for.
+#[tauri::command]
+pub(crate) fn engine_budget_status(
+    vault: String,
+    domain: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let summary = usage_summary_inner(&vault, domain.as_deref())?;
+    let month_prefix = &crate::tasks::today_ymd()[..7]; // "YYYY-MM"
+    let spent: f64 = summary
+        .by_day
+        .iter()
+        .filter(|b| b.key.starts_with(month_prefix))
+        .map(|b| b.cost_usd)
+        .sum();
+    Ok(serde_json::json!({
+        "spent_usd": spent,
+        "month": month_prefix,
+        "total_cost_usd": summary.total_cost_usd,
+    }))
+}
+
 // One-time migration: fold a legacy desktop ledger (<vault>/usage/usage.ndjson)
 // into the engine ledger (<vault>/_meta/usage.jsonl) so existing users keep
 // their history. Guarded by a marker file; best-effort and idempotent. The two
