@@ -293,7 +293,7 @@ export function TelegramCard() {
           <h3 className="font-semibold">Telegram bridge</h3>
           <p className="text-xs text-text-muted">Two-way chat: messages to your bot route to the chosen model and the reply is pushed back.</p>
         </div>
-        <span className={`shrink-0 self-start rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
+        <span className={`shrink-0 self-start rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
           bridge?.running ? "border border-accent-border bg-accent-soft text-accent" : "border border-border bg-background text-text-muted"
         }`}>
           {bridge?.running ? "● live" : "○ stopped"}
@@ -307,7 +307,7 @@ export function TelegramCard() {
             <label className="block">
               <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-text-muted">
                 Bot token
-                {tokenSaved && <span className="rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] tracking-wider text-accent">in keychain</span>}
+                {tokenSaved && <span className="rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[10px] tracking-wider text-accent">in keychain</span>}
               </div>
               <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
                 placeholder={tokenSaved ? "•••••••• (type to replace)" : "123456:ABC-XYZ…"}

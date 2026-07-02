@@ -303,7 +303,7 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel, presetName, preset
               <AppRowLogo app={{ title: plan.title || name, id: plan.app_id }} logos={logos} size={28} fallback="letter" />
               <span className="text-sm font-semibold text-text-primary">{plan.title || name}</span>
               <Check className="h-4 w-4 text-ok" />
-              <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted">{METHOD_LABEL[plan.integration ?? "manual"] ?? plan.integration}</span>
+              <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[10px] uppercase tracking-wider text-text-muted">{METHOD_LABEL[plan.integration ?? "manual"] ?? plan.integration}</span>
             </div>
             {plan.why && <p className="mt-1.5 text-xs text-text-secondary">{plan.why}</p>}
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-muted">

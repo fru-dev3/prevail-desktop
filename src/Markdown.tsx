@@ -34,7 +34,7 @@ function MarkdownCode(props: React.HTMLAttributes<HTMLElement> & { className?: s
         <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">{lang}</span>
         <button
           onClick={() => { void navigator.clipboard.writeText(text); }}
-          className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted transition-colors hover:border-accent-border hover:text-accent"
+          className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted transition-colors hover:border-accent-border hover:text-accent"
         >
           copy
         </button>

@@ -135,7 +135,7 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
   ) : null;
 
   const domainEditor = (
-    <AppCard icon={Layers} label="Domains this app refreshes" action={savingDoms ? <span className="font-mono text-[9px] text-text-muted/60">saving…</span> : undefined}>
+    <AppCard icon={Layers} label="Domains this app refreshes" action={savingDoms ? <span className="font-mono text-[10px] text-text-muted/60">saving…</span> : undefined}>
       <p className="mb-2 text-[12px] text-text-muted">Many-to-many. Click a domain to open it and chat there; remove or add bindings here.</p>
       {doms.length === 0 ? (
         <div className="text-[12px] text-text-muted">Not bound to any domain yet. Add one below to start refreshing it.</div>

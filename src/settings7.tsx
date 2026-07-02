@@ -98,7 +98,7 @@ export function RefreshCadence({ value, onChange }: { value: string; onChange: (
       </button>
       {open && (
         <div className="absolute left-0 top-full z-30 mt-1 w-60 overflow-hidden rounded-xl border border-border bg-surface shadow-lg">
-          <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted">Auto-refresh cadence</div>
+          <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Auto-refresh cadence</div>
           <ul className="p-1">
             {REFRESH_PRESETS.map((p) => (
               <li key={p.value}>
@@ -257,7 +257,7 @@ export function ProvidersSection({ onActivated, embedded }: { onActivated?: () =
                   >
                     <OrVendorMark id={m.id} size={16} />
                     <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-primary">{m.label && m.label !== m.id ? m.label : m.id}</span>
-                    <span className="shrink-0 font-mono text-[9px] text-text-muted">{orVendorOf(m.id) || "model"}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-text-muted">{orVendorOf(m.id) || "model"}</span>
                   </button>
                 ))
               )}

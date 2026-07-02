@@ -62,7 +62,7 @@ export function OrVendorMark({ id, size = 18 }: { id: string; size?: number }) {
       {v?.path ? (
         <svg width={size} height={size} viewBox="0 0 24 24" fill={v.hex ?? "#111"} aria-hidden><path d={v.path} /></svg>
       ) : (
-        <span className="font-mono text-[9px] font-semibold text-text-muted">{v?.mono ?? "·"}</span>
+        <span className="font-mono text-[10px] font-semibold text-text-muted">{v?.mono ?? "·"}</span>
       )}
     </span>
   );

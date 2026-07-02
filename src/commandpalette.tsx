@@ -88,7 +88,7 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
           )}
           {groupsInOrder.map((g) => (
             <div key={g}>
-              <div className="px-3.5 pb-1 pt-2 font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted">{g}</div>
+              <div className="px-3.5 pb-1 pt-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">{g}</div>
               {filtered.filter((c) => c.group === g).map((c) => {
                 flatIdx++;
                 const idx = flatIdx;

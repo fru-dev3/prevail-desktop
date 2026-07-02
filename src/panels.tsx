@@ -160,7 +160,7 @@ export function QuickSwitcher({
                   </div>
                   <div className="truncate font-mono text-[10px] text-text-muted">{it.sub}</div>
                 </div>
-                <span className="font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">
                   {it.kind}
                 </span>
               </button>
@@ -518,7 +518,7 @@ export function ThreadsRail({
               key={t.path}
               onClick={() => onPick(t.path)}
               title={t.cli ? `${t.title} · ${t.model || t.cli}` : t.title}
-              className={`flex h-5 w-5 items-center justify-center rounded text-[9px] font-mono ${
+              className={`flex h-5 w-5 items-center justify-center rounded text-[10px] font-mono ${
                 t.path === activePath
                   ? "bg-accent-soft text-accent ring-1 ring-accent-border"
                   : "text-text-muted hover:bg-surface-warm hover:text-text-primary"
@@ -649,7 +649,7 @@ export function ThreadsRail({
                       </div>
                       <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-text-muted">
                         {runningThreadPaths.has(t.path) ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-accent">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0 font-mono text-[10px] uppercase tracking-wider text-accent">
                             <span className="pulse-soft inline-block h-1 w-1 rounded-full bg-accent" />
                             writing
                           </span>
@@ -817,14 +817,14 @@ export function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; do
             <input type="checkbox" checked={t.done} onChange={() => persist(tasks.map((x, j) => j === i ? { ...x, done: !x.done } : x))} />
             <span className={t.done ? "text-text-muted line-through" : "text-text-primary"}>{t.text}</span>
             {t.source && t.source !== "user" && (
-              <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[9px] text-text-muted">{t.source === "daemon" ? "auto" : "suggested"}</span>
+              <span className="rounded bg-surface-warm px-1.5 py-0.5 font-mono text-[10px] text-text-muted">{t.source === "daemon" ? "auto" : "suggested"}</span>
             )}
             {t.due && !t.done && (() => {
               const today = new Date().toISOString().slice(0, 10);
               const overdue = t.due < today, due = t.due === today;
-              return <span className={`rounded px-1.5 py-0.5 font-mono text-[9px] ${overdue ? "bg-warn/15 text-warn" : due ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>{overdue ? "overdue" : due ? "today" : t.due}</span>;
+              return <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${overdue ? "bg-warn/15 text-warn" : due ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>{overdue ? "overdue" : due ? "today" : t.due}</span>;
             })()}
-            <span className="ml-auto shrink-0 font-mono text-[9px] text-text-muted/60">{t.added ?? ""}</span>
+            <span className="ml-auto shrink-0 font-mono text-[10px] text-text-muted/60">{t.added ?? ""}</span>
             <button onClick={() => persist(tasks.filter((_, j) => j !== i))} className="shrink-0 text-text-muted/50 hover:text-warn">✕</button>
           </label>
         ))}
@@ -854,8 +854,8 @@ export function AppHeaderBar({ app, enabled, onOpenDomain, onClose }: { app: Eng
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-center gap-2">
             <span className="truncate text-base font-semibold text-text-primary">{app.account?.label ? `${app.title} · ${app.account.label}` : app.title}</span>
-            <span className="shrink-0 rounded-full border border-border-subtle px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">{INTEGRATION_LABEL[app.integration] ?? app.integration}</span>
-            {!enabled && <span className="shrink-0 rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-warn">disabled</span>}
+            <span className="shrink-0 rounded-full border border-border-subtle px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">{INTEGRATION_LABEL[app.integration] ?? app.integration}</span>
+            {!enabled && <span className="shrink-0 rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-warn">disabled</span>}
           </div>
           {app.domains.length > 0 && (
             <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
@@ -915,7 +915,7 @@ export function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPa
       <div className="mb-2 flex items-baseline gap-2.5">
         <Sparkles className="h-4 w-4 shrink-0 self-center text-accent" />
         <span className="font-display text-lg font-bold tracking-tight text-text-primary">For you · {titleCase(domain)}</span>
-        {freshMeta && <span className="font-mono text-[9px] text-text-muted">{freshMeta}</span>}
+        {freshMeta && <span className="font-mono text-[10px] text-text-muted">{freshMeta}</span>}
         <button onClick={() => void load(true)} disabled={loading}
           className="ml-auto font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-accent disabled:opacity-40">
           {loading ? "thinking…" : "refresh"}
@@ -942,7 +942,7 @@ export function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPa
                       <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft font-mono text-[10px] font-semibold text-accent">{i + 1}</span>
                       <button onClick={() => onPick(q)} className="min-w-0 flex-1 text-left text-sm leading-snug text-text-primary hover:text-accent" title="Ask this in chat">{q}</button>
                       <div className="flex shrink-0 items-center gap-1">
-                        <button onClick={() => onPick(q)} title="Ask this in chat" className="inline-flex items-center gap-1 rounded-md border border-accent-border px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-accent transition-colors hover:bg-accent hover:text-background">Ask <ArrowRight className="h-2.5 w-2.5" /></button>
+                        <button onClick={() => onPick(q)} title="Ask this in chat" className="inline-flex items-center gap-1 rounded-md border border-accent-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent transition-colors hover:bg-accent hover:text-background">Ask <ArrowRight className="h-2.5 w-2.5" /></button>
                         <button onClick={() => dismiss(q)} title="Dismiss" className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted opacity-0 transition-opacity hover:bg-surface-warm hover:text-warn group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button>
                       </div>
                     </div>
@@ -957,10 +957,10 @@ export function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPa
                     <div key={i} className="group flex items-start gap-3 rounded-lg border border-border-subtle bg-surface p-3 transition-colors hover:border-accent-border">
                       <p className="min-w-0 flex-1 text-sm leading-snug text-text-primary">{a}</p>
                       <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <button onClick={() => { onAddTask(a); setSaved((s) => new Set(s).add(a)); }} title="Save as task" className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[9px] uppercase tracking-wider ${saved.has(a) ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
+                        <button onClick={() => { onAddTask(a); setSaved((s) => new Set(s).add(a)); }} title="Save as task" className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${saved.has(a) ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
                           {saved.has(a) ? <><Check className="h-2.5 w-2.5" /> Saved</> : <><Plus className="h-2.5 w-2.5" /> Task</>}
                         </button>
-                        <button onClick={() => onPick(a)} title="Work on this in chat" className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-background hover:bg-accent-hover">Do <ArrowRight className="h-2.5 w-2.5" /></button>
+                        <button onClick={() => onPick(a)} title="Work on this in chat" className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:bg-accent-hover">Do <ArrowRight className="h-2.5 w-2.5" /></button>
                         <button onClick={() => dismiss(a)} title="Dismiss" className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-surface-warm hover:text-warn"><X className="h-3.5 w-3.5" /></button>
                       </div>
                     </div>
@@ -1224,7 +1224,7 @@ export function DrawerImportsSection({
         <button
           onClick={() => void vacuum(90)}
           title="Delete imports older than 90 days"
-          className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn"
+          className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-warn hover:text-warn"
         >
           vacuum 90d
         </button>
@@ -1477,7 +1477,7 @@ export function ContextScoreBadge({
       <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-60 translate-y-1 rounded-xl border border-border bg-surface p-3 text-left opacity-0 shadow-xl transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100">
         <div className="mb-2 flex items-center justify-between">
           <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Context score</span>
-          <span className="rounded-full px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider" style={{ color, background: `${color}1a` }}>{tier}</span>
+          <span className="rounded-full px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider" style={{ color, background: `${color}1a` }}>{tier}</span>
         </div>
         <div className="mb-2 flex items-baseline gap-1 font-mono">
           <span className="text-2xl font-bold leading-none" style={{ color }}>{score.score}</span>
@@ -1821,7 +1821,7 @@ export function PatternChip({ pattern }: { pattern: string }) {
   const tint = PATTERN_TINT[pattern] ?? "#9aa0a6";
   return (
     <span
-      className="shrink-0 rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider"
+      className="shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider"
       style={{ color: tint, borderColor: `${tint}55`, backgroundColor: `${tint}14` }}
       title={PATTERN_TIER[pattern] ?? pattern}
     >
@@ -1992,13 +1992,13 @@ export function AlignmentCard({ vaultPath }: { vaultPath: string }) {
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="font-mono text-lg font-bold leading-none" style={{ color: overallTint }}>{rep.overall}</span>
-            <span className="font-mono text-[8px] text-text-muted">/100</span>
+            <span className="font-mono text-[10px] text-text-muted">/100</span>
           </div>
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="font-display text-base font-semibold tracking-tight">Alignment</span>
-            <span className="rounded-full px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider" style={{ backgroundColor: `${overallTint}1f`, color: overallTint }}>{verdict}</span>
+            <span className="rounded-full px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider" style={{ backgroundColor: `${overallTint}1f`, color: overallTint }}>{verdict}</span>
           </div>
           <p className="mt-0.5 text-xs text-text-secondary">How close your life is tracking to your Ideal State · {rep.method === "model" ? "model-scored" : "signal-based"}</p>
         </div>
@@ -2143,7 +2143,7 @@ export function IngestionAuditPanel() {
             const t = e.ts ? new Date(e.ts * 1000).toLocaleString() : "";
             return (
               <li key={`${e.path ?? "_"}_${i}`} className="flex items-center gap-3 rounded border border-border-subtle bg-background px-3 py-1.5">
-                <span className={`rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
+                <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
                   e.type === "vacuum"
                     ? "border border-warn/40 bg-warn/10 text-warn"
                     : "border border-accent-border bg-accent-soft text-accent"
@@ -2165,7 +2165,7 @@ export function IngestionAuditPanel() {
                 {e.path && (
                   <button
                     onClick={() => invoke("open_in_finder", { path: e.path })}
-                    className="shrink-0 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                    className="shrink-0 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
                   >
                     reveal
                   </button>
@@ -2221,7 +2221,7 @@ export function RecipeActionEditor({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
           Post-login steps
-          <span className="rounded-full bg-surface-warm px-1.5 py-0 text-[9px] text-text-secondary">{actions.length}</span>
+          <span className="rounded-full bg-surface-warm px-1.5 py-0 text-[10px] text-text-secondary">{actions.length}</span>
         </div>
         <div className="flex items-center gap-1">
           <select
@@ -2252,7 +2252,7 @@ export function RecipeActionEditor({
                 <button onClick={() => move(i, -1)} disabled={i === 0} className="text-[10px] text-text-muted hover:text-accent disabled:opacity-30">▲</button>
                 <button onClick={() => move(i, 1)} disabled={i === actions.length - 1} className="text-[10px] text-text-muted hover:text-accent disabled:opacity-30">▼</button>
               </div>
-              <span className="mt-0.5 rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent">
+              <span className="mt-0.5 rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent">
                 {a.type.replace(/_/g, " ")}
               </span>
               <div className="flex min-w-0 flex-1 flex-col gap-1">

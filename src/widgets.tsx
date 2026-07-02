@@ -194,7 +194,7 @@ export function InsightsDisclosure({
         <Icon className="h-3 w-3 text-text-muted" />
         <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-text-secondary">{title}</span>
         <span className="font-mono text-[10px] text-text-muted">· {count}</span>
-        {meta && <span className="ml-auto font-mono text-[9px] text-text-muted">{meta}</span>}
+        {meta && <span className="ml-auto font-mono text-[10px] text-text-muted">{meta}</span>}
       </button>
       {open && <div className="mt-2 border-l border-border-subtle/70 pl-4">{children}</div>}
     </div>

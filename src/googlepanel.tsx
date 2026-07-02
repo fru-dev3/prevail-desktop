@@ -73,8 +73,8 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-base font-semibold text-text-primary">Google</span>
-            {cli?.installed && <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-text-muted">gws{(() => { const m = cli.version?.match(/(\d+\.\d+\.\d+)/); return m ? ` ${m[1]}` : ""; })()}</span>}
-            {connectedCount > 0 && <span className="inline-flex items-center gap-1 rounded-full border border-ok/40 bg-ok/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-ok"><Check className="h-2.5 w-2.5" /> {connectedCount} connected</span>}
+            {cli?.installed && <span className="rounded border border-border-subtle px-1.5 py-px font-mono text-[10px] uppercase tracking-wider text-text-muted">gws{(() => { const m = cli.version?.match(/(\d+\.\d+\.\d+)/); return m ? ` ${m[1]}` : ""; })()}</span>}
+            {connectedCount > 0 && <span className="inline-flex items-center gap-1 rounded-full border border-ok/40 bg-ok/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ok"><Check className="h-2.5 w-2.5" /> {connectedCount} connected</span>}
           </div>
           <p className="mt-1 max-w-prose text-[12px] leading-relaxed text-text-secondary">One connection for the whole Google ecosystem - Gmail, Calendar, Drive, Docs, Sheets, Tasks, Meet - across every Google profile. The agent pulls, summarizes, and replies per profile.</p>
         </div>
