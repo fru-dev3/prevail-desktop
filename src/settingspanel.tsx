@@ -7,15 +7,12 @@ import { SettingsHeader } from "./sectionutil";
 import { ProviderMark } from "./marks";
 import { FrameworksSection, IngestionSection, RemoteSection, ShortcutsSection } from "./settings1";
 import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection } from "./settings2";
-import { BoardPanel } from "./boardpanel";
 import { AppsPanel } from "./appspanel";
-import { RecommendationsPanel } from "./recommendationspanel";
 import { SystemActivity } from "./activitypanel";
 import { RetrospectPanel } from "./retrospectpanel";
 import { ToolsPanel } from "./toolspanel";
 import { AutonomyPanel } from "./autonomypanel";
 import { LoopBoard } from "./loopboard";
-import { SparkPanel } from "./spark";
 import { OmegaSection } from "./omega";
 import { CollapsibleSection } from "./collapsible";
 import { GeneralSection, IdealStateSection, SafetySection } from "./settings4";
@@ -53,7 +50,7 @@ export function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "autonomy" | "council" | "gateway" | "mcp" | "prompt-capture" | "integrations" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "retrospect" | "loopboard" | "spark" | "hooks" | "profiles" | "tools" | "ingestion";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "ideal-state" | "omega" | "memory" | "intents" | "daemons" | "safety" | "autonomy" | "council" | "gateway" | "mcp" | "prompt-capture" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "activity" | "retrospect" | "loopboard" | "hooks" | "profiles" | "tools" | "ingestion";
   // Editor lands on General. The operational surfaces (Work board / Insights /
   // Spark) moved to Work mode, so Editor opens on a config page. A specific
   // jumpTo (e.g. "connectors") still wins.
@@ -154,9 +151,8 @@ export function SettingsPanel({
           {section === "omega" && <OmegaSection vaultPath={vaultPath} />}
           {section === "memory" && <MemoryContextSection vaultPath={vaultPath} />}
           {section === "intents" && <IntentsSection vaultPath={vaultPath} />}
-          {section === "tasks" && <BoardPanel vaultPath={vaultPath} />}
-          {section === "recommendations" && <RecommendationsPanel vaultPath={vaultPath} />}
-          {section === "spark" && <SparkPanel vaultPath={vaultPath} clis={clis} />}
+          {/* tasks / recommendations / spark are Work surfaces — the sidebar routes
+              them to WorkPanel (App.tsx WORK_SECTIONS), so no Editor branch here. */}
           {/* B2-20 / image #29: Memory engine page deleted; Memory & Context now
               lives inside Routines as a peer collapsible group (in DaemonsSection),
               not a divider-separated section. */}
