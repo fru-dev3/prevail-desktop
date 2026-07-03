@@ -1359,6 +1359,14 @@ export function BenchRunConfig({
     { id: "review", label: "Review & Run", icon: Play, done: reviewReady, n: domainsStepShown ? 3 : 2 },
   ];
   const [activeStep, setActiveStep] = useState<StepId>("models");
+  // Start over: clear the whole selection and return to step 1, so the user can
+  // rebuild a run from scratch without hunting for what to un-pick.
+  const startOver = () => {
+    applyModels([]);
+    applyScope([]);
+    setDomainsTouched(false);
+    setActiveStep("models");
+  };
   // Keep a live step even if scoped drops the Domains tab out from under us.
   const activeIsValid = activeStep === "presets" || flowSteps.some((s) => s.id === activeStep);
   // In the dedicated Presets nav view, always show the presets panel.
@@ -1419,8 +1427,18 @@ export function BenchRunConfig({
             );
           })}
           {/* Presets moved to its own Arena nav item; a compact shortcut stays
-              here so it's still one click from the wizard. */}
+              here so it's still one click from the wizard. A "New" reset lets the
+              user start the run over from step 1 at any point. */}
           <div className="ml-1 flex shrink-0 items-center gap-1.5 border-l border-border-subtle pl-2">
+            {(selModels.size > 0 || scope.size > 0 || domainsTouched) && (
+              <button
+                onClick={startOver}
+                title="Start a new run: clear the selection and go back to step 1"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-border-subtle bg-surface px-3 py-2 text-[13px] font-semibold text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
+              >
+                <RotateCw className="h-3.5 w-3.5" /> New
+              </button>
+            )}
             <button
               onClick={() => onOpenPresets?.()}
               title="Open Presets: reusable model bundles"
@@ -2082,14 +2100,23 @@ export function BenchRunConfig({
                 supported), so the button is gated only on having a valid selection
                 and questions in scope, never on another run being in flight. */}
             <div className="border-t border-border-subtle px-5 pb-5 pt-4">
-              <button
-                onClick={onRun}
-                disabled={questionCount === 0 || selCount === 0}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
-              >
-                <Play className="h-4 w-4" />
-                {`Run ${selCount} model${selCount === 1 ? "" : "s"}`}
-              </button>
+              <div className="flex items-stretch gap-2">
+                <button
+                  onClick={startOver}
+                  title="Clear the selection and start a new run from step 1"
+                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-4 py-3 text-sm font-semibold text-text-secondary hover:border-accent-border hover:text-accent"
+                >
+                  <RotateCw className="h-4 w-4" /> Start over
+                </button>
+                <button
+                  onClick={onRun}
+                  disabled={questionCount === 0 || selCount === 0}
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-40"
+                >
+                  <Play className="h-4 w-4" />
+                  {`Run ${selCount} model${selCount === 1 ? "" : "s"}`}
+                </button>
+              </div>
               <p className="mt-2 text-center font-mono text-[10px] leading-relaxed text-text-muted">Different CLIs enter the arena in parallel · auto-scored. Runs launch concurrently and appear in the monitor above. Review results in History.</p>
             </div>
           </div>
