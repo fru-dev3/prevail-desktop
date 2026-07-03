@@ -447,6 +447,9 @@ export type EngineApp = {
   account: { label?: string; address?: string } | null;
   refresh: { every?: string; at?: string; on?: string } | null;
   autonomy?: string | null;
+  // Per-app privacy pin (local-only) + default model for its skill/sync runs.
+  localOnly?: boolean | null;
+  model?: string | null;
   connections?: { kind: string; description?: string }[] | null;
   // Whether the sync daemon may run this app. Absent / true = enabled.
   enabled?: boolean | null;

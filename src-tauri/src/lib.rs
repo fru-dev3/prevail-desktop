@@ -524,6 +524,8 @@ pub fn run() {
             engine::engine_gateway_app_add,
             engine::engine_app_set_domains,
             engine::engine_app_set_integration,
+            engine::engine_app_set_privacy,
+            engine::engine_app_set_model,
             engine::engine_app_set_schedule,
             engine::engine_app_get_soul,
             engine::engine_app_set_soul,

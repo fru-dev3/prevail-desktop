@@ -126,7 +126,7 @@ function ActivityDetail({ event }: { event: ActivityEvent }) {
 
 const TYPE_META: Record<ActivityType, { label: string; icon: typeof Activity; tint: string }> = {
   loop_run:   { label: "Loop run",   icon: Repeat,   tint: "text-accent" },
-  loop_exec:  { label: "Executed",   icon: Zap,      tint: "text-warn" },
+  loop_exec:  { label: "Action taken", icon: Zap,      tint: "text-warn" },
   task_filed: { label: "Task filed", icon: ListPlus, tint: "text-ok" },
   briefing:   { label: "Briefing",   icon: Mail,     tint: "text-accent" },
   sync:       { label: "App sync",   icon: RotateCw, tint: "text-text-secondary" },
@@ -139,10 +139,9 @@ const TYPE_META: Record<ActivityType, { label: string; icon: typeof Activity; ti
 const FILTERS: { id: ActivityType | "all"; label: string }[] = [
   { id: "all", label: "All" },
   { id: "loop_run", label: "Loop runs" },
-  { id: "loop_exec", label: "Executed" },
+  { id: "loop_exec", label: "Actions taken" },
   { id: "task_filed", label: "Tasks" },
   { id: "briefing", label: "Briefings" },
-  { id: "playbook", label: "Playbooks" },
   { id: "sync", label: "Syncs" },
 ];
 

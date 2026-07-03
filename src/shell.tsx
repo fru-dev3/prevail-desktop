@@ -3,7 +3,7 @@
 // setup).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion";
-import { Activity, Archive, ArrowRight, Briefcase, Clock, Cloud, Folder, FolderLock, FolderOpen, Ghost, Globe, Heart, Home, KeyRound, Layers, Plus, Receipt, RefreshCw, Shield, ShieldCheck, Sparkles, TrendingUp, Users, Wallet, X, Zap } from "lucide-react";
+import { Activity, Archive, ArrowRight, Briefcase, Clock, Cloud, Cpu, Folder, FolderLock, FolderOpen, Ghost, Globe, Heart, Home, KeyRound, Layers, Lock, Plus, Receipt, RefreshCw, Shield, ShieldCheck, Sparkles, TrendingUp, Users, Wallet, X, Zap } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { PREF, getPref } from "./storage";
@@ -67,6 +67,19 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
     invoke<{ mode: "demo" | "production" }>("engine_appmode_get").then((m) => setDemoMode(m.mode === "demo")).catch(() => {});
   }, []);
   useEffect(() => { setDoms(app.domains); setAddOpen(false); setAddValue(""); }, [app.id, app.domains]);
+  // Per-app Privacy (local-only) + default model — parity with domain settings.
+  const [localOnly, setLocalOnly] = useState(!!app.localOnly);
+  const [modelDraft, setModelDraft] = useState(app.model ?? "");
+  useEffect(() => { setLocalOnly(!!app.localOnly); setModelDraft(app.model ?? ""); }, [app.id, app.localOnly, app.model]);
+  const toggleLocalOnly = useCallback(async () => {
+    const v = !localOnly; setLocalOnly(v);
+    try { await invoke("engine_app_set_privacy", { id: app.id, localOnly: v }); onChanged(); }
+    catch (e) { setLocalOnly(!v); setNote(`privacy: ${e}`); }
+  }, [localOnly, app.id, onChanged]);
+  const saveModel = useCallback(async (m: string) => {
+    try { await invoke("engine_app_set_model", { id: app.id, model: m }); onChanged(); }
+    catch (e) { setNote(`model: ${e}`); }
+  }, [app.id, onChanged]);
   useEffect(() => {
     setSkills(null);
     invoke<{ id: string; runner: string; trigger: string }[]>("engine_app_skills", { id: app.id, vault: vaultPath }).then(setSkills).catch(() => setSkills([]));
@@ -297,6 +310,35 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
               </div>
             )}
             {note && <div className="mt-2 rounded-lg bg-surface-warm px-3 py-1.5 font-mono text-[11px] text-text-secondary">{note}</div>}
+          </AppCard>
+          {/* Per-app Privacy (local-only) — the same pin domains have: keeps this
+              app's data processing on a local model. */}
+          <AppCard icon={Lock} label="Privacy">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm text-text-primary">{localOnly ? "Local only" : "Standard"}</div>
+                <div className="mt-0.5 text-[12px] text-text-muted">{localOnly ? "This app's data is processed only by a local model (Ollama). Nothing goes to a cloud model." : "This app may be processed by your selected cloud or local model."}</div>
+              </div>
+              <button role="switch" aria-checked={localOnly} onClick={toggleLocalOnly}
+                className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${localOnly ? "bg-accent" : "bg-surface-strong"}`}>
+                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${localOnly ? "translate-x-4" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+          </AppCard>
+          {/* Per-app default model for its skill / sync / agent runs. Empty =
+              the global default. */}
+          <AppCard icon={Cpu} label="Default model">
+            <div className="flex items-center gap-2">
+              <input
+                value={modelDraft}
+                onChange={(e) => setModelDraft(e.target.value)}
+                onBlur={() => { if ((modelDraft.trim() || "") !== (app.model ?? "")) void saveModel(modelDraft.trim()); }}
+                placeholder="Global default (leave empty)"
+                className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-1.5 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+              />
+              {modelDraft && <button onClick={() => { setModelDraft(""); void saveModel(""); }} className="shrink-0 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">Clear</button>}
+            </div>
+            <div className="mt-1.5 text-[12px] text-text-muted">Which model runs this app's skills and syncs. Leave empty to use your global default.</div>
           </AppCard>
           <AppCard icon={Clock} label="Schedule">
             <div className="text-sm text-text-primary">{appScheduleText(app)}</div>

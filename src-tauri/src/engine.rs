@@ -1163,6 +1163,21 @@ pub fn engine_app_set_integration(id: String, integration: String) -> Result<ser
     run_engine_json(&["connectors", "set", &id, "integration", &integration, "--json"])
 }
 
+/// Per-app privacy: local-only pins this app's data processing to a local model
+/// (same construct domains use). Returns { ok, path?, localOnly?, error? }.
+#[tauri::command]
+pub fn engine_app_set_privacy(id: String, local_only: bool) -> Result<serde_json::Value, String> {
+    let v = if local_only { "local" } else { "standard" };
+    run_engine_json(&["connectors", "set", &id, "privacy", v, "--json"])
+}
+
+/// Per-app default model for the app's skill / sync / agent runs. Empty clears
+/// it (falls back to the global default). Returns { ok, path?, model?, error? }.
+#[tauri::command]
+pub fn engine_app_set_model(id: String, model: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "set", &id, "model", &model, "--json"])
+}
+
 /// APP-4: set (or clear) an app's autonomous-sync schedule. `every` is the
 /// cadence the engine validates (hourly | <2-23>h | daily | weekly), with an
 /// optional HH:MM `at` and weekday `on`; "off"/"none"/"" clears the schedule.
