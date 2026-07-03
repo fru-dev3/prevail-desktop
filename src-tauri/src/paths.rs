@@ -182,15 +182,27 @@ pub(crate) fn domain_dir_pub(vault: &str, domain: &str) -> PathBuf {
 // vault root (audit #3). `<vault>/<domain>/<sub>` for a safe domain, `<vault>/<sub>`
 // for the no-domain General space.
 pub(crate) fn safe_domain_subdir(vault: &str, domain: &Option<String>, sub: &str) -> Result<PathBuf, String> {
-    match domain {
-        Some(d) if is_general(d) => Ok(general_dir(vault).join(sub)),
-        Some(d) if is_safe_domain(d) => Ok(resolve_domain_base(vault, d).join(sub)),
-        Some(d) => Err(format!("invalid domain: {d}")),
+    let base = match domain {
+        Some(d) if is_general(d) => general_dir(vault),
+        Some(d) if is_safe_domain(d) => resolve_domain_base(vault, d),
+        Some(d) => return Err(format!("invalid domain: {d}")),
         // General (no domain) is a first-class domain now: all its subdirs
         // (_threads included) live under general_dir (data/domains/general on v4,
         // else the vault root), consistent with a named domain.
-        None => Ok(general_dir(vault).join(sub)),
-    }
+        None => general_dir(vault),
+    };
+    // v4 layout: legacy flat subdirs move under memory/. Remap so every reader
+    // that goes through this chokepoint (threads especially) finds them at their
+    // new home once a domain is migrated. No-op on un-migrated domains.
+    let sub = if is_v4_domain(&base) {
+        match sub {
+            "_threads" => "memory/threads",
+            other => other,
+        }
+    } else {
+        sub
+    };
+    Ok(base.join(sub))
 }
 
 // Guard a frontend-supplied path before reading/writing it. Blocks traversal
