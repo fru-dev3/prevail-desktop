@@ -1543,10 +1543,14 @@ export function ChatPanel({
     // resolves this too (the real guarantee); doing it here keeps the bubble,
     // model pick, and usage capture honest about which provider actually ran.
     let chatCli = selectedCli;
-    if (isBunkerOn() && !isLocalCli(chatCli)) {
+    // Local-only (global Bunker OR this domain's privacy pin) forces a local
+    // provider - swap away from any cloud CLI so a stale/cloud selection can't
+    // leak. The picker already hides cloud models here; this is the guard.
+    if (localOnly && !isLocalCli(chatCli)) {
       const local = preferredLocalCli(clis);
       if (!local) {
-        setMessages((m) => [...m, { role: "user", content: input.trim(), ts: Date.now() }, { role: "assistant", content: "Bunker Mode is on, so replies stay on this device, but no local model provider (Ollama) was detected. Install or start Ollama, or leave Bunker Mode in Settings → Privacy.", ts: Date.now(), cli: chatCli }]);
+        const why = isBunkerOn() ? "Bunker Mode is on" : "This domain is set to local-only";
+        setMessages((m) => [...m, { role: "user", content: input.trim(), ts: Date.now() }, { role: "assistant", content: `${why}, so replies stay on this device, but no local model provider (Ollama) was detected. Install or start Ollama, or change the setting in Settings → Privacy.`, ts: Date.now(), cli: chatCli }]);
         setInput("");
         return;
       }
@@ -3075,7 +3079,7 @@ export function ChatPanel({
                     Runtime
                   </div>
                   <div className="max-h-80 overflow-y-auto">
-                    {clis.filter((c) => !isHarnessRuntime(c.id)).filter((c) => !isBunkerOn() || isLocalCli(c.id)).map((c) => {
+                    {clis.filter((c) => !isHarnessRuntime(c.id)).filter((c) => !localOnly || isLocalCli(c.id)).map((c) => {
                       const cliModels = modelsFor(c.id);
                       if (cliModels.length === 0) return null;
                       const curated = curatedFor(c.id);
