@@ -25,7 +25,7 @@ pub(crate) fn intent_append(
 ) -> Result<(), String> {
     let dir = domain_dir(&vault, &domain);
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir intents: {e}"))?;
-    let file = crate::paths::v4_content_path(&dir, ".system/intents.jsonl", "_intents.jsonl");
+    let file = crate::paths::v4_content_path(&dir, ".system/journal.jsonl", "_intents.jsonl");
     let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
     engine::vault_append_line(&file, &format!("{line}\n")).map_err(|e| format!("write intent: {e}"))?;
     Ok(())
@@ -40,7 +40,7 @@ pub(crate) fn intents_read(
     domain: Option<String>,
     limit: Option<usize>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let file = crate::paths::v4_content_path(&domain_dir(&vault, &domain), ".system/intents.jsonl", "_intents.jsonl");
+    let file = crate::paths::v4_content_path(&domain_dir(&vault, &domain), ".system/journal.jsonl", "_intents.jsonl");
     let text = match read_to_string_retry(&file) {
         Ok(t) => t,
         Err(_) => return Ok(vec![]),
@@ -115,7 +115,7 @@ pub(crate) fn intents_read_all_impl(vault: String, limit: Option<usize>) -> Resu
     }
     let mut out: Vec<serde_json::Value> = Vec::new();
     for (dom, dir) in dirs {
-        let Ok(text) = read_to_string_retry(&crate::paths::v4_content_path(&dir, ".system/intents.jsonl", "_intents.jsonl")) else { continue };
+        let Ok(text) = read_to_string_retry(&crate::paths::v4_content_path(&dir, ".system/journal.jsonl", "_intents.jsonl")) else { continue };
         for l in text.lines().filter(|l| !l.trim().is_empty()) {
             let Ok(mut v) = serde_json::from_str::<serde_json::Value>(l) else { continue };
             if v.get("kind").and_then(|k| k.as_str()) != Some("intent") {

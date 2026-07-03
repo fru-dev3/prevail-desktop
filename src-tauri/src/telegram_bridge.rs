@@ -85,7 +85,7 @@ pub(crate) fn record_exchange(cfg: &BridgeConfig, domain: &str, user_text: &str,
         "message": user_text,
     });
     if let Ok(line) = serde_json::to_string(&intent) {
-        let _ = crate::engine::vault_append_line(&dir.join("_intents.jsonl"), &format!("{line}
+        let _ = crate::engine::vault_append_line(&crate::paths::v4_content_path(&dir, ".system/journal.jsonl", "_intents.jsonl"), &format!("{line}
 "));
     }
     let threads = dir.join("_threads");

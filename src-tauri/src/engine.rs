@@ -2939,6 +2939,20 @@ pub async fn engine_app_run_skill(
 // token bound to (domain, summary), and authorize_action verifies it here so
 // a gws write only ever runs with a valid, single-use approval.
 
+/// Force the clean per-domain vault layout on disk: move each domain's hanging
+/// files into source/·memory/·.system/ (raw prompt ledger -> .system/journal.jsonl),
+/// drop the v4 marker, and archive the originals into a per-domain _pre-v4-v4/
+/// backup (nothing deleted). Idempotent: already-clean domains are skipped, so
+/// this is safe to run on every vault load. Runs off the UI thread.
+#[tauri::command]
+pub async fn engine_vault_migrate_v4(vault: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_engine_json(&["vault", "migrate-v4", "--vault", &vault, "--json"])
+    })
+    .await
+    .map_err(|e| format!("join: {e}"))?
+}
+
 /// List the queued gws write actions awaiting approval.
 /// `prevail --vault <vault> gws pending-list --json` -> the pending array.
 #[tauri::command]
