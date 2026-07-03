@@ -275,6 +275,10 @@ export interface ChatMessage {
   // the real failure reason (e.g. "model not supported on ChatGPT
   // account", quota, auth) is visible instead of a generic message.
   stderr?: string;
+  // Ground-truth "tools used" strip: the REAL tools the agent invoked this turn
+  // (from the runtime's structured output), so the user sees what actually ran,
+  // e.g. "→ calling AllTrails" / "✓ used create_skill". Agent/Act runs only.
+  toolLog?: string[];
   // Token / cost accounting from the engine's `usage` ChatEvent, when the
   // reply came through the unified engine chat path (Track D5). Null on
   // replies that came through the native chat_send path.
