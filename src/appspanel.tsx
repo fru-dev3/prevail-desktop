@@ -3216,7 +3216,7 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
   const ConnectBtn = ({ label }: { label: string }) => (
     <button onClick={() => connect?.onConnect()} disabled={connect?.connecting}
       title="Add this app to your vault so you can teach it skills and set its schedule. Skills can run without this."
-      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-60">
+      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-background hover:bg-accent-hover disabled:opacity-60">
       {connect?.connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} {connect?.connecting ? "Adding…" : label}
     </button>
   );
@@ -3271,13 +3271,13 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
             // and sets it up after you confirm. Shown alongside the quick add.
             <>
               {connect?.onResearch && (
-                <button onClick={() => connect.onResearch!()} disabled={connect?.connecting}
-                  title="Prevail researches MCP, an official API, a local CLI, or a guided browser login, recommends the best one with a reason, then sets it up after you confirm."
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-accent-border bg-accent-soft px-3 py-2 text-sm font-semibold text-accent hover:bg-accent/10 disabled:opacity-60">
-                  <Search className="h-4 w-4" /> Find the best way
+                <button onClick={() => connect.onResearch!()} disabled={connect?.connecting} aria-label="Find the best way to connect"
+                  title="Find the best way to connect: Prevail researches MCP, an official API, a local CLI, or a guided browser login, recommends the best one with a reason, then sets it up after you confirm."
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-muted transition-colors hover:border-accent-border hover:text-accent disabled:opacity-60">
+                  <Search className="h-4 w-4" />
                 </button>
               )}
-              {hasRunnableSkills ? null : <ConnectBtn label="Add to my apps" />}
+              {hasRunnableSkills ? null : <ConnectBtn label="Add" />}
             </>
           ) : (
             <button onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }))} title="Open in chat"
