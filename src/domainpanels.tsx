@@ -451,17 +451,16 @@ export function DomainContextDrawer({
               ) : <div className="text-[11px] text-text-muted">Empty. Run a council or save a decision.</div>}
               </>
             } />
-            {/* The raw record of EVERY prompt that came into this domain: what you
-                asked + session logs. The distilled sections above are derived from
-                this. Labeled to MATCH its on-disk file exactly (_intents.jsonl) so
-                the UI name never diverges from the filesystem (founder rule: no
-                name/file discrepancy). This file is the complete prompt log, not a
-                distilled subset. */}
-            <Section keyName="activity" title="Intents" file="_intents.jsonl" count={ctx.recent_logs.length || undefined} body={
+            {/* JOURNAL = the literal record of every prompt that came in (raw),
+                distinct from the distilled sections above which are derived from
+                it. Per founder's model: journal = raw prompts; intent = distilled.
+                (The on-disk file is _intents.jsonl today; a forced rename to a
+                journal-named file is the pending vault-layout migration.) */}
+            <Section keyName="activity" title="Journal" file="_intents.jsonl" count={ctx.recent_logs.length || undefined} body={
               <>
               {ctx.journal && (
                 <div className="mb-2">
-                  <CtxRow desc="Every prompt you sent, verbatim; the distilled sections are derived from this." onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} intents`, ctx.journal!)} onUse={() => onInjectContext(ctx.journal!, `${domain ? titleCase(domain) : "General"} · intents`)} />
+                  <CtxRow desc="Every prompt you sent, verbatim (the raw journal). The distilled sections are derived from this." onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} journal`, ctx.journal!)} onUse={() => onInjectContext(ctx.journal!, `${domain ? titleCase(domain) : "General"} · journal`)} />
                 </div>
               )}
               {ctx.recent_logs.length > 0 ? (
