@@ -379,6 +379,8 @@ pub fn run() {
             settings::ui_settings_get,
             settings::ui_prefs_get,
             settings::ui_prefs_set,
+            settings::profile_prefs_get,
+            settings::profile_prefs_set,
             settings::ui_settings_set,
             chat::chat_send,
             chat::open_in_terminal,

@@ -88,6 +88,44 @@ export function scheduleUiPrefsPush() {
     void invoke("ui_prefs_set", { json: JSON.stringify(snapshotUiPrefs()) }).catch(() => {});
   }, 1500);
 }
+// ── Per-profile prefs, stored IN the profile's vault ─────────────────────────
+// Profile isolation: a profile's syncable prefs (domain toggles, model picks,
+// policy) live in its vault (build/_meta/profile-prefs.json) so they travel with
+// the vault and are captured by backup - not stranded in machine-global storage.
+// Snapshot on leaving a profile; hydrate on entering one.
+
+/** Write the current syncable prefs into the given profile's vault. */
+export async function saveProfilePrefs(vault: string | null): Promise<void> {
+  if (isBrowser() || !vault) return;
+  try { await invoke("profile_prefs_set", { vault, json: JSON.stringify(snapshotUiPrefs()) }); } catch { /* best effort */ }
+}
+
+/** Load a profile's saved prefs from its vault into localStorage, OVERWRITING
+ * the syncable keys (so switching profiles swaps their whole config). Clears any
+ * syncable key the saved set doesn't define, so one profile's toggles never
+ * bleed into another. Returns true if anything was applied. */
+export async function hydrateProfilePrefs(vault: string | null): Promise<boolean> {
+  if (isBrowser() || !vault) return false;
+  try {
+    const raw = await invoke<string>("profile_prefs_get", { vault });
+    const obj = JSON.parse(raw || "{}") as Record<string, string>;
+    if (!obj || typeof obj !== "object") return false;
+    // A profile that has never saved prefs (empty set) INHERITS the current prefs
+    // rather than being blanked - the next snapshot then captures them as its own.
+    if (Object.keys(obj).length === 0) return false;
+    // Remove existing syncable keys not present in the incoming set.
+    const incoming = new Set(Object.keys(obj));
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && isSyncablePrefKey(k) && !incoming.has(k)) localStorage.removeItem(k);
+    }
+    for (const [k, v] of Object.entries(obj)) {
+      if (isSyncablePrefKey(k)) localStorage.setItem(k, v);
+    }
+    return true;
+  } catch { return false; }
+}
+
 // Browser: hydrate localStorage from the desktop's pushed prefs before the app
 // reads them. Returns a promise so boot can await it.
 export async function hydrateUiPrefs(): Promise<void> {
