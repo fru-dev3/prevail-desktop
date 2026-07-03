@@ -945,6 +945,14 @@ export function ChatPanel({
   }, [chatViewNonce, COMPACT_KEY]);
   // Token accounting for the context meter + auto-compaction (shared so both use
   // the same numbers).
+  // Is the Google app in this chat's context? The account chip only appears once
+  // Google is actually attached (its context labels start with "app: Google" /
+  // "auto-app: Google"), keeping the composer clean otherwise. Also true when the
+  // open app itself IS Google.
+  const googleInContext = useMemo(() => {
+    if ((appId ?? "").toLowerCase().includes("google")) return true;
+    return primedContext.some((c) => /(^|\b)(auto-)?app:\s*google/i.test(c.label));
+  }, [primedContext, appId]);
   const conversationTokens = useMemo(() => messages.reduce((a, mm) => a + estimateTokens(mm.content), 0), [messages]);
   const attachedTokens = useMemo(
     () =>
@@ -3102,7 +3110,7 @@ export function ChatPanel({
                 </div>
               )}
             </div>
-            <DomainStatusBar domain={domain} fwLens={fwLens} />
+            <DomainStatusBar domain={domain} fwLens={fwLens} googleInContext={googleInContext} />
             {/* X7: plan-mode toggle - ask for a plan before acting. */}
             <button
               onClick={() => setPlanMode((v) => !v)}
