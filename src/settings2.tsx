@@ -716,7 +716,7 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="search intents…"
+          placeholder="search journal…"
           className="min-w-[200px] flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
         />
         <select
