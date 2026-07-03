@@ -353,6 +353,10 @@ export function DomainStatusBar({
   const [save, setSave]           = useState(true);
   const [serendipity, setSeren]   = useState(false);
   const [auto, setAuto]           = useState(false);
+  // Act mode: route this domain's sends through the agent runtime (real,
+  // broker-gated tools + a Prevail-verified action ledger) instead of an
+  // advisory text reply. Off by default — a normal chat stays a normal chat.
+  const [act, setAct]             = useState(false);
   const [autoMode, setAutoMode]   = useState(() => getPref(`prevail.domain.${domain}.autoMode`, "smart"));
   // Incognito now lives in Modes (a plain model, none of your context sent). The
   // master switch (Settings: Privacy) can force it on globally.
@@ -373,6 +377,7 @@ export function DomainStatusBar({
     setSave(getDomainToggle(domain, "save", true));
     setSeren(getDomainToggle(domain, "serendipity", false));
     setAuto(getDomainToggle(domain, "auto", false));
+    setAct(getDomainToggle(domain, "act", false));
     setAutoMode(getPref(`prevail.domain.${domain}.autoMode`, "smart"));
   }, [domain]);
   // The per-domain modes (web/save/serendipity/auto) live in a popover so the
@@ -392,7 +397,7 @@ export function DomainStatusBar({
   const bunker = isBunkerOn();
   const webShown = bunker ? false : web;
   const incogOn = incognito || globalIncognito;
-  const activeModes = [webShown, save, serendipity, auto, incogOn].filter(Boolean).length;
+  const activeModes = [webShown, save, serendipity, auto, incogOn, act].filter(Boolean).length;
 
   const flip = (
     t: DomainToggle,
@@ -456,6 +461,8 @@ export function DomainStatusBar({
           {modesOpen && (
             <div className="absolute bottom-full left-0 z-50 mb-2 w-80 rounded-xl border border-border bg-surface p-1.5 shadow-xl">
               <div className="px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Modes</div>
+              <ModeRow label="Act mode" on={act} onClick={() => flip("act", act, setAct)}
+                desc="Let this domain actually do things: create skills and loops in your vault, and queue emails for your approval. You see a verified list of exactly what ran." />
               <ModeRow label="Web access" on={webShown} disabled={bunker}
                 onClick={() => { if (bunker) return; flip("web", web, setWeb); }}
                 desc={bunker ? "Off in Bunker Mode - nothing leaves this device." : "Fetch URLs + web search while replying."} />

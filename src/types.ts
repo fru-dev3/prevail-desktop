@@ -253,7 +253,7 @@ export type TabId = "chat" | "council" | "benchmark" | "settings" | "work";
 
 export type DomainTab = "chat" | "welcome" | "soul" | "context" | "insights" | "usage" | "state" | "decisions" | "journal" | "logs" | "skills" | "prefs" | "apps" | "loops" | "work";
 
-export type DomainToggle = "council" | "web" | "save" | "serendipity" | "auto";
+export type DomainToggle = "council" | "web" | "save" | "serendipity" | "auto" | "act";
 
 export type CliVerifyInfo = { status: "unknown" | "verifying" | "ok" | "failed"; error?: string };
 
