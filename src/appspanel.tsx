@@ -3567,6 +3567,52 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
         {/* CONNECTIONS - downloads / browser sync AND the editable connected-domains
             list, combined (fix #7). "Domains fed" is renamed "Connected domains". */}
         {tab === "connections" && (
+          <>
+          {/* Ranked "how Prevail reaches this app" — the Connect model: least work
+              first, always showing which method is live. Answers "how do I
+              connect this?" plainly instead of leaving it a mystery. */}
+          <div className={`${card} mb-4`}>
+            <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-text-primary"><Link2 className="h-4 w-4 text-accent" /> How Prevail reaches {app.title || app.id}</div>
+            <p className="mb-3 text-[12px] text-text-muted">Ranked by least work for you. Pick one — the others stay available.</p>
+            <div className="flex flex-col gap-2">
+              {passThrough && (
+                <div className="flex items-center gap-3 rounded-xl border border-accent-border bg-accent-soft/30 px-3.5 py-2.5">
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-ok" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-semibold text-text-primary">{passThrough.runtime === "claude" ? "Claude Code" : passThrough.runtime.charAt(0).toUpperCase() + passThrough.runtime.slice(1)} · MCP</div>
+                    <div className="font-mono text-[10.5px] text-text-muted">already authorized · zero setup · Prevail uses it in Act runs</div>
+                  </div>
+                  <span className="shrink-0 rounded-md border border-accent-border bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background">In use</span>
+                </div>
+              )}
+              {(() => { const m = methodOf(app); return m === "mcp" || m === "cli" ? (
+                <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3.5 py-2.5">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${notConnected ? "bg-text-muted" : "bg-ok"}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-semibold text-text-primary">Prevail {m === "cli" ? "CLI" : "MCP"}</div>
+                    <div className="font-mono text-[10.5px] text-text-muted">a server Prevail runs itself, vault-scoped · authorize once</div>
+                  </div>
+                  {notConnected && connect && <button onClick={connect.onConnect} disabled={connect.connecting} className="shrink-0 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50">Set up</button>}
+                </div>
+              ) : null; })()}
+              <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3.5 py-2.5">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-text-muted" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-semibold text-text-primary">Browser automation</div>
+                  <div className="font-mono text-[10.5px] text-text-muted">open a browser, log in once, Prevail learns the steps</div>
+                </div>
+                <button onClick={() => setLearnMode("learn")} disabled={!!learnMode} className="shrink-0 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">Set up</button>
+              </div>
+              <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3.5 py-2.5">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-text-muted" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-semibold text-text-primary">API key</div>
+                  <div className="font-mono text-[10.5px] text-text-muted">paste a token for direct access</div>
+                </div>
+                <button onClick={() => setTab("settings")} title="Set the connection method + credentials in Settings" className="shrink-0 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">Add key</button>
+              </div>
+            </div>
+          </div>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {!gatewayProvider ? (
               <div className={`${card} flex flex-col`}>
@@ -3630,6 +3676,7 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
               </div>
             </div>
           </div>
+          </>
         )}
 
         {/* OPERATIONAL FACETS - Runs / Settings / Domains / Loops. Ported from
