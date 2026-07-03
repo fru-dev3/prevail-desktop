@@ -269,7 +269,7 @@ async fn generate_for_domain(
 // Render the tail of the domain's conversation ledger as USER/ASSISTANT lines,
 // mirroring distill::render_activity so the model sees real dialogue.
 fn recent_activity(domain_dir: &Path, max_records: usize) -> String {
-    let ledger = domain_dir.join("_intents.jsonl");
+    let ledger = crate::paths::v4_content_path(domain_dir, ".system/journal.jsonl", "_intents.jsonl");
     let Ok(raw) = crate::read_to_string_retry(&ledger) else {
         return String::new();
     };

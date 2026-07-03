@@ -255,6 +255,20 @@ export default function App() {
   const [vaultPath, setVaultPath] = useState<string | null>(() =>
     isBrowser() ? null : localStorage.getItem(LS.vault),
   );
+  // Force the clean per-domain layout on disk, once per vault per launch. The
+  // migration is idempotent (already-clean domains are skipped) and non-
+  // destructive (originals archived), and only MOVES files, so it's safe to run
+  // before unlock and on every load. This is the forced vault reorganization:
+  // hanging files -> source/·memory/·.system/, raw prompt ledger -> journal.
+  const migratedVaults = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (isBrowser() || !vaultPath) return;
+    if (migratedVaults.current.has(vaultPath)) return;
+    migratedVaults.current.add(vaultPath);
+    void invoke("engine_vault_migrate_v4", { vault: vaultPath })
+      .then(() => window.dispatchEvent(new CustomEvent("prevail:vault-migrated")))
+      .catch((e) => console.error("vault migrate-v4", e));
+  }, [vaultPath]);
   // Is this vault encrypted (F4 Phase 1)? Checked once the vault path resolves.
   // If it is, the LockScreen unlocks the keyring (sets the DEK) before the app
   // renders. If the engine reports the session already unlocked, skip the gate.

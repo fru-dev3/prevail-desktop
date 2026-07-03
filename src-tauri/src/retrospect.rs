@@ -94,7 +94,10 @@ struct ThreadAcc {
 fn discover_ledgers(vault: &Path) -> Vec<(String, PathBuf)> {
     let mut out: Vec<(String, PathBuf)> = Vec::new();
     let mut push_if = |domain: String, dir: &Path| {
-        let led = dir.join("_intents.jsonl");
+        // v4: raw prompt ledger (the journal) is .system/journal.jsonl; fall back
+        // to the legacy flat _intents.jsonl on un-migrated domains.
+        let v4 = dir.join(".system/journal.jsonl");
+        let led = if v4.exists() { v4 } else { dir.join("_intents.jsonl") };
         if led.exists() {
             out.push((domain, led));
         }

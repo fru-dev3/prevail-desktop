@@ -530,6 +530,7 @@ pub fn run() {
             engine::engine_skill_draft,
             engine::engine_skill_ideas,
             engine::engine_bench_preset_suggest,
+            engine::engine_vault_migrate_v4,
             engine::engine_gws_pending_list,
             engine::engine_gws_approve,
             engine::engine_autonomy_status,
