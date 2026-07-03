@@ -207,7 +207,8 @@ struct DistillTarget {
 async fn distill_dir(target: &DistillTarget, cfg: &DistillConfig) -> Result<u64, String> {
     let dir = target.ledger_dir.as_path();
     let content_dir = target.content_dir.as_path();
-    let ledger = dir.join("_intents.jsonl");
+    // v4: the raw prompt ledger (the JOURNAL) moves to .system/journal.jsonl.
+    let ledger = crate::paths::v4_content_path(dir, ".system/journal.jsonl", "_intents.jsonl");
     if !ledger.exists() {
         return Ok(0);
     }
@@ -337,7 +338,7 @@ async fn distill_dir(target: &DistillTarget, cfg: &DistillConfig) -> Result<u64,
 fn maybe_rotate_ledger(dir: &Path, cursor: &Cursor) {
     const ROTATE_BYTES: u64 = 4 * 1024 * 1024;
     const KEEP_TAIL_BYTES: usize = 512 * 1024;
-    let ledger = dir.join("_intents.jsonl");
+    let ledger = crate::paths::v4_content_path(dir, ".system/journal.jsonl", "_intents.jsonl");
     let size = match std::fs::metadata(&ledger) {
         Ok(m) => m.len(),
         Err(_) => return,
@@ -361,7 +362,7 @@ fn maybe_rotate_ledger(dir: &Path, cursor: &Cursor) {
         return;
     }
     use std::io::Write;
-    let archive = dir.join("_intents.archive.jsonl");
+    let archive = crate::paths::v4_content_path(dir, ".system/journal.archive.jsonl", "_intents.archive.jsonl");
     match std::fs::OpenOptions::new().create(true).append(true).open(&archive) {
         Ok(mut f) => {
             if f.write_all(&raw[..cut]).is_err() {
@@ -524,7 +525,7 @@ fn parse_distill_output(out: &str) -> Distilled {
 // kind:"chat" + source:"distill" so the Insights surface can show it and so the
 // learning loop can tell auto-extracted decisions from council verdicts.
 fn append_decisions(dir: &Path, decisions: &[serde_json::Value]) {
-    let path = dir.join("_decisions.jsonl");
+    let path = crate::paths::v4_content_path(dir, "memory/decisions.jsonl", "_decisions.jsonl");
     let base_ms = now_secs() * 1000;
     let mut out = String::new();
     for (i, d) in decisions.iter().enumerate() {
@@ -577,8 +578,14 @@ fn ledger_dirs(vault: &Path) -> Vec<DistillTarget> {
     // migrated (build_root falls back to the vault root until then), but the
     // distilled _memory.md/_state.md stay at the vault root (content). So the
     // ledger dir and content dir are SPLIT for General.
+    // A dir has a journal ledger if the v4 path (.system/journal.jsonl) OR the
+    // legacy flat (_intents.jsonl) exists — so discovery finds both migrated and
+    // un-migrated domains.
+    fn has_ledger(dir: &Path) -> bool {
+        dir.join(".system/journal.jsonl").exists() || dir.join("_intents.jsonl").exists()
+    }
     let general_ledger = crate::paths::build_root(&vault.to_string_lossy());
-    if general_ledger.join("_intents.jsonl").exists() {
+    if has_ledger(&general_ledger) {
         targets.push(DistillTarget { ledger_dir: general_ledger, content_dir: vault.to_path_buf() });
         seen.push(vault.to_path_buf());
     }
@@ -586,7 +593,7 @@ fn ledger_dirs(vault: &Path) -> Vec<DistillTarget> {
     if let Ok(rd) = std::fs::read_dir(vault) {
         for e in rd.flatten() {
             let p = e.path();
-            if p.is_dir() && p.join("_intents.jsonl").exists() && !seen.contains(&p) {
+            if p.is_dir() && has_ledger(&p) && !seen.contains(&p) {
                 seen.push(p.clone());
                 targets.push(DistillTarget { ledger_dir: p.clone(), content_dir: p });
             }
@@ -598,7 +605,7 @@ fn ledger_dirs(vault: &Path) -> Vec<DistillTarget> {
         if let Ok(rd) = std::fs::read_dir(&container) {
             for e in rd.flatten() {
                 let p = e.path();
-                if p.is_dir() && p.join("_intents.jsonl").exists() && !seen.contains(&p) {
+                if p.is_dir() && has_ledger(&p) && !seen.contains(&p) {
                     seen.push(p.clone());
                     targets.push(DistillTarget { ledger_dir: p.clone(), content_dir: p });
                 }
@@ -695,7 +702,7 @@ pub async fn build_domain_state(
         }
     }
     for base in &bases {
-        if let Some(d) = read_ne(base.join("_decisions.jsonl")) {
+        if let Some(d) = read_ne(crate::paths::v4_content_path(base, "memory/decisions.jsonl", "_decisions.jsonl")) {
             for l in d.lines().take(40) {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(l) {
                     let t = ["decision", "verdict", "prompt"].iter().find_map(|k| v.get(k).and_then(|x| x.as_str())).unwrap_or("");

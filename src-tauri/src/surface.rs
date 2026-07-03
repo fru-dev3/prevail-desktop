@@ -102,7 +102,7 @@ fn gather_context(dir: &Path) -> String {
         }
     }
     // Last few intent messages from the ledger.
-    if let Ok(raw) = crate::read_to_string_retry(dir.join("_intents.jsonl")) {
+    if let Ok(raw) = crate::read_to_string_retry(crate::paths::v4_content_path(dir, ".system/journal.jsonl", "_intents.jsonl")) {
         let msgs: Vec<String> = raw
             .lines()
             .rev()
