@@ -62,10 +62,13 @@ export function ContextMeter({
   const [auto, setAuto] = useState(!!autoCompact);
   useEffect(() => { setAuto(!!autoCompact); }, [autoCompact]);
   const used = conversationTokens + attachedTokens + draftTokens;
-  const frac = Math.max(0, Math.min(1, used / Math.max(1, windowTokens)));
-  const pct = Math.round(frac * 100);
+  const rawFrac = used / Math.max(1, windowTokens);
+  const frac = Math.max(0, Math.min(1, rawFrac));   // ring never exceeds full
+  // Show the TRUE percentage in the label so an over-budget prompt reads >100%
+  // instead of silently pinning at 100.
+  const pct = Math.max(0, Math.round(rawFrac * 100));
   // Calm under 70%, amber 70-90% (getting heavy), red past 90% (degrading).
-  const tone = frac >= 0.9 ? "var(--color-err)" : frac >= 0.7 ? "var(--color-warn)" : "var(--color-accent)";
+  const tone = rawFrac >= 0.9 ? "var(--color-err)" : rawFrac >= 0.7 ? "var(--color-warn)" : "var(--color-accent)";
   const r = 7, c = 2 * Math.PI * r;
 
   return (
