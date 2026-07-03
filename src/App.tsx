@@ -1549,6 +1549,11 @@ export default function App() {
         <BridgeStatusChips />
         {quickCaptureOn && <QuickCapture vaultPath={vaultPath} />}
         {cmdPaletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setCmdPaletteOpen(false)} />}
+        {/* Mounted in every tab return (the three are mutually exclusive) so the
+            About page's "Take the tour" button - which lives in the Settings tab -
+            has a live listener for its replay event. It previously only mounted
+            in the main tab, so the button fired into the void. */}
+        <OnboardingTour />
       </div>
     );
   }
@@ -1569,6 +1574,11 @@ export default function App() {
         <BridgeStatusChips />
         {quickCaptureOn && <QuickCapture vaultPath={vaultPath} />}
         {cmdPaletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setCmdPaletteOpen(false)} />}
+        {/* Mounted in every tab return (the three are mutually exclusive) so the
+            About page's "Take the tour" button - which lives in the Settings tab -
+            has a live listener for its replay event. It previously only mounted
+            in the main tab, so the button fired into the void. */}
+        <OnboardingTour />
       </div>
     );
   }
