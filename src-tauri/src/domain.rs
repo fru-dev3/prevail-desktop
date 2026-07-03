@@ -492,3 +492,54 @@ pub(crate) fn skill_create(
     fs::write(&file, content).map_err(|e| format!("write SKILL.md: {e}"))?;
     Ok(file.to_string_lossy().to_string())
 }
+
+#[cfg(test)]
+mod scan_skills_tests {
+    use super::*;
+    use std::fs;
+
+    fn write_skill(dir: &Path, name: &str, desc: &str) {
+        let p = dir.join(name);
+        fs::create_dir_all(&p).unwrap();
+        fs::write(p.join("SKILL.md"), format!("---\nid: {name}\n---\n{desc}\n")).unwrap();
+    }
+
+    // Regression: scan_skills used to read only the FLAT vault root and only
+    // _skills/. A real (v4) vault keeps domains under data/domains/<d> and the
+    // CLI writes generated skills into skills/ (no underscore). Both were
+    // invisible, so /skills was empty. This exercises both fixes at once.
+    #[test]
+    fn finds_v4_domain_skills_in_both_dirs() {
+        let vault = std::env::temp_dir().join(format!("prevail-scanskills-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&vault);
+        // v4 layout: domains under data/domains.
+        let career = vault.join("data").join("domains").join("career");
+        write_skill(&career.join("_skills"), "weekly-wins-log", "Log wins weekly");   // bundled/desktop convention
+        write_skill(&career.join("skills"), "distilled-standup", "From a chat");       // CLI convention
+        // A domain in the legacy flat root should still be found too.
+        let legacy = vault.join("wealth");
+        write_skill(&legacy.join("_skills"), "net-worth-snapshot", "Snapshot");
+
+        let out = scan_skills(vault.to_string_lossy().to_string()).unwrap();
+        let names: Vec<&str> = out.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"weekly-wins-log"), "missing _skills skill: {names:?}");
+        assert!(names.contains(&"distilled-standup"), "missing skills/ (CLI) skill: {names:?}");
+        assert!(names.contains(&"net-worth-snapshot"), "missing legacy-root domain skill: {names:?}");
+        assert!(out.iter().any(|s| s.domain == "career" && s.name == "distilled-standup"));
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    // A same-named skill present in both _skills/ and skills/ is listed once.
+    #[test]
+    fn dedupes_skill_present_in_both_dirs() {
+        let vault = std::env::temp_dir().join(format!("prevail-scanskills-dedup-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&vault);
+        let d = vault.join("data").join("domains").join("fitness");
+        write_skill(&d.join("_skills"), "run-plan", "underscore copy");
+        write_skill(&d.join("skills"), "run-plan", "plain copy");
+        let out = scan_skills(vault.to_string_lossy().to_string()).unwrap();
+        let count = out.iter().filter(|s| s.domain == "fitness" && s.name == "run-plan").count();
+        assert_eq!(count, 1, "duplicate skill should be de-duped, got {count}");
+        let _ = fs::remove_dir_all(&vault);
+    }
+}
