@@ -245,11 +245,25 @@ export function CouncilPanel({
   // drop zone AND the composer textarea so a domain dropped directly onto the
   // input still attaches (the textarea would otherwise eat the native drop).
   // Default = light (state.md); hold Shift for the full context bundle.
-  async function attachCouncilDomain(name: string, full: boolean) {
+  // Same light/full/folder modes as Chat: plain = state summary, ⇧ = full
+  // context bundle, ⌥ = the entire folder as a readable file map.
+  async function attachCouncilDomain(name: string, mode: "light" | "full" | "folder" = "light") {
     if (!name || !_vaultPath) return;
     try {
+      if (mode === "folder") {
+        const t = await invoke<{ root: string; files: string[] }>("domain_tree", { vault: _vaultPath, domain: name });
+        const body = [
+          `Domain folder: ${t.root}`,
+          "Read any file in this folder directly (paths below, relative to the folder) when it is relevant. Scan broadly; state alone may not have everything.",
+          "",
+          "Files:",
+          ...t.files.map((f) => `- ${f}`),
+        ].join("\n");
+        injectContext(body, `extra (entire folder): ${titleCase(name)}`);
+        return;
+      }
       const c = await invoke<DomainContextBundle>("domain_context", { vault: _vaultPath, domain: name });
-      if (full) {
+      if (mode === "full") {
         const parts = [
           c.state && `## state.md\n${c.state}`,
           c.decisions && `## decisions\n${c.decisions}`,
@@ -348,6 +362,27 @@ export function CouncilPanel({
       injectContext(body, `app: ${app.title}`);
     } catch (err) { console.error("attach council app", err); }
   }, [_vaultPath]);
+  // Expose the same window attach hooks the sidebar's manual drag calls, so
+  // dragging a domain or app onto the Council attaches it as context exactly
+  // like Chat. Only one of Chat/Council is mounted at a time, so whichever is
+  // active owns the hooks. Refs hold the latest callbacks; the hooks register
+  // ONCE on mount to avoid the teardown race that would delete them whenever a
+  // callback's identity changed (see chatpanel B1). Without this, drops in
+  // Council found no hook and silently did nothing.
+  const attachDomainRef = useRef(attachCouncilDomain);
+  const attachAppRef = useRef(attachCouncilApp);
+  useEffect(() => { attachDomainRef.current = attachCouncilDomain; attachAppRef.current = attachCouncilApp; });
+  useEffect(() => {
+    const w = window as unknown as {
+      __prevailAttach?: (n: string, mode?: "light" | "full" | "folder") => void;
+      __prevailAttachApp?: (id: string) => void;
+    };
+    w.__prevailAttach = (n, mode) => void attachDomainRef.current(n, mode ?? "light");
+    w.__prevailAttachApp = (id) => void attachAppRef.current(id);
+    return () => {
+      try { delete w.__prevailAttach; delete w.__prevailAttachApp; } catch { /* ignore */ }
+    };
+  }, []);
   type DollarItem = { kind: "domain" | "app"; id: string; label: string; sub?: string };
   const slashMatch = useMemo(() => {
     const caret = Math.min(caretPos, prompt.length);
@@ -399,7 +434,7 @@ export function CouncilPanel({
     const tail = prompt.slice(dollarMatch.end);
     setPrompt(`${head}${head && tail && !tail.startsWith(" ") ? " " : ""}${tail}`);
     setCaretPos(head.length);
-    if (item.kind === "domain") void attachCouncilDomain(item.id, false);
+    if (item.kind === "domain") void attachCouncilDomain(item.id, "light");
     else void attachCouncilApp(item.id);
     requestAnimationFrame(() => { const ta = taRef.current; if (ta) { ta.focus(); ta.setSelectionRange(head.length, head.length); } });
   }
@@ -918,8 +953,8 @@ export function CouncilPanel({
         if (!name || !_vaultPath) return;
         e.preventDefault();
         // Same light/heavy behavior as Chat - default state summary, hold
-        // Shift for the full context bundle.
-        await attachCouncilDomain(name, e.shiftKey);
+        // Shift for the full context bundle, Option for the entire folder.
+        await attachCouncilDomain(name, e.altKey ? "folder" : e.shiftKey ? "full" : "light");
       }}
     >
       <div className="relative flex min-w-0 flex-1 flex-col">
@@ -1308,7 +1343,7 @@ export function CouncilPanel({
               // attach it a second time.
               e.preventDefault();
               e.stopPropagation();
-              void attachCouncilDomain(name, e.shiftKey);
+              void attachCouncilDomain(name, e.altKey ? "folder" : e.shiftKey ? "full" : "light");
             }}
             onKeyDown={(e) => {
               // Route nav keys to the `/` skills popover when it's open.
