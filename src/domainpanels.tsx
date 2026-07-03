@@ -265,18 +265,21 @@ export function DomainContextDrawer({
   };
 
   const Section = ({
-    keyName, title, count, body, action,
-  }: { keyName: string; title: string; count?: number; body: React.ReactNode; action?: React.ReactNode }) => (
+    keyName, title, count, body, action, file,
+  }: { keyName: string; title: string; count?: number; body: React.ReactNode; action?: React.ReactNode; file?: string }) => (
     <div className="border-b border-border-subtle">
       <div className="flex w-full items-center gap-2 pr-3 hover:bg-surface-warm">
         <button
           onClick={() => setOpen((o) => ({ ...o, [keyName]: !o[keyName] }))}
           className="flex min-w-0 flex-1 items-center justify-between gap-2 py-2.5 pl-7 text-left"
+          title={file ? `On disk: ${file}` : undefined}
         >
           <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-text-secondary">
             <span className="text-accent">{open[keyName] ? "▾" : "▸"}</span>
             {title}
             {count !== undefined && <span className="text-text-muted">· {count}</span>}
+            {/* Map the UI label to its real vault file so the panel is not opaque. */}
+            {file && <span className="font-mono text-[9px] normal-case tracking-normal text-text-muted/70">{file}</span>}
           </span>
         </button>
         {action}
@@ -362,14 +365,14 @@ export function DomainContextDrawer({
         <div title="Applies everywhere - shared across every domain" className="flex cursor-help items-center gap-1.5 border-b border-border-subtle bg-surface-warm/60 px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
           <Globe className="h-3.5 w-3.5 text-accent" /> Globals
         </div>
-        <Section keyName="ideal" title="Ideal" count={idealState.trim() ? 1 : undefined} body={
+        <Section keyName="ideal" title="Ideal" file="ideal-state.md" count={idealState.trim() ? 1 : undefined} body={
           idealState.trim()
             ? <CtxRow desc="Your constitution (ideal-state.md), injected into every turn." onView={() => openCanvas("Ideal", idealState)} onUse={() => onInjectContext(idealState, "Ideal · constitution")} />
             : <div className="text-[11px] text-text-muted">Not set. Add it in Settings → Ideals.</div>
         } />
         {/* G2: what Prevail knows about you - the profile that grounds every answer.
             Now editable (write_user_md), not just viewable. */}
-        <Section keyName="profile" title="User" count={profile.trim() ? 1 : undefined} body={
+        <Section keyName="profile" title="User" file="user.md" count={profile.trim() ? 1 : undefined} body={
           editingProfile ? (
             <div>
               <textarea
@@ -401,21 +404,21 @@ export function DomainContextDrawer({
           {(() => { const I = domain ? domainIcon(domain) : MessageSquare; return I ? <I className="h-3.5 w-3.5 text-accent" /> : <span className="text-accent">◆</span>; })()}
           {domain ? titleCase(domain) : "General"}
         </div>
-        <Section keyName="memory" title="Memory" action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="memory" />} body={
+        <Section keyName="memory" title="Memory" file="_memory.md" action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="memory" />} body={
           memory.trim()
             ? <CtxRow desc="Distilled long-term memory." onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} memory`, memory)} onUse={() => onInjectContext(memory, `${domain ? titleCase(domain) : "General"} · memory`)} />
             : <div className="text-[11px] text-text-muted">Empty until distilled. Rebuild with ↻ above.</div>
         } />
         {ctx && (
           <>
-            <Section keyName="state" title="State" action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="state" />} body={
+            <Section keyName="state" title="State" file="_state.md" action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="state" />} body={
               ctx.state
                 ? <CtxRow desc="Snapshot of where things stand now." onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} state`, ctx.state!)} onUse={() => onInjectContext(ctx.state!, `${domain ? titleCase(domain) : "General"} · state`)} />
                 : <div className="text-[11px] text-text-muted">Empty until distilled. Rebuild with ↻ above.</div>
             } />
             {/* Decisions = the live ledger (latest, raw) + the distiller's curated
                 summary, in ONE section (was split into "Recent decisions" + "Decisions"). */}
-            <Section keyName="decisions" title="Decisions" count={decisions.length || undefined} body={
+            <Section keyName="decisions" title="Decisions" file="_decisions.jsonl" count={decisions.length || undefined} body={
               <>
               <div className="mb-2 text-[11px] leading-snug text-text-muted">
                 Council verdicts and saved decisions, latest first.
@@ -451,7 +454,7 @@ export function DomainContextDrawer({
             {/* Journal = the raw record: what you asked + session logs. The
                 distilled sections above are derived from this. (Named "Journal"
                 consistently per founder; was "Activity".) */}
-            <Section keyName="activity" title="Journal" count={ctx.recent_logs.length || undefined} body={
+            <Section keyName="activity" title="Journal" file="_intents.jsonl" count={ctx.recent_logs.length || undefined} body={
               <>
               {ctx.journal && (
                 <div className="mb-2">
@@ -477,7 +480,7 @@ export function DomainContextDrawer({
               ) : (!ctx.journal && <div className="text-[11px] text-text-muted">Empty. Your chats here build this record.</div>)}
               </>
             } />
-            <Section keyName="skills" title="Skills" count={ctx.skills.length} body={
+            <Section keyName="skills" title="Skills" file="_skills/" count={ctx.skills.length} body={
               ctx.skills.length === 0 ? (
                 <div className="text-xs text-text-muted">drop a folder under <code className="text-accent">{titleCase(domain)}/_skills/</code> with a SKILL.md.</div>
               ) : (
