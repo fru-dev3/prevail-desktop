@@ -99,9 +99,10 @@ export function TaskDetailPanel({ task, vaultPath, onClose, onChanged }: {
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
-      {/* Floating side drawer: anchored to the right but inset on all sides so it
-          reads as a compact card, not a full-height slab covering the screen. */}
-      <div className="fixed right-3 top-3 bottom-3 z-50 flex w-[400px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+      {/* Floating side card: anchored top-right and sized to its CONTENT (capped
+          to the viewport, then it scrolls), so a short task shows a small card
+          instead of a full-height slab covering the screen. */}
+      <div className="fixed right-3 top-3 z-50 flex max-h-[calc(100vh-1.5rem)] w-[400px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
         {/* Header */}
         <div className="flex items-start gap-2 border-b border-border-subtle px-4 py-3">
           <span title={task.owner === "ai" ? "AI" : "Me"} className={`mt-0.5 shrink-0 ${task.owner === "ai" ? "text-accent" : "text-text-muted"}`}>
