@@ -34,5 +34,14 @@
     "binary": "gcloud",
     "version_args": ["--version"],
     "fetch_args": ["config", "list"]
+  },
+  {
+    "id": "gws",
+    "label": "Google Workspace (gws)",
+    "app": "Google",
+    "domain": "productivity",
+    "binary": "gws",
+    "version_args": ["--version"],
+    "fetch_args": ["auth", "status"]
   }
 ]
